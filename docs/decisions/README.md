@@ -53,6 +53,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0040](0040-a-work-names-every-one-of-its-makers.md) | A work names every one of its makers, and a curator can correct them | Accepted | 2026-08-31 |
 | [0041](0041-a-database-says-which-migrations-it-has-seen.md) | A database says which migrations it has seen | Accepted | 2026-08-31 |
 | [0042](0042-a-search-answers-about-the-catalogue-and-opens-where-the-reader-is.md) | A search answers about the catalogue, and opens where the reader is | Accepted | 2026-09-01 |
+| [0043](0043-a-picture-we-show-is-one-we-may-show.md) | A picture we show is one we may show | Accepted | 2026-09-01 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

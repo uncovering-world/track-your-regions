@@ -26,7 +26,9 @@ object a reader is offered has somewhere to go. The catalogue does not hold all
 of them today, and never will hold all of every rule added from here. Measured
 on the dev catalogue on 2026-08-24: 28 objects a reader is offered sit in no
 region at all, 173 offered places carry no region row, and 2911 pictures are
-displayed with nobody credited.
+displayed with nobody credited — 407 by 2026-09-02, 330 objects and 77 works, once
+ADR-0043 had replaced the World Heritage portal's photographs with credited Commons
+files and museum runs had written the works' credits.
 
 So the rule stays at zero and the debt is recorded separately (ADR-0032):
 
@@ -74,7 +76,27 @@ accepted debt, and a fresh checkout of the code inherits none.
 | boundaries | A division holding a single source polygon while divisions hang beneath it | invariant |
 | objects | A site whose danger tag and whose In Danger badge disagree | invariant |
 | objects | A work names several makers in an order nobody has confirmed | watch |
+| pictures | A stored picture on a host whose terms do not let us show it | invariant |
 | pictures | A picture shown with nobody credited | invariant |
+
+**A stored picture the product may not show** is ADR-0043's own invariant over
+live rows: every `image_url` names a Commons file or a file we host, because the
+World Heritage Centre's terms do not let this product draw its photographs and
+every writer refuses any other host since. What it catches is the past — 1260
+rows carried `whc.unesco.org/document/<id>` on the day the rule landed, and a
+database restored from before it carries them still. Such a row draws nothing
+(the rendering side refuses the host), so nothing is shown wrongly; what is wrong
+is an empty frame over a stored value nothing will ever draw, and the remedy is
+one button, *Fix pictures* on the source's card in the sync panel, which the
+sentence names rather than a run. It reads the host and file-type lists from
+`urlSafety.ts` rather than spelling them twice, and asks all four arms of the
+rule — host, Commons path on the upload host, not a `/wiki/File:` page, a
+picture's extension — so that the two picture assertions partition the rows: a
+Commons PDF is a picture the product may not show, not one nobody is credited
+for. `picture-with-nobody-credited`
+narrowed alongside it to pictures that are actually drawn — before that, every
+row still carrying the portal's photograph read as a photograph on show needing
+a photographer, and sent an admin to a run that could not have fetched one.
 
 `work-makers-unconfirmed` is the newest watch and the one whose *kind* is the whole
 point. A work often has more than one maker and the catalogue now stores every one
@@ -321,26 +343,32 @@ though on a refusal alone rather than on any answer — see its own section for 
 
 The last is a licence obligation rather than a consistency rule. Most Commons
 files are CC BY or CC BY-SA, which of a page that merely shows a photograph ask
-that its author be named wherever it appears, and UNESCO's syndication terms ask
-the same in their own words. `imageCredit.ts` captures the credit at sync time
-and `ImageCreditLine` renders it, so a row holding a picture and no credit is a
-picture displayed with nobody named. It asks nothing about lifecycle: the
-curation screens show pending rows to curators, and working on the catalogue
-rather than publishing it does not change whose photograph it is.
+that its author be named wherever it appears — and every picture the product
+draws is a Commons file (ADR-0043), so that is the only term in play.
+`imageCredit.ts` captures the credit at sync time and `ImageCreditLine` renders
+it, so a row holding a picture the product draws and no credit is a picture
+displayed with nobody named. It asks nothing about lifecycle: the curation
+screens show pending rows to curators, and working on the catalogue rather than
+publishing it does not change whose photograph it is.
 
-Its two halves got there differently, and the line says which a row is. On the
-objects the author is already known: 1414 of the 1590 have a `held` change
-naming `imageCredit` waiting in the curation queue, so a run fetched the
-photographer, the gate refused to write it unread, and the page has been showing
-the picture ever since — publishing that change names them. The arm reads **both
+Its two halves got there differently, and the line says which a row is. When it
+landed (2026-08-24) it counted 1590 of 1604 objects, and 1414 of those had a
+`held` change naming `imageCredit` waiting in the queue — the portal's own
+photographer, fetched for a photograph the product has since stopped drawing.
+The World Heritage rows carry a Commons picture *with* its credit now, written by
+the repair rather than proposed, so on the dev database the count fell to the 330
+Commons pictures that really lack one (2026-09-02). What `credit_waiting` still
+tells apart is a credit a run fetched and the gate is holding — publishing that
+change names them — from one nobody has fetched. The arm reads **both
 record shapes**, because both are live: since ADR-0039 the credit is an entry of
 its own (`metadata.imageCredit`, whose value is the credit), and a card filed
 before it carries the credit as a key inside the `metadata` catch-all's payload.
 Asking only the older shape would answer "go and fetch one" for every card a run
 files from here — measured mid-transition on the development catalogue, 1315 of
-the 1514 it reports. On the works nothing
-has fetched one at all: `treasureWriter` writes a work's credit straight into
-its row, and a museum run is what writes these. The one case where a work's credit
+the 1514 it reports. On the works nothing had fetched one when the check landed
+(1321 of 1321): `treasureWriter` writes a work's credit straight into its row, a
+museum run is what writes these, and the runs since have brought that to 77
+(2026-09-02). The one case where a work's credit
 *is* waiting is a held picture: since ADR-0037 the treasures upsert holds a visible
 work's picture under a gated museum, and the credit the run fetched for it rides in
 the museum's contents record beside the held `image_url` — so the work arm asks the
