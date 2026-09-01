@@ -14,7 +14,7 @@ import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { hidePendingSql, hideRefusedSql, lifecycleSelectSql } from './experienceLifecycle.js';
-import { CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
+import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import { ACCEPTABLE_FIELDS } from './acceptableFields.js';
 import {
@@ -228,11 +228,25 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // The claim key is usually the column name, but not always: editing only a
   // website claims `metadata.website`, which is no column at all. Hence the
   // map, and hence the fallback to the field's own name for the keys it does
-  // not carry. Each field also says whether `accept-source` can write it —
-  // `location` and the rest are shown but not offered, since a button that
-  // 409s would leave the item unanswerable.
+  // not carry. Between the two sits the family lookup, for the per-part entries
+  // of a column claimed whole: `nameLocal.ko` is protected by a claim on
+  // `name_local` and by nothing a per-key name could match (#728). Each field
+  // also says whether `accept-source` can write it — `location` and the rest
+  // are shown but not offered, since a button that 409s would leave the item
+  // unanswerable.
+  //
+  // Three lookups in one expression, built here rather than written out at each
+  // of the two sites below: this is `claimKeyFor` in SQL, and the two runtimes
+  // read the same two objects (`changeSet.ts`) so neither can drift into
+  // protecting what the other asks about. `split_part` answers the whole name
+  // where there is no dot, exactly as `field.split('.')[0]` does, so the family
+  // is consulted for a bare name too and the map simply answers first; and the
+  // family object deliberately does not carry `metadata`, whose claims are per key.
   const keyMapIdx = params.length + 1;
-  const acceptableIdx = keyMapIdx + 1;
+  const familyIdx = keyMapIdx + 1;
+  const acceptableIdx = familyIdx + 1;
+  const claimKeySql = (field: string) => `COALESCE($${keyMapIdx}::jsonb->>(${field}),`
+    + ` $${familyIdx}::jsonb->>split_part(${field}, '.', 1), ${field})`;
 
   // The curation log is scope-filtered **per row**, not per experience, and the two
   // subqueries below read it — so they carry the same predicate `getCurationLog` does.
@@ -300,8 +314,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                               OR (log.action = 'location_edited'
                                   AND f->>'field' = 'location'
                                   AND (log.details->>'anchorMoved')::boolean))
-                            AND log.details ? COALESCE(
-                                  $${keyMapIdx}::jsonb->>(f->>'field'), f->>'field')
+                            AND log.details ? ${claimKeySql(`f->>'field'`)}
                             AND ${logScopeFilter}
                           ORDER BY log.created_at DESC, log.id DESC
                           LIMIT 1),
@@ -330,7 +343,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                             AND ${logScopeFilter}), '[]'::jsonb)))
                FROM jsonb_array_elements(ch.changed_fields) f
                WHERE (f->>'curatedConflict')::boolean
-                 AND e.curated_fields ? COALESCE($${keyMapIdx}::jsonb->>(f->>'field'), f->>'field')
+                 AND e.curated_fields ? ${claimKeySql(`f->>'field'`)}
                  -- ...and the curator has not already answered *this* proposal. By
                  -- value, not by field: a refusal says "not that text", and a source
                  -- that comes back with different text is asking a new question, which
@@ -388,7 +401,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     WHERE q.proposed IS NOT NULL
     ORDER BY q.id
     LIMIT $${acceptableIdx + 1} OFFSET $${acceptableIdx + 2}
-  `, [...params, JSON.stringify(CURATED_KEY_BY_FIELD), JSON.stringify([...ACCEPTABLE_FIELDS]), pageSize, offsets.conflicts]);
+  `, [...params, JSON.stringify(CURATED_KEY_BY_FIELD), JSON.stringify(CLAIM_KEY_BY_FAMILY),
+    JSON.stringify([...ACCEPTABLE_FIELDS]), pageSize, offsets.conflicts]);
 
   // arrival: the whole object is the proposal. A row from a gated source that
   // nobody has passed yet (ADR-0025) — the queue's own version of "created",

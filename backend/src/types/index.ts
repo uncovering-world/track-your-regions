@@ -727,8 +727,14 @@ export const publishExperienceBodySchema = z.object({
    * `.min(1)` for the reason the id arrays carry it: an empty array would mean
    * "answer exactly nothing, and do not answer the card either", which no caller
    * can want and which would report success over a click that did nothing.
-   * Bounded above the widest proposal a run can make — thirteen field names in
-   * `CURATED_KEY_BY_FIELD` — with room for a vocabulary that grows.
+   *
+   * Bounded above the widest card a curator can be looking at, which is no
+   * longer a count of column names: a run records a fact per metadata key
+   * (ADR-0039) and a fact per language of the local-names map (#728), so the
+   * ceiling is the object's own columns plus whatever keys and languages the
+   * source publishes. UNESCO's six languages and its handful of metadata keys
+   * put the widest real proposal around two dozen rows, so fifty is headroom
+   * rather than a limit anyone meets.
    *
    * `fieldsOnly` beside it is allowed and does nothing, unlike the pairs the
    * `.refine`s below forbid: those say one thing twice with no rule for which

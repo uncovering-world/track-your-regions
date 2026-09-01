@@ -150,7 +150,7 @@ describe('getSyncLogChanges', () => {
     const contentsRow = {
       id: 7, experience_id: 96, external_id: '1239', name_snapshot: 'Berlin Modernism Housing Estates',
       change_type: 'updated', significance: 'minor',
-      changed_fields: [{ field: 'nameLocal', old: 'a', new: 'b', significance: 'minor' }],
+      changed_fields: [{ field: 'nameLocal.en', old: 'a', new: 'b', significance: 'minor' }],
       contents: { locations: { added: [{ name: 'Waldsiedlung Zehlendorf', ref: '1239-006' }], withdrawn: [], returned: [] } },
       error: null,
     };
@@ -210,7 +210,7 @@ describe('getSyncLogChanges', () => {
 
   it('keeps an updated row where the source ran into a curator\'s claim, whatever its significance', async () => {
     // The filed case (#516): the run refused a claimed `metadata.website` and rewrote
-    // `nameLocal` on the same row. Both fields weigh 'minor', the applied one makes
+    // `nameLocal.en` on the same row. Both fields weigh 'minor', the applied one makes
     // the row `updated`, and the first three terms of the filter drop it — the one row
     // in the run where a machine and a person disagreed. Not a counter beside the
     // claim: `artworkCount` is sync-owned and reported nowhere (#571).
@@ -218,7 +218,7 @@ describe('getSyncLogChanges', () => {
       id: 11, experience_id: 6184, external_id: 'Q19675', name_snapshot: 'Louvre',
       change_type: 'updated', significance: 'minor',
       changed_fields: [
-        { field: 'nameLocal', old: 'Musée du Louvre', new: 'Louvre', significance: 'minor', curatedConflict: false, held: false },
+        { field: 'nameLocal.en', old: 'Musée du Louvre', new: 'Louvre', significance: 'minor', curatedConflict: false, held: false },
         { field: 'metadata.website', old: 'https://www.louvre.fr/en', new: 'https://www.louvre.fr/zh-hans', significance: 'minor', curatedConflict: true, held: false },
       ],
       contents: null,

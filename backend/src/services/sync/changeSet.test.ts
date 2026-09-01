@@ -8,7 +8,8 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  computeChangeSet, CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, type ExperienceSnapshot,
+  claimKeyFor, computeChangeSet, CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX,
+  type ExperienceSnapshot,
 } from './changeSet.js';
 
 /**
@@ -529,6 +530,128 @@ describe('CURATED_KEY_BY_FIELD', () => {
     // since none combines a whole-column claim with a major-key change.
     expect(dottedKeys.length).toBeGreaterThan(0);
     dottedKeys.forEach(key => expect(key.startsWith(METADATA_CLAIM_PREFIX)).toBe(true));
+  });
+});
+
+/**
+ * The one lookup four readers share.
+ *
+ * The diff, the queue's conflict card, `accept-source` and the publish writer all ask
+ * "which `curated_fields` entry protects this?" and have to reach the same answer or one
+ * of them protects nothing. Three arms, and the middle one is why this block exists: the
+ * per-part entries of a column claimed whole (#728).
+ */
+describe('claimKeyFor', () => {
+  it('sends a column field to its column', () => {
+    expect(claimKeyFor('shortDescription')).toBe('short_description');
+    expect(claimKeyFor('nameLocal')).toBe('name_local');
+  });
+
+  it('sends every language of the local names to the column claimed whole', () => {
+    // No `nameLocal.<lang>` can be in the map — the languages are the source's —
+    // and the claim they fall under is the column. Without this the diff would
+    // call the source's name applied while the upsert kept the curator's, and
+    // publishing would write over the claimed column.
+    expect(claimKeyFor('nameLocal.ko')).toBe('name_local');
+    expect(claimKeyFor('nameLocal.zh-hant')).toBe('name_local');
+  });
+
+  it('leaves a per-key metadata claim naming itself', () => {
+    // The asymmetry the family map exists to keep: `editExperience` claims
+    // `metadata.website` under that literal name and no column matches it (#488),
+    // so `metadata` is deliberately not a family. A rule that folded it in would
+    // answer a whole-column question of a per-key claim.
+    expect(claimKeyFor('metadata.website')).toBe('metadata.website');
+    // Except the two the map itself carries, which a whole-column claim protects.
+    expect(claimKeyFor('metadata.inDanger')).toBe('metadata');
+  });
+
+  it('sends a name it has never heard of to itself', () => {
+    expect(claimKeyFor('somethingNew')).toBe('somethingNew');
+    expect(claimKeyFor('somethingNew.key')).toBe('somethingNew.key');
+  });
+});
+
+/**
+ * Six local names are six facts (#728).
+ *
+ * `name_local` is one jsonb column and used to be reported as one entry carrying the
+ * whole map, so run 68's six proposed names for Getbol, Korean Tidal Flats (Phase II)
+ * reached a curator under one pair of buttons: take the corrected Korean name and the
+ * English one comes with it, or refuse both. That is the defect ADR-0039 removed for
+ * `metadata`, one column over, and these state the same rule for the language map.
+ *
+ * What each entry says is what the card used to derive for itself — same equality, same
+ * alphabetical order (`objectDiff.ts` § `changedKeys`) — so the rows a curator reads do
+ * not move; only where the answer lands does.
+ */
+describe('a local name is a fact of its own', () => {
+  const named = (nameLocal: Record<string, string>) => snapshot({ nameLocal });
+
+  it('reports one entry per language that differs, and none for the rest', () => {
+    const before = named({ en: 'Getbol, Korean Tidal Flats (Phase II)', ko: '한국의 갯벌', fr: 'Getbol' });
+    const incoming = named({ en: 'Getbol, Korean Tidal Flats', ko: '한국의 갯벌', fr: 'Getbol' });
+    const result = computeChangeSet(before, incoming, [], WROTE);
+
+    // `ko` and `fr` did not move, so they are not questions — the whole-map entry
+    // asked about them anyway, which is what made the answer cover six facts.
+    expect(result.changedFields.map(f => f.field)).toEqual(['nameLocal.en']);
+    expect(result.changedFields[0].old).toBe('Getbol, Korean Tidal Flats (Phase II)');
+    expect(result.changedFields[0].new).toBe('Getbol, Korean Tidal Flats');
+    expect(result.changedFields[0].significance).toBe('minor');
+  });
+
+  it('names a language the source added and one it dropped', () => {
+    const result = computeChangeSet(named({ en: 'Getbol', fr: 'Getbol' }), named({ en: 'Getbol', ko: '갯벌' }), [], WROTE);
+
+    // Alphabetical, because a jsonb column does not keep the order the keys went
+    // in and the same card has to read the same way twice.
+    expect(result.changedFields.map(f => f.field)).toEqual(['nameLocal.fr', 'nameLocal.ko']);
+    // Both sides of each, so a value going missing on the side that is supposed to
+    // carry one would fail here. A language the source dropped is recorded only by
+    // having no value — which is what publishing deletes on, and what stops the
+    // removal being proposed for ever and applied never.
+    expect(result.changedFields[0].old).toBe('Getbol');
+    expect(result.changedFields[0].new).toBeUndefined();
+    expect(result.changedFields[1].old).toBeUndefined();
+    expect(result.changedFields[1].new).toBe('갯벌');
+  });
+
+  it('files no entry at all where every language agrees', () => {
+    const result = computeChangeSet(named({ ko: '갯벌', en: 'Getbol' }), named({ en: 'Getbol', ko: '갯벌' }), [], WROTE);
+
+    expect(result.changeType).toBe('unchanged');
+    expect(result.changedFields).toEqual([]);
+  });
+
+  it('treats an absent map and an empty one as the same thing', () => {
+    // The same reading `jsonEquals` gives everywhere else, and the one the card's
+    // copy gives: a source that stops publishing local names for a row that never
+    // had any has proposed nothing.
+    expect(computeChangeSet(snapshot({ nameLocal: null }), snapshot({ nameLocal: {} }), [], WROTE).changeType)
+      .toBe('unchanged');
+  });
+
+  it('reports every language as refused where a curator claims the column', () => {
+    // `name_local` is claimed whole — the upsert's guard is `curated_fields ?
+    // 'name_local'` and keeps or replaces the map entire — so a claim covers every
+    // language under it. Resolved by `claimKeyFor`'s family lookup; without it the
+    // run would report the source's names as applied while the upsert kept the
+    // curator's, which is the changeset lying about what the run did.
+    const result = computeChangeSet(
+      named({ en: 'Old', ko: '옛' }), named({ en: 'New', ko: '새' }), ['name_local'], WROTE,
+    );
+
+    expect(result.changedFields).toEqual([]);
+    expect(result.curatedConflicts.map(f => f.field)).toEqual(['nameLocal.en', 'nameLocal.ko']);
+    expect(result.curatedConflicts.every(f => f.curatedConflict)).toBe(true);
+  });
+
+  it('holds every language back behind the gate, each answerable on its own', () => {
+    const result = computeChangeSet(named({ en: 'Old', ko: '옛' }), named({ en: 'New', ko: '새' }), [], HELD);
+
+    expect(result.changeType).toBe('unchanged');
+    expect(result.heldFields.map(f => f.field)).toEqual(['nameLocal.en', 'nameLocal.ko']);
   });
 });
 
