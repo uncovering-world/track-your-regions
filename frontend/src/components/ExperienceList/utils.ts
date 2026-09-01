@@ -94,6 +94,69 @@ export interface ExperienceGroupLike {
   experiences: Experience[];
 }
 
+/** What the list should have open, and which card that answers. */
+export interface GroupExpansion {
+  /** The set to open, or null where what is already open answers the card. */
+  open: Set<string> | null;
+  /** The card this answers, so a reader who then collapses it is not overruled. */
+  forCard: number | null;
+}
+
+/**
+ * Which groups the list opens by itself, and when it leaves them alone.
+ *
+ * Two rules, in this order. **A card the selection names is opened**: a card
+ * inside a collapsed group is not open, whatever the address says, so the
+ * holding group joins whatever is already open. **A region's first list opens
+ * its first group**, once, which is what a reader with no card in hand gets.
+ *
+ * Both were one rule before, fired once per region, and each half of that was
+ * a way to be sent somewhere and shown nothing. A link to a museum in a region
+ * whose first category is UNESCO opened UNESCO. And a reader already standing
+ * in Noord-Holland who searched "Rijksmuseum" (#592) got an address change with
+ * no region change at all, so the once-per-region rule declined to fire and the
+ * card stayed folded away — the defect the first half had just fixed, on the
+ * path the search creates.
+ *
+ * `forCard` is what keeps this from fighting the reader: a card is answered
+ * once, so collapsing the group afterwards stands. Returns null where there is
+ * nothing to do — no groups, or a selection already answered.
+ */
+export function expansionForSelection<T extends ExperienceGroupLike>(opts: {
+  groups: T[];
+  /** The card the address names, or null. */
+  selectedExperienceId: number | null;
+  /** What is open now. */
+  expanded: ReadonlySet<string>;
+  /** Has this region's list already opened a group by itself? */
+  openedForRegion: boolean;
+  /** The card the last automatic opening answered. */
+  openedForCard: number | null;
+}): GroupExpansion | null {
+  const { groups, selectedExperienceId, expanded, openedForRegion, openedForCard } = opts;
+  if (groups.length === 0) return null;
+
+  if (selectedExperienceId !== null && openedForCard !== selectedExperienceId) {
+    const holding = groups.find(
+      group => group.experiences.some(exp => exp.id === selectedExperienceId),
+    );
+    if (holding) {
+      return {
+        open: expanded.has(holding.categoryName)
+          ? null
+          : new Set(expanded).add(holding.categoryName),
+        forCard: selectedExperienceId,
+      };
+    }
+    // A card this region does not hold: the window between its rows arriving
+    // and the address dropping the card. Fall through to the first-list rule,
+    // so a reader is given a list rather than none.
+  }
+
+  if (openedForRegion) return null;
+  return { open: new Set([groups[0].categoryName]), forCard: openedForCard };
+}
+
 /**
  * Groups and their open experiences as one sequence, headers included.
  *

@@ -12,7 +12,7 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import {
   lostHiddenLabel, outsideViewLabel,
-  flattenGroups, rowIndexByExperienceId, experienceIdsInVisibleRange,
+  flattenGroups, expansionForSelection, rowIndexByExperienceId, experienceIdsInVisibleRange,
   type ExperienceGroupLike,
 } from './ExperienceList/utils';
 import { useInViewFilter } from './ExperienceList/useInViewFilter';
@@ -209,9 +209,12 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // discarded and replayed together.
   const [trackedRegionId, setTrackedRegionId] = useState(regionId);
   const hasAutoExpanded = useRef(false);
+  /** The card the last automatic expansion answered; see `expansionForSelection`. */
+  const expandedForCard = useRef<number | null>(null);
   if (regionId !== trackedRegionId) {
     setTrackedRegionId(regionId);
     hasAutoExpanded.current = false;
+    expandedForCard.current = null;
     setExpandedGroups(new Set());
   }
 
@@ -226,15 +229,31 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     }
   }, [regionId, setExpandedCategoryNames]);
 
-  // Auto-expand first group on initial load (once per region)
+  // What the list opens by itself — the card's group, and a region's first
+  // group once — is `expansionForSelection`'s decision, so the rule can be read
+  // and tested in one place. `selectedExperienceId` comes from the address, and
+  // is therefore known before this region's rows have arrived.
+  //
+  // `expandedGroups` is a dependency because the decision is made against what
+  // is open. That makes the effect re-run on every toggle, which is why the
+  // decision carries `forCard`: a re-run for a card already answered returns
+  // null, so a reader who collapses the group is not overruled by the next
+  // render.
   useEffect(() => {
-    if (groups.length > 0 && !hasAutoExpanded.current) {
-      hasAutoExpanded.current = true;
-      const initial = new Set([groups[0].categoryName]);
-      setExpandedGroups(initial);
-      setExpandedCategoryNames(initial);
-    }
-  }, [groups, setExpandedCategoryNames]);
+    const decision = expansionForSelection({
+      groups,
+      selectedExperienceId,
+      expanded: expandedGroups,
+      openedForRegion: hasAutoExpanded.current,
+      openedForCard: expandedForCard.current,
+    });
+    if (!decision) return;
+    hasAutoExpanded.current = true;
+    expandedForCard.current = decision.forCard;
+    if (!decision.open) return;
+    setExpandedGroups(decision.open);
+    setExpandedCategoryNames(decision.open);
+  }, [groups, selectedExperienceId, expandedGroups, setExpandedCategoryNames]);
 
   // ── One flat list, so the rows can be windowed ──
   //
