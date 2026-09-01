@@ -227,7 +227,15 @@ interface CleanedGeometryStats {
   numPoints: number;
 }
 
-async function cleanupAndSimplifyStep(
+/**
+ * Removes small holes and slivers from the union, and writes nothing else into
+ * the shape. It deliberately does not simplify: `regions.geom` is the
+ * authoritative geometry every derived column is made from (rule 1 of
+ * `docs/tech/geometry-columns.md`), so a tolerance applied here is an error no
+ * downstream rung can recover. Simplification belongs to the derived columns,
+ * which run at 5 km and 1 km — not to a 0.0001° pass on the source (#443).
+ */
+async function cleanupStep(
   client: PoolClient,
   unionGeom: unknown,
 ): Promise<CleanedGeometryStats> {
@@ -266,18 +274,15 @@ async function cleanupAndSimplifyStep(
     before_stats AS (
       SELECT SUM(ST_NumInteriorRings(poly)) as num_holes FROM polygons
     ),
-    simplified AS (
-      SELECT ST_SimplifyPreserveTopology(geom, 0.0001) as geom FROM collected
-    ),
     final_stats AS (
       SELECT
         ST_NumGeometries(geom) as num_polygons,
         ST_NRings(geom) as num_rings,
         ST_NPoints(geom) as num_points
-      FROM simplified
+      FROM collected
     )
     SELECT
-      (SELECT geom FROM simplified) as cleaned_geom,
+      (SELECT geom FROM collected) as cleaned_geom,
       (SELECT num_holes FROM before_stats) as holes_before,
       (SELECT num_polygons FROM final_stats) as num_polygons,
       (SELECT num_rings FROM final_stats) as num_rings,
@@ -511,8 +516,8 @@ async function runUnionPipelineSteps(
   const unionGeom = unionResult.rows[0]?.union_geom;
   logStep('Step 4/6: Complete');
 
-  logStep('Step 5/6: Cleaning, removing small holes & slivers, simplifying...');
-  const cleaned = await cleanupAndSimplifyStep(client, unionGeom);
+  logStep('Step 5/6: Cleaning, removing small holes & slivers...');
+  const cleaned = await cleanupStep(client, unionGeom);
   logStep('Step 5/6: Complete', {
     numPolygons: cleaned.numPolygons,
     holesBefore: cleaned.holesBefore,

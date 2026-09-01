@@ -187,7 +187,10 @@ async function computeGroupGeom(client: PoolClient, gId: number): Promise<Pipeli
     const unionGeom = unionResult.rows[0]?.union_geom;
     logStep('Step 4/6: Union complete');
 
-    logStep('Step 5/6: Cleaning, removing small holes & slivers, simplifying...');
+    // No tolerance is applied here: regions.geom is the authoritative geometry
+    // every derived column is made from (rule 1 of docs/tech/geometry-columns.md),
+    // so simplifying at the source bakes in an error no rung can recover (#443).
+    logStep('Step 5/6: Cleaning, removing small holes & slivers...');
     const cleanedResult = await client.query(`
       WITH extracted AS (
         SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid($1::geometry), 3)) as geom
@@ -223,18 +226,15 @@ async function computeGroupGeom(client: PoolClient, gId: number): Promise<Pipeli
       before_stats AS (
         SELECT SUM(ST_NumInteriorRings(poly)) as num_holes FROM polygons
       ),
-      simplified AS (
-        SELECT ST_SimplifyPreserveTopology(geom, 0.0001) as geom FROM collected
-      ),
       final_stats AS (
         SELECT
           ST_NumGeometries(geom) as num_polygons,
           ST_NRings(geom) as num_rings,
           ST_NPoints(geom) as num_points
-        FROM simplified
+        FROM collected
       )
       SELECT
-        (SELECT geom FROM simplified) as cleaned_geom,
+        (SELECT geom FROM collected) as cleaned_geom,
         (SELECT num_holes FROM before_stats) as holes_before,
         (SELECT num_polygons FROM final_stats) as num_polygons,
         (SELECT num_rings FROM final_stats) as num_rings,
@@ -678,7 +678,8 @@ export async function computeRegionGeometryCore(
     const unionGeom = unionResult.rows[0]?.union_geom;
     log('Step 3: Union complete');
 
-    // Step 4: Clean up - remove small holes and slivers
+    // Step 4: Clean up - remove small holes and slivers, and nothing else:
+    // regions.geom carries no tolerance of its own (rule 1, #443).
     log('Step 4: Removing holes & slivers...');
     const cleanedResult = await client.query(`
       WITH extracted AS (
@@ -711,11 +712,8 @@ export async function computeRegionGeometryCore(
       ),
       collected AS (
         SELECT ST_Multi(ST_Collect(poly)) as geom FROM holes_filtered WHERE poly IS NOT NULL
-      ),
-      simplified AS (
-        SELECT ST_SimplifyPreserveTopology(geom, 0.0001) as geom FROM collected
       )
-      SELECT geom as cleaned_geom, ST_NPoints(geom) as num_points FROM simplified
+      SELECT geom as cleaned_geom, ST_NPoints(geom) as num_points FROM collected
     `, [unionGeom]);
 
     const cleanedGeom = cleanedResult.rows[0]?.cleaned_geom;
