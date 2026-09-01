@@ -406,11 +406,14 @@ async function planHeldAnswer(
   // Nothing held may be dropped in silence. Clearing the pointer over a value
   // this code could not write would leave that value proposed by every run from
   // here on and applied by none — the escape the gate closes for
-  // `accept-source`'s six unwritable fields, reopened. Reached today only by a
-  // coordinate the changeset did not record as a pair of numbers; a field name
-  // outside `CURATED_KEY_BY_FIELD` would land here too, which is why a test
-  // feeds this endpoint every field `computeChangeSet` can actually emit and
-  // requires all of them to be applied. Iterating the map instead would prove
+  // `accept-source`'s six unwritable fields, reopened. Two shapes reach it
+  // today: a coordinate the changeset did not record as a pair of numbers, and
+  // a picture from a host whose terms do not let this product show it — a card
+  // filed before ADR-0043 can still be proposing the World Heritage portal's own
+  // photograph, and publishing it would put back what a repair has just taken
+  // off. A field name outside `CURATED_KEY_BY_FIELD` would land here too, which
+  // is why a test feeds this endpoint every field `computeChangeSet` can
+  // actually emit and requires all of them to be applied. Iterating the map instead would prove
   // nothing: the map is the side that could be missing an entry.
   //
   // A field in that position is unanswerable, not merely unapplied — the refusal

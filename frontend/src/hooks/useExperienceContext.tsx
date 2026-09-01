@@ -228,7 +228,9 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   // nothing because it warmed bytes no view ever asks for. It fetched
   // `extractImageUrl(exp.image_url)` — the original — for every experience the
   // moment a region was explored: about 670 requests for Europe, of which roughly
-  // four in five answer 403 (#557) and the rest are full-size files. Every surface
+  // four in five answered 403 at the time (the portal's photographs, since
+  // replaced with Commons files — ADR-0043, #557) and the rest were full-size
+  // files. Every surface
   // renders a `toThumbnailUrl()` variant instead (120, 250, 330, 500, 720, 960),
   // so not one of those downloads was ever displayed.
   //

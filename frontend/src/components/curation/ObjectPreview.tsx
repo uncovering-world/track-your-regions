@@ -49,9 +49,10 @@ export function ObjectPreview({ experienceId }: { experienceId: number }) {
   }
 
   const source = extractImageUrl(data.image_url);
-  // A failure is ordinary here rather than exceptional: this preview draws from
-  // the same catalogue the queue does, whose URLs largely answer 403 (#557), and
-  // a credit beside a picture that did not arrive names a photographer for
+  // A failure is held per picture rather than ignored: this preview draws from
+  // the same catalogue the queue does — where, until ADR-0043 replaced the
+  // portal's photographs with Commons files, most URLs answered 403 (#557) —
+  // and a credit beside a picture that did not arrive names a photographer for
   // nothing.
   const url = source ? toThumbnailUrl(source, 250) : null;
   const image = url && url !== failedUrl ? url : null;

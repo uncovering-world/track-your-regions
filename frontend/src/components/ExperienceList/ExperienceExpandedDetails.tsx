@@ -141,18 +141,18 @@ function ExperienceExpandedDetailsComponent({
 
   // Resolved once, by the same helper the row's hover preload calls, so the two
   // cannot ask for different files. It answers with an empty string for a remote
-  // host the thumbnail proxy does not trust, and an empty `src` is not nothing:
+  // host the product may not draw from (ADR-0043), and an empty `src` is not nothing:
   // the browser resolves it against the current document, so the page would fetch
   // its own HTML and draw it as a broken picture.
   const thumbnailUrl = cardImageUrl(experience.image_url);
 
   // The box is given its 250 px only once the bytes are actually here, because
-  // most of these pictures never arrive. Measured against the live data: of 1604
-  // experiences, 1260 carry `whc.unesco.org/document/<id>` as their image, which
-  // answers 403 at the source and 404 through the thumbnail proxy, and only the
-  // 330 Wikimedia `Special:FilePath` urls resolve (#557). Reserving space for all
-  // of them and taking it back on failure moved the rows below on four cards in
-  // five — exactly the shuffling this was meant to end.
+  // a picture can fail to arrive and a reserved box taken back moves every row
+  // below. That used to be the ordinary outcome — 1260 of 1604 cards pointed at
+  // a portal photograph that answered 403 — and reserving space for all of them
+  // shuffled four cards in five. Since ADR-0043 every stored picture is a Commons
+  // file (#557), so the failure is the exception again; the rule stays, because
+  // a card that moves once is a card that moves.
   //
   // Usually the answer is already known, because hovering the row started the
   // fetch (`imagePreload.ts`), and hovering is what precedes opening. Then this

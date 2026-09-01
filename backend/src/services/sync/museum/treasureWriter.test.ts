@@ -73,7 +73,7 @@ function artwork(overrides: Partial<ProcessedContent> = {}): ProcessedContent {
     treasureType: 'painting',
     artists: ['Leonardo da Vinci'],
     year: 1503,
-    imageUrl: 'https://upload.wikimedia.org/mona-lisa.jpg',
+    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/6/6a/Mona_Lisa.jpg',
     sitelinksCount: 140,
     ...overrides,
   };
@@ -182,7 +182,7 @@ describe('a work arrives marked as unread', () => {
     scriptStored([{
       external_id: 'Q12418', name: 'Mona Lisa',
       artists: ['Ivan Shishkin', 'Konstantin Savitsky'],
-      year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
+      year: 1503, image_url: 'https://upload.wikimedia.org/wikipedia/commons/6/6a/Mona_Lisa.jpg',
       curated_fields: [],
     }]);
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Mona Lisa' }] });
@@ -210,7 +210,7 @@ describe('a work arrives marked as unread', () => {
     scriptStored([{
       external_id: 'Q12418', name: 'Mona Lisa',
       artists: ['Antonio del Pollaiuolo', 'Piero del Pollaiuolo'],
-      year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
+      year: 1503, image_url: 'https://upload.wikimedia.org/wikipedia/commons/6/6a/Mona_Lisa.jpg',
       curated_fields: [],
     }]);
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Mona Lisa' }] });
@@ -231,7 +231,7 @@ describe('a work arrives marked as unread', () => {
   it('replaces the makers where a name really was added or dropped', async () => {
     scriptStored([{
       external_id: 'Q12418', name: 'Mona Lisa', artists: ['Ivan Shishkin'],
-      year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
+      year: 1503, image_url: 'https://upload.wikimedia.org/wikipedia/commons/6/6a/Mona_Lisa.jpg',
       curated_fields: [],
     }]);
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Mona Lisa' }] });
@@ -376,7 +376,7 @@ describe('the works delta a museum run reports', () => {
     // `INSERT … ON CONFLICT` and `RETURNING` gives back the new values.
     scriptStored([{
       external_id: 'Q12418', name: 'La Gioconda', artists: ['Leonardo'],
-      year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
+      year: 1503, image_url: 'https://upload.wikimedia.org/wikipedia/commons/6/6a/Mona_Lisa.jpg',
       curated_fields: [],
     }]);
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Mona Lisa' }] });
@@ -400,7 +400,7 @@ describe('the works delta a museum run reports', () => {
   it('names a claimed work by what the catalogue calls it, not by the source', async () => {
     scriptStored([{
       external_id: 'Q12418', name: 'La Gioconda', artists: ['Leonardo da Vinci'],
-      year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
+      year: 1503, image_url: 'https://upload.wikimedia.org/wikipedia/commons/6/6a/Mona_Lisa.jpg',
       curated_fields: ['name'],
     }]);
     // The claim held, so the statement wrote the stored name back over itself.
@@ -480,6 +480,33 @@ describe('what a run stores about a work photograph', () => {
       credit: CREDIT, hasCredit: true, imageUrl: FILE, imageClaimed: false, ...overrides,
     }]]);
   }
+
+  it('stores no picture from a host whose terms do not let us draw it', async () => {
+    // The same line an experience's picture is held to (ADR-0043). Every one of
+    // the 1324 pictures stored today is a Commons file; this is what notices the
+    // day a source answers with something else.
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork({ imageUrl: 'https://whc.unesco.org/document/141884' })]);
+
+    const upsert = mockedQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO treasures'),
+    ) as [string, unknown[]];
+    // `$6`, the picture, and `$9`, what is said about it.
+    expect(upsert[1][5]).toBeNull();
+    expect(upsert[1][8]).toBeNull();
+  });
+
+  it('stores no path of ours offered by a run, which only a person may write', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork({ imageUrl: '/images/experiences/museums/Q12418.jpg' })]);
+
+    const upsert = mockedQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO treasures'),
+    ) as [string, unknown[]];
+    expect(upsert[1][5]).toBeNull();
+  });
 
   it('writes the credit it just fetched', () => {
     const metadata = treasureMetadata(

@@ -269,7 +269,7 @@ describe('editExperience and the picture credit', () => {
     // Commons is unreachable in this test, so nothing can be resolved — which
     // is exactly the case that must not leave the previous photographer's name
     // under a photograph they did not take.
-    await editWith({ imageUrl: 'https://example.org/a-photo-the-curator-found.jpg' });
+    await editWith({ imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/A%20photo%20the%20curator%20found.jpg' });
 
     expect(metadataPatch()).toEqual({ imageCredit: null });
   });
@@ -292,7 +292,7 @@ describe('editExperience and the picture credit', () => {
     // permanent — no later run could fill it — and one slow response would leave
     // a real photograph uncredited for good. The picture itself is still
     // claimed, and the sync writes no credit for a picture it does not own.
-    await editWith({ imageUrl: 'https://example.org/a-photo-the-curator-found.jpg' });
+    await editWith({ imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/A%20photo%20the%20curator%20found.jpg' });
 
     expect(claims()).toContain('image_url');
     expect(claims()).not.toContain('metadata.imageCredit');

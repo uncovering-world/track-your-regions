@@ -39,7 +39,7 @@ import {
   type SourceWait,
 } from './sourceRetry.js';
 import { pool } from '../../db/index.js';
-import { isStorableHttpUrl } from '../../types/urlSafety.js';
+import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 
 const LOG_PREFIX = '[Image Credit]';
 
@@ -418,8 +418,15 @@ export async function readStoredTreasureCredits(): Promise<Map<string, StoredCre
 export function creditToWrite(
   fetched: ImageCredit | undefined,
   stored: StoredCredit | undefined,
-  imageUrl: string | null,
+  offered: string | null,
 ): { imageCredit?: ImageCredit | null } {
+  // A picture the run may not write is, for the credit, no picture at all: the
+  // writer refuses the url (`withShowablePicture`, `syncUtils.ts`), and a
+  // photographer's name beside a frame that will hold nothing is the claim this
+  // feature exists never to make. Decided here rather than at the writer because
+  // this is the one place that can see the claim below — and a claimed picture
+  // keeps its own credit whatever the source offered (ADR-0043).
+  const imageUrl = offered && isCommonsPictureUrl(offered) ? offered : null;
   // A picture a curator owns is not this run's to describe: the upsert keeps
   // their `image_url` and would take the source's photographer beside it. What
   // the run sends back is **what the row already holds** rather than nothing,
@@ -428,7 +435,7 @@ export function creditToWrite(
   if (stored?.imageClaimed) {
     return stored.hasCredit ? { imageCredit: stored.credit } : {};
   }
-  if (fetched) return { imageCredit: fetched };
+  if (fetched && imageUrl) return { imageCredit: fetched };
   // Keyed by the **picture**, not by the row. A source's `wdt:P18` can change
   // between runs; if the Commons batch covering the new file then fails, falling
   // back on the row's stored credit would write the new photograph and the

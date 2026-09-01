@@ -54,7 +54,7 @@ const BEFORE_SNAPSHOT: ExperienceSnapshot = {
   lon: 4, lat: 50,
   countryCodes: ['FR'],
   countryNames: ['France'],
-  imageUrl: 'https://old.test/a.jpg',
+  imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Old.jpg',
   metadata: { inDanger: false, dateInscribed: '1979', visitors: 100 },
 };
 
@@ -69,7 +69,7 @@ const CHANGED_SNAPSHOT: ExperienceSnapshot = {
   lon: 4.5, lat: 50.5,
   countryCodes: ['FR', 'BE'],
   countryNames: ['France', 'Belgium'],
-  imageUrl: 'https://new.test/b.jpg',
+  imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/New.jpg',
   metadata: { inDanger: true, dateInscribed: '1980', visitors: 250 },
 };
 
@@ -485,7 +485,7 @@ describe('publishing a held proposal', () => {
         { field: 'location', new: { lon: 1.5, lat: -2.5 }, held: true },
         { field: 'countryCodes', new: ['FR'], held: true },
         { field: 'countryNames', new: ['France'], held: true },
-        { field: 'imageUrl', new: 'https://example.test/a.jpg', held: true },
+        { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Proposed.jpg', held: true },
         { field: 'metadata', old: { a: 1 }, new: { a: 2 }, held: true },
       ],
     });

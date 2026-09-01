@@ -2,10 +2,10 @@ import { z } from 'zod';
 import { foldLabel } from '../services/sync/labelFold.js';
 import {
   isStorableHttpUrl,
-  isStorableImageUrl,
+  isDisplayablePictureUrl,
   normalizeStorableUrl,
   STORABLE_HTTP_URL_MESSAGE,
-  STORABLE_IMAGE_URL_MESSAGE,
+  DISPLAYABLE_PICTURE_URL_MESSAGE,
 } from './urlSafety.js';
 
 /**
@@ -311,7 +311,7 @@ const boundedUrl = (max: number, isStorable: (value: string) => boolean, message
     });
 
 const safeUrlSchema = boundedUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
-const safeImageUrlSchema = boundedUrl(1000, isStorableImageUrl, STORABLE_IMAGE_URL_MESSAGE);
+const safeImageUrlSchema = boundedUrl(1000, isDisplayablePictureUrl, DISPLAYABLE_PICTURE_URL_MESSAGE);
 
 /**
  * The same rule for a url that has to be there: an element of a list, or a

@@ -9,10 +9,10 @@
  * list shuffle under a reader.
  *
  * So the card waits until all three have settled and then opens once. Settled,
- * not succeeded: most of these pictures never arrive — of 1604 experiences, 1260
- * carry a `whc.unesco.org/document/<id>` url that answers 403 at the source and
- * 404 through the thumbnail proxy (#557) — and a failure answers as quickly as a
- * success, so waiting for the answer costs nothing where there is nothing to show.
+ * not succeeded: a card whose object has no picture — the World Heritage sites
+ * Commons has no photograph of, since ADR-0043 took the portal's own off the
+ * catalogue (#557) — answers as quickly as one whose picture arrives, so waiting
+ * for the answer costs nothing where there is nothing to show.
  *
  * The wait is capped — including for the locations batch, which is why that term
  * belongs here rather than beside the condition that mounts the card. A request
