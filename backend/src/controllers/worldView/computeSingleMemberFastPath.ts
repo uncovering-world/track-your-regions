@@ -10,14 +10,13 @@ import { PoolClient } from 'pg';
  * answer, so this path stores it as-is, deliberately — it is not a cheaper
  * reproduction of what the normal union path would produce.
  *
- * The normal path always runs small-hole/sliver removal and
- * `ST_SimplifyPreserveTopology(geom, 0.0001)` before saving, and — when
- * `shouldSimplify` (`totalPoints > 300000`) trips — pre-simplifies at 0.005
- * before the union on top of that. `shouldSimplify` does not govern this
- * branch at all: running the one member through either simplification step
- * would only degrade a geometry that is already correct, so this path skips
- * both rather than reproducing them. This is the shape of every matched leaf
- * in a base-layer mirror as well as a large share of any 1:1 import match.
+ * The normal path always runs small-hole/sliver removal before saving, and —
+ * when `shouldSimplify` (`totalPoints > 300000`) trips — pre-simplifies its
+ * inputs at 0.005 before the union. `shouldSimplify` does not govern this
+ * branch at all: running the one member through that step would only degrade a
+ * geometry that is already correct, so this path skips it rather than
+ * reproducing it. This is the shape of every matched leaf in a base-layer
+ * mirror as well as a large share of any 1:1 import match.
  *
  * `childRowCount` must be a structural count — ALL rows in `regions` with
  * `parent_region_id = regionId`, with no `geom IS NOT NULL` filter. It is not
