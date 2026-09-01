@@ -131,7 +131,14 @@ exists to prevent.
   it. (Open Graph tags need a server-rendered head and are not here.)
 - Focus lands in the card a link named, once it opens: `ExperienceList` focuses
   the arriving row, so a keyboard or screen-reader visitor is put in what the
-  link named rather than at the top of the page.
+  link named rather than at the top of the page. The group holding that card is
+  the one the region opens on, too — a card inside a collapsed category is not
+  open, whatever the address says (`initiallyExpandedGroup`, #592).
+- A name typed in the navigation pane is a way *into* the grammar: a search
+  result writes the whole address in one `go()` — world view, region, card —
+  and the region it names is the smallest one holding the object in the world
+  view already open. The search never writes another world view's address; see
+  [ADR-0042](../decisions/0042-a-search-answers-about-the-catalogue-and-opens-where-the-reader-is.md).
 - The smoke specs open the fixture region directly (`/wv/9001/r/9001`), and
   `addresses.smoke.spec.ts` covers the deep link, the canonical rewrite, Back,
   the legacy form and the silent degradation.
