@@ -10,6 +10,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { computeRegionGeometryCore, computeSingleRegionGeometry } from './geometryComputeSingle.js';
 import { UNION_SHAPE, coarseningProblems } from './unionGeomToleranceGuard.js';
+import { droppedMemberProblems } from './unionKeepsMembersGuard.js';
 
 function respond(sql: string) {
   if (sql.includes('SELECT is_custom_boundary')) {
@@ -291,5 +292,89 @@ describe('the union path writes regions.geom with no tolerance of its own', () =
     await computeSingleRegionGeometry(req, res);
 
     expectNoCoarsening();
+  });
+});
+
+/**
+ * The collect step gathers two kinds of shape — the region's direct members and
+ * its child regions — and the neighbour snap that may run before the union
+ * reads only the second. Its result was assigned straight back over the
+ * collected geometry, so on a region holding both, the members' territory never
+ * reached the union: Andorra stored 439.3 km² of its member division's 451.1,
+ * and North America's member held 9,843,418 km² — Canada — that no child of it
+ * held, because Canada's own region row had no geometry yet (#736).
+ *
+ * Snapping aligns the children's shared borders; it does not decide which
+ * inputs the union is made of. The check is the chain, not one statement: the
+ * members the collect step gathered reach the snap, the snap reads them, and
+ * what the snap hands back is what the union gets. It lives in
+ * `unionKeepsMembersGuard.ts`, shared with the SSE writer's guard, because this
+ * defect existed in three copies of one statement.
+ */
+describe('the snap keeps the direct members a mixed region holds', () => {
+  const COLLECTED = { sentinel: 'collected-members-and-children' };
+  const MEMBERS = { sentinel: 'members-only' };
+  const SNAPPED = { sentinel: 'snapped-children-and-members' };
+  const CLEANED = { sentinel: 'cleaned-union-geometry' };
+
+  function respondMixed(sql: string) {
+    const s = String(sql);
+    if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
+    if (s.includes('direct_member_geoms')) {
+      return { rows: [{ collected_geom: COLLECTED, member_geom: MEMBERS, geom_count: '4' }] };
+    }
+    if (s.includes('ST_Snap(')) {
+      return {
+        rows: [{
+          id: 7, name: 'Encamp', neighbor_count: '2',
+          original_points: '100', new_points: '104', added_points: '4',
+          collected_geom: SNAPPED, total_snapped_points: '104',
+        }],
+      };
+    }
+    if (s.includes('ST_UnaryUnion')) return { rows: [{ union_geom: { sentinel: 'unioned' } }] };
+    if (s.includes('holes_filtered')) {
+      return {
+        rows: [{
+          cleaned_geom: CLEANED, holes_before: '4',
+          num_polygons: '2', num_rings: '3', num_points: '7000',
+        }],
+      };
+    }
+    return respond(s);
+  }
+
+  function expectMembersKept() {
+    const calls = client.query.mock.calls as Array<[unknown, unknown[]?]>;
+    expect(droppedMemberProblems(calls, { memberGeom: MEMBERS, snappedGeom: SNAPPED })).toEqual([]);
+  }
+
+  beforeEach(() => {
+    client.query.mockReset();
+    client.query.mockImplementation(async (sql: string) => respondMixed(String(sql)));
+    poolQuery.mockReset();
+    poolQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
+  });
+
+  it('carries the members through the snap into the union', async () => {
+    await computeRegionGeometryCore(42, { skipSnapping: false });
+    expectMembersKept();
+  });
+
+  it('holds the same for the HTTP handler, which snaps whenever there are children', async () => {
+    poolQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (s.includes('is_custom_boundary') && s.includes('uses_hull')) {
+        return { rows: [{ is_custom_boundary: false, name: 'Andorra', usesHull: false, has_geom: false }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const req = { params: { regionId: '42' }, query: {} } as unknown as Request;
+    const json = vi.fn();
+    const res = { json, status: vi.fn(() => ({ json })) } as unknown as Response;
+    await computeSingleRegionGeometry(req, res);
+
+    expectMembersKept();
   });
 });

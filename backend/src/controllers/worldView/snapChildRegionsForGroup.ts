@@ -4,6 +4,21 @@
  * before the union, so the merge has no slivers from mismatched boundary
  * points.
  *
+ * What it snaps is the children, and only the children — that is the whole of
+ * its job. What it *returns* is the union's input, which is a different thing:
+ * the collect step gathered the region's direct members too, and a snap that
+ * handed back the children alone dropped their territory, since every caller
+ * assigns the result over the collected geometry. Andorra stored 439.3 km² of
+ * its member division's 451.1 that way, and North America's member held
+ * 9,843,418 km² — Canada — that no child of it held, because Canada's own
+ * region row had no geometry yet (#736). So the members are collected back out
+ * with the snapped children, untouched: snapping aligns borders, it does not
+ * decide which inputs the union is made of.
+ *
+ * The members arrive as a parameter rather than being read from
+ * `region_members` here, because `collectUnionInputs` has already applied the
+ * input-side timeout guard to them, and repeating that guard inside this
+ * statement is what `unionGeomToleranceGuard` forbids it.
  */
 
 import { PoolClient } from 'pg';
@@ -19,6 +34,7 @@ export async function snapChildRegionsForGroup(
   client: PoolClient,
   gId: number,
   initialGeom: unknown,
+  memberGeom: unknown,
 ): Promise<SnapStepOutcome> {
   const snapResult = await client.query(`
     WITH child_regions AS (
@@ -55,11 +71,22 @@ export async function snapChildRegionsForGroup(
     with_new_points AS (
       SELECT *, ST_NPoints(geom) as new_points FROM snapped
     ),
+    -- The region's direct members join the snapped children here, so what the
+    -- caller unions is everything the collect step gathered. They are added
+    -- as one more row of the same aggregate rather than collected onto the
+    -- result, which keeps the shape identical to the collect step's own.
     collected AS (
-      SELECT ST_Collect(geom) as geom FROM with_new_points WHERE geom IS NOT NULL
+      SELECT ST_Collect(geom) as geom
+      FROM (
+        SELECT geom FROM with_new_points
+        UNION ALL
+        SELECT $2::geometry
+      ) union_inputs
+      WHERE geom IS NOT NULL
     ),
     totals AS (
-      SELECT SUM(new_points) as total_points FROM with_new_points
+      SELECT SUM(new_points) + COALESCE(ST_NPoints($2::geometry), 0) as total_points
+      FROM with_new_points
     )
     SELECT
       id, name, neighbor_count, original_points, new_points,
@@ -73,7 +100,7 @@ export async function snapChildRegionsForGroup(
       (SELECT total_points FROM totals) as total_snapped_points
     FROM with_new_points
     ORDER BY name
-  `, [gId]);
+  `, [gId, memberGeom]);
 
   let totalAdded = 0;
 

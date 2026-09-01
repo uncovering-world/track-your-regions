@@ -14,6 +14,7 @@ vi.mock('../../services/hull/index.js', () => ({
 
 import { computeSingleRegionGeometrySSE } from './geometryComputeSSE.js';
 import { UNION_SHAPE, coarseningProblems } from './unionGeomToleranceGuard.js';
+import { droppedMemberProblems } from './unionKeepsMembersGuard.js';
 
 function respondClient(sql: string) {
   const s = String(sql);
@@ -141,5 +142,72 @@ describe('the SSE union path writes regions.geom with no tolerance of its own', 
 
     const calls = client.query.mock.calls as Array<[unknown, unknown[]?]>;
     expect(coarseningProblems(calls, CLEANED)).toEqual([]);
+  });
+});
+
+/**
+ * The third writer, held to the second shared rule
+ * (`geometryComputeSingle.test.ts` § the snap keeps the direct members a mixed
+ * region holds): the union sees every input the collect step gathered, members
+ * included, because snapping aligns the children's shared borders and does not
+ * decide what the union is made of (#736).
+ *
+ * This writer is the one whose skip parameter the editor's checkbox sends, so
+ * it is also the one an ordinary curator run reaches with snapping off — which
+ * is what kept the defect quiet here while the other two carried it.
+ */
+describe('the SSE snap keeps the direct members a mixed region holds', () => {
+  const COLLECTED = { sentinel: 'collected-members-and-children' };
+  const MEMBERS = { sentinel: 'members-only' };
+  const SNAPPED = { sentinel: 'snapped-children-and-members' };
+  const CLEANED = { sentinel: 'cleaned-union-geometry' };
+
+  function respondMixed(sql: string) {
+    const s = String(sql);
+    if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
+    if (s.includes('direct_member_geoms')) {
+      return { rows: [{ collected_geom: COLLECTED, member_geom: MEMBERS, geom_count: '4' }] };
+    }
+    if (s.includes('ST_Snap(')) {
+      return {
+        rows: [{
+          id: 7, name: 'Encamp', neighbor_count: '2',
+          original_points: '100', new_points: '104', added_points: '4',
+          collected_geom: SNAPPED, total_snapped_points: '104',
+        }],
+      };
+    }
+    if (s.includes('ST_UnaryUnion')) return { rows: [{ union_geom: { sentinel: 'unioned' } }] };
+    if (s.includes('holes_filtered')) {
+      return {
+        rows: [{
+          cleaned_geom: CLEANED, holes_before: '4',
+          num_polygons: '2', num_rings: '3', num_points: '7000',
+        }],
+      };
+    }
+    if (s.includes('UPDATE regions')) {
+      return { rows: [{ points: 7000, uses_hull: false }], rowCount: 1 };
+    }
+    return respondClient(s);
+  }
+
+  beforeEach(() => {
+    client.query.mockReset();
+    client.query.mockImplementation(async (sql: string) => respondMixed(String(sql)));
+    poolQuery.mockReset();
+    poolQuery.mockImplementation(async (sql: string) => respondPool(String(sql)));
+  });
+
+  it('carries the members through the snap into the union', async () => {
+    // `skipSnapping` absent: this endpoint's schema defaults it to 'false', so
+    // the snap runs — the shape a caller who names no parameter gets.
+    const req = { params: { regionId: '42' }, query: {} } as unknown as Request;
+    const { res } = createSSERes();
+
+    await computeSingleRegionGeometrySSE(req, res as unknown as Response);
+
+    const calls = client.query.mock.calls as Array<[unknown, unknown[]?]>;
+    expect(droppedMemberProblems(calls, { memberGeom: MEMBERS, snappedGeom: SNAPPED })).toEqual([]);
   });
 });
