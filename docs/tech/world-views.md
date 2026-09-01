@@ -387,7 +387,7 @@ Compute merged geometries for regions.
 - Afterwards every **derived ancestor**'s geometry is nulled: a parent is the union of its children, and one of them has just changed (#667). A hand-drawn boundary is left as drawn and ends the walk there — its outline does not move when a descendant gains one, so nothing above it does either (#283). They are not recomputed on the spot — recomputing a continent is around a hundred seconds of union — so an ancestor is absent from the map until the next world-view run picks it up, and Catalogue Checks reports it meanwhile
 - Pipeline: collect geometries → analyze → snap neighbors → union → clean holes/slivers → save
 - **Except for a region that is exactly one division** (one member, no child regions, no hand-drawn boundary): all three writers — the SSE stream, the `/geometry/compute` endpoint and the bulk core — short-circuit to `computeSingleMemberFastPath`, which copies the member's geometry through the same `validate_multipolygon` normalization the normal path applies and runs none of the six steps, so the SSE `complete` event carries no polygon/hole counts. This is deliberate: the single member already *is* the answer, and putting it through the union path's steps would only degrade a geometry that is already right — its own interior rings included, which the hole filter would judge by a rule meant for the gaps a union leaves. Since #443 neither path applies a tolerance of its own either; what the union path still does above 300,000 input points is pre-simplify its *inputs* to stay inside the timeout (`geometry-columns.md` rule 1), and this path is exempt from that too. Common well beyond base-layer imports — it is the shape of any 1:1 match
-- "Skip snapping" checkbox (default: on) skips the expensive neighbor-snapping step for faster computation. Snapping adds shared boundary vertices but is O(n²) on child count — can be slow for continents
+- "Skip snapping" checkbox (default: on) skips the expensive neighbor-snapping step for faster computation. Snapping adds shared boundary vertices but is O(n²) on child count — can be slow for continents. All three writers read the same `skipSnapping` parameter with the same default, and an absent one means *snap*: the compute endpoint took none at all until #736, and the bulk endpoint read it off a query nothing validated. What the step decides is only where the children's shared borders sit — a region's direct members are carried across it untouched, so the union sees everything the collect step gathered (`geometry-columns.md` rule 1)
 - Uses a dedicated `pool.connect()` client for all computation queries, ensuring `SET statement_timeout` applies to the correct connection (not a random pool connection)
 - Generates TS hull for archipelagos, clears stale hull data for non-archipelagos
 - JWT is passed as `token` query parameter since `EventSource` can't send Authorization headers
@@ -500,9 +500,9 @@ Handle countries spanning multiple continents:
 ### Geometry
 - `GET /api/world-views/regions/:regionId/geometry` - Get region geometry
 - `PUT /api/world-views/regions/:regionId/geometry` - Set custom geometry
-- `POST /api/world-views/regions/:regionId/geometry/compute` - Compute single region
-- `GET /api/world-views/regions/:regionId/geometry/compute-stream` - Compute single region with SSE progress
-- `POST /api/world-views/:worldViewId/compute-geometries` - Compute all geometries
+- `POST /api/world-views/regions/:regionId/geometry/compute` - Compute single region (`force`, `skipSnapping`)
+- `GET /api/world-views/regions/:regionId/geometry/compute-stream` - Compute single region with SSE progress (`force`, `skipSnapping`, `token`)
+- `POST /api/world-views/:worldViewId/compute-geometries` - Compute all geometries (`force`, `skipSnapping`)
 - `GET /api/world-views/:worldViewId/compute-geometries/status` - Get computation status
 - `POST /api/world-views/:worldViewId/compute-geometries/cancel` - Cancel computation
 - `GET /api/world-views/:worldViewId/display-geometry-status` - Display geometry status
