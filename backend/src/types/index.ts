@@ -1348,14 +1348,27 @@ export const subregionGeometriesQuerySchema = z.object({
   useDisplay: booleanStringSchema.default('false'),
 });
 
+/**
+ * What every writer of a region's geometry accepts, mounted on all three of
+ * them: the single-region endpoint, the bulk one and the progress stream.
+ *
+ * One object rather than one per endpoint, because that is the whole point of
+ * it — the three used to disagree about `skipSnapping`, one taking no such
+ * parameter at all and one reading it off a query nothing validated, so the
+ * same region came out differently depending on which was asked (#736). Three
+ * identical schemas would restore that by the ordinary route: a change made to
+ * one and forgotten on the others, with nothing to fail.
+ *
+ * `skipSnapping` absent means *snap*, which is what each of them already did.
+ */
 export const computeGeometryQuerySchema = z.object({
   force: booleanStringSchema.default('false'),
+  skipSnapping: booleanStringSchema.default('false'),
 });
 
-export const computeSSEQuerySchema = z.object({
-  force: booleanStringSchema.default('false'),
-  skipSnapping: booleanStringSchema.default('false'),
-  token: z.string().optional(), // JWT passed as query param (EventSource can't send headers)
+/** The same, plus the JWT `EventSource` cannot put in a header. */
+export const computeSSEQuerySchema = computeGeometryQuerySchema.extend({
+  token: z.string().optional(),
 });
 
 export const coverageSSEQuerySchema = z.object({

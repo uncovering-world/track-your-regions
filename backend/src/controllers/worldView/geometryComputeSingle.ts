@@ -66,7 +66,11 @@ function coreFailure(err: unknown, regionId: number, logPrefix: string): Pipelin
   return { computed: false, error: errorMessage };
 }
 
-async function computeGroupGeom(client: PoolClient, gId: number): Promise<PipelineResult> {
+async function computeGroupGeom(
+  client: PoolClient,
+  gId: number,
+  skipSnapping: boolean,
+): Promise<PipelineResult> {
   const startTime = Date.now();
 
   const complexityCheck = await client.query(`
@@ -144,7 +148,9 @@ async function computeGroupGeom(client: PoolClient, gId: number): Promise<Pipeli
       + `${parseInt(analyzeResult.rows[0]?.total_points || '0')} pts`,
     );
 
-    if (childCount > 0) {
+    if (skipSnapping) {
+      logStep('Step 3/6: Skipped (fast mode - no snapping)');
+    } else if (childCount > 0) {
       logStep(`Step 3/6: Snapping ${childCount} child regions to their neighbors...`);
       const snap = await snapChildRegionsForGroup(client, gId, collectedGeom, collected.memberGeom);
       collectedGeom = snap.collectedGeom;
@@ -250,6 +256,7 @@ async function computeGroupGeom(client: PoolClient, gId: number): Promise<Pipeli
 async function computeBottomUp(
   client: PoolClient,
   gId: number,
+  skipSnapping: boolean,
 ): Promise<{ groupsComputed: number }> {
   let groupsComputed = 0;
   const children = await pool.query(
@@ -261,9 +268,9 @@ async function computeBottomUp(
 
   for (const child of children.rows) {
     if (child.is_custom_boundary || child.has_geom) continue;
-    const childResult = await computeBottomUp(client, child.id);
+    const childResult = await computeBottomUp(client, child.id, skipSnapping);
     groupsComputed += childResult.groupsComputed;
-    const computed = await computeGroupGeom(client, child.id);
+    const computed = await computeGroupGeom(client, child.id, skipSnapping);
     if (computed.computed) {
       groupsComputed++;
       console.log(`[ComputeSingle] Computed child group ${child.id}`);
@@ -408,8 +415,11 @@ async function applyCoverageAndTileVersion(
 export async function computeSingleRegionGeometry(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
   const force = req.query.force === 'true';
+  // Absent means snap: computeGeometryQuerySchema supplies the default this
+  // endpoint used to have no way of being told (#736).
+  const skipSnapping = req.query.skipSnapping === 'true';
 
-  console.log(`[ComputeSingle] Computing region ${regionId}, force=${force}`);
+  console.log(`[ComputeSingle] Computing region ${regionId}, force=${force}, skipSnapping=${skipSnapping}`);
 
   const regionCheck = await pool.query(
     'SELECT is_custom_boundary, name, uses_hull as "usesHull", geom IS NOT NULL as has_geom FROM regions WHERE id = $1',
@@ -431,10 +441,10 @@ export async function computeSingleRegionGeometry(req: Request, res: Response): 
   const computeClient = await pool.connect();
   try {
     console.log(`[ComputeSingle] Starting bottom-up computation for region ${regionId}: ${regionCheck.rows[0].name}`);
-    const childrenResult = await computeBottomUp(computeClient, regionId);
+    const childrenResult = await computeBottomUp(computeClient, regionId, skipSnapping);
     console.log(`[ComputeSingle] Computed ${childrenResult.groupsComputed} child regions`);
 
-    const result = await computeGroupGeom(computeClient, regionId);
+    const result = await computeGroupGeom(computeClient, regionId, skipSnapping);
     if (!result.computed) {
       res.status(200).json({
         computed: false,
@@ -497,7 +507,11 @@ export async function computeRegionGeometryCore(
     logPrefix?: string;
   } = {}
 ): Promise<{ computed: boolean; points?: number; error?: string }> {
-  const { skipSnapping = true, logPrefix = '[Compute]' } = options;
+  // `false` — snap — because that is what the three endpoints' schemas default
+  // to, and a callable whose absent option meant the opposite would be the one
+  // place the rule is decided twice (#736). Today's only production caller
+  // passes a value either way.
+  const { skipSnapping = false, logPrefix = '[Compute]' } = options;
   const startTime = Date.now();
   const GEOMETRY_QUERY_TIMEOUT_MS = 300000;
 

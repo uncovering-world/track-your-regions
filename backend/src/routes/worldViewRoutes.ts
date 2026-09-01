@@ -94,7 +94,7 @@ router.post('/:worldViewId/regions', validate(worldViewIdParamSchema, 'params'),
 // World View geometry operations
 // =============================================================================
 router.get('/:worldViewId/regions/root/geometries', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getRootRegionGeometries);
-router.post('/:worldViewId/compute-geometries', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, computeWorldViewGeometries);
+router.post('/:worldViewId/compute-geometries', validate(worldViewIdParamSchema, 'params'), validate(computeGeometryQuerySchema, 'query'), requireAuth, requireAdmin, computeWorldViewGeometries);
 router.get('/:worldViewId/compute-geometries/status', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getComputationStatus);
 router.post('/:worldViewId/compute-geometries/cancel', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, cancelComputation);
 router.post('/:worldViewId/division-usage', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), validate(divisionUsageBodySchema), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getDivisionUsageCounts);

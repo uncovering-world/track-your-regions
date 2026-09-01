@@ -378,3 +378,68 @@ describe('the snap keeps the direct members a mixed region holds', () => {
     expectMembersKept();
   });
 });
+
+/**
+ * The compute endpoint takes the same instruction the stream does.
+ *
+ * `computeGroupGeom` snapped whenever the region had children and its handler
+ * carried no parameter to say otherwise, so the one writer an admin can reach
+ * by API had no say in the most expensive step of its own pipeline — on a large
+ * region, the difference between a run that finishes and one that hits the
+ * five-minute statement timeout. The other two writers already read
+ * `skipSnapping`; this one now reads it too, with the default it already had
+ * (#736).
+ */
+describe('the compute endpoint can be told not to snap', () => {
+  function respondMixed(sql: string) {
+    const s = String(sql);
+    if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
+    if (s.includes('direct_member_geoms')) {
+      return { rows: [{ collected_geom: { sentinel: 'collected' }, member_geom: { sentinel: 'members' }, geom_count: '4' }] };
+    }
+    if (s.includes('ST_UnaryUnion')) return { rows: [{ union_geom: { sentinel: 'unioned' } }] };
+    if (s.includes('holes_filtered')) {
+      return {
+        rows: [{
+          cleaned_geom: { sentinel: 'cleaned' }, holes_before: '4',
+          num_polygons: '2', num_rings: '3', num_points: '7000',
+        }],
+      };
+    }
+    return respond(s);
+  }
+
+  async function computeWith(query: Record<string, string>) {
+    const req = { params: { regionId: '42' }, query } as unknown as Request;
+    const json = vi.fn();
+    const res = { json, status: vi.fn(() => ({ json })) } as unknown as Response;
+    await computeSingleRegionGeometry(req, res);
+    return client.query.mock.calls.map((c) => String(c[0]));
+  }
+
+  beforeEach(() => {
+    client.query.mockReset();
+    client.query.mockImplementation(async (sql: string) => respondMixed(String(sql)));
+    poolQuery.mockReset();
+    poolQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (s.includes('is_custom_boundary') && s.includes('uses_hull')) {
+        return { rows: [{ is_custom_boundary: false, name: 'Andorra', usesHull: false, has_geom: false }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  });
+
+  it('skips the snap when the caller asks it to, on a region that has children', async () => {
+    const sqls = await computeWith({ skipSnapping: 'true' });
+
+    expect(sqls.some((s) => s.includes('direct_member_geoms'))).toBe(true);
+    expect(sqls.some((s) => s.includes('ST_Snap('))).toBe(false);
+  });
+
+  it('snaps when the caller does not, which is what the schema default says', async () => {
+    const sqls = await computeWith({ skipSnapping: 'false' });
+
+    expect(sqls.some((s) => s.includes('ST_Snap('))).toBe(true);
+  });
+});
