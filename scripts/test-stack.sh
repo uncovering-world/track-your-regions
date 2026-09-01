@@ -148,13 +148,57 @@ compose_test_profile() {
     docker compose -p "$PROJECT" "${COMPOSE_FILES[@]}" "$@"
 }
 
-wait_for_url() {
+# 90 attempts x 2s = 180s per service. Measured against a stack whose images
+# are already built - what both the pre-push gate and CI's e2e job face, since
+# `compose up --build` builds before the wait starts - readiness costs seconds:
+# db healthy at 36s from cold, backend and frontend answering ~20s after their
+# containers start. The window is not the constraint and is left where it is;
+# what a timeout here lacked was any account of what went wrong (#447).
+# Overridable so the failure path can be exercised in seconds instead of three
+# minutes, and so a box slower than either of the two above has a lever.
+READINESS_ATTEMPTS="${TEST_READINESS_ATTEMPTS:-90}"
+READINESS_LOG_LINES=200
+
+# The one value here that comes from outside, and it is spent in an arithmetic
+# context (`for ((i = 1; i <= attempts; i++))`), where bash re-evaluates a
+# name it finds - so a value that is not a number is a way to be evaluated,
+# not merely a wrong count. Refused up front, in the same shape as the rails
+# above.
+#
+# A leading zero is refused with the rest, because bash reads one as octal:
+# `08` is "value too great for base 8" and kills the run mid-wait with that
+# as its only explanation, and `00` is zero, which polls nothing and reports
+# a timeout the service never had. Measured, both.
+case "$READINESS_ATTEMPTS" in
+  *[!0-9]*|0*)
+    echo "Refusing to run: TEST_READINESS_ATTEMPTS must be a positive integer without a leading zero." >&2
+    echo "Current value: '$READINESS_ATTEMPTS'" >&2
+    exit 1
+    ;;
+esac
+
+# What a readiness timeout has to leave behind. Waiting used to print one line
+# and return 1; under `set -e` the run ended there, before a single spec, so
+# CI's "Upload Playwright report" step found no files and the job log said only
+# that the frontend had not answered - never whether the container was slow,
+# crashed, or never bound the port. Printed rather than left to be fetched,
+# for two reasons: on CI nobody can fetch it, the runner being discarded with
+# the containers on it; and printing puts the state *at the moment of the
+# timeout* in the record, rather than whatever the container drifted to
+# afterwards. A local run does keep the stack - scripts/test-report.mjs exits
+# on this path before its cleanup step - so `compose logs` there still has
+# more than the 200 lines below.
+#
+# One function rather than a poll and a dump that a caller could pair up
+# wrongly: waiting for a service and saying what happened when it never came
+# are the same act.
+wait_for_service() {
   local name="$1"
   local url="$2"
-  local attempts="${3:-90}"
+  local service="$3"
   local i
 
-  for ((i = 1; i <= attempts; i++)); do
+  for ((i = 1; i <= READINESS_ATTEMPTS; i++)); do
     if curl -fsS "$url" >/dev/null 2>&1; then
       echo "$name is ready: $url"
       return 0
@@ -163,6 +207,14 @@ wait_for_url() {
   done
 
   echo "Timed out waiting for $name at $url"
+  echo "--- $service never answered; container state (docker compose ps) ---"
+  # Best-effort throughout: this runs on the failure path, and a diagnostic
+  # that dies takes the diagnosis with it. The non-zero return below is what
+  # fails the run, not these.
+  compose ps || true
+  echo "--- last $READINESS_LOG_LINES log lines: $service ---"
+  compose logs --no-color --tail "$READINESS_LOG_LINES" "$service" || true
+  echo "--- end $service evidence ---"
   return 1
 }
 
@@ -173,8 +225,8 @@ ensure_up() {
 
   echo "Starting test environment project='$PROJECT' stack='$STACK_NAME' db='$DB_NAME'"
   compose up -d --build db backend frontend martin
-  wait_for_url "Backend" "http://localhost:${BACKEND_PORT}/health"
-  wait_for_url "Frontend" "http://localhost:${FRONTEND_PORT}"
+  wait_for_service "Backend" "http://localhost:${BACKEND_PORT}/health" backend
+  wait_for_service "Frontend" "http://localhost:${FRONTEND_PORT}" frontend
 
   echo "Seeding E2E fixture into db='$DB_NAME'"
   compose exec -T backend npm run seed:e2e
@@ -367,6 +419,7 @@ Environment overrides:
   TEST_FRONTEND_PORT   (default: 5174)
   TEST_MARTIN_PORT     (default: 5300)
   TEST_DATA_DIR        (default: ./.test-data)
+  TEST_READINESS_ATTEMPTS (default: 90, x 2s sleep = 180s per service)
 EOF
 }
 
