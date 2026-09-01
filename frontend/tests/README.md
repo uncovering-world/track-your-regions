@@ -6,6 +6,13 @@ This folder contains automated tests for the frontend.
 
 - Unit/integration (`Vitest`): `src/**/*.test.ts(x)`
 - E2E (`Playwright Test`): `tests/e2e/**/*.spec.ts`
+- The lane's own runners (`Vitest`): `tests/**/*.test.mjs` and
+  `perf/**/*.test.mjs` — plain ESM, no browser. They exercise the modules
+  that decide what a run *means*: `scripts/playwright-summary.mjs` turns a
+  Playwright report into a verdict (a spec that passes on retry is flaky,
+  not failed — #447), `scripts/lighthouse-summary.mjs` does the same for the
+  performance budgets. What the extension says is what runs them: a
+  `.spec.ts` under `tests/e2e/` is Playwright's, a `.test.mjs` is Vitest's.
 
 ## Prerequisites
 
