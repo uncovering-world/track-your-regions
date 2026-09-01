@@ -414,7 +414,7 @@ Common sync logic lives in ten shared utility files:
 - **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), and sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs). Used by all three services. It deletes nothing: the FK-ordered category cleanup that force sync used lived here and is gone with it.
 - **`locationWriter.ts`** — Writes an experience's locations so a point that has not moved keeps its row, and therefore its region assignments (`writeExperienceLocations()`). Identity is `(point, external_ref)`: the reference alone repeats across a transboundary component's per-country entries, and the point alone repeats across the sub-units of one named locality. A point the source stops offering is marked (`missing_since`, `ordinal` NULL) rather than deleted, and one offered again is found by the same identity and given its place back. Returns the rows inserted, moved or offered again — what the run then assigns — and how many it was the first to find missing. Two modules hold what its statements are built from, split out when the per-point diff took it past the guide's length limit: `locationPairing.ts` — identity (`samePointSql`, `claimedPointSql`), the guard that keeps a claimed column, and what a kept row's own columns say happened to it (`keptChanges`) — and `locationIncoming.ts`, the source's list before anything is known about the store (its CTE, its parameters, and the duplicates the source itself ships)
 - **`placement.ts`** — Placing what a run moved, and reporting when that fails (`finishPlacement()`, `placeMovedExperiences()`, `recordPlacementFailure()`, `enterAssigningPhase()`, `terminalStatus()`). Split from the orchestrator because it is a separate responsibility: the loop runs a source's items, this decides where the objects that moved now belong, and it reaches for `regionAssignmentService`, `syncLogMarkers` and `annotateClosedSyncLog` — none of which the loop touches
-- **`changeSet.ts`** — Pure diff between the stored row and the incoming record (`computeChangeSet()`). No database, no network. Normalises before comparing: JSONB by value rather than key order, country and tag arrays as sets, coordinates by distance (below 10 m is jitter, above 1 km is `major`), and `null`/`''`/absent as one absence
+- **`changeSet.ts`** — Pure diff between the stored row and the incoming record (`computeChangeSet()`). No database, no network. Normalises before comparing: JSONB by value rather than key order, country and tag arrays as sets, coordinates by distance (below 10 m is jitter, above 1 km is `major`), and `null`/`''`/absent as one absence. Two jsonb columns are reported **per part** rather than whole, because an answer is addressed to an entry: `metadata.<key>` for every metadata key that differs (ADR-0039), `nameLocal.<lang>` for every language of the local names that differs (#728). Also home to `claimKeyFor`, the one lookup four readers share for "which `curated_fields` entry protects this"
 - **`changeRecorder.ts`** — Batched persistence of the per-object changeset (`recordSyncChanges()`, 500 rows per statement)
 - **`missingDetection.ts`** — Whether absence may be acted on (`missingDetectionSkipReason()`) and the flagging itself (`flagMissingExperiences()`)
 - **`syncLogMarkers.ts`** — The entries a run leaves in `error_details` that other code reads as facts (`CHANGESET_LOST_MARKER`, `ORPHANED_RUN_MARKER`, `PLACEMENT_FAILED_MARKER`) and the predicate that reads them (`CHANGESET_LANDED_SQL`). Written by the orchestrator and the startup sweep, read by the review queue and `accept-source` — one definition, because a run's status cannot answer whether its changeset landed
@@ -676,7 +676,7 @@ nothing else — a denylist naming one case rather than a list of the cases wort
 *contents* moved stays even when its only field edit was minor, because `significance` weighs fields
 alone and that row is the only record anywhere that a component arrived. So does an `updated` row
 where the source ran into a curator's claim (#516): the refused field is weighed like any other, so a
-claimed `shortDescription` or `metadata.website` beside an applied `nameLocal` computes `minor`, and the
+claimed `shortDescription` or `metadata.website` beside an applied `nameLocal.en` computes `minor`, and the
 view reads the stored `curatedConflict` flag — the containment test the queue and both verdict
 endpoints already use — to keep the one row in a run where a machine and a person disagreed. A row
 whose *only* difference was refused is `conflict` and was never at risk; it is the row that also
@@ -878,7 +878,7 @@ path needs.
 
 **Three fields the importer asked for wrongly, and a dry run that found them.** Naming the fields in `select` turned the first into a 400 that said `Unknown field: criteria` — that field does not exist in `whc001` and never did, so `buildUnescoTags` produced no criterion tag for any site: measured on the live database, **0 of 1272**. The real name is `criteria_txt` (`(i)(ii)(iii)(iv)` for the Bamiyan Valley), present on 1256 of 1273 records. The other two were found by previewing the fix: `danger` and `transboundary` are compared against the number `1`, and the portal sends the **strings** `"True"` / `"False"` — from either endpoint. So `metadata.inDanger` was false for all 1272 sites, 58 of which are listed in danger, and not one of the 51 transboundary sites carried its tag. The `in_danger` tag survived only because `danger_list` is a string and was tested beside the flag. `isSet` now reads a yes in any of the shapes a portal might send it, rather than the one shape seen today.
 
-**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata.criteria` on 1255 (the criteria string), `metadata.inDanger` on 58, `shortDescription` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false for all three categories in the seed (`db/init/01-schema.sql`), and gating one is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands. The `metadata.inDanger` row of that table is spent on a database that has had migration 035: those 58 rows already carry the flag, so a run finds nothing to propose about it — see below for why that half was repaired rather than queued. A card a run has *already* filed keeps its `false → true` line, since a changeset records what a run did (ADR-0026) and publishing it writes the value the migration wrote; the rest of that card — the criteria string — is what still needs a curator; the criterion tags filed beside it are no longer a question and no longer a row on the card (#570), though publishing such a card still writes them.
+**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata.criteria` on 1255 (the criteria string), `metadata.inDanger` on 58, `shortDescription` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false for all three categories in the seed (`db/init/01-schema.sql`), and gating one is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands. The `metadata.inDanger` row of that table is spent on a database that has had migration 035: those 58 rows already carry the flag, so a run finds nothing to propose about it — see below for why that half was repaired rather than queued. A card a run has *already* filed keeps its `false → true` line, since a changeset records what a run did (ADR-0026) and publishing it writes the value the migration wrote; the rest of that card — the criteria string — is what still needs a curator; the criterion tags filed beside it are no longer a question and no longer a row on the card (#570), though publishing such a card still writes them. The counts above are the entry shape of the run that was measured, and one of them has since changed: a run records each **language** that differs on its own (#728), so Getbol's single `nameLocal` entry is one entry per moved language now — two of its six on that dry run, six on the runs that followed, which all drop "(Phase II)" from every language. The site count does not move; what a curator answers does.
 
 **A site in danger, and since when.** The World Heritage list carries 58 sites inscribed on the [List of World Heritage in Danger](https://whc.unesco.org/en/danger/), and the catalogue stores that fact **twice**: as the `in_danger` tag and as `metadata.inDanger`, which is the field every badge keys on. The two came from different halves of the source — the tag from either of `danger` and `danger_list`, the flag from `danger` alone — so the reading bug above left the tag right on 58 rows and the flag false on all 1272, and the badge three surfaces draw appeared for nobody ([#600](https://github.com/uncovering-world/track-your-regions/issues/600)). Both writers ask one predicate now (`isInDanger`), so a portal that empties either field cannot end the answer in silence, and a delisted site is still not badged: the field's vocabulary is Y/N and the parser reads the answer rather than the field's presence — Belize Barrier Reef Reserve System, off the list since 2018, answers `danger: "False"` with `danger_list: null` (measured 2026-08-27, when the two fields agreed exactly on 58 of 1273 records).
 
@@ -1860,7 +1860,20 @@ and both `metadata.inDanger` and `metadata.dateInscribed` are claimed as plain `
 as a parameter rather than restated. A `curated_fields` entry is **not** reliably a column
 name: `editExperience` claims `metadata.website`, `metadata.wikipediaUrl` and
 `metadata.imageCredit` per key, none of which a column matches, so the query falls back to the field's own name for keys the map does not
-carry. (Those two keys used to be a pre-existing hole in metadata protection too —
+carry.
+
+Between the map and that fallback sits a third arm, `CLAIM_KEY_BY_FAMILY`, for the per-part
+entries of a column claimed **whole**. `nameLocal.ko` is the case: the languages are the source's,
+so no map could name them, and the only claim they can fall under is `name_local` — the upsert's
+guard is `curated_fields ? 'name_local'` and keeps or replaces the map entire. Without it a run
+would report the source's local name as applied while the upsert kept the curator's, and
+publishing would write over the claimed column. `metadata` is deliberately **not** a family, since
+its claims are per key. All three arms are `claimKeyFor` in TypeScript and the same expression in
+SQL, off the same two objects, so the two runtimes cannot come to protect and ask about different
+things (`reviewQueueController.ts`; the shape is pinned on both sides, as #527 requires of
+anything the two packages must agree on).
+
+(Those two metadata keys used to be a pre-existing hole in metadata protection too —
 the upsert guarded metadata only with `curated_fields ? 'metadata'`, which neither
 satisfies. That guard now also honours a per-key claim on each of them directly (#488),
 re-applying just that key over the source's value. `CURATED_KEY_BY_FIELD` still does
@@ -2239,9 +2252,15 @@ What the table decides, rather than merely draws:
   A field with named parts becomes one row per part that moved (`changedKeys` in
   `objectDiff.ts`; the keys that agree are not rows), and the rule is the *shape* rather than the
   field's name: `nameLocal` is a language map with the same defect and gets the same rows, each
-  named as its language. The rows of one field stay contiguous and share its answer — a
-  conflict card's answer cell spans them — because `accept-source` takes a field and never a key
-  inside one. A value the vocabulary can say whole stays one row — the rule is a `render` on
+  named as its language. **The splitting reads older records only.** A run files a fact per
+  metadata key (ADR-0039) and a fact per language (#728), each arriving as one row that names
+  itself — `meaningOf` sends `nameLocal.<lang>` to the same vocabulary entry `keyMeaningOf`
+  produces, so a row reads identically whichever way it arrived. The rows **a split makes** stay
+  contiguous and share the field's answer — the answer cell spans them, and a conflict card's
+  does so because `accept-source` takes a field and never a key
+  inside one. Nothing a run files today splits, so nothing it files spans: a per-key and a
+  per-language row each carry their own field and get their own cell.
+  A value the vocabulary can say whole stays one row — the rule is a `render` on
   the meaning, not a list of field names — so a coordinate is a place and not two numbers, and
   a picture credit claimed per key is the photographer and the terms rather than `author` and
   `license` rows carrying a definition written for neither. `tags` is never a row
@@ -2322,9 +2341,11 @@ What the card does that is not a free choice:
   every unread point and work under it, and the label says what the click covers ("Publish the
   change and what arrived with it"). Beside it, since #722, each fact on the held table carries
   its own answer in its own column — **publish this** and **not this**, the conflict card's shape.
-  A key inside the source's data is a fact and carries its own pair of buttons (ADR-0039); the
-  column spans only where facts still share one answer, which is that same defect somewhere else:
-  a card filed before ADR-0039, whose keys share one field, and a language map (#728). It says how
+  A key inside the source's data is a fact and carries its own pair of buttons (ADR-0039), and so
+  is one language of the local names (#728) — a curator who wants Getbol's corrected Korean name
+  no longer has to take the English one with it. **Nothing a run files today spans**: the column
+  spans only on a card filed before those two, whose keys or languages share one field, kept alive
+  because a changeset is never rewritten. It says how
   many it answers there, which is the only thing on screen that says so. `HeldAnswer` builds the selection from the row's subject: the object's group names the
   field, a part's carries the pair the record identifies it by. Neither button is a primary — the
   card's premise is that readers keep what they can see until somebody says otherwise. The
@@ -2590,19 +2611,35 @@ proposed every run and applied never. For the same reason nothing held may be dr
 a value this writer cannot produce (a coordinate the changeset did not record as a pair of numbers)
 refuses the whole call rather than clearing the pointer around it.
 
-`metadata` is the one field that cannot be assigned from what the changeset carries. A run reports
-it **one key at a time** (ADR-0039) — `metadata.<key>` for every key that differs, and nothing at
-all for the keys the run computes about its own pass — so publishing starts from what is stored
-and lets each entry decide its own key, deleting where the entry's `new` is absent, since a
-dropped key is recorded only by its absence and a `||` merge would leave it proposed for ever.
-Finally every `metadata.<key>` a curator claims is re-applied from what is stored, exactly as the
-upsert re-applies it.
+**Two columns cannot be assigned from what the changeset carries**, and they are one shape rather
+than two: a run records a fact per *part* of them, so no single entry describes the column. Both
+are merged onto what is stored by one function, and the merge deletes where an entry's `new` is
+absent — a part the source dropped is recorded only by its absence, and a `||` merge would leave it
+proposed for ever and applied never.
 
-A card **filed before ADR-0039** carries a `metadata` catch-all instead, whose `new` is the
-source's object minus the keys reported individually. Publishing reconstructs that shape too:
-keys the catch-all's `old` does not mention were not its business and are kept, everything it does
-speak for is replaced wholesale. The path stays because a changeset is what happened and is never
-rewritten — those cards stand until a run re-proposes.
+- **`metadata`**, reported **one key at a time** (ADR-0039) — `metadata.<key>` for every key that
+  differs, and nothing at all for the keys the run computes about its own pass. Two rules sit on
+  top of the merge here: the credit follows the picture (see "The credit belongs to the picture"
+  above), and every `metadata.<key>` a curator claims is re-applied from what is stored, exactly as
+  the upsert re-applies it.
+- **`name_local`**, reported **one language at a time** (#728) — `nameLocal.<lang>` for every
+  language that differs. Neither extra rule applies: a language map holds no fact belonging to
+  another column, and no per-language claim can exist, because `curated_fields ? 'name_local'` is
+  the upsert's whole guard and no editor writes the column. `claimKeyFor` is what sends every
+  language to that one claim, so a claimed map is skipped whole rather than written over.
+
+The point of merging rather than assigning is that it is what makes a per-row answer mean anything
+on these two columns. Getbol, Korean Tidal Flats (Phase II) is the case: run 68 proposes six local
+names, all six dropping "(Phase II)". Assigned, publishing the corrected Korean name would write
+the run's whole map and carry the English one with it — a fact the curator never answered.
+
+A card **filed before** the writer changed carries the older shape instead: a `metadata` catch-all
+whose `new` is the source's object minus the keys reported individually, or a `nameLocal` entry
+holding the whole map. Publishing reconstructs both from the same branch — keys the entry's `old`
+does not mention were not its business and are kept, everything it does speak for is replaced
+wholesale, which for a whole-map `nameLocal` entry comes to replacing the column outright. The path
+stays because a changeset is what happened and is never rewritten (ADR-0039 decision 4) — those
+cards stand until a run re-proposes.
 
 **A claim is skipped, not refused.** Publishing answers "may readers see this"; a
 `curated_fields` claim answers "whose text is it". Both can be open at once, so a claimed field is
