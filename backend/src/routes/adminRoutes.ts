@@ -185,7 +185,10 @@ router.get('/sync/categories/:categoryId/status', validate(categoryIdParamSchema
 router.post('/sync/categories/:categoryId/cancel', validate(categoryIdParamSchema, 'params'), cancelSync);
 
 // Fix missing images for a source
-router.post('/sync/categories/:categoryId/fix-images', validate(categoryIdParamSchema, 'params'), fixImages);
+// Behind the expensive-action limiter like a rematch is: the route reads the
+// source and the run table before it starts, and a repair is a run over every
+// row of a source — CodeQL's js/missing-rate-limiting is the same point.
+router.post('/sync/categories/:categoryId/fix-images', expensiveAdminLimiter, validate(categoryIdParamSchema, 'params'), fixImages);
 
 // What we are keeping from the source, per kind of question, with its age and
 // expiry — and the button that forgets it. Read and delete rather than a

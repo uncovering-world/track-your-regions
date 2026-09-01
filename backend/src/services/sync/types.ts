@@ -9,6 +9,13 @@ import type { FieldChange } from './changeSet.js';
  */
 export interface SyncProgress {
   cancel: boolean;
+  /**
+   * What is running: a sync, or a repair of the stored pictures started from
+   * the same card. Sent with the status so the panel says which it is following
+   * after a reload, rather than remembering what button was pressed — a repair
+   * ends with its own count, a sync with what happens next.
+   */
+  kind: 'sync' | 'repair';
   // 'partial' is terminal like 'complete': the run finished, but placing what
   // it moved did not, so the log row says partial and this must agree — a
   // poller reading 'complete' here would report success over it.

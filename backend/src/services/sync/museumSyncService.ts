@@ -22,6 +22,7 @@ import type {
 } from './types.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { isTerminalSyncStatus, runningSyncs } from './types.js';
+import { writeFoundPicture } from './pictureRepair.js';
 import { collectTier1Museums } from './museum/pipeline.js';
 import { fetchEntityDetails, isQid, type SparqlFn } from './museum/queries.js';
 import {
@@ -468,8 +469,12 @@ async function writeFixedImages(
       failed++;
       continue;
     }
-    if (await writeFixedImage(museum.id, imageUrl, credits.get(imageUrl))) fixed++;
-    else kept++;
+    // A file Wikidata calls an image and is not one counts as none found: the
+    // writer refuses it, and this row is asked about again next time.
+    const wrote = await writeFoundPicture(museum.id, imageUrl, credits.get(imageUrl));
+    if (wrote === 'written') fixed++;
+    else if (wrote === 'kept') kept++;
+    else failed++;
   }
 
   return { fixed, failed, kept };
@@ -502,45 +507,6 @@ async function creditsForFixedImages(
   });
 }
 
-/**
- * Write one museum's picture and its credit, unless a curator owns the picture.
- *
- * Answers whether the row was written. Guarded the way the `is_iconic` write is,
- * and for the same reason: a curator can clear a wrong photograph (`imageUrl: ''`
- * is an accepted edit), which claims `image_url` and leaves a row this action's
- * own WHERE selects — so without the clause, the next click puts Wikidata's
- * picture back over that decision. `COALESCE` because `curated_fields` is
- * nullable and `NULL ? 'x'` is NULL, which would skip every unclaimed row
- * rather than write it.
- *
- * The credit goes in the same statement, so no moment exists in which the card
- * shows a photograph nobody is named for — and it is **omitted** rather than
- * written as `null` where Commons could not answer. Not because the differ
- * would notice: `jsonEquals` reads null and absent as one absence, so a stored
- * null raises no change and the next run reports `unchanged`. It is the
- * presence tests that tell them apart. `'{"a":null}'::jsonb ? 'a'` is true, so
- * a stored null makes the key *present* to the upsert's claim guard
- * (`experiences.metadata ? claimed.k`, `syncUtils.ts`), which would then
- * re-apply a curator's claim over a credit that is not there — protecting a
- * nothing, and keeping the source's real answer out when one finally arrives.
- */
-async function writeFixedImage(
-  experienceId: number,
-  imageUrl: string,
-  credit: ImageCredit | undefined,
-): Promise<boolean> {
-  const written = await pool.query(
-    `UPDATE experiences
-        SET image_url = $1,
-            metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
-            updated_at = NOW()
-      WHERE id = $3
-        AND NOT COALESCE(curated_fields ? 'image_url', false)`,
-    [imageUrl, JSON.stringify(credit ? { imageCredit: credit } : {}), experienceId],
-  );
-  return (written.rowCount ?? 0) > 0;
-}
-
 export async function fixMuseumImages(_triggeredBy: number | null): Promise<void> {
   // Check if already running
   const existing = runningSyncs.get(MUSEUM_CATEGORY_ID);
@@ -550,6 +516,7 @@ export async function fixMuseumImages(_triggeredBy: number | null): Promise<void
 
   const progress: SyncProgress = {
     cancel: false,
+    kind: 'repair',
     status: 'processing',
     statusMessage: 'Fixing missing museum images...',
     progress: 0,

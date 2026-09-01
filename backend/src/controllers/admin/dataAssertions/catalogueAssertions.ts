@@ -67,6 +67,8 @@ import {
 import { LOCATION_UNCHANGED_METERS } from '../../../services/sync/changeSet.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 
+import { DISPLAYABLE_PICTURE_HOSTS, PICTURE_EXTENSIONS } from '../../../types/urlSafety.js';
+
 import { count, text } from './assertion.js';
 import type { AssertionRow, CatalogueAssertion } from './assertion.js';
 import { divisionTreeAssertions } from './divisionTreeAssertions.js';
@@ -424,25 +426,31 @@ const offeredPlaceInNoRegion: CatalogueAssertion = {
  *
  * The one term the licences ask for. Most Commons files are CC BY or CC BY-SA,
  * which of a page that merely shows a photograph ask that its author be named
- * wherever it appears, and UNESCO's syndication terms ask for the same in their
- * own words. `imageCredit.ts` captures the credit at sync time into
- * `metadata.imageCredit` on both tables and `ImageCreditLine` renders it — so a
- * row holding a picture and no credit is a picture displayed with nobody named.
+ * wherever it appears — and every picture the product draws is a Commons file
+ * (ADR-0043), so that is the only term in play. `imageCredit.ts` captures the
+ * credit at sync time into `metadata.imageCredit` on both tables and
+ * `ImageCreditLine` renders it — so a row holding a picture the product draws
+ * and no credit is a picture displayed with nobody named. A picture on a host
+ * the drawing side refuses is not drawn, so it is not this check's: it is
+ * `picture-the-product-may-not-show`'s, and its remedy is the repair button.
  *
- * Measured the day this landed: 1590 of 1604 objects and 1321 of 1321 works.
- * The largest debt this lane carries, and the two halves got there differently
- * — which is why the line says which of the two a row is.
+ * Measured the day this landed (2026-08-24): 1590 of 1604 objects and 1321 of
+ * 1321 works — the largest debt this lane carried. 1414 of those objects had a
+ * `held` change naming `imageCredit` waiting in the queue: the portal's own
+ * photographer, fetched from its export for a photograph the product has since
+ * stopped drawing. ADR-0043 changed both halves of that picture: the World
+ * Heritage rows now carry a Commons file *with* its credit, written by the
+ * repair rather than proposed, so on the dev database this check fell from
+ * 1590 to the 330 Commons pictures that really lack one (2026-09-02). What the
+ * `credit_waiting` flag still tells apart is the same two afternoons — a credit
+ * a run fetched and the gate is holding, against one nobody has fetched — and
+ * the line says which of the two a row is.
  *
- * **On the objects, the author is already known and the gate is holding it.**
- * 1414 of the 1590 have a `held` change naming `imageCredit` waiting in the
- * curation queue: a run since ADR-0025 fetched the photographer, the gate
- * refused to write it unread, and it has been waiting ever since. The page
- * meanwhile shows the picture. Publishing that change names the author; the
- * remaining 176 have nothing waiting and need a run to fetch one.
- *
- * **On the works, nothing has fetched one** — with one shape excepted since
- * ADR-0037. `treasureWriter` writes a work's credit straight into its row, and a
- * museum run is what writes these; but a *held* picture holds its credit with it,
+ * **On the works, nothing had fetched one when this landed** — 1321 of 1321,
+ * with one shape excepted since ADR-0037. `treasureWriter` writes a work's
+ * credit straight into its row, and a museum run is what writes these, so the
+ * runs since have brought that to 77 (2026-09-02); but a *held* picture holds
+ * its credit with it,
  * and the credit the run fetched for that picture rides in the museum's contents
  * record as a `metadata.imageCredit` entry beside the held `image_url`. So the
  * work arm below asks the museum's pointer for exactly that entry, and a work
@@ -469,7 +477,7 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
   kind: 'invariant',
   meaning:
     'The page shows a photograph and names no author, which is the one thing CC BY and CC BY-SA '
-    + 'ask of a page that shows a picture, and what UNESCO\'s terms ask in their own words. '
+    + 'ask of a page that shows a picture. '
     + 'Where the line says the author is waiting, a run has already fetched it and the gate is '
     + 'holding it — publishing that change names them. Where it does not, a sync run has to fetch '
     + 'one, and a picture a curator chose by hand needs one entered.',
@@ -548,6 +556,12 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                                )) AS credit_waiting
           FROM experiences e
          WHERE e.image_url IS NOT NULL AND e.image_url <> ''
+           -- A picture on a host the drawing side refuses is not shown, so
+           -- nobody is uncredited for it: that row is the other assertion's,
+           -- and its remedy is the repair button rather than a run. Without
+           -- this, every row still carrying the portal's photograph read as a
+           -- photograph on show needing a photographer (ADR-0043).
+           AND ${drawableHostSql('e.image_url')}
            AND e.metadata->>'imageCredit' IS NULL
          UNION ALL
         SELECT 'work', t.id, t.name,
@@ -574,6 +588,7 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                           AND jsonb_typeof(f -> 'new') = 'object') AS credit_waiting
           FROM treasures t
          WHERE t.image_url IS NOT NULL AND t.image_url <> ''
+           AND ${drawableHostSql('t.image_url')}
            AND t.metadata->>'imageCredit' IS NULL
          ORDER BY 1, 3`,
   describe: row => {
@@ -583,6 +598,81 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
     return `${text(row, 'row_name')}: a picture from ${text(row, 'host') || 'an unnamed host'} `
       + `with nobody credited${waiting} (${text(row, 'holder')} ${count(row, 'row_id')})`;
   },
+};
+
+/**
+ * Is this stored picture one the product draws?
+ *
+ * `isDisplayablePictureUrl`, spelled in SQL from the same two lists
+ * (ADR-0043): a Commons host or a subdomain of one — under `/wikipedia/commons/`
+ * on the upload host — naming a picture file and not the `/wiki/File:` page
+ * about one, or an `/images/` path on our own origin, the one local shape the
+ * drawing side maps. All four arms, not the host alone, so that the two picture
+ * assertions partition the rows: a Commons PDF is not a picture nobody is
+ * credited for, it is a picture the product may not show. `split_part` twice
+ * reads the authority out of a url without a parser, which is enough for a
+ * stored value the writers have already judged.
+ */
+function drawableHostSql(column: string): string {
+  const hosts = DISPLAYABLE_PICTURE_HOSTS.map((host) => `'${host}'`).join(', ');
+  // A subdomain of a listed host counts, as it does for `isPictureHost`.
+  const subdomains = DISPLAYABLE_PICTURE_HOSTS.map((host) => `'%.${host}'`).join(', ');
+  // The host as the parser reads it — lowercased, without a port — and the
+  // path behind any-case scheme letters, so the SQL agrees with `new URL()`.
+  const host = `lower(split_part(split_part(split_part(${column}, '//', 2), '/', 1), ':', 1))`;
+  const path = `substring(${column} FROM '^[A-Za-z]+://[^/]+(/[^?#]*)')`;
+  const extensions = PICTURE_EXTENSIONS.map((ext) => ext.slice(1)).join('|');
+  return `(${column} LIKE '/images/%'
+           OR ((${host} = ANY (ARRAY[${hosts}]) OR ${host} LIKE ANY (ARRAY[${subdomains}]))
+               AND (${host} NOT LIKE '%upload.wikimedia.org' OR ${path} LIKE '%/wikipedia/commons/%')
+               AND ${path} !~* '^/wiki/File:'
+               AND ${path} ~* '\\.(${extensions})$'))`;
+}
+
+/**
+ * A stored picture the product may not draw.
+ *
+ * ADR-0043's own invariant over live rows: every `image_url` names a Commons
+ * file or a file we host, because the World Heritage Centre's terms do not
+ * let this product show its photographs and every writer refuses any other
+ * host now. What this catches is the past — 1260 rows carried
+ * `whc.unesco.org/document/<id>` on the day the rule landed, and a database
+ * restored from before it carries them still. Such a row shows no picture at
+ * all (the drawing side refuses the host), so nothing is being shown wrongly;
+ * what is wrong is a card with an empty frame and a stored value nothing will
+ * ever draw. The remedy is one button, *Fix pictures* on the source's card in
+ * the sync panel, which is why the sentence names it rather than a run.
+ *
+ * Both tables, because both are shown: a work's photograph is drawn on the
+ * same terms as the object's.
+ */
+const pictureTheProductMayNotShow: CatalogueAssertion = {
+  id: 'picture-the-product-may-not-show',
+  area: 'pictures',
+  title: 'A stored picture on a host whose terms do not let us show it',
+  kind: 'invariant',
+  meaning:
+    'The row names a photograph on a host the product may not draw from — the World Heritage '
+    + 'portal\'s own, on every row imported before ADR-0043 — so the card shows an empty frame '
+    + 'and the stored value is one nothing will ever draw. Press Fix pictures on the source\'s '
+    + 'card in the sync panel: it replaces each one from Commons where Wikidata states a '
+    + 'picture, and takes the rest off. A picture a curator chose by hand from elsewhere is '
+    + 'refused on the way in now; one stored before that needs a curator to replace it.',
+  sql: `SELECT 'object' AS holder, e.id AS row_id, e.name AS row_name,
+               split_part(split_part(e.image_url, '//', 2), '/', 1) AS host
+          FROM experiences e
+         WHERE e.image_url IS NOT NULL AND e.image_url <> ''
+           AND NOT ${drawableHostSql('e.image_url')}
+         UNION ALL
+        SELECT 'work', t.id, t.name,
+               split_part(split_part(t.image_url, '//', 2), '/', 1)
+          FROM treasures t
+         WHERE t.image_url IS NOT NULL AND t.image_url <> ''
+           AND NOT ${drawableHostSql('t.image_url')}
+         ORDER BY 1, 3`,
+  describe: row =>
+    `${text(row, 'row_name')}: a picture stored from ${text(row, 'host') || 'an unnamed host'}, `
+    + `which the product may not show (${text(row, 'holder')} ${count(row, 'row_id')})`,
 };
 
 /**
@@ -760,8 +850,9 @@ const workMakersUnconfirmed: CatalogueAssertion = {
  * The list, in the order a person reads it: the two that say a place is stored
  * twice, the one that says an object has nowhere to go, the count that is not
  * a violation, the two about where things are, the one about a fact stored
- * twice, the one about whose photograph is on the page, and the count of works
- * whose makers nobody has arranged.
+ * twice, the pair about pictures — a stored one the product may not draw, then
+ * a drawn one nobody is credited for — and the count of works whose makers
+ * nobody has arranged.
  *
  * Adding to it is the whole extension mechanism — an object with an id, an
  * area, a sentence, a query and a way to say one of its rows out loud. Nothing
@@ -778,6 +869,7 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   ...regionGeometryAssertions,
   ...divisionTreeAssertions,
   dangerFlagAgainstItsTag,
+  pictureTheProductMayNotShow,
   pictureWithNobodyCredited,
   workMakersUnconfirmed,
 ];
