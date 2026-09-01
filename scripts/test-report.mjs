@@ -385,17 +385,22 @@ function buildOverallSummary(activeMode, allSteps, finishedSteps, started) {
   const total = sum(finishedSteps.map((step) => step.total));
   const passed = sum(finishedSteps.map((step) => step.passed));
   const failed = sum(finishedSteps.map((step) => step.failed));
+  // Only the Playwright lanes retry, so every other kind reports none.
+  const flaky = sum(finishedSteps.map((step) => step.flaky ?? 0));
   const skipped = sum(finishedSteps.map((step) => step.skipped));
   const failedSteps = finishedSteps.filter((step) => !step.ok).length;
   const pendingSteps = allSteps.slice(finishedSteps.length).map((step) => step.label);
 
   return {
     mode: activeMode,
+    // Deliberately not `flaky === 0`: a spec that passed on retry passed
+    // (#447). It is reported, loudly and by name, and it does not fail a run.
     ok: failed === 0 && failedSteps === 0 && pendingSteps.length === 0,
     durationMs: Date.now() - started,
     total,
     passed,
     failed,
+    flaky,
     skipped,
     stepResults: finishedSteps,
     pendingSteps,
@@ -407,15 +412,24 @@ function printOverallReport(summary) {
   printLine(`Overall Result: ${summary.ok ? 'PASS' : 'FAIL'}`);
   printLine(`Duration: ${formatDuration(summary.durationMs)}`);
   printLine(
-    `Totals: ${summary.total} tests | ${summary.passed} passed | ${summary.failed} failed | ${summary.skipped} skipped`,
+    `Totals: ${summary.total} tests | ${summary.passed} passed | ${summary.flaky} flaky | ${summary.failed} failed | ${summary.skipped} skipped`,
   );
+  if (summary.flaky > 0) {
+    // The run is green and something still needs saying: a retry hid a
+    // failure that will come back. The listed specs below name which, and the
+    // attempt's trace, screenshot and video are in frontend/test-results
+    // (CI keeps both directories as the `playwright-report` artifact).
+    printLine(
+      `Flaky: ${summary.flaky} passed on retry — green, but the first attempt failed. See frontend/playwright-report.`,
+    );
+  }
 
   for (const step of summary.stepResults) {
     printLine('');
     printLine(`${step.ok ? '[PASS]' : '[FAIL]'} ${step.label}`);
     printLine(`Scope: ${step.scope}`);
     printLine(
-      `Result: ${step.total} tests | ${step.passed} passed | ${step.failed} failed | ${step.skipped} skipped`,
+      `Result: ${step.total} tests | ${step.passed} passed | ${step.flaky ?? 0} flaky | ${step.failed} failed | ${step.skipped} skipped`,
     );
     if (step.note) {
       printLine(step.note);
@@ -426,6 +440,9 @@ function printOverallReport(summary) {
     } else {
       printLimitedList(step.filesLabel || 'Test files', step.files, 20);
       printLimitedList(step.casesLabel || 'Test cases', step.cases, 30);
+      if (step.flakyCases && step.flakyCases.length > 0) {
+        printLimitedList('Flaky (passed on retry)', step.flakyCases, 30);
+      }
     }
   }
 
