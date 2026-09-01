@@ -687,3 +687,99 @@ describe('getExperience and the tags column', () => {
     expect(String(sql)).not.toMatch(/\be\.tags\b/);
   });
 });
+
+/**
+ * Where a search result can be opened (#592).
+ *
+ * The visitor's search answers about the whole catalogue and turns one answer
+ * into an address, so each result carries the regions whose own lists will hold
+ * it. What this pins is the three rules that make that address safe to write:
+ * published world views only, a region that names the object to a *reader*, and
+ * the smallest region first — the caller opens exactly one of them.
+ */
+describe('searchExperiences region context', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValue({ rows: [] });
+  });
+
+  async function searchSql(): Promise<string> {
+    await searchExperiences({ query: { q: 'rijksmuseum' } } as never, makeRes() as never);
+    return String(mockedQuery.mock.calls[0][0]);
+  }
+
+  it('offers only published world views, which is the whole of "visible" on a route with no session', async () => {
+    const sql = await searchSql();
+
+    expect(sql).toMatch(/AND wv\.is_active = true/);
+    expect(sql).toMatch(/AND wv\.is_public = true/);
+    // Not the by-id read's admin bypass: that one has a session to read it
+    // from, and this route takes none — an `$n::boolean OR` here would be a
+    // parameter nobody binds.
+    expect(sql).not.toMatch(/OR wv\.is_public = true/);
+  });
+
+  it('names a region only where a point the reader may see put the object there', async () => {
+    const sql = await searchSql();
+
+    // The same predicate `getExperience`'s regions[] uses (#521), and for the
+    // same reason: the caller acts on this list by opening a card at one of
+    // these regions, so a region whose own list would drop it is not an answer.
+    expect(sql).toMatch(/mem_elr\.region_id = er\.region_id/);
+    expect(sql).toMatch(/mem_el\.missing_since IS NULL/);
+    expect(sql).toMatch(/mem_el\.curation_state <> 'pending'/);
+  });
+
+  it('leaves out a pair a curator turned down, which the region\'s own list also drops', async () => {
+    const sql = await searchSql();
+
+    // Rejecting deletes no membership row -- it upserts into
+    // experience_rejections -- so a region a curator turned this object down
+    // for is still in experience_regions, and every region-facing read drops
+    // the pair. Offered here it would be a link to a list without the card.
+    expect(sql).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM experience_rejections rej/);
+    expect(sql).toMatch(/rej\.experience_id = er\.experience_id/);
+    expect(sql).toMatch(/rej\.region_id = er\.region_id/);
+  });
+
+  it('orders the regions most specific first, with an uncomputed geometry last', async () => {
+    const sql = await searchSql();
+
+    // The Rijksmuseum is in Europe as truly as it is in Noord-Holland; the row
+    // opens the smaller place. NULLS LAST is not decoration: Postgres sorts
+    // NULLs first on ASC by default, which would offer a region whose geometry
+    // has never been computed ahead of every measured one.
+    expect(sql).toMatch(/ORDER BY r\.geom_area_km2 ASC NULLS LAST, r\.id/);
+  });
+
+  it('computes the region context after the limit, not for every name that matched', async () => {
+    const sql = await searchSql();
+
+    // A scalar subquery in the matching query's select list is carried through
+    // the sort, so the placement lookup would run for every match rather than
+    // for the page. The CTE is what bounds it.
+    const limitAt = sql.indexOf('LIMIT $3');
+    const contextAt = sql.indexOf('json_agg');
+    expect(limitAt).toBeGreaterThan(-1);
+    expect(contextAt).toBeGreaterThan(limitAt);
+  });
+
+  it('sends the category a row is filed under, which the search rows render', async () => {
+    const sql = await searchSql();
+
+    // The curator's "search and assign" dialog has rendered `category_name`
+    // since it was written, against a field this read did not send.
+    expect(sql).toMatch(/c\.name as category_name/);
+    expect(sql).toMatch(/LEFT JOIN experience_categories c ON c\.id = m\.category_id/);
+  });
+
+  it('re-states the order outside the CTE, which a join does not carry', async () => {
+    const sql = await searchSql();
+
+    // Whitespace-flattened rather than matched across newlines: the SQL is
+    // indented, and a pattern spelling that indentation out is both brittle and
+    // the shape the lint reads as super-linear.
+    const outerOrder = sql.slice(sql.indexOf('FROM matches m')).replace(/\s+/g, ' ');
+    expect(outerOrder).toContain('ORDER BY m.name_contains DESC, m.relevance DESC');
+  });
+});
