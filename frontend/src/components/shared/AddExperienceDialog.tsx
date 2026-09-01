@@ -44,7 +44,7 @@ import {
   assignExperienceToRegion,
   createManualExperience,
   fetchExperienceCategories,
-  type Experience,
+  type ExperienceSearchResult,
 } from '../../api/experiences';
 import { searchPlaces, suggestImageUrl, type PlaceResult, type ImageSuggestion } from '../../api/geocode';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
@@ -110,7 +110,7 @@ function applySuggestionToState(data: ImageSuggestion, p: ApplySuggestionParams)
  * 403 (#557), so "the image failed" is the ordinary case here — and hiding the
  * `<img>` while leaving the credit would name a photographer under nothing.
  */
-function SearchResultBody({ exp, imageUrl }: { exp: Experience; imageUrl: string }) {
+function SearchResultBody({ exp, imageUrl }: { exp: ExperienceSearchResult; imageUrl: string }) {
   const [failed, setFailed] = useState(false);
   const shown = failed ? '' : imageUrl;
   return (

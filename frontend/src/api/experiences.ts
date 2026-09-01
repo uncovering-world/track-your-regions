@@ -153,6 +153,19 @@ export interface RegionExperienceLocationsResponse {
   locationsByExperience: Record<string, ExperienceLocation[]>;
 }
 
+/**
+ * A region an object can be opened at, in a world view the caller may see.
+ *
+ * The same shape on both reads that answer "where is this": the detail panel
+ * offers every one of them as somewhere to go, and the search row opens one.
+ */
+export interface ExperienceRegionRef {
+  id: number;
+  name: string;
+  world_view_id: number;
+  world_view_name: string;
+}
+
 export interface ExperienceDetail extends Experience {
   category_id: number;
   name_local: Record<string, string> | null;
@@ -161,12 +174,39 @@ export interface ExperienceDetail extends Experience {
   boundary_geojson: GeoJSON.Geometry | null;
   area_km2: number | null;
   category_description: string | null;
-  regions: {
-    id: number;
-    name: string;
-    world_view_id: number;
-    world_view_name: string;
-  }[];
+  regions: ExperienceRegionRef[];
+}
+
+/**
+ * One answer from `GET /api/experiences/search` — the columns that read sends,
+ * rather than the whole of `Experience`, which it never did.
+ *
+ * `regions` is what makes an answer openable: the regions whose own lists hold
+ * the object, in the world views a visitor may see, **most specific first**.
+ * Empty where nothing published places it — 28 of the catalogue's 1577 visible
+ * objects on 2026-09-01, the Great Barrier Reef and the Wadden Sea among them
+ * (#469, #470). A row like that is still an answer about the catalogue; it is
+ * simply not a link.
+ */
+export interface ExperienceSearchResult {
+  id: number;
+  name: string;
+  short_description: string | null;
+  category: string | null;
+  category_id: number;
+  /** Always present: `experiences.category_id` is NOT NULL. */
+  category_name: string;
+  /** Nullable in the column, and so here — the row reads without it. */
+  country_names: string[] | null;
+  image_url: string | null;
+  image_credit?: ImageCredit | null;
+  source_membership?: 'present' | 'former';
+  existence?: 'extant' | 'lost';
+  missing_since?: string | null;
+  longitude: number;
+  latitude: number;
+  relevance: number;
+  regions: ExperienceRegionRef[];
 }
 
 export interface ExperiencesByRegionResponse {
@@ -256,12 +296,16 @@ export async function fetchExperiencesByRegion(
 }
 
 /**
- * Search experiences
+ * Search experiences by name, across the whole catalogue.
+ *
+ * Two callers, one read: the visitor's search in the navigation pane, which
+ * turns an answer into an address, and the curator's "search and assign"
+ * dialog, which assigns one to the region it already has open.
  */
 export async function searchExperiences(
   query: string,
   limit = 20
-): Promise<{ query: string; results: Experience[]; total: number }> {
+): Promise<{ query: string; results: ExperienceSearchResult[]; total: number }> {
   return fetchJson(`${API_URL}/api/experiences/search?q=${encodeURIComponent(query)}&limit=${limit}`);
 }
 
