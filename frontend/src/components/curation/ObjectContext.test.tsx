@@ -34,7 +34,7 @@ function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
 describe('ObjectContext', () => {
   it('shows the place, the picture, the source and the regions it crosses', () => {
     render(<ObjectContext item={item({
-      image_url: 'https://whc.unesco.org/document/12345.jpg',
+      image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Aksum%20stelae.jpg',
       latitude: 14.1303,
       longitude: 38.7186,
       website_url: 'https://whc.unesco.org/en/list/15',
@@ -161,7 +161,7 @@ describe('ObjectContext', () => {
 
   it('takes the credit away with a picture that did not arrive', () => {
     // Not an edge case on this screen: most of what the queue holds is UNESCO,
-    // whose URLs largely answer 403 (#557), and the proxy surfaces that as an
+    // whose URLs largely answered 403 before ADR-0043 (#557), which reached it as an
     // image error. A photographer named under a broken frame is the one claim
     // the credit feature exists to avoid making.
     render(<ObjectContext item={item({

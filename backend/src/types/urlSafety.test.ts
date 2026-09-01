@@ -27,7 +27,10 @@ import {
   wvImportAddChildSchema,
   wvImportRenameRegionSchema,
 } from './index.js';
-import { isStorableHttpUrl, isStorableImageUrl } from './urlSafety.js';
+import {
+  isStorableHttpUrl, isDisplayablePictureUrl, isCommonsPictureUrl,
+  DISPLAYABLE_PICTURE_HOSTS, PICTURE_EXTENSIONS,
+} from './urlSafety.js';
 
 /** Spellings of a script-bearing scheme that a URL parser resolves all the same. */
 const SCRIPT_SCHEMES = [
@@ -69,29 +72,55 @@ describe('imageUrl a curator stores', () => {
     }
   });
 
-  it('accepts the absolute http(s) url every stored picture actually is', () => {
-    expect(editAccepts({ imageUrl: 'https://upload.wikimedia.org/x.jpg' })).toBe(true);
-    expect(editAccepts({ imageUrl: 'http://whc.unesco.org/document/1' })).toBe(true);
+  it('accepts a picture file from a host whose licence lets us show it', () => {
+    expect(editAccepts({ imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/x.jpg' })).toBe(true);
+    expect(editAccepts({
+      imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/K%C3%B6lner%20Dom.jpg',
+    })).toBe(true);
   });
 
-  it('accepts a path to a picture we host ourselves', () => {
+  it('refuses a picture from a host that does not let us show it', () => {
+    // The World Heritage Centre's terms: its photographs "may not be copied or
+    // retransmitted by any means", and a site may "only link to, not replicate"
+    // them. 1260 rows carried one of these before ADR-0043 (#557).
+    expect(editAccepts({ imageUrl: 'https://whc.unesco.org/document/141884' })).toBe(false);
+    expect(editAccepts({ imageUrl: 'https://example.org/my-holiday-snap.jpg' })).toBe(false);
+  });
+
+  it('refuses a file that is not a picture, on a host that is allowed', () => {
+    // Commons serves PDFs, videos and scanned books under the same shape, and a
+    // stored one is the empty frame this rule exists to stop.
+    expect(editAccepts({
+      imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Nomination.pdf',
+    })).toBe(false);
+    expect(editAccepts({
+      imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/A%20tour.ogv',
+    })).toBe(false);
+  });
+
+  it('accepts a path to a picture we host ourselves, and only under /images/', () => {
+    // `/images/` is the one local shape the drawing side maps onto our API;
+    // any other path would be stored and never drawn, and reported by
+    // Catalogue Checks for a repair that would not select it.
     expect(editAccepts({ imageUrl: '/images/experiences/12.jpg' })).toBe(true);
+    expect(editAccepts({ imageUrl: '/uploads/acropolis.jpg' })).toBe(false);
+    expect(editAccepts({ imageUrl: '/anything' })).toBe(false);
   });
 
   it('stores the url without the whitespace it arrived in', () => {
-    const parsed = editExperienceBodySchema.parse({ imageUrl: '  https://upload.wikimedia.org/x.jpg  ' });
-    expect(parsed.imageUrl).toBe('https://upload.wikimedia.org/x.jpg');
+    const parsed = editExperienceBodySchema.parse({ imageUrl: '  https://upload.wikimedia.org/wikipedia/commons/x.jpg  ' });
+    expect(parsed.imageUrl).toBe('https://upload.wikimedia.org/wikipedia/commons/x.jpg');
   });
 
   it('stores the spelling the parser read, not the one that arrived', () => {
     // Judged by the parser and stored as typed, these two would be accepted here
     // and then refused by `isRenderableImageUrl`, whose http(s) test is a
     // lowercase `startsWith` — a picture saved and silently never drawn.
-    const upper = editExperienceBodySchema.parse({ imageUrl: 'HTTPS://upload.wikimedia.org/x.jpg' });
-    expect(upper.imageUrl).toBe('https://upload.wikimedia.org/x.jpg');
+    const upper = editExperienceBodySchema.parse({ imageUrl: 'HTTPS://upload.wikimedia.org/wikipedia/commons/x.jpg' });
+    expect(upper.imageUrl).toBe('https://upload.wikimedia.org/wikipedia/commons/x.jpg');
 
-    const tabbed = editExperienceBodySchema.parse({ imageUrl: 'https://upload.wikimedia.org/x\t.jpg' });
-    expect(tabbed.imageUrl).toBe('https://upload.wikimedia.org/x.jpg');
+    const tabbed = editExperienceBodySchema.parse({ imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/x\t.jpg' });
+    expect(tabbed.imageUrl).toBe('https://upload.wikimedia.org/wikipedia/commons/x.jpg');
   });
 
   it('leaves a path on our own origin as it is', () => {
@@ -103,7 +132,7 @@ describe('imageUrl a curator stores', () => {
     // Percent-encoding can only make a url longer, so a value that fits the
     // column as typed can overflow it once normalised — and Postgres would
     // answer that with a 22001 the caller sees as a 500.
-    const long = `https://upload.wikimedia.org/${'é'.repeat(600)}.jpg`;
+    const long = `https://upload.wikimedia.org/wikipedia/commons/${'é'.repeat(600)}.jpg`;
     expect(long.length).toBeLessThanOrEqual(1000);
     expect(new URL(long).href.length).toBeGreaterThan(1000);
     expect(editAccepts({ imageUrl: long })).toBe(false);
@@ -149,7 +178,7 @@ describe('a manually created experience is held to the same rule', () => {
   it('accepts the absolute https url a curator would paste', () => {
     const result = createManualExperienceBodySchema.safeParse({
       ...MANUAL_BASE,
-      imageUrl: 'https://upload.wikimedia.org/x.jpg',
+      imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/x.jpg',
       websiteUrl: 'https://example.org/',
     });
     expect(result.success).toBe(true);
@@ -166,11 +195,47 @@ describe('the rule the curation controller shares with the schema', () => {
   });
 
   it('lets a picture be a path on our own origin, and a link not', () => {
-    expect(isStorableImageUrl('/images/experiences/12.jpg')).toBe(true);
+    expect(isDisplayablePictureUrl('/images/experiences/12.jpg')).toBe(true);
     expect(isStorableHttpUrl('/images/experiences/12.jpg')).toBe(false);
     for (const value of FOREIGN_AUTHORITY_PATHS) {
-      expect(isStorableImageUrl(value), value).toBe(false);
+      expect(isDisplayablePictureUrl(value), value).toBe(false);
     }
+  });
+
+  it('lets a run write a Commons file and nothing else, while a person may name a path of ours', () => {
+    // A run's picture is a Commons file by construction; the only writer of an
+    // `/images/…` path is a person. So the rule a run is held to names no path.
+    expect(isCommonsPictureUrl('http://commons.wikimedia.org/wiki/Special:FilePath/K%C3%B6lner%20Dom.jpg')).toBe(true);
+    expect(isCommonsPictureUrl('/images/experiences/12.jpg')).toBe(false);
+    expect(isDisplayablePictureUrl('/images/experiences/12.jpg')).toBe(true);
+  });
+
+  it('tells a Commons file from another wiki\'s upload on the host that serves both', () => {
+    // upload.wikimedia.org serves every project's files. The English
+    // Wikipedia's own include fair-use posters and covers, which no licence
+    // lets this product draw; only /wikipedia/commons/ is Commons'.
+    expect(isCommonsPictureUrl('https://upload.wikimedia.org/wikipedia/commons/a/a7/Louvre.jpg')).toBe(true);
+    expect(isCommonsPictureUrl('https://upload.wikimedia.org/wikipedia/en/b/b1/Poster.jpg')).toBe(false);
+    expect(isDisplayablePictureUrl('https://upload.wikimedia.org/wikipedia/en/b/b1/Poster.jpg')).toBe(false);
+    // A subdomain of the upload host is the upload host for this purpose.
+    expect(isCommonsPictureUrl('https://x.upload.wikimedia.org/wikipedia/en/b/b1/Poster.jpg')).toBe(false);
+    expect(isCommonsPictureUrl('https://x.upload.wikimedia.org/wikipedia/commons/a/a7/Louvre.jpg')).toBe(true);
+  });
+
+  it('refuses the page about a file, which ends like a picture and answers HTML', () => {
+    expect(isCommonsPictureUrl('https://commons.wikimedia.org/wiki/File:Louvre.jpg')).toBe(false);
+    expect(isCommonsPictureUrl('https://commons.wikimedia.org/wiki/Special:FilePath/Louvre.jpg')).toBe(true);
+  });
+
+  it('holds a picture to its host and its file type, and a link to neither', () => {
+    // The two rules answer different questions: a link may point anywhere a
+    // reader can follow, a picture is drawn on our page under somebody's
+    // licence. `metadata.website` is a UNESCO page on every one of the 1272
+    // rows, and has to stay one.
+    expect(isStorableHttpUrl('https://whc.unesco.org/en/list/274')).toBe(true);
+    expect(isDisplayablePictureUrl('https://whc.unesco.org/document/141884')).toBe(false);
+    expect(isDisplayablePictureUrl('https://commons.wikimedia.org/wiki/Special:FilePath/A.pdf')).toBe(false);
+    expect(isDisplayablePictureUrl('https://commons.wikimedia.org/wiki/Special:FilePath/A.JPG')).toBe(true);
   });
 });
 
@@ -380,6 +445,43 @@ describe('the rule is declared once', () => {
     const offenders = otherModules().filter(({ text }) => /["']https?:["']/.test(text)).map(({ file }) => file);
 
     expect(offenders, 'which protocols may be stored is decided in urlSafety.ts and read from there').toEqual([]);
+  });
+
+  /**
+   * Which hosts a picture may come from is a licence question (ADR-0043), and
+   * it is answered on both sides: here, before a value is stored, and in
+   * `frontend/src/utils/imageUrl.ts`, before one is drawn. No import can cross
+   * that boundary (#527), so the two lists are pinned against each other from
+   * the side that can read files.
+   *
+   * A list that grew on one side only fails in the direction nobody notices:
+   * a host added here alone stores pictures that never draw, and one added
+   * there alone draws pictures nothing may store — which is how a picture we
+   * are not allowed to show would come back after #557 was closed.
+   */
+  it('allows a picture from the same hosts on the storing side and the drawing side', () => {
+    const frontendSrc = join(backendSrc, '..', '..', 'frontend', 'src');
+    const drawing = readFileSync(join(frontendSrc, 'utils', 'imageUrl.ts'), 'utf8');
+    const declared = /const TRUSTED_IMAGE_DOMAINS = \[([^\]]*)\]/.exec(drawing);
+
+    expect(declared, 'the drawing side declares its hosts as TRUSTED_IMAGE_DOMAINS').not.toBeNull();
+    const drawn = [...(declared?.[1] ?? '').matchAll(/'([^']+)'/g)].map(m => m[1]);
+
+    expect(drawn.sort()).toEqual([...DISPLAYABLE_PICTURE_HOSTS].sort());
+  });
+
+  it('calls the same file types a picture on both sides', () => {
+    // The second list across the boundary, pinned like the first: a type added
+    // here alone stores files that never draw, one added there alone draws
+    // files nothing may store — and the host check would not notice either.
+    const frontendSrc = join(backendSrc, '..', '..', 'frontend', 'src');
+    const drawing = readFileSync(join(frontendSrc, 'utils', 'imageUrl.ts'), 'utf8');
+    const declared = /const PICTURE_EXTENSIONS = \[([^\]]*)\]/.exec(drawing);
+
+    expect(declared, 'the drawing side declares its file types as PICTURE_EXTENSIONS').not.toBeNull();
+    const drawn = [...(declared?.[1] ?? '').matchAll(/'([^']+)'/g)].map(m => m[1]);
+
+    expect(drawn.sort()).toEqual([...PICTURE_EXTENSIONS].sort());
   });
 
   /**

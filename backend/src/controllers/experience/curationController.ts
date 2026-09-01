@@ -23,9 +23,9 @@ import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCr
 import { WIKIDATA_USER_AGENT } from '../../services/sync/wikidataUtils.js';
 import {
   isStorableHttpUrl,
-  isStorableImageUrl,
+  isDisplayablePictureUrl,
   STORABLE_HTTP_URL_MESSAGE,
-  STORABLE_IMAGE_URL_MESSAGE,
+  DISPLAYABLE_PICTURE_URL_MESSAGE,
 } from '../../types/urlSafety.js';
 
 /**
@@ -369,7 +369,7 @@ function validateEditPayload(payload: EditPayload): string | null {
   const imageUrl = updates.find(u => u.column === 'image_url')?.value;
   const refusal = refusalFor(websiteUrl, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE)
     ?? refusalFor(wikipediaUrl, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE)
-    ?? refusalFor(imageUrl, isStorableImageUrl, STORABLE_IMAGE_URL_MESSAGE);
+    ?? refusalFor(imageUrl, isDisplayablePictureUrl, DISPLAYABLE_PICTURE_URL_MESSAGE);
   if (refusal) return refusal;
   const hasMetadataUpdate = hasWebsiteUpdate || hasWikipediaUpdate;
   if (updates.length === 0 && !hasMetadataUpdate) {
@@ -704,7 +704,7 @@ function validateCreateManualInput(body: CreateManualBody): string | null {
   }
   const refusal = refusalFor(body.websiteUrl, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE)
     ?? refusalFor(body.wikipediaUrl, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE)
-    ?? refusalFor(body.imageUrl, isStorableImageUrl, STORABLE_IMAGE_URL_MESSAGE);
+    ?? refusalFor(body.imageUrl, isDisplayablePictureUrl, DISPLAYABLE_PICTURE_URL_MESSAGE);
   if (refusal) return refusal;
   if (!body.regionId) {
     return 'regionId is required for initial region assignment';

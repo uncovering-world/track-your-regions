@@ -37,7 +37,7 @@ const PARAMS: ExperienceUpsertParams = {
   lat: -2.3333,
   countryCodes: ['TZ'],
   countryNames: ['Tanzania'],
-  imageUrl: 'https://example.org/serengeti.jpg',
+  imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Serengeti.jpg',
   metadata: { inDanger: false, dateInscribed: 1981 },
 };
 
@@ -459,7 +459,10 @@ describe('metadata is guarded per claimed key, not per column', () => {
     // the base and the claimed keys are overlaid on top of it, which is what lets
     // the claim win over the source's value for that one key. The four assertions
     // above still match if the operands are swapped; only this one catches it.
-    expect(text).toMatch(/COALESCE\(EXCLUDED\.metadata, '\{\}'::jsonb\) \|\| COALESCE\(\(\s*SELECT jsonb_object_agg/);
+    // The source's metadata is the base — with the credit taken off it where
+    // the incoming picture is null, see 'a credit beside no picture' — and the
+    // claimed keys are re-applied over it.
+    expect(text).toMatch(/ELSE COALESCE\(EXCLUDED\.metadata, '\{\}'::jsonb\) END\) \|\| COALESCE\(\(\s*SELECT jsonb_object_agg/);
     // This guard is load-bearing, not decoration: without it, `experiences.metadata
     // -> claimed.k` is SQL NULL for a key the curator claimed but that never actually
     // landed in stored metadata, jsonb_object_agg accepts a NULL *value* (only a NULL
@@ -963,5 +966,125 @@ describe('a trusted source decays a curator pass', () => {
 
     expect(result.changeSet.curatedConflicts.map(f => f.field)).toEqual(['shortDescription']);
     expect(sentSql().some(sql => /curation_state = 'auto'/.test(sql))).toBe(false);
+  });
+});
+
+/**
+ * A run writes `image_url` through no request schema at all, which is how 1260
+ * rows came to carry a picture the World Heritage Centre's terms do not let this
+ * product show — stored because the source called the field an image and nothing
+ * asked (ADR-0043, #557). The rule lives with the writer rather than in each
+ * collector, because three sources write pictures.
+ */
+describe('a picture a run may not store', () => {
+  const UNSHOWABLE = 'https://whc.unesco.org/document/141884';
+
+  // Without this the assertions below read `mock.calls[0]` of whatever the
+  // previous describe left behind, and pass while saying nothing.
+  beforeEach(() => mockedQuery.mockReset());
+
+  it('is not written, whatever the source called the field', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow({ image_url: null, old_image_url: null })] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord({ ...PARAMS, imageUrl: UNSHOWABLE }, { syncLogId: 42 });
+
+    // `$13`, the picture: named by position rather than by "no parameter holds
+    // it", since a null anywhere in the list would satisfy that.
+    const parameters = mockedQuery.mock.calls[0][1] as unknown[];
+    expect(parameters).not.toContain(UNSHOWABLE);
+    expect(parameters[12]).toBeNull();
+  });
+
+  it('leaves the credit to creditToWrite, which is where the claim is visible', async () => {
+    // A credit arriving beside a refused picture is, for a claimed picture, the
+    // curator's own photographer resent on purpose; stripped here, the change
+    // set would report its removal on every run. creditToWrite already sends
+    // none for an unclaimed refused picture, and the statement re-applies a
+    // claimed picture's stored credit whatever the params say.
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow({ image_url: null, old_image_url: null })] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord({
+      ...PARAMS,
+      imageUrl: UNSHOWABLE,
+      metadata: { ...PARAMS.metadata, imageCredit: { author: 'Thomas Wolf' } },
+    }, { syncLogId: 42 });
+
+    const metadata = (mockedQuery.mock.calls[0][1] as unknown[]).find(
+      (v): v is string => typeof v === 'string' && v.startsWith('{') && v.includes('inDanger'),
+    );
+    expect(JSON.parse(String(metadata))).toHaveProperty('imageCredit');
+  });
+
+  it('is refused in a dry run too, so a preview says what the run would do', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow({ image_url: null, old_image_url: null })] });
+
+    const result = await upsertExperienceRecord(
+      { ...PARAMS, imageUrl: UNSHOWABLE }, { dryRun: true },
+    );
+
+    expect(result.changeSet.changedFields.map(f => f.field)).not.toContain('imageUrl');
+  });
+
+  it('is refused as a path on our own origin too, which only a person may write', async () => {
+    // A curator's edit may name `/images/…` for a file we host; a run's picture
+    // is a Commons file by construction, so a run offering such a path is held
+    // to the narrower rule and refused.
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow({ image_url: null, old_image_url: null })] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord({ ...PARAMS, imageUrl: '/images/experiences/unesco/156.jpg' }, { syncLogId: 42 });
+
+    expect((mockedQuery.mock.calls[0][1] as unknown[])[12]).toBeNull();
+  });
+
+  it('leaves a picture the product may show alone', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    expect(mockedQuery.mock.calls[0][1] as unknown[]).toContain(PARAMS.imageUrl);
+  });
+});
+
+describe('a credit beside no picture', () => {
+  beforeEach(() => mockedQuery.mockReset());
+
+  it('is taken off by the statement when the incoming picture is null', async () => {
+    // creditToWrite sends no credit for a picture the run may not write, and
+    // the writer nulls the url; this arm is the column holding that line for a
+    // collector that did not go through creditToWrite — no photographer is
+    // named beside a frame the run just emptied. The claimed-picture arm puts
+    // the curator's own credit back, since that picture stays.
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow({ image_url: null, old_image_url: null })] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const metadata = /metadata = CASE[\s\S]*?END,/.exec(sentSql()[0])?.[0] ?? '';
+    expect(metadata).toMatch(/EXCLUDED\.image_url IS NULL[\s\S]*?- 'imageCredit'/);
+  });
+});
+
+describe('the credit under a picture a curator owns', () => {
+  beforeEach(() => mockedQuery.mockReset());
+
+  it('is re-applied by the statement, whatever the run sent about it', async () => {
+    // creditToWrite resends the stored credit for a claimed picture, from a
+    // claim set read before the collection — so a curator claiming the picture
+    // while the run collects is a claim that snapshot cannot see, and the run
+    // would reach the column with the source's credit for a photograph the row
+    // keeps. The statement holds the line itself: a claimed picture keeps its
+    // stored credit, whatever the params say.
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const sql = sentSql()[0];
+    const metadata = /metadata = CASE[\s\S]*?END,/.exec(sql)?.[0] ?? '';
+    expect(metadata).toMatch(/curated_fields \? 'image_url'[\s\S]*metadata \? 'imageCredit'[\s\S]*jsonb_build_object\('imageCredit'/);
   });
 });

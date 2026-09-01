@@ -25,6 +25,7 @@ import {
 } from './heldDecisions.js';
 import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelection.js';
 import type { PoolClient } from 'pg';
+import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
 interface ProposedField {
@@ -127,12 +128,28 @@ function assignmentFor(field: string, value: unknown, bind: (value: unknown) => 
       if (!point) return null;
       return `${column} = ST_SetSRID(ST_MakePoint(${bind(point.lon)}, ${bind(point.lat)}), 4326)`;
     }
+    case 'imageUrl':
+      // The curator's rule, `isDisplayablePictureUrl` — the one their edit is
+      // held to, which admits an `/images/…` path of ours beside a Commons file —
+      // rather than the narrower one a run holds (`withShowablePicture`,
+      // `syncUtils.ts`): publishing is a person's act on a proposal, and sits on
+      // the person's side of ADR-0043. Either way a picture from a host whose
+      // terms do not let this product draw it is not stored, whichever door it
+      // arrives through. Publishing is the third door, and it
+      // reaches back in time — a card filed before that rule can still be
+      // carrying `whc.unesco.org/document/<id>` as its proposal, and applying it
+      // would put the picture back on the row a repair had just taken it off.
+      // Refused rather than nulled, so the curator is told which field could not
+      // be published and the proposal stays to be looked at; the next run
+      // re-proposes a Commons picture over it.
+      if (typeof value === 'string' && value !== '' && !isDisplayablePictureUrl(value)) return null;
+      return `${column} = ${bind(value)}`;
     default:
-      // name, description, short_description, category, image_url,
-      // country_codes, country_names. No cast: Postgres infers each
-      // parameter's type from the column it is assigned to, which is how the
-      // two varchar arrays reach `VARCHAR(10)[]` and `VARCHAR(255)[]` without
-      // this code having to know their widths.
+      // name, description, short_description, category, country_codes,
+      // country_names. No cast: Postgres infers each parameter's type from the
+      // column it is assigned to, which is how the two varchar arrays reach
+      // `VARCHAR(10)[]` and `VARCHAR(255)[]` without this code having to know
+      // their widths.
       return `${column} = ${bind(value ?? null)}`;
   }
 }

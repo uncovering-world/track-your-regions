@@ -118,12 +118,15 @@ function manualExperience(override: Record<string, unknown>): unknown {
 /**
  * An https url of exactly the requested length. `imageUrl` is no longer filler
  * with a bound on it: it has to be an absolute http(s) url or a path on our own
- * origin (#693), so a run of `x` would be refused for its shape and the width
- * this case exists to measure would go unmeasured.
+ * origin (#693), and since ADR-0043 a picture file on a host whose licence lets
+ * us draw it — so a run of `x`, or a run of `a` with no file type on the end,
+ * would be refused for its shape and the width this case exists to measure
+ * would go unmeasured.
  */
 function imageUrlOfLength(length: number): string {
-  const prefix = 'https://upload.wikimedia.org/';
-  return prefix + 'a'.repeat(length - prefix.length);
+  const prefix = 'https://upload.wikimedia.org/wikipedia/commons/';
+  const suffix = '.jpg';
+  return prefix + 'a'.repeat(length - prefix.length - suffix.length) + suffix;
 }
 
 /**

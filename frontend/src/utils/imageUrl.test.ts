@@ -20,12 +20,24 @@ describe('toThumbnailUrl', () => {
     expect(toThumbnailUrl(url)).toContain('?width=120');
   });
 
-  it('proxies trusted remote URLs through wsrv.nl', () => {
-    const url = 'https://whc.unesco.org/uploads/sites/1234.jpg';
-    const result = toThumbnailUrl(url, 330);
-    expect(result).toContain('wsrv.nl');
-    expect(result).toContain('w=330');
-    expect(result).toContain(encodeURIComponent(url));
+  it('sends no reader to a third-party resizer', () => {
+    // What used to stand here proxied every non-Commons picture through
+    // wsrv.nl — a free service with no agreement behind it, on the path of four
+    // reader-facing pictures in five (#557). Every stored picture is a Commons
+    // file now, and Commons sizes its own files.
+    const drawn = [
+      'http://commons.wikimedia.org/wiki/Special:FilePath/Louvre.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/a/a7/Louvre.jpg',
+      '/images/experiences/unesco/123.jpg',
+    ].map(url => toThumbnailUrl(url, 330));
+
+    expect(drawn.join(' ')).not.toContain('wsrv');
+  });
+
+  it('refuses a picture from a host whose licence does not let us draw it', () => {
+    // The World Heritage Centre's terms: "only link to, not replicate".
+    expect(toThumbnailUrl('https://whc.unesco.org/document/141884')).toBe('');
+    expect(toThumbnailUrl('https://data.unesco.org/img/test.jpg')).toBe('');
   });
 
   it('rejects untrusted remote URLs', () => {
@@ -38,17 +50,57 @@ describe('toThumbnailUrl', () => {
     expect(toThumbnailUrl(url)).toBe(url);
   });
 
-  it('allows upload.wikimedia.org URLs', () => {
+  it('asks Commons to size a file stored as an upload.wikimedia.org URL', () => {
     const url = 'https://upload.wikimedia.org/wikipedia/commons/a/a7/Louvre.jpg';
-    const result = toThumbnailUrl(url, 500);
-    expect(result).toContain('wsrv.nl');
-    expect(result).toContain('w=500');
+
+    expect(toThumbnailUrl(url, 500))
+      .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/Louvre.jpg?width=500');
   });
 
-  it('allows commons.wikimedia.org non-FilePath URLs', () => {
+  it('sizes a file on a subdomain of the upload host through Commons too', () => {
+    // The trust gate and the sizing gate ask the same host question, or a file
+    // the one admits the other hands to the reader unsized, at whatever
+    // resolution it was uploaded at.
+    const url = 'https://x.upload.wikimedia.org/wikipedia/commons/a/a7/Louvre.jpg';
+
+    expect(toThumbnailUrl(url, 330))
+      .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/Louvre.jpg?width=330');
+  });
+
+  it('reads the file out of a thumbnail path, not the rendering of it', () => {
+    const url = 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Louvre.jpg/330px-Louvre.jpg';
+
+    expect(toThumbnailUrl(url, 500))
+      .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/Louvre.jpg?width=500');
+  });
+
+  it('refuses a file uploaded to one language\'s own wiki', () => {
+    // upload.wikimedia.org serves every project's files; only /wikipedia/commons/
+    // are Commons'. The English Wikipedia's own uploads include fair-use files
+    // that no licence lets this product draw.
+    const url = 'https://upload.wikimedia.org/wikipedia/en/b/b1/Local.jpg';
+
+    expect(toThumbnailUrl(url)).toBe('');
+    expect(extractImageUrl(url)).toBeNull();
+  });
+
+  it('draws a trusted URL of a shape it cannot size, rather than dropping it', () => {
     const url = 'https://commons.wikimedia.org/some/other/path.jpg';
-    const result = toThumbnailUrl(url);
-    expect(result).toContain('wsrv.nl');
+
+    expect(toThumbnailUrl(url)).toBe(url);
+  });
+
+  it('refuses a Commons page, which answers HTML, and a file that is not a picture', () => {
+    // The same host serves categories and file descriptions; an <img> handed one
+    // draws nothing. The storing side asks the same of a file name.
+    expect(toThumbnailUrl('https://commons.wikimedia.org/wiki/Category:Wudang_Mountains')).toBe('');
+    // A description page is named like a file and is not one.
+    expect(toThumbnailUrl('https://commons.wikimedia.org/wiki/File:Louvre.jpg')).toBe('');
+    expect(toThumbnailUrl('https://commons.wikimedia.org/wiki/Special:FilePath/Nomination.pdf')).toBe('');
+    // A subdomain of the upload host is the upload host for this purpose.
+    expect(toThumbnailUrl('https://x.upload.wikimedia.org/wikipedia/en/b/b1/Poster.jpg')).toBe('');
+    expect(extractImageUrl('https://commons.wikimedia.org/wiki/Category:Wudang_Mountains')).toBeNull();
+    expect(extractImageUrl('https://commons.wikimedia.org/wiki/Special:FilePath/A%20tour.ogv')).toBeNull();
   });
 });
 
@@ -62,9 +114,9 @@ describe('extractImageUrl', () => {
   });
 
   it('parses JSON-encoded URL format', () => {
-    const json = JSON.stringify({ url: 'https://upload.wikimedia.org/test.jpg' });
+    const json = JSON.stringify({ url: 'https://upload.wikimedia.org/wikipedia/commons/test.jpg' });
     const result = extractImageUrl(json);
-    expect(result).toBe('https://upload.wikimedia.org/test.jpg');
+    expect(result).toBe('https://upload.wikimedia.org/wikipedia/commons/test.jpg');
   });
 
   it('returns null for JSON with untrusted URL', () => {
@@ -93,14 +145,12 @@ describe('extractImageUrl', () => {
     expect(extractImageUrl(url)).toBeNull();
   });
 
-  it('allows whc.unesco.org URLs', () => {
-    const url = 'https://whc.unesco.org/uploads/sites/1234.jpg';
-    expect(extractImageUrl(url)).toBe(url);
-  });
-
-  it('allows data.unesco.org URLs', () => {
-    const url = 'https://data.unesco.org/img/test.jpg';
-    expect(extractImageUrl(url)).toBe(url);
+  it('refuses a UNESCO-hosted picture, whatever a stored row still says', () => {
+    // 1260 rows carried one of these when #557 was decided. They are answered
+    // from Commons now, and any that is not shows no picture rather than one
+    // the World Heritage Centre's terms do not let this product draw.
+    expect(extractImageUrl('https://whc.unesco.org/document/141884')).toBeNull();
+    expect(extractImageUrl('https://data.unesco.org/img/test.jpg')).toBeNull();
   });
 
   it('returns null for JSON without url field', () => {

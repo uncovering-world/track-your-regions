@@ -8,7 +8,8 @@
  * flag — held as a flag, one object's 403 would blank the next object's picture
  * and take its credit with it, which is a false statement about a photograph
  * that is there. On this screen the refusal is the ordinary case: most of what
- * the queue holds is UNESCO, and four of those URLs in five answer 403 (#557).
+ * the queue holds is UNESCO, and four of those URLs in five answered 403 until
+ * ADR-0043 replaced the portal's photographs with Commons files (#557).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

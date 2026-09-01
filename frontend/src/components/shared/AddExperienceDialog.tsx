@@ -106,9 +106,10 @@ function applySuggestionToState(data: ImageSuggestion, p: ApplySuggestionParams)
  * A search hit's picture and its lines, including whose photograph it is.
  *
  * Its own component because the row holds state: whether the picture arrived.
- * Most of what this dialog searches is UNESCO, where four URLs in five answer
- * 403 (#557), so "the image failed" is the ordinary case here — and hiding the
- * `<img>` while leaving the credit would name a photographer under nothing.
+ * Most of what this dialog searches is UNESCO, where four URLs in five answered
+ * 403 until ADR-0043 replaced the portal's photographs with Commons files
+ * (#557); a picture can still fail — and hiding the `<img>` while leaving the
+ * credit would name a photographer under nothing.
  */
 function SearchResultBody({ exp, imageUrl }: { exp: ExperienceSearchResult; imageUrl: string }) {
   const [failed, setFailed] = useState(false);

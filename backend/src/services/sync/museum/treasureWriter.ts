@@ -19,6 +19,7 @@ import type {
   ContentItem, ContentItemChange, ContentsDelta, ProcessedContent,
 } from '../types.js';
 import { ICONIC_SITELINKS, ICONIC_RELEASE } from './tier1.js';
+import { isCommonsPictureUrl } from '../../../types/urlSafety.js';
 
 /** `Top Art Museums` — the category a treasure reads its gate from, since it has none of its own. */
 const MUSEUM_CATEGORY_ID = 2;
@@ -117,6 +118,12 @@ function creditChange(
     field: 'metadata.imageCredit', old: before, new: after,
     significance: 'minor', curatedConflict: false, held: picture.held,
   };
+}
+
+/** The work as offered, or the same work with its picture withheld. */
+function withShowablePicture(offered: ProcessedContent): ProcessedContent {
+  if (!offered.imageUrl || isCommonsPictureUrl(offered.imageUrl)) return offered;
+  return { ...offered, imageUrl: null };
 }
 
 /** A work as the run found it, read once for the whole museum before any is written. */
@@ -231,7 +238,18 @@ export async function upsertMuseumTreasures(
     }
   }
 
-  for (const artwork of artworks) {
+  for (const offered of artworks) {
+    // The same line an experience's picture is held to, held here too: a work is
+    // shown with its photograph like an object is, so a file that is not a
+    // Commons picture is not stored (ADR-0043) — the run's rule, not the wider
+    // one a curator's edit is held to, since a source's picture is a Commons
+    // file by construction and no run writes a path of ours. Applied
+    // before the credit patch and the write, so a refused picture takes its
+    // credit with it rather than naming a photographer beside an empty frame.
+    // Every one of the 1324 stored today is a Commons file; this is what keeps
+    // it that way when a source starts answering with something else.
+    const artwork = withShowablePicture(offered);
+
     // Once per work, and read twice: serialised as the ninth parameter, and
     // compared against the stored credit where the picture is held.
     const patch = creditPatch(artwork, credits.fetched, credits.stored);

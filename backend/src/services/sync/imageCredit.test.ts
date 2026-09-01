@@ -155,6 +155,23 @@ describe('what a run writes about the photographer', () => {
     expect(creditToWrite(undefined, undefined, SAME)).toEqual({});
   });
 
+  it('treats a picture the run may not write as no picture, whatever was fetched for it', () => {
+    // A P18 can name a PDF; the writer refuses the url, and a photographer's name
+    // beside a frame that will hold nothing is the claim this feature never makes.
+    const refused = 'https://commons.wikimedia.org/wiki/Special:FilePath/Nomination.pdf';
+    expect(creditToWrite(fetched, stored, refused)).toEqual({});
+    expect(creditToWrite(fetched, undefined, 'https://whc.unesco.org/document/141884')).toEqual({});
+  });
+
+  it('keeps the curator\'s own credit when the source offers a picture the run may not write', () => {
+    // creditToWrite is the one place that sees the claim, which is why the
+    // refusal is decided here and not at the writer: dropped there, the resend
+    // would read as a removal on every run, for a photograph the row keeps.
+    const claimed = { ...stored, imageClaimed: true };
+    expect(creditToWrite(fetched, claimed, 'https://commons.wikimedia.org/wiki/Special:FilePath/Nomination.pdf'))
+      .toEqual({ imageCredit: credit });
+  });
+
   it('echoes back what a curator-owned picture already says', () => {
     // The upsert keeps a claimed `image_url`, so a credit written here would
     // describe the source's photograph and sit beside the curator's. Echoing

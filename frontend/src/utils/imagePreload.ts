@@ -14,12 +14,11 @@
  * says why), so this shortens the wait rather than removing it.
  *
  * Two things this deliberately does not do. It does not preload every row in the
- * window: most of these urls do not resolve at all (of 1604 experiences, 1260
- * carry `whc.unesco.org/document/<id>`, which answers 403 at the source and 404
- * through the thumbnail proxy — see #557), and spraying requests while a reader
- * scrolls past 467 rows spends someone else's bandwidth to no purpose. And it
- * does not retry: a url that failed once stays failed for the session, because
- * the only thing a retry buys is a second chance to move the list.
+ * window: every picture is a Commons file served by Wikimedia's own CDN (ADR-0043,
+ * #557), and spraying requests while a reader scrolls past 467 rows spends
+ * someone else's bandwidth on pictures nobody opened. And it does not retry: a
+ * url that failed once stays failed for the session, because the only thing a
+ * retry buys is a second chance to move the list.
  *
  * `useExperienceContext` used to do the opposite — one `new Image()` per
  * experience the moment a region was explored, ~670 requests for Europe, and of
@@ -31,7 +30,7 @@
 
 import { extractImageUrl, toThumbnailUrl } from './imageUrl';
 
-/** The width an expanded card asks the thumbnail proxy for. */
+/** The width an expanded card asks Wikimedia's CDN for, through `Special:FilePath?width=`. */
 const CARD_IMAGE_WIDTH = 330;
 
 /**
@@ -62,8 +61,10 @@ export function isImagePreloaded(url: string): boolean {
 /**
  * True when this url's answer is known, refusal included — which is what a card
  * deciding whether it can open needs, as opposed to one deciding whether to draw
- * a picture. Four of these urls in five never resolve (#557), and under windowing
- * a row is mounted afresh every time a reader scrolls back to it; treating a known
+ * a picture. A refusal is an answer too — four of these urls in five were one,
+ * until ADR-0043 replaced the portal's photographs with Commons files (#557) —
+ * and under windowing a row is mounted afresh every time a reader scrolls back
+ * to it; treating a known
  * refusal as pending would close such a card for a commit, let its collapsed height
  * be measured, and move every row below it twice on the way back.
  */

@@ -86,7 +86,7 @@ describe('useExperienceCardReady', () => {
 
   it('reports ready when the picture has failed, not only when it has loaded', async () => {
     // A card with nothing to show must not wait forever for nothing: of 1604
-    // experiences, 1260 carry a url that answers 404 (#557), and a refusal
+    // experiences, 1260 carried a url that answered 404 until ADR-0043 (#557), and a refusal
     // arrives as fast as an image.
     const { result } = renderHook(
       () => useExperienceCardReady(EXPERIENCE_ID, 'pic.jpg', true),
@@ -130,7 +130,7 @@ describe('useExperienceCardReady', () => {
   });
 
   it('is ready at once for a picture already known to have failed', () => {
-    // Four of these urls in five never resolve (#557), and windowing mounts a row
+    // Four of these urls in five never resolved, before ADR-0043 (#557), and windowing mounts a row
     // afresh every time a reader scrolls back to it. Treating a known refusal as
     // pending would close the card for a commit, let its collapsed height be
     // measured, and move every row below it twice on the way back.

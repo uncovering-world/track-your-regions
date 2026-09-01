@@ -60,11 +60,11 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const [showMap, setShowMap] = useState(false);
   const [showImage, setShowImage] = useState(false);
   // Two, because they are two requests: the card asks for 120 px and the dialog
-  // for 960. A failure has to take its *own* credit away, and on this screen a
-  // failure is the ordinary case rather than the edge one — most of what the
-  // queue holds is UNESCO, whose URLs largely answer 403 (#557), and
-  // `toThumbnailUrl` sends those through a proxy that surfaces the 403 as an
-  // image error.
+  // for 960. A failure has to take its *own* credit away. On this screen it used
+  // to be the ordinary case rather than the edge one — most of what the queue
+  // holds is UNESCO, whose portal URLs answered 403 through the resizer that
+  // stood here (#557); every picture is a Commons file since ADR-0043, and the
+  // rule stays for the day one does not load.
   //
   // Held as *which picture* failed rather than as a flag, because this component
   // is not a list row: the bench draws one card at a time (`ReviewBench`,
@@ -80,8 +80,10 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   // `extractImageUrl` turns a stored `/images/…` path into one on our own API, whose host
   // is not in the trusted list, so `toThumbnailUrl` answers with an empty string — and
   // `src=""` resolves against the page and draws a broken image in a 96×72 frame, which is
-  // the one thing this file's header says it must not do. UNESCO and museum rows carry
-  // trusted remote URLs today; the local shape is what `museumSyncService` still repairs.
+  // the one thing this file's header says it must not do. The same empty answer comes
+  // back for a host the product may not draw from — a UNESCO row still carrying the
+  // portal's photograph until *Fix pictures* has been run on that database (ADR-0043) —
+  // so this guard is what keeps those cards photoless rather than broken.
   const cardFailed = !!image && cardFailedFor === image;
   const fullFailed = !!image && fullFailedFor === image;
   const thumbnail = image && !cardFailed ? toThumbnailUrl(image, 120) : '';

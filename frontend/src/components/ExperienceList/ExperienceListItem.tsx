@@ -303,11 +303,11 @@ function ExperienceListItemComponent({
           // rested row against that pot means a reader who pauses over thirty rows
           // in a minute can have the list itself refused; a spinner for 150 ms is
           // the cheaper end of that trade. The picture costs nothing there: it goes
-          // to the thumbnail proxy, not to us.
+          // to Wikimedia's CDN, not to us.
           //
           // Still only once the pointer has rested. Sweeping a 467-row list crosses
-          // dozens of rows, and most of these urls answer 404 (#557) — someone
-          // else's bandwidth, spent to learn nothing.
+          // dozens of rows, and a picture fetched for a row the reader never opens
+          // is someone else's bandwidth, spent to learn nothing (#557).
           if (warmTimer.current) clearTimeout(warmTimer.current);
           warmTimer.current = setTimeout(() => {
             warmTimer.current = null;

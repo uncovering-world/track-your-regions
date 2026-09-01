@@ -15,6 +15,7 @@ import {
   computeChangeSet, METADATA_CLAIM_PREFIX, SYNC_OWNED_METADATA_KEYS,
   type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
+import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 
 // =============================================================================
 // Experience Upsert
@@ -191,6 +192,46 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
 }
 
 /**
+ * What a run may put in `image_url`, asked of every source in one place.
+ *
+ * A run writes this column through no request schema at all — the rule a
+ * curator's edit is held to never sees it — which is how 1260 rows came to
+ * carry `whc.unesco.org/document/<id>`, a picture the World Heritage Centre's
+ * terms do not let this product show, stored because the source called the
+ * field an image and nothing asked ([ADR-0043](../../../../docs/decisions/0043-a-picture-we-show-is-one-we-may-show.md),
+ * #557). Here rather than in each collector, for the same reason the invalidation
+ * rule sits with the writer (#679): three sources write pictures, and a check
+ * copied into each is a check one of them will be missing.
+ *
+ * The rule is the run's, `isCommonsPictureUrl`, and not the wider one a curator's
+ * edit is held to: a source's picture is a Commons file by construction, and the
+ * only writer of a `/images/…` path is a person, so a run offering one is
+ * refused here as a source that started answering with something else would be.
+ *
+ * The credit is not decided here. `creditToWrite` (`imageCredit.ts`), which
+ * every collector goes through, already treats a picture the run may not write
+ * as no picture — so an unclaimed row arrives with no credit for it, and a
+ * *claimed* row arrives with the credit of the curator's own photograph, resent
+ * on purpose. Deleting the key here would turn that resend into a removal the
+ * change set reports on every run, for a photograph the row keeps; the
+ * statement below re-applies a claimed picture's stored credit as well, so the
+ * column cannot lose it whatever the params say.
+ *
+ * Refusing is deliberately quiet in the report and loud in the log: the run's
+ * counters are about rows, and a row whose picture was refused is still a row
+ * the source offered and the catalogue holds. What says it out loud is the
+ * picture's absence on the card, which is the honest thing for a picture the
+ * product may not draw.
+ */
+function withShowablePicture(params: ExperienceUpsertParams): ExperienceUpsertParams {
+  if (!params.imageUrl || isCommonsPictureUrl(params.imageUrl)) return params;
+  console.warn(
+    `[Sync] Refused a picture for ${params.categoryId}/${params.externalId}: ${params.imageUrl}`,
+  );
+  return { ...params, imageUrl: null };
+}
+
+/**
  * Upsert an experience record with curated_fields-aware conflict handling,
  * returning both the prior and resulting state.
  *
@@ -199,9 +240,12 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
  * same statement or they are gone.
  */
 export async function upsertExperienceRecord(
-  params: ExperienceUpsertParams,
+  rawParams: ExperienceUpsertParams,
   options: { dryRun?: boolean; syncLogId?: number | null } = {},
 ): Promise<UpsertOutcome> {
+  // Before the dry-run branch, so a preview says what the run would do rather
+  // than what the source proposed.
+  const params = withShowablePicture(rawParams);
   if (options.dryRun) return previewUpsert(params);
 
   // `HELD` guards every content column below but tags, and answers for the report in
@@ -286,7 +330,14 @@ export async function upsertExperienceRecord(
         metadata = CASE
           WHEN experiences.curated_fields ? 'metadata' OR ${HELD}
             THEN COALESCE(experiences.metadata, '{}'::jsonb) || ${SYNC_OWNED_SLICE}
-          ELSE COALESCE(EXCLUDED.metadata, '{}'::jsonb) || COALESCE((
+          -- No credit beside no picture, whatever the params say: a run's
+          -- credit is decided by creditToWrite, which sends none for a picture
+          -- it may not write, and this is the column holding that line for a
+          -- collector that did not go through it. A claimed picture's credit is
+          -- put back by the last arm, since the claimed picture stays.
+          ELSE (CASE WHEN EXCLUDED.image_url IS NULL
+                     THEN COALESCE(EXCLUDED.metadata, '{}'::jsonb) - 'imageCredit'
+                     ELSE COALESCE(EXCLUDED.metadata, '{}'::jsonb) END) || COALESCE((
                  SELECT jsonb_object_agg(claimed.k, experiences.metadata -> claimed.k)
                  FROM (
                    SELECT substring(key FROM ${METADATA_CLAIM_PREFIX.length + 1}) AS k
@@ -300,6 +351,18 @@ export async function upsertExperienceRecord(
                  WHERE experiences.metadata ? claimed.k
                    AND claimed.k <> ALL($16::text[])
                ), '{}'::jsonb)
+               -- The credit follows the picture, and a claimed picture is the
+               -- curator's: whatever a run says about who took a photograph, the
+               -- row keeps the name under the one the curator chose. creditToWrite
+               -- resends the stored credit for that case in TypeScript, from a
+               -- claim set read before the collection; this is the same rule
+               -- where the column is written, so a claim made while the run was
+               -- collecting — which that snapshot cannot see — still keeps its
+               -- credit, as the treasures upsert keeps a work's for the same window.
+               || CASE WHEN experiences.curated_fields ? 'image_url'
+                        AND experiences.metadata ? 'imageCredit'
+                       THEN jsonb_build_object('imageCredit', experiences.metadata -> 'imageCredit')
+                       ELSE '{}'::jsonb END
         END,
         -- The pointer says which run's proposal is being held, so the curator's
         -- screen can find it. This statement can only ever clear it: whether a

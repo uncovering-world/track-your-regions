@@ -141,11 +141,11 @@ describe('the metadata column, which no single entry describes', () => {
     const { client, queries } = makeClient({
       row: {
         curation_state: 'auto', pending_change_sync_log_id: 53,
-        image_url: 'https://whc.unesco.org/document/225476',
+        image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg',
         metadata: {},
       },
       proposal: [
-        { field: 'imageUrl', new: 'https://whc.unesco.org/document/225476', held: true },
+        { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true },
         { field: 'metadata', old: {}, new: { imageCredit: { author: 'JUNG Mi-gyeong' } }, held: true },
       ],
     });
@@ -164,7 +164,7 @@ describe('the metadata column, which no single entry describes', () => {
         metadata: { imageCredit: { author: 'The old photograph’s' } },
       },
       proposal: [
-        { field: 'imageUrl', new: 'https://whc.unesco.org/document/225476', held: true },
+        { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true },
         // The run says something about metadata and that something has no
         // credit in it — the source stopped shipping one for this picture.
         { field: 'metadata', old: { imageCredit: { author: 'The old photograph’s' } }, new: {}, held: true },
@@ -175,7 +175,7 @@ describe('the metadata column, which no single entry describes', () => {
 
     // No credit beats the previous photographer's name under a photograph they
     // did not take — a false statement about a real person is worse than a gap.
-    expect(picture(queries)).toBe('https://whc.unesco.org/document/225476');
+    expect(picture(queries)).toBe('http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg');
     expect(written(queries)).toEqual({});
   });
 
@@ -187,7 +187,7 @@ describe('the metadata column, which no single entry describes', () => {
         image_url: 'https://whc.unesco.org/document/141884',
         metadata: { imageCredit: { author: 'JUNG Mi-gyeong' } },
       },
-      proposal: [{ field: 'imageUrl', new: 'https://whc.unesco.org/document/225476', held: true }],
+      proposal: [{ field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true }],
     });
 
     await publish({ expectedSyncLogId: 53 }, client);
@@ -200,7 +200,7 @@ describe('the metadata column, which no single entry describes', () => {
     // offered" would delete a credit the run stands behind, on every call that
     // publishes a picture. This is `creditPin`'s first guard and the module's
     // most-exercised path: 1413 of the 1414 cards holding a credit.
-    expect(picture(queries)).toBe('https://whc.unesco.org/document/225476');
+    expect(picture(queries)).toBe('http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg');
     expect(none(queries, 'metadata = ')).toBe(true);
   });
 
@@ -217,7 +217,7 @@ describe('the metadata column, which no single entry describes', () => {
         metadata: { imageCredit: { author: 'The old photograph’s' } },
       },
       proposal: [
-        { field: 'imageUrl', new: 'https://whc.unesco.org/document/225476', held: true },
+        { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true },
         {
           field: 'metadata',
           old: { imageCredit: { author: 'The old photograph’s' } },
@@ -232,7 +232,7 @@ describe('the metadata column, which no single entry describes', () => {
 
     // Nobody credited, which `picture-with-nobody-credited` reports so somebody
     // goes and fetches one — under the new photograph, which really did land.
-    expect(picture(queries)).toBe('https://whc.unesco.org/document/225476');
+    expect(picture(queries)).toBe('http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg');
     expect(written(queries)).toEqual({});
   });
 
@@ -252,7 +252,7 @@ describe('the metadata column, which no single entry describes', () => {
         metadata: { criteria: '(x)', imageCredit: { author: 'The old photograph’s' } },
       },
       proposal: [
-        { field: 'imageUrl', new: 'https://whc.unesco.org/document/225476', held: true },
+        { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true },
         {
           field: 'metadata',
           old: { criteria: '(x)', imageCredit: { author: 'The old photograph’s' } },
@@ -268,7 +268,7 @@ describe('the metadata column, which no single entry describes', () => {
     // The picture lands and its credit lands with it. The criteria are the
     // catch-all's and are not written here: that row is answered, so only the
     // one key the pin speaks for moves.
-    expect(picture(queries)).toBe('https://whc.unesco.org/document/225476');
+    expect(picture(queries)).toBe('http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg');
     expect(written(queries)).toEqual({
       criteria: '(x)', imageCredit: { author: 'JUNG Mi-gyeong' },
     });
@@ -286,7 +286,7 @@ describe('the metadata column, which no single entry describes', () => {
         metadata: { criteria: '(x)', imageCredit: { author: 'Someone Else' } },
       },
       proposal: [
-        { field: 'imageUrl', new: 'https://whc.unesco.org/document/225476', held: true },
+        { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true },
         {
           field: 'metadata',
           old: { criteria: '(x)', imageCredit: { author: 'Someone Else' } },
@@ -300,7 +300,7 @@ describe('the metadata column, which no single entry describes', () => {
 
     // The picture, and the credit that belongs to it — but not the criteria,
     // which are a different fact and were not answered.
-    expect(picture(queries)).toBe('https://whc.unesco.org/document/225476');
+    expect(picture(queries)).toBe('http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg');
     expect(written(queries)).toEqual({
       criteria: '(x)', imageCredit: { author: 'JUNG Mi-gyeong' },
     });
@@ -317,7 +317,7 @@ describe('the metadata column, which no single entry describes', () => {
         metadata: { criteria: '(x)', imageCredit: { author: 'Someone Else' } },
       },
       proposal: [
-        { field: 'imageUrl', new: 'https://whc.unesco.org/document/225476', held: true },
+        { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true },
         {
           field: 'metadata',
           old: { criteria: '(x)', imageCredit: { author: 'Someone Else' } },
@@ -346,7 +346,7 @@ describe('the metadata column, which no single entry describes', () => {
         metadata: { imageCredit: { author: 'The curator’s own' } },
       },
       proposal: [
-        { field: 'imageUrl', new: 'https://whc.unesco.org/document/225476', held: true },
+        { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true },
         {
           field: 'metadata', old: {}, new: { imageCredit: { author: 'JUNG Mi-gyeong' } }, held: true,
         },
@@ -415,9 +415,9 @@ describe('the metadata column, which no single entry describes', () => {
       // photograph on the site under nobody's name. Now the object's credit is
       // `metadata.imageCredit`, so naming the picture answers both.
       const { client, queries } = perKey(
-        { metadata: { imageCredit: { author: 'The old photograph\u2019s' } }, image_url: 'https://old' },
+        { metadata: { imageCredit: { author: 'The old photograph\u2019s' } }, image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20by%20day.jpg' },
         [
-          { field: 'imageUrl', old: 'https://old', new: 'https://new', held: true },
+          { field: 'imageUrl', old: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20by%20day.jpg', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20at%20dusk.jpg', held: true },
           {
             field: 'metadata.imageCredit',
             old: { author: 'The old photograph\u2019s' },
@@ -429,7 +429,7 @@ describe('the metadata column, which no single entry describes', () => {
 
       const res = await publish({ heldFields: ['imageUrl'], expectedSyncLogId: 53 }, client);
 
-      expect(picture(queries)).toBe('https://new');
+      expect(picture(queries)).toBe('http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20at%20dusk.jpg');
       expect(written(queries)).toEqual({ imageCredit: { author: 'JUNG Mi-gyeong' } });
       // The write alone proves nothing -- the credit pin would land it anyway.
       // What the pairing decides is whether the credit was *answered*: without
@@ -449,9 +449,9 @@ describe('the metadata column, which no single entry describes', () => {
       // see, so it may not stay; nobody is credited and the catalogue check
       // says so, which is the honest outcome.
       const { client, queries } = perKey(
-        { metadata: { imageCredit: { author: 'The old photograph\u2019s' } }, image_url: 'https://old' },
+        { metadata: { imageCredit: { author: 'The old photograph\u2019s' } }, image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20by%20day.jpg' },
         [
-          { field: 'imageUrl', old: 'https://old', new: 'https://new', held: true },
+          { field: 'imageUrl', old: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20by%20day.jpg', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20at%20dusk.jpg', held: true },
           {
             field: 'metadata.imageCredit',
             old: { author: 'The old photograph\u2019s' },
@@ -463,8 +463,29 @@ describe('the metadata column, which no single entry describes', () => {
 
       await publish({ heldFields: ['imageUrl'], expectedSyncLogId: 53 }, client);
 
-      expect(picture(queries)).toBe('https://new');
+      expect(picture(queries)).toBe('http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20at%20dusk.jpg');
       expect(written(queries)).toEqual({});
+    });
+
+    it('refuses to publish a picture the product may not show', async () => {
+      grantScope();
+      // A card filed before ADR-0043 can still be carrying the portal's own
+      // photograph as its proposal, and publishing it would put back what a
+      // repair has just taken off the row. Two of these stood on this database
+      // when the rule landed. Refused whole rather than published without the
+      // picture: dropping a value while clearing the pointer would leave it
+      // proposed by every run and applied by none.
+      const { client, queries } = perKey({ image_url: null }, [
+        { field: 'imageUrl', old: null, new: 'https://whc.unesco.org/document/141884', held: true },
+      ]);
+
+      const res = await publish({ heldFields: ['imageUrl'], expectedSyncLogId: 53 }, client);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        error: expect.stringContaining('imageUrl'),
+      }));
+      none(queries, 'UPDATE experiences');
     });
 
     it('writes a key the source named __proto__, rather than losing it to the prototype', async () => {
