@@ -51,6 +51,29 @@ describe('rowsFor', () => {
     expect(rows.filter(r => r.field === 'metadata').map(r => r.id)).toEqual(['metadata.criteria', 'metadata.imageCredit']);
   });
 
+  it('gives each local name a row of its own, and its own field to be answered by', () => {
+    // Getbol's card, both ways round. A run files one entry per language now
+    // (#728), so each row already carries its own field and the answer cell
+    // spans one row; a card filed before that carries the whole map, splits into
+    // the same rows, and they all carry `nameLocal` — which is what makes one
+    // pair of buttons answer six facts, and why `Answers all N.` is on screen.
+    const perLanguage = rowsFor([
+      { field: 'nameLocal.en', old: 'Getbol, Korean Tidal Flats (Phase II)', new: 'Getbol, Korean Tidal Flats' },
+      { field: 'nameLocal.ko', old: '한국의 갯벌', new: '한국의 갯벌 (2단계)' },
+    ], NO_CONTEXT);
+    expect(perLanguage.map(r => r.meaning.label)).toEqual(['name in English', 'name in Korean']);
+    expect(perLanguage.map(r => r.field)).toEqual(['nameLocal.en', 'nameLocal.ko']);
+
+    const wholeMap = rowsFor([{
+      field: 'nameLocal',
+      old: { en: 'Getbol, Korean Tidal Flats (Phase II)', ko: '한국의 갯벌' },
+      new: { en: 'Getbol, Korean Tidal Flats', ko: '한국의 갯벌 (2단계)' },
+    }], NO_CONTEXT);
+    // The same rows, read the same way — only the answer's reach differs.
+    expect(wholeMap.map(r => r.meaning.label)).toEqual(perLanguage.map(r => r.meaning.label));
+    expect(new Set(wholeMap.map(r => r.field))).toEqual(new Set(['nameLocal']));
+  });
+
   it('keeps a claimed credit whole, because the vocabulary can say it and its parts have no meaning of their own', () => {
     // `editExperience` claims `metadata.imageCredit` per key, so a run bringing a
     // different credit reports it as its own field with an object on each side.

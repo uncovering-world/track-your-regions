@@ -136,6 +136,11 @@ function row(
  * field, which is what lets a conflict card answer them together. The grouping that was
  * on screen — "source data", then the keys under it — is gone: it was how the value is
  * stored, not a fact a curator was asked about.
+ *
+ * The splitting reads **older records only**. A run files a fact per metadata key
+ * (ADR-0039) and a fact per language (#728), each already one row that names itself, so
+ * this branch is what a card filed before those still needs — and the rows it makes read
+ * identically either way, on the same equality and in the same alphabetical order.
  */
 export function rowsFor(proposed: ReadonlyArray<Proposal>, context: ChangeContext): FactRow[] {
   const rows: FactRow[] = [];

@@ -14,14 +14,16 @@
  * a fact** and carries its own two buttons (ADR-0039, which narrows ADR-0038
  * decision 1 for exactly this): it used to be answered with the field it
  * belonged to and never on its own, which is what folded a site's inscription
- * criteria together with a picture credit nobody had checked.
+ * criteria together with a picture credit nobody had checked. So is one language
+ * of the local-names map (#728), which folded Getbol's corrected Korean name
+ * together with the English one a curator had no view on.
  *
- * The cell still spans in two shapes, and both are this defect somewhere else:
- * a card filed before ADR-0039, whose bare `metadata` entry splits into a row
- * per key that all carry one field, kept alive because a changeset is never
- * rewritten; and a language map, whose names share one answer for the same
- * reason (#728). There `FactTable`'s `Answers all N.` is the only thing saying
- * so.
+ * The cell still spans on a card **filed before** those writer changes — a bare
+ * `metadata` entry, or a whole language map, splitting into rows that all carry
+ * one field — and it is kept alive because a changeset is never rewritten
+ * (ADR-0039 decision 4), not because the shape is wanted. There `FactTable`'s
+ * `Answers all N.` is the only thing saying so. Nothing a run files today spans:
+ * every fact it records names itself.
  *
  * Neither button is a primary. The card's premise is that readers keep what they
  * can see until somebody says otherwise, and colouring one answer would make the
