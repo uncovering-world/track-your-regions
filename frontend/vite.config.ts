@@ -73,8 +73,12 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     // perf/ holds the performance lane's runner; its budget evaluator is the
-    // one piece of it worth a unit test, and it is plain ESM.
-    include: ['src/**/*.test.{ts,tsx}', 'perf/**/*.test.mjs'],
+    // one piece of it worth a unit test, and it is plain ESM. tests/ holds the
+    // same for the E2E lane: the Playwright specs there are `*.spec.ts` and
+    // are driven by Playwright, while `*.test.mjs` is the report parser that
+    // decides what a run means (scripts/playwright-summary.mjs), which is
+    // testable without a browser.
+    include: ['src/**/*.test.{ts,tsx}', 'perf/**/*.test.mjs', 'tests/**/*.test.mjs'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

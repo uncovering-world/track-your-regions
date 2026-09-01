@@ -1,13 +1,21 @@
 /**
  * Turns one Playwright run into the shape scripts/test-report.mjs prints for
- * every lane: counts, the spec files that ran, one line per test case.
+ * every lane: counts, the spec files that ran, one line per test case — and,
+ * separately from both passes and failures, the specs that needed a retry.
  *
  * Input is the JSON reporter's output, copied out of the e2e container by
  * scripts/test-stack.sh to the caller's path.
  *
- * Lives beside lighthouse-summary.mjs, and for the same reason: what a run
- * means is a rule, and a rule that sits inside a script which starts
- * containers on import cannot be put a question without running a suite.
+ * **A spec that passes on retry is flaky, not failed** (#447). Playwright
+ * itself says so — `stats.flaky` is a category of its own and the process
+ * exits 0 — and this file is where that had been overridden: counting flaky
+ * as failed turned "the box was busy" into a red pre-push gate, and truncated
+ * the rest of the lane behind it. A flake is loud instead: named here, printed
+ * on its own line, and the failed attempt's trace kept by the CI job.
+ *
+ * Extracted from test-report.mjs so the verdict can be tested without running
+ * a suite (frontend/tests/playwright-summary.test.mjs), the way
+ * lighthouse-summary.mjs is.
  */
 
 import fs from 'node:fs';
@@ -18,9 +26,11 @@ export function parsePlaywrightResults(filePath) {
     total: 0,
     passed: 0,
     failed: 0,
+    flaky: 0,
     skipped: 0,
     files: [],
     cases: [],
+    flakyCases: [],
     parseError: null,
   };
 
@@ -45,20 +55,16 @@ export function parsePlaywrightResults(filePath) {
         .filter(Boolean)
         .map((file) => `frontend/tests/e2e/${file}`),
     );
-    const cases = unique(
-      collected.map((item) => {
-        const filePathWithRoot = `frontend/tests/e2e/${item.file}`;
-        return `${filePathWithRoot} :: ${item.title}`;
-      }),
-    );
+    const cases = unique(collected.map(caseLabel));
+    const flakyCases = unique(collected.filter((item) => item.flaky).map(caseLabel));
 
     const expected = asNumber(stats.expected, 0);
     const unexpected = asNumber(stats.unexpected, 0);
     const flaky = asNumber(stats.flaky, 0);
     const skipped = asNumber(stats.skipped, 0);
     const total = expected + unexpected + flaky + skipped;
-    const failed = unexpected + flaky;
-    // `expected > 0` — Playwright's count of specs that ran and passed.
+    // `expected + flaky > 0` — Playwright's count of specs that ran and ended
+    // green, first attempt or second.
     //
     // Unlike the Vitest twin this closes a reachable hole, not a theoretical
     // one. Measured: a suite whose specs are all skipped reports
@@ -70,16 +76,18 @@ export function parsePlaywrightResults(filePath) {
     // The route in is ordinary: the smoke suite selects by the `@smoke` tag,
     // and a `test.skip()` guard on a missing fixture or environment skips
     // rather than fails by design.
-    const ok = failed === 0 && expected > 0;
+    const ok = unexpected === 0 && expected + flaky > 0;
 
     return {
       ok,
       total,
       passed: expected,
-      failed,
+      failed: unexpected,
+      flaky,
       skipped,
       files,
       cases,
+      flakyCases,
       parseError: null,
     };
   } catch (error) {
@@ -88,6 +96,10 @@ export function parsePlaywrightResults(filePath) {
       parseError: `Invalid Playwright JSON report (${filePath}): ${error.message}`,
     };
   }
+}
+
+function caseLabel(item) {
+  return `frontend/tests/e2e/${item.file} :: ${item.title}`;
 }
 
 function collectPlaywrightCases(suite, parentTitles, output) {
@@ -100,9 +112,13 @@ function collectPlaywrightCases(suite, parentTitles, output) {
   const specs = Array.isArray(suite?.specs) ? suite.specs : [];
   for (const spec of specs) {
     const parts = [...nextParents, spec.title].filter(Boolean);
+    const tests = Array.isArray(spec?.tests) ? spec.tests : [];
     output.push({
       file: spec.file || suite.file || 'unknown',
       title: parts.join(' > '),
+      // Per spec, so the report can name the one that flaked. `stats.flaky`
+      // only ever says how many did.
+      flaky: tests.some((test) => test?.status === 'flaky'),
     });
   }
 
