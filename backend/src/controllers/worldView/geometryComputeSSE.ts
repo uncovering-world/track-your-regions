@@ -8,6 +8,8 @@ import { pool } from '../../db/index.js';
 import { generateSingleHull } from '../../services/hull/index.js';
 import { recomputeRegionGeometry } from './helpers.js';
 import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
+import { collectUnionInputs, CollectedUnionInputs } from './collectUnionInputs.js';
+import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
 import { markStreamBody } from '../../middleware/cacheHeaders.js';
 
 interface ProgressEvent {
@@ -153,46 +155,6 @@ async function fetchComplexityStats(client: PoolClient, regionId: number): Promi
   };
 }
 
-async function collectGeometriesStep(
-  client: PoolClient,
-  regionId: number,
-  shouldSimplify: boolean,
-): Promise<{ collectedGeom: unknown; geomCount: number }> {
-  const collectResult = await client.query(`
-    WITH direct_member_geoms AS (
-      SELECT
-        CASE WHEN $2 THEN
-          ST_SimplifyPreserveTopology(ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)), 0.005)
-        ELSE
-          ST_MakeValid(COALESCE(rm.custom_geom, ad.geom))
-        END as geom
-      FROM region_members rm
-      JOIN administrative_divisions ad ON rm.division_id = ad.id
-      WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
-    ),
-    child_group_geoms AS (
-      SELECT
-        CASE WHEN $2 THEN
-          ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.005)
-        ELSE
-          ST_MakeValid(geom)
-        END as geom
-      FROM regions
-      WHERE parent_region_id = $1 AND geom IS NOT NULL
-    )
-    SELECT ST_Collect(geom) as collected_geom, COUNT(*) as geom_count
-    FROM (
-      SELECT geom FROM direct_member_geoms WHERE geom IS NOT NULL
-      UNION ALL
-      SELECT geom FROM child_group_geoms WHERE geom IS NOT NULL
-    ) all_geoms
-  `, [regionId, shouldSimplify]);
-  return {
-    collectedGeom: collectResult.rows[0]?.collected_geom,
-    geomCount: parseInt(collectResult.rows[0]?.geom_count || '0'),
-  };
-}
-
 async function analyzeInputGeometryStep(
   client: PoolClient,
   collectedGeom: unknown,
@@ -299,89 +261,30 @@ async function cleanupStep(
   };
 }
 
+/**
+ * The shared snap step, with the progress line this writer's stream carries.
+ * The statement itself lives in snapChildRegionsForGroup, held by all three
+ * writers.
+ */
 async function snapChildRegionsSSE(
   client: PoolClient,
   regionId: number,
   inputPoints: number,
+  collected: CollectedUnionInputs,
   logStep: LogStep,
 ): Promise<unknown> {
-  const snapResult = await client.query(`
-    WITH child_regions AS (
-      SELECT id, name, ST_MakeValid(geom) as geom
-      FROM regions
-      WHERE parent_region_id = $1 AND geom IS NOT NULL
-    ),
-    with_neighbors AS (
-      SELECT
-        a.id,
-        a.name,
-        a.geom,
-        ST_Collect(b.geom) as neighbor_geom,
-        COUNT(b.id) as neighbor_count
-      FROM child_regions a
-      LEFT JOIN child_regions b ON a.id != b.id
-        AND (ST_Touches(a.geom, b.geom) OR ST_DWithin(a.geom, b.geom, 0.0001))
-      GROUP BY a.id, a.name, a.geom
-    ),
-    snapped AS (
-      SELECT
-        w.id,
-        w.name,
-        w.neighbor_count,
-        ST_NPoints(w.geom) as original_points,
-        CASE
-          WHEN w.neighbor_count > 0 AND w.neighbor_geom IS NOT NULL THEN
-            ST_MakeValid(ST_Snap(w.geom, w.neighbor_geom, 0.001))
-          ELSE
-            w.geom
-        END as geom
-      FROM with_neighbors w
-    ),
-    with_new_points AS (
-      SELECT *, ST_NPoints(geom) as new_points FROM snapped
-    ),
-    collected AS (
-      SELECT ST_Collect(geom) as geom FROM with_new_points WHERE geom IS NOT NULL
-    ),
-    totals AS (
-      SELECT SUM(new_points) as total_points FROM with_new_points
-    )
-    SELECT
-      id, name, neighbor_count, original_points, new_points,
-      new_points - original_points as added_points,
-      (SELECT geom FROM collected) as collected_geom,
-      (SELECT total_points FROM totals) as total_snapped_points
-    FROM with_new_points
-    ORDER BY name
-  `, [regionId]);
-
-  let totalAdded = 0;
-  let snappedGeom: unknown = null;
-  let snappedPoints = 0;
-
-  console.log(`[Snap] Snapping ${snapResult.rows.length} regions to neighbors:`);
-  for (const row of snapResult.rows) {
-    if (snappedGeom === null) {
-      snappedGeom = row.collected_geom;
-      snappedPoints = parseInt(row.total_snapped_points || '0');
-    }
-    const neighbors = parseInt(row.neighbor_count);
-    const added = parseInt(row.added_points);
-    totalAdded += added;
-    if (neighbors > 0) {
-      console.log(`[Snap]   ${row.name}: ${row.original_points} -> ${row.new_points} pts (+${added}), ${neighbors} neighbors`);
-    } else {
-      console.log(`[Snap]   ${row.name}: ${row.original_points} pts, isolated`);
-    }
-  }
+  const snap = await snapChildRegionsForGroup(client, regionId, collected.collectedGeom);
 
   logStep(`Step 3/6: Complete`, {
     originalPoints: inputPoints,
-    snappedPoints,
-    addedPoints: totalAdded,
-    increase: `${((snappedPoints / inputPoints - 1) * 100).toFixed(0)}%`,
+    snappedPoints: snap.snappedPoints,
+    addedPoints: snap.totalAdded,
+    increase: `${((snap.snappedPoints / inputPoints - 1) * 100).toFixed(0)}%`,
   });
-  return snappedGeom;
+  // A region with no geometry-bearing child leaves the step with the geometry
+  // it came in with, so the caller's assignment is a no-op rather than a case
+  // to spell out.
+  return snap.collectedGeom;
 }
 
 async function applyHullPostStep(
@@ -486,7 +389,7 @@ async function runUnionPipelineSteps(
   logStep: LogStep,
 ): Promise<UnionPipelineResult | null> {
   logStep('Step 1/6: Collecting geometries...');
-  const collected = await collectGeometriesStep(client, regionId, shouldSimplify);
+  const collected = await collectUnionInputs(client, regionId, shouldSimplify);
   let collectedGeom = collected.collectedGeom;
   if (!collectedGeom) return null;
   logStep('Step 1/6: Complete', { geomCount: collected.geomCount });
@@ -502,7 +405,9 @@ async function runUnionPipelineSteps(
     logStep('Step 3/6: Skipped (fast mode - no snapping)');
   } else if (stats.childCount > 0) {
     logStep(`Step 3/6: Snapping ${stats.childCount} child regions to their neighbors...`);
-    const snappedGeom = await snapChildRegionsSSE(client, regionId, inputStats.inputPoints, logStep);
+    const snappedGeom = await snapChildRegionsSSE(
+      client, regionId, inputStats.inputPoints, collected, logStep,
+    );
     if (snappedGeom) collectedGeom = snappedGeom;
   } else {
     logStep('Step 3/6: No child regions (using direct members)');
