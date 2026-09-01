@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  flattenGroups, rowIndexByExperienceId, experienceIdsAtIndices, experienceIdsInVisibleRange,
+  flattenGroups, expansionForSelection, rowIndexByExperienceId, experienceIdsAtIndices,
+  experienceIdsInVisibleRange,
 } from './utils';
 import type { Experience } from '../../api/experiences';
 
@@ -120,5 +121,91 @@ describe('the windowed experience list', () => {
     it('stops at the end of the list when the range runs past it', () => {
       expect(experienceIdsInVisibleRange(rows, { startIndex: 5, endIndex: 40 })).toEqual([5, 6]);
     });
+  });
+});
+
+/**
+ * What the list opens by itself (#592).
+ *
+ * Two ways to be sent to a card and shown nothing, and this decides both. A
+ * link to a card in a category that is not the first one — the list opened the
+ * first group, always. And a card selected inside the region already open,
+ * which is what a search result gives a reader already standing there: no
+ * region change, so the once-per-region rule declined to fire at all.
+ */
+describe('what the list opens by itself', () => {
+  const groups = [
+    group('UNESCO World Heritage Sites', [1, 2, 3]),
+    group('Top Art Museums', [10, 11]),
+    group('Public Art & Monuments', [20]),
+  ];
+  const base = {
+    groups,
+    selectedExperienceId: null as number | null,
+    expanded: new Set<string>(),
+    openedForRegion: false,
+    openedForCard: null as number | null,
+  };
+
+  it('opens the first group when a region arrives with no card named', () => {
+    expect(expansionForSelection(base)?.open).toEqual(new Set(['UNESCO World Heritage Sites']));
+  });
+
+  it('opens the group holding the card the address named', () => {
+    const decision = expansionForSelection({ ...base, selectedExperienceId: 11 });
+    expect(decision?.open).toEqual(new Set(['Top Art Museums']));
+    expect(decision?.forCard).toBe(11);
+  });
+
+  it('opens the holding group beside what the reader already has open', () => {
+    // The reader is standing in the region and picks a search result of it: no
+    // region change, so nothing resets, and the group they were reading must
+    // not be closed to open the card's.
+    const decision = expansionForSelection({
+      ...base,
+      selectedExperienceId: 11,
+      expanded: new Set(['UNESCO World Heritage Sites']),
+      openedForRegion: true,
+    });
+    expect(decision?.open).toEqual(new Set(['UNESCO World Heritage Sites', 'Top Art Museums']));
+  });
+
+  it('answers a card whose group is already open without writing anything', () => {
+    const decision = expansionForSelection({
+      ...base,
+      selectedExperienceId: 2,
+      expanded: new Set(['UNESCO World Heritage Sites']),
+      openedForRegion: true,
+    });
+    expect(decision).not.toBeNull();
+    expect(decision?.open).toBeNull();
+    // Recorded even so: without it, the reader collapsing that group would be
+    // overruled on the very next render.
+    expect(decision?.forCard).toBe(2);
+  });
+
+  it('leaves a card it has already answered alone, so a collapse stands', () => {
+    expect(expansionForSelection({
+      ...base,
+      selectedExperienceId: 11,
+      expanded: new Set(['UNESCO World Heritage Sites']),
+      openedForRegion: true,
+      openedForCard: 11,
+    })).toBeNull();
+  });
+
+  it('falls back to the first group for a card this region does not hold', () => {
+    // The window between the region's rows arriving and the address dropping
+    // the card: the reader must still be given a list rather than none.
+    expect(expansionForSelection({ ...base, selectedExperienceId: 999 })?.open)
+      .toEqual(new Set(['UNESCO World Heritage Sites']));
+  });
+
+  it('does nothing once a region has opened its group and no card asks', () => {
+    expect(expansionForSelection({ ...base, openedForRegion: true })).toBeNull();
+  });
+
+  it('opens nothing where there is nothing to open', () => {
+    expect(expansionForSelection({ ...base, groups: [], selectedExperienceId: 11 })).toBeNull();
   });
 });
