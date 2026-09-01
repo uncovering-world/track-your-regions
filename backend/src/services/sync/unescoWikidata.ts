@@ -248,6 +248,11 @@ export async function fetchWorldHeritageFacts(
     console.log(`${LOG_PREFIX} Wikidata answered for ${index.bySite.size} World Heritage properties`);
     return index;
   } catch (error) {
+    // A cancellation is the person's, not Wikidata's: the retry loop throws
+    // when the run is cancelled mid-wait, and folding that into "did not
+    // answer" would tell an admin who pressed Cancel that the query service
+    // failed and to try again later.
+    if (progress.cancel) throw error;
     const msg = error instanceof Error ? error.message : String(error);
     console.warn(`${LOG_PREFIX} Wikidata did not answer: ${msg}`);
     return null;

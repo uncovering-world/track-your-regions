@@ -65,10 +65,6 @@ export interface UnescoApiRecord {
   };
   iso_codes?: string | string[];
   states_names?: string | string[];
-  main_image_url?: string | { url?: string };
-  /** Who took it, and who holds the rights — the portal fills both for ~95% of records. */
-  main_image_author?: string;
-  main_image_copyright?: string;
   /** The year, as a string: `"2003"`. Every scalar this portal sends is one. */
   date_inscribed?: string | number;
   /** `"True"` / `"False"` — the portal's booleans are strings. See `isSet`. */

@@ -165,4 +165,20 @@ describe('fetchWorldHeritageFacts', () => {
     expect(await fetchWorldHeritageFacts(progress, new WaitBudget(1000))).toBeNull();
     vi.doUnmock('./wikidataUtils.js');
   });
+
+  it('lets a cancellation through as itself, not as Wikidata failing', async () => {
+    // The retry loop throws when the run is cancelled mid-wait; read as "did
+    // not answer", an admin who pressed Cancel would be told to try again later.
+    vi.resetModules();
+    vi.doMock('./wikidataUtils.js', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('./wikidataUtils.js')>()),
+      sparqlQuery: vi.fn(async () => { throw new Error('Sync cancelled'); }),
+    }));
+    const { fetchWorldHeritageFacts } = await import('./unescoWikidata.js');
+    const { WaitBudget } = await import('./sourceRetry.js');
+    const progress = { cancel: true, statusMessage: '' } as Parameters<typeof fetchWorldHeritageFacts>[0];
+
+    await expect(fetchWorldHeritageFacts(progress, new WaitBudget(1000))).rejects.toThrow('Sync cancelled');
+    vi.doUnmock('./wikidataUtils.js');
+  });
 });

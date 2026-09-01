@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveMainPoint, buildUnescoTags, imageCreditOf, isInDanger, transformRecord } from './unescoSyncService.js';
+import { resolveMainPoint, buildUnescoTags, isInDanger, transformRecord } from './unescoSyncService.js';
 import type { UnescoApiRecord, ParsedLocation } from './types.js';
 
 function record(overrides: Partial<UnescoApiRecord> = {}): UnescoApiRecord {
@@ -109,25 +109,59 @@ describe('resolveMainPoint', () => {
   });
 });
 
-describe('who took the picture', () => {
-  it('says nothing about a site whose picture the source did not send', () => {
-    // The portal fills the author on records with no image. A credit stored
-    // against no photograph is a name waiting to be printed under whichever
-    // one somebody adds later.
-    expect(imageCreditOf(record({ main_image_author: 'Ko Hon Chiu Vincent' }), null)).toBeNull();
+describe('the picture a site is shown with', () => {
+  const COMMONS = 'http://commons.wikimedia.org/wiki/Special:FilePath/Bamiyan.jpg';
+  const sited = (overrides: Partial<UnescoApiRecord> = {}) =>
+    record({ coordinates: { lat: 34.84, lon: 67.82 }, ...overrides });
+
+  it('does not read the picture the portal offers, whatever it says about it', () => {
+    // The World Heritage Centre's terms: its photographs "may not be copied or
+    // retransmitted by any means without explicit authorisation", and a site
+    // may "only link to, not replicate" its content (ADR-0043, #557). 1260 rows
+    // carried one of these before this rule.
+    // The three fields are no longer even asked for (`EXPORT_FIELDS`), so a
+    // record carrying them is one the type does not admit — pinned all the
+    // same, so a portal that sends them unasked, or an export list that grows
+    // them back, still changes nothing.
+    const site = transformRecord({
+      ...sited(),
+      main_image_url: 'https://whc.unesco.org/document/119616',
+      main_image_author: 'Ko Hon Chiu Vincent',
+      main_image_copyright: 'Museum Mors',
+    } as unknown as UnescoApiRecord);
+
+    expect(site?.imageUrl).toBeNull();
+    expect(site?.metadata.imageCredit).toBeUndefined();
   });
 
-  it('names the photographer and the rights holder where there is a picture', () => {
-    const credit = imageCreditOf(
-      record({ id_no: '208', main_image_author: 'Museum Mors', main_image_copyright: 'Museum Mors' }),
-      'https://whc.unesco.org/document/119616',
+  it('links to the property page instead, which those terms invite', () => {
+    expect(transformRecord(sited({ id_no: '208' }))?.metadata.website)
+      .toBe('https://whc.unesco.org/en/list/208');
+  });
+
+  it('shows the Commons picture Wikidata states, with whoever took it', () => {
+    const site = transformRecord(
+      sited(),
+      { article: 'https://en.wikipedia.org/wiki/Bamiyan', picture: { url: COMMONS, via: 'exact', ref: '208' } },
+      new Map([[COMMONS, { author: 'Ko Hon Chiu Vincent', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null }]]),
     );
 
-    expect(credit).toMatchObject({
-      author: 'Museum Mors',
-      license: '© Museum Mors',
-      detailsUrl: 'https://whc.unesco.org/en/list/208',
-    });
+    expect(site?.imageUrl).toBe(COMMONS);
+    expect(site?.metadata.imageCredit).toMatchObject({ author: 'Ko Hon Chiu Vincent' });
+    expect(site?.metadata.wikipediaUrl).toBe('https://en.wikipedia.org/wiki/Bamiyan');
+  });
+
+  it('leaves the credit for the next run when Commons could not answer', () => {
+    // Commons could not be reached for this file. The picture still stands —
+    // the licence is what it is either way — and the credit is absent rather
+    // than invented, which is what `creditToWrite` leaves for the next run.
+    const site = transformRecord(
+      sited(),
+      { article: null, picture: { url: COMMONS, via: 'component', ref: '208-001' } },
+    );
+
+    expect(site?.imageUrl).toBe(COMMONS);
+    expect(site?.metadata.imageCredit).toBeUndefined();
   });
 });
 
