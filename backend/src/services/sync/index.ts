@@ -5,6 +5,7 @@
 export * from './types.js';
 export { getSyncStatus, cancelSync } from './syncOrchestrator.js';
 export * from './unescoSyncService.js';
+export { fixUnescoImages } from './unescoImageRepair.js';
 export * from './museumSyncService.js';
 export * from './landmarkSyncService.js';
 export * from './regionAssignmentService.js';

@@ -14,6 +14,7 @@ import {
   syncUnescoSites,
   syncMuseums,
   fixMuseumImages,
+  fixUnescoImages,
   syncLandmarks,
   runningSyncs,
   getSyncStatus as getServiceSyncStatus,
@@ -28,7 +29,20 @@ import {
   cacheSummary, clearCache, setCacheTtl, CACHED_KINDS_BY_CATEGORY, type CacheKind,
 } from '../../services/sync/wikidataCache.js';
 
+const UNESCO_CATEGORY_ID = 1;
 const MUSEUM_CATEGORY_ID = 2;
+
+/**
+ * Which sources a picture repair can be started for, and what it runs.
+ *
+ * A registry rather than two comparisons, for the reason `syncRegistry` is one:
+ * the panel has to be able to ask the same question the route answers, and a
+ * button offered where the route says 400 is a button that does nothing.
+ */
+const PICTURE_REPAIRS: Record<number, (triggeredBy: number | null) => Promise<void>> = {
+  [UNESCO_CATEGORY_ID]: fixUnescoImages,
+  [MUSEUM_CATEGORY_ID]: fixMuseumImages,
+};
 
 /** Registry mapping category IDs to their sync functions */
 const syncRegistry: Record<
@@ -191,6 +205,7 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
     res.json({
       running: isRunning,
       cancellable,
+      kind: status.kind,
       status: status.status,
       statusMessage: status.statusMessage,
       progress: status.progress,
@@ -252,19 +267,54 @@ export async function cancelSync(req: Request, res: Response): Promise<void> {
 /**
  * Fix missing images for a source
  * POST /api/admin/sync/categories/:categoryId/fix-images
+ *
+ * Two sources answer it, and they answer different questions. For museums it is
+ * a picture that was never found; for World Heritage sites it is a picture that
+ * was found and may not be shown — the World Heritage Centre's own photographs,
+ * which its terms do not license to this product, replaced from Commons or taken
+ * away (ADR-0043, #557). Both write now rather than proposing: a repair of the
+ * catalogue is an operator's decision, and under a gated category a proposal
+ * would be a thousand cards nobody asked for.
  */
 export async function fixImages(req: AuthenticatedRequest, res: Response): Promise<void> {
   const categoryId = parseInt(String(req.params.categoryId));
   const triggeredBy = req.user?.id || null;
 
-  if (categoryId === MUSEUM_CATEGORY_ID) {
-    fixMuseumImages(triggeredBy).catch((err) => {
-      console.error('[Sync Controller] Fix museum images error:', err);
-    });
-    res.json({ started: true, message: 'Fixing missing images. Poll /status endpoint for progress.' });
-  } else {
-    res.status(400).json({ error: 'Fix images not implemented for this source' });
+  // The same three doors startSync stands at, answered in its order before
+  // anything starts: a source that does not exist, one switched off, and a run
+  // already in flight. The repair refuses that last case itself — by throwing
+  // before it registers — but a throw lands in the catch below after this
+  // handler has already answered, so without this check a press during a sync
+  // got `started: true`, the panel followed the *sync*, and it ended in a
+  // sync's sentence with no picture repaired and nothing saying so.
+  const source = await pool.query(
+    'SELECT id, is_active FROM experience_categories WHERE id = $1',
+    [categoryId],
+  );
+  if (source.rows.length === 0) {
+    res.status(404).json({ error: 'Source not found' });
+    return;
   }
+  if (!source.rows[0].is_active) {
+    res.status(400).json({ error: 'Source is not active' });
+    return;
+  }
+  const repair = PICTURE_REPAIRS[categoryId];
+  if (!repair) {
+    res.status(400).json({ error: 'Fix images not implemented for this source' });
+    return;
+  }
+  const existing = runningSyncs.get(categoryId);
+  if (existing && !isTerminalSyncStatus(existing.status)) {
+    res.status(409).json({ error: 'Sync already in progress for this source' });
+    return;
+  }
+
+  repair(triggeredBy).catch((err) => {
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- categoryId is a parseInt result, so it cannot carry a format specifier
+    console.error(`[Sync Controller] Fix images error for category ${categoryId}:`, err);
+  });
+  res.json({ started: true, message: 'Fixing pictures. Poll /status endpoint for progress.' });
 }
 
 /**
@@ -550,6 +600,10 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
     // would promise to bypass something that does not exist — the same
     // pretence the cache panel below it refuses to make.
     caches: (CACHED_KINDS_BY_CATEGORY[source.id as number] ?? []).length > 0,
+    // Whether this source's pictures can be repaired from here, read from the
+    // same registry the route answers from — the museums' missing pictures, and
+    // the World Heritage ones the Centre's terms do not let us show (ADR-0043).
+    repairsPictures: (source.id as number) in PICTURE_REPAIRS,
   })));
 }
 

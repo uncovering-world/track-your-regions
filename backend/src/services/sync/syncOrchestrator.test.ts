@@ -94,6 +94,7 @@ function heldRun(): ProcessItemResult {
 function makeProgress(overrides: Partial<SyncProgress> = {}): SyncProgress {
   return {
     cancel: false,
+    kind: 'sync',
     status: 'processing',
     statusMessage: 'Running...',
     progress: 0,

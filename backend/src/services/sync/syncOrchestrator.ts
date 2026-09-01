@@ -126,6 +126,7 @@ function isSyncStillRunning(progress: SyncProgress | undefined): boolean {
 function initSyncProgress(dryRun: boolean): SyncProgress {
   return {
     cancel: false,
+    kind: 'sync',
     status: 'fetching',
     statusMessage: dryRun ? 'Initializing preview...' : 'Initializing...',
     progress: 0,

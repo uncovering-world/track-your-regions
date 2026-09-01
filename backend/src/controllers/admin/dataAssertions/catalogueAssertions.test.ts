@@ -25,6 +25,7 @@ import {
 } from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '../../../services/sync/changeSet.js';
 import { catalogueAssertions } from './catalogueAssertions.js';
+import { DISPLAYABLE_PICTURE_HOSTS, PICTURE_EXTENSIONS } from '../../../types/urlSafety.js';
 
 const byId = (id: string) => {
   const assertion = catalogueAssertions.find(a => a.id === id);
@@ -287,7 +288,9 @@ describe('a picture with nobody credited', () => {
     // catalogue rather than publishing it does not change whose photograph it is.
     // The claim is about which rows are *selected*: the waiting flag beside them
     // is the queue's own predicate and carries the queue's own conditions.
-    const selections = sql.match(/WHERE [a-z]\.image_url[^)]*?(?= UNION| ORDER)/g);
+    // `[\s\S]*?` rather than `[^)]*?`: the drawable-host predicate the
+    // selection carries since ADR-0043 has parentheses of its own.
+    const selections = sql.match(/WHERE [a-z]\.image_url[\s\S]*?(?= UNION| ORDER)/g);
     expect(selections).toHaveLength(2);
     for (const clause of selections ?? []) {
       expect(clause).not.toMatch(/admission|curation_state|missing_since/);
@@ -329,7 +332,7 @@ describe('a picture with nobody credited', () => {
     expect(sql).toMatch(/ch\.sync_log_id = e\.pending_change_sync_log_id/);
     expect(assertion.describe({
       holder: 'object', row_id: 300, row_name: 'Aldabra Atoll',
-      host: 'whc.unesco.org', credit_waiting: true,
+      host: 'commons.wikimedia.org', credit_waiting: true,
     })).toContain('its author fetched and waiting on a curator');
     expect(assertion.describe({
       holder: 'work', row_id: 88, row_name: 'The Night Watch',
@@ -443,5 +446,53 @@ describe('the danger flag against its tag', () => {
     expect(assertion.describe({
       experience_id: 1, experience_name: 'A site', tagged: true, flagged: false, listing: null,
     })).toBe('A site: tagged as in danger, with no badge on it (experience 1)');
+  });
+});
+
+describe('picture-the-product-may-not-show', () => {
+  const assertion = catalogueAssertions.find(a => a.id === 'picture-the-product-may-not-show')!;
+  const collapse = (s: string) => s.replace(/\s+/g, ' ');
+
+  it('reads the hosts a picture may come from off the one list, for both tables', () => {
+    // ADR-0043's rule is declared once in urlSafety.ts; a second spelling here
+    // would be the copy that drifts. Both tables, because both are shown.
+    const sql = collapse(assertion.sql);
+    for (const host of DISPLAYABLE_PICTURE_HOSTS) expect(sql).toContain(`'${host}'`);
+    expect(sql).toContain('FROM experiences e');
+    expect(sql).toContain('FROM treasures t');
+    expect(sql).toMatch(/NOT \(e\.image_url LIKE '\/images\/%'/);
+    expect(sql).toMatch(/NOT \(t\.image_url LIKE '\/images\/%'/);
+  });
+
+  it('asks all four arms of the rule, so the two picture checks partition the rows', () => {
+    // A Commons PDF or a /wiki/File: page is a picture the product may not
+    // show, not one nobody is credited for; the host alone would file it under
+    // the wrong sentence.
+    const sql = collapse(assertion.sql);
+    expect(sql).toContain("/wikipedia/commons/");
+    expect(sql).toContain("!~* '^/wiki/File:'");
+    for (const ext of PICTURE_EXTENSIONS) expect(sql).toContain(ext.slice(1));
+  });
+
+  it('names the row, the host and the holder', () => {
+    expect(assertion.describe({
+      holder: 'object', row_id: 311, row_name: 'Antequera Dolmens Site', host: 'whc.unesco.org',
+    })).toBe('Antequera Dolmens Site: a picture stored from whc.unesco.org, which the product may not show (object 311)');
+  });
+
+  it('sends the admin to the repair button, not to a run', () => {
+    expect(assertion.meaning).toContain('Fix pictures');
+    expect(assertion.kind).toBe('invariant');
+  });
+
+  it('is what the credit check leaves to it: a picture nothing draws is not one nobody is credited for', () => {
+    // Before this, every row still carrying the portal's photograph read as a
+    // photograph on show needing a photographer, and sent an admin to a run
+    // that could not have fetched one.
+    const credit = collapse(catalogueAssertions.find(a => a.id === 'picture-with-nobody-credited')!.sql);
+    const objectArm = credit.slice(0, credit.indexOf('UNION ALL'));
+    const workArm = credit.slice(credit.indexOf('UNION ALL'));
+    expect(objectArm).toMatch(/AND \(e\.image_url LIKE '\/images\/%' OR \(\(lower\(split_part/);
+    expect(workArm).toMatch(/AND \(t\.image_url LIKE '\/images\/%' OR \(\(lower\(split_part/);
   });
 });

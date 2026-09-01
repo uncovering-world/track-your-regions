@@ -43,6 +43,13 @@ export interface ExperienceCategory {
    */
   caches?: boolean;
   /**
+   * Whether this source's pictures can be repaired from the panel: the museums'
+   * missing ones, and the World Heritage ones whose host does not license them
+   * to us (ADR-0043). Read from the server rather than from a list of ids here,
+   * so the button is offered exactly where the route acts on it.
+   */
+  repairsPictures?: boolean;
+  /**
    * Three zeros for a source holding nothing — never an absent key, so a panel
    * deciding whether to show "nothing waiting" compares numbers — and `null` when the
    * server could not count. The counts are an addition to this endpoint and the source
@@ -55,6 +62,8 @@ export interface ExperienceCategory {
 
 export interface SyncStatus {
   running: boolean;
+  /** A sync, or a picture repair started from the same card; absent from a status read off the database. */
+  kind?: 'sync' | 'repair';
   status?: string;
   statusMessage?: string;
   progress?: number;
@@ -212,6 +221,23 @@ export async function startSync(
       dryRun: options.dryRun ?? false,
       refreshCache: options.refreshCache ?? false,
     }),
+  });
+}
+
+/**
+ * Put right the pictures of one source, now.
+ *
+ * A repair rather than a sync: it writes straight to the rows instead of
+ * proposing, because what it fixes is the catalogue rather than what the source
+ * says. For museums it fills in a picture that was never found; for World
+ * Heritage sites it replaces one this product may not show with a Commons file,
+ * or takes it away where Wikidata states none (ADR-0043, #557). A picture a
+ * curator owns is never touched. Reports through the same status endpoint a
+ * sync does.
+ */
+export async function fixPictures(categoryId: number): Promise<{ started: boolean; message: string }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/fix-images`, {
+    method: 'POST',
   });
 }
 

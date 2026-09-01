@@ -29,6 +29,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getCategories,
   startSync,
+  fixPictures,
   getSyncStatus,
   cancelSync,
   reorderCategories,
@@ -125,6 +126,27 @@ interface SourceCardProps {
   source: ExperienceCategory;
 }
 
+/**
+ * How a run that stopped is reported: a failure with the run's own last words,
+ * a cancellation without them. A cancellation's message is the orchestrator's
+ * `Sync cancelled`, which would make a repair's sentence say "sync", and "was
+ * cancelled" already says all of it.
+ */
+function endedBadlySentence(
+  kind: SyncStatus['kind'],
+  ended: { status: string; message: string },
+): string {
+  const subject = kind === 'repair' ? 'The picture repair' : 'The sync';
+  if (ended.status !== 'failed') return `${subject} was cancelled.`;
+  return ended.message ? `${subject} failed: ${ended.message}` : `${subject} failed.`;
+}
+
+/** What the chip says while a run is in flight: which kind, and whether it writes. */
+function runningLabel(status: SyncStatus | null): string {
+  if (status?.kind === 'repair') return 'Fixing pictures...';
+  return status?.dryRun ? 'Previewing...' : 'Syncing...';
+}
+
 /** What the Cancel button should say for the phase the run is in. */
 function cancelLabel(status: SyncStatus | null): string {
   if (status?.status === 'assigning') return 'Assigning regions…';
@@ -144,22 +166,40 @@ function SourceCard({ source }: SourceCardProps) {
   // that does not work rather than as an answer.
   const [cancelRefused, setCancelRefused] = useState(false);
 
-  /** A new run is starting: poll it, and drop what the last one was told. */
-  const beginRun = () => {
+  // How the last run this panel followed ended, when it ended badly. A repair
+  // that stops — Wikidata did not answer, or it was cancelled — reports that on
+  // its final poll and nowhere else: it writes no sync log, so the status chip
+  // goes back to the previous sync's verdict, and the sentence it left would be
+  // gone in the same tick it arrived. Held here so the admin reads it.
+  const [endedBadly, setEndedBadly] = useState<{ status: string; message: string } | null>(null);
+
+  /**
+   * A new run is starting: poll it, and drop what the last one was told.
+   *
+   * The kind is held optimistically until the first poll answers: the chip is
+   * showing from the moment the request is in flight, and `status` is still
+   * the previous run's until then — so without this, pressing Fix pictures
+   * read "Syncing..." for the POST plus a full second, and Start Sync after a
+   * repair read "Fixing pictures...". The server's word replaces it as soon
+   * as there is one.
+   */
+  const beginRun = (kind: 'sync' | 'repair') => () => {
+    setStatus({ running: true, kind });
     setIsPolling(true);
     setCancelRefused(false);
+    setEndedBadly(null);
   };
 
   // Start sync mutation
   const startMutation = useMutation({
     mutationFn: () => startSync(source.id),
-    onSuccess: beginRun,
+    onSuccess: beginRun('sync'),
   });
 
   // Preview mutation: same run, no writes to experiences
   const dryRunMutation = useMutation({
     mutationFn: () => startSync(source.id, { dryRun: true }),
-    onSuccess: beginRun,
+    onSuccess: beginRun('sync'),
   });
 
   // The same run again, asking the source everything rather than reusing what it
@@ -168,13 +208,21 @@ function SourceCard({ source }: SourceCardProps) {
   // length — and the ordinary click should stay one click.
   const refreshMutation = useMutation({
     mutationFn: () => startSync(source.id, { refreshCache: true }),
-    onSuccess: beginRun,
+    onSuccess: beginRun('sync'),
+  });
+
+  // Not a sync: this one writes the rows straight away, because what it repairs
+  // is the catalogue rather than what the source says. It reports through the
+  // same status endpoint, so the panel follows it the same way.
+  const fixPicturesMutation = useMutation({
+    mutationFn: () => fixPictures(source.id),
+    onSuccess: beginRun('repair'),
   });
 
   // A preview is a run: while one is starting the panel must look busy, or the
   // gap between the click and the first poll reads as nothing having happened.
   const isStarting = startMutation.isPending || dryRunMutation.isPending
-    || refreshMutation.isPending;
+    || refreshMutation.isPending || fixPicturesMutation.isPending;
 
   // Track if sync just completed (to show hint)
   const [justCompleted, setJustCompleted] = useState(false);
@@ -188,12 +236,20 @@ function SourceCard({ source }: SourceCardProps) {
       const newStatus = await getSyncStatus(source.id);
       setStatus(newStatus);
 
+      // A run found already in flight — the page was reloaded during one — is
+      // followed like one this panel started, or it would sit at whatever the
+      // first poll saw until somebody reloaded again.
+      if (newStatus.running) setIsPolling(true);
+
       if (!newStatus.running) {
         setIsPolling(false);
         // Only a real sync earns the hint: a dry run creates no experiences, so
         // telling the admin to go and assign them would be nonsense.
         if (wasRunningRef.current && newStatus.status === 'complete' && !newStatus.dryRun) {
           setJustCompleted(true);
+        }
+        if (wasRunningRef.current && (newStatus.status === 'failed' || newStatus.status === 'cancelled')) {
+          setEndedBadly({ status: newStatus.status, message: newStatus.statusMessage ?? '' });
         }
         // Refresh sources list to get updated last_sync info
         queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] });
@@ -248,7 +304,7 @@ function SourceCard({ source }: SourceCardProps) {
       return (
         <Chip
           icon={<SyncIcon />}
-          label={status?.dryRun ? 'Previewing...' : 'Syncing...'}
+          label={runningLabel(status)}
           color="primary"
           size="small"
         />
@@ -335,6 +391,24 @@ function SourceCard({ source }: SourceCardProps) {
             Failed to start sync without cache: {(refreshMutation.error as Error)?.message}
           </Alert>
         )}
+        {fixPicturesMutation.isError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Failed to start the picture repair: {(fixPicturesMutation.error as Error)?.message}
+          </Alert>
+        )}
+        {endedBadly && (
+          <Alert
+            severity={endedBadly.status === 'failed' ? 'error' : 'warning'}
+            sx={{ mb: 2 }}
+            onClose={() => setEndedBadly(null)}
+          >
+            {/* The run's own last words, kept after the run is gone: a repair
+                that stopped because Wikidata did not answer changed nothing and
+                says so, and that sentence is the whole of what an admin needs
+                from it. */}
+            {endedBadlySentence(status?.kind, endedBadly)}
+          </Alert>
+        )}
         {cancelRefused && (
           <Alert severity="info" sx={{ mb: 2 }} onClose={() => setCancelRefused(false)}>
             {/* The two ways a press lands on nothing, told apart by what the
@@ -352,12 +426,20 @@ function SourceCard({ source }: SourceCardProps) {
             sx={{ mb: 2 }}
             onClose={() => setJustCompleted(false)}
           >
-            {/* Says nothing about how region assignment turned out. The run
-                only reports itself finished once placement has run, so by the
-                time this shows, the source's status chip already carries the
-                verdict — and a placement failure shows there as Partial. */}
-            Sync completed. Region assignment runs as part of the run, so there is normally
-            nothing further to do — check the status chip if it reports Partial.
+            {/* A repair ends with its own count — how many rows were given a
+                picture, how many left without — and that sentence is the whole
+                of what an admin wants from it, so it is shown as the run said
+                it. Which kind ended is the server's word (`kind`), not a memory
+                of which button was pressed, so a reload mid-run cannot make a
+                repair end in a sync's sentence. A sync's says nothing about how
+                region assignment turned out: the run only reports itself finished once placement has
+                run, so by the time this shows, the source's status chip already
+                carries the verdict — and a placement failure shows there as
+                Partial. */}
+            {status?.kind === 'repair'
+              ? `Pictures repaired: ${status.statusMessage ?? 'done'}.`
+              : 'Sync completed. Region assignment runs as part of the run, so there is normally '
+                + 'nothing further to do — check the status chip if it reports Partial.'}
           </Alert>
         )}
         <CurationGateControls source={source} />
@@ -414,6 +496,24 @@ function SourceCard({ source }: SourceCardProps) {
                 </span>
               </Tooltip>
               </>
+              )}
+              {/* Its own button rather than part of a sync, because it is a
+                  different decision: a sync proposes and this writes. Offered
+                  where the server says it acts — the museums' missing pictures,
+                  and the World Heritage ones whose host does not license them
+                  to us. */}
+              {source.repairsPictures && (
+                <Tooltip title="Puts right the pictures of this source's rows, now, without waiting for review: a picture that was never found is filled in from Commons, and one this product is not allowed to show is replaced from Commons or taken away. A picture a curator chose is left alone.">
+                  <span>
+                    <Button
+                      variant="outlined"
+                      onClick={() => fixPicturesMutation.mutate()}
+                      disabled={!source.is_active || isStarting}
+                    >
+                      Fix pictures
+                    </Button>
+                  </span>
+                </Tooltip>
               )}
               <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                 A sync preserves curator edits, visit history, manual region assignments and
