@@ -534,7 +534,7 @@ describe('publishing a held proposal', () => {
     // is not in the list because no run proposes it any more (#570); the test
     // below keeps the writer able to apply the rows earlier runs filed.
     expect(names).toEqual(expect.arrayContaining(
-      ['name', 'nameLocal', 'description', 'shortDescription', 'category',
+      ['name', 'description', 'shortDescription', 'category',
         'location', 'countryCodes', 'countryNames', 'imageUrl']));
     // Metadata arrives one key at a time, never as a catch-all: a key is a fact
     // and a fact is answered on its own. So what has to be writable is each key
@@ -543,11 +543,21 @@ describe('publishing a held proposal', () => {
     expect(names).toEqual(expect.arrayContaining(
       ['metadata.inDanger', 'metadata.dateInscribed', 'metadata.visitors']));
     expect(names).not.toContain('metadata');
+    // And the local names one language at a time, for the same reason (#728) —
+    // `fr` arriving beside a corrected `en`, which is the pair a curator has to
+    // be able to answer separately. The stored map is fed to the writer below
+    // with the rest of the row, since publishing a language merges it onto what
+    // is stored rather than assigning the run's whole map.
+    expect(names).toEqual(expect.arrayContaining(['nameLocal.en', 'nameLocal.fr']));
+    expect(names).not.toContain('nameLocal');
     expect(names).not.toContain('tags');
 
     grantScope();
     const { client } = makeClient({
-      row: { curation_state: 'auto', pending_change_sync_log_id: 53, metadata: BEFORE_SNAPSHOT.metadata },
+      row: {
+        curation_state: 'auto', pending_change_sync_log_id: 53,
+        metadata: BEFORE_SNAPSHOT.metadata, name_local: BEFORE_SNAPSHOT.nameLocal,
+      },
       proposal,
     });
     const res = await publish({ expectedSyncLogId: 53 }, client);
