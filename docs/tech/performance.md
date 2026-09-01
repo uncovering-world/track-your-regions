@@ -497,9 +497,14 @@ Filed, and linked here so the baseline is read with them in mind:
   on the backend side; the probe's row for `tile_world_view_root_regions/3/4/2`
   is its number.
 - #560 — island specks survive simplification and bloat cold tiles.
-- #557 — experience pictures hotlinked at 8–40 MB from UNESCO and Commons;
-  not visible in the fixture-backed Lighthouse run (three experiences, no
-  pictures), which is one reason the fixture's numbers describe the shell.
+- #557 — closed by ADR-0043: every picture a run writes is a Commons file,
+  sized by Wikimedia's own CDN through `Special:FilePath?width=`, where four in
+  five used to be the World Heritage portal's originals of up to 40 MB behind a
+  third-party resizer. A database that predates it keeps its portal URLs — the
+  drawing side refuses them, so those cards show nothing — until *Fix pictures*
+  is pressed in the admin panel; on the dev database that was 2026-09-01. Still not visible in the fixture-backed Lighthouse run
+  (three experiences, no pictures), which is one reason the fixture's numbers
+  describe the shell.
 - The unpaged region list: `WHOLE_REGION_LIMIT = 5000` rows in one read
   (`docs/tech/experience-map-ui.md` § Shared state model); the probe's
   by-region row is what that costs on Europe today. Compression made those

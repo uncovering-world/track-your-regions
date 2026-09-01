@@ -68,7 +68,7 @@ what goes stale when a route is added to the row below (it has already happened 
 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
-| `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions` |
+| `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions`, `POST /api/admin/sync/categories/:categoryId/fix-images` |
 | `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source` |
 
 The catalogue checks split across both buckets on the same rule, and the split is
