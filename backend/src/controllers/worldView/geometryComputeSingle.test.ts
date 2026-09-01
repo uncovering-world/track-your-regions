@@ -9,6 +9,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { computeRegionGeometryCore, computeSingleRegionGeometry } from './geometryComputeSingle.js';
+import { UNION_SHAPE, coarseningProblems } from './unionGeomToleranceGuard.js';
 
 function respond(sql: string) {
   if (sql.includes('SELECT is_custom_boundary')) {
@@ -201,5 +202,94 @@ describe('computeRegionGeometryCore answers a failed pipeline softly', () => {
     const result = await computeRegionGeometryCore(42);
     expect(result).toMatchObject({ computed: false });
     expect(result.error).toContain('statement timeout');
+  });
+});
+
+/**
+ * `regions.geom` is the authoritative shape every derived column is made from
+ * (rule 1 of `docs/tech/geometry-columns.md`), so nothing may apply a tolerance
+ * between the union and the column. The union path used to end its cleaning
+ * step with `ST_SimplifyPreserveTopology(geom, 0.0001)` — roughly 11 m at the
+ * equator, baked into a column no rung can recover it from, while the fast path
+ * and the two smaller union writers stored the shape they had computed (#443).
+ *
+ * The guard binds the **sink**, not the file. Four statements of the writer can
+ * put a geometry into that column — the collect step, the neighbour snap (whose
+ * output replaces what the union reads), the union, the cleaning step — and the
+ * write itself; each is identified by what it *is* rather than by its position,
+ * and none may carry a coarsening call. Naming the sink is what makes it fail
+ * for a tolerance reintroduced under another name, or moved one statement
+ * earlier.
+ *
+ * The collect step is the single exception, and a narrow one: it legitimately
+ * carries the input-side timeout guard above 300,000 points (#459), so what is
+ * asserted there is that its *only* coarsening calls are the ones under
+ * `CASE WHEN $2` — the bound parameter alone would say nothing about a tolerance
+ * written into the `ELSE` arm.
+ *
+ * The rule and the whole assertion sequence live in `unionGeomToleranceGuard.ts`,
+ * shared with the SSE writer's guard, so a widening reaches both writers or
+ * neither.
+ */
+describe('the union path writes regions.geom with no tolerance of its own', () => {
+  const CLEANED = { sentinel: 'cleaned-union-geometry' };
+
+  function respondUnion(sql: string) {
+    const s = String(sql);
+    if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
+    if (s.includes('direct_member_geoms')) {
+      return { rows: [{ collected_geom: { sentinel: 'collected' }, geom_count: '4' }] };
+    }
+    if (s.includes('ST_UnaryUnion')) {
+      return { rows: [{ union_geom: { sentinel: 'unioned' } }] };
+    }
+    if (s.includes('holes_filtered')) {
+      return {
+        rows: [{
+          cleaned_geom: CLEANED, holes_before: '4',
+          num_polygons: '2', num_rings: '3', num_points: '7000',
+        }],
+      };
+    }
+    return respond(s);
+  }
+
+  /** Asserts the whole path from the union to the column carries no coarsening. */
+  function expectNoCoarsening() {
+    const calls = client.query.mock.calls as Array<[unknown, unknown[]?]>;
+    expect(coarseningProblems(calls, CLEANED)).toEqual([]);
+  }
+
+  beforeEach(() => {
+    client.query.mockReset();
+    client.query.mockImplementation(async (sql: string) => respondUnion(String(sql)));
+    poolQuery.mockReset();
+    poolQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
+  });
+
+  it('stores what the cleaning step produced, and nothing on the way simplifies', async () => {
+    // `skipSnapping: false` because this writer's default is to skip it, and the
+    // snap is one of the statements the guard is about: its result replaces the
+    // geometry the union reads, so a tolerance there reaches the column. The
+    // default-skip path is covered by the fall-through cases above.
+    await computeRegionGeometryCore(42, { skipSnapping: false });
+    expectNoCoarsening();
+  });
+
+  it('holds the same for the HTTP handler, which reaches the union through computeGroupGeom', async () => {
+    poolQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (s.includes('is_custom_boundary') && s.includes('uses_hull')) {
+        return { rows: [{ is_custom_boundary: false, name: 'Bavaria', usesHull: false, has_geom: false }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const req = { params: { regionId: '42' }, query: {} } as unknown as Request;
+    const json = vi.fn();
+    const res = { json, status: vi.fn(() => ({ json })) } as unknown as Response;
+    await computeSingleRegionGeometry(req, res);
+
+    expectNoCoarsening();
   });
 });
