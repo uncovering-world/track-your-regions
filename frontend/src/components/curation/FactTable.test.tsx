@@ -97,6 +97,51 @@ describe('FactTable', () => {
     expect(within(criteria).getByRole('button', { name: 'answer metadata' }).closest('td')).toHaveAttribute('rowspan', '2');
   });
 
+  it('gives each local name its own answer, where the whole map shared one', () => {
+    // Getbol's card, and the whole of #728 as a curator sees it. Filed as one
+    // entry the map made six rows under one pair of buttons, with `Answers all 6.`
+    // the only thing on screen saying so; filed per language, each name is asked
+    // on its own and the caption is gone. Both shapes are live — a changeset is
+    // never rewritten — so both are here.
+    const answer = vi.fn((field: string) => <button type="button">answer {field}</button>);
+    const languages = { en: 'Getbol, Korean Tidal Flats', ko: '한국의 갯벌' };
+    const wasCalled = { en: 'Getbol, Korean Tidal Flats (Phase II)', ko: '한국의 갯벌 (2단계)' };
+
+    const perLanguage: ProposedField[] = [
+      { field: 'nameLocal.en', old: wasCalled.en, new: languages.en },
+      { field: 'nameLocal.ko', old: wasCalled.ko, new: languages.ko },
+    ];
+    const { unmount } = render(
+      <FactTable groups={objectGroup(perLanguage, { proposed: perLanguage })}
+        labels={HELD_LABELS} context={{ proposed: perLanguage }} answer={answer} />,
+    );
+    // Named from the vocabulary, not from the field: a row reading "name local
+    // en" would be the language arm of `meaningOf` missing.
+    expect(screen.getAllByRole('row').slice(1).map(r => within(r).getAllByRole('cell')[0].textContent))
+      .toEqual(['name in Englishchanged', 'name in Koreanchanged']);
+    expect(screen.getAllByRole('button', { name: /^answer/ }).map(b => b.textContent)).toEqual([
+      'answer nameLocal.en', 'answer nameLocal.ko',
+    ]);
+    for (const row of screen.getAllByRole('row').slice(1)) {
+      expect(within(row).getByRole('button', { name: /^answer/ }).closest('td'))
+        .not.toHaveAttribute('rowspan', '2');
+    }
+    expect(screen.queryByText(/Answers all/)).not.toBeInTheDocument();
+    unmount();
+
+    const wholeMap: ProposedField[] = [{ field: 'nameLocal', old: wasCalled, new: languages }];
+    render(
+      <FactTable groups={objectGroup(wholeMap, { proposed: wholeMap })}
+        labels={HELD_LABELS} context={{ proposed: wholeMap }} answer={answer} />,
+    );
+    // The same two rows, named the same way, and one answer across both.
+    expect(screen.getAllByRole('row').slice(1).map(r => within(r).getAllByRole('cell')[0].textContent))
+      .toEqual(['name in Englishchanged', 'name in Koreanchanged']);
+    expect(screen.getAllByRole('button', { name: /^answer/ }).map(b => b.textContent))
+      .toEqual(['answer nameLocal']);
+    expect(screen.getByText('Answers all 2.')).toBeInTheDocument();
+  });
+
   it('heads a part of the object with its name and a way to open it', () => {
     // A place of a serial site renamed, as a run records it one level down (ADR-0026):
     // Château de Montésgur, whose name the source corrected.

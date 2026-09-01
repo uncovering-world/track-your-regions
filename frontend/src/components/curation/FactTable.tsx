@@ -332,14 +332,15 @@ function GroupRows({ group, columns, context, answer }: {
               // than its own row: pinned to the top, the buttons sat beside the
               // first row and every row under it read as a fact with no answer,
               // which is how a curator comes to think a fact cannot be answered
-              // at all. Both shapes that still span are the same defect
-              // somewhere else, not a case worth keeping: a card filed before
-              // ADR-0039, whose bare `metadata` entry splits into a row per key
-              // that all carry one field, and a language map, whose six names
-              // share one answer for the same reason (#728). Several *facts*
-              // under one answer, either way. There this caption is the only
-              // thing on screen saying so — the fallback ADR-0039 rejected as a
-              // sufficient fix, doing the job it can still do until both go.
+              // at all. What still spans is a card filed before the writer
+              // recorded facts rather than columns — a bare `metadata` entry
+              // (ADR-0039), or a whole language map (#728) — splitting into rows
+              // that all carry one field. Several *facts* under one answer, and
+              // the same defect either way, kept alive only because a changeset
+              // is never rewritten. There this caption is the only thing on
+              // screen saying so — the fallback ADR-0039 rejected as a
+              // sufficient fix, doing the job it can still do until the last of
+              // those cards is re-proposed.
               <TableCell
                 rowSpan={span}
                 sx={{ verticalAlign: span > 1 ? 'middle' : 'top', width: 160 }}

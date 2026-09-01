@@ -612,10 +612,24 @@ const UNSEEN_BY_READERS = new Set([
   'metadata.creators', 'metadata.year', 'metadata.type', 'metadata.sitelinksCount',
 ]);
 
-/** The meaning of a field the changeset names: a column, or `metadata.<key>`. */
+/**
+ * The meaning of a field the changeset names: a column, `metadata.<key>`, or
+ * `nameLocal.<lang>`.
+ *
+ * The language arm is what keeps a run's own row reading the way the card's used
+ * to. A run records each local name that differs on its own since #728, so the
+ * card no longer splits a language map itself — the row arrives named
+ * `nameLocal.ko` and must still say *name in Korean*, which is the vocabulary
+ * `keyMeaningOf` already holds. Without it a real fact, and one readers see,
+ * would fall through to "extra data from the source" and be marked as seen by
+ * nobody.
+ */
 export function meaningOf(field: string): FieldMeaning {
   const known = MEANINGS[field];
   if (known) return UNSEEN_BY_READERS.has(field) ? { ...known, unseen: true } : known;
+  if (field.startsWith('nameLocal.')) {
+    return keyMeaningOf('nameLocal', field.slice('nameLocal.'.length));
+  }
   const key = field.startsWith('metadata.') ? field.slice('metadata.'.length) : field;
   // A key nobody has described is a key nothing shows, which is what its definition says.
   return { ...unknownMeaning(humaniseKey(key)), unseen: true };
@@ -624,7 +638,9 @@ export function meaningOf(field: string): FieldMeaning {
 /**
  * The meaning of one named part inside an object field: a metadata key, or a language in
  * the local-names map. A key inside `metadata` means exactly what the changeset's own
- * `metadata.<key>` row means, so the two read alike whichever way the key arrived.
+ * `metadata.<key>` row means, so the two read alike whichever way the key arrived — and
+ * a language now arrives both ways too, since a run files `nameLocal.<lang>` (#728) while
+ * a card filed before it still carries the whole map for `changedKeys` to split.
  */
 export function keyMeaningOf(field: string, key: string): FieldMeaning {
   if (field === 'metadata') return meaningOf(`metadata.${key}`);
