@@ -14,7 +14,14 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL,
-    trace: 'on-first-retry',
+    // Record every first attempt and keep the recording only where that
+    // attempt failed. `on-first-retry`, which this replaces, traces the
+    // *retry* - and in the case worth reading, the flake, the retry is the
+    // attempt that passed, so what survived explained nothing about the
+    // failure (#447). Measured cost of tracing every first attempt: the
+    // 11 smoke specs go from 2.9 min to 3.3 min on an idle machine, +14%,
+    // which is what the numbers in the budget comment above already carry.
+    trace: 'retain-on-first-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     // Without this, an action whose target never appears (e.g. a locator
