@@ -11,6 +11,7 @@ import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { generateSingleHull } from '../../services/hull/index.js';
 import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
+import { collectUnionInputs } from './collectUnionInputs.js';
 import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
 
 const GEOMETRY_QUERY_TIMEOUT_MS = 300000;
@@ -109,38 +110,10 @@ async function computeGroupGeom(client: PoolClient, gId: number): Promise<Pipeli
     if (fastResult) return fastResult;
 
     logStep('Step 1/6: Collecting geometries...');
-    const collectResult = await client.query(`
-      WITH direct_member_geoms AS (
-        SELECT
-          CASE WHEN $2 THEN
-            ST_SimplifyPreserveTopology(ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)), 0.005)
-          ELSE
-            ST_MakeValid(COALESCE(rm.custom_geom, ad.geom))
-          END as geom
-        FROM region_members rm
-        JOIN administrative_divisions ad ON rm.division_id = ad.id
-        WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
-      ),
-      child_group_geoms AS (
-        SELECT
-          CASE WHEN $2 THEN
-            ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.005)
-          ELSE
-            ST_MakeValid(geom)
-          END as geom
-        FROM regions
-        WHERE parent_region_id = $1 AND geom IS NOT NULL
-      )
-      SELECT ST_Collect(geom) as collected_geom, COUNT(*) as geom_count
-      FROM (
-        SELECT geom FROM direct_member_geoms WHERE geom IS NOT NULL
-        UNION ALL
-        SELECT geom FROM child_group_geoms WHERE geom IS NOT NULL
-      ) all_geoms
-    `, [gId, shouldSimplify]);
+    const collected = await collectUnionInputs(client, gId, shouldSimplify);
 
-    let collectedGeom = collectResult.rows[0]?.collected_geom;
-    const geomCount = parseInt(collectResult.rows[0]?.geom_count || '0');
+    let collectedGeom = collected.collectedGeom;
+    const geomCount = collected.geomCount;
 
     if (!collectedGeom) {
       logStep('No geometries to merge');
@@ -590,38 +563,10 @@ export async function computeRegionGeometryCore(
 
     // Step 1: Collect all geometries
     log('Step 1: Collecting geometries...');
-    const collectResult = await client.query(`
-      WITH direct_member_geoms AS (
-        SELECT
-          CASE WHEN $2 THEN
-            ST_SimplifyPreserveTopology(ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)), 0.005)
-          ELSE
-            ST_MakeValid(COALESCE(rm.custom_geom, ad.geom))
-          END as geom
-        FROM region_members rm
-        JOIN administrative_divisions ad ON rm.division_id = ad.id
-        WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
-      ),
-      child_group_geoms AS (
-        SELECT
-          CASE WHEN $2 THEN
-            ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.005)
-          ELSE
-            ST_MakeValid(geom)
-          END as geom
-        FROM regions
-        WHERE parent_region_id = $1 AND geom IS NOT NULL
-      )
-      SELECT ST_Collect(geom) as collected_geom, COUNT(*) as geom_count
-      FROM (
-        SELECT geom FROM direct_member_geoms WHERE geom IS NOT NULL
-        UNION ALL
-        SELECT geom FROM child_group_geoms WHERE geom IS NOT NULL
-      ) all_geoms
-    `, [regionId, shouldSimplify]);
+    const collected = await collectUnionInputs(client, regionId, shouldSimplify);
 
-    let collectedGeom = collectResult.rows[0]?.collected_geom;
-    const geomCount = parseInt(collectResult.rows[0]?.geom_count || '0');
+    let collectedGeom = collected.collectedGeom;
+    const geomCount = collected.geomCount;
 
     if (!collectedGeom) {
       await client.query('RESET statement_timeout');
@@ -634,37 +579,8 @@ export async function computeRegionGeometryCore(
 
     if (!skipSnapping && hasChildRegions) {
       log(`Step 2: Snapping ${childCount} child regions to neighbors...`);
-      const snapResult = await client.query(`
-        WITH child_regions AS (
-          SELECT id, name, ST_MakeValid(geom) as geom
-          FROM regions
-          WHERE parent_region_id = $1 AND geom IS NOT NULL
-        ),
-        with_neighbors AS (
-          SELECT
-            a.id, a.geom,
-            ST_Collect(b.geom) as neighbor_geom,
-            COUNT(b.id) as neighbor_count
-          FROM child_regions a
-          LEFT JOIN child_regions b ON a.id != b.id
-            AND (ST_Touches(a.geom, b.geom) OR ST_DWithin(a.geom, b.geom, 0.0001))
-          GROUP BY a.id, a.geom
-        ),
-        snapped AS (
-          SELECT
-            CASE
-              WHEN w.neighbor_count > 0 AND w.neighbor_geom IS NOT NULL THEN
-                ST_MakeValid(ST_Snap(w.geom, w.neighbor_geom, 0.001))
-              ELSE w.geom
-            END as geom
-          FROM with_neighbors w
-        )
-        SELECT ST_Collect(geom) as snapped_geom FROM snapped WHERE geom IS NOT NULL
-      `, [regionId]);
-
-      if (snapResult.rows[0]?.snapped_geom) {
-        collectedGeom = snapResult.rows[0].snapped_geom;
-      }
+      const snap = await snapChildRegionsForGroup(client, regionId, collectedGeom);
+      collectedGeom = snap.collectedGeom;
       log('Step 2: Snapping complete');
     } else {
       log('Step 2: Skipped (fast mode)');

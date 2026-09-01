@@ -1,7 +1,9 @@
 /**
- * Neighbor-snapping step for computeGroupGeom: makes touching/near child
- * region borders share vertices before the union, so the merge has no
- * slivers from mismatched boundary points.
+ * Neighbor-snapping step for the union pipeline, shared by all three writers of
+ * `regions.geom`: makes touching/near child region borders share vertices
+ * before the union, so the merge has no slivers from mismatched boundary
+ * points.
+ *
  */
 
 import { PoolClient } from 'pg';
@@ -62,22 +64,21 @@ export async function snapChildRegionsForGroup(
     SELECT
       id, name, neighbor_count, original_points, new_points,
       new_points - original_points as added_points,
-      (SELECT geom FROM collected) as collected_geom,
+      -- The collected geometry rides on one row. A scalar subquery is computed
+      -- once, but its whole value lands in every DataRow the driver buffers,
+      -- and this statement returns a row per child -- so a continent's union
+      -- would cross the wire once per child, and the regions worth snapping
+      -- are exactly the ones with the most (153 under New South Wales).
+      CASE WHEN ROW_NUMBER() OVER () = 1 THEN (SELECT geom FROM collected) END as collected_geom,
       (SELECT total_points FROM totals) as total_snapped_points
     FROM with_new_points
     ORDER BY name
   `, [gId]);
 
   let totalAdded = 0;
-  let snappedGeom: unknown = null;
-  let snappedPoints = 0;
 
   console.log(`[Snap] Snapping ${snapResult.rows.length} regions to neighbors:`);
   for (const row of snapResult.rows) {
-    if (snappedGeom === null) {
-      snappedGeom = row.collected_geom;
-      snappedPoints = parseInt(row.total_snapped_points || '0');
-    }
     const neighbors = parseInt(row.neighbor_count);
     const added = parseInt(row.added_points);
     totalAdded += added;
@@ -88,10 +89,17 @@ export async function snapChildRegionsForGroup(
     }
   }
 
+  // The row carrying the geometry is looked for rather than assumed to be the
+  // first: the window that picks it and the ORDER BY that returns the rows are
+  // two orderings, and nothing makes two children of one region share a name
+  // impossible. A region whose children all lack geometry returns no rows at
+  // all, and the geometry it came in with is what the caller unions.
+  const carrying = snapResult.rows.find((row) => row.collected_geom !== null);
+
   return {
-    collectedGeom: snappedGeom ?? initialGeom,
+    collectedGeom: carrying?.collected_geom ?? initialGeom,
     totalAdded,
-    snappedPoints,
+    snappedPoints: parseInt(carrying?.total_snapped_points ?? '0'),
     rowCount: snapResult.rows.length,
   };
 }
