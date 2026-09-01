@@ -89,6 +89,9 @@ function lockedRow(opts: ClientOptions) {
     curation_state: 'pending',
     curated_fields: [],
     metadata: null,
+    // Read for the same reason `metadata` is: a run records one language at a
+    // time (#728), so publishing one merges it onto the stored map.
+    name_local: null,
     // Read for the credit rule (#722): the run's credit belongs to the run's
     // picture, so writing it means knowing whether that picture is the stored one.
     image_url: null,

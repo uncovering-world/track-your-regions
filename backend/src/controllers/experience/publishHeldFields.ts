@@ -6,14 +6,19 @@
  * audit row, no pool. What lives here is the answer to one question: given the
  * `changed_fields` a gated run recorded rather than wrote, which columns does
  * publishing assign, and which does it deliberately leave alone? The shapes that
- * makes hard are all per-column — two jsonb columns, one geometry built from a
- * pair, and `metadata`, which no single changeset entry describes.
+ * makes hard are all per-column — a jsonb column assigned whole, one geometry
+ * built from a pair, and the two columns no single changeset entry describes:
+ * `metadata`, reported one key at a time since ADR-0039, and `name_local`, one
+ * language at a time since #728. Those two are merged onto what is stored rather
+ * than assigned, by one function, because they are one shape.
  *
  * `publishController.ts` holds the other half: the lock, the staleness check, the
  * contents, the released withdrawal, the placement and the audit line.
  */
 
-import { CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, claimKeyFor } from '../../services/sync/changeSet.js';
+import {
+  CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, NAME_LOCAL_CLAIM_PREFIX, claimKeyFor,
+} from '../../services/sync/changeSet.js';
 import type { ContentsByKind } from '../../services/sync/types.js';
 import {
   answeredHeldRows, heldRowKey, type HeldAnswer, type HeldRowRef,
@@ -50,6 +55,25 @@ function isMetadataField(field: string): boolean {
   return field === 'metadata' || field.startsWith(METADATA_CLAIM_PREFIX);
 }
 
+/**
+ * Does this field share the `name_local` column with the rest of its family?
+ *
+ * The second column an entry cannot be assigned from, and for the same reason
+ * (#728): a run records each language that differs as `nameLocal.<lang>`, and
+ * six of those are one jsonb column. The bare `nameLocal` a card filed before
+ * that still carries belongs to the family too — it named the whole map, which
+ * `mergedFromEntries` replaces wholesale exactly as it does a metadata
+ * catch-all.
+ */
+function isNameLocalField(field: string): boolean {
+  return field === 'nameLocal' || field.startsWith(NAME_LOCAL_CLAIM_PREFIX);
+}
+
+/** A field publishing resolves against the stored column rather than assigning. */
+function isMergedColumn(field: string): boolean {
+  return isMetadataField(field) || isNameLocalField(field);
+}
+
 /** A coordinate as the changeset records one, or null if that is not what this is. */
 function asCoordinate(value: unknown): { lon: number; lat: number } | null {
   const point = value as { lon?: unknown; lat?: unknown } | null;
@@ -66,10 +90,11 @@ function asCoordinate(value: unknown): { lon: number; lat: number } | null {
  * The column comes from `CURATED_KEY_BY_FIELD` rather than a second map of the
  * same thing — the upsert honours that map, so a private copy here would drift
  * from what a run actually refused to write. What this adds is per-column
- * *shape*, which the map does not carry: two of the columns are jsonb, one is a
- * geometry built from a pair, and the rest take the value as it stands.
+ * *shape*, which the map does not carry: one of the columns it still assigns is
+ * jsonb, one is a geometry built from a pair, and the rest take the value as it
+ * stands.
  *
- * `null` is returned for the metadata family (resolved elsewhere), for a field
+ * `null` is returned for the two merged columns (resolved elsewhere), for a field
  * name the map has never heard of, and for a coordinate that is not one. The
  * caller refuses the whole request on the last two rather than publishing around
  * them: clearing the pointer while dropping a value would leave that value
@@ -77,16 +102,16 @@ function asCoordinate(value: unknown): { lon: number; lat: number } | null {
  * writer exists to close.
  */
 function assignmentFor(field: string, value: unknown, bind: (value: unknown) => string): string | null {
-  if (isMetadataField(field)) return null;
+  if (isMergedColumn(field)) return null;
   const column = CURATED_KEY_BY_FIELD[field];
   if (column === undefined) return null;
 
   switch (field) {
-    // jsonb columns. `JSON.stringify` of an absent value is the string 'null',
+    // A jsonb column. `JSON.stringify` of an absent value is the string 'null',
     // which lands as jsonb null rather than SQL NULL — exactly what the upsert
-    // writes through the same columns, so a published value and a run's own are
+    // writes through the same column, so a published value and a run's own are
     // the same value.
-    case 'nameLocal':
+    //
     // Still reachable for cards filed before tags stopped being held (#570):
     // a changeset records what its run did, and publishing writes what it
     // proposed. No run files a tags row any more.
@@ -261,17 +286,25 @@ function claimedMetadataKeys(claimed: string[]): string[] {
 }
 
 /**
- * The object the selected metadata entries come to, before the credit rule and
- * before the claims.
+ * The object a column's selected entries come to, before any rule on top of it.
  *
- * Its own function because it is the awkward half and `nextMetadata` has two
- * decisions on top of it: each per-key entry decides its own key, and a
- * pre-ADR-0039 card's catch-all is replaced wholesale rather than merged.
+ * One function for both merged columns, because the shape is one shape: a run
+ * records a fact per key — a metadata key since ADR-0039, a language since #728
+ * — and an entry filed before that named the whole object at once. Its own
+ * function because it is the awkward half and `nextMetadata` has two decisions
+ * on top of it: the credit rule and the per-key claims.
+ *
+ * `whole` is the entry that names the column itself, `prefix` what a per-key
+ * entry's name starts with. The whole-object branch keeps the stored keys that
+ * entry's `old` does not mention and replaces everything it does — which is the
+ * catch-all rule `nextMetadata` explains, and which is also exactly right for a
+ * pre-#728 `nameLocal` entry, whose `old` is the stored map entire and which
+ * therefore replaces the column wholesale.
  */
-function metadataFromEntries(
-  left: Record<string, unknown>, entries: ProposedField[],
+function mergedFromEntries(
+  left: Record<string, unknown>, entries: ProposedField[], whole: string, prefix: string,
 ): Record<string, unknown> {
-  const catchAll = entries.find(field => field.field === 'metadata');
+  const catchAll = entries.find(field => field.field === whole);
   const next = catchAll
     ? {
       ...Object.fromEntries(Object.entries(left)
@@ -281,8 +314,8 @@ function metadataFromEntries(
     : { ...left };
 
   for (const entry of entries) {
-    if (entry.field === 'metadata') continue;
-    const key = entry.field.slice(METADATA_CLAIM_PREFIX.length);
+    if (entry.field === whole) continue;
+    const key = entry.field.slice(prefix.length);
     // Absent and null are one case here, not two: `computeChangeSet` treats
     // both as absent, so a diff reporting either means the key is going.
     if (entry.new === undefined || entry.new === null) delete next[key];
@@ -293,7 +326,9 @@ function metadataFromEntries(
     // column would be written without the fact a curator had just published —
     // success reported, nothing stored. Only reachable since every source key
     // became an entry of its own (ADR-0039); before that this loop saw the two
-    // major keys and whatever a curator had claimed.
+    // major keys and whatever a curator had claimed. A language code cannot be
+    // `__proto__`, but the defence belongs to the loop rather than to one of
+    // its two callers.
     else Object.defineProperty(next, key, {
       value: entry.new, enumerable: true, writable: true, configurable: true,
     });
@@ -304,7 +339,8 @@ function metadataFromEntries(
 /**
  * The metadata to store, or null when the proposal says nothing about it.
  *
- * The one field that cannot be assigned from what the changeset carries.
+ * One of the two columns that cannot be assigned from what the changeset
+ * carries (`nextNameLocal` below is the other, and the simpler).
  * `computeChangeSet` reports metadata one key at a time (ADR-0039), so for
  * anything a run files from here this starts at what is stored and lets each
  * `metadata.<key>` entry decide its own key.
@@ -348,7 +384,7 @@ function nextMetadata(
   if (entries.length === 0 && !creditMoves) return null;
 
   const left = (stored ?? {}) as Record<string, unknown>;
-  const next = metadataFromEntries(left, entries);
+  const next = mergedFromEntries(left, entries, 'metadata', METADATA_CLAIM_PREFIX);
 
   // The credit, where and only where leaving it to the entries would make it
   // describe a picture the row does not show (#722). The picture and the credit
@@ -376,6 +412,39 @@ function nextMetadata(
     if (Object.hasOwn(left, key)) next[key] = left[key];
   }
   return next;
+}
+
+/**
+ * The local names to store, or null when the proposal says nothing about them.
+ *
+ * The second column no single entry describes (#728). A run records each
+ * language that differs on its own — `nameLocal.ko`, `nameLocal.en` — so
+ * publishing one of six starts at the stored map and lets that one entry decide
+ * its own language, leaving the five a curator has not answered exactly as
+ * readers see them. Merging rather than assigning is what makes a per-row answer
+ * mean anything here at all: assigned, publishing the Korean name would write
+ * the run's whole map and take the other five with it.
+ *
+ * A language the source dropped is recorded only as an entry with no value, and
+ * `mergedFromEntries` deletes on that — so publishing every entry of a run
+ * reproduces the map the run itself would have written, which is what stops a
+ * removal being proposed for ever and applied never.
+ *
+ * Shorter than `nextMetadata` by two rules, and neither is missing by oversight.
+ * There is no credit to pin: a language map holds no fact that belongs to
+ * another column. And there is no per-key claim to re-apply, because none can
+ * exist — `curated_fields ? 'name_local'` is the upsert's whole guard and no
+ * editor writes the column, so a claim here covers every language and
+ * `claimKeyFor` has already kept all of them out of `writable`.
+ */
+function nextNameLocal(
+  stored: unknown, published: ProposedField[],
+): Record<string, unknown> | null {
+  const entries = published.filter(field => isNameLocalField(field.field));
+  if (entries.length === 0) return null;
+  return mergedFromEntries(
+    (stored ?? {}) as Record<string, unknown>, entries, 'nameLocal', NAME_LOCAL_CLAIM_PREFIX,
+  );
 }
 
 /** What writing the held proposal comes to: the SQL, and what it decided. */
@@ -462,7 +531,7 @@ export async function heldFieldWrites(
   client: PoolClient,
   experienceId: number,
   pointer: number | null,
-  before: { metadata?: unknown; image_url?: unknown },
+  before: { metadata?: unknown; image_url?: unknown; name_local?: unknown },
   claimed: string[],
   selection: HeldSelection | null = null,
 ): Promise<HeldFieldWrites> {
@@ -538,7 +607,7 @@ export async function heldFieldWrites(
   const writable = selected.filter(field => !writes.claimedFieldsSkipped.includes(field.field));
 
   for (const field of writable) {
-    if (isMetadataField(field.field)) continue;
+    if (isMergedColumn(field.field)) continue;
     const assignment = assignmentFor(field.field, field.new, bind);
     if (assignment === null) writes.unwritable.push(field.field);
     else {
@@ -567,9 +636,17 @@ export async function heldFieldWrites(
     writes.assignments.push(`metadata = ${bind(JSON.stringify(metadata))}::jsonb`);
     writes.applied.push(...writable.filter(field => isMetadataField(field.field)).map(f => f.field));
   }
+  // The other column an entry cannot assign (#728). Unlike metadata's, this one
+  // is decided by its entries alone, so an empty selection leaves it alone —
+  // there is no pin that can force a write with nothing selected.
+  const nameLocal = nextNameLocal(before.name_local, writable);
+  if (nameLocal !== null) {
+    writes.assignments.push(`name_local = ${bind(JSON.stringify(nameLocal))}::jsonb`);
+    writes.applied.push(...writable.filter(field => isNameLocalField(field.field)).map(f => f.field));
+  }
   // The answer record, keyed on what the run proposed rather than on what landed
-  // in the column: the readers compare against the proposal, and `metadata` is
-  // written as a whole object no single entry describes.
+  // in the column: the readers compare against the proposal, and the two merged
+  // columns are each written as a whole object no single entry describes.
   writes.written = writes.applied.map(name => ({
     row: objectRow(name),
     value: writable.find(field => field.field === name)?.new,

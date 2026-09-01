@@ -351,7 +351,7 @@ async function planHeldAnswer(
   client: PoolClient,
   experienceId: number,
   pointer: number | null,
-  before: { metadata?: unknown; image_url?: unknown },
+  before: { metadata?: unknown; image_url?: unknown; name_local?: unknown },
   claimed: string[],
   selection: HeldSelection | null,
   expectedSyncLogId: number | undefined,
@@ -487,7 +487,12 @@ export async function publishUnderLock(
       // `image_url` joins the read for the credit rule (#722): the credit a run
       // fetched belongs to the picture that run offers, so deciding whether it
       // may be written means comparing that picture with the stored one.
-      `SELECT curation_state, curated_fields, metadata, image_url, admission,
+      //
+      // `name_local` for the reason `metadata` is here: a run records one
+      // language at a time (#728), so publishing one of them merges it onto the
+      // map as it stands under this lock rather than assigning the run's whole
+      // map over the five languages nobody answered.
+      `SELECT curation_state, curated_fields, metadata, name_local, image_url, admission,
               pending_change_sync_log_id
          FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
       [experienceId],
