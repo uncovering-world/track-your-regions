@@ -378,6 +378,14 @@ export async function listCategories(_req: Request, res: Response): Promise<void
 /**
  * Search experiences with full-text search
  * GET /api/experiences/search
+ *
+ * Answers about the whole catalogue, and says of each answer where it can be
+ * opened: `regions` carries the regions that name the object to a reader, in
+ * every world view a visitor may see, most specific first. The visitor's search
+ * (#592) opens a result at its region in the world view the reader is already
+ * in and offers the rest without a link, rather than hiding them — a catalogue
+ * that holds the Great Barrier Reef must not answer "no results" for it because
+ * no region has claimed it yet (#469, #470).
  */
 export async function searchExperiences(req: Request, res: Response): Promise<void> {
   const query = req.query.q ? String(req.query.q) : '';
@@ -389,31 +397,110 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
   }
 
   const result = await pool.query(`
+    -- The match and its LIMIT first, the region context after it. A scalar
+    -- subquery in the select list of the matching query would be carried
+    -- through the sort, so the placement lookup would run for every row whose
+    -- name matched rather than for the twenty that are returned.
+    WITH matches AS (
+      SELECT
+        e.id,
+        e.name,
+        e.short_description,
+        e.category,
+        e.category_id,
+        e.country_names,
+        e.image_url,
+        -- Beside the picture here too. The curator's "search and assign" dialog
+        -- draws each result's photograph at 40 px, and a small picture is still
+        -- the picture being shown. The visitor's search draws none, so the
+        -- field travels for the one caller that does.
+        e.metadata->'imageCredit' as image_credit,
+        ${lifecycleSelectSql('e')},
+        ${readerPositionSql('e')},
+        similarity(e.name, $1) as relevance,
+        -- Named rather than repeated: the order is stated twice — once here,
+        -- once outside, since a join does not carry a CTE's order — and two
+        -- spellings of one rule are two things to keep in step.
+        (e.name ILIKE $2) as name_contains
+      FROM experiences e
+      -- The two name matches are alternatives to each other, not to the
+      -- lifecycle filter: without the brackets, OR would re-admit every lost
+      -- object whose name happens to match by trigram.
+      WHERE (e.name ILIKE $2 OR e.name % $1)
+        AND ${hideLostSql()}
+        AND ${hideRefusedSql()}
+        AND ${hidePendingSql()}
+      -- A name that contains the query outranks one the trigram index merely
+      -- thought similar; name_contains is never null, so DESC puts those
+      -- first exactly as the CASE it replaces did.
+      ORDER BY name_contains DESC, relevance DESC
+      LIMIT $3
+    )
     SELECT
-      e.id,
-      e.name,
-      e.short_description,
-      e.category,
-      e.country_names,
-      e.image_url,
-      -- Beside the picture here too. The one screen this read feeds is the
-      -- curator's "search and assign" dialog, which draws each result's
-      -- photograph at 40 px — a small picture is still the picture being shown.
-      e.metadata->'imageCredit' as image_credit,
-      ${readerPositionSql('e')},
-      similarity(e.name, $1) as relevance
-    FROM experiences e
-    -- The two name matches are alternatives to each other, not to the
-    -- lifecycle filter: without the brackets, OR would re-admit every lost
-    -- object whose name happens to match by trigram.
-    WHERE (e.name ILIKE $2 OR e.name % $1)
-      AND ${hideLostSql()}
-      AND ${hideRefusedSql()}
-      AND ${hidePendingSql()}
-    ORDER BY
-      CASE WHEN e.name ILIKE $2 THEN 0 ELSE 1 END,
-      similarity(e.name, $1) DESC
-    LIMIT $3
+      m.id,
+      m.name,
+      m.short_description,
+      m.category,
+      m.category_id,
+      m.country_names,
+      m.image_url,
+      m.image_credit,
+      m.source_membership,
+      m.existence,
+      m.missing_since,
+      m.longitude,
+      m.latitude,
+      m.relevance,
+      -- What the row is filed under, which the curator's dialog has been
+      -- rendering all along against a field this read never sent.
+      c.name as category_name,
+      -- Where this object can be opened. Published world views only: an
+      -- unpublished one is not a place to send a reader, and this route carries
+      -- no session, so "visible" can mean nothing else here.
+      COALESCE((
+        SELECT json_agg(json_build_object(
+                 'id', r.id,
+                 'name', r.name,
+                 'world_view_id', r.world_view_id,
+                 'world_view_name', wv.name)
+               -- Most specific first: an object hangs on the whole chain that
+               -- holds it, and the Rijksmuseum is in Europe as truly as it is
+               -- in Noord-Holland. The caller opens exactly one of these, so
+               -- the smallest is the one that frames the object rather than the
+               -- continent. Area rather than a walk up parent_region_id: the
+               -- question is which is the smaller place, and a region whose
+               -- geometry has not been computed sorts last rather than first.
+               ORDER BY r.geom_area_km2 ASC NULLS LAST, r.id)
+        FROM experience_regions er
+        JOIN regions r ON r.id = er.region_id
+        JOIN world_views wv ON wv.id = r.world_view_id
+        WHERE er.experience_id = m.id
+          AND wv.is_active = true
+          AND wv.is_public = true
+          -- Named to a reader only where a point they may see put the object
+          -- there (#521), for the reason the by-id read gives: this list is a
+          -- claim the caller acts on — it opens a card at one of these regions
+          -- — so it has to name the regions whose own lists will hold it.
+          AND ${readerRegionMembershipSql('er.experience_id')}
+          -- And not a pair a curator turned down. A rejection leaves the
+          -- membership row standing (curationController.ts upserts into
+          -- experience_rejections and deletes nothing), while every
+          -- region-facing read drops the pair -- the region list and its count
+          -- through experienceRegionQuery.ts's rejectionFilter, region-counts
+          -- through the join below. Without this the row would be a link to a
+          -- region whose own list answers without the card, and the address
+          -- would quietly drop the /e/ segment on arrival: the dead click
+          -- ADR-0042 says a row never gives. The by-id read carries the same
+          -- gap and it is informational there; here the array is the click.
+          AND NOT EXISTS (
+            SELECT 1 FROM experience_rejections rej
+            WHERE rej.experience_id = er.experience_id
+              AND rej.region_id = er.region_id)
+      ), '[]'::json) as regions
+    FROM matches m
+    LEFT JOIN experience_categories c ON c.id = m.category_id
+    -- A join does not carry the CTE's order.
+    ORDER BY m.name_contains DESC, m.relevance DESC
   `, [query, `%${query}%`, limit]);
 
   res.json({
