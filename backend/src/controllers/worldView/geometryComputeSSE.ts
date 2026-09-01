@@ -264,7 +264,8 @@ async function cleanupStep(
 /**
  * The shared snap step, with the progress line this writer's stream carries.
  * The statement itself lives in snapChildRegionsForGroup, held by all three
- * writers.
+ * writers, so the rule that it hands the members back with the snapped
+ * children is decided once (#736).
  */
 async function snapChildRegionsSSE(
   client: PoolClient,
@@ -273,7 +274,9 @@ async function snapChildRegionsSSE(
   collected: CollectedUnionInputs,
   logStep: LogStep,
 ): Promise<unknown> {
-  const snap = await snapChildRegionsForGroup(client, regionId, collected.collectedGeom);
+  const snap = await snapChildRegionsForGroup(
+    client, regionId, collected.collectedGeom, collected.memberGeom,
+  );
 
   logStep(`Step 3/6: Complete`, {
     originalPoints: inputPoints,

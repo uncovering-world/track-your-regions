@@ -146,7 +146,7 @@ async function computeGroupGeom(client: PoolClient, gId: number): Promise<Pipeli
 
     if (childCount > 0) {
       logStep(`Step 3/6: Snapping ${childCount} child regions to their neighbors...`);
-      const snap = await snapChildRegionsForGroup(client, gId, collectedGeom);
+      const snap = await snapChildRegionsForGroup(client, gId, collectedGeom, collected.memberGeom);
       collectedGeom = snap.collectedGeom;
       logStep(`Step 3/6: Snapped ${totalPoints} -> ${snap.snappedPoints} pts (+${snap.totalAdded} added)`);
     } else {
@@ -579,7 +579,7 @@ export async function computeRegionGeometryCore(
 
     if (!skipSnapping && hasChildRegions) {
       log(`Step 2: Snapping ${childCount} child regions to neighbors...`);
-      const snap = await snapChildRegionsForGroup(client, regionId, collectedGeom);
+      const snap = await snapChildRegionsForGroup(client, regionId, collectedGeom, collected.memberGeom);
       collectedGeom = snap.collectedGeom;
       log('Step 2: Snapping complete');
     } else {
