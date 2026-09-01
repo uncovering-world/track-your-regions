@@ -13,6 +13,28 @@
  */
 import rateLimit from 'express-rate-limit';
 
+/**
+ * A read tier's ceiling, raised only where one IP is not one visitor.
+ *
+ * Every request in the isolated E2E stack comes from a single browser
+ * container, so the per-IP assumption these limits rest on does not hold there:
+ * a dozen specs' page loads share one budget. The suite crossed 60 reads a
+ * minute the day a twelfth spec arrived (#592), and what that looked like was
+ * not a rate-limit error — `GET /api/world-views` answered 429, the client read
+ * the rejection as an empty list, and the app drew the "fresh installation"
+ * screen with no world view to adopt. Nothing in the failure named the limit.
+ *
+ * The default is the production value, so an unset or unreadable environment is
+ * the strict one, and `docker-compose.test.yml` is the only place that raises
+ * it. Raised rather than switched off: a runaway loop should still be stopped
+ * by something.
+ */
+export function readCeiling(variable: string, production: number): number {
+  const raw = process.env[variable];
+  const parsed = raw === undefined ? NaN : Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : production;
+}
+
 // =============================================================================
 // Auth Rate Limiters (strict)
 // =============================================================================
@@ -71,7 +93,7 @@ export const resendLimiter = rateLimit({
 
 export const searchLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 30, // 30 searches per minute per IP
+  max: readCeiling('RATE_LIMIT_SEARCH_MAX', 30), // 30 searches per minute per IP
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many search requests, please try again later' },
@@ -87,7 +109,7 @@ export const searchLimiter = rateLimit({
  */
 export const publicReadLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 60, // 60 requests per minute per IP
+  max: readCeiling('RATE_LIMIT_PUBLIC_READ_MAX', 60), // 60 requests per minute per IP
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' },

@@ -1,4 +1,18 @@
 services:
+  # One IP is not one visitor here: every request in this stack comes from a
+  # single browser container, so the whole smoke suite shares one per-IP read
+  # budget. It crossed the production ceiling of 60 reads a minute the day a
+  # twelfth spec arrived (#592), and the failure named nothing — the world-view
+  # listing answered 429, the client read that as an empty list, and the app
+  # drew its "fresh installation" screen with no world view to adopt. Raised
+  # rather than switched off, so a runaway loop is still stopped by something.
+  # The backend defaults to the production values when these are unset; nothing
+  # outside this file sets them.
+  backend:
+    environment:
+      RATE_LIMIT_PUBLIC_READ_MAX: "10000"
+      RATE_LIMIT_SEARCH_MAX: "10000"
+
   e2e:
     build:
       context: ./frontend
