@@ -74,7 +74,7 @@
 - **I want**: To see the experiences completed by another user  
 - **So that**: I can get ideas for my own journey  
 
-### Search Experiences  
+### Search Experiences ✅ (by name; tags await a tags system)
 - **As an**: Existing User  
 - **I want**: To search for experiences by name or tags  
 - **So that**: I can find specific activities more easily
