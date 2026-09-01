@@ -1,27 +1,28 @@
 /**
  * Who took the picture, and under what licence we are allowed to show it.
  *
- * The catalogue displays photographs it does not host: UNESCO's, served from
- * `whc.unesco.org`, and Wikimedia Commons files both on the objects and on the
- * works inside them (#582). Every one of them was taken by somebody, and a
- * share of them carry CC BY or CC BY-SA, which of a catalogue that merely
- * *shows* a picture ask the one thing — that the somebody is named wherever it
- * appears; ShareAlike binds adaptations, which showing a photograph is not.
- * Until this file existed the catalogue named nobody. That is not a rendering gap; it is the one obligation those licences
- * impose, and UNESCO's syndication terms ask for the same in their own words.
+ * The catalogue displays photographs it does not host: Wikimedia Commons files,
+ * on the objects and on the works inside them (#582). Every one of them was
+ * taken by somebody, and a share of them carry CC BY or CC BY-SA, which of a
+ * catalogue that merely *shows* a picture ask the one thing — that the somebody
+ * is named wherever it appears; ShareAlike binds adaptations, which showing a
+ * photograph is not. Until this file existed the catalogue named nobody. That
+ * is not a rendering gap; it is the one obligation those licences impose.
+ *
+ * Commons is the only source of a credit, because Commons is the only source of
+ * a picture (ADR-0043). The World Heritage portal's photographs were shown too,
+ * and its export named their photographer in `main_image_author` and
+ * `main_image_copyright`; its terms do not let this product show them, so the
+ * run stopped reading the picture and, with it, the two fields — a
+ * photographer's name belongs under their photograph.
  *
  * No counts here on purpose: how many pictures the catalogue holds is a
  * property of the last sync, and a comment that states it is wrong by the next
  * one. Measure it when the question comes up.
  *
- * Both sources hand the credit over for free once asked:
- *
- *   - UNESCO's export carries `main_image_author` and `main_image_copyright`
- *     beside the image URL, on most of its records. Two more field names in the
- *     `select` and nothing else changes.
- *   - Commons answers `extmetadata` for up to 50 files in one request, which is
- *     their documented ceiling — with `Artist`, `LicenseShortName` and
- *     `LicenseUrl` for each.
+ * Commons hands the credit over for free once asked: `extmetadata` for up to
+ * 50 files in one request, which is their documented ceiling — with `Artist`,
+ * `LicenseShortName` and `LicenseUrl` for each.
  *
  * `Artist` arrives as HTML, because it is a wiki field. It is reduced to text
  * here rather than in the browser: it is stored, so it would otherwise be

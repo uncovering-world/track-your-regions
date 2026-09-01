@@ -18,11 +18,20 @@ import { readFixtureRecords } from './fixtureSource.js';
 import { fetchUnescoRecords } from './unescoApi.js';
 import {
   creditToWrite,
+  fetchCommonsCredits,
   readStoredCredits,
   type ImageCredit,
   type StoredCredit,
 } from './imageCredit.js';
-import { sparqlQuery, SPARQL_WAIT_BUDGET_MS, waitMessage } from './wikidataUtils.js';
+import {
+  delay, waitMessage, SPARQL_DELAY_MS, SPARQL_WAIT_BUDGET_MS, WIKIDATA_USER_AGENT,
+} from './wikidataUtils.js';
+import {
+  factsForSite, fetchWorldHeritageFacts, indexWorldHeritageFacts,
+  type SiteFacts, type WorldHeritageIndex,
+} from './unescoWikidata.js';
+import { pool } from '../../db/index.js';
+import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { WaitBudget } from './sourceRetry.js';
 import { longitudeDelta } from './longitude.js';
 import { parseDangerListing } from './dangerListing.js';
@@ -91,53 +100,69 @@ function parseComponentsList(componentsList: string | undefined): ParsedLocation
 }
 
 /**
- * Fetch Wikipedia article URLs for all UNESCO sites from Wikidata.
- * Uses property P757 (UNESCO World Heritage Site ID) to match sites,
- * then schema:about + schema:isPartOf to get English Wikipedia URLs.
- * Returns a Map from UNESCO id_no (string) -> Wikipedia article URL.
+ * Who took the pictures this run is about to put on cards, for the pictures
+ * that are new to it.
  *
- * Sent through the shared SPARQL client rather than a hand-rolled POST, which is
- * what this used to be: it asked for a 60-second server deadline, the value
- * their engine clamps and answers as a gateway error, and it had no retry at
- * all, so one bad minute at Wikidata silently cost every site its article link.
- * Still fails open — a missing link is a missing link, not a failed import — but
- * now only after the same waiting every other query gets.
+ * Every picture here is a Commons file, so the credit comes from Commons — and
+ * asking about all 1220 of them on every run would be twenty-five batches of
+ * somebody else's server answering a question this database already holds. The
+ * files that have to be asked about are the ones new to a row: a first run
+ * after ADR-0043, a site whose Wikidata picture changed, one that had none.
+ * `creditToWrite` reuses a stored credit while the row still shows the same
+ * file, which is what makes the narrowing safe.
+ *
+ * A picture a curator owns is not asked about at all — the run may not describe
+ * it, and `creditToWrite` would discard the answer.
  */
-async function fetchWikipediaUrls(
+async function creditsForNewPictures(
+  records: UnescoApiRecord[],
+  facts: WorldHeritageIndex,
   progress: SyncProgress,
   budget: WaitBudget,
-): Promise<Map<string, string>> {
-  const query = `
-    SELECT ?unescoId ?article WHERE {
-      ?item wdt:P757 ?unescoId .
-      ?article schema:about ?item ;
-               schema:isPartOf <https://en.wikipedia.org/> .
-    }
-  `;
-
-  try {
-    const bindings = await sparqlQuery(query, '[UNESCO Sync]', {
-      budget,
-      isCancelled: () => progress.cancel,
-      onWait: (wait) => {
-        progress.statusMessage = waitMessage('Wikidata', wait, budget);
-      },
-    });
-
-    const map = new Map<string, string>();
-    for (const binding of bindings) {
-      if (binding.unescoId?.value && binding.article?.value) {
-        map.set(binding.unescoId.value, binding.article.value);
-      }
-    }
-
-    console.log(`[UNESCO Sync] Fetched ${map.size} Wikipedia URLs from Wikidata`);
-    return map;
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.warn(`[UNESCO Sync] Wikipedia URL fetch error: ${msg}`);
-    return new Map(); // Fail open: sync proceeds without Wikipedia links
+): Promise<Map<string, ImageCredit>> {
+  const wanted = new Set<string>();
+  for (const record of records) {
+    const picture = factsForSite(facts, String(record.id_no)).picture;
+    if (!picture) continue;
+    const stored = storedCredits.get(String(record.id_no));
+    if (stored?.imageClaimed) continue;
+    if (stored?.credit && stored.imageUrl === picture.url) continue;
+    wanted.add(picture.url);
   }
+  if (wanted.size === 0) return new Map();
+
+  progress.statusMessage = `Asking Commons who took ${wanted.size} pictures...`;
+  return fetchCommonsCredits([...wanted], {
+    userAgent: WIKIDATA_USER_AGENT,
+    budget,
+    isCancelled: () => progress.cancel,
+    onWait: (wait) => { progress.statusMessage = waitMessage('Commons', wait, budget); },
+    pause: () => delay(SPARQL_DELAY_MS),
+  });
+}
+
+/**
+ * What the rows already hold, in the shape Wikidata's answer takes, for a run
+ * Wikidata did not answer.
+ *
+ * Read from the rows rather than remembered from the last run, and keyed the way
+ * the index is keyed, so `transformRecord` needs no second path: a site's
+ * stored picture and article are offered back as its facts, and the upsert
+ * reports nothing changed. A picture stored in a form a run may not write is
+ * not offered back — the writer would refuse it anyway, and the refusal is the
+ * right answer for it (ADR-0043).
+ */
+export async function indexOfWhatIsStored(): Promise<WorldHeritageIndex> {
+  const stored = await pool.query(
+    `SELECT external_id, image_url, metadata->>'wikipediaUrl' AS article
+       FROM experiences WHERE category_id = $1`,
+    [UNESCO_CATEGORY_ID],
+  );
+  return indexWorldHeritageFacts(stored.rows.map((row: { external_id: string; image_url: string | null; article: string | null }) => ({
+    whc: { value: row.external_id },
+    ...(row.article ? { article: { value: row.article } } : {}),
+    ...(row.image_url && isCommonsPictureUrl(row.image_url) ? { image: { value: row.image_url } } : {}),
+  })));
 }
 
 const NAME_LOCALE_FIELDS: Array<[keyof UnescoApiRecord, string]> = [
@@ -236,22 +261,6 @@ export function isInDanger(record: UnescoApiRecord): boolean {
   return isSet(record.danger) || parseDangerListing(record.danger_list)?.listed === true;
 }
 
-/** UNESCO returns either a plain URL, a JSON-stringified object, or an object literal. */
-function extractRemoteImageUrl(value: unknown): string | null {
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed.url || null;
-    } catch {
-      return value;
-    }
-  }
-  if (typeof value === 'object' && value !== null) {
-    return (value as { url?: string }).url || null;
-  }
-  return null;
-}
-
 /**
  * The site's own point, falling back to its most central component.
  *
@@ -309,33 +318,23 @@ function meanLongitude(locations: ParsedLocation[]): number {
 }
 
 /**
- * Whose photograph this is, from the two fields the export carries beside it.
+ * Transform UNESCO API record to our internal format.
  *
- * `author` is the photographer, `copyright` the holder, and they are often the
- * same string — "Museum Mors" is both for the Limfjord fossils. Kept apart
- * anyway: where they differ, both are part of the credit, and collapsing them
- * here would decide that for a reader we cannot see.
+ * The record's own `main_image_url` is deliberately not read, and neither are
+ * `main_image_author` and `main_image_copyright` beside it. Those name a
+ * photograph on `whc.unesco.org`, and the World Heritage Centre's terms say its
+ * photographs "may not be copied or retransmitted by any means without explicit
+ * authorisation" — they are third parties' property, licensed to the Centre —
+ * and that a site may "only link to, not replicate" its content. So the picture
+ * comes from Wikimedia Commons through `unescoWikidata.ts`, whose licences are
+ * written to be reused with the author named, and the link the terms invite is
+ * `metadata.website`, which every one of these rows carries (ADR-0043, #557).
  */
-export function imageCreditOf(record: UnescoApiRecord, imageUrl: string | null): ImageCredit | null {
-  // No picture, no credit. The portal fills the author on records whose image
-  // is missing, and storing a photographer's name against no photograph leaves
-  // it waiting to be printed under whichever one somebody adds later.
-  if (!imageUrl) return null;
-  const author = record.main_image_author?.trim() || null;
-  const license = record.main_image_copyright?.trim() || null;
-  if (!author && !license) return null;
-  return {
-    author,
-    license: license ? `© ${license}` : null,
-    licenseUrl: null,
-    detailsUrl: `https://whc.unesco.org/en/list/${record.id_no}`,
-  };
-}
-
-/**
- * Transform UNESCO API record to our internal format
- */
-export function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): ProcessedExperience | null {
+export function transformRecord(
+  record: UnescoApiRecord,
+  facts: SiteFacts = { article: null, picture: null },
+  credits: Map<string, ImageCredit> = new Map(),
+): ProcessedExperience | null {
   const locations = parseComponentsList(record.components_list);
   const point = resolveMainPoint(record, locations);
   if (!point) {
@@ -343,7 +342,7 @@ export function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string):
     return null;
   }
 
-  const imageUrl = extractRemoteImageUrl(record.main_image_url);
+  const imageUrl = facts.picture?.url ?? null;
 
   const metadata: Record<string, unknown> = {
     dateInscribed: record.date_inscribed,
@@ -354,19 +353,14 @@ export function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string):
     areaHectares: record.area_hectares,
     transboundary: isSet(record.transboundary),
     website: `https://whc.unesco.org/en/list/${record.id_no}`,
-    wikipediaUrl: wikipediaUrl || null,
-    // The picture is served from whc.unesco.org, so the line under it has to
-    // say whose it is. The site's own page for the property is where the terms
-    // are, which is the same URL as `website` — named separately because a
-    // credit that pointed at our own page would be a credit to nobody.
-    //
+    wikipediaUrl: facts.article,
     // Through `creditToWrite` like the other two collectors, and for the reason
     // this source makes sharpest: it carries more of the catalogue's photographs
     // than any other, and a curator replacing one of them with a picture of their
-    // own would otherwise have UNESCO's photographer printed underneath it at
+    // own would otherwise have the Commons photographer printed underneath it at
     // the next run — one person's name under another person's photograph.
     ...creditToWrite(
-      imageCreditOf(record, imageUrl) ?? undefined,
+      imageUrl ? credits.get(imageUrl) : undefined,
       storedCredits.get(String(record.id_no)),
       imageUrl,
     ),
@@ -486,7 +480,8 @@ export function syncUnescoSites(
   options: { dryRun?: boolean } = {},
 ): Promise<void> {
   // Shared state between fetchItems and processItem via closure
-  let wikipediaUrls: Map<string, string>;
+  let facts: WorldHeritageIndex;
+  let credits: Map<string, ImageCredit>;
 
   return orchestrateSync<UnescoApiRecord>({
     categoryId: UNESCO_CATEGORY_ID,
@@ -498,7 +493,13 @@ export function syncUnescoSites(
       const fixture = await readFixtureRecords<UnescoApiRecord>('unesco.json');
       if (fixture !== null) {
         console.log(`[UNESCO Sync] Using fixture source: ${fixture.length} records`);
-        wikipediaUrls = new Map();
+        // Wikidata is not consulted for a fixture either, and the answer is the
+        // same as for a day it did not answer: keep what the rows hold. An
+        // empty index would offer every record no picture and no article, and
+        // a fixture run against a dev database — the documented way to exercise
+        // delisting against real rows — would propose stripping all of them.
+        facts = await indexOfWhatIsStored();
+        credits = new Map();
         // Read for the fixture too: the delisting tests run against real rows,
         // and a stale map from a previous run would decide who owns their
         // pictures.
@@ -513,14 +514,25 @@ export function syncUnescoSites(
       storedCredits = await readStoredCredits(UNESCO_CATEGORY_ID);
       const records = await fetchUnescoRecords(progress, budget);
 
-      // Fetch Wikipedia URLs from Wikidata (fails open -- sync continues without them)
-      progress.statusMessage = 'Fetching Wikipedia URLs from Wikidata...';
-      wikipediaUrls = await fetchWikipediaUrls(progress, budget);
+      // The article and the picture, from the one join that answers both. A
+      // site Wikidata states nothing for is a site with neither, not a failed
+      // import — but Wikidata *not answering* is a different thing from that,
+      // and the run then keeps what every row already holds rather than
+      // proposing to take a thousand pictures and links away because a query
+      // service had a bad afternoon.
+      progress.statusMessage = 'Asking Wikidata about the properties...';
+      const answered = await fetchWorldHeritageFacts(progress, budget);
+      facts = answered ?? await indexOfWhatIsStored();
+      if (!answered) console.warn('[UNESCO Sync] Keeping the stored pictures and articles for this run');
+
+      credits = answered
+        ? await creditsForNewPictures(records, facts, progress, budget)
+        : new Map();
 
       return { items: records, fetchedCount: records.length };
     },
     processItem: async (record, _progress, context) => {
-      const processed = transformRecord(record, wikipediaUrls.get(String(record.id_no)));
+      const processed = transformRecord(record, factsForSite(facts, String(record.id_no)), credits);
       if (!processed) {
         throw new Error('No valid coordinates');
       }
