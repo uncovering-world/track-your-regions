@@ -323,6 +323,8 @@ export const experienceTreasures = pgTable('experience_treasures', {
   experienceId: integer('experience_id').notNull().references(() => experiences.id, { onDelete: 'cascade' }),
   treasureId: integer('treasure_id').notNull().references(() => treasures.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  /** When a run first stopped placing the work here. A mark, not a verdict; NULL = still offered (ADR-0044). */
+  missingSince: timestamp('missing_since', { withTimezone: true }),
 }, (table) => ({
   experienceIdx: index('idx_experience_treasures_experience').on(table.experienceId),
   treasureIdx: index('idx_experience_treasures_treasure').on(table.treasureId),

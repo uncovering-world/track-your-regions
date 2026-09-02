@@ -631,3 +631,87 @@ describe('a point has verdict columns in both schema homes', () => {
     expect(locationVerdictMigrationRaw).toMatch(/^\\set ON_ERROR_STOP on$/m);
   });
 });
+
+/**
+ * A work's link is marked, not deleted, and a run says when it withdrew nothing
+ * (ADR-0044, #588). Two columns in one migration because they are one decision:
+ * the mark is only safe behind the coverage floor, and the floor's refusal has to
+ * land somewhere a person reads — a run that marked nothing because it saw too
+ * little is not a run that found nothing to mark.
+ */
+describe('a withdrawn link and a skipped withdrawal have columns in both schema homes', () => {
+  const withdrawalMigrationRaw = readFileSync(
+    join(repoRoot, 'db', 'migrations', '041-a-work-is-marked-not-deleted.sql'),
+    'utf8',
+  );
+  const withdrawalMigration = collapse(withdrawalMigrationRaw);
+  const markColumn =
+    'ALTER TABLE experience_treasures ADD COLUMN IF NOT EXISTS missing_since TIMESTAMPTZ;';
+  const reasonColumn =
+    'ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS withdrawal_skipped_reason TEXT;';
+  const offeredIndex =
+    'CREATE INDEX IF NOT EXISTS idx_experience_treasures_offered '
+    + 'ON experience_treasures(experience_id) WHERE missing_since IS NULL;';
+
+  it('both files add the mark on a link', () => {
+    expect(schema).toContain(markColumn);
+    expect(withdrawalMigration).toContain(markColumn);
+  });
+
+  it('both files add the reason on a run', () => {
+    expect(schema).toContain(reasonColumn);
+    expect(withdrawalMigration).toContain(reasonColumn);
+  });
+
+  it('both files index the links still offered, the way the points are indexed', () => {
+    // Every reader-facing read of a museum's works now carries the predicate, and
+    // the withdrawal arm asks it per museum on every run. Partial, because no
+    // read asks for the marked rows alone.
+    expect(schema).toContain(offeredIndex);
+    expect(withdrawalMigration).toContain(offeredIndex);
+  });
+
+  /**
+   * The one COMMENT statement for a column, so a phrase is asserted inside it
+   * and not anywhere. Cut out with string searches rather than a built regex,
+   * for the reason the action-list guard above counts by splitting: a
+   * non-literal pattern is what `detect-non-literal-regexp` objects to, and a
+   * guard about the schema has no business being the exception. The literal
+   * ends at the first `';` — an escaped quote inside it is `''`, never `';`.
+   */
+  function commentOn(sql: string, column: string): string {
+    const opener = `COMMENT ON COLUMN ${column} IS '`;
+    const start = sql.indexOf(opener);
+    expect(start, `no COMMENT ON COLUMN ${column}`).toBeGreaterThanOrEqual(0);
+    const end = sql.indexOf("';", start + opener.length);
+    expect(end, `unterminated COMMENT ON COLUMN ${column}`).toBeGreaterThan(start);
+    return sql.slice(start, end + 2);
+  }
+
+  it('both files say the mark is an observation and the reason is a refusal, each on its own column', () => {
+    // The two columns most likely to be misread: a link's missing_since looks
+    // like a verdict and is not, and a NULL reason looks like "nothing left" and
+    // means only that nothing was refused. Each phrase is asserted inside its
+    // own statement: a point's missing_since carries the first phrase too, so a
+    // file-wide match would stay green after the link's comment lost it.
+    for (const sql of [schema, withdrawalMigration]) {
+      expect(commentOn(sql, 'experience_treasures.missing_since'))
+        .toContain('A machine observation, not a verdict');
+      expect(commentOn(sql, 'experience_sync_logs.withdrawal_skipped_reason'))
+        .toContain('worksCoverageSkipReason()');
+    }
+  });
+
+  it('each column is added before it is commented on', () => {
+    for (const sql of [schema, withdrawalMigration]) {
+      expect(sql.indexOf(markColumn))
+        .toBeLessThan(sql.indexOf('COMMENT ON COLUMN experience_treasures.missing_since'));
+      expect(sql.indexOf(reasonColumn))
+        .toBeLessThan(sql.indexOf('COMMENT ON COLUMN experience_sync_logs.withdrawal_skipped_reason'));
+    }
+  });
+
+  it('migration 041 is not defeated by how it is invoked', () => {
+    expect(withdrawalMigrationRaw).toMatch(/^\\set ON_ERROR_STOP on$/m);
+  });
+});
