@@ -108,6 +108,10 @@ describe('editWork', () => {
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(mockedConnect).not.toHaveBeenCalled();
+    // A link the source has stopped placing here proves nothing: the museum's
+    // list no longer shows the work, so the museum's scope no longer reaches
+    // it (ADR-0044). Whoever still holds the work is where the edit belongs.
+    expect(String(mockedQuery.mock.calls[0][0])).toContain('et.missing_since IS NULL');
   });
 
   it('refuses a curator whose scope does not reach the museum', async () => {

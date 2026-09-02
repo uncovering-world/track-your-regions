@@ -92,6 +92,10 @@ describe('the waiting predicates', () => {
     // a work reviewed in one venue and unread in another has to count.
     expect(sql).toContain("et.curation_state = 'pending'");
     expect(sql).toContain("t.curation_state = 'pending'");
+    // And only links the source still places here: a withdrawn link can never
+    // be published (the publish statement carries the same term), so counting
+    // it would promise the curator work the card cannot offer.
+    expect(sql).toContain('et.missing_since IS NULL');
   });
 });
 

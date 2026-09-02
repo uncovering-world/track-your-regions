@@ -7,7 +7,8 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import {
-  hideRefusedSql, hidePendingSql, linkedForReaderSql, offeredLocationSql, publishedContentSql,
+  hideRefusedSql, hidePendingSql, linkedForReaderSql, offeredLinkSql, offeredLocationSql,
+  publishedContentSql,
 } from './experienceLifecycle.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -54,6 +55,11 @@ export async function getExperienceTreasures(req: AuthenticatedRequest, res: Res
       AND ($2::boolean OR ${hidePendingSql()})
       AND ($2::boolean OR ${publishedContentSql('et')})
       AND ($2::boolean OR ${publishedContentSql('t')})
+      -- Not widened with them: a link the source stopped placing here is not
+      -- an unread row a curator is being asked about, it is a work the run
+      -- found elsewhere or nowhere (ADR-0044), and a curator's list showing it
+      -- would put back on screen what the run took off.
+      AND ${offeredLinkSql('et')}
     ORDER BY t.sitelinks_count DESC
   `, [experienceId, maySeeUnread]);
 
@@ -85,9 +91,14 @@ export async function getViewedTreasureIds(req: AuthenticatedRequest, res: Respo
   const params: number[] = [userId];
 
   if (experienceId) {
+    // The record itself is never touched, and stays reachable through the
+    // unscoped form below; it is only not *offered* on a work the source no
+    // longer places here, exactly as a visit is not offered on a withdrawn point
+    // (ADR-0022 decision 4, ADR-0044).
     query += `
       JOIN experience_treasures et ON uvt.treasure_id = et.treasure_id
       WHERE uvt.user_id = $1 AND et.experience_id = $2
+        AND ${offeredLinkSql('et')}
     `;
     params.push(experienceId);
   } else {

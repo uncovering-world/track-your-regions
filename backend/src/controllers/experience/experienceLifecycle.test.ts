@@ -13,6 +13,9 @@ import {
   lifecycleSelectSql,
   includeLost,
   offeredLocationSql,
+  offeredLinkSql,
+  linkedForReaderSql,
+  experienceOfferedToReaderSql,
   hidePendingSql,
   publishedContentSql,
   readerPositionSql,
@@ -138,6 +141,38 @@ describe('publishedContentSql', () => {
     expect(publishedContentSql('el')).toBe("el.curation_state <> 'pending'");
     expect(publishedContentSql('et')).toBe("et.curation_state <> 'pending'");
     expect(publishedContentSql('t')).toBe("t.curation_state <> 'pending'");
+  });
+});
+
+describe('offeredLinkSql', () => {
+  it('hides a link the source stopped placing here, and asks nothing else', () => {
+    // A link has the one axis a point's first term is: the mark a run leaves
+    // (ADR-0044). No existence term, because nobody declares a work gone from
+    // the world through its link — the work is global, the link says "here".
+    expect(offeredLinkSql('et')).toBe('et.missing_since IS NULL');
+  });
+
+  it('defaults to the alias the link queries use', () => {
+    expect(offeredLinkSql()).toBe('et.missing_since IS NULL');
+  });
+});
+
+describe('linkedForReaderSql', () => {
+  it('asks the experience, the link, and whether the source still places the work here', () => {
+    // Three things, and the third is new: a link a run has marked is one no
+    // reader is shown, so a reader may not claim to have looked at the work
+    // *here* through it, exactly as a visit is not offered on a withdrawn point.
+    const sql = linkedForReaderSql();
+    expect(sql).toContain(experienceOfferedToReaderSql());
+    expect(sql).toContain(publishedContentSql('et'));
+    expect(sql).toContain(offeredLinkSql('et'));
+  });
+
+  it('takes the aliases it is given', () => {
+    const sql = linkedForReaderSql('x', 'link');
+    expect(sql).toContain('link.missing_since IS NULL');
+    expect(sql).toContain("link.curation_state <> 'pending'");
+    expect(sql).toContain("x.admission <> 'refused'");
   });
 });
 

@@ -627,7 +627,11 @@ describe('getReviewQueue', () => {
     // the shared work was not would be invisible and unasked-about forever.
     const sql = await capturedQueueSql('contents');
     expect(sql).toContain('JOIN treasures t ON t.id = et.treasure_id');
-    expect(sql).toContain("WHERE et.experience_id = e.id\n          AND (et.curation_state = 'pending' OR t.curation_state = 'pending')");
+    // One WHERE, both axes: the offered term sits between them since ADR-0044,
+    // and the test below pins that adjacency.
+    expect(sql).toMatch(
+      /WHERE et\.experience_id = e\.id[\s\S]{0,400}?AND \(et\.curation_state = 'pending' OR t\.curation_state = 'pending'\)/,
+    );
   });
 
   it('hands both counts over as numbers, not as bigint strings', async () => {
@@ -756,7 +760,31 @@ describe('getReviewQueue', () => {
       expect(sql, `${kind}'s point count stopped using the shared predicate`)
         .toMatch(/off\.missing_since IS NULL AND off\.existence <> 'lost'/);
       expect(sql, `${kind} lost the works count`).toContain('AS counted_works_total');
+      // The works count is what "N famous works" reads, and a link the source
+      // has stopped placing here is not one the museum holds (ADR-0044).
+      const worksCount = sql.slice(
+        sql.lastIndexOf('FROM experience_treasures et', sql.indexOf('AS counted_works_total')),
+        sql.indexOf('AS counted_works_total'),
+      );
+      expect(worksCount, `${kind}'s works count stopped hiding withdrawn links`)
+        .toContain('et.missing_since IS NULL');
     }
+  });
+
+  it('offers only links the source still places here on the contents card, and names only those', async () => {
+    // A withdrawn link can never be published — the publish statement carries the
+    // same term — so a card counting it would ask a question its own button
+    // cannot answer; and the refusal's list of famous works is what the run
+    // counted, which no longer includes a work it has since placed elsewhere.
+    const contents = await capturedQueueSql('contents');
+    expect(contents).toMatch(
+      /et\.missing_since IS NULL\s+AND \(et\.curation_state = 'pending' OR t\.curation_state = 'pending'\)/,
+    );
+    const refused = await capturedQueueSql('refused');
+    // `counted_works_total` precedes the named list, so the end marker is the
+    // list's own closing alias, not the first `counted_works` in the text.
+    const named = refused.slice(refused.indexOf('AS w,'), refused.indexOf('top) AS counted_works'));
+    expect(named).toContain('et.missing_since IS NULL');
   });
 
   it('states the works total once, not twice, on the refusal kinds', async () => {

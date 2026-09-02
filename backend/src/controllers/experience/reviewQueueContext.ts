@@ -9,7 +9,7 @@
  * controller, or copy it.
  */
 
-import { offeredLocationSql } from './experienceLifecycle.js';
+import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
 import { dangerSelectSql } from './experienceDanger.js';
 
 /**
@@ -80,7 +80,8 @@ export function objectContextSelectSql(alias = 'e'): string {
             WHERE off.experience_id = ${alias}.id AND ${offeredLocationSql('off')})::int
             AS offered_locations,
           (SELECT count(*) FROM experience_treasures et
-            WHERE et.experience_id = ${alias}.id)::int AS counted_works_total`;
+            WHERE et.experience_id = ${alias}.id
+              AND ${offeredLinkSql('et')})::int AS counted_works_total`;
 }
 
 /**
@@ -126,6 +127,10 @@ export function countedWorksSelectSql(alias = 'e'): string {
                      FROM experience_treasures et
                      JOIN treasures t ON t.id = et.treasure_id
                     WHERE et.experience_id = ${alias}.id
+                      -- What the run counted is what the museum holds now, and a
+                      -- link the source has since stopped placing here is not
+                      -- (ADR-0044) -- the same term as the total above.
+                      AND ${offeredLinkSql('et')}
                     ORDER BY t.sitelinks_count DESC NULLS LAST
                     LIMIT 12) top) AS counted_works`;
 }

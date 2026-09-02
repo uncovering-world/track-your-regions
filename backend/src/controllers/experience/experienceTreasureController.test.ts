@@ -45,6 +45,20 @@ describe('getExperienceTreasures gate', () => {
     expect(sql).toMatch(/t\.curation_state <> 'pending'/);
   });
 
+  it('hides a link the source stopped placing here, for a curator as for anyone', async () => {
+    // The gate widens for a curator on all three curation predicates; the mark
+    // does not. A withdrawn link is not an unread one waiting on a verdict, it
+    // is a work the source now places elsewhere or nowhere (ADR-0044), and a
+    // curator's list showing it would put back on screen what the run took off.
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    await getExperienceTreasures({ params: { id: '1' } } as never, makeRes() as never);
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql).toContain('et.missing_since IS NULL');
+    expect(sql).not.toMatch(/\$2::boolean OR et\.missing_since IS NULL/);
+  });
+
   it('binds the gate closed for an anonymous caller, without asking the database about scope', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 

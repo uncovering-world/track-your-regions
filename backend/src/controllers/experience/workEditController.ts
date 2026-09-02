@@ -22,6 +22,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
+import { offeredLinkSql } from './experienceLifecycle.js';
 
 /**
  * What a curator may claim on a work — the `treasures.curated_fields`
@@ -70,11 +71,16 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
   // endpoint's: a work is passed once, globally, so a correction made from one
   // museum is what every other museum holding it shows too. Publishing a held
   // field already works this way.
+  //
+  // A link the source has stopped placing here proves nothing (ADR-0044): the
+  // museum's list no longer shows the work, so its scope no longer reaches it,
+  // and whichever museum still holds the work is where the edit belongs.
   const found = await pool.query(
     `SELECT e.category_id
        FROM experience_treasures et
        JOIN experiences e ON e.id = et.experience_id
-      WHERE et.experience_id = $1 AND et.treasure_id = $2`,
+      WHERE et.experience_id = $1 AND et.treasure_id = $2
+        AND ${offeredLinkSql('et')}`,
     [experienceId, treasureId],
   );
   if (found.rows.length === 0) {
