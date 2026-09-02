@@ -89,10 +89,11 @@ export async function placeMovedExperiences(
  * nowhere else in the row.
  *
  * The write is narrow on purpose. `updateSyncLog` sets every stat column, so
- * reusing it here would rewrite ten fields this caller has no correct values
+ * reusing it here would rewrite eleven fields this caller has no correct values
  * for — `total_fetched` differs between the source's item count and the
- * processed one, and `detection_skipped_reason` is `detectMissing`'s answer,
- * which nothing here recomputes.
+ * processed one, `detection_skipped_reason` is `detectMissing`'s answer, and
+ * `withdrawal_skipped_reason` is the collector's floor's (ADR-0044), neither of
+ * which anything here recomputes.
  */
 export async function recordPlacementFailure(
   config: { categoryId: number },

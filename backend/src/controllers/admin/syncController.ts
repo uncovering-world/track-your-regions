@@ -345,6 +345,7 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
       l.total_errors,
       l.is_dry_run,
       l.detection_skipped_reason,
+      l.withdrawal_skipped_reason,
       l.triggered_by,
       u.display_name as triggered_by_name,
       -- A run from before change provenance: its total_updated counted every

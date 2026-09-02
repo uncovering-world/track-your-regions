@@ -596,6 +596,11 @@ export interface SyncLogStats {
   filtered: number;
   errors: number;
   detectionSkippedReason?: string | null;
+  /**
+   * Why the run marked none of the contents its objects stopped holding — the
+   * works floor (ADR-0044). A run carrying one is `partial`, never `success`.
+   */
+  withdrawalSkippedReason?: string | null;
 }
 
 /**
@@ -626,13 +631,15 @@ export async function updateSyncLog(
       total_curated_conflicts = $10,
       detection_skipped_reason = $11,
       total_filtered = $12,
-      total_held = $13
+      total_held = $13,
+      withdrawal_skipped_reason = $14
      WHERE id = $1
      RETURNING is_dry_run`,
     [logId, status, stats.fetched, stats.created, stats.updated, stats.errors,
      errorDetails ? JSON.stringify(errorDetails) : null,
      stats.unchanged, stats.missing, stats.curatedConflicts,
-     stats.detectionSkippedReason ?? null, stats.filtered, stats.held]
+     stats.detectionSkippedReason ?? null, stats.filtered, stats.held,
+     stats.withdrawalSkippedReason ?? null]
   );
 
   if (result.rows[0]?.is_dry_run) return;
@@ -651,12 +658,14 @@ export async function updateSyncLog(
  * Note on an already-closed run that a follow-up step failed.
  *
  * Deliberately narrow. `updateSyncLog` is a full rewrite — it sets every stat
- * column and `detection_skipped_reason` unconditionally — so calling it again
- * to change two fields would clobber the ten it is not being asked about. Two
- * of those genuinely differ between the caller's view and what the run wrote:
- * `total_fetched` is the source's item count rather than the processed one, and
- * `detection_skipped_reason` is produced by `detectMissing`, which a later
- * caller has no reason to recompute.
+ * column, `detection_skipped_reason` and `withdrawal_skipped_reason`
+ * unconditionally — so calling it again to change two fields would clobber the
+ * eleven it is not being asked about. Three of those genuinely differ between
+ * the caller's view and what the run wrote: `total_fetched` is the source's
+ * item count rather than the processed one, `detection_skipped_reason` is
+ * produced by `detectMissing`, and `withdrawal_skipped_reason` by the
+ * collector's floor inside `fetchItems` (ADR-0044) — neither of which a later
+ * caller has any way to recompute.
  *
  * Touches only `status` and `error_details`, and mirrors the status onto the
  * category the same way `updateSyncLog` does, since that is what both admin
