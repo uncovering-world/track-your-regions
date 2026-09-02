@@ -36,6 +36,7 @@ import {
   type SparqlBinding,
 } from './wikidataUtils.js';
 import { upsertMuseumTreasures } from './museum/treasureWriter.js';
+import { measureWorksCoverage, worksCoverageSkipReason } from './museum/worksCoverage.js';
 import {
   fetchCommonsCredits,
   readStoredCredits,
@@ -166,6 +167,30 @@ let storedCredits = new Map<string, StoredCredit>();
  */
 let storedTreasureCredits = new Map<string, StoredCredit>();
 
+/**
+ * Where this run places each work, by the work's id: the admitted museums
+ * holding it in the proposal. Built once in `fetchMuseumItems` and read per
+ * museum in `processMuseum`, for the hold on a moved work's old link (ADR-0044
+ * decision 5): the museum it moved to may be written after the one it left, so
+ * the writer cannot learn from the table alone that a new place is coming.
+ *
+ * Module state for the reason the credits are: the orchestrator hands
+ * `processItem` one museum at a time, and this is a fact about the whole run.
+ */
+let placedThisRun = new Map<string, Set<string>>();
+
+/**
+ * The works this run places at another admitted museum and not at this one.
+ * What the writer holds a visible link for while the new place is unread.
+ */
+function placedElsewhereFor(museumQid: string): string[] {
+  const elsewhere: string[] = [];
+  for (const [work, venues] of placedThisRun) {
+    if (!venues.has(museumQid) && venues.size > 0) elsewhere.push(work);
+  }
+  return elsewhere;
+}
+
 /** This run's credit, or the one already stored. The rule lives in `imageCredit.ts`. */
 function creditPatch(externalId: string, imageUrl: string | null): { imageCredit?: ImageCredit | null } {
   return creditToWrite(
@@ -179,7 +204,12 @@ function creditPatch(externalId: string, imageUrl: string | null): { imageCredit
 async function fetchMuseumItems(
   progress: SyncProgress,
   refreshCache: boolean,
-): Promise<{ items: CollectedMuseum[]; fetchedCount: number; filtered: FilteredEntity[] }> {
+): Promise<{
+  items: CollectedMuseum[];
+  fetchedCount: number;
+  filtered: FilteredEntity[];
+  withdrawalSkippedReason: string | null;
+}> {
   const previousPlacements = await readPreviousPlacements();
   imageCredits = new Map();
   storedCredits = await readStoredCredits(MUSEUM_CATEGORY_ID);
@@ -198,6 +228,31 @@ async function fetchMuseumItems(
     },
     pause: () => delay(SPARQL_DELAY_MS),
   });
+
+  // Whether the run saw enough of what the catalogue holds to be believed
+  // about what left it (ADR-0044) — measured here, before a single museum is
+  // written, over the same placements the diff above was measured against, and
+  // handed to the orchestrator: it decides the run's status and reaches every
+  // museum's writer through the run context, which is what keeps the order —
+  // floor first, withdrawal second — out of this file's hands.
+  const coverage = {
+    stored: previousPlacements,
+    admitted: items.map((m) => ({ qid: m.qid, works: m.artworks.map((a) => a.externalId) })),
+  };
+  placedThisRun = new Map();
+  for (const museum of coverage.admitted) {
+    for (const work of museum.works) {
+      const venues = placedThisRun.get(work) ?? new Set<string>();
+      venues.add(museum.qid);
+      placedThisRun.set(work, venues);
+    }
+  }
+  const measured = measureWorksCoverage(coverage);
+  console.log(
+    `${LOG_PREFIX} Works coverage: ${measured.seen} of ${measured.stored} works offered at the `
+    + `${measured.museums} admitted museums placed again`,
+  );
+  const withdrawalSkippedReason = worksCoverageSkipReason(coverage);
 
   // Whose photographs these are. Asked after the collection rather than during
   // it: only the admitted venues are worth crediting, which is a handful of
@@ -230,7 +285,7 @@ async function fetchMuseumItems(
     pause: () => delay(SPARQL_DELAY_MS),
   });
 
-  return { items, fetchedCount: fetched, filtered };
+  return { items, fetchedCount: fetched, filtered, withdrawalSkippedReason };
 }
 
 // =============================================================================
@@ -341,12 +396,18 @@ async function processMuseum(
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing, locations } =
     await upsertMuseumExperience(museum, context);
 
-  // Treasures hang off a row a preview never wrote.
+  // Treasures hang off a row a preview never wrote. The floor's verdict goes
+  // with the run's id: the writer marks a link only where the collector, up in
+  // `fetchMuseumItems`, saw enough of the works to vouch for what left.
   let treasures: ContentsDelta | undefined;
   if (!context.dryRun) {
-    treasures = await upsertMuseumTreasures(experienceId, museum.artworks, {
-      fetched: imageCredits, stored: storedTreasureCredits,
-    }, { syncLogId: context.syncLogId });
+    treasures = await upsertMuseumTreasures(
+      experienceId,
+      museum.artworks,
+      { fetched: imageCredits, stored: storedTreasureCredits },
+      { syncLogId: context.syncLogId, withdrawalSkippedReason: context.withdrawalSkippedReason },
+      placedElsewhereFor(museum.qid),
+    );
   }
 
   return {

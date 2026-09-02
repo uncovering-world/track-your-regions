@@ -30,10 +30,18 @@ vi.mock('../curationDecay.js', () => ({
   retirePassAfterNewContent: vi.fn(),
 }));
 
+// The two arms that act on the museum's other links after its works are
+// written (ADR-0044). Their SQL is pinned in their own test; what this file
+// asks is when the writer reaches for them and with what.
+vi.mock('./linkWithdrawal.js', () => ({
+  reconcileLinks: vi.fn().mockResolvedValue({ returned: [], withdrawn: [] }),
+}));
+
 import { pool } from '../../../db/index.js';
 import { retirePassAfterNewContent } from '../curationDecay.js';
+import { reconcileLinks } from './linkWithdrawal.js';
 import { treasureMetadata, upsertMuseumTreasures as writeTreasures } from './treasureWriter.js';
-import type { TreasureCredits } from './treasureWriter.js';
+import type { TreasureCredits, TreasureWriteRun } from './treasureWriter.js';
 import type { ProcessedContent } from '../types.js';
 import type { ImageCredit, StoredCredit } from '../imageCredit.js';
 
@@ -49,17 +57,18 @@ const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const NO_CREDITS: TreasureCredits = { fetched: new Map(), stored: new Map() };
 
 /**
- * A run that can name itself. Named for the reason `NO_CREDITS` is: the
- * production signature takes the run with no default, because a writer that
- * forgot it would hold a visible work's attribution and never point the museum
- * at the run that held it.
+ * A run that can name itself, and that cleared the floor. Named for the reason
+ * `NO_CREDITS` is: the production signature takes the run with no default,
+ * because a writer that forgot it would hold a visible work's attribution and
+ * never point the museum at the run that held it — and, since ADR-0044, would
+ * mark links on a run nothing measured.
  */
-const RUN: { syncLogId: number | null } = { syncLogId: 42 };
+const RUN: TreasureWriteRun = { syncLogId: 42, withdrawalSkippedReason: null };
 
 const upsertMuseumTreasures = (
   experienceId: number, artworks: ProcessedContent[], credits: TreasureCredits = NO_CREDITS,
-  run = RUN,
-) => writeTreasures(experienceId, artworks, credits, run);
+  run = RUN, placedElsewhere: string[] = [],
+) => writeTreasures(experienceId, artworks, credits, run, placedElsewhere);
 const mockedRetire = retirePassAfterNewContent as unknown as ReturnType<typeof vi.fn>;
 
 /** `Top Art Museums` — the category a treasure's gate is read from. */
@@ -436,19 +445,6 @@ describe('the works delta a museum run reports', () => {
     expect(delta).toEqual({ added: [], withdrawn: [], returned: [], changed: [] });
   });
 
-  it('never reports a withdrawn work, because nothing unlinks one yet', async () => {
-    scriptWorks('new');
-
-    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
-
-    // ADR-0026 decision 5: the shape admits a withdrawal and this path must not
-    // produce one until a contents coverage floor exists. Run 42 returned 291
-    // artworks where the run before it returned 1906 and reported success — with
-    // unlinking in place that run would have taken two thirds of the catalogue's
-    // works off the walls.
-    expect(delta.withdrawn).toEqual([]);
-    expect(delta.returned).toEqual([]);
-  });
 });
 
 /**
@@ -738,7 +734,8 @@ describe('a visible work under a gated source', () => {
   it('points at nothing for a run that cannot name itself', async () => {
     scriptHeld(true);
 
-    await upsertMuseumTreasures(EXPERIENCE_ID, [offer()], NO_CREDITS, { syncLogId: null });
+    await upsertMuseumTreasures(EXPERIENCE_ID, [offer()], NO_CREDITS,
+      { syncLogId: null, withdrawalSkippedReason: null });
 
     expect(sentSql().filter(s => POINTER.test(s))).toEqual([]);
   });
@@ -752,5 +749,112 @@ describe('a visible work under a gated source', () => {
       expect.objectContaining({ field: 'artists', curatedConflict: true, held: false }),
       expect.objectContaining({ field: 'year', curatedConflict: false, held: true }),
     ]);
+  });
+});
+
+/**
+ * When the writer reaches for the museum's other links, and with what (ADR-0044).
+ *
+ * The order is the safety and the floor is the gate, and neither is visible in
+ * the delta a caller reads: a writer that reconciled before the last work was
+ * written, or marked on a run that had not cleared the floor, would return the
+ * same shape as one that did it right.
+ */
+describe('the links of works a run no longer places here', () => {
+  const mockedReconcile = reconcileLinks as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedRetire.mockReset();
+    mockedReconcile.mockReset();
+    mockedReconcile.mockResolvedValue({ returned: [], withdrawn: [] });
+  });
+
+  const SHORT: TreasureWriteRun = {
+    syncLogId: 42,
+    withdrawalSkippedReason: 'this run placed 291 of the 1301 works the catalogue offers at the '
+      + '100 museums it admits (22.4%), below the 90% floor',
+  };
+
+  it('compares the museum against every work the run offered, by the id the upsert answered', async () => {
+    scriptWorks('new', { link: 'already linked', name: 'The Night Watch' });
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [
+      artwork(), artwork({ externalId: 'Q45585', name: 'The Night Watch' }),
+    ]);
+
+    // Both works, arrived or already linked: what the run offers is what it
+    // listed, and a work it re-listed is not one it stopped placing here.
+    expect(mockedReconcile).toHaveBeenCalledWith(EXPERIENCE_ID, expect.objectContaining({
+      offered: [900, 901], withdraw: true,
+    }));
+  });
+
+  it('marks nothing on a run that did not clear the floor, and still restores', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()], NO_CREDITS, SHORT);
+
+    // Floor first, withdrawal second: run 42 with a withdrawal arm is the
+    // failure this whole change exists to prevent. The reconciliation still
+    // runs — restoring is never what a short run gets wrong — told not to mark.
+    expect(mockedReconcile).toHaveBeenCalledWith(EXPERIENCE_ID, expect.objectContaining({
+      offered: [900], withdraw: false,
+    }));
+  });
+
+  it('hands over the works this run places elsewhere, so a moved work is held rather than lost', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()], NO_CREDITS, RUN, ['Q45585', 'Q19911']);
+
+    expect(mockedReconcile).toHaveBeenCalledWith(EXPERIENCE_ID, expect.objectContaining({
+      placedElsewhere: ['Q45585', 'Q19911'],
+    }));
+  });
+
+  it('reconciles only after every work is written', async () => {
+    scriptStored([]);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Mona Lisa' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ treasure_id: 900 }] });
+    mockedQuery.mockRejectedValueOnce(new Error('connection reset'));
+
+    await expect(upsertMuseumTreasures(EXPERIENCE_ID, [
+      artwork(), artwork({ externalId: 'Q45585', name: 'The Night Watch' }),
+    ])).rejects.toThrow('connection reset');
+
+    // A museum whose write threw part-way keeps every link: nothing is marked
+    // on the strength of a list the run did not finish.
+    expect(mockedReconcile).not.toHaveBeenCalled();
+  });
+
+  it('reports what the arms marked and restored, named, beside what arrived', async () => {
+    scriptWorks('new');
+    mockedReconcile.mockResolvedValueOnce({
+      withdrawn: [{ name: 'Ophelia', ref: 'Q1246930' }],
+      returned: [{ name: 'The Syndics', ref: 'Q2379280' }],
+    });
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
+
+    expect(delta).toEqual({
+      added: [{ name: 'Mona Lisa', ref: 'Q12418' }],
+      withdrawn: [{ name: 'Ophelia', ref: 'Q1246930' }],
+      returned: [{ name: 'The Syndics', ref: 'Q2379280' }],
+      changed: [],
+    });
+  });
+
+  it('does not retire the pass for a work given its place back', async () => {
+    // Arrivals only, as with a point: a returned work was on show when the
+    // pass was made, and the row a curator looked at is the same row.
+    scriptWorks('already linked');
+    mockedReconcile.mockResolvedValueOnce({
+      returned: [{ name: 'Mona Lisa', ref: 'Q12418' }], withdrawn: [],
+    });
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
+
+    expect(mockedRetire).not.toHaveBeenCalled();
   });
 });
