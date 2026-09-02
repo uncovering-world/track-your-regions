@@ -1,0 +1,25 @@
+name: Task
+description: Refactoring, process, docs, CI, an investigation or a decision to take — no user-visible change
+type: Task
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What should be restructured, measured or decided, and why — with real anchors (files, symbols, PRs, ADRs, measured numbers).
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: Specific, verifiable items, each checkable from a pull request or a written decision.
+      value: |
+        - [ ] Item 1
+        - [ ] Item 2
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
