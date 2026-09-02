@@ -756,8 +756,8 @@ The project has slash commands (in `.claude/commands/`) that automate common wor
 
 | Command | When to use |
 |---------|-------------|
-| `/feature <issue#>` | Start work on a feature — creates branch (board → 🏗 In progress), reads the issue's board fields, enters plan mode, checks for reusable code, updates docs |
-| `/fix <issue#>` | Fix a bug — minimal change (board → 🏗 In progress), explains root cause before fixing |
+| `/feature <issue#>` | Start work on a feature — reads the issue's type, fields and hierarchy (an Epic with a slice list whose every slice carries its ledger mark — `→ #N`, `→ merged into #N` or `→ dropped: …` — points at its sub-issues; one with no list yet or with unmarked slices is reconciled against the sub-issues it already has and then decomposed into the rest instead of coded — each marked on the Epic as it is created — blocked or not, the slices carrying its blockers; a blocked non-Epic is refused), creates branch (board → 🏗 In progress), enters plan mode, checks for reusable code, updates docs |
+| `/fix <issue#>` | Fix a bug — the same state, blocker and Epic gates as `/feature` (neither command gates on type: a bug that needs a design may go through `/feature`), then minimal change (board → 🏗 In progress), explains root cause before fixing |
 | `/commit` | Commit changes — organizes into atomic commits, enforces title+body format, filters junk |
 | `/pr-create` | Create a PR — rebases on main, fills PR template, moves referenced issues to 👀 In review, then babysits the PR until it is mergeable |
 | `/review-pr` | Review PR comments — analyzes, categorizes, creates action plan |
@@ -770,9 +770,9 @@ The project has slash commands (in `.claude/commands/`) that automate common wor
 | `/security-alerts` | Triage GitHub code scanning alerts (CodeQL, etc.) |
 | `/quality-alerts` | Triage code quality alerts |
 | `/refactor-check` | Post-refactoring prevention check — verify dev guide has rules preventing the old pattern from recurring |
-| `/issues` | Browse the task board — Backlog grouped by Priority with Size/Theme/AI fit |
-| `/issue-create` | Create a new GitHub issue (template shape, neutral voice) and place it on the board |
-| `/issue-upload` | Batch-create issues from a markdown file, board placement included |
+| `/issues` | Browse the task board — Backlog grouped by Priority with type, Size/Theme/AI fit, parent and blockers |
+| `/issue-create` | Create a new GitHub issue — type (Bug / Feature / Task / Epic), the form's body shape in a neutral voice, area labels, the four fields, parent / blockers / milestone, board placement; a slice of an Epic also gets its `→ #N` ledger mark written onto the Epic's own list, which the other commands gate on |
+| `/issue-upload` | Batch-create issues from a markdown file — the same type, fields, hierarchy and Epic mark per item, with a file ledger that lets an interrupted run resume, plus a lookup of recently created issues shown for adoption before the batch is confirmed, which covers the one gap the ledger cannot (a create that succeeded while its file mark failed); a line is cleaned up only once its placement, its Epic mark and — for an adopted issue — its hierarchy, labels and type have all landed |
 | `/review-dependabot` | Review Dependabot PRs and security alerts |
 
 ### Typical workflows

@@ -1,0 +1,26 @@
+name: Feature Request
+description: A new or changed capability a visitor, curator or admin can see
+type: Feature
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: The product-first story — who hits this and why it matters — then the current state in the code with real anchors (files, symbols, PRs, ADRs, measured numbers).
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: Specific, verifiable requirements, each checkable from a pull request.
+      value: |
+        - [ ] Requirement 1
+        - [ ] Requirement 2
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Dependencies and sequencing (which issues first and why), related issues, source docs, open product decisions, licence or security notes.

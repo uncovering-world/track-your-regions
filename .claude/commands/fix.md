@@ -15,10 +15,10 @@ Before starting, read `docs/tech/development-guide.md` — it defines the projec
 ### 1. Load the issue
 
 ```bash
-gh issue view $ARGUMENTS --json number,title,body,labels,comments
+gh issue view $ARGUMENTS --json number,title,body,labels,comments,state,issueType,subIssues,blockedBy,parent
 ```
 
-If the issue doesn't exist or isn't open, tell the user and stop.
+If the issue doesn't exist or `state` is not `OPEN`, tell the user and stop. Two more gates, with the same precedence `/feature` § 1 states: an **Epic** is never fixed directly — when it has a slice list (wherever its body keeps it) and every listed slice carries its ledger mark (`→ #N`, `→ merged into #N` or `→ dropped: …` — `→ #N` written at filing by `/issue-create` § 4 and `/issue-upload` § 5, all three by `/feature` § 1 when it decomposes or reconciles), point at the open sub-issues; otherwise — no list yet (#469), no marks, or unmarked slices (#497: eight listed, none marked yet, and its one sub-issue #264 covers none of them, so all eight remain to file) — hand it to `/feature <number>`, whose § 1 reconciles the existing sub-issues onto the ledger and then decomposes or resumes from the first unmarked slice, blocked or not, each slice created the `/issue-create` §§ 2–5 way with `--parent`, the Epic's milestone and `--blocked-by` its open blockers. For any other issue, an entry with `state == OPEN` in `blockedBy` means it is not ready — name the blocker and stop (on 2026-09-02 #549 was the bug in that position, blocked by #522). A `parent` means this bug is one slice of a larger issue: read the parent's body too.
 
 ### 2. Understand the problem
 
