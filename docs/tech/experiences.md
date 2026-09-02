@@ -310,7 +310,13 @@ trusting that reading the first fix would be enough to generalise it.
 Treasures are independently trackable things inside venue experiences. Currently implemented for museum artworks. Treasures have a many-to-many relationship with venues via `experience_treasures` junction table; iconic treasures are called **highlights** (`is_iconic` flag). See [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md) for the full concept.
 
 - `treasures`: globally unique treasures (artworks, artifacts), keyed by `external_id`
-- `experience_treasures`: many-to-many junction linking treasures to venue experiences
+- `experience_treasures`: many-to-many junction linking treasures to venue experiences. A link
+  carries `missing_since` (ADR-0044): set by a run that cleared the works coverage floor and no
+  longer places the work here, cleared by any run that places it here again, never deleted — the
+  row is what a viewed record points at. Every reader-facing read of a museum's works carries
+  `offeredLinkSql` (`missing_since IS NULL`), including both publish statements; the two lookups
+  that merely locate a global work through any link (`recordedTreasureSql`, the credit-waiting
+  assertion) deliberately do not
 - `user_viewed_treasures`: per-user treasure tracking
 
 **Which venue a work belongs to is decided, not read.** A source names whatever holds the work —
@@ -399,7 +405,7 @@ Each source has a dedicated sync service in `backend/src/services/sync/`. All fo
 
 The generic sync lifecycle (progress init, already-running check, sync log creation, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`. Each service provides a `SyncServiceConfig<T>` with domain-specific callbacks:
 
-- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered? }`, where `filtered` names entities the source offered that this category cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`.
+- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, withdrawalSkippedReason? }`, where `filtered` names entities the source offered that this category cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands.
 - **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview, and `onLocationsChanged(experienceId)`, which a service calls **at the location write** to have the run place that experience before it ends. Called there rather than returned on the result on purpose: a service can throw after moving a point — the museum one upserts treasures afterwards — and a returned field would be lost with the throw while the point had already moved on disk. Throw to count as error.
 - **`getItemName(item)`** / **`getItemId(item)`** — Display name and external ID for progress messages and error reporting.
 
@@ -559,16 +565,23 @@ writer's from the pairing's carried `old_*` against the incoming values. Where a
 record and the write are *supposed* to disagree, and that disagreement is the whole content of the
 entry.
 
-Three things it deliberately does not say:
+Four things it deliberately does not say:
 
 - **A held withdrawal is absent.** Where the gate is holding a withdrawal until its replacement is
   published, the point is still on the map with `missing_since IS NULL`; the run performed no
   withdrawal, and reporting one would tell a curator the opposite of what a reader sees. Same rule
   `unoffered` follows.
-- **A withdrawn work never appears.** Nothing unlinks a work, because no contents coverage floor
-  exists for treasures — sync run 42 fetched 291 artworks where the run before it fetched 1906 and
-  reported `success`. A museum row with no `withdrawn` entries is therefore *not* evidence that
-  nothing left.
+- **A held work withdrawal is absent, for the same reason.** A visible link whose work this run
+  places at another museum where no reader can see it yet is passed over by the mark (ADR-0044
+  decision 5), so the run performed no withdrawal there either, and the link is still on show.
+  Nothing records *that* it is held — unlike a point's deferral, the hold is re-decided on every
+  run from the run's proposal and the table.
+- **A run below the works floor reports no withdrawal at all**, and the row for the run says so:
+  `withdrawal_skipped_reason` on the log is why, and the run is `partial`. A museum row with no
+  `withdrawn` entries is evidence that nothing left only on a run that cleared the floor. Until
+  ADR-0044 nothing unlinked a work at all — sync run 42 fetched 291 artworks where the run before
+  it fetched 1906 and reported `success` — so every row before it carries the empty list by
+  decision rather than by observation.
 - **`NULL` is not "nothing moved".** Every row written before the column existed carries `NULL`,
   and nothing can be backfilled: `experience_locations.created_at` was overwritten wholesale on
   2026-08-04 by the delete-and-reinsert this code has since removed (6548 of 6680 rows).
@@ -834,6 +847,15 @@ per service in `SyncServiceConfig`, `ranked` for the two top-N Wikidata sources)
 finished clean and uncancelled, and it saw at least 90 % of the previously present rows.
 When detection is skipped the reason is stored in `experience_sync_logs.detection_skipped_reason`.
 
+A museum's *works* have a floor of their own, since the category is `ranked` and never reaches
+this one: the works coverage floor (ADR-0044, § Top Art Museums below). Its refusal lands in
+`experience_sync_logs.withdrawal_skipped_reason`, and unlike detection's it downgrades the run to
+`partial` — a run that saw too little to say what left is not a success, whatever its items did.
+The orchestrator carries that verdict from `fetchItems` (`withdrawalSkippedReason` on the result)
+to every `processItem` through `SyncRunContext.withdrawalSkippedReason`, so the writer marks
+nothing behind it; a source that leaves the field out is unchanged, since points are paired per
+object and need no floor.
+
 **Dry runs** (`POST /sync/categories/:id/start` with `{"dryRun": true}`) walk the same path and
 write the log and changeset with `is_dry_run = true`, but touch no experiences, locations,
 treasures or images. Dry-run logs are excluded from every "latest run" query, so a preview
@@ -991,8 +1013,21 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
 - Records what the pass itself counted — `artworkCount` and `totalArtworkSitelinks` in the venue's
   metadata — as the run's own bookkeeping rather than as content: written straight through the
   gate, reported as no change and asked about on no card (§ Change provenance above)
-- Departures are marked, not deleted (ADR-0022); a treasure-to-experience link is only ever added,
-  never removed — see ADR-0023 for what that means for a work whose venue changes
+- Departures are marked, not deleted (ADR-0022), and since ADR-0044 that includes a work's link:
+  before a single museum is written the run measures the **works coverage floor** — of the works
+  the catalogue offers at the museums it admits, the share it places at an admitted museum, which
+  must reach 90 % (`worksCoverage.ts`) — and only a run that clears it marks the links of works it
+  no longer places here (`linkWithdrawal.ts`, once per museum, after every work is written). A
+  run below the floor marks nothing, is `partial`, and says why in
+  `experience_sync_logs.withdrawal_skipped_reason` — the treasures analogue of
+  `detection_skipped_reason`, shown on the run card as "Withdrawals skipped". A marked link is
+  restored on any run that places the work here again, floor or no floor — the two arms run in
+  one transaction. A visible link is held while this run places the same work at another admitted
+  museum and no readable link of it stands anywhere yet, so a work that moved under the gate does
+  not vanish from every reader until the new link is published; decided from the run's proposal
+  (`placedThisRun` in the museum service) and the table together, since the new museum may be
+  written after the old one. Every reader-facing read of a museum's works carries `offeredLinkSql`
+  (`missing_since IS NULL`)
 - Images use remote Wikimedia `Special:FilePath` URLs (not downloaded locally); Wikipedia article
   URL fetched via the same `schema:about` + `schema:isPartOf` SPARQL pattern UNESCO uses
 
@@ -1076,7 +1111,8 @@ run that already reached `failed` or `cancelled` keeps that status, since both a
 their own and survive nowhere else in the row. The write is narrow, `status` and
 `error_details` only: `updateSyncLog` rewrites every stat column, and this caller has correct
 values for none of them — `total_fetched` is the source's item count rather than the processed
-one, and `detection_skipped_reason` is `detectMissing`'s answer, which nothing here
+one, `detection_skipped_reason` is `detectMissing`'s answer, and `withdrawal_skipped_reason` is
+the collector's floor's inside `fetchItems` (ADR-0044), neither of which anything here
 recomputes.
 
 The full rebuild (`assignExperiencesToRegions`, `POST /api/admin/experiences/assign-regions`)
@@ -1794,9 +1830,11 @@ curator and every admin.
 transaction that locks a row of an existing object's contents takes it on the object first.
 Both halves matter, and both were learned from the same failure. The rule is about
 transactions and about which rows they hold, and what it leaves outside is named rather than
-counted — the count went stale here once already — each for its own reason: `upsertMuseumTreasures` runs each statement on the pool with no
-`BEGIN`, so it holds nothing across them and can wait for a lock without ever being half of a
-cycle; `createManualExperience` creates the object in the same transaction, so the INSERT's
+counted — the count went stale here once already — each for its own reason: `upsertMuseumTreasures` runs each of its per-work statements on the
+pool with no `BEGIN`, so it holds nothing across them and can wait for a lock without ever being
+half of a cycle, and the one transaction inside it — `reconcileLinks`, which restores and marks
+the venue's links (ADR-0044) — is under the rule for exactly that reason and takes the object
+first; `createManualExperience` creates the object in the same transaction, so the INSERT's
 own row lock is the "object first" the rule asks for; the region and rejection writers
 touch rows no lock-holder waits for, reaching `experiences` only through the audit row's key
 share, which the mode below is chosen never to conflict with; and **placement**
