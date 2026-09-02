@@ -51,6 +51,20 @@ export interface FetchResult<T> {
   items: T[];
   fetchedCount: number;
   filtered?: FilteredEntity[];
+  /**
+   * Why this run may not withdraw the contents it stopped seeing, or absent
+   * when it may.
+   *
+   * A collector that measures what it fetched against a floor answers here —
+   * the museum run does, over its works (ADR-0044) — and the answer goes three
+   * places: onto the log row, so a run that marked nothing because it saw too
+   * little is not read as one that found nothing to mark; into every
+   * `processItem` call through the context, so the writer marks nothing behind
+   * it; and into the run's status, which cannot be `success` while the source's
+   * departures are unrecorded. A source whose contents need no floor — points
+   * are paired per object — leaves it out.
+   */
+  withdrawalSkippedReason?: string | null;
 }
 
 
@@ -69,6 +83,13 @@ export interface SyncRunContext {
    * naming the region it left, with nothing to signal it.
    */
   onLocationsChanged: (experienceId: number) => void;
+  /**
+   * The collector's own verdict on withdrawing contents, carried back to the
+   * writer: `FetchResult.withdrawalSkippedReason`, or null where the run may
+   * withdraw. Threaded rather than remembered in module state so the order —
+   * floor first, withdrawal second, never the reverse — is visible in one place.
+   */
+  withdrawalSkippedReason: string | null;
 }
 
 export interface ProcessItemResult {
@@ -470,8 +491,15 @@ async function processItemsLoop<T>(
   }
 }
 
-function computeFinalStatus(progress: SyncProgress): 'success' | 'partial' | 'failed' {
-  if (progress.errors === 0) return 'success';
+function computeFinalStatus(
+  progress: SyncProgress,
+  withdrawalSkippedReason: string | null,
+): 'success' | 'partial' | 'failed' {
+  // A run that saw too little to say what left is not a success, whatever its
+  // items did: the catalogue is correct, and the source's departures are
+  // unrecorded (ADR-0044). Run 42 is the case — 291 works where the run before
+  // had 1906, every item unchanged, `success`.
+  if (progress.errors === 0) return withdrawalSkippedReason === null ? 'success' : 'partial';
   // A run that touched nothing at all failed; one that found everything already
   // current did not, even if a straggler errored.
   const seen = progress.created + progress.updated + progress.unchanged;
@@ -519,6 +547,13 @@ async function recordSyncFailure<T>(
   // the database outage that lands a run here would reject `updateSyncLog`, so
   // a verdict produced in here could never be relied on to come back.
   verdict: Exclude<RunVerdict, 'complete'>,
+  // The two guards' verdicts, kept on the row a failed run leaves too: a run
+  // that skipped detection or withdrawal and then died is both, and a card
+  // reading only `failed` over a NULL would not say why nothing was delisted
+  // or withdrawn before the failure. Null where the step that produces each
+  // never ran — the fetch for the withdrawal reason, detection for its own.
+  detectionSkippedReason: string | null,
+  withdrawalSkippedReason: string | null,
 ): Promise<void> {
   const errorMsg = err instanceof Error ? err.message : String(err);
   progress.statusMessage = errorMsg;
@@ -544,6 +579,8 @@ async function recordSyncFailure<T>(
       held: progress.held,
       filtered: progress.filtered,
       errors: progress.errors,
+      detectionSkippedReason,
+      withdrawalSkippedReason,
     }, errorDetails);
   }
 
@@ -591,6 +628,14 @@ export async function orchestrateSync<T>(
   // success path already did — a throw from updateSyncLog would otherwise
   // insert every row twice.
   let changesRecorded = false;
+  // The two guards' verdicts, held outside the try so the failure path can
+  // record them too: a run that skipped detection or withdrawal and then died
+  // would otherwise leave NULL on its row, and the card could not say why
+  // nothing was delisted or withdrawn before it failed. Every museum run
+  // carries the first (its source is ranked), so the shape is the common one
+  // and only the throw is rare.
+  let detectionSkippedReason: string | null = null;
+  let withdrawalSkippedReason: string | null = null;
 
   try {
     progress.logId = await createSyncLog(categoryId, triggeredBy, dryRun);
@@ -600,9 +645,14 @@ export async function orchestrateSync<T>(
     // Read before the run writes, so the sweep's floor compares like with like.
     const previousAdmittedCount = config.recomputesMembership ? await countAdmitted(categoryId) : 0;
 
-    const { items, fetchedCount, filtered } = await config.fetchItems(progress, errorDetails);
+    const fetched = await config.fetchItems(progress, errorDetails);
+    const { items, fetchedCount, filtered } = fetched;
+    withdrawalSkippedReason = fetched.withdrawalSkippedReason ?? null;
     // fetchItems may append pre-processing errors before the loop counts errors itself
     progress.errors = errorDetails.length;
+    if (withdrawalSkippedReason !== null) {
+      console.log(`${logPrefix} Withdrawals skipped: ${withdrawalSkippedReason}`);
+    }
 
     // Unconditional, and before anything else touches admission: the run named
     // these and a rule turned them down, which no coverage floor or error count
@@ -624,6 +674,7 @@ export async function orchestrateSync<T>(
       dryRun,
       syncLogId: progress.logId,
       onLocationsChanged: (experienceId) => movedExperiences.add(experienceId),
+      withdrawalSkippedReason,
     };
     await processItemsLoop(config, items, progress, errorDetails, changes, context);
     // The loop reads the flag before each item, so a press during the last one
@@ -631,7 +682,7 @@ export async function orchestrateSync<T>(
     // `cancelSync` refuses once there is no item left to interrupt.
     if (progress.cancel) throw new Error('Sync cancelled');
 
-    const detectionSkippedReason = await detectMissing(
+    detectionSkippedReason = await detectMissing(
       config, progress, previousActiveCount, seenCount, changes, seenExternalIds,
     );
 
@@ -647,19 +698,24 @@ export async function orchestrateSync<T>(
     // Computed after that attempt: a run whose per-object record never landed is
     // not a clean run, whatever the items themselves did, and an operator
     // reading `success` over a missing changeset would be misled.
-    const finalStatus = computeFinalStatus(progress);
-    // Two different things are called `partial`, and only one of them is a
+    const finalStatus = computeFinalStatus(progress, withdrawalSkippedReason);
+    // Three different things are called `partial`, and only one of them is a
     // progress state:
     //
-    // - `computeFinalStatus`'s — some items errored. It goes to the log row and
+    // - `computeFinalStatus`'s, some items errored. It goes to the log row and
     //   stops there; the run itself still reached `complete`, which is why this
     //   line maps everything that is not `failed` onto it.
+    // - `computeFinalStatus`'s again, the source's departures are unrecorded:
+    //   the collector saw too little of the contents it holds to say what left
+    //   (`withdrawalSkippedReason`, ADR-0044), with no item having errored at
+    //   all. The "Withdrawals skipped" line on the run card is what tells this
+    //   one from the other two at the chip.
     // - placement's — the run finished but placing what it moved did not. That
     //   one *is* a progress state, assigned later by `terminalStatus`.
     //
-    // Both surface as `last_sync_status = 'partial'` and the same chip, so the
-    // distinction lives only here. Worth keeping straight: a reader who assumes
-    // one meaning finds the other's code inexplicable.
+    // All three surface as `last_sync_status = 'partial'` and the same chip, so
+    // the distinction lives only here. Worth keeping straight: a reader who
+    // assumes one meaning finds the others' code inexplicable.
     //
     // Not 'complete' yet either way: placement runs in the `finally` below and
     // is part of finishing the run, so declaring the run over here would let a
@@ -667,9 +723,14 @@ export async function orchestrateSync<T>(
     // the placement may be about to downgrade.
     finishedStatus = finalStatus === 'failed' ? 'failed' : 'complete';
     const verdict = finalStatus === 'success' ? 'Complete' : `Complete (${finalStatus})`;
+    // The reason rides the sentence too: on a run with no errors it is the whole
+    // of why the verdict says partial, and the panel shows this line before it
+    // shows the log row.
+    const skipped = withdrawalSkippedReason === null
+      ? '' : `; withdrew nothing — ${withdrawalSkippedReason}`;
     progress.statusMessage = `${verdict}: ${progress.created} created, ${progress.updated} updated, `
       + `${progress.unchanged} unchanged (${progress.held} held), ${progress.missing} missing, `
-      + `${progress.errors} errors`;
+      + `${progress.errors} errors${skipped}`;
 
     await updateSyncLog(categoryId, progress.logId, finalStatus, {
       fetched: fetchedCount,
@@ -682,6 +743,7 @@ export async function orchestrateSync<T>(
       filtered: progress.filtered,
       errors: progress.errors,
       detectionSkippedReason,
+      withdrawalSkippedReason,
     }, errorDetails.length > 0 ? errorDetails : undefined);
 
     console.log(`${logPrefix} Complete: created=${progress.created}, updated=${progress.updated}, unchanged=${progress.unchanged}, held=${progress.held}, missing=${progress.missing}, errors=${progress.errors}`);
@@ -694,7 +756,8 @@ export async function orchestrateSync<T>(
     // finished run, and retries answered 409 until the cleanup timer fires.
     finishedStatus = progress.cancel ? 'cancelled' : 'failed';
     await recordSyncFailure(
-      config, progress, err, errorDetails, changes, changesRecorded, finishedStatus);
+      config, progress, err, errorDetails, changes, changesRecorded, finishedStatus,
+      detectionSkippedReason, withdrawalSkippedReason);
     throw err;
   } finally {
     // The run is not over, but it is no longer processing items: placement is
