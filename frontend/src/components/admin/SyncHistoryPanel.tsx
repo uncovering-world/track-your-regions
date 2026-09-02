@@ -206,6 +206,36 @@ interface SyncLogDialogProps {
 }
 
 /**
+ * What a run declined to do, and why: one line per guard that refused it.
+ *
+ * Two guards leave a reason on the log row. Missing detection guards the
+ * objects — a listing's floor — and withdrawal guards a museum's works — the
+ * pool's floor (ADR-0044). Kept apart rather than folded into one sentence
+ * because they answer different questions, "did anything get delisted" and
+ * "did anything leave a museum", and a museum run always carries the first
+ * (its source is ranked) while carrying the second only on a run that saw too
+ * little. Folded, the second would hide behind the first on every run.
+ *
+ * A third guard refuses a run the same way and is absent here on purpose: the
+ * admission sweep's reason (ADR-0024, `admissionSweepSkipReason`) reaches only
+ * the backend console, so no card can show it. This is the set of guards with
+ * a column, not the set of guards; a sweep given a column joins the list.
+ *
+ * Exported for its test, like `changesetNote`: the lines are the whole of what
+ * the card says about a refusal.
+ */
+export function skippedNotes(log: SyncLog): Array<{ label: string; reason: string }> {
+  const notes: Array<{ label: string; reason: string }> = [];
+  if (log.detection_skipped_reason) {
+    notes.push({ label: 'Missing detection skipped', reason: log.detection_skipped_reason });
+  }
+  if (log.withdrawal_skipped_reason) {
+    notes.push({ label: 'Withdrawals skipped', reason: log.withdrawal_skipped_reason });
+  }
+  return notes;
+}
+
+/**
  * Why a run's per-object record is missing or short, which is not one question
  * but four.
  *
@@ -332,11 +362,11 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
               <Tile value={log.total_errors} label="Errors" bg={log.total_errors > 0 ? 'error.light' : 'grey.100'} />
             </Box>
 
-            {log.detection_skipped_reason && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Missing detection skipped: {log.detection_skipped_reason}
+            {skippedNotes(log).map(({ label, reason }) => (
+              <Typography key={label} variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                {label}: {reason}
               </Typography>
-            )}
+            ))}
 
             {log.has_changeset && <SyncChangeList logId={log.id} />}
 

@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { changesetNote } from './SyncHistoryPanel';
+import { changesetNote, skippedNotes } from './SyncHistoryPanel';
 import type { SyncLog } from '../../api/admin';
 
 function log(overrides: Partial<SyncLog> = {}) {
@@ -38,6 +38,7 @@ function log(overrides: Partial<SyncLog> = {}) {
     total_errors: 0,
     is_dry_run: false,
     detection_skipped_reason: null,
+    withdrawal_skipped_reason: null,
     has_changeset: false,
     changeset_lost: false,
     triggered_by: null,
@@ -132,5 +133,35 @@ describe('changesetNote', () => {
     }))}</>);
 
     expect(screen.getByText(/could not be written/i)).toBeInTheDocument();
+  });
+});
+
+describe('skippedNotes', () => {
+  it('says nothing about a run that refused nothing', () => {
+    expect(skippedNotes(log())).toEqual([]);
+  });
+
+  it('names each guard that refused, apart, with its own reason', () => {
+    // A museum run always carries the first — its source is ranked, so absence
+    // is a lower rank and not a delisting — and carries the second only on a
+    // run that saw too little of the works to say what left (ADR-0044). Folded
+    // into one sentence the second would hide behind the first on every run.
+    const notes = skippedNotes(log({
+      detection_skipped_reason: 'source is ranked, not authoritative: absence means a lower rank, not a delisting',
+      withdrawal_skipped_reason: 'this run placed 291 of the 1301 works the catalogue offers at the 100 museums it admits (22.4%), below the 90% floor',
+    }));
+
+    expect(notes).toEqual([
+      { label: 'Missing detection skipped', reason: expect.stringContaining('source is ranked') },
+      { label: 'Withdrawals skipped', reason: expect.stringContaining('291 of the 1301 works') },
+    ]);
+  });
+
+  it('carries the withdrawal note alone where detection ran', () => {
+    // Not a museum shape today, and the note must not depend on it: a future
+    // authoritative source with a contents floor would refuse one and not the other.
+    expect(skippedNotes(log({ withdrawal_skipped_reason: 'below the 90% floor' }))).toEqual([
+      { label: 'Withdrawals skipped', reason: 'below the 90% floor' },
+    ]);
   });
 });
