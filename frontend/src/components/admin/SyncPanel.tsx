@@ -517,7 +517,8 @@ function SourceCard({ source }: SourceCardProps) {
               )}
               <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                 A sync preserves curator edits, visit history, manual region assignments and
-                rejections. A point the source stops offering is marked, not deleted.
+                rejections. A point the source stops offering is marked, not deleted; so is a
+                work, once a run has seen enough of the works its museums hold to be believed.
               </Typography>
             </>
           ) : (

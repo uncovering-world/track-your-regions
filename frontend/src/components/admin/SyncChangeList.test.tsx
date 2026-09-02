@@ -343,11 +343,10 @@ describe('SyncChangeList', () => {
 
   it('names each kind of contents and gives a return its own word', () => {
     // Direct rather than through a render, which is why the function is exported: the
-    // integration case above drives `locations` only, and `treasures` is the kind whose
-    // whole observable output is `gained` — the museum path documents `withdrawn` and
-    // `returned` as unreachable for works until a coverage floor exists, so nothing
-    // else in this suite would ever ask `kindName` for that key. Dropping it renders
-    // the raw `treasures:` and still looks like a line.
+    // integration case above drives `locations` only, and nothing else in this suite
+    // asks `kindName` for the `treasures` key — a museum's row carries all three arms
+    // since ADR-0044, but through this function alone. Dropping the key renders the
+    // raw `treasures:` and still looks like a line.
     const lines = contentsLines({
       locations: {
         added: [], withdrawn: [], returned: [{ name: 'Hansaviertel', ref: 'Q1568081' }],

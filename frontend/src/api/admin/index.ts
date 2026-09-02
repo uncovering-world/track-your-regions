@@ -109,6 +109,12 @@ export interface SyncLog {
   total_errors: number;
   is_dry_run: boolean;
   detection_skipped_reason: string | null;
+  /**
+   * Why the run marked none of the works its museums stopped holding: the works
+   * coverage floor refused it (ADR-0044). A run carrying one is `partial`, and a
+   * run with none either withdrew what left or had no floor to clear.
+   */
+  withdrawal_skipped_reason: string | null;
   /** False on runs that predate change provenance, whose counters mean something else. */
   has_changeset: boolean;
   /**
