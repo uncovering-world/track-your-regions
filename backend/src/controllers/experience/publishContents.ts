@@ -16,7 +16,7 @@ import { pool } from '../../db/index.js';
 import {
   assignRegionsForExperiences, worldViewsWithGeometry,
 } from '../../services/sync/regionAssignmentService.js';
-import { offeredLocationSql } from './experienceLifecycle.js';
+import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
 
 /**
  * Publish the unread points and works — the named ones, or all of them.
@@ -156,9 +156,16 @@ export async function publishContents(
     // all — "checked once, globally" (ADR-0025 decision 2). A reader's treasure
     // list gates both, so publishing one and not the other would leave the
     // card's count unanswered.
+    //
+    // Only a link the source still places here, for the reason the points'
+    // statement above gives (ADR-0044): a withdrawn link is shown to nobody, so
+    // publishing it looks harmless until the run that places the work here
+    // again clears `missing_since` and leaves the state this wrote -- a work
+    // back on the wall marked as one a curator passed, having been on no card.
     const links = await client.query(
       `UPDATE experience_treasures SET curation_state = 'verified'
         WHERE experience_id = $1 AND curation_state = 'pending'
+          AND ${offeredLinkSql('experience_treasures')}
         ${named ? 'AND treasure_id = ANY($2::int[])' : ''}`,
       args,
     );
@@ -166,13 +173,16 @@ export async function publishContents(
 
     // Scoped through this experience's own links, so a request cannot publish a
     // work by naming an id that has nothing to do with the object the caller's
-    // scope was checked against.
+    // scope was checked against -- and through its *offered* links, since a work
+    // whose only link here is withdrawn is not on show here, and this card is
+    // not the one that should pass it.
     const works = await client.query(
       `UPDATE treasures SET curation_state = 'verified', updated_at = NOW()
         WHERE curation_state = 'pending'
           AND EXISTS (
             SELECT 1 FROM experience_treasures et
              WHERE et.treasure_id = treasures.id AND et.experience_id = $1
+               AND ${offeredLinkSql('et')}
                ${named ? 'AND et.treasure_id = ANY($2::int[])' : ''}
           )`,
       args,

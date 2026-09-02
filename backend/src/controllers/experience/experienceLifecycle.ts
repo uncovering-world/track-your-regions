@@ -420,10 +420,33 @@ export function readerRegionMembershipSql(experienceIdExpr = 'e.id', membershipA
 }
 
 /**
+ * Hides a link the source has stopped placing here. `alias` is the
+ * `experience_treasures` alias.
+ *
+ * The treasures half of `offeredLocationSql` (ADR-0044): a run that saw enough
+ * of the works its museums hold marks the link of a work it now places elsewhere
+ * or nowhere, and every reader-facing read of a museum's works carries this so
+ * the work leaves the wall the run says it left. One term rather than a point's
+ * two, because nobody declares a work gone from the world through its link —
+ * the work is global and the link only says "here". A curator's widening of
+ * the gate does not widen this: the mark is not an unread row waiting on a
+ * verdict, it is the source's own list.
+ *
+ * Deliberately not read by the two lookups that merely *locate* a global work
+ * through any link it has — `recordedTreasureSql` and the credit-waiting
+ * assertion — since a held proposal about the work's own fields stays
+ * publishable wherever the work now hangs.
+ */
+export function offeredLinkSql(alias = 'et'): string {
+  return `${alias}.missing_since IS NULL`;
+}
+
+/**
  * The same question for a work: may a reader claim to have looked at this one,
  * in this experience? `experience_treasures` is the row that says the work is on
  * show here, so it carries its own state beside the container's — a published
- * museum can hold a link nobody has passed.
+ * museum can hold a link nobody has passed — and, since ADR-0044, the source's
+ * own word on whether the work is still here.
  *
  * `treasures.curation_state` is not here: it belongs to the work globally rather
  * than to its being shown in this venue, so a call site that needs it says so
@@ -433,5 +456,6 @@ export function linkedForReaderSql(experienceAlias = 'e', linkAlias = 'et'): str
   return [
     experienceOfferedToReaderSql(experienceAlias),
     publishedContentSql(linkAlias),
+    offeredLinkSql(linkAlias),
   ].join(' AND ');
 }

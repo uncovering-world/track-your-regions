@@ -29,7 +29,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import { hideRefusedSql, offeredLocationSql } from './experienceLifecycle.js';
+import { hideRefusedSql, offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 
 /** A row nobody has read yet, and that the source still offers. */
@@ -130,6 +130,10 @@ export function contentsWaitingSql(alias = 'e'): string {
         SELECT 1 FROM experience_treasures et
         LEFT JOIN treasures t ON t.id = et.treasure_id
         WHERE et.experience_id = ${alias}.id
+          -- Only a link the source still places here: a withdrawn one can never
+          -- be published (the publish statement carries the same term), so
+          -- counting it would promise work the card cannot offer (ADR-0044).
+          AND ${offeredLinkSql('et')}
           AND (et.curation_state = 'pending' OR t.curation_state = 'pending')
       )
     )`;

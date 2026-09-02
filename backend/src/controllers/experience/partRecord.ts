@@ -22,9 +22,17 @@
  * reader. `IS NOT DISTINCT FROM` on the reference is what lets the
  * referenceless point be found at all.
  *
- * Offered rows only. A row the source has withdrawn is shown to nobody, so a
- * card would open a pin readers cannot see and publishing would write a name
- * onto a row nothing displays; the withdrawn card is that row's question.
+ * Offered rows only, for a point. A point the source has withdrawn is shown to
+ * nobody, so a card would open a pin readers cannot see and publishing would
+ * write a name onto a row nothing displays; the withdrawn card is that row's
+ * question. A work is the other case, and is found through any link this object
+ * has, marked or not (ADR-0044): its fields are the work's own, passed once and
+ * globally (ADR-0025 decision 2), so a held attribution stays a live question
+ * wherever the work now hangs — and the record carrying it lives on this
+ * object's row, which is the only card able to reach it. Filtering here would
+ * make that proposal unanswerable the day the work moved, a hold nothing could
+ * release; publishing the *link* is a different act, and `publishContents` does
+ * skip a marked one.
  */
 
 /**
@@ -51,8 +59,10 @@ export function recordedLocationSql(
 }
 
 /**
- * The stored work a record entry names, held by this experience — the same
- * shape as the point above, for the same two callers.
+ * The stored work a record entry names, linked to this experience — the same
+ * shape as the point above, for the same two callers, minus the offered term:
+ * the link only proves the record reached the right object, and a marked link
+ * still does (the module note above says why).
  */
 export function recordedTreasureSql(
   { experienceId, ref }: { experienceId: string; ref: string },

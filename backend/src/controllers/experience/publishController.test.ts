@@ -237,6 +237,24 @@ describe('publishing an arrival', () => {
     expect(publishSql).toContain('missing_since IS NULL');
     expect(publishSql).toContain("existence <> 'lost'");
   });
+
+  it('leaves a link the source has withdrawn unread, and the work behind it', async () => {
+    grantScope();
+    const { client, queries } = makeClient({ row: { curation_state: 'pending' } });
+
+    await publish({}, client);
+
+    // The same argument as the point above, one table over (ADR-0044): a
+    // withdrawn link is shown to nobody, so publishing it looks harmless until
+    // the run that places the work here again clears `missing_since` and leaves
+    // `curation_state` as this wrote it — a work back on the wall marked as one
+    // a curator passed, having been on no card. The work's own publish is scoped
+    // through the museum's links, so it carries the term too: a work whose only
+    // link here is withdrawn is not on show here, and this card is not the one
+    // that should pass it.
+    expect(only(queries, 'UPDATE experience_treasures').sql).toContain('missing_since IS NULL');
+    expect(only(queries, 'UPDATE treasures').sql).toContain('et.missing_since IS NULL');
+  });
 });
 
 describe('publishing named contents', () => {

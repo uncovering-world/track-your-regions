@@ -107,15 +107,26 @@ function collectingSparql(
  *
  * Read from what is actually stored rather than from a record of the previous proposal, because
  * that is what the placement diff has to be measured against: a work the database holds under a
- * museum this run no longer names is the thing worth printing.
+ * museum this run no longer names is the thing worth printing — and, since ADR-0044, the thing
+ * the coverage floor is measured against and the withdrawal arm then marks.
+ *
+ * Offered links only. A link an earlier run already marked is not a placement the catalogue
+ * shows, so it is neither something this run can withdraw again nor something its floor should
+ * count as still held: measured with the marked rows in, a museum whose works really left would
+ * drag the ratio down on every later run, for works nobody sees. The literal rather than the
+ * controllers' `offeredLinkSql`, because no service imports a controller module; it has to track
+ * that definition.
+ *
+ * Exported for its test: which rows it reads is the whole of what the floor and the diff see.
  */
-async function readPreviousPlacements(): Promise<Record<string, string[]>> {
+export async function readPreviousPlacements(): Promise<Record<string, string[]>> {
   const result = await pool.query(
     `SELECT t.external_id AS work, e.external_id AS venue
        FROM experience_treasures et
        JOIN treasures t ON t.id = et.treasure_id
        JOIN experiences e ON e.id = et.experience_id
-      WHERE e.category_id = $1`,
+      WHERE e.category_id = $1
+        AND et.missing_since IS NULL`,
     [MUSEUM_CATEGORY_ID],
   );
   const placements: Record<string, string[]> = {};

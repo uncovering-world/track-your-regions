@@ -23,7 +23,7 @@ import { pool } from '../../db/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
 import {
-  hidePendingSql, hideRefusedSql, lifecycleSelectSql, offeredLocationSql,
+  hidePendingSql, hideRefusedSql, lifecycleSelectSql, offeredLinkSql, offeredLocationSql,
 } from './experienceLifecycle.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
@@ -229,6 +229,10 @@ export async function queryContents(
         FROM experience_treasures et
         JOIN treasures t ON t.id = et.treasure_id
         WHERE et.experience_id = e.id
+          -- And still placed here by the source: a withdrawn link can never be
+          -- published, so a card counting it would ask a question its own
+          -- button cannot answer (ADR-0044).
+          AND ${offeredLinkSql('et')}
           AND (et.curation_state = 'pending' OR t.curation_state = 'pending')
       ) t
     ) works
