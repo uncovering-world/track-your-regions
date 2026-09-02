@@ -54,6 +54,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0041](0041-a-database-says-which-migrations-it-has-seen.md) | A database says which migrations it has seen | Accepted | 2026-08-31 |
 | [0042](0042-a-search-answers-about-the-catalogue-and-opens-where-the-reader-is.md) | A search answers about the catalogue, and opens where the reader is | Accepted | 2026-09-01 |
 | [0043](0043-a-picture-we-show-is-one-we-may-show.md) | A picture we show is one we may show | Accepted | 2026-09-01 |
+| [0044](0044-a-work-leaves-a-museum-behind-a-floor-measured-on-works.md) | A work leaves a museum by a mark, behind a floor measured on works | Accepted | 2026-09-02 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

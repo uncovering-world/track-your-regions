@@ -1,7 +1,10 @@
 # ADR-0026: A run records what a container's contents did, per kind of contents
 
 **Date:** 2026-08-15
-**Status:** Accepted — decisions 1 and 2 narrowed by ADR-0029
+**Status:** Accepted — decisions 1 and 2 narrowed by ADR-0029; the floor decision 5 names as the
+gate on producing a withdrawal is landed by
+[ADR-0044](0044-a-work-leaves-a-museum-behind-a-floor-measured-on-works.md), and the shape it
+carries is now produced
 
 ---
 

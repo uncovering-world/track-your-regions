@@ -290,6 +290,15 @@ did and what the field was called when they did it. Order-independent with
 each step guarded so either order arrives at the same place — and it widens the
 curation-log action CHECK, so it is also the newest file that states that list whole.
 
+`041-a-work-is-marked-not-deleted.sql` adds the two columns behind a work leaving a museum
+(ADR-0044): `experience_treasures.missing_since`, the mark on a link the source stopped placing
+here — the observation a point carries, hidden from readers by the same predicate — with a partial
+index on the offered links, and `experience_sync_logs.withdrawal_skipped_reason`, why a run marked
+nothing when the works coverage floor refused it. One file for both because they are one decision:
+a mark is only safe behind the floor, and a refusal that lands nowhere a person reads is a run that
+"found nothing to withdraw". No backfill — every link stored before it is one no run has
+contradicted, which is what NULL means — and re-running it is a no-op.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the
