@@ -2341,6 +2341,7 @@ ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS is_dry_run BOOLEAN NOT
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS detection_skipped_reason TEXT;
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_filtered INTEGER DEFAULT 0;
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_held INTEGER DEFAULT 0;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS withdrawal_skipped_reason TEXT;
 
 COMMENT ON COLUMN experience_sync_logs.total_updated IS 'Rows whose fields actually changed. Runs before migration 009 counted every row that passed through ON CONFLICT, changed or not — the two are not comparable.';
 COMMENT ON COLUMN experience_sync_logs.total_unchanged IS 'Rows the run wrote nothing to. Two kinds: ones that turned out identical, and ones the run proposed a change to and was refused - a curated_fields claim (each claimed field counted again in total_curated_conflicts) or the category gate holding a row a reader can already see (the row counted again in total_held). Counted here, never stored per object.';
@@ -2348,6 +2349,7 @@ COMMENT ON COLUMN experience_sync_logs.total_held IS 'Rows a reader can already 
 COMMENT ON COLUMN experience_sync_logs.is_dry_run IS 'TRUE for preview runs: the changeset was computed but experiences were not written. Excluded from every "latest run" query.';
 COMMENT ON COLUMN experience_sync_logs.total_filtered IS 'Entities the source offered that are not of the kind this category holds — e.g. a Wikidata collection with no physical address answering a museum query. Not errors: nothing failed, and the run stays successful.';
 COMMENT ON COLUMN experience_sync_logs.detection_skipped_reason IS 'Why missing-object detection did not run: ranked source, force run, cancelled, errors, or coverage below the floor. Every value missingDetectionSkipReason() produces lands here.';
+COMMENT ON COLUMN experience_sync_logs.withdrawal_skipped_reason IS 'Why this run marked none of the works its museums stopped holding: works coverage below the floor (ADR-0044). Every value worksCoverageSkipReason() produces lands here, and a run carrying one is partial, never success. NULL where withdrawals were applied, and on every run of a source whose contents need no floor: points are paired per object, not measured per pool.';
 
 -- Built for the "New" chip's per-row lookup of the latest completed non-dry run
 -- of a category, which #529 deleted: the chip now counts from published_at and
@@ -2790,6 +2792,19 @@ CREATE INDEX IF NOT EXISTS idx_experience_treasures_treasure ON experience_treas
 
 ALTER TABLE experience_treasures ADD COLUMN IF NOT EXISTS curation_state VARCHAR(10) NOT NULL DEFAULT 'auto';
 COMMENT ON COLUMN experience_treasures.curation_state IS 'Whether this work has been passed as being HERE. A link may be offered to a reader only when neither it nor its work is pending (ADR-0025).';
+
+-- A link the source stops placing here is marked, never deleted -- the same
+-- observation a point carries (ADR-0022), for the same reason: the row is what
+-- a person's viewed record points at. Written only by a run that has seen enough
+-- of the works its museums hold to be believed (the coverage floor, ADR-0044).
+ALTER TABLE experience_treasures ADD COLUMN IF NOT EXISTS missing_since TIMESTAMPTZ;
+COMMENT ON COLUMN experience_treasures.missing_since IS 'When a run first placed this work somewhere other than here, or nowhere, having seen enough of the works its museums hold to be believed (the coverage floor, ADR-0044). A machine observation, not a verdict. NULL = the source still places the work here; every reader-facing read of a museum''s works carries missing_since IS NULL. A run that places the work here again clears it.';
+
+-- Every reader-facing read of a museum's works carries `missing_since IS NULL`,
+-- and the withdrawal arm asks it per museum on every run. Partial, like the
+-- points' index, because no read ever asks for the marked rows alone.
+CREATE INDEX IF NOT EXISTS idx_experience_treasures_offered
+    ON experience_treasures(experience_id) WHERE missing_since IS NULL;
 
 -- Guarded rather than dropped-and-added: these are new constraints, not widened
 -- ones, so the drop/add idiom used for the changeset's change_type check would
