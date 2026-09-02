@@ -24,10 +24,12 @@
  * rather than by oversight:
  *
  * - `upsertMuseumTreasures` links works to a venue and then retires that venue's
- *   curator pass, but runs every statement on the pool with no `BEGIN`. Each is
- *   its own transaction, so it holds nothing across them: it can wait for a lock,
- *   never be half of a cycle. Wrapping those statements in a transaction puts it
- *   under the rule.
+ *   curator pass, running each of those statements on the pool with no `BEGIN`.
+ *   Each is its own transaction, so it holds nothing across them: it can wait
+ *   for a lock, never be half of a cycle. The one transaction inside it —
+ *   `reconcileLinks` (ADR-0044), which restores and marks the venue's links in
+ *   one `BEGIN` — is under the rule for exactly that reason, and takes the object
+ *   first.
  * - `createManualExperience` inserts the object and then its point in one
  *   transaction. The INSERT's own row lock *is* the "object first" the rule asks
  *   for, and no other transaction can hold a row of an object that did not exist

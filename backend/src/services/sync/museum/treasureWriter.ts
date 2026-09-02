@@ -20,6 +20,7 @@ import type {
 } from '../types.js';
 import { ICONIC_SITELINKS, ICONIC_RELEASE } from './tier1.js';
 import { isCommonsPictureUrl } from '../../../types/urlSafety.js';
+import { reconcileLinks } from './linkWithdrawal.js';
 
 /** `Top Art Museums` — the category a treasure reads its gate from, since it has none of its own. */
 const MUSEUM_CATEGORY_ID = 2;
@@ -51,6 +52,18 @@ const HELD_WORK = `((SELECT requires_curation FROM experience_categories WHERE i
 export interface TreasureCredits {
   fetched: Map<string, ImageCredit>;
   stored: Map<string, StoredCredit>;
+}
+
+/** What a run knows about itself that this writer needs: its log id, and the floor's verdict. */
+export interface TreasureWriteRun extends WriteRun {
+  /**
+   * Why the run may not withdraw a work, or null when it may — the works
+   * coverage floor's answer (ADR-0044), carried from the collector through the
+   * run context. Required, with no default, for the reason the credits are:
+   * a default of null would mark links on a run nothing measured, and a
+   * default reason would never mark one.
+   */
+  withdrawalSkippedReason: string | null;
 }
 
 /**
@@ -174,11 +187,18 @@ function rewriteOf(
  * only leaves below `ICONIC_RELEASE`, so the badge does not flicker on and off as Wikipedia
  * grows. Selection upstream uses the single threshold; only the stored flag has hysteresis.
  *
- * Returns what the museum gained and what the run rewrote about what it already
- * held, named (ADR-0026). `withdrawn` and `returned` are always empty and that is
- * the decision, not an omission: nothing unlinks a work, because no contents
- * coverage floor exists for treasures and a run that under-fetched would take
- * real works off the walls and report success.
+ * Returns what the museum gained, lost and got back, and what the run rewrote
+ * about what it already held, named (ADR-0026). `withdrawn` and `returned`
+ * were empty by decision until ADR-0044: nothing unlinked a work, because no
+ * coverage floor existed for works and a run that under-fetched would have
+ * taken real works off the walls and reported success. Now the collector
+ * measures the run against that floor before anything is written, and this
+ * writer marks a link only where `run.withdrawalSkippedReason` is null — after
+ * every work is written, so a museum whose write throws part-way keeps every
+ * link, and in one transaction with the restore (`linkWithdrawal.ts`). A link
+ * the source places here again is restored on every run, floor or no floor. A
+ * visible link of a work this run places at another museum (`placedElsewhere`)
+ * is held while no reader can see it there yet.
  *
  * `changed` is the one arm computed per work, and its contract is the part a
  * caller cannot see: the "after" side is the **source's offer**, not the row the
@@ -206,10 +226,22 @@ export async function upsertMuseumTreasures(
   // Required for the reason `credits` is: a caller that left it out would hold
   // a visible work's attribution and never point the museum at the run that
   // held it — a proposal recorded in the changeset with no card able to find it.
-  run: WriteRun,
+  // And, since ADR-0044, would mark links on a run nothing measured.
+  run: TreasureWriteRun,
+  // Works this run places at another admitted museum and not here, by the
+  // source's id: the ones whose visible link is held while their new place is
+  // not yet readable (ADR-0044 decision 5). From the run's proposal, because
+  // the new museum may be written after this one. Required, with no default,
+  // for the reason the two above are: an empty default would mark a moved
+  // work's old link while its new one is still unread, and the work would be
+  // visible nowhere until a curator published it.
+  placedElsewhere: string[],
 ): Promise<ContentsDelta> {
   const added: ContentItem[] = [];
   const changed: ContentItemChange[] = [];
+  // Every work the run offers here, by the id the upsert answered with: what
+  // the two arms after the loop compare the museum's links against.
+  const offeredIds: number[] = [];
 
   // What the run is about to write over, read once for the whole museum rather
   // than once per work. The upsert cannot answer this itself — it is a single
@@ -376,6 +408,7 @@ export async function upsertMuseumTreasures(
 
     const stored = treasureResult.rows[0];
     const treasureId = stored.id;
+    offeredIds.push(treasureId);
 
     const rewrite = was && rewriteOf(was, artwork, patch, Boolean(stored.was_held));
     if (rewrite) changed.push(rewrite);
@@ -407,9 +440,21 @@ export async function upsertMuseumTreasures(
     if (link.rows.length > 0) added.push({ name: stored.name, ref: artwork.externalId });
   }
 
+  // The museum's other links, once every work is written and not before: a
+  // throw above leaves both arms unreached, so nothing is marked on the
+  // strength of a list the run did not finish. Restoring is unconditional;
+  // marking waits on the floor the collector measured the whole run against
+  // (ADR-0044) — floor first, withdrawal second, never the reverse.
+  const { returned, withdrawn } = await reconcileLinks(experienceId, {
+    offered: offeredIds,
+    placedElsewhere,
+    withdraw: run.withdrawalSkippedReason === null,
+  });
+
   // Once for the museum rather than once per painting: the fact is that a
   // curator's pass no longer covers everything on show, and it is the same fact
-  // whether one work arrived or twelve.
+  // whether one work arrived or twelve. Arrivals only, as with a point: a work
+  // given its place back was on show when the pass was made.
   if (added.length > 0) await retirePassAfterNewContent(pool, experienceId);
 
   // A held field is a proposal a curator has to be able to find, and the card
@@ -427,5 +472,8 @@ export async function upsertMuseumTreasures(
   // that moves for a work is which venue holds it, and the day a source does
   // rewrite an attribution is the day a curator needs to hear about it rather
   // than the day we discover the run could not say.
-  return { added, withdrawn: [], returned: [], changed };
+  // Read off the statements that performed the writes, which is what keeps the
+  // delta and the table from disagreeing: a held withdrawal is absent here
+  // because the mark passed it over, and the link is still on show.
+  return { added, withdrawn, returned, changed };
 }
