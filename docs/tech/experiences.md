@@ -988,7 +988,27 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   Louvre's four curatorial departments become the Louvre, and a dead collector's collection
   re-homes to where the works actually hang
 - Folds duplicate pins for one physical institution (a gallery inside its own palace, one building
-  recorded under two QIDs) into the venue that holds the ticket
+  recorded under two QIDs) into the venue that holds the ticket (`venueFolds.ts`, three rules in
+  order). A `P361` container that received a work of its own, within 250 m, is the ticket. A
+  **door** — what a venue is located in (`P276`) or part of (`P361`) that would pass the venue
+  test on its own, is not an `EDITORIAL_OUT` entity, lies within the same 250 m and is the
+  better-known name by sitelinks — is the ticket even when no work names it (#781): the
+  Galleria Palatina folds into Palazzo Pitti, the Egyptian Museum of Berlin into the Neues
+  Museum, the Musée des Beaux-Arts de la ville de Paris into the Petit Palais, the Palace Museum
+  into the Forbidden City, the Sackler Center into the Brooklyn Museum. Fame is what separates a
+  collection inside a building from a museum that merely occupies one — the Galleria Borghese
+  stays under its own name though it stands in a villa Wikidata types a museum — and distance
+  is what keeps a branch two streets from its institution a visit of its own; an umbrella
+  organisation is neither (the Nationalgalerie's coordinate lies 200 m from the Alte
+  Nationalgalerie and is less known), and the MuseumsQuartier, which is both, is the editorial
+  exclusion. Two rows at one spot with no edge between them are one record twice, and the row
+  carrying the collection survives — and a row whose twin already went through a door or into
+  its container follows it there, provided that door is the better-known name for it too, so a
+  duplicate record of a collection does not stay behind as a second pin. The venue graph
+  follows a museum-class entity's `P276` one
+  hop, like a parent, so the door has facts — dropping a location the entity has left (a
+  statement carrying `pq:P582`), the rule a work's `P276` is read under; resolution itself still
+  walks `P361` only, and `EDITORIAL_OUT` is what keeps an excluded quarter from being a door
 - Once folding settles, each surviving venue must also be an *art* museum (`artTest.ts`) — the
   category holds art museums by product decision (2026-08-05); archaeology, egyptology,
   natural-history and military museums are a separate import with their own category. Thirteen
