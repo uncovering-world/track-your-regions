@@ -13,6 +13,7 @@
  */
 
 import { heldFieldAnsweredSql } from '../../experience/heldDecisions.js';
+import { iconicPinnedSql } from '../../../services/sync/admission.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 
 import { count, text } from './assertion.js';
@@ -120,6 +121,68 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
 };
 
 /**
+ * A row its category turned away, still badged as a must-see.
+ *
+ * A museum carries `is_iconic` because it holds a work above the fame line, and
+ * every museum in this catalogue was admitted for exactly that (ADR-0023), so
+ * the flag has been a synonym of belonging: the run sets it on admission and
+ * clears it with a refusal, whether the rule named the row or the sweep reached
+ * it (`admission.ts`, `CLEAR_ICONIC`). Nothing reads a museum's own flag yet --
+ * the badge the list draws is a *work's* -- but the Iconic filter (#589) and an
+ * export (#591) will read it on its own, with no admission predicate beside it,
+ * and the flag as stored is what they would hand a reader. So it is the stored
+ * value that is asked here, not a reader composite: whether one column moved
+ * without the other.
+ *
+ * How a row got here is the case #760 found. Eight museums created by run 48,
+ * before the art test, were refused by runs 52 and 53 on the day the admission
+ * writes landed, with the flag surviving -- and then *confirmed* by a curator,
+ * whose pin on `admission` is what takes the row out of every later run's
+ * reach, so the badge was frozen on. The confirmation clears the flag since
+ * #760 and migration 042 cleared the eight; the run's own badge write moved
+ * behind the restore step since the same issue (`markIconic`), where before it
+ * badged a row mid-run whatever its admission -- a confirmed refusal a later
+ * run selected again included, and any row a cancelled run had not yet
+ * re-admitted. A row appearing from here means a refusal path wrote
+ * `admission` without the clear, or a writer of the flag reached a row already
+ * refused.
+ *
+ * The one row left alone is the one the writers leave alone: a flag a curator
+ * pinned. No curation surface sets `is_iconic` today -- the run does, and it
+ * honours the same pin -- so this is an exclusion against the day one does
+ * rather than a case the catalogue holds, and it is the writers' own guard,
+ * imported rather than spelled again.
+ */
+const refusedRowWearingIconic: CatalogueAssertion = {
+  id: 'refused-row-wearing-iconic',
+  area: 'objects',
+  title: 'A row its category turned away, still badged as a must-see',
+  kind: 'invariant',
+  meaning:
+    'The row is refused — hidden from readers by its category\'s own rule — and still carries '
+    + 'the Iconic flag, which a read of the flag on its own (the Iconic filter, an export) would '
+    + 'hand a reader as a must-see the catalogue has turned away. The run\'s refusal writes and a '
+    + 'curator\'s confirmation both clear the flag, so a row here was refused by a path that did '
+    + 'not, or had the flag set afterwards. Rows refused before those writes cleared the flag '
+    + 'are what db/migrations/042-refused-row-keeps-no-iconic-badge.sql clears.',
+  sql: `SELECT e.id AS experience_id,
+               e.name AS experience_name,
+               c.name AS category_name
+          FROM experiences e
+          JOIN experience_categories c ON c.id = e.category_id
+         WHERE e.admission = 'refused'
+           AND e.is_iconic
+           -- A flag a curator pinned outranks the rule here exactly as it does
+           -- for the writers: the pin is the one thing that keeps the badge on
+           -- a refused row on purpose.
+           AND NOT ${iconicPinnedSql('e')}
+         ORDER BY e.name`,
+  describe: row =>
+    `${text(row, 'experience_name')}: turned away from ${text(row, 'category_name')} `
+    + `and still badged as a must-see (experience ${count(row, 'experience_id')})`,
+};
+
+/**
  * A work naming several makers in an order nobody has confirmed.
  *
  * A count to watch rather than a zero to hold, and ADR-0040 is why. The
@@ -191,9 +254,11 @@ const workMakersUnconfirmed: CatalogueAssertion = {
 
 /**
  * The object rules, in the order a person reads them: the fact stored twice,
- * then the count of works whose makers nobody has arranged.
+ * the badge a refusal should have taken, then the count of works whose makers
+ * nobody has arranged.
  */
 export const objectAssertions: CatalogueAssertion[] = [
   dangerFlagAgainstItsTag,
+  refusedRowWearingIconic,
   workMakersUnconfirmed,
 ];
