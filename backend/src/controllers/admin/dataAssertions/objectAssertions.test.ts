@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { heldFieldAnsweredSql, heldFieldRefusedSql } from '../../experience/heldDecisions.js';
+import { iconicPinnedSql } from '../../../services/sync/admission.js';
 import { objectAssertions } from './objectAssertions.js';
 
 const byId = (id: string) => {
@@ -87,5 +88,38 @@ describe('the danger flag against its tag', () => {
     expect(assertion.describe({
       experience_id: 1, experience_name: 'A site', tagged: true, flagged: false, listing: null,
     })).toBe('A site: tagged as in danger, with no badge on it (experience 1)');
+  });
+});
+
+describe('a refused row still wearing the Iconic badge', () => {
+  const assertion = byId('refused-row-wearing-iconic');
+  const sql = collapse(assertion.sql);
+
+  it('asks the admission axis and the flag together, on the row itself', () => {
+    // Both are columns of `experiences`, written by the same refusal paths, so
+    // the question is whether one moved without the other (#760). The flag as
+    // stored is what a read of it on its own -- the Iconic filter, an export --
+    // would hand a reader, so it is the stored value that is asked, not a
+    // reader composite.
+    expect(sql).toContain("WHERE e.admission = 'refused' AND e.is_iconic");
+    expect(assertion.kind).toBe('invariant');
+  });
+
+  it('leaves alone the one row the writers leave alone: a flag a curator pinned', () => {
+    // The refusal writes keep a pinned flag (`CLEAR_ICONIC`), so a pinned
+    // refused row is the badge kept on purpose rather than a defect. The guard
+    // is the writers' own, imported, so the two cannot drift apart.
+    expect(sql).toContain(`AND NOT ${iconicPinnedSql('e')}`);
+  });
+
+  it('names the row and the category that turned it away', () => {
+    expect(assertion.describe({
+      experience_id: 6205, experience_name: 'British Museum', category_name: 'Top Art Museums',
+    })).toBe('British Museum: turned away from Top Art Museums and still badged as a must-see '
+      + '(experience 6205)');
+  });
+
+  it('sends the admin to the migration for the rows refused before the writers cleared the flag', () => {
+    expect(assertion.meaning).toContain('042');
   });
 });
