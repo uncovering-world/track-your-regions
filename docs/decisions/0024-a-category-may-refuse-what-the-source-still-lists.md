@@ -1,7 +1,10 @@
 # ADR-0024: A category may refuse what the source still lists
 
 **Date:** 2026-08-07
-**Status:** Accepted
+**Status:** Accepted — decisions 2 and 4 narrowed by
+[ADR-0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md): a refusal
+becomes the withdrawal of one membership in a kind, proposed by the run and confirmed by a
+curator rather than applied by the machine; decisions 1, 3 and 5 stand
 
 ---
 
