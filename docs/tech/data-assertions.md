@@ -75,6 +75,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | boundaries | A division stored as a leaf while divisions hang beneath it | invariant |
 | boundaries | A division holding a single source polygon while divisions hang beneath it | invariant |
 | objects | A site whose danger tag and whose In Danger badge disagree | invariant |
+| objects | A row its category turned away, still badged as a must-see | invariant |
 | objects | A work names several makers in an order nobody has confirmed | watch |
 | pictures | A stored picture on a host whose terms do not let us show it | invariant |
 | pictures | A picture shown with nobody credited | invariant |
@@ -341,7 +342,41 @@ is the disagreement this check exists to report rather than one to go on
 excusing. `picture-with-nobody-credited`'s `credit_waiting` arms narrowed alongside it,
 though on a refusal alone rather than on any answer — see its own section for why.
 
-The last is a licence obligation rather than a consistency rule. Most Commons
+**The refused-badge rule** (`refused-row-wearing-iconic`) is about two columns
+of one row that the same writes are supposed to move together. A museum carries
+`is_iconic` because it holds a work above the fame line, and every museum in the
+catalogue was admitted for exactly that (ADR-0023), so the flag has been a
+synonym of belonging: the run sets it on admission and its two refusal writes
+clear it (`admission.ts`, `CLEAR_ICONIC`). What those writes cannot reach is a
+row a curator has answered — confirming a refusal pins `admission`, and the pin
+keeps every later run off the row, whatever the flag held at that moment. That
+is how eight museums wore the badge refused on the development catalogue (#760):
+created by run 48 before the art test, refused by runs 52 and 53 on the day the
+admission writes landed with the flag surviving, then confirmed on 2026-08-07
+and 08 — the British Museum, the Cyprus Museum, the Natural History Museum in
+Vienna, the Roman Forum. Nothing reads a museum's own flag yet — the badge the
+list draws is a *work's* — but the Iconic filter (#589) and an export (#591)
+will read it on its own, with no admission predicate beside it, so the rule asks
+the **stored** value rather than a reader composite. Since #760 a curator's
+confirmation clears the flag through the same fragment the run uses, the run's
+own badge write (`markIconic`, beside the writes that take the flag away) runs
+after the restore step rather than per item — so it reads `admission` as a
+settled answer, a refusal a curator confirmed gets nothing though the collector
+can select such a museum again, and a run cancelled before that step badges
+nothing rather than a row it never re-admitted — and
+`db/migrations/042-refused-row-keeps-no-iconic-badge.sql` cleared the eight; a
+row here from now on means a refusal path wrote `admission` without the clear,
+or a writer of the flag reached a row already refused. The one row it leaves
+alone is the one the writers leave alone — a flag a curator pinned — through
+the writers' own guard, imported rather than spelled again. `override` is
+deliberately not the mirror image: it leaves the flag where the refusal put it,
+because an admitted museum without the badge is a legitimate state
+([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md)
+decision 5) and what the badge should mean beyond works-first admission is
+#603's question.
+
+**The credit rule** (`picture-with-nobody-credited`) is a licence obligation
+rather than a consistency rule. Most Commons
 files are CC BY or CC BY-SA, which of a page that merely shows a photograph ask
 that its author be named wherever it appears — and every picture the product
 draws is a Commons file (ADR-0043), so that is the only term in play.
@@ -412,8 +447,11 @@ found.
 
 A rule need not live in that file. Where a subject brings several at once, they
 go in a file of their own beside it, exporting an array the registry imports and
-spreads — `regionGeometryAssertions.ts` is the first, five rules about a
-region's shape, its focus box, its anchor and the rungs the map draws it from. Two things follow for that shape:
+spreads — `regionGeometryAssertions.ts` was the first, five rules about a
+region's shape, its focus box, its anchor and the rungs the map draws it from;
+`divisionTreeAssertions.ts` and `objectAssertions.ts` (the danger flag, the
+refused badge, the works' makers) take the same shape, and a rule about an
+object as a row joins the last of those rather than the registry. Two things follow for that shape:
 the type and the row helpers come from `assertion.ts` rather than from the
 registry, so the two files do not import each other; and the tests live beside
 the rules, with `catalogueAssertions.test.ts` keeping only what it asserts about
