@@ -14,9 +14,10 @@
  * run did not look everywhere. A refusal is not an observation: it is our own
  * rule, applied to data we hold, naming the object before it says no, and
  * re-running it gives the same answer. A curator who disagrees pins
- * `admission` in `curated_fields`, and every write here skips the row.
+ * `admission` in `curated_fields`, and every write to `admission` here skips
+ * the row.
  *
- * Three operations, and the order they run in matters:
+ * Four operations, and the order they run in matters:
  *
  *   1. `markRefused` — the run named it and a rule said no. Unconditional: no
  *      coverage floor or error count makes a named refusal less true.
@@ -25,17 +26,25 @@
  *      membership each run. Guarded, because "not in the admitted set" is the
  *      ambiguous kind of statement again: a broken SPARQL day must not blank a
  *      catalogue.
+ *   4. `markIconic` — the must-see badge on the rows the run admits, for a
+ *      source whose admission rule is the badge. The one write here that is
+ *      about the flag rather than about admission, and so honours the flag's
+ *      own pin rather than admission's: a row a curator overrode is badged,
+ *      since the curator admitted it and the rule would badge it.
  *
  * Steps 2 and 3 are order-independent: restore matches `admission = 'refused'
  * AND external_id = ANY(seen)` and the sweep matches `admission = 'admitted' AND
  * external_id <> ALL(seen)`, so the two can never see the same row whichever
  * runs first.
  *
- * The order that *is* load-bearing is `markRefused` before `restoreAdmission`.
- * Those two can collide — a venue can be named in a run's filtered list and also
- * be one the run admits, which is what an unbroken fold cycle produces — and
- * when they do, the run's own admission has to be the answer that stands.
- * Reversed, the row would end the run refused and hidden until the next one.
+ * Two orders *are* load-bearing. `markRefused` before `restoreAdmission`: those
+ * two can collide — a venue can be named in a run's filtered list and also be
+ * one the run admits, which is what an unbroken fold cycle produces — and when
+ * they do, the run's own admission has to be the answer that stands. Reversed,
+ * the row would end the run refused and hidden until the next one. And
+ * `restoreAdmission` before `markIconic`: the badge reads `admission`, and
+ * reads it as a settled answer only once the refusals this run lifts are
+ * lifted (#760).
  *
  * The sweep is what reaches a row whose *identity* moved. `Roman Forum and the
  * Palatine` (Q55685908) was placed by one run and refused by the next under a
@@ -119,6 +128,15 @@ export async function countAdmitted(categoryId: number): Promise<number> {
 }
 
 /**
+ * A curator's pin on the admission axis, qualified by `alias` — the answer a
+ * confirmation or an override leaves behind, which every write here honours.
+ * `COALESCE` for the reason `UNPROTECTED` spells out.
+ */
+export function admissionPinnedSql(alias: string): string {
+  return `COALESCE(${alias}.curated_fields ? 'admission', false)`;
+}
+
+/**
  * Rows this mechanism may not touch, qualified by table name so the fragment
  * reads the same inside an `UPDATE … FROM`, where a bare column would be
  * ambiguous.
@@ -134,7 +152,7 @@ export async function countAdmitted(categoryId: number): Promise<number> {
  *   own work on every clean run.
  */
 const UNPROTECTED = `experiences.is_manual = FALSE
-      AND NOT COALESCE(experiences.curated_fields ? 'admission', false)`;
+      AND NOT ${admissionPinnedSql('experiences')}`;
 
 function rowsFrom(result: { rows: { id: number; external_id: string; name: string }[] }): AdmissionRow[] {
   return result.rows.map((row) => ({ id: row.id, externalId: row.external_id, name: row.name }));
@@ -173,6 +191,54 @@ export const iconicPinnedSql = (alias: string): string =>
 export const CLEAR_ICONIC = `is_iconic = CASE
         WHEN ${iconicPinnedSql('experiences')} THEN experiences.is_iconic
         ELSE false END`;
+
+/**
+ * Badge the rows this run admits — the fourth writer of the flag, kept beside
+ * the three that take it away, and run after `restoreAdmission` on purpose.
+ *
+ * Every museum works-first admits holds a work above the fame line, so the flag
+ * is a property of belonging to the category rather than a field the source
+ * proposes — which is why it is written here and not through the
+ * curated_fields-aware upsert, and outside the changeset: nothing sets it by
+ * hand yet, but the moment a curation surface does, a run writing `true` over
+ * a curator's `false` would show up in no record of its own, so the pin is
+ * honoured now (`iconicPinnedSql`).
+ *
+ * After the restore step rather than per item, because that is when
+ * `admission` is a settled answer. Mid-run it is stale two ways: a refusal
+ * nobody confirmed that this run selects again is still `refused` until
+ * `restoreAdmission` lifts it, and a refusal a curator confirmed stays
+ * `refused` for good — the collector reads live Wikidata and consults
+ * `admission` nowhere, so a later run can select such a museum, and the
+ * per-item write this replaces badged it. Asked here, `admission = 'admitted'`
+ * covers both: the lifted refusal is admitted by now, the confirmed one is
+ * not. And a run that stops before this step — a cancel exits ahead of the
+ * sweep step, as does any throw — writes no badge at all, rather than one on
+ * a row whose admission it never settled; the next complete run writes it,
+ * which is the one-run delay ADR-0045 decision 5 already calls a legitimate
+ * state (#760).
+ *
+ * A preview writes no row and reports none, as the per-item write did not.
+ */
+export async function markIconic(
+  categoryId: number,
+  admittedExternalIds: string[],
+  dryRun: boolean,
+): Promise<AdmissionRow[]> {
+  if (admittedExternalIds.length === 0 || dryRun) return [];
+
+  const result = await pool.query(
+    `UPDATE experiences SET is_iconic = true
+      WHERE experiences.category_id = $1
+        AND experiences.external_id = ANY($2::text[])
+        AND experiences.admission = 'admitted'
+        AND NOT experiences.is_iconic
+        AND NOT ${iconicPinnedSql('experiences')}
+  RETURNING id, external_id, name`,
+    [categoryId, admittedExternalIds],
+  );
+  return rowsFrom(result);
+}
 
 /**
  * Refuse the rows this run named and turned down, each with the rule's own

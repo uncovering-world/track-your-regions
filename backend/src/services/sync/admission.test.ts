@@ -16,8 +16,11 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import {
+  admissionPinnedSql,
   admissionSweepSkipReason,
   countAdmitted,
+  iconicPinnedSql,
+  markIconic,
   markNotAdmitted,
   markRefused,
   restoreAdmission,
@@ -237,6 +240,51 @@ describe('markNotAdmitted', () => {
 
     expect(lastSql()).toContain('SELECT');
     expect(lastSql()).not.toContain('UPDATE');
+  });
+});
+
+describe('markIconic', () => {
+  it('writes nothing for an empty admitted set, and nothing in a preview', async () => {
+    expect(await markIconic(2, [], false)).toEqual([]);
+    expect(await markIconic(2, ['Q19675'], true)).toEqual([]);
+
+    expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('badges the rows this run admits, and only those not already badged', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ id: 6184, external_id: 'Q19675', name: 'Louvre Museum' }] });
+
+    const badged = await markIconic(2, ['Q19675', 'Q160236'], false);
+
+    expect(lastSql()).toContain('UPDATE experiences SET is_iconic = true');
+    expect(lastSql()).toContain('experiences.external_id = ANY($2::text[])');
+    expect(lastSql()).toContain('AND NOT experiences.is_iconic');
+    expect(lastParams()).toEqual([2, ['Q19675', 'Q160236']]);
+    expect(badged).toEqual([{ id: 6184, externalId: 'Q19675', name: 'Louvre Museum' }]);
+  });
+
+  it('leaves a flag a curator pinned alone, through the same guard as the writes that clear it', async () => {
+    await markIconic(2, ['Q19675'], false);
+
+    expect(lastSql()).toContain(`AND NOT ${iconicPinnedSql('experiences')}`);
+  });
+
+  it('asks admission as it stands after the restore step, and nothing subtler', async () => {
+    // Written after `restoreAdmission`, so `admission = 'admitted'` is a settled
+    // answer: a refusal nobody confirmed that this run selected again has been
+    // lifted by now, and one a curator confirmed has not -- the collector
+    // consults admission nowhere, so a later run can select such a museum, and
+    // the per-item write this replaces badged it (#760). A run that stops
+    // before that step writes no badge at all.
+    await markIconic(2, ['Q19675'], false);
+
+    expect(lastSql()).toContain("AND experiences.admission = 'admitted'");
+  });
+
+  it('honours the pin restoreAdmission honours, through the one spelling of it', async () => {
+    await restoreAdmission(2, ['Q55685908'], false);
+
+    expect(lastSql()).toContain(`NOT ${admissionPinnedSql('experiences')}`);
   });
 });
 

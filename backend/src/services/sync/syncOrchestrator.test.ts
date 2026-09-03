@@ -31,6 +31,7 @@ vi.mock('./admission.js', () => ({
   countAdmitted: vi.fn().mockResolvedValue(0),
   markRefused: vi.fn().mockResolvedValue([]),
   restoreAdmission: vi.fn().mockResolvedValue([]),
+  markIconic: vi.fn().mockResolvedValue([]),
   markNotAdmitted: vi.fn().mockResolvedValue([]),
 }));
 
@@ -45,7 +46,8 @@ import { createSyncLog, updateSyncLog, annotateClosedSyncLog } from './syncUtils
 import { recordSyncChanges } from './changeRecorder.js';
 import { missingDetectionSkipReason, flagMissingExperiences, countSeenAmongActive } from './missingDetection.js';
 import {
-  admissionSweepSkipReason, countAdmitted, markRefused, restoreAdmission, markNotAdmitted,
+  admissionSweepSkipReason, countAdmitted, markRefused, restoreAdmission, markIconic,
+  markNotAdmitted,
 } from './admission.js';
 import { assignRegionsForExperiences, worldViewsWithGeometry } from './regionAssignmentService.js';
 
@@ -259,6 +261,8 @@ describe('orchestrateSync', () => {
 
   it('should handle cancellation during processing', async () => {
     const config = makeConfig({
+      recomputesMembership: true,
+      badgesAdmitted: true,
       processItem: vi.fn().mockImplementation(async (_item, progress) => {
         progress.cancel = true; // Simulate cancel on first item
         return processed('created');
@@ -276,6 +280,13 @@ describe('orchestrateSync', () => {
 
     const status = runningSyncs.get(TEST_CATEGORY_ID);
     expect(status?.status).toBe('cancelled');
+
+    // A cancel exits ahead of the admission step, so a row this run selected
+    // but had not yet re-admitted is left as it was -- refused and unbadged --
+    // rather than refused and badged, which is what the per-item badge write
+    // used to leave behind and the catalogue check reports (#760).
+    expect(restoreAdmission).not.toHaveBeenCalled();
+    expect(markIconic).not.toHaveBeenCalled();
   });
 
   it('should propagate fetch errors as sync failures', async () => {
@@ -451,31 +462,37 @@ describe('orchestrateSync changeset recording', () => {
     expect(recorded[0]).toMatchObject({ changeType: 'filtered', experienceId: 6205 });
   });
 
-  it('does not sweep for a source that fetches a published list', async () => {
+  it('does not sweep, restore or badge for a source that fetches a published list', async () => {
     await orchestrateSync(makeConfig(), 1);
 
     expect(countAdmitted).not.toHaveBeenCalled();
     expect(restoreAdmission).not.toHaveBeenCalled();
+    expect(markIconic).not.toHaveBeenCalled();
     expect(markNotAdmitted).not.toHaveBeenCalled();
   });
 
-  it('lets a run that both filters and admits a venue end with it admitted', async () => {
-    // The one ordering that carries weight. A venue can be named in the filtered
+  it('lets a run that both filters and admits a venue end with it admitted, and badged', async () => {
+    // The orderings that carry weight. A venue can be named in the filtered
     // list and still be one the run admits — a fold cycle used to produce
     // exactly that — and the run's own admission has to be the answer that
-    // stands, or the row ends the run hidden until the next one.
+    // stands, or the row ends the run hidden until the next one. And the badge
+    // is written where admission is a settled answer (#760): after the whole
+    // admission step, so a refusal this run lifted is admitted by the time it
+    // is asked and one a curator confirmed is not.
     const order: string[] = [];
-    (markRefused as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-      order.push('refuse');
-      return [];
-    });
-    (restoreAdmission as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-      order.push('restore');
-      return [];
-    });
+    for (const [name, fn] of [
+      ['refuse', markRefused], ['restore', restoreAdmission],
+      ['sweep', markNotAdmitted], ['badge', markIconic],
+    ] as const) {
+      (fn as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+        order.push(name);
+        return [];
+      });
+    }
 
     await orchestrateSync(makeConfig({
       recomputesMembership: true,
+      badgesAdmitted: true,
       fetchItems: vi.fn().mockResolvedValue({
         items: [{ id: '1', name: 'Item 1' }],
         fetchedCount: 1,
@@ -483,29 +500,37 @@ describe('orchestrateSync changeset recording', () => {
       }),
     }), 1);
 
-    expect(order).toEqual(['refuse', 'restore']);
-    // And restore is asked about the very id that was refused.
+    expect(order).toEqual(['refuse', 'restore', 'sweep', 'badge']);
+    // And restore and the badge are asked about the very id that was refused.
     expect(restoreAdmission).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1'], false);
+    expect(markIconic).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1'], false);
   });
 
-  it('sweeps against the ids the run actually saw', async () => {
+  it('sweeps against the ids the run actually saw, and badges nothing without the flag', async () => {
     await orchestrateSync(makeConfig({ recomputesMembership: true }), 1);
 
     expect(markNotAdmitted).toHaveBeenCalledWith(
       TEST_CATEGORY_ID, ['1', '2'], expect.any(String), false,
     );
+    // Recomputing membership buys the sweep, not the badge: that is a property
+    // of the source's admission rule (`badgesAdmitted`), declared on its own.
+    expect(markIconic).not.toHaveBeenCalled();
   });
 
   it('still restores, but does not sweep, when a guard refuses', async () => {
     (admissionSweepSkipReason as ReturnType<typeof vi.fn>).mockReturnValue('run had 3 errors');
 
-    await orchestrateSync(makeConfig({ recomputesMembership: true }), 1);
+    await orchestrateSync(makeConfig({ recomputesMembership: true, badgesAdmitted: true }), 1);
 
     // Restoring is safe on any run: it can only widen what a reader sees.
     // Sweeping on a broken run empties a catalogue.
     expect(restoreAdmission).toHaveBeenCalled();
     expect(markNotAdmitted).not.toHaveBeenCalled();
+    // And badging is a statement about rows the run did admit, whatever the
+    // guard says about sweeping the rest.
+    expect(markIconic).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1', '2'], false);
   });
+
 
   it('counts a swept row as filtered and records it against the row', async () => {
     (markNotAdmitted as ReturnType<typeof vi.fn>).mockResolvedValue([
