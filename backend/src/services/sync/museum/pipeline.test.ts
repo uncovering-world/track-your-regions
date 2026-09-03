@@ -31,6 +31,10 @@ interface FixtureEntity {
   lat: number | null;
   lon: number | null;
   parents: string[];
+  /** What it is located in (`P276`); the graph follows it from a museum-class entity. */
+  locations?: string[];
+  /** Ten unless a case is about fame, which the door rule compares (#781). */
+  sitelinks?: number;
   dissolved?: string;
 }
 
@@ -93,6 +97,35 @@ const ENTITIES: Record<string, FixtureEntity> = {
   Q900011: { label: 'Palazzo', classes: [ART_MUSEUM], lat: 45.0, lon: 9.0, parents: [] },
   Q900012: { label: 'Galleria', classes: [ART_MUSEUM], lat: 45.0005, lon: 9.0, parents: ['Q900011'] },
   Q900013: { label: 'Sala', classes: [ART_MUSEUM], lat: 45.001, lon: 9.0, parents: ['Q900012'] },
+
+  // A collection housed in a better-known palace that no work names: the Galleria Palatina is
+  // located in Palazzo Pitti, 5 m away, and is part of nothing — the palace is reachable only
+  // through the collection's location (#781).
+  Q866498: {
+    label: 'Galleria Palatina', classes: [ART_MUSEUM], lat: 43.7651, lon: 11.25,
+    parents: [], locations: ['Q29286'], sitelinks: 12,
+  },
+  Q29286: { label: 'Palazzo Pitti', classes: [ART_MUSEUM], lat: 43.76514, lon: 11.25004, parents: [], sitelinks: 59 },
+  // A museum standing in a better-known quarter that Wikidata types an art museum and the
+  // editors excluded: the Leopold Museum in the MuseumsQuartier, 78 m away.
+  Q59435: {
+    label: 'Leopold Museum', classes: [ART_MUSEUM], lat: 48.2033, lon: 16.3594,
+    parents: ['Q699943'], locations: ['Q699943'], sitelinks: 25,
+  },
+  Q699943: { label: 'MuseumsQuartier', classes: [ART_MUSEUM], lat: 48.2036, lon: 16.3603, parents: [], sitelinks: 27 },
+
+  // A collection housed in a gallery housed in a palace, each better known than the last and a
+  // few metres apart: the door walk goes on from the gallery to the palace, and the gallery —
+  // a door that holds no work — becomes a key of the fold map without ever being a venue.
+  Q900021: {
+    label: 'Collection in the Gallery', classes: [ART_MUSEUM], lat: 45.5, lon: 10.5,
+    parents: [], locations: ['Q900022'], sitelinks: 5,
+  },
+  Q900022: {
+    label: 'Gallery in the Palace', classes: [ART_MUSEUM], lat: 45.50005, lon: 10.5,
+    parents: [], locations: ['Q900023'], sitelinks: 20,
+  },
+  Q900023: { label: 'Palace of Doors', classes: [ART_MUSEUM], lat: 45.5001, lon: 10.5, parents: [], sitelinks: 60 },
 };
 
 const WORKS: Record<string, FixtureWork> = {
@@ -159,6 +192,29 @@ const WORKS: Record<string, FixtureWork> = {
   Q900402: {
     label: 'Work Below the Threshold', sitelinks: 20, cls: PAINTING, clsLabel: 'painting',
     broadRoot: PAINTING, statements: [{ property: 'P276', venue: 'Q900311' }],
+  },
+  // Owned by and located in the collection, which names no building: the palace has to come
+  // from the collection's own location edge.
+  Q948034: {
+    label: 'La velata', sitelinks: 25, cls: PAINTING, clsLabel: 'painting', broadRoot: PAINTING,
+    statements: [
+      { property: 'P195', venue: 'Q866498' },
+      { property: 'P276', venue: 'Q866498' },
+    ],
+  },
+  Q1445107: {
+    label: 'Danaë', sitelinks: 24, cls: PAINTING, clsLabel: 'painting', broadRoot: PAINTING,
+    statements: [
+      { property: 'P195', venue: 'Q59435' },
+      { property: 'P276', venue: 'Q59435' },
+    ],
+  },
+  Q900601: {
+    label: 'Work in the Collection', sitelinks: 30, cls: PAINTING, clsLabel: 'painting', broadRoot: PAINTING,
+    statements: [
+      { property: 'P195', venue: 'Q900021' },
+      { property: 'P276', venue: 'Q900021' },
+    ],
   },
   // Held by three venues at once, each of which owns it outright: the Great Wave shape.
   Q900401: {
@@ -229,7 +285,7 @@ function statementRows(qids: string[]): SparqlBinding[] {
 function detailRows(qids: string[]): SparqlBinding[] {
   return qids.filter((q) => ENTITIES[q]).map((qid) => {
     const e = ENTITIES[qid];
-    const row: SparqlBinding = { e: uri(qid), eLabel: { value: e.label }, sl: { value: '10' } };
+    const row: SparqlBinding = { e: uri(qid), eLabel: { value: e.label }, sl: { value: String(e.sitelinks ?? 10) } };
     if (e.lat !== null && e.lon !== null) row.coord = { value: `Point(${e.lon} ${e.lat})` };
     if (e.dissolved) row.dissolved = { value: e.dissolved };
     return row;
@@ -243,6 +299,7 @@ function edgeRows(qids: string[]): SparqlBinding[] {
     if (!e) continue;
     for (const cls of e.classes) rows.push({ e: uri(qid), cls: uri(cls) });
     for (const parent of e.parents) rows.push({ e: uri(qid), parent: uri(parent) });
+    for (const loc of e.locations ?? []) rows.push({ e: uri(qid), loc: uri(loc) });
   }
   return rows;
 }
@@ -359,7 +416,7 @@ describe('collectTier1Museums', () => {
     expect(out.items.map((i) => i.qid)).not.toContain('Q900012');
     expect(out.items.map((i) => i.qid)).not.toContain('Q900013');
 
-    const folded = out.filtered.filter((f) => f.reason.includes('folded into'));
+    const folded = out.filtered.filter((f) => f.reason.includes('inside its P361 container'));
     expect(folded.map((f) => f.externalId).sort()).toEqual(['Q900012', 'Q900013']);
     expect(folded.find((f) => f.externalId === 'Q900013')!.reason).toContain('Galleria');
   });
@@ -451,6 +508,51 @@ describe('collectTier1Museums', () => {
 
     expect(out.diff.moved).toEqual([{ work: 'Q900101', from: ['Q900003'], to: ['Q900001'] }]);
     expect(out.diff.dropped).toEqual(['Q555555']);
+  });
+
+  it('proposes the palace a collection is housed in, reached only through the collection\'s location', async () => {
+    const out = await run();
+
+    // La velata names the Galleria Palatina and nothing else, so the palace enters the graph
+    // only because the collection's own `P276` is followed — and it is the palace, better known
+    // and five metres away, that a traveller buys a ticket to (#781).
+    const pitti = out.items.find((i) => i.qid === 'Q29286');
+    expect(pitti?.artworks.map((a) => a.externalId)).toEqual(['Q948034']);
+    expect(pitti?.admittedFor).toEqual({ qid: 'Q948034', label: 'La velata' });
+    expect(out.items.map((i) => i.qid)).not.toContain('Q866498');
+
+    const palatina = out.filtered.find((f) => f.externalId === 'Q866498');
+    expect(palatina?.reason).toContain('folded into Palazzo Pitti');
+    expect(palatina?.reason).toContain('housed in');
+  });
+
+  it('reports the collection that folded, not the door the walk went on from', async () => {
+    const out = await run();
+
+    // The work ends at the palace, two doors up. The collection lost its row and is reported;
+    // the gallery between them holds no work, was never a candidate, and must not appear as
+    // one — a line about it would bump the filtered count and put a building the run never
+    // proposed on the curation screen.
+    const palace = out.items.find((i) => i.qid === 'Q900023');
+    expect(palace?.artworks.map((a) => a.externalId)).toEqual(['Q900601']);
+    expect(out.items.map((i) => i.qid)).not.toContain('Q900021');
+    expect(out.items.map((i) => i.qid)).not.toContain('Q900022');
+
+    const filtered = out.filtered.map((f) => f.externalId);
+    expect(filtered).toContain('Q900021');
+    expect(filtered).not.toContain('Q900022');
+  });
+
+  it('keeps a museum under its own name when the quarter it stands in is an editorial exclusion', async () => {
+    const out = await run();
+
+    // The MuseumsQuartier is typed an art museum, is better known than the Leopold Museum and
+    // lies 78 m away — and it is excluded by name for having swallowed the Leopold before. An
+    // excluded entity is not a door: the museum stays, with its work.
+    const leopold = out.items.find((i) => i.qid === 'Q59435');
+    expect(leopold?.artworks.map((a) => a.externalId)).toEqual(['Q1445107']);
+    expect(out.items.map((i) => i.qid)).not.toContain('Q699943');
+    expect(out.filtered.map((f) => f.externalId)).not.toContain('Q59435');
   });
 });
 

@@ -45,7 +45,7 @@ export const ART_CLASSES: Record<string, string> = {
 export const EDITORIAL_OUT: Record<string, string> = {
   Q6373: 'British Museum — typed art museum on Wikidata; out by the strict-art boundary of 2026-08-05, returns with the archaeology import',
   Q313746: 'East Side Gallery — a stretch of the Berlin Wall that Wikidata types art museum; no structural signal separates it (OSM calls it tourism=gallery, it has no director and no museum-registry entry)',
-  Q699943: 'MuseumsQuartier — a Vienna cultural quarter typed art museum; it swallowed the Leopold Museum under the fold rule',
+  Q699943: 'MuseumsQuartier — a Vienna cultural quarter typed art museum; it swallowed the Leopold Museum under the fold rule once, and the door rule consults this list so that it cannot again',
   Q623578: 'National Library of Australia — a library typed art museum and history museum',
 };
 
