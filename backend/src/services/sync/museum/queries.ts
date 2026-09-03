@@ -515,10 +515,13 @@ export interface EntityDetails {
   dissolved: string | null;
 }
 
-/** The multi-valued edges, fetched by UNION so classes and parents do not cross-multiply. */
+/** The multi-valued edges, fetched by UNION so classes, parents and locations do not cross-multiply. */
 export interface EntityEdges {
   classes: string[];
+  /** What it is part of (`P361`): the walk to a venue, and a candidate for its door. */
   parents: string[];
+  /** What it is located in (`P276`): the other candidate for its door (#781). */
+  locations: string[];
 }
 
 export async function fetchEntityDetails(
@@ -570,22 +573,36 @@ export async function fetchEntityEdges(
 ): Promise<Map<string, EntityEdges>> {
   const out = new Map<string, EntityEdges>();
   if (!qids.length) return out;
-  for (const qid of qids) out.set(qid, { classes: [], parents: [] });
+  for (const qid of qids) out.set(qid, { classes: [], parents: [], locations: [] });
 
+  // A location the entity has left — a P276 statement carrying an end time (pq:P582) — is
+  // dropped, by the rule a work's P276 is read under (statementBranch). The truthy value alone
+  // keeps a normal-ranked, end-dated location: the Bust of Nefertiti's own statements still name
+  // the Altes Museum it left in 2009, and a collection recorded that way would be offered a
+  // building it has left as its door. Part-of (P361) is read as before: it is the walk to a
+  // venue, and an ended membership is a question for resolution, not for this query.
   const rows = await sparql(`
-    SELECT ?e ?cls ?parent WHERE {
+    SELECT ?e ?cls ?parent ?loc WHERE {
       VALUES ?e { ${values(qids)} }
-      { ?e wdt:P31 ?cls } UNION { ?e wdt:P361 ?parent }
-    }`, { kind: 'edges', label: `class and part-of edges for ${qids.length} entities` });
+      { ?e wdt:P31 ?cls } UNION { ?e wdt:P361 ?parent } UNION {
+        ?e wdt:P276 ?loc .
+        FILTER NOT EXISTS { ?e p:P276 ?st . ?st ps:P276 ?loc ; pq:P582 ?ended }
+      }
+    }`, { kind: 'edges', label: `class, part-of and location edges for ${qids.length} entities` });
 
   for (const row of rows) {
-    const qid = extractQid(row.e?.value ?? '');
-    const edges = out.get(qid);
+    const edges = out.get(extractQid(row.e?.value ?? ''));
     if (!edges) continue;
-    const cls = row.cls ? extractQid(row.cls.value) : null;
-    const parent = row.parent ? extractQid(row.parent.value) : null;
-    if (cls && isQid(cls)) edges.classes.push(cls);
-    if (parent && isQid(parent)) edges.parents.push(parent);
+    pushEntity(edges.classes, row.cls);
+    pushEntity(edges.parents, row.parent);
+    pushEntity(edges.locations, row.loc);
   }
   return out;
+}
+
+/** Add the entity a binding names, when the binding is present and names one. */
+function pushEntity(into: string[], binding: SparqlBinding[string]): void {
+  if (!binding) return;
+  const qid = extractQid(binding.value);
+  if (isQid(qid)) into.push(qid);
 }

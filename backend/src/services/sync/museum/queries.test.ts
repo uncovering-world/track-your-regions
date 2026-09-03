@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { fetchClassPool, type SparqlFn } from './queries.js';
+import { fetchClassPool, fetchEntityEdges, type SparqlFn } from './queries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
@@ -110,5 +110,34 @@ describe('the pool parse', () => {
     let sent = '';
     await fetchClassPool(async (query) => { sent = query; return []; }, ['Q3305213']);
     expect(sent).toContain('?creator ?creatorLabel');
+  });
+});
+
+describe('the entity edges', () => {
+  it('reads where an entity is located beside what it is part of', async () => {
+    // The Egyptian Museum of Berlin is located in (P276) and part of (P361) the Neues Museum,
+    // and part of the Staatliche Museen zu Berlin. The door rule needs the location: the Palace
+    // Museum is located in the Forbidden City and part of nothing.
+    const edges = await fetchEntityEdges(answering([
+      { e: { value: `${ENTITY}Q254156` }, cls: { value: `${ENTITY}Q1229164` } },
+      { e: { value: `${ENTITY}Q254156` }, parent: { value: `${ENTITY}Q157316` } },
+      { e: { value: `${ENTITY}Q254156` }, parent: { value: `${ENTITY}Q700216` } },
+      { e: { value: `${ENTITY}Q254156` }, loc: { value: `${ENTITY}Q157316` } },
+    ]), ['Q254156']);
+
+    expect(edges.get('Q254156')).toEqual({
+      classes: ['Q1229164'], parents: ['Q157316', 'Q700216'], locations: ['Q157316'],
+    });
+  });
+
+  it('asks the source for the location edge, less any location the entity has left', async () => {
+    // A work's P276 carrying an end time (pq:P582) is dropped as a loan that ended or a move
+    // already made; an entity's location is read by the same rule, or a collection rehoused
+    // from one building to a better-known one next door keeps the old building as its door.
+    let sent = '';
+    await fetchEntityEdges(async (query) => { sent = query; return []; }, ['Q254156']);
+    expect(sent).toContain('wdt:P276 ?loc');
+    const locationBranch = sent.slice(sent.indexOf('wdt:P276 ?loc'));
+    expect(locationBranch).toMatch(/FILTER NOT EXISTS \{[^}]*ps:P276 \?loc[^}]*pq:P582/);
   });
 });
