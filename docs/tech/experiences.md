@@ -12,13 +12,17 @@ Experiences are location-based entities linked to regions. The system supports:
 - Curator workflows (reject/edit/assign/create)
 - Multi-source ingestion (UNESCO, museums, monuments)
 
-## Active Categories
+## Kinds and sources
 
-`experience_categories` is ordered by `display_priority` (lower first).
+Two words, decided apart in [ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md). A **kind** is what a traveller browses by — what they would call the thing in front of them: a World Heritage site, an art museum, an archaeology museum, a monument. Each kind is its own list, pin colour and count. A **source** is a list we read to fill a kind — the UNESCO API, a Wikidata query — and is not something a visitor sees. A kind may have several sources and a source may feed several kinds; a kind is offered to readers only once it has a sync of its own and a rule that says what complete means for it — a partial list other imports happened to fill is not offered. A place can belong to several kinds at once (Cologne Cathedral is a World Heritage site and a cathedral), and a visit recorded on the place is seen through every membership.
 
-- `UNESCO World Heritage Sites` (priority `1`)
-- `Top Art Museums` (priority `2`)
-- `Public Art & Monuments` (priority `3`)
+**What the code holds today** is one table for both words. `experience_categories` is the source table — one row per sync service, with its endpoint, its config, its gate (`requires_curation`, ADR-0025) and its `display_priority` (lower first) — and every reader-facing grouping still keys on it through `experiences.category_id`: the groups of the map-mode list, the Discover pills, the pin colour, the counts, the curator scopes, the admin routes. Three rows exist, and each is at present both a source and the only source of one kind:
+
+- `UNESCO World Heritage Sites` (priority `1`) — the kind of the same name
+- `Top Art Museums` (priority `2`) — the works-first source (ADR-0023) of the kind *Art museums*; the row's name is the selection rule's, not the kind's
+- `Public Art & Monuments` (priority `3`) — the kind of the same name
+
+`experiences.category` is the **type within a kind**, one vocabulary per source: `cultural` / `natural` / `mixed` for UNESCO, `monument` / `sculpture` for public art, and `art` for every museum row — written as a literal by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, are typed `art` too (ADR-0045's context counts them against Wikidata as of its date). A row is still both a place and its membership in a source: a monument that is also a World Heritage point is two rows (#755). The split ADR-0045 decides — a kind of its own, memberships as their own rows, refusal as a curator-confirmed withdrawal of one membership, place identity by a rule of our own — lands issue by issue; until it does, "category" in the sections below means this one table.
 
 ## Core Data Model
 
