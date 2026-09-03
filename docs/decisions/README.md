@@ -33,8 +33,8 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0020](0020-experience-lifecycle-and-run-changeset.md) | Record a changeset per sync run, and split an experience's lifecycle into two axes | Accepted — decisions 1 and 2 narrowed by 0021, decision 1 also by 0026, decision 2 also by 0024, decision 3 by 0022 | 2026-08-02 |
 | [0021](0021-source-may-restore-membership.md) | A sync may restore `source_membership`, in one direction only | Accepted | 2026-08-03 |
 | [0022](0022-locations-are-marked-not-deleted.md) | A location is marked, not deleted, and no run may empty a category | Accepted — its deferred verdict columns landed for locations by 0026; decision 2 narrowed by 0027 | 2026-08-05 |
-| [0023](0023-works-first-museum-selection.md) | Museum selection is works-first, with no institutional term and no cap | Accepted | 2026-08-07 |
-| [0024](0024-a-category-may-refuse-what-the-source-still-lists.md) | A category may refuse what the source still lists | Accepted | 2026-08-07 |
+| [0023](0023-works-first-museum-selection.md) | Museum selection is works-first, with no institutional term and no cap | Accepted — decisions 1 and 2 narrowed by [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | 2026-08-07 |
+| [0024](0024-a-category-may-refuse-what-the-source-still-lists.md) | A category may refuse what the source still lists | Accepted — decisions 2 and 4 narrowed by [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | 2026-08-07 |
 | [0025](0025-per-source-curation-gate.md) | A source is trusted or it is not, and the product says which | Accepted — decision 5 narrowed by [0037](0037-a-part-field-readers-see-is-held-like-the-objects.md) | 2026-08-10 |
 | [0026](0026-a-run-records-what-a-container-holds.md) | A run records what a container's contents did, per kind of contents | Accepted — decisions 1 and 2 narrowed by [0029](0029-what-an-object-is-made-of-can-be-curated.md) | 2026-08-15 |
 | [0027](0027-a-point-rewritten-more-precisely-is-the-same-point.md) | A point the source rewrites more precisely is the same point | Accepted — decisions 1 and 5 narrowed by [0029](0029-what-an-object-is-made-of-can-be-curated.md) | 2026-08-16 |
@@ -55,6 +55,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0042](0042-a-search-answers-about-the-catalogue-and-opens-where-the-reader-is.md) | A search answers about the catalogue, and opens where the reader is | Accepted | 2026-09-01 |
 | [0043](0043-a-picture-we-show-is-one-we-may-show.md) | A picture we show is one we may show | Accepted | 2026-09-01 |
 | [0044](0044-a-work-leaves-a-museum-behind-a-floor-measured-on-works.md) | A work leaves a museum by a mark, behind a floor measured on works | Accepted | 2026-09-02 |
+| [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | A traveller browses by kind of place, and a source is how a kind is filled | Accepted | 2026-09-03 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

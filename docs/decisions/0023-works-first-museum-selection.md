@@ -3,7 +3,12 @@
 **Date:** 2026-08-07
 **Status:** Accepted — the first consequence below (the placement diff converging only for the
 first transition, because nothing unlinks a work) is answered by
-[ADR-0044](0044-a-work-leaves-a-museum-behind-a-floor-measured-on-works.md); every decision stands
+[ADR-0044](0044-a-work-leaves-a-museum-behind-a-floor-measured-on-works.md); decisions 1 and 2 narrowed by
+[ADR-0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) — works-first
+stays one source of the art-museums kind and the rule that sets the Iconic badge, and stops being
+the only way in; the one line still sets both badges, but a museum admitted by another source may
+hold no Iconic work, so "a museum's card can never be empty" holds only for works-first
+admissions; decisions 3 and 4 stand
 
 ---
 
