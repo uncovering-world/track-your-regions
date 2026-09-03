@@ -13,6 +13,7 @@ import { finishPlacement, enterAssigningPhase, terminalStatus } from './placemen
 import {
   admissionSweepSkipReason,
   countAdmitted,
+  markIconic,
   markNotAdmitted,
   markRefused,
   restoreAdmission,
@@ -125,6 +126,16 @@ export interface SyncServiceConfig<T> {
    * ambiguous silence ADR-0020 was written about (ADR-0024).
    */
   recomputesMembership?: boolean;
+  /**
+   * Whether belonging to the category *is* the must-see badge: the source's
+   * admission rule is a fame threshold, so every row it admits holds a work
+   * above the line and carries `is_iconic` for that (works-first museums,
+   * ADR-0023). A listing, or a source whose rule is not fame, badges nothing
+   * however its membership is computed — the badge is a property of the rule,
+   * not of recomputing (ADR-0045 decision 5). Read after the admission step,
+   * once every row of the run has the admission it will keep (#760).
+   */
+  badgesAdmitted?: boolean;
   /** Fetch and prepare items for processing. Can append to errorDetails for pre-processing errors. */
   fetchItems: (progress: SyncProgress, errorDetails: ErrorDetail[]) => Promise<FetchResult<T>>;
   /** Process a single item and describe what happened to it. Throw to count as error. */
@@ -390,6 +401,31 @@ export const NOT_ADMITTED_REASON =
   'this run selected nothing that belongs to it';
 
 /**
+ * The must-see badge on the rows this run admits, for a source whose admission
+ * rule is the badge (`badgesAdmitted`).
+ *
+ * After the admission step, on purpose: that is when `admission` is a settled
+ * answer for every row of the run — a refusal this run lifted is admitted by
+ * now, one a curator confirmed is not — and a run that never gets this far (a
+ * cancel exits before the admission step, as does any throw) badges nothing
+ * rather than a row it did not re-admit (#760). The sweep touches only rows
+ * absent from this set and the guard says nothing about the rows the run did
+ * admit, so the badge is neither ordered against the sweep nor gated with it.
+ */
+async function badgeAdmitted<T>(
+  config: SyncServiceConfig<T>,
+  progress: SyncProgress,
+  admittedExternalIds: string[],
+): Promise<void> {
+  if (!config.badgesAdmitted) return;
+
+  const badged = await markIconic(config.categoryId, admittedExternalIds, progress.dryRun);
+  if (badged.length > 0) {
+    console.log(`${config.logPrefix} Badged ${badged.length} admitted row(s) as must-see`);
+  }
+}
+
+/**
  * Restore, then sweep — the second half of admission, for a source that
  * recomputes its whole membership rather than publishing a list (ADR-0024).
  *
@@ -397,6 +433,8 @@ export const NOT_ADMITTED_REASON =
  * present in the admitted set, the sweep only rows that are admitted and absent
  * from it. What matters is that both run after `markRefused`, so a row this run
  * named as filtered *and* admitted ends the run admitted rather than hidden.
+ * The must-see badge is not written here but after this step returns
+ * (`badgeAdmitted`), so that it reads admission settled.
  */
 async function applyAdmissionSweep<T>(
   config: SyncServiceConfig<T>,
@@ -692,6 +730,7 @@ export async function orchestrateSync<T>(
     if (sweepSkippedReason !== null) {
       console.log(`${logPrefix} Admission sweep skipped: ${sweepSkippedReason}`);
     }
+    await badgeAdmitted(config, progress, seenExternalIds);
 
     changesRecorded = await recordChangesetOrMark(changes, errorDetails, progress, logPrefix);
 

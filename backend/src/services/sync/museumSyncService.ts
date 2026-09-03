@@ -354,22 +354,11 @@ async function upsertMuseumExperience(
   let locations: ContentsDelta | undefined;
 
   if (!context.dryRun) {
-    // Every museum admitted here holds a work above the iconic threshold, so the flag is a
-    // property of belonging to this category rather than a field the source proposes — which is
-    // why it is written here and not through the curated_fields-aware upsert.
-    //
-    // It still honours the same guard by hand. Nothing sets `is_iconic` by hand today, so there
-    // is nothing to overwrite yet; the moment a curation surface exists, a run without this
-    // would restore `true` over a curator's `false` every time, and since the write is outside
-    // the changeset the run's own record would not show the flip. COALESCE because the column
-    // is nullable and `NULL ? 'x'` is NULL, which would skip the row rather than write it.
-    await pool.query(
-      `UPDATE experiences SET is_iconic = true
-        WHERE id = $1 AND NOT is_iconic
-          AND NOT COALESCE(curated_fields ? 'is_iconic', false)`,
-      [experienceId],
-    );
-
+    // The must-see flag is not written here. Every museum admitted here holds a work above the
+    // iconic threshold, so the flag is a property of belonging to this category rather than a
+    // field the source proposes — and it is written where belonging is settled, after the run's
+    // restore step (`markIconic`, admission.ts), so a cancelled run never badges a row it did
+    // not re-admit (#760).
     const written = await upsertSingleLocation(
       experienceId, museum.qid, details.lon!, details.lat!, { syncLogId: context.syncLogId },
     );
@@ -450,6 +439,10 @@ export function syncMuseums(
     // different question from whether the place still exists, and is why both
     // lines stand together.
     recomputesMembership: true,
+    // And belonging is the badge: a museum is admitted for holding a work above
+    // the fame line, so every row this run admits carries is_iconic for that
+    // (ADR-0023) — written once admission is settled, not per museum (#760).
+    badgesAdmitted: true,
     // The one place the run's options reach the collection: everything else the
     // orchestrator threads for us, but the cache is a property of *this* run
     // rather than of the category.
