@@ -4,9 +4,12 @@
  * necessary condition with a veto list on top.
  *
  * The veto entries are *classes*, not named entities: a rule about kinds of thing, which a
- * curator verdict can extend without a deploy. Entity-level exclusions belong in the curation
- * gate, not here — measured: the works-first rule already excludes MuseumsQuartier (Q699943)
- * and the National Library of Australia (Q623578) without naming them.
+ * curator verdict can extend without a deploy. Entity-level exclusions live in `EDITORIAL_OUT`
+ * (`artTest.ts`), not here, and they are load-bearing: the works-first rule once kept the
+ * MuseumsQuartier (Q699943) out on its own, because only a venue holding a work could be folded
+ * into — but the door rule (#781) offers a venue's location as a fold target whether or not a
+ * work names it, and the quarter is typed an art museum, better known than the Leopold Museum
+ * and 78 m from it. It is kept from being a door only because it is named.
  */
 
 import { ART_CLASSES } from './artTest.js';

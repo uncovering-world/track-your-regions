@@ -402,8 +402,11 @@ function buildItems(
 /**
  * Why a candidate the works pointed at is not in the catalogue.
  *
- * Restricted to candidates an *iconic* work named, plus every fold: a rejection that cost the
- * catalogue nothing is noise on the curation screen, and the pool names some 1500 entities.
+ * Restricted to candidates an *iconic* work named, plus every fold of a venue that received a
+ * work: a rejection that cost the catalogue nothing is noise on the curation screen, and the
+ * pool names some 1500 entities. A door's own fold — written when the door walk goes on from a
+ * door to the door's door — is not reported: the door held no work and was never proposed, so
+ * a line about it would count a loss the catalogue did not have.
  */
 function nameFiltered(
   pool: Map<string, PoolWork>,
@@ -411,6 +414,7 @@ function nameFiltered(
   resolution: (qid: string) => Resolution,
   graph: VenueGraph,
   folds: Record<string, Fold>,
+  venues: ReadonlySet<string>,
 ): FilteredEntity[] {
   const nameOf = (qid: string) => graph.details.get(qid)?.label ?? qid;
   const filtered = new Map<string, FilteredEntity>();
@@ -429,6 +433,7 @@ function nameFiltered(
   }
 
   for (const [qid, fold] of Object.entries(folds)) {
+    if (!venues.has(qid)) continue;
     filtered.set(qid, {
       externalId: qid,
       name: nameOf(qid),
@@ -484,12 +489,12 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
   const statements = await collectStatements(run, [...pool.keys()]);
 
   const seeds = unique([...statements.values()].flat().map((s) => s.venue));
-  const graph = await loadVenueGraph(run, seeds);
+  const graph = await loadVenueGraph(run, seeds, museumClasses);
   const { resolve, resolution } = makeResolver(graph, museumClasses);
 
   run.phase('Placing works in the venues that hold them...');
   const placed = placeWorks(pool, statements, resolve, graph.ancestors);
-  const folds = foldVenues(placed, graph);
+  const folds = foldVenues(placed, graph, museumClasses);
   const afterFolds = applyFolds(placed, folds);
 
   run.phase('Asking whether each venue is an art museum...');
@@ -511,7 +516,8 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
   }
 
   const items = buildItems(tier, pool, current, graph);
-  const filtered = [...nameFiltered(pool, statements, resolution, graph, folds), ...notArt];
+  const venues = new Set(Object.values(placed).flat());
+  const filtered = [...nameFiltered(pool, statements, resolution, graph, folds, venues), ...notArt];
   const diff = diffPlacements(deps.previousPlacements, current);
 
   console.log(
