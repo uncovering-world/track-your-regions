@@ -141,6 +141,17 @@ function rowsFrom(result: { rows: { id: number; external_id: string; name: strin
 }
 
 /**
+ * A curator's pin on the must-see flag, qualified by `alias`.
+ *
+ * `COALESCE` because `curated_fields` is nullable and `NULL ? 'x'` is NULL — the
+ * shape every guard on that column has to take. Exported so that a read of the
+ * flag can leave alone exactly the row the writers leave alone, rather than
+ * spelling the guard a second time.
+ */
+export const iconicPinnedSql = (alias: string): string =>
+  `COALESCE(${alias}.curated_fields ? 'is_iconic', false)`;
+
+/**
  * Clearing the must-see flag alongside a refusal.
  *
  * A museum carries `is_iconic` because it holds a work above the threshold, and
@@ -150,9 +161,17 @@ function rowsFrom(result: { rows: { id: number; external_id: string; name: strin
  *
  * The flag has its own curator pin, honoured separately from admission's: a
  * person who marked this must-see goes on saying so, whatever the rule decided.
+ *
+ * Shared with the curator's confirmation of a refusal (`setExperienceAdmission`),
+ * which is the one refusal write after which no run reaches the row: the pin it
+ * sets is what `UNPROTECTED` honours, so whatever the flag holds at that moment
+ * is what it holds for good. Eight museums refused on the day these writes
+ * landed kept the flag exactly that way until migration 042 cleared them
+ * (#760); `refused-row-wearing-iconic` in Catalogue Checks is what would name
+ * the next one.
  */
-const CLEAR_ICONIC = `is_iconic = CASE
-        WHEN COALESCE(experiences.curated_fields ? 'is_iconic', false) THEN experiences.is_iconic
+export const CLEAR_ICONIC = `is_iconic = CASE
+        WHEN ${iconicPinnedSql('experiences')} THEN experiences.is_iconic
         ELSE false END`;
 
 /**

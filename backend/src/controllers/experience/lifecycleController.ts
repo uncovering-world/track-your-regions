@@ -24,6 +24,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import type { AppliedPart } from './publishHeldParts.js';
+import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 
 type Membership = 'present' | 'former';
 type Existence = 'extant' | 'lost';
@@ -227,6 +228,23 @@ async function publishArrivalContents(
 }
 
 /**
+ * What a verdict on a refusal does to the must-see flag, appended to the
+ * verdict's own `UPDATE`.
+ *
+ * A confirmed refusal drops the flag the way the run's own refusal writes do,
+ * and it has to: the pin that statement writes is what keeps every later run
+ * off the row, so whatever the flag holds after it is what it holds for good.
+ * Eight museums refused on the day those writes landed wore the badge that way
+ * until migration 042 (#760). `override` leaves the flag where the refusal put
+ * it — an admitted museum without the badge is a legitimate state (ADR-0045
+ * decision 5), and what the badge should mean beyond works-first admission is
+ * #603's question, not this endpoint's.
+ */
+function iconicAfterVerdictSql(admitted: boolean): string {
+  return admitted ? '' : `, ${CLEAR_ICONIC}`;
+}
+
+/**
  * Answer a refusal.
  * POST /api/experiences/:id/admission
  * Body: { decision: 'confirm' | 'override', note?: string }
@@ -383,7 +401,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
           state_decided_by = $5,
           state_decided_at = NOW(),
           state_note = $6,
-          updated_at = NOW()${publishSet}
+          updated_at = NOW()${publishSet}${iconicAfterVerdictSql(admitted)}
       WHERE id = $1
     `, [
       experienceId, admitted ? 'admitted' : 'refused', nextReason,

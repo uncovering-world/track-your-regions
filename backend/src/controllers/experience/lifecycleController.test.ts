@@ -34,6 +34,9 @@ import { pool } from '../../db/index.js';
 import { setExperienceState, setExperienceAdmission } from './lifecycleController.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { assignRegionsForExperiences } from '../../services/sync/regionAssignmentService.js';
+import { CLEAR_ICONIC } from '../../services/sync/admission.js';
+
+const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -476,6 +479,39 @@ describe('setExperienceAdmission', () => {
     // Pinned either way: a curator who looked at the thing outranks the rule in
     // both directions, so a later run must not re-admit a confirmed row.
     expect(JSON.parse(String(update.params[3]))).toContain('admission');
+  });
+
+  it('drops the must-see flag with a confirmed refusal, through the run\'s own fragment', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
+      makeRes() as never);
+
+    // The pin this statement writes is what keeps every later run off the row,
+    // so whatever the flag holds after it is what it holds for good (#760).
+    // The same fragment the run's two refusal writes use, so a curator's pin on
+    // `is_iconic` is honoured here exactly as it is there.
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(collapse(update.sql)).toContain(collapse(CLEAR_ICONIC));
+  });
+
+  it('leaves the must-see flag where the refusal put it when a row is put back', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
+      makeRes() as never);
+
+    // An admitted museum without the badge is a legitimate state (ADR-0045
+    // decision 5); what the badge should mean beyond works-first admission is
+    // #603's question, not this endpoint's.
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.sql).not.toContain('is_iconic');
   });
 
   it('keeps the reason on a confirmed row and drops it from an overridden one', async () => {
