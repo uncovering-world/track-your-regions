@@ -1,7 +1,10 @@
 # ADR-0045: A traveller browses by kind of place, and a source is how a kind is filled
 
 **Date:** 2026-09-03
-**Status:** Accepted
+**Status:** Accepted — decision 4 narrowed by
+[ADR-0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md): for a
+serial World Heritage site the locations are the places and the site is the card that gathers
+them, not a place with parts; the rest of decision 4 and every other decision stand
 
 ---
 
