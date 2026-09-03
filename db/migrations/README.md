@@ -52,7 +52,7 @@ both, and `backend/src/db/migrationLedger.test.ts` fails the gate before it
 gets that far.
 
 **Declare your own transaction.** The runner wraps nothing, because a file knows
-whether its work is one step or several and nothing outside it does — 34 of the
+whether its work is one step or several and nothing outside it does — 36 of the
 files here open a `BEGIN`/`COMMIT` of their own. A wrapper would not even hold:
 `psql --single-transaction` over such a file warns that a transaction is already
 in progress, and the file's own `COMMIT` then ends psql's outer one, leaving
@@ -298,6 +298,14 @@ nothing when the works coverage floor refused it. One file for both because they
 a mark is only safe behind the floor, and a refusal that lands nowhere a person reads is a run that
 "found nothing to withdraw". No backfill — every link stored before it is one no run has
 contradicted, which is what NULL means — and re-running it is a no-op.
+
+`042-refused-row-keeps-no-iconic-badge.sql` clears `is_iconic` on every refused row that still
+carries it, a flag a curator pinned excepted (#760). The run's refusal writes clear the flag on the
+rows they may touch, and a curator's confirmation of a refusal does so since #760; what the file
+reaches is the rows refused before either did — eight museums on the development catalogue,
+refused on the day the admission writes landed and then confirmed, whose pin on `admission` had
+kept every later run off them. No DDL, so it is order-independent with `01-schema.sql`, and
+re-running it touches nothing.
 
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
