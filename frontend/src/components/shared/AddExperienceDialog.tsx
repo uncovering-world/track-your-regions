@@ -53,6 +53,7 @@ import { LocationPicker } from './LocationPicker';
 import { LoadingSpinner } from './LoadingSpinner';
 import { EmptyState } from './EmptyState';
 import { ImageCreditLine } from './ImageCreditLine';
+import { PictureWithCredit } from './PictureWithCredit';
 
 interface ApplySuggestionParams {
   setNewImageUrl: (url: string) => void;
@@ -597,15 +598,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                   stored `metadata.imageCredit` to draw. `POST /experiences` resolves
                   the credit for whatever URL is saved, so the picture is named from
                   the moment anybody but its author can see it. */}
-              {newImageUrl && (
-                <Box
-                  component="img"
-                  src={toThumbnailUrl(newImageUrl, 250)}
-                  alt="Preview"
-                  sx={{ mt: 1, maxWidth: 200, maxHeight: 120, borderRadius: 1, objectFit: 'cover' }}
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                />
-              )}
+              {newImageUrl && <PictureWithCredit url={newImageUrl} alt="Picture preview" />}
             </Box>
 
             <TextField
