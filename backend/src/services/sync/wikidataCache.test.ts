@@ -23,9 +23,23 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { withCache, setCacheTtl } from './wikidataCache.js';
+import { withCache, setCacheTtl, CACHED_KINDS_BY_CATEGORY } from './wikidataCache.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
+
+describe('CACHED_KINDS_BY_CATEGORY', () => {
+  it('declares the four kinds the public-art collector describes', () => {
+    // Decision 4 of ADR-0030: only the kinds a source's collector files exist
+    // for it. The panel offers "Sync without cache" and the cache section on
+    // the strength of this list, so a kind the collector files and this list
+    // omits is a cache an admin cannot see or clear.
+    expect(CACHED_KINDS_BY_CATEGORY[3]).toEqual(['classes', 'pool', 'edges', 'entities']);
+  });
+
+  it('still declares nothing for the UNESCO run, which reads its own API', () => {
+    expect(CACHED_KINDS_BY_CATEGORY[1]).toBeUndefined();
+  });
+});
 
 /** Top Art Museums — every question here belongs to one source. */
 const MUSEUM = 2;
@@ -63,6 +77,28 @@ describe('withCache', () => {
     // would give it a lifetime nobody chose.
     expect(source).toHaveBeenCalledTimes(1);
     expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('keys an answer by the source that asked as well as by the question', async () => {
+    // Decision 4 of ADR-0030: the cache belongs to a source. Two collectors
+    // ask for the children of `sculpture` in the same words; the public-art
+    // run once read the museums' week-old row and missed a class Wikidata had
+    // created since, and "Clear" on one source would otherwise leave rows the
+    // other had last written. Same question, another source: another key.
+    emptyCache();
+    const source = vi.fn(async () => ROWS);
+    const question = 'SELECT DISTINCT ?c WHERE { ?c wdt:P279 wd:Q860861 }';
+    const descriptor = { kind: 'classes' as const, label: 'subclasses of 1 class(es)' };
+
+    await withCache(source, { categoryId: MUSEUM, enabled: true })(question, descriptor);
+    await withCache(source, { categoryId: 3, enabled: true })(question, descriptor);
+
+    const reads = mockedQuery.mock.calls.filter(([sql]) => String(sql).includes('SELECT result'));
+    expect(reads).toHaveLength(2);
+    expect(reads[0][1][0]).not.toBe(reads[1][1][0]);
+    // And the write files the answer under the same key the read looked for.
+    const writes = clientQuery.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO wikidata_query_cache'));
+    expect(writes[1][1][1]).toBe(reads[1][1][0]);
   });
 
   it('answers from what it kept, without asking the source', async () => {

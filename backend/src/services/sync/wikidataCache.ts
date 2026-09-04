@@ -11,9 +11,9 @@
  * **This is a cache, not a second source of truth**, and three things keep it
  * one:
  *
- * - the key is the hash of the query text, so a changed filter is a different
- *   question and misses by construction rather than by somebody remembering to
- *   invalidate;
+ * - the key is the hash of the source and the query text, so a changed filter
+ *   is a different question and misses by construction rather than by somebody
+ *   remembering to invalidate, and one source's rows are never another's;
  * - every row carries its own expiry, written when it was fetched, so the rule
  *   that applied then stays with it and the panel shows the same expiry the
  *   reader honours;
@@ -127,12 +127,14 @@ export async function setCacheTtl(
  * Which kinds of question each source's collector actually describes — and
  * therefore which caches exist for it at all.
  *
- * Only the museum collector passes descriptors today: it is the one whose
- * collection is a pipeline of distinct questions worth keeping apart. The UNESCO
- * run reads that source's own API and asks Wikidata directly, without going
- * through this door, and the landmarks run sends SPARQL without describing it —
- * so neither keeps anything, and a panel offering to clear their "class trees"
- * would be inventing a cache to explain.
+ * The two Wikidata collectors pass descriptors: each is a pipeline of distinct
+ * questions worth keeping apart — the museums' class closure, work pools,
+ * venue statements, entity details and edges; the public art's class trees,
+ * entity pools, the facts about each candidate (`edges`) and about what holds
+ * it (`entities`). The UNESCO run reads that source's own API and asks
+ * Wikidata directly, without going through this door, so it keeps nothing,
+ * and a panel offering to clear its "class trees" would be inventing a cache
+ * to explain.
  *
  * The panel reads this rather than reading whatever rows happen to exist, so a
  * source with an empty cache shows the kinds it *would* fill rather than
@@ -141,6 +143,8 @@ export async function setCacheTtl(
 export const CACHED_KINDS_BY_CATEGORY: Record<number, CacheKind[]> = {
   // Top Art Museums.
   2: ['classes', 'pool', 'statements', 'entities', 'edges'],
+  // Public Art & Monuments.
+  3: ['classes', 'pool', 'edges', 'entities'],
 };
 
 /** What a caller says about the question it is asking. */
@@ -150,8 +154,20 @@ export interface CacheDescriptor {
   label: string;
 }
 
-function hashOf(query: string): string {
-  return createHash('sha256').update(query).digest('hex');
+/**
+ * The key: the source that asked, and the question (ADR-0047, narrowing
+ * ADR-0030 decision 1).
+ *
+ * Two collectors ask for the children of `sculpture` in the same words, and
+ * with the question alone as the key the public-art run read the museums'
+ * week-old row and missed a class Wikidata had created since, while *Clear*
+ * on one source left behind the rows the other had last written. A row is
+ * one source's, so what the panel shows for a source is what its runs read,
+ * and clearing it clears exactly that. Migration 043 drops the rows keyed the
+ * old way.
+ */
+function hashOf(categoryId: number, query: string): string {
+  return createHash('sha256').update(`${categoryId}\n${query}`).digest('hex');
 }
 
 /**
@@ -161,12 +177,12 @@ function hashOf(query: string): string {
  * by one clock — the panel reads the same column and would otherwise disagree
  * with the reader by whatever the two processes' clocks differ by.
  */
-async function readCached(query: string): Promise<SparqlBinding[] | null> {
+async function readCached(categoryId: number, query: string): Promise<SparqlBinding[] | null> {
   try {
     const hit = await pool.query(
       `SELECT result FROM wikidata_query_cache
         WHERE query_hash = $1 AND expires_at > NOW()`,
-      [hashOf(query)],
+      [hashOf(categoryId, query)],
     );
     return hit.rows.length > 0 ? (hit.rows[0].result as SparqlBinding[]) : null;
   } catch (error) {
@@ -216,7 +232,7 @@ async function writeCached(
          fetched_at = EXCLUDED.fetched_at,
          expires_at = EXCLUDED.expires_at`,
       [
-        categoryId, hashOf(query), descriptor.kind, descriptor.label, query,
+        categoryId, hashOf(categoryId, query), descriptor.kind, descriptor.label, query,
         JSON.stringify(rows), rows.length, DEFAULT_TTL_MS[descriptor.kind],
       ],
     );
@@ -255,7 +271,7 @@ export function withCache(
   return async (query, descriptor) => {
     if (!descriptor || !options.enabled) return sparql(query);
 
-    const cached = await readCached(query);
+    const cached = await readCached(options.categoryId, query);
     if (cached) {
       options.onHit?.(descriptor, cached.length);
       return cached;

@@ -307,6 +307,16 @@ refused on the day the admission writes landed and then confirmed, whose pin on 
 kept every later run off them. No DDL, so it is order-independent with `01-schema.sql`, and
 re-running it touches nothing.
 
+`043-a-cached-answer-belongs-to-the-source-that-asked.sql` empties `wikidata_query_cache` and
+corrects the comment on its `query_hash` column, after the key became the asking source's
+`category_id` and the query text together rather than the query text alone
+([ADR-0047](../../docs/decisions/0047-a-cached-answer-belongs-to-the-source-that-asked.md),
+#754): every row keyed the old way is unreadable from then on and would sit as dead weight,
+counted by the panel against whichever source last wrote it, until its lifetime passed. It is a
+cache, so the next run of each source asks Wikidata again; re-running the file clears it again,
+and the next run of each source starts cold. The comment is the one thing `01-schema.sql` also
+states, for a fresh database.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the

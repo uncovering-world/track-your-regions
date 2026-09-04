@@ -3207,9 +3207,11 @@ COMMENT ON TABLE ai_learned_rules IS 'User-provided rules injected into AI promp
 -- nothing. Museum run 61 died having already paid for 1166 artwork classes and
 -- threw them away.
 --
--- Keyed by the hash of the query text, because the query is the question: change
--- a filter and it is a different question and must miss, rather than relying on
--- somebody remembering to invalidate. Every row carries its own expiry, a run
+-- Keyed by the hash of the asking source and the query text together (ADR-0047),
+-- because the query is the question: change a filter and it is a different
+-- question and must miss, rather than relying on somebody remembering to
+-- invalidate -- and one source's rows are never another's, so what the panel
+-- shows for a source is what its runs read. Every row carries its own expiry, a run
 -- can be told to ignore the cache entirely, and the admin panel shows each
 -- kind's age with a button to drop it -- a cache that cannot be bypassed is a
 -- fork of reality rather than a cache.
@@ -3248,7 +3250,7 @@ CREATE TABLE IF NOT EXISTS wikidata_cache_policy (
 COMMENT ON TABLE wikidata_cache_policy IS 'Per-kind overrides for how long a cached Wikidata answer stays fresh. Absent kind = the default in wikidataCache.ts, which states why that number and not another.';
 
 COMMENT ON TABLE wikidata_query_cache IS 'Answers from query.wikidata.org, kept so a failed run resumes where it stopped and a repeated question costs their cluster nothing. Never a source of truth: every row carries its own expiry, a run can be told to ignore the cache entirely, and the admin panel shows each kind''s age and expiry with a button to drop it.';
-COMMENT ON COLUMN wikidata_query_cache.query_hash IS 'SHA-256 of the exact query text. The query is the question, so a changed filter is a different key and misses by construction rather than by remembering to invalidate.';
+COMMENT ON COLUMN wikidata_query_cache.query_hash IS 'SHA-256 of the asking source''s category_id and the exact query text (ADR-0047). The query is the question, so a changed filter is a different key and misses by construction rather than by remembering to invalidate.';
 COMMENT ON COLUMN wikidata_query_cache.expires_at IS 'Stored rather than derived: the row keeps the rule that applied when it was written, and the panel shows the same expiry the reader honours.';
 
 -- =============================================================================

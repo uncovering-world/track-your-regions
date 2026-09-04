@@ -36,10 +36,10 @@ export interface ExperienceCategory {
   /**
    * Whether this source keeps anything between runs.
    *
-   * False for the two whose collectors describe no questions (ADR-0030
-   * decision 4), and what decides whether "Sync without cache" is offered at
-   * all: on a source with no cache it would promise to bypass something that
-   * does not exist.
+   * False for a source whose collector describes no questions — the UNESCO
+   * run, which reads its own API (ADR-0030 decision 4) — and what decides
+   * whether "Sync without cache" is offered at all: on a source with no cache
+   * it would promise to bypass something that does not exist.
    */
   caches?: boolean;
   /**

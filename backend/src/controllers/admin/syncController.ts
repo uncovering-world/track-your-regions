@@ -596,10 +596,11 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
       ? null
       : waiting.get(source.id) ?? { arrivals: 0, held: 0, contents: 0 },
     // Whether this source keeps anything between runs, which decides whether
-    // "Sync without cache" is a real offer. Only the museum collector describes
-    // its questions (ADR-0030 decision 4), so on the other two that button
-    // would promise to bypass something that does not exist — the same
-    // pretence the cache panel below it refuses to make.
+    // "Sync without cache" is a real offer. The two Wikidata collectors
+    // describe their questions (ADR-0030 decision 4); the UNESCO run reads
+    // its own API and does not, and on it that button would promise to
+    // bypass something that does not exist — the same pretence the cache
+    // panel below it refuses to make.
     caches: (CACHED_KINDS_BY_CATEGORY[source.id as number] ?? []).length > 0,
     // Whether this source's pictures can be repaired from here, read from the
     // same registry the route answers from — the museums' missing pictures, and

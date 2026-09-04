@@ -18,6 +18,7 @@ import { pool } from '../../db/index.js';
 import {
   admissionPinnedSql,
   admissionSweepSkipReason,
+  admittedExternalIds,
   countAdmitted,
   iconicPinnedSql,
   markIconic,
@@ -297,5 +298,21 @@ describe('countAdmitted', () => {
     expect(count).toBe(82);
     expect(lastSql()).toContain("admission = 'admitted'");
     expect(lastSql()).toContain('is_manual = FALSE');
+  });
+});
+
+describe('admittedExternalIds', () => {
+  it('names the admitted, non-curator rows of the category', async () => {
+    // What a stay line is read against: a source whose rule has hysteresis
+    // needs to know who is already in, and a curator's own row is not a
+    // candidate the source ever named.
+    mockedQuery.mockResolvedValue({ rows: [{ external_id: 'Q337179' }, { external_id: 'Q79961' }] });
+
+    const ids = await admittedExternalIds(3);
+
+    expect(ids).toEqual(new Set(['Q337179', 'Q79961']));
+    expect(lastSql()).toContain("admission = 'admitted'");
+    expect(lastSql()).toContain('is_manual = FALSE');
+    expect(mockedQuery.mock.calls[0][1]).toEqual([3]);
   });
 });
