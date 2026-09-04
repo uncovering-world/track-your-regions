@@ -1117,17 +1117,27 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    in 56 s; the whole admitting set holds 600 entities at 15 sitelinks, 447 at 18 and 300 at 22.
    The pool no longer carries the five `OPTIONAL`s that made a monument with seven makers arrive
    seven times and spend a cap that counted rows (#720).
-3. **Facts** — per 50 candidates, one `UNION` question: every `P31`, `P276` (a statement carrying
-   `pq:P582` dropped, by the rule the museum import reads a work's location under), `P361`, and
-   `P170` with the blank-node filter (six rows of the old sculpture query named a
-   `.well-known/genid/…` creator). Not `P195`: whose collection a work is in is ownership, not a
-   place — HAM Helsinki Art Museum owns the city's outdoor sculpture, and the first dry run
-   refused the Sibelius Monument as a work inside it. Then what the containers are (label,
+3. **Facts** — per 50 candidates, one `UNION` question: every `P31`; `P276`, `P361` and `P195`,
+   each read statement by statement as what still holds (`standing` in `queries.ts`: best-ranked,
+   what `wdt:` would answer, and carrying no `pq:P582` end time — the end-time rule the museum
+   import reads a work's location under, and per statement rather than per value so that a whole
+   that has both an ended and a standing statement of the same rank keeps the standing one; a
+   preferred statement is Wikidata's mark for the current one and is read as `wdt:` reads it, so
+   an ended statement ranked preferred over a standing normal one would leave the work placeless
+   — an editing error upstream, and none among the pool's 13 preferred statements on 2026-09-05);
+   and `P170` with the blank-node
+   filter (six rows of the old sculpture query named a `.well-known/genid/…` creator). `P195` the
+   rule reads only when nothing says where a work stands: whose collection a work is in is
+   ownership, not a place — HAM Helsinki Art Museum owns the city's outdoor sculpture, and the
+   first dry run, which read `P195` as a container, refused the Sibelius Monument as a work
+   inside it (#804). Then what the containers are (label,
    `P31`) and what they are in turn inside or part of, walked up to **three hops**
    (`CONTAINER_HOPS`, the museum import's `VENUE_HOPS`): the Venus de Milo is located in Room 345,
    which names the Louvre Museum; the Dendera zodiac in Room 325, in the Sully Wing, part of the
    Louvre *Palace* — which Wikidata types a palace, not a museum, so a room or a wing
-   (`INDOOR_CLASSES`) is indoors whatever the building is called. The old `bindingsToLandmarks`
+   (`INDOOR_CLASSES`) is indoors whatever the building is called. Then what the owners are, the
+   same question, one hop and no walk: an owner is not a place, so it has no chain and no
+   building above it. The old `bindingsToLandmarks`
    grouping is this stage's parse: makers deduped by folded label, a label that *is* a QID
    dropped.
 4. **Verdict** — `publicArtVerdict` in `publicArtTest.ts`, pure, tested on the rows the first
@@ -1145,7 +1155,22 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    archaeological site, not public art` (the Ishtar Gate). A district, a forest or a landscape as
    container says nothing — the third dry run refused the Charging Bull as part of the Financial
    District and the Hermannsdenkmal as part of the Teutoburg Forest before the list was narrowed
-   to sites; then a class of
+   to sites. **Whose it is, only when nothing says where it stands** (#804): a work with no
+   container at all — no location, no part-of, or none that still holds — is asked whose
+   collection it is in, and a museum's or a place of worship's makes it theirs: `in the collection of
+   Sverdlovsk Regional Natural History Museum: a work of a museum, not public art` (the Shigir
+   Idol), `in the collection of St Mark's Basilica: a work of a place of worship, not public art`
+   (the Horses of Saint Mark, whose nine locations every one carry an end time). Any other owner
+   says nothing — Akademgorodok, a campus, owns the Monument to the laboratory mouse — and an
+   owner is never walked up or read as a room. A work something places keeps its place whoever
+   owns it: the Sibelius Monument stands in its park. Measured on the 171 rows the tier admitted,
+   2026-09-05: 72 carry no container, three of those an owner, and the fallback changes exactly
+   the two verdicts it was written for. A coordinate match against museums was measured on the
+   same 72 rows and not built: none shares a coordinate with a museum or a church, while eleven
+   have one within 50 m — the Lion of Belfort stands 11 m from the History Museum of Belfort,
+   the Fontana della Barcaccia 34 m from the Keats-Shelley House — so a radius would refuse real
+   monuments and an exact match reaches nothing; and the Nestorian Stele's coordinate, which
+   #804 took for the Stele Forest's, is its find spot forty kilometres away; then a class of
    `VETO_CLASSES` (cemeteries, buildings and structures) or of the museum tree refuses it
    **unless an artwork class answers** — the sculptural and fountain closures and the pinned
    structures, never the heritage-sense classes. So the Hermannsdenkmal (`sculpture, monument,
@@ -1160,8 +1185,9 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    Known false refusals, left to a curator's override: the Bocca della Verità (a church portico),
    the Pakistan Monument (part of its own museum), Tsitsernakaberd and the 9/11 Memorial (typed
    museum, no artwork class), Stonehenge (an archaeological site, and World Heritage's), the Neue
-   Wache; and known false admissions, left to a curator's rejection: a work Wikidata gives no
-   location (the Infant Jesus of Prague, the Nestorian Stele), Villa d'Este (typed fountain).
+   Wache; and known false admissions, left to a curator's rejection: a work Wikidata neither
+   places nor gives an owner (the Infant Jesus of Prague; the Nestorian Stele, pinned at its find
+   spot rather than in the Stele Forest that holds it), Villa d'Este (typed fountain).
 5. **The line, then the write** — a candidate that passes enters at **22 sitelinks and stays until
    it falls below 18** (`ENTER_SITELINKS`/`STAY_SITELINKS` in the pipeline; the museums' own line,
    ADR-0023), read against what the category already admits (`admittedExternalIds`). An admitted
