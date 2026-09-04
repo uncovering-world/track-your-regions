@@ -95,6 +95,22 @@ export function creditAddsBeyond(
 }
 
 /**
+ * The credit as words — `author · licence` — for a place that renders text rather
+ * than a component.
+ *
+ * The one sentence the line below renders, so that a credit reads the same
+ * wherever it is said: under the picture, in a tooltip, and in the history line
+ * that records an edit taking the picture away (#801) — which used to print the
+ * stored object through `String()` as `[object Object]`, on the one screen a
+ * removed photographer's name survives. `null` where nobody is named, rather
+ * than an empty string, so a caller says "(empty)" or nothing in its own words.
+ */
+export function creditSentence(credit?: ImageCredit | null): string | null {
+  if (!credit || (!credit.author && !credit.license)) return null;
+  return [credit.author, credit.license].filter(Boolean).join(' · ');
+}
+
+/**
  * The same credit as a fragment of plain text, for somewhere a component cannot go.
  *
  * One caller today: the tooltip on Discover's 100 px contents tile, which is
@@ -105,8 +121,8 @@ export function creditAddsBeyond(
  * concatenate it unconditionally.
  */
 export function creditLabel(credit?: ImageCredit | null): string {
-  if (!credit || (!credit.author && !credit.license)) return '';
-  return ` — image: ${[credit.author, credit.license].filter(Boolean).join(' · ')}`;
+  const sentence = creditSentence(credit);
+  return sentence ? ` — image: ${sentence}` : '';
 }
 
 interface ImageCreditLineProps {

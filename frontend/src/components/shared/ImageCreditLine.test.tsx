@@ -10,7 +10,48 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { creditAddsBeyond, ImageCreditLine } from './ImageCreditLine';
+import { creditAddsBeyond, creditLabel, creditSentence, ImageCreditLine } from './ImageCreditLine';
+
+/**
+ * The same credit as words, for a place that renders text rather than a component.
+ *
+ * Two callers already: the tooltip on Discover's contents tile, and the line the
+ * curation history prints when an edit replaced a picture — which used to read
+ * `[object Object]` where the photographer's name belonged (#801). One sentence,
+ * so a credit reads the same under the picture and in the record of its removal.
+ */
+describe('creditSentence', () => {
+  // Bamiyan's picture on the development catalogue, as the sync stored its credit.
+  const bamiyan = {
+    author: 'Carl Montgomery',
+    license: 'CC BY 2.0',
+    licenseUrl: 'https://creativecommons.org/licenses/by/2.0',
+    detailsUrl: 'https://commons.wikimedia.org/wiki/File:Bamiyan_Valley2.jpg',
+  };
+
+  it('says what the line under the picture says', () => {
+    const { container } = render(<ImageCreditLine credit={bamiyan} />);
+
+    expect(creditSentence(bamiyan)).toBe('Carl Montgomery · CC BY 2.0');
+    expect(creditSentence(bamiyan)).toBe(container.textContent);
+  });
+
+  it('names the half a source gave, without a separator hanging off it', () => {
+    expect(creditSentence({ ...bamiyan, license: null })).toBe('Carl Montgomery');
+    expect(creditSentence({ ...bamiyan, author: null })).toBe('CC BY 2.0');
+  });
+
+  it('is nothing where nobody is named, so a caller can say "(empty)" in its own words', () => {
+    expect(creditSentence({ author: null, license: null, licenseUrl: null, detailsUrl: null })).toBeNull();
+    expect(creditSentence(null)).toBeNull();
+    expect(creditSentence(undefined)).toBeNull();
+  });
+
+  it('is what the tooltip fragment wraps', () => {
+    expect(creditLabel(bamiyan)).toBe(' — image: Carl Montgomery · CC BY 2.0');
+    expect(creditLabel(null)).toBe('');
+  });
+});
 
 describe('ImageCreditLine', () => {
   it('names the photographer and the licence', () => {
