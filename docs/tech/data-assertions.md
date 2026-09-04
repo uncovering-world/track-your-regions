@@ -77,6 +77,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | objects | A site whose danger tag and whose In Danger badge disagree | invariant |
 | objects | A row its category turned away, still badged as a must-see | invariant |
 | objects | A work names several makers in an order nobody has confirmed | watch |
+| objects | A public-art row admitted with a class the rule refuses | invariant |
 | pictures | A stored picture on a host whose terms do not let us show it | invariant |
 | pictures | A picture shown with nobody credited | invariant |
 
@@ -375,6 +376,34 @@ because an admitted museum without the badge is a legitimate state
 decision 5) and what the badge should mean beyond works-first admission is
 #603's question.
 
+**The public-art rule** (`public-art-row-typed-a-building`) asks the stored rows
+the question the public-art import asks every candidate (#754,
+`docs/tech/experiences.md` § Public Art & Monuments): is this admitted row
+something a traveller stands in front of, or a building, a place of worship, a
+camp, a stadium, an archaeological site, a tomb, an organisation, a settlement
+that Wikidata also calls a monument? The rule refuses such a row on every run
+it reaches and stores what it read on the row (`metadata.wikidataClasses`), so
+the rows the rule can miss are the ones it never reached: the 205 created
+before it existed — eleven Spanish cathedrals among them, typed `Catholic
+cathedral, monument` because "Monumento" is what Spain's heritage register
+calls a listed building — and any a later path admits without running it. The
+check composes the rule's own lists (`classes.ts`) rather than a second copy in
+SQL, and that is the exception to the writer rule above turned the right way
+round: what it can catch is a row the lists never met, and a wrong list is not
+something a check reading the list's output could see. It reads the lists a
+constant can hold — the kill classes, the pinned worship floor, the buildings
+and cemeteries of the veto list — and answers a building class the way the rule
+does, by an artwork class: not approximated, but read from the rule's own
+answer, which the run stores beside the classes (`metadata.wikidataArtwork`)
+because the closures that answer — a holy well is in the fountain closure — are
+walked from Wikidata each run and no constant could hold them. A row written
+before that key existed reads as no answer, the conservative reading. The
+museum tree, walked from Wikidata each run, is the rule's alone. The one row it leaves alone is the
+one the writers leave alone: an admission a curator pinned by overriding the
+refusal, since naming that row every run would be the rule arguing back. The
+remedy is a live run of the source, which refuses the row with the reason and
+puts it in front of a curator.
+
 **The credit rule** (`picture-with-nobody-credited`) is a licence obligation
 rather than a consistency rule. Most Commons
 files are CC BY or CC BY-SA, which of a page that merely shows a photograph ask
@@ -450,7 +479,7 @@ go in a file of their own beside it, exporting an array the registry imports and
 spreads — `regionGeometryAssertions.ts` was the first, five rules about a
 region's shape, its focus box, its anchor and the rungs the map draws it from;
 `divisionTreeAssertions.ts` and `objectAssertions.ts` (the danger flag, the
-refused badge, the works' makers) take the same shape, and a rule about an
+refused badge, the works' makers, the public-art row typed as a building) take the same shape, and a rule about an
 object as a row joins the last of those rather than the registry. Two things follow for that shape:
 the type and the row helpers come from `assertion.ts` rather than from the
 registry, so the two files do not import each other; and the tests live beside

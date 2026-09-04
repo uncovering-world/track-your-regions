@@ -105,9 +105,9 @@ Three experience categories are implemented, each populated from external data s
 |----------|-------|-------|--------------|---------------------|
 | UNESCO World Heritage Sites | ~1,250 | cultural, natural, mixed | — | UNESCO API, Wikidata (enrichment) |
 | Top Art Museums | ~100 | art | iconic | Wikidata SPARQL |
-| Public Art & Monuments | ~200 | sculpture, monument | — | Wikidata SPARQL |
+| Public Art & Monuments | ~170 | sculpture, monument | iconic | Wikidata SPARQL (class trees, a fame line) |
 
-Category-level typing is already live (cultural/natural/mixed for UNESCO, monument/sculpture for landmarks). Museums are the first category to implement the Type & Significance model: the current sync collects works above a fame threshold, then admits the museums holding them.
+Category-level typing is already live (cultural/natural/mixed for UNESCO, monument/sculpture for landmarks). Museums were the first category to implement the Type & Significance model: the sync collects works above a fame threshold, then admits the museums holding them. Public art applies the same line to the objects themselves: an outdoor sculpture or monument at 22 Wikipedia-language sitelinks or more is the world tier and carries the badge, and a rule refuses what Wikidata calls a monument but a traveller would not — a cathedral, a cemetery, a museum, a work inside a church.
 
 **Numbers**: 466 multi-location experiences with 6,519 individual locations (mostly UNESCO serial nominations). The same fame threshold decides both halves of the museum significance model: 326 works clear it, and the 100 museums holding at least one make up the category — the global highlights list and region-scoped highlight browsing are planned.
 
