@@ -396,6 +396,21 @@ function metadataPatchOf(payload: EditPayload): Record<string, unknown> | null {
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
+/**
+ * What the row holds for a column the edit sets.
+ *
+ * An emptied box arrives as `''` — the dialog sends a field only when it
+ * changed, and taking the value away is a change — and is stored as NULL,
+ * which is what every other writer says for "nothing": the manual create's
+ * `|| null`, the picture repair's `SET image_url = NULL`, a run whose source
+ * states no picture. The catalogue holds no `''` in any of these columns, the
+ * category index is partial on `IS NOT NULL`, and the audit row names the same
+ * value the row holds (#696).
+ */
+function clearedToNull(value: unknown): unknown {
+  return value === '' ? null : value ?? null;
+}
+
 function buildUpdateQuery(
   payload: EditPayload,
   existingCurated: string[],
@@ -411,7 +426,7 @@ function buildUpdateQuery(
     if (upd.column === 'tags') {
       values.push(upd.value ? JSON.stringify(upd.value) : null);
     } else {
-      values.push(upd.value ?? null);
+      values.push(clearedToNull(upd.value));
     }
     paramIdx++;
   }
@@ -466,7 +481,7 @@ function buildEditAuditDetails(
 ): Record<string, { old: unknown; new: unknown }> {
   const details: Record<string, { old: unknown; new: unknown }> = {};
   for (const upd of payload.updates) {
-    details[upd.column] = { old: existing[upd.column], new: upd.value ?? null };
+    details[upd.column] = { old: existing[upd.column], new: clearedToNull(upd.value) };
   }
   const existingMetadata = existing.metadata as Record<string, unknown> | null | undefined;
   for (const [key, value] of Object.entries(metadataPatchOf(payload) ?? {})) {
@@ -482,6 +497,8 @@ function buildEditAuditDetails(
  * Edit an experience's fields
  * PATCH /api/experiences/:id/edit
  * Body: { name?, shortDescription?, description?, category?, imageUrl?, tags? }
+ * An empty string clears the field: the column is stored as NULL, and the
+ * clearing is claimed like any other edit (`clearedToNull`).
  *
  * Updates curated_fields so syncs won't overwrite curator edits.
  * Logs old/new values to curation_log, under a region the caller has scope
