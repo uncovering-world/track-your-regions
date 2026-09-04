@@ -138,11 +138,10 @@ describe('imageUrl a curator stores', () => {
     expect(editAccepts({ imageUrl: long })).toBe(false);
   });
 
-  it('accepts an empty value, which is how the API clears a picture', () => {
-    // The API's way, and only the API's: emptying the field in `CurationDialog`
-    // sends `{ imageUrl: undefined }`, which `JSON.stringify` drops, so the
-    // request arrives `{}` and is answered "No fields to update". A shape a
-    // rule tightened here must not start refusing all the same.
+  it('accepts an empty value, which is how a picture is cleared', () => {
+    // What `CurationDialog` sends for an emptied Image URL box (#696), and what
+    // the controller stores as NULL under a claim. A shape a rule tightened
+    // here must not start refusing.
     expect(editAccepts({ imageUrl: '' })).toBe(true);
   });
 });

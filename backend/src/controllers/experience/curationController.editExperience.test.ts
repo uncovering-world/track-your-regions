@@ -45,6 +45,8 @@ function queueQueries(opts: {
   scope?: { unrestricted: boolean; scoped_region_id: number | null };
   lockedCurated?: string[];
   lockedName?: string;
+  /** Further columns of the locked row, for an edit whose audit row names their old value. */
+  lockedRow?: Record<string, unknown>;
 }) {
   mockPoolQuery.mockReset();
   mockClientQuery.mockReset();
@@ -53,7 +55,7 @@ function queueQueries(opts: {
   // union is built from — not the unlocked read that answers 404 and scope.
   mockClientQuery.mockImplementation(async (sql: string) =>
     (typeof sql === 'string' && sql.includes(OBJECT_LOCK))
-      ? { rows: [{ curated_fields: opts.lockedCurated ?? [], name: opts.lockedName ?? 'Old name' }] }
+      ? { rows: [{ curated_fields: opts.lockedCurated ?? [], name: opts.lockedName ?? 'Old name', ...opts.lockedRow }] }
       : { rows: [] });
   mockPoolQuery.mockResolvedValueOnce({
     rows: opts.experienceRows ?? [{ id: EXPERIENCE_ID, category_id: CATEGORY_ID, name: 'Old name', curated_fields: [] }],
@@ -336,5 +338,108 @@ describe('editExperience and the picture credit', () => {
     await editWith({ name: 'New name' });
 
     expect(metadataPatch()).toBeUndefined();
+  });
+});
+
+describe('editExperience and an emptied field', () => {
+  // The catalogue holds nothing as NULL and never as '': the manual create
+  // writes `|| null`, the picture repair clears with `SET image_url = NULL`,
+  // and the category index is partial on `IS NOT NULL`. An emptied box is the
+  // curator taking the value away, so the row must say what every other
+  // writer says for "nothing" — and say it under a claim, or the next run
+  // would put the source's value straight back (#696).
+  const OLD_PICTURE = 'https://whc.unesco.org/document/109141';
+
+  function editWith(body: Record<string, unknown>) {
+    const res = makeRes();
+    return { res, done: editExperience(
+      { params: { id: String(EXPERIENCE_ID) }, body, user: ADMIN } as never,
+      res as never,
+    ) };
+  }
+
+  /** The UPDATE the transaction sent, or a failed expectation. */
+  function update(): [string, unknown[]] {
+    const call = mockClientQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('UPDATE experiences'),
+    ) as [string, unknown[]] | undefined;
+    expect(call, 'expected an UPDATE').toBeDefined();
+    return call!;
+  }
+
+  /** What the UPDATE stores in one column, read off its own SET clause. */
+  function stored(column: string): unknown {
+    const [sql, params] = update();
+    // Preceded by a space whether it is the first clause (`SET `) or a later
+    // one (`, `), so `description` cannot match inside `short_description`.
+    const marker = ` ${column} = $`;
+    const at = sql.indexOf(marker);
+    expect(at, `expected the UPDATE to set ${column}`).toBeGreaterThan(-1);
+    return params[parseInt(sql.slice(at + marker.length), 10) - 1];
+  }
+
+  /** The `curated_fields` array of the UPDATE, parsed. */
+  function claims(): string[] {
+    const [, params] = update();
+    return JSON.parse(String(params.find((v) => typeof v === 'string' && v.startsWith('[')))) as string[];
+  }
+
+  /** The `details` of the audit row, parsed. */
+  function audited(): Record<string, { old: unknown; new: unknown }> {
+    const insert = mockClientQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('experience_curation_log'),
+    ) as [string, unknown[]] | undefined;
+    expect(insert, 'expected an experience_curation_log insert').toBeDefined();
+    return JSON.parse(String(insert![1][3])) as Record<string, { old: unknown; new: unknown }>;
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('offline'); }));
+  });
+
+  it('stores a cleared picture as NULL, claimed, and audited as the removal it is', async () => {
+    queueQueries({ lockedCurated: [], lockedRow: { image_url: OLD_PICTURE } });
+
+    const { res, done } = editWith({ imageUrl: '' });
+    await done;
+
+    expect(res.status).not.toHaveBeenCalledWith(400);
+    expect(stored('image_url')).toBeNull();
+    expect(claims()).toContain('image_url');
+    expect(audited().image_url).toEqual({ old: OLD_PICTURE, new: null });
+  });
+
+  it('takes the credit away with the picture', async () => {
+    queueQueries({ lockedCurated: [], lockedRow: { image_url: OLD_PICTURE } });
+
+    await editWith({ imageUrl: '' }).done;
+
+    // A photographer named beside no photograph is a claim about a real
+    // person with nothing to justify it — the same rule as replacing one.
+    const [, params] = update();
+    const patch = params.find((v) => typeof v === 'string' && v.startsWith('{'));
+    expect(JSON.parse(String(patch))).toEqual({ imageCredit: null });
+  });
+
+  it('stores a cleared description and category as NULL', async () => {
+    queueQueries({ lockedCurated: [], lockedRow: { short_description: 'A valley', category: 'cultural' } });
+
+    await editWith({ shortDescription: '', category: '' }).done;
+
+    expect(stored('short_description')).toBeNull();
+    expect(stored('category')).toBeNull();
+    expect(claims()).toEqual(expect.arrayContaining(['short_description', 'category']));
+    expect(audited().category).toEqual({ old: 'cultural', new: null });
+  });
+
+  it('writes a cleared picture and a new name in the one save that carried both', async () => {
+    // The silent half of #696: a save that also changed a sent field used to
+    // report success while the removal never left the browser.
+    queueQueries({ lockedCurated: [], lockedRow: { image_url: OLD_PICTURE } });
+
+    await editWith({ name: 'New name', imageUrl: '' }).done;
+
+    expect(stored('name')).toBe('New name');
+    expect(stored('image_url')).toBeNull();
   });
 });
