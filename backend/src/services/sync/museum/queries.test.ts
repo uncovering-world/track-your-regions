@@ -9,7 +9,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { fetchClassPool, fetchEntityEdges, type SparqlFn } from './queries.js';
+import { fetchClassPool, fetchEntityEdges } from './queries.js';
+import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';

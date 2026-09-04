@@ -12,7 +12,7 @@
  * `venueGraph.ts` with the reasoning that makes them load-bearing.
  */
 
-import { boundedClosure, type ClosureOptions } from './artworkClasses.js';
+import { boundedClosure, type ClosureOptions } from '../classClosure.js';
 import { placeArtwork } from './placement.js';
 import { selectTier1, ICONIC_SITELINKS, type Tier1Result } from './tier1.js';
 import { diffPlacements, type PlacementDiff } from './placementDiff.js';
@@ -27,18 +27,20 @@ import {
   type VenueGraph,
 } from './venueGraph.js';
 import {
-  fetchSubclasses,
   fetchMuseumClasses,
   fetchBroadPool,
   fetchClassPool,
   fetchVenueStatements,
+  type PoolWork,
+  type RawStatement,
+} from './queries.js';
+import {
+  fetchSubclasses,
   chunk,
   unique,
-  type PoolWork,
   type QueryRunner,
-  type RawStatement,
   type SparqlFn,
-} from './queries.js';
+} from '../wikidataQueries.js';
 import type { FilteredEntity } from '../syncOrchestrator.js';
 import type { CollectedMuseum, ProcessedContent } from '../types.js';
 

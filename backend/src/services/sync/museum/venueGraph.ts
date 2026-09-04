@@ -22,12 +22,10 @@ import { EDITORIAL_OUT } from './artTest.js';
 import {
   fetchEntityDetails,
   fetchEntityEdges,
-  chunk,
-  unique,
   type EntityDetails,
   type EntityEdges,
-  type QueryRunner,
 } from './queries.js';
+import { chunk, unique, type QueryRunner } from '../wikidataQueries.js';
 
 const LOG_PREFIX = '[Museum Sync]';
 
