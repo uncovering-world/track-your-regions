@@ -23,51 +23,21 @@
 
 import { extractQid, isQid, parseWktPoint, LABEL_LANGS, type SparqlBinding } from '../wikidataUtils.js';
 import { foldLabel } from '../labelFold.js';
-import type { CacheDescriptor } from '../wikidataCache.js';
-
-/**
- * A door to the source, optionally told what the question is about.
- *
- * The descriptor is what the cache files an answer under, and it comes from the
- * call site because only the call site knows: this `SELECT ?c` is the class
- * closure, that one is a pool of works. A cache classifying by pattern-matching
- * SPARQL would be one refactor away from filing a pool under `classes` and
- * keeping it for a week. Omitting it means "do not keep this", which is the
- * right default for a one-off.
- */
-export type SparqlFn =
-  (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]>;
-
-/**
- * A paced, interruptible way to send them. `step` is awaited before every query: it is where a
- * cancelled run throws and where the rate limit is spent, so no fetcher has to know either.
- */
-export interface QueryRunner {
-  sparql: SparqlFn;
-  phase: (message: string) => void;
-  step: () => Promise<void>;
-}
-
-export function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
-
-export function unique(values: string[]): string[] {
-  return [...new Set(values)];
-}
+import {
+  ENTITY_PREFIX,
+  HINT_PREFIX,
+  MUSEUM_ROOT,
+  bandFilter,
+  bandLabel,
+  failIfTruncated,
+  fetchClassTree,
+  values,
+  type Band,
+  type QueryRunner,
+  type SparqlFn,
+} from '../wikidataQueries.js';
 
 export { LABEL_LANGS, isQid };
-
-const ENTITY_PREFIX = 'http://www.wikidata.org/entity/';
-
-/**
- * Everything below the class `museum` (Q33506) is a museum-like class — 373 of them, measured.
- * The traversal is in *class* space, which is cheap; it is the instance-space `P31/P279*` join
- * that times the endpoint out.
- */
-export const MUSEUM_ROOT = 'Q33506';
 
 /**
  * A work is worth collecting well below the iconic threshold of 22 sitelinks: the hysteresis
@@ -80,68 +50,13 @@ export const POOL_MIN_SITELINKS = 10;
 /** No pool query has ever returned this many rows; one that does stops the run. */
 export const POOL_LIMIT = 3000;
 
-
-
-/** QIDs of a binding column, blank nodes dropped. */
-function qidsOf(rows: SparqlBinding[], column: string): string[] {
-  const out: string[] = [];
-  for (const row of rows) {
-    const value = row[column]?.value;
-    if (!value) continue;
-    const qid = extractQid(value);
-    if (isQid(qid)) out.push(qid);
-  }
-  return out;
-}
-
-function values(qids: string[]): string {
-  return qids.map((q) => `wd:${q}`).join(' ');
-}
-
-/**
- * A truncated *pool* query stops the run.
- *
- * The pool decides which museums this category admits (ADR-0024), so a pool cut
- * off at its LIMIT withdraws real museums and reports success — the one failure
- * the admission axis exists to prevent, and the reason ADR-0030 makes a *failed*
- * band fatal. A *truncated* band is the same short pool arrived at more quietly,
- * so it is fatal too. Worse, in fact: a banded query carries no `ORDER BY`, so
- * the rows kept are an arbitrary subset rather than the most famous ones.
- *
- * The remedy belongs to a person, not to a retry: a band whose range holds more
- * than the limit needs splitting, and the message says which one so that the
- * next edit is obvious.
- */
-function failIfTruncated(rows: SparqlBinding[], limit: number, label: string): void {
-  if (rows.length < limit) return;
-  throw new Error(
-    `${label} returned exactly its LIMIT of ${limit} rows. The pool decides which museums `
-    + 'this category admits, so a short one would withdraw museums and call the run a success. '
-    + 'Split this band, or raise its limit.',
-  );
-}
-
 // =============================================================================
 // Classes
 // =============================================================================
 
-/** Direct `P279` children of a frontier — one hop, for `boundedClosure`. */
-export async function fetchSubclasses(sparql: SparqlFn, parents: string[]): Promise<string[]> {
-  if (!parents.length) return [];
-  const rows = await sparql(
-    `SELECT DISTINCT ?c WHERE { VALUES ?p { ${values(parents)} } ?c wdt:P279 ?p }`,
-    { kind: 'classes', label: `subclasses of ${parents.length} class(es)` },
-  );
-  return qidsOf(rows, 'c');
-}
-
 /** The whole `P279*` tree under `museum`, which is what the venue test tests against. */
-export async function fetchMuseumClasses(sparql: SparqlFn): Promise<Set<string>> {
-  const rows = await sparql(
-    `SELECT ?c WHERE { ?c wdt:P279* wd:${MUSEUM_ROOT} }`,
-    { kind: 'classes', label: 'museum classes' },
-  );
-  return new Set(qidsOf(rows, 'c'));
+export function fetchMuseumClasses(sparql: SparqlFn): Promise<Set<string>> {
+  return fetchClassTree(sparql, MUSEUM_ROOT, 'museum classes');
 }
 
 // =============================================================================
@@ -181,12 +96,6 @@ export interface PoolWork {
   typeQid: string | null;
 }
 
-interface Band {
-  min: number;
-  /** Exclusive; `null` is the open top band. */
-  max: number | null;
-}
-
 /**
  * How famous a work has to be to appear, sliced into bands.
  *
@@ -221,32 +130,12 @@ export const POOL_BANDS: Band[] = [
   { min: POOL_MIN_SITELINKS, max: 12 },
 ];
 
-/**
- * Blazegraph's query hints, which is what makes a band affordable.
- *
- * `optimizer "None"` fixes the join order to the order written — without it the
- * planner puts the class first again, which is the shape that times out — and
- * `rangeSafe` lets the sitelink filter become an index range scan instead of a
- * predicate applied to every row it could have matched.
- */
-const HINT_PREFIX = 'PREFIX hint: <http://www.bigdata.com/queryHints#>';
-
 /** Everything about a work that is not why it was collected. */
 const POOL_DETAILS = `
       OPTIONAL { ?w wdt:P18 ?img }
       OPTIONAL { ?w wdt:P170 ?creator . FILTER(STRSTARTS(STR(?creator), "${ENTITY_PREFIX}Q")) }
       OPTIONAL { ?w wdt:P571 ?inception }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }`;
-
-function bandFilter(band: Band): string {
-  return band.max === null
-    ? `FILTER(?sl >= ${band.min})`
-    : `FILTER(?sl >= ${band.min} && ?sl < ${band.max})`;
-}
-
-function bandLabel(band: Band): string {
-  return band.max === null ? `${band.min}+ sitelinks` : `${band.min}–${band.max - 1} sitelinks`;
-}
 
 /**
  * One band of one broad class.

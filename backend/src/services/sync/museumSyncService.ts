@@ -24,7 +24,8 @@ import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { isTerminalSyncStatus, runningSyncs } from './types.js';
 import { writeFoundPicture } from './pictureRepair.js';
 import { collectTier1Museums } from './museum/pipeline.js';
-import { fetchEntityDetails, isQid, type SparqlFn } from './museum/queries.js';
+import { fetchEntityDetails, isQid } from './museum/queries.js';
+import type { SparqlFn } from './wikidataQueries.js';
 import {
   delay,
   WaitBudget,

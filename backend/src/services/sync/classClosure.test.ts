@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { boundedClosure } from './artworkClasses.js';
+import { boundedClosure } from './classClosure.js';
 
 describe('boundedClosure', () => {
   it('keeps a tree that grows sanely', async () => {

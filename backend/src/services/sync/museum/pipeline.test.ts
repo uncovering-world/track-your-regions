@@ -13,7 +13,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { collectTier1Museums } from './pipeline.js';
-import { fetchBroadPool, fetchClassPool, POOL_BANDS, type SparqlFn } from './queries.js';
+import { fetchBroadPool, fetchClassPool, POOL_BANDS } from './queries.js';
+import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
 const POOL_BAND_COUNT = POOL_BANDS.length;
