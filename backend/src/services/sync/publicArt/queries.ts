@@ -231,24 +231,57 @@ export async function fetchClassPool(
  * The multi-valued facts about an entity, fetched by UNION so they do not
  * cross-multiply.
  *
- * Whose collection holds it (`P195`) is deliberately not among them:
- * ownership is not a place. HAM Helsinki Art Museum owns the city's outdoor
+ * Whose collection holds it (`P195`) is among them, but ownership is not a
+ * place, and the rule reads it only when nothing says where the work stands
+ * (`publicArtTest.ts`). HAM Helsinki Art Museum owns the city's outdoor
  * sculpture, the Sibelius Monument included, and the first dry run refused
- * it as a work inside the museum. Where a work is held indoors, `P276`
- * says so — a room of the Louvre, walked up to the Louvre.
+ * it as a work inside the museum: where a work stands is `P276` — a room of
+ * the Louvre, walked up to the Louvre — and a park outweighs any owner. The
+ * Shigir Idol carries no location at all, and its collection is the one
+ * signal there is (#804).
  */
 export interface EntityFacts {
   /** Every `P31`. */
   classes: string[];
   /** `P276`, a statement carrying an end time dropped: where it stands today. */
   locations: string[];
-  /** `P361`: what it is part of. */
+  /** `P361`, a statement carrying an end time dropped: what it is part of today. */
   parents: string[];
+  /** `P195`, a statement carrying an end time dropped: whose collection it is in today. */
+  collections: string[];
   /** Every maker the source names, deduped, in the order the answer arrived (ADR-0040). */
   creators: string[];
 }
 
-const emptyFacts = (): EntityFacts => ({ classes: [], locations: [], parents: [], creators: [] });
+const emptyFacts = (): EntityFacts => ({
+  classes: [], locations: [], parents: [], collections: [], creators: [],
+});
+
+/**
+ * The statements of `property` on `subject` that still hold, each binding
+ * its value to `object`: best-ranked — what `wdt:` would answer — and
+ * carrying no end time (`pq:P582`). The end-time rule is the museum
+ * import's (`statementBranch` in `museum/queries.ts`): the Bust of
+ * Nefertiti's own statements still name the museum it left in 2009, and the
+ * Horses of Saint Mark carry nine ended locations. Per statement rather than
+ * per value, so a value that has both an ended and a standing statement of
+ * the same rank — a work that left a museum and came back — keeps the
+ * standing one instead of being dropped with the ended one.
+ *
+ * Best rank is read the way `wdt:` reads it, because a preferred statement
+ * is how Wikidata marks the current one — the signal the museum placement
+ * weighs highest — where `statementBranch` keeps every rank for that
+ * weighing to happen later. So an ended statement ranked preferred over a
+ * standing one ranked normal would leave the work placeless: an editing
+ * error upstream (preferred is for what holds now), and none on the pool of
+ * 603 on 2026-09-05 — 13 preferred statements across the three properties,
+ * not one of them ended.
+ */
+function standing(subject: string, property: string, object: string): string {
+  const st = `?st${property.slice(1)}`;
+  return `${subject} p:${property} ${st} . ${st} a wikibase:BestRank ; ps:${property} ${object} .
+        FILTER NOT EXISTS { ${st} pq:P582 ?ended }`;
+}
 
 /** Add the entity a binding names, when the binding is present and names one. */
 function pushEntity(into: string[], binding: SparqlBinding[string]): void {
@@ -280,20 +313,24 @@ export async function fetchEntityFacts(
   for (const qid of qids) out.set(qid, emptyFacts());
   const seenCreators = new Map<string, Set<string>>();
 
-  // A location the entity has left — a P276 statement carrying an end time —
-  // is dropped, by the rule the museum import reads a work's P276 under: the
-  // Bust of Nefertiti's own statements still name the museum it left in 2009.
+  // Where it stands, what it is part of and whose it is are read as what
+  // still holds (`standing`): a location, a whole or a collection the entity
+  // has left says nothing about where it is today — the Horses of Saint Mark
+  // carry nine ended locations and one collection that stands.
   const rows = await sparql(`
-    SELECT ?e ?cls ?loc ?parent ?creator ?creatorLabel WHERE {
+    SELECT ?e ?cls ?loc ?parent ?coll ?creator ?creatorLabel WHERE {
       VALUES ?e { ${values(qids)} }
       { ?e wdt:P31 ?cls } UNION {
-        ?e wdt:P276 ?loc .
-        FILTER NOT EXISTS { ?e p:P276 ?st . ?st ps:P276 ?loc ; pq:P582 ?ended }
-      } UNION { ?e wdt:P361 ?parent } UNION {
+        ${standing('?e', 'P276', '?loc')}
+      } UNION {
+        ${standing('?e', 'P361', '?parent')}
+      } UNION {
+        ${standing('?e', 'P195', '?coll')}
+      } UNION {
         ?e wdt:P170 ?creator . FILTER(STRSTARTS(STR(?creator), "${ENTITY_PREFIX}Q"))
       }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }
-    }`, { kind: 'edges', label: `classes, containers and makers of ${qids.length} entities` });
+    }`, { kind: 'edges', label: `classes, containers, owners and makers of ${qids.length} entities` });
 
   for (const row of rows) {
     const qid = extractQid(row.e?.value ?? '');
@@ -302,6 +339,7 @@ export async function fetchEntityFacts(
     pushEntity(facts.classes, row.cls);
     pushEntity(facts.locations, row.loc);
     pushEntity(facts.parents, row.parent);
+    pushEntity(facts.collections, row.coll);
     if (row.creatorLabel) {
       let seen = seenCreators.get(qid);
       if (!seen) { seen = new Set(); seenCreators.set(qid, seen); }
@@ -330,17 +368,17 @@ export async function fetchContainerFacts(
   const out = new Map<string, ContainerFacts>();
   if (!qids.length) return out;
 
-  // A location the container has left — a P276 statement carrying an end time
-  // — is dropped, by the rule the entity facts read a work's own P276 under: a
-  // museum a chapel was once inside must not make the chapel's work the
-  // museum's.
+  // A location or a whole the container has left is dropped, by the rule the
+  // entity facts read a work's own under (`standing`): a museum a chapel was
+  // once inside must not make the chapel's work the museum's.
   const rows = await sparql(`
     SELECT ?c ?cLabel ?cls ?up WHERE {
       VALUES ?c { ${values(qids)} }
       { ?c wdt:P31 ?cls } UNION {
-        ?c wdt:P276 ?up .
-        FILTER NOT EXISTS { ?c p:P276 ?st . ?st ps:P276 ?up ; pq:P582 ?ended }
-      } UNION { ?c wdt:P361 ?up }
+        ${standing('?c', 'P276', '?up')}
+      } UNION {
+        ${standing('?c', 'P361', '?up')}
+      }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }
     }`, { kind: 'entities', label: `what ${qids.length} containers are, and are in` });
 

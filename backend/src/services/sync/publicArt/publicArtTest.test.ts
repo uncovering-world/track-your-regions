@@ -22,6 +22,8 @@ const OBELISK = 'Q170980';
 const MUSEUM = 'Q33506';
 const ART_MUSEUM = 'Q207694';
 const MILITARY_MUSEUM = 'Q2772772';
+const LOCAL_MUSEUM = 'Q1595639';
+const NATURAL_HISTORY_MUSEUM = 'Q1970365';
 const WORSHIP = 'Q1370598';
 const CATHOLIC_CATHEDRAL = 'Q56242215';
 const SHINTO_SHRINE = 'Q845945';
@@ -33,14 +35,14 @@ const trees = buildTrees({
   sculptural: [SCULPTURE, STATUE, COLOSSAL_STATUE, MONUMENTAL_SCULPTURE, 'Q29168169'],
   fountain: [FOUNTAIN, 'Q1371047'],
   commemorative: [WAR_MEMORIAL, 'Q321053', 'Q1541043'],
-  museum: [MUSEUM, ART_MUSEUM, MILITARY_MUSEUM, 'Q17431399'],
+  museum: [MUSEUM, ART_MUSEUM, MILITARY_MUSEUM, 'Q17431399', LOCAL_MUSEUM, NATURAL_HISTORY_MUSEUM],
   // The tree Wikidata walks under "structure of worship": the buildings, and
   // a pilgrimage site, which is a designation a statue can carry.
   worship: [WORSHIP, CATHOLIC_CATHEDRAL, SHINTO_SHRINE, BASILICA, 'Q1534477', 'Q2031836', PILGRIMAGE_SITE],
 });
 
 const facts = (over: Partial<PublicArtFacts>): PublicArtFacts => ({
-  qid: 'Q1', classes: [SCULPTURE], containers: [], onEarth: true, lat: 41.9, lon: 12.5, ...over,
+  qid: 'Q1', classes: [SCULPTURE], containers: [], collections: [], onEarth: true, lat: 41.9, lon: 12.5, ...over,
 });
 
 const inside = (qid: string, label: string, classes: string[], building?: string): ContainerFact =>
@@ -187,6 +189,39 @@ describe('publicArtVerdict — what it refuses', () => {
       containers: [inside('Q19119449', 'Room 325', ['Q180516']), inside('Q19675', 'Louvre', [ART_MUSEUM])],
     }), trees);
     expect(reasonOf(v)).toContain('inside Louvre');
+  });
+
+  it('refuses a work a museum owns when nothing says where it stands, naming the museum', () => {
+    // The Shigir Idol: sculpture; no location (P276), no part-of (P361); in
+    // the collection of the Sverdlovsk Regional Natural History Museum (local
+    // museum, natural history museum, historic site) and of the Museum of
+    // History and Archaeology of the Middle Urals (museum). The first live run
+    // admitted it as a monument on the museum (#804): with nothing saying
+    // where it stands, the collection is the only signal, and it is a museum's.
+    // The reason names the first collection the source listed that is one.
+    const v = publicArtVerdict(facts({
+      classes: [SCULPTURE],
+      collections: [
+        inside('Q4410161', 'Sverdlovsk Regional Natural History Museum', [LOCAL_MUSEUM, NATURAL_HISTORY_MUSEUM, 'Q1081138']),
+        inside('Q105486673', 'Museum of History and Archaeology of the Middle Urals', [MUSEUM]),
+      ],
+    }), trees);
+    expect(reasonOf(v)).toBe(
+      'in the collection of Sverdlovsk Regional Natural History Museum: a work of a museum, not public art',
+    );
+  });
+
+  it('refuses a work a church owns when every location it had has ended', () => {
+    // The Horses of Saint Mark: group of sculptures; nine P276 statements —
+    // the Hippodrome, the basilica, the Tuileries — every one carrying an end
+    // time, so the walk reads none; in the collection of St Mark's Basilica
+    // (cathedral, minor basilica). The originals are in the basilica's
+    // museum, the replicas on its loggia: the basilica's either way.
+    const v = publicArtVerdict(facts({
+      classes: ['Q2293362'],
+      collections: [inside('Q172988', "St Mark's Basilica", ['Q2977', BASILICA])],
+    }), trees);
+    expect(reasonOf(v)).toBe("in the collection of St Mark's Basilica: a work of a place of worship, not public art");
   });
 
   it('refuses a church the worship tree knows and the pinned floor does not', () => {
@@ -363,11 +398,23 @@ describe('publicArtVerdict — what it admits', () => {
   it('admits a sculpture a museum owns but a park holds', () => {
     // Sibelius Monument: located in Sibelius Park; in the collection of HAM
     // Helsinki Art Museum, which owns the city's outdoor sculpture. A
-    // collection is ownership, not a place, and the pipeline no longer hands
-    // it in — what reaches the rule is where the work stands.
+    // collection is ownership, not a place: where the work stands is what
+    // decides, and whose it is is read only when nothing says where it stands.
     const v = publicArtVerdict(facts({
       classes: [SCULPTURE, MONUMENT, MEMORIAL],
       containers: [inside('Q3481120', 'Sibelius Park', ['Q22698'])],
+      collections: [inside('Q5710459', 'HAM Helsinki Art Museum', [ART_MUSEUM])],
+    }), trees);
+    expect(v).toMatchObject({ pass: true, type: 'sculpture' });
+  });
+
+  it('admits a work whose only collection is not a museum or a church', () => {
+    // Monument to the laboratory mouse, Novosibirsk: sculpture; no location,
+    // no part-of; in the collection of Akademgorodok, which is a campus. The
+    // fallback asks only whether the owner is a museum or a place of worship.
+    const v = publicArtVerdict(facts({
+      classes: [SCULPTURE],
+      collections: [inside('Q83627', 'Akademgorodok', ['Q209465'])],
     }), trees);
     expect(v).toMatchObject({ pass: true, type: 'sculpture' });
   });

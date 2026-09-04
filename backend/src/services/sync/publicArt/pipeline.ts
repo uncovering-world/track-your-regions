@@ -182,6 +182,19 @@ async function collectFacts(
     frontier = unique(frontier.flatMap((qid) => containers.get(qid)?.parents ?? []))
       .filter((qid) => !containers.has(qid));
   }
+
+  // What owns the candidates: one hop and no walk, because ownership is not
+  // a place — the rule reads an owner only for a candidate nothing places,
+  // and asks only whether it is a museum or a church (#804). The same
+  // question the containers are asked, for the owners no hop reached.
+  const owners = unique([...facts.values()].flatMap((f) => f.collections))
+    .filter((qid) => !containers.has(qid));
+  const ownerBatches = chunk(owners, FACT_BATCH);
+  for (let i = 0; i < ownerBatches.length; i++) {
+    run.phase(`Asking what owns them (batch ${i + 1}/${ownerBatches.length})...`);
+    await run.step();
+    for (const [qid, entry] of await fetchContainerFacts(run.sparql, ownerBatches[i])) containers.set(qid, entry);
+  }
   return { facts, containers };
 }
 
@@ -239,6 +252,18 @@ function containerFacts(facts: EntityFacts, containers: Map<string, ContainerFac
 }
 
 /**
+ * What owns a candidate, one level and no further: an owner is not a place,
+ * so it has no chain and no building above it. Handed in whatever the
+ * candidate's containers say; the rule decides when to read it.
+ */
+function collectionFacts(facts: EntityFacts, containers: Map<string, ContainerFacts>): ContainerFact[] {
+  return facts.collections.map((qid) => {
+    const known = containers.get(qid);
+    return { qid, label: known?.label ?? qid, classes: known?.classes ?? [] };
+  });
+}
+
+/**
  * Where a candidate that passed the rule stands against the fame line: in,
  * out, or — for a row the category admits that has fallen below the stay
  * line — refused by name, with its number. A candidate that was never in and
@@ -274,11 +299,13 @@ export async function collectPublicArt(
   const filtered: FilteredEntity[] = [];
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
   for (const entity of candidates) {
-    const known = facts.get(entity.qid) ?? { classes: [], locations: [], parents: [], creators: [] };
+    const known = facts.get(entity.qid)
+      ?? { classes: [], locations: [], parents: [], collections: [], creators: [] };
     const verdict = publicArtVerdict({
       qid: entity.qid,
       classes: known.classes,
       containers: containerFacts(known, containers),
+      collections: collectionFacts(known, containers),
       onEarth: entity.onEarth,
       lat: entity.lat,
       lon: entity.lon,
