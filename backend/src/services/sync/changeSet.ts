@@ -119,10 +119,15 @@ const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
  * look it was kept for is already taken by the admission rule itself, which is
  * re-run against live data every pass and files a refusal card the moment a
  * museum stops qualifying. A curator has no decision on the name of the work
- * that did the qualifying.
+ * that did the qualifying. `wikidataClasses` and `wikidataArtwork` on a
+ * landmark are the same shape one source over (#754): every class the
+ * public-art rule read, and whether an artwork class answered it, kept so
+ * that Catalogue Checks can ask what an admitted row is typed as; the rule
+ * re-reads them every run and files its own refusal when they stop passing.
  */
 export const SYNC_OWNED_METADATA_KEYS = [
   'artworkCount', 'totalArtworkSitelinks', 'sitelinksCount', 'admittedFor',
+  'wikidataClasses', 'wikidataArtwork',
 ] as const;
 
 /** Whether a metadata key belongs to the run rather than to the object. */

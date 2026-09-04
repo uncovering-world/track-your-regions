@@ -1,134 +1,160 @@
 /**
- * What one answer from the landmark queries becomes.
+ * How the landmark run wires the public-art collection to the orchestrator.
  *
- * The grouping is the whole of it, and it is where a monument's maker used to be
- * decided by accident: five OPTIONALs mean a monument with several creators
- * arrives several times, and each row used to become a landmark of its own that
- * then raced its twins into the same row (#720).
+ * The collection is a pure pipeline with its own test and the orchestrator's
+ * handling of refusals and the sweep has one too. What neither can see is the
+ * join: that the run reads what the category already admits before asking,
+ * hands the collection's refusals back as the run's `filtered`, declares that
+ * it recomputes its membership and that belonging is the badge, keeps its
+ * answers unless told to refresh, and writes what the rule read onto the row.
+ *
+ * Everything around the join is mocked: the pipeline, Wikidata, Commons, the
+ * upserts, the admission read.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({
-  pool: { query: vi.fn(), connect: vi.fn() },
+  pool: { query: vi.fn() },
+  db: {},
+}));
+vi.mock('./syncOrchestrator.js', () => ({
+  orchestrateSync: vi.fn().mockResolvedValue(undefined),
+  getSyncStatus: vi.fn(),
+  cancelSync: vi.fn(),
+}));
+vi.mock('./syncUtils.js', () => ({
+  upsertExperienceRecord: vi.fn(),
+  upsertSingleLocation: vi.fn(),
+}));
+vi.mock('./wikidataCache.js', () => ({
+  withCache: vi.fn((door: unknown) => door),
+}));
+vi.mock('./publicArt/pipeline.js', () => ({ collectPublicArt: vi.fn() }));
+vi.mock('./admission.js', () => ({ admittedExternalIds: vi.fn() }));
+vi.mock('./wikidataUtils.js', () => ({
+  delay: vi.fn(),
+  WaitBudget: class WaitBudget {},
+  SPARQL_DELAY_MS: 0,
+  SPARQL_WAIT_BUDGET_MS: 0,
+  waitMessage: vi.fn(),
+  WIKIDATA_USER_AGENT: 'test',
+  wikidataDoor: vi.fn(() => vi.fn()),
+}));
+vi.mock('./imageCredit.js', () => ({
+  fetchCommonsCredits: vi.fn().mockResolvedValue(new Map()),
+  readStoredCredits: vi.fn().mockResolvedValue(new Map()),
+  creditToWrite: vi.fn().mockReturnValue({}),
 }));
 
-import { bindingsToLandmarks, fetchMonuments } from './landmarkSyncService.js';
-import type { SparqlBinding } from './wikidataUtils.js';
+import { orchestrateSync, type SyncServiceConfig, type SyncRunContext } from './syncOrchestrator.js';
+import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
+import { withCache } from './wikidataCache.js';
+import { collectPublicArt } from './publicArt/pipeline.js';
+import { admittedExternalIds } from './admission.js';
+import { syncLandmarks } from './landmarkSyncService.js';
+import type { SyncProgress, WikidataLandmark } from './types.js';
 
-const ENTITY = 'http://www.wikidata.org/entity/';
+const mockedOrchestrate = orchestrateSync as unknown as ReturnType<typeof vi.fn>;
+const mockedCollect = collectPublicArt as unknown as ReturnType<typeof vi.fn>;
+const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn>;
+const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;
+const mockedUpsert = upsertExperienceRecord as unknown as ReturnType<typeof vi.fn>;
 
-function row(qid: string, label: string, creator?: string, image?: string): SparqlBinding {
-  const binding: SparqlBinding = {
-    item: { value: `${ENTITY}${qid}` },
-    itemLabel: { value: label },
-    coord: { value: 'Point(-43.2105 -22.9519)' },
-    sitelinks: { value: '60' },
+function landmark(over: Partial<WikidataLandmark> = {}): WikidataLandmark {
+  return {
+    qid: 'Q337179', label: 'Freedom Monument', description: 'monument in Riga', lat: 56.95, lon: 24.11,
+    imageUrl: null, creators: ['Kārlis Zāle'], year: 1935, sitelinks: 41, countryLabel: 'Latvia',
+    type: 'monument', classes: ['Q4989906'], artwork: false, articleUrl: null, website: null, ...over,
   };
-  if (creator) binding.creatorLabel = { value: creator };
-  if (image) binding.image = { value: image };
-  return binding;
 }
 
-describe('bindingsToLandmarks', () => {
-  it('makes one landmark of a monument the answer names several times', () => {
-    // Christ the Redeemer is Landowski's statue on Oswald's design; before this
-    // it arrived as two monuments and the second overwrote the first.
-    const landmarks = bindingsToLandmarks([
-      row('Q79961', 'Christ the Redeemer', 'Paul Landowski'),
-      row('Q79961', 'Christ the Redeemer', 'Carlos Oswald'),
-    ], 'monument');
+const progress = () => ({ cancel: false, statusMessage: '' } as unknown as SyncProgress);
 
-    expect(landmarks).toHaveLength(1);
-    expect(landmarks[0].creators).toEqual(['Paul Landowski', 'Carlos Oswald']);
+async function configOf(options: { dryRun?: boolean; refreshCache?: boolean } = {}) {
+  await syncLandmarks(1, options);
+  return mockedOrchestrate.mock.calls[0][0] as SyncServiceConfig<WikidataLandmark>;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockedAdmitted.mockResolvedValue(new Set(['Q337179']));
+  mockedCollect.mockResolvedValue({ items: [landmark()], fetched: 1, filtered: [] });
+  mockedUpsert.mockResolvedValue({
+    experienceId: 7, changeSet: { changeType: 'unchanged' }, nameSnapshot: 'Freedom Monument', returnedFromMissing: false,
   });
-
-  it('keeps all seven makers of the Fountain of Cybele', () => {
-    const makers = [
-      'Roberto Michel', 'Antoni Parera i Saurina', 'Francisco Gutiérrez Arribas',
-      'Manuel Herrero Palacios', 'Miguel Ángel Trilles',
-      'Francisco Miguel Ximénez de Alanís', 'José López Salaberry',
-    ];
-    const landmarks = bindingsToLandmarks(
-      makers.map(maker => row('Q2736564', 'Fountain of Cybele', maker)), 'monument',
-    );
-
-    expect(landmarks).toHaveLength(1);
-    expect(landmarks[0].creators).toEqual(makers);
-  });
-
-  it('counts a maker once however many rows carry them', () => {
-    const landmarks = bindingsToLandmarks([
-      row('Q1601986', 'The Motherland Calls', 'Yevgeny Vuchetich', 'a.jpg'),
-      row('Q1601986', 'The Motherland Calls', 'Nikolai Nikitin', 'a.jpg'),
-      row('Q1601986', 'The Motherland Calls', 'Yevgeny Vuchetich', 'b.jpg'),
-      row('Q1601986', 'The Motherland Calls', 'Nikolai Nikitin', 'b.jpg'),
-    ], 'monument');
-
-    expect(landmarks[0].creators).toEqual(['Yevgeny Vuchetich', 'Nikolai Nikitin']);
-    // The first row still fixes everything single-valued about the monument.
-    expect(landmarks[0].imageUrl).toBe('a.jpg');
-  });
-
-  it('drops a maker the label service could only answer with a QID', () => {
-    // An entity with no label in any of the eight languages comes back as the
-    // bare id. Collecting every creator is what makes it reachable at all: it
-    // used to lose the race to a labelled co-creator.
-    const landmarks = bindingsToLandmarks([
-      row('Q79961', 'Christ the Redeemer', 'Paul Landowski'),
-      row('Q79961', 'Christ the Redeemer', 'Q1234567'),
-    ], 'monument');
-
-    expect(landmarks[0].creators).toEqual(['Paul Landowski']);
-  });
-
-  it('leaves a monument nobody is recorded for with an empty list', () => {
-    const landmarks = bindingsToLandmarks([row('Q1', 'An unattributed memorial')], 'monument');
-    expect(landmarks[0].creators).toEqual([]);
-  });
-
-  it('drops a row with no coordinate, and keeps the item its siblings describe', () => {
-    const landmarks = bindingsToLandmarks([
-      { item: { value: `${ENTITY}Q79961` }, itemLabel: { value: 'Christ the Redeemer' } },
-      row('Q79961', 'Christ the Redeemer', 'Paul Landowski'),
-    ], 'monument');
-
-    expect(landmarks).toHaveLength(1);
-    expect(landmarks[0].creators).toEqual(['Paul Landowski']);
-  });
+  (upsertSingleLocation as unknown as ReturnType<typeof vi.fn>)
+    .mockResolvedValue({ needsAssignment: [], unoffered: 0, delta: {} });
 });
 
-describe('fetchMonuments', () => {
-  /** A door that answers every type query with the same rows. */
-  const answering = (rows: SparqlBinding[]) => (async () => rows) as never;
-  const progress = () => ({ cancel: false, statusMessage: '' } as never);
-
-  it('keeps every row a monument arrived on, across the four type queries', async () => {
-    // The bug this closes: the collection map kept the *first* row per item, so a
-    // monument with several makers had them thrown away before the grouping ever
-    // saw them — and its stored creator was the planner's pick of the first row
-    // of whichever type query answered first (#720).
-    const landmarks = await fetchMonuments(progress(), answering([
-      row('Q154987', 'Siegessäule', 'Anton von Werner'),
-      row('Q154987', 'Siegessäule', 'Albert Wolff'),
-      row('Q154987', 'Siegessäule', 'Friedrich Drake'),
-    ]));
-
-    expect(landmarks).toHaveLength(1);
-    expect(landmarks[0].creators)
-      .toEqual(['Anton von Werner', 'Albert Wolff', 'Friedrich Drake']);
+describe('syncLandmarks', () => {
+  it('recomputes its membership every run, and belonging is the badge', async () => {
+    const config = await configOf();
+    expect(config.categoryId).toBe(3);
+    expect(config.sourceCompleteness).toBe('ranked');
+    expect(config.recomputesMembership).toBe(true);
+    expect(config.badgesAdmitted).toBe(true);
   });
 
-  it('still makes one monument of an item two type queries both offer', async () => {
-    // A memorial that is also a cenotaph is one monument, which is what the map
-    // across the four queries is for. Four identical answers, one landmark, and
-    // its makers named once each.
-    const landmarks = await fetchMonuments(progress(), answering([
-      row('Q429007', 'Monument to the Ghetto Heroes', 'Nathan Rapoport'),
-      row('Q429007', 'Monument to the Ghetto Heroes', 'Rudier Foundry'),
-    ]));
+  it('hands the collection what the category already admits, and its refusals back', async () => {
+    const refusal = { externalId: 'Q1499912', name: 'Segovia Cathedral', reason: 'a place of worship, not public art' };
+    mockedCollect.mockResolvedValue({ items: [landmark()], fetched: 5, filtered: [refusal] });
 
-    expect(landmarks).toHaveLength(1);
-    expect(landmarks[0].creators).toEqual(['Nathan Rapoport', 'Rudier Foundry']);
+    const config = await configOf();
+    const fetched = await config.fetchItems(progress(), []);
+
+    expect(mockedAdmitted).toHaveBeenCalledWith(3);
+    expect(mockedCollect.mock.calls[0][1]).toEqual(new Set(['Q337179']));
+    expect(fetched.fetchedCount).toBe(5);
+    expect(fetched.filtered).toEqual([refusal]);
+    expect(fetched.items.map((i) => i.qid)).toEqual(['Q337179']);
+  });
+
+  it('keeps its answers by default and asks the source afresh when told to', async () => {
+    const config = await configOf({ refreshCache: true });
+    await config.fetchItems(progress(), []);
+    expect(mockedWithCache.mock.calls[0][1]).toMatchObject({ categoryId: 3, enabled: false });
+
+    vi.clearAllMocks();
+    mockedAdmitted.mockResolvedValue(new Set());
+    mockedCollect.mockResolvedValue({ items: [], fetched: 0, filtered: [] });
+    const plain = await configOf();
+    await plain.fetchItems(progress(), []);
+    expect(mockedWithCache.mock.calls[0][1]).toMatchObject({ categoryId: 3, enabled: true });
+  });
+
+  it('writes what the rule read onto the row', async () => {
+    const config = await configOf();
+    await config.fetchItems(progress(), []);
+    const context: SyncRunContext = {
+      dryRun: false, syncLogId: 9, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
+    };
+
+    await config.processItem(landmark({ classes: ['Q4989906', 'Q893745'], type: 'monument', artwork: false }), progress(), context);
+
+    const params = mockedUpsert.mock.calls[0][0];
+    expect(params.category).toBe('monument');
+    expect(params.tags).toEqual(['outdoor', 'monument']);
+    expect(params.metadata).toMatchObject({
+      wikidataQid: 'Q337179',
+      wikidataClasses: ['Q4989906', 'Q893745'],
+      wikidataArtwork: false,
+      creators: ['Kārlis Zāle'],
+      type: 'monument',
+      sitelinksCount: 41,
+    });
+  });
+
+  it('tells two landmarks of one name apart by where the description puts them', async () => {
+    mockedCollect.mockResolvedValue({
+      items: [
+        landmark({ qid: 'Q1', label: 'Victoria Memorial', description: 'memorial in London' }),
+        landmark({ qid: 'Q2', label: 'Victoria Memorial', description: 'monument in Kolkata, India' }),
+      ],
+      fetched: 2, filtered: [],
+    });
+    const config = await configOf();
+    const { items } = await config.fetchItems(progress(), []);
+    expect(items.map((i) => i.label)).toEqual(['Victoria Memorial (London)', 'Victoria Memorial (Kolkata)']);
   });
 });

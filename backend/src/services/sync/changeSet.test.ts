@@ -446,6 +446,18 @@ describe('a metadata key the run computes about its own pass', () => {
     },
   });
 
+  it('asks nobody about the classes the public-art rule read', () => {
+    // The rule re-reads every class each run and files its own refusal if the
+    // row stops passing; what Wikidata types a monument is the run's note to
+    // itself and to Catalogue Checks, not a field a curator decides.
+    const before = snapshot({ metadata: { wikidataQid: 'Q337179', wikidataClasses: ['Q4989906'], wikidataArtwork: false } });
+    const after = snapshot({ metadata: { wikidataQid: 'Q337179', wikidataClasses: ['Q4989906', 'Q893745'], wikidataArtwork: true } });
+    const result = computeChangeSet(before, after, [], HELD);
+
+    expect(result.changedFields).toEqual([]);
+    expect(result.heldFields).toEqual([]);
+  });
+
   it('is not a change, so a run that moved only the counters raises no card', () => {
     const result = computeChangeSet(museum(2363), museum(2365), [], HELD);
 

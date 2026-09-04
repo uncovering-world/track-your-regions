@@ -128,6 +128,25 @@ export async function countAdmitted(categoryId: number): Promise<number> {
 }
 
 /**
+ * Which rows the category currently admits, by the id the source knows them
+ * by. What a rule with hysteresis reads its stay line against: a row already
+ * in is kept above a lower line than one entering, and only the table knows
+ * who is in. A curator's own row is excluded for the reason `UNPROTECTED`
+ * spells out — its key can never appear in a source's answer.
+ */
+export async function admittedExternalIds(categoryId: number): Promise<Set<string>> {
+  const result = await pool.query(
+    `SELECT external_id
+     FROM experiences
+     WHERE category_id = $1
+       AND admission = 'admitted'
+       AND is_manual = FALSE`,
+    [categoryId]
+  );
+  return new Set(result.rows.map((row: { external_id: string }) => row.external_id));
+}
+
+/**
  * A curator's pin on the admission axis, qualified by `alias` — the answer a
  * confirmation or an override leaves behind, which every write here honours.
  * `COALESCE` for the reason `UNPROTECTED` spells out.

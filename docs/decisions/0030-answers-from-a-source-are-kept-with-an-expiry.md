@@ -1,7 +1,9 @@
 # ADR-0030: What a source answers is kept, with an expiry a person can change
 
 **Date:** 2026-08-21
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by
+[ADR-0047](0047-a-cached-answer-belongs-to-the-source-that-asked.md): the key is the source
+and the query text together, not the query text alone; decisions 2–8 stand
 
 ---
 
