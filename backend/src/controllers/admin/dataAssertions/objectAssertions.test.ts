@@ -6,7 +6,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import { heldFieldAnsweredSql, heldFieldRefusedSql } from '../../experience/heldDecisions.js';
-import { iconicPinnedSql } from '../../../services/sync/admission.js';
+import { admissionPinnedSql, iconicPinnedSql } from '../../../services/sync/admission.js';
+import {
+  KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, MONUMENT_CLASSES, FOUNTAIN_ROOT,
+} from '../../../services/sync/publicArt/classes.js';
 import { objectAssertions } from './objectAssertions.js';
 
 const byId = (id: string) => {
@@ -121,5 +124,61 @@ describe('a refused row still wearing the Iconic badge', () => {
 
   it('sends the admin to the migration for the rows refused before the writers cleared the flag', () => {
     expect(assertion.meaning).toContain('042');
+  });
+});
+
+describe('an admitted public-art row typed as a building', () => {
+  const assertion = byId('public-art-row-typed-a-building');
+  const sql = collapse(assertion.sql);
+
+  it('asks only the admitted, source-written rows of the public-art category', () => {
+    expect(sql).toContain('e.category_id = 3');
+    expect(sql).toContain("e.admission = 'admitted'");
+    expect(sql).toContain('e.is_manual = FALSE');
+    expect(assertion.kind).toBe('invariant');
+  });
+
+  it('reads the classes the run stored, against the rule\'s own lists', () => {
+    // Composing the writer's lists is the point rather than the exception the
+    // data-assertions doc warns about: what this catches is a row the rule
+    // never reached — created before the test, or admitted by a path without
+    // it — not a wrong rule, which no check reading its output could see.
+    expect(sql).toContain("e.metadata->'wikidataClasses'");
+    for (const qid of [...Object.keys(KILL_CLASSES), ...Object.keys(WORSHIP_CLASSES)]) {
+      expect(sql).toContain(`'${qid}'`);
+    }
+    for (const qid of Object.keys(VETO_CLASSES)) expect(sql).toContain(`'${qid}'`);
+  });
+
+  it('lets an artwork class answer a building class by the rule\'s own answer, not an approximation', () => {
+    // The Hermannsdenkmal is a sculpture and a tower; Monas an obelisk and a
+    // museum; a holy well built into a building is in the fountain closure.
+    // The rule stores whether an artwork class answered (`wikidataArtwork`),
+    // and the check reads that rather than the row's type or a pinned list,
+    // which cannot hold the closures the rule reads at run time. COALESCE,
+    // because a row the run wrote before the key existed carries none.
+    expect(sql).toContain("NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE)");
+    expect(sql).not.toContain("e.category IS DISTINCT FROM");
+    expect(sql).not.toContain("e.category <>");
+    for (const qid of [...Object.keys(MONUMENT_CLASSES), FOUNTAIN_ROOT]) expect(sql).not.toContain(`'${qid}'`);
+  });
+
+  it('leaves alone a row whose admission a curator pinned', () => {
+    // An override says the rule was wrong about this row; naming it here every
+    // run would be the rule arguing back.
+    expect(sql).toContain(`AND NOT ${admissionPinnedSql('e')}`);
+  });
+
+  it('names the row and says the classes that give it away in words', () => {
+    // The query hands back the ids the row stores; the sentence carries the
+    // labels the lists know them by, and an id no list knows stays an id.
+    expect(assertion.describe({
+      experience_id: 6301, experience_name: 'Segovia Cathedral', classes: 'Q56242215',
+    })).toBe('Segovia Cathedral: admitted to Public Art & Monuments, typed Catholic cathedral '
+      + '(experience 6301)');
+    expect(assertion.describe({
+      experience_id: 1477, experience_name: 'Aljafería', classes: 'Q16560, Q23413, Q999999',
+    })).toBe('Aljafería: admitted to Public Art & Monuments, typed palace, castle, Q999999 '
+      + '(experience 1477)');
   });
 });
