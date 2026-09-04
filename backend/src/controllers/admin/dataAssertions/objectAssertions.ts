@@ -13,8 +13,9 @@
  */
 
 import { heldFieldAnsweredSql } from '../../experience/heldDecisions.js';
-import { iconicPinnedSql } from '../../../services/sync/admission.js';
+import { admissionPinnedSql, iconicPinnedSql } from '../../../services/sync/admission.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
+import { KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES } from '../../../services/sync/publicArt/classes.js';
 
 import { count, text } from './assertion.js';
 import type { CatalogueAssertion } from './assertion.js';
@@ -253,12 +254,111 @@ const workMakersUnconfirmed: CatalogueAssertion = {
 };
 
 /**
+ * A SQL array literal of class ids, for a rule whose lists live in code.
+ *
+ * Every id comes from a constant the public-art rule owns, and the shape is
+ * checked here anyway: an assertion's SQL is sent without parameters, and a
+ * list that one day held a label instead of an id must fail loudly rather
+ * than be spliced into a query.
+ */
+function qidArray(qids: string[]): string {
+  for (const qid of qids) {
+    if (!/^Q\d+$/.test(qid)) throw new Error(`not a Wikidata id: ${qid}`);
+  }
+  const quoted = qids.map((q) => "'" + q + "'").join(', ');
+  return 'ARRAY[' + quoted + ']';
+}
+
+const REFUSED_OUTRIGHT = qidArray([...Object.keys(WORSHIP_CLASSES), ...Object.keys(KILL_CLASSES)]);
+const REFUSED_UNLESS_ARTWORK = qidArray(Object.keys(VETO_CLASSES));
+
+/**
+ * A public-art row admitted with a class the rule refuses.
+ *
+ * The public-art rule (`publicArtTest.ts`) reads what Wikidata types an entity
+ * and turns down a place of worship, a camp, a stadium, an archaeological
+ * site, a tomb, an organisation, a settlement; and a building, a cemetery or
+ * a place unless an artwork class answers it. It runs on every candidate every
+ * run, and it stores what it read on the row (`metadata.wikidataClasses`).
+ * This asks the stored rows the same question, for the rows the rule never
+ * reached: the 205 created before it existed (eleven Spanish cathedrals among
+ * them, typed `Catholic cathedral, monument`), or any a later path admits
+ * without running it. It composes the rule's own lists on purpose — the
+ * exception the data-assertions doc allows the other way round does not apply,
+ * since a wrong list is not what this can see; a row the list never met is.
+ *
+ * Two things the rule reads that a constant cannot: the museum tree and the
+ * worship tree, walked from Wikidata each run. The worship floor is pinned
+ * (`WORSHIP_CLASSES`) and read here; a museum class the veto would catch is
+ * not, so a museum typed only by a class outside these lists is the rule's to
+ * find, not this check's. Whether an artwork class answered a building's veto
+ * is not approximated at all: the rule stores its own answer on the row
+ * (`metadata.wikidataArtwork`), which is what a check that cannot hold the
+ * closures reads — a holy well built into a building is in the fountain
+ * closure, and no constant here could say so. A row written before that key
+ * existed reads as no answer, which is the conservative reading.
+ *
+ * The one row left alone is the one the writers leave alone: an admission a
+ * curator pinned. An override says the rule was wrong about this row, and
+ * naming it every run would be the rule arguing back.
+ */
+const publicArtRowTypedABuilding: CatalogueAssertion = {
+  id: 'public-art-row-typed-a-building',
+  area: 'objects',
+  title: 'A public-art row admitted with a class the rule refuses',
+  kind: 'invariant',
+  meaning:
+    'The row is admitted to Public Art & Monuments and carries a Wikidata class the category\'s '
+    + 'rule refuses — a place of worship, a camp, a stadium, an archaeological site, a tomb, an '
+    + 'organisation, a settlement, or a building or cemetery with no artwork class to answer it. '
+    + 'The rule refuses such a row on every run it reaches, so a row here was admitted before '
+    + 'the rule existed or by a path that did not run it: a live run of the source re-evaluates '
+    + 'it, and a curator can confirm or override the refusal from the review page. A row a '
+    + 'curator has already overridden is not reported.',
+  sql: `SELECT e.id AS experience_id,
+               e.name AS experience_name,
+               (SELECT string_agg(c, ', ' ORDER BY c)
+                  FROM jsonb_array_elements_text(e.metadata->'wikidataClasses') c
+                 WHERE c = ANY(${REFUSED_OUTRIGHT}) OR c = ANY(${REFUSED_UNLESS_ARTWORK})) AS classes
+          FROM experiences e
+         WHERE e.category_id = 3
+           AND e.admission = 'admitted'
+           AND e.is_manual = FALSE
+           AND NOT ${admissionPinnedSql('e')}
+           -- A row the run never wrote classes onto is a row the rule never
+           -- reached, and the question has no answer yet rather than a clean
+           -- one: it is counted by its absence from every run, not here.
+           AND jsonb_typeof(e.metadata->'wikidataClasses') = 'array'
+           AND (
+             e.metadata->'wikidataClasses' ?| ${REFUSED_OUTRIGHT}
+             OR (
+               e.metadata->'wikidataClasses' ?| ${REFUSED_UNLESS_ARTWORK}
+               -- The rule's own answer to whether an artwork class lifted the
+               -- veto; a row written before the key existed has none, and is
+               -- read as if none did.
+               AND NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE)
+             )
+           )
+         ORDER BY e.name`,
+  describe: row => {
+    // The lists carry the labels; the row carries the ids. Said in words, as
+    // the rule's own reason would be.
+    const label = (qid: string) =>
+      WORSHIP_CLASSES[qid] ?? KILL_CLASSES[qid] ?? VETO_CLASSES[qid] ?? qid;
+    const classes = text(row, 'classes').split(', ').filter(Boolean).map(label).join(', ');
+    return `${text(row, 'experience_name')}: admitted to Public Art & Monuments, typed `
+      + `${classes} (experience ${count(row, 'experience_id')})`;
+  },
+};
+
+/**
  * The object rules, in the order a person reads them: the fact stored twice,
- * the badge a refusal should have taken, then the count of works whose makers
- * nobody has arranged.
+ * the badge a refusal should have taken, the count of works whose makers
+ * nobody has arranged, then the public-art row the rule would refuse.
  */
 export const objectAssertions: CatalogueAssertion[] = [
   dangerFlagAgainstItsTag,
   refusedRowWearingIconic,
   workMakersUnconfirmed,
+  publicArtRowTypedABuilding,
 ];
