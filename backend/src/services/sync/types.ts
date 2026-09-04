@@ -186,6 +186,18 @@ export interface WikidataLandmark {
   sitelinks: number;
   countryLabel: string | null;
   type: 'sculpture' | 'monument';
+  /**
+   * Every `P31` the entity carries, as the rule read them. Stored with the row
+   * (`metadata.wikidataClasses`) so that Catalogue Checks can ask, of what is
+   * admitted, whether a class the rule refuses is among them.
+   */
+  classes: string[];
+  /**
+   * Whether an artwork class answered the rule — the sculptural and fountain
+   * closures or a pinned structure, what lifts a building's veto. Stored as
+   * `metadata.wikidataArtwork`, so the check reads the rule's own answer.
+   */
+  artwork: boolean;
   articleUrl: string | null;
   website: string | null;
 }
