@@ -193,15 +193,20 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
   if (!experience) return null;
 
   const handleSave = () => {
-    const changes: Record<string, string | undefined> = {};
+    // A field travels only when it changed, and an emptied one travels as ''
+    // — the API's way of clearing it (#696). Folding it into `undefined` here
+    // had `JSON.stringify` drop it, so a removal never left the browser: alone
+    // it was answered "No fields to update", beside another change it was
+    // reported saved.
+    const changes: Record<string, string> = {};
     if (editName !== experience.name) changes.name = editName;
-    if (editDescription !== (experience.short_description || '')) changes.shortDescription = editDescription || undefined;
-    if (editCategory !== (experience.category || '')) changes.category = editCategory || undefined;
-    if (editImageUrl !== (experience.image_url || '')) changes.imageUrl = editImageUrl || undefined;
+    if (editDescription !== (experience.short_description || '')) changes.shortDescription = editDescription;
+    if (editCategory !== (experience.category || '')) changes.category = editCategory;
+    if (editImageUrl !== (experience.image_url || '')) changes.imageUrl = editImageUrl;
     const currentWebsite = (detailQuery.data?.metadata?.website as string) || '';
-    if (editWebsiteUrl !== currentWebsite) changes.websiteUrl = editWebsiteUrl || undefined;
+    if (editWebsiteUrl !== currentWebsite) changes.websiteUrl = editWebsiteUrl;
     const currentWiki = (detailQuery.data?.metadata?.wikipediaUrl as string) || '';
-    if (editWikipediaUrl !== currentWiki) changes.wikipediaUrl = editWikipediaUrl || undefined;
+    if (editWikipediaUrl !== currentWiki) changes.wikipediaUrl = editWikipediaUrl;
 
     if (Object.keys(changes).length === 0) return;
     editMutation.mutate(changes);
