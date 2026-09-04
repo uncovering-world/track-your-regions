@@ -50,10 +50,13 @@ import {
   fetchExperience,
   setExperienceState,
   type Experience,
+  type ExperienceDetail,
+  type ImageCredit,
 } from '../../api/experiences';
 import { formatRelativeTime } from '../../utils/dateFormat';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LoadingSpinner } from './LoadingSpinner';
+import { PictureWithCredit } from './PictureWithCredit';
 import { verdictOf } from './LifecycleChip';
 import { ACTION_LABELS, formatLogDetails } from './curationLog';
 
@@ -63,6 +66,25 @@ interface CurationDialogProps {
   /** Region context for reject/unreject scope */
   regionId: number | null;
   onClose: () => void;
+}
+
+/**
+ * Whose photograph the preview under the Image URL box is showing, if anyone's.
+ *
+ * The credit goes with the stored picture and with nothing else: an address
+ * typed and not yet saved has no credit until the save resolves one
+ * (`PATCH /experiences/:id/edit` writes `metadata.imageCredit` beside
+ * `image_url`), and a credit under somebody else's photograph names a person
+ * for a picture that is not theirs. Read off the row where the row carries it —
+ * every list this dialog opens from sends `image_credit` beside `image_url` —
+ * and off the detail's metadata otherwise, the read this dialog already makes.
+ */
+function creditForPreview(
+  editImageUrl: string, row: Experience, detail: ExperienceDetail | undefined,
+): ImageCredit | null {
+  if (editImageUrl !== (row.image_url || '')) return null;
+  if (row.image_credit !== undefined) return row.image_credit;
+  return (detail?.metadata?.imageCredit as ImageCredit | null | undefined) ?? null;
 }
 
 function CurationDialogComponent({ experience, regionId, onClose }: CurationDialogProps) {
@@ -231,6 +253,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
 
   const currentWebsite = (detailQuery.data?.metadata?.website as string) || '';
   const currentWikipedia = (detailQuery.data?.metadata?.wikipediaUrl as string) || '';
+  const previewCredit = creditForPreview(editImageUrl, experience, detailQuery.data);
   const hasChanges =
     editName !== experience.name ||
     editDescription !== (experience.short_description || '') ||
@@ -302,14 +325,23 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
               <MenuItem value="art">Art</MenuItem>
             </Select>
           </FormControl>
-          <TextField
-            label="Image URL"
-            value={editImageUrl}
-            onChange={(e) => setEditImageUrl(e.target.value)}
-            fullWidth
-            size="small"
-            placeholder="https://commons.wikimedia.org/..."
-          />
+          <Box>
+            <TextField
+              label="Image URL"
+              value={editImageUrl}
+              onChange={(e) => setEditImageUrl(e.target.value)}
+              fullWidth
+              size="small"
+              placeholder="https://commons.wikimedia.org/..."
+            />
+            {/* What the address in the box draws, as the create dialog shows it —
+                so checking a picture is not a copy, a new tab and a way back. An
+                emptied box draws nothing: the picture is the field's value, and
+                the removal readers get is the removal the curator sees. */}
+            {editImageUrl && (
+              <PictureWithCredit url={editImageUrl} credit={previewCredit} alt="Picture preview" />
+            )}
+          </Box>
           <TextField
             label="Wikipedia URL"
             value={editWikipediaUrl}

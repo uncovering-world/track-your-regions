@@ -1,11 +1,15 @@
 /**
- * An emptied field is an edit, and it has to leave the browser (#696).
+ * Two promises the dialog makes about a picture, on one real site.
  *
- * The dialog used to fold an emptied box into `undefined`, which
- * `JSON.stringify` drops: clearing the Image URL of Bamiyan and saving was
- * answered "No fields to update", and clearing it beside a name change was
- * answered success — with the photograph still there. What the API needs is
- * the empty string, which the controller stores as NULL under a claim.
+ * An emptied field is an edit, and it has to leave the browser (#696). The
+ * dialog used to fold an emptied box into `undefined`, which `JSON.stringify`
+ * drops: clearing the Image URL of Bamiyan and saving was answered "No fields
+ * to update", and clearing it beside a name change was answered success — with
+ * the photograph still there. What the API needs is the empty string, which the
+ * controller stores as NULL under a claim.
+ *
+ * And the picture the box names is on screen, with whose it is (#801) — the
+ * second block below.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -51,11 +55,11 @@ const bamiyan: Experience = {
   category_name: 'UNESCO World Heritage',
 };
 
-function renderDialog() {
+function renderDialog(experience: Experience = bamiyan) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <CurationDialog experience={bamiyan} regionId={5} onClose={vi.fn()} />
+      <CurationDialog experience={experience} regionId={5} onClose={vi.fn()} />
     </QueryClientProvider>,
   );
 }
@@ -118,5 +122,103 @@ describe('CurationDialog clearing a field', () => {
     save();
 
     await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { category: '' }));
+  });
+});
+
+/**
+ * The dialog shows the picture it edits, and names whose it is (#801).
+ *
+ * A curator checking what the Image URL box draws used to open the address in
+ * another tab; the create dialog drew a thumbnail under the same box, so the
+ * two forms disagreed. The credit is part of the picture (ADR-0043), and it is
+ * the *stored* picture's: an address typed and not yet saved has none until the
+ * save resolves it.
+ */
+describe('CurationDialog showing the picture it edits', () => {
+  // The same site once *Fix pictures* answered it from Commons, as the
+  // development catalogue holds it — picture and credit alike.
+  const COMMONS_PICTURE = 'http://commons.wikimedia.org/wiki/Special:FilePath/Bamiyan%20Valley2.jpg';
+  const THUMBNAIL = 'https://commons.wikimedia.org/wiki/Special:FilePath/Bamiyan%20Valley2.jpg?width=250';
+  const CREDIT = {
+    author: 'Carl Montgomery',
+    license: 'CC BY 2.0',
+    licenseUrl: 'https://creativecommons.org/licenses/by/2.0',
+    detailsUrl: 'https://commons.wikimedia.org/wiki/File:Bamiyan_Valley2.jpg',
+  };
+  // Its neighbour's picture, as a curator might paste it in by mistake — or on purpose.
+  const JAM = 'http://commons.wikimedia.org/wiki/Special:FilePath/Minaret%20of%20jam%202009%20ghor.jpg';
+  const onCommons: Experience = { ...bamiyan, image_url: COMMONS_PICTURE, image_credit: CREDIT };
+
+  const preview = () => screen.queryByRole('img', { name: 'Picture preview' });
+  const type = (value: string) => fireEvent.change(screen.getByLabelText('Image URL'), { target: { value } });
+
+  beforeEach(() => {
+    mockedDetail.mockReset();
+    mockedDetail.mockResolvedValue({ ...onCommons, metadata: { website: PORTAL_PAGE } });
+  });
+
+  it('draws the stored picture at a size the CDN holds, with its credit', () => {
+    renderDialog(onCommons);
+
+    expect(preview()).toHaveAttribute('src', THUMBNAIL);
+    expect(screen.getByText('Carl Montgomery')).toBeInTheDocument();
+    expect(screen.getByText('CC BY 2.0')).toBeInTheDocument();
+  });
+
+  it('draws nothing once the box is emptied — no frame, and no credit under it', () => {
+    renderDialog(onCommons);
+
+    type('');
+
+    expect(preview()).not.toBeInTheDocument();
+    expect(screen.queryByText('Carl Montgomery')).not.toBeInTheDocument();
+  });
+
+  it('previews an address typed and not yet saved, without a credit', () => {
+    // None exists until the save resolves one — and the stored credit is not
+    // this picture's photographer.
+    renderDialog(onCommons);
+
+    type(JAM);
+
+    expect(preview()).toHaveAttribute('src', `${JAM.replace('http://', 'https://')}?width=250`);
+    expect(screen.queryByText('Carl Montgomery')).not.toBeInTheDocument();
+  });
+
+  it('hides a picture that does not load, and its credit with it', () => {
+    renderDialog(onCommons);
+
+    fireEvent.error(preview() as HTMLElement);
+
+    expect(preview()).not.toBeInTheDocument();
+    expect(screen.queryByText('Carl Montgomery')).not.toBeInTheDocument();
+  });
+
+  it('asks again for a different address after one failed', () => {
+    // The failure is held by address, not as a flag: a curator who retypes the
+    // box after a broken picture is asking a new question.
+    renderDialog(onCommons);
+    fireEvent.error(preview() as HTMLElement);
+
+    type(JAM);
+
+    expect(preview()).toBeInTheDocument();
+  });
+
+  it('draws no frame for an address the product may not show', () => {
+    // The first fixture's own case: a row still pointing at the World Heritage
+    // portal, which `toThumbnailUrl` refuses (ADR-0043). `src=""` would be a
+    // broken frame, not "no picture".
+    renderDialog(bamiyan);
+
+    expect(preview()).not.toBeInTheDocument();
+  });
+
+  it('takes the credit from the detail read when the row does not carry one', async () => {
+    const rowWithoutCredit: Experience = { ...bamiyan, image_url: COMMONS_PICTURE };
+    mockedDetail.mockResolvedValue({ ...rowWithoutCredit, metadata: { imageCredit: CREDIT } });
+    renderDialog(rowWithoutCredit);
+
+    expect(await screen.findByText('Carl Montgomery')).toBeInTheDocument();
   });
 });
