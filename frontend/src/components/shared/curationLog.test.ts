@@ -194,6 +194,71 @@ describe('a verdict on a rule’s refusal', () => {
   });
 });
 
+describe('an edit that replaced or removed the picture', () => {
+  // Bamiyan's picture on the development catalogue, as the sync stored its credit.
+  const PICTURE = 'http://commons.wikimedia.org/wiki/Special:FilePath/Bamiyan%20Valley2.jpg';
+  const credit = {
+    author: 'Carl Montgomery',
+    license: 'CC BY 2.0',
+    licenseUrl: 'https://creativecommons.org/licenses/by/2.0',
+    detailsUrl: 'https://commons.wikimedia.org/wiki/File:Bamiyan_Valley2.jpg',
+  };
+
+  it('names the photographer whose credit went with the picture', () => {
+    // The row `editExperience` writes when a curator empties the Image URL box and
+    // saves (#696): the credit is recorded beside the picture, as an object — and the
+    // line read `metadata.imageCredit: "[object Object]" → "(empty)"`, which leaves out
+    // the one fact the credit rule exists to keep visible (ADR-0043).
+    const line = formatLogDetails(entry('edited', {
+      image_url: { old: PICTURE, new: null },
+      'metadata.imageCredit': { old: credit, new: null },
+    })) as string;
+
+    expect(line).not.toContain('[object Object]');
+    expect(line).toContain('metadata.imageCredit: "Carl Montgomery · CC BY 2.0" → "(empty)"');
+  });
+
+  it('reads on both sides of the arrow as the line under the picture does', () => {
+    const line = formatLogDetails(entry('edited', {
+      'metadata.imageCredit': {
+        old: credit,
+        new: { author: 'Stefan Kühn', license: 'CC BY-SA 3.0', licenseUrl: null, detailsUrl: null },
+      },
+    }));
+
+    expect(line).toBe('metadata.imageCredit: "Carl Montgomery · CC BY 2.0" → "Stefan Kühn · CC BY-SA 3.0"');
+  });
+
+  it('calls a credit that names nobody empty, as it calls a value that is not there', () => {
+    // A Commons file whose page names no author and no licence stores a credit of
+    // four nulls; on screen that is the same absence as no credit at all.
+    const line = formatLogDetails(entry('edited', {
+      'metadata.imageCredit': {
+        old: { author: null, license: null, licenseUrl: null, detailsUrl: null },
+        new: credit,
+      },
+    }));
+
+    expect(line).toBe('metadata.imageCredit: "(empty)" → "Carl Montgomery · CC BY 2.0"');
+  });
+
+  it('does not cut the licence off a long credit', () => {
+    // Forty characters is where the other values are cut, and a Commons author
+    // string is often longer than that on its own — Calakmul's photographer on the
+    // development catalogue is forty-one — so the licence, which is the half that
+    // binds, would be the part to go.
+    const line = formatLogDetails(entry('edited', {
+      'metadata.imageCredit': {
+        old: { author: 'Pavel Kirillov from St.Petersburg, Russia', license: 'CC BY-SA 2.0', licenseUrl: null, detailsUrl: null },
+        new: null,
+      },
+    })) as string;
+
+    expect(line).toContain('Pavel Kirillov from St.Petersburg, Russia · CC BY-SA 2.0');
+    expect(line).not.toContain('...');
+  });
+});
+
 describe('a publication', () => {
   it('names the fields in the reader’s words, not the changeset’s', () => {
     // The card the curator read said "short description"; `shortDescription` is our word

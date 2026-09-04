@@ -31,7 +31,8 @@
 import { fieldLabel } from '../curation/fieldMeaning';
 import { plural } from '../../utils/plural';
 import { creators } from '../../utils/creatorList';
-import type { CurationLogEntry } from '../../api/experiences';
+import { creditSentence } from './ImageCreditLine';
+import type { CurationLogEntry, ImageCredit } from '../../api/experiences';
 
 // Six hues, and the sense each carries. The colour is the reader's first cue down a
 // column of chips, so two acts that mean opposite things must not share one.
@@ -113,10 +114,23 @@ const OBJECT_VERDICT_ACTIONS = new Set([
 const ADMISSION_ACTIONS = new Set(['admission_confirmed', 'admission_overridden']);
 
 /**
- * A value as text, and the one shape `String()` cannot render: a coordinate pair.
+ * Whether a recorded value is a picture's credit.
  *
- * The object-level `edited` action records scalar column updates, so every value it
- * carries stringifies. A *point* edit does not: `location_edited` writes a move as
+ * Known by its shape, because `details` is untyped JSON: the two fields
+ * `creditForOneImage` always writes, either of which may be null. A coordinate
+ * pair has neither, and a creator list is an array.
+ */
+function isImageCredit(value: unknown): value is ImageCredit {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+    && ('author' in value || 'license' in value);
+}
+
+/**
+ * A value as text, and the shapes `String()` cannot render: a coordinate pair, a
+ * creator list, a picture's credit.
+ *
+ * The object-level `edited` action records scalar column updates, so nearly every
+ * value it carries stringifies. A *point* edit does not: `location_edited` writes a move as
  * `{ old: { lon, lat }, new: { lon, lat } }` (ADR-0029), and without this branch the row
  * whose whole purpose is saying what moved reads
  * `location: "[object Object]" → "[object Object]"`.
@@ -139,6 +153,15 @@ function truncate40(value: unknown): string {
   // sentence, so a corrected attribution reads here as it reads on the card it
   // was corrected from. Empty is a value a curator can mean, and says so.
   if (Array.isArray(value)) return creators(value.map(String)) ?? '(nobody recorded)';
+  // A picture's credit is an object too: an edit that replaces or removes the
+  // picture records `metadata.imageCredit` beside `image_url` (the photographer
+  // whose name went with it, ADR-0043), and through `String()` the row read
+  // `"[object Object]" → "(empty)"` — everything but the name. The same sentence
+  // the line under the picture renders, whole rather than cut at forty: an
+  // author string is often that long on its own, and the licence, which is the
+  // half that binds, would be the part to go. Naming nobody is the same absence
+  // as no credit at all, and is called what that is called.
+  if (isImageCredit(value)) return creditSentence(value) ?? '(empty)';
   // Absent rather than falsy. `metadata.inDanger` is a boolean and the counters are
   // numbers, so a source proposal this catalogue really receives — `inDanger: false`,
   // `artworkCount: 0` — read as "(empty)" under `value || …`, which is not what the row
