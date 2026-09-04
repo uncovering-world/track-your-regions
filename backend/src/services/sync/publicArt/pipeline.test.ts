@@ -25,6 +25,8 @@ interface Fixture {
   classes: string[];
   locations?: string[];
   parents?: string[];
+  /** `P195`: whose collection it is in. */
+  collections?: string[];
   creators?: string[];
 }
 
@@ -51,6 +53,7 @@ function factsOf(world: World, query: string): SparqlBinding[] {
     ...f.classes.map((c) => ({ e: ref(f.qid), cls: ref(c) })),
     ...(f.locations ?? []).map((l) => ({ e: ref(f.qid), loc: ref(l) })),
     ...(f.parents ?? []).map((p) => ({ e: ref(f.qid), parent: ref(p) })),
+    ...(f.collections ?? []).map((c) => ({ e: ref(f.qid), coll: ref(c) })),
     ...(f.creators ?? []).map((name) => ({ e: ref(f.qid), creator: ref('Q0'), creatorLabel: { value: name } })),
   ]);
 }
@@ -183,6 +186,35 @@ describe('collectPublicArt', () => {
     expect(filtered).toEqual([
       { externalId: 'Q9', name: 'A bust', reason: 'inside Room 12 (Palazzo Barberini): a work indoors, not public art' },
     ]);
+  });
+
+  it('reads whose collection a work is in only when nothing says where it stands', async () => {
+    // The Shigir Idol: no location, no part-of; in the collection of the
+    // Sverdlovsk Regional Natural History Museum — the first live run admitted
+    // it as a monument on the museum (#804). The Sibelius Monument: located in
+    // Sibelius Park, in the collection of HAM Helsinki Art Museum, which owns
+    // the city's outdoor sculpture — the park is where it stands, and the
+    // museum is not asked about.
+    const world: World = {
+      museumTree: ['Q33506', 'Q1970365', 'Q207694'],
+      containers: {
+        Q4410161: { label: 'Sverdlovsk Regional Natural History Museum', classes: ['Q1970365'] },
+        Q3481120: { label: 'Sibelius Park', classes: ['Q22698'] },
+        Q5710459: { label: 'HAM Helsinki Art Museum', classes: ['Q207694'] },
+      },
+      entities: [
+        { qid: 'Q4523656', label: 'Shigir Idol', under: SCULPTURE, sitelinks: 33, classes: [SCULPTURE],
+          collections: ['Q4410161'] },
+        { qid: 'Q2584017', label: 'Sibelius Monument', under: SCULPTURE, sitelinks: 22, classes: [SCULPTURE],
+          locations: ['Q3481120'], collections: ['Q5710459'] },
+      ],
+    };
+    const { items, filtered } = await collectPublicArt(doorTo(world), new Set());
+    expect(items.map((i) => i.qid)).toEqual(['Q2584017']);
+    expect(filtered).toEqual([{
+      externalId: 'Q4523656', name: 'Shigir Idol',
+      reason: 'in the collection of Sverdlovsk Regional Natural History Museum: a work of a museum, not public art',
+    }]);
   });
 
   it('refuses an admitted row whose coordinate Wikidata removed, by name', async () => {

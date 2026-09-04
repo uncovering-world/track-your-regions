@@ -106,25 +106,35 @@ describe('fetchEntityFacts', () => {
       { e: ref('Q79961'), creator: ref('Q451797'), creatorLabel: { value: 'Paul Landowski' } },
       { e: ref('Q79961'), creator: ref('Q5041289'), creatorLabel: { value: 'Carlos Oswald' } },
       { e: ref('Q79961'), parent: ref('Q2') },
+      { e: ref('Q79961'), coll: ref('Q5710459') },
     ];
     const facts = await fetchEntityFacts(answer(rows), ['Q235242', 'Q79961']);
     expect(facts.get('Q235242')).toEqual({
-      classes: ['Q860861', 'Q2065736'], locations: ['Q12512'], parents: [],
+      classes: ['Q860861', 'Q2065736'], locations: ['Q12512'], parents: [], collections: [],
       creators: ['Michelangelo'],
     });
     expect(facts.get('Q79961')).toMatchObject({
-      classes: ['Q1779653'], parents: ['Q2'],
+      classes: ['Q1779653'], parents: ['Q2'], collections: ['Q5710459'],
       creators: ['Paul Landowski', 'Carlos Oswald'],
     });
   });
 
-  it('does not ask whose collection a work is in', async () => {
-    // Ownership is not a place: HAM Helsinki Art Museum owns the Sibelius
-    // Monument, which stands in a park. The question is never sent.
+  it('reads where a work stands, what it is part of and whose it is as what still holds', async () => {
+    // Ownership is not a place, and the rule reads it only when nothing says
+    // where the work stands (#804) — but the question is asked once, with the
+    // facts, and all three are read the way the museum import reads a work's
+    // location: statement by statement, best-ranked, an end time dropping
+    // that statement alone. The Horses of Saint Mark carry nine ended
+    // locations and one collection that stands; a value that has both an
+    // ended and a standing statement keeps the standing one.
     let sent = '';
     const sparql: SparqlFn = (q) => { sent = q; return Promise.resolve([]); };
-    await fetchEntityFacts(sparql, ['Q2584017']);
-    expect(sent).not.toContain('P195');
+    await fetchEntityFacts(sparql, ['Q1994701']);
+    const flat = sent.replace(/\s+/g, ' ');
+    expect(flat).toContain('?e p:P276 ?st276 . ?st276 a wikibase:BestRank ; ps:P276 ?loc . FILTER NOT EXISTS { ?st276 pq:P582 ?ended }');
+    expect(flat).toContain('?e p:P361 ?st361 . ?st361 a wikibase:BestRank ; ps:P361 ?parent . FILTER NOT EXISTS { ?st361 pq:P582 ?ended }');
+    expect(flat).toContain('?e p:P195 ?st195 . ?st195 a wikibase:BestRank ; ps:P195 ?coll . FILTER NOT EXISTS { ?st195 pq:P582 ?ended }');
+    expect(flat).not.toMatch(/wdt:P(276|361|195)/);
   });
 
   it('counts a maker once, and never a bare QID the label service answered with', async () => {
@@ -139,7 +149,7 @@ describe('fetchEntityFacts', () => {
 
   it('answers for every entity asked about, facts or none', async () => {
     const facts = await fetchEntityFacts(answer([]), ['Q1']);
-    expect(facts.get('Q1')).toEqual({ classes: [], locations: [], parents: [], creators: [] });
+    expect(facts.get('Q1')).toEqual({ classes: [], locations: [], parents: [], collections: [], creators: [] });
   });
 });
 
@@ -158,14 +168,17 @@ describe('fetchContainerFacts', () => {
     expect(containers.get('Q19119449')).toEqual({ label: 'Room 325', classes: ['Q180516'], parents: ['Q3491580'] });
   });
 
-  it('does not follow a location the container has left', async () => {
+  it('does not follow a location or a whole the container has left', async () => {
     // A statement carrying an end time is a place the container was in, by the
-    // rule the entity facts read a work's own P276 under; a museum a chapel
-    // was once inside must not make the chapel's work the museum's.
+    // rule the entity facts read a work's own under; a museum a chapel was
+    // once inside must not make the chapel's work the museum's.
     let sent = '';
     const sparql: SparqlFn = (q) => { sent = q; return Promise.resolve([]); };
     await fetchContainerFacts(sparql, ['Q1']);
-    expect(sent.replace(/\s+/g, ' ')).toContain('?c wdt:P276 ?up . FILTER NOT EXISTS { ?c p:P276 ?st . ?st ps:P276 ?up ; pq:P582 ?ended }');
+    const flat = sent.replace(/\s+/g, ' ');
+    expect(flat).toContain('?c p:P276 ?st276 . ?st276 a wikibase:BestRank ; ps:P276 ?up . FILTER NOT EXISTS { ?st276 pq:P582 ?ended }');
+    expect(flat).toContain('?c p:P361 ?st361 . ?st361 a wikibase:BestRank ; ps:P361 ?up . FILTER NOT EXISTS { ?st361 pq:P582 ?ended }');
+    expect(flat).not.toMatch(/wdt:P(276|361)/);
   });
 
   it('names a container by its QID when the label service has no name for it', async () => {
