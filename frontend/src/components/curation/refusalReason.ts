@@ -254,7 +254,7 @@ export function refusalHelp(reason: string | null | undefined): string | null {
       + 'carries no such class, so nothing further was tested.';
   }
   if (reason.includes(NO_COORDS)) {
-    return 'A venue with no coordinate of its own cannot be placed on the map or counted into a '
+    return 'A row with no coordinate of its own cannot be placed on the map or counted into a '
       + 'region, which is what this catalogue is for. Wikidata property P625 is the one missing.';
   }
   return null;
