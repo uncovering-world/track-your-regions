@@ -32,7 +32,7 @@ import {
   Box, Link, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import { wordDiff, type DiffPart } from '../../utils/wordDiff';
-import type { ChangeContext, FieldMeaning } from './fieldMeaning';
+import type { ChangeContext, FactSide, FieldMeaning } from './fieldMeaning';
 import { summarize, type FactGroup, type FactKind, type FactRow, type FactSubject } from './factRows';
 import { ProvenanceTrail } from './ProvenanceTrail';
 
@@ -165,11 +165,13 @@ function Marked({ parts }: { parts: DiffPart[] }) {
 const EMPTY = '—';
 
 /** A value as readers see it, or as stored where the vocabulary has nothing to add; nothing as a dash. */
-function Value({ value, meaning, context }: { value: unknown; meaning: FieldMeaning; context: ChangeContext }) {
+function Value({ value, meaning, context, side }: {
+  value: unknown; meaning: FieldMeaning; context: ChangeContext; side: FactSide;
+}) {
   const absent = value === null || value === undefined || value === ''
     || (Array.isArray(value) && value.length === 0);
   if (absent && !meaning.render) return <Typography variant="body2" color="text.disabled">{EMPTY}</Typography>;
-  const content = meaning.render ? meaning.render(value, context) : readable(value);
+  const content = meaning.render ? meaning.render(value, context, side) : readable(value);
   return (
     <Typography variant="body2" component="div" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
       {content === '' ? <Box component="span" sx={{ color: 'text.disabled' }}>{EMPTY}</Box> : content}
@@ -182,18 +184,18 @@ function Value({ value, meaning, context }: { value: unknown; meaning: FieldMean
  * two columns; anything the vocabulary can say is said that way on both sides and read
  * whole — "listed since 2003" against "not listed" is not a word diff.
  */
-function ValueCells({ row, context }: { row: FactRow; context: ChangeContext }) {
+function ValueCells({ row }: { row: FactRow }) {
   const diff = !row.meaning.render && comparableText(row.before, row.after)
     ? wordDiff(readable(row.before), readable(row.after))
     : null;
   return (
     <>
       <TableCell sx={{ verticalAlign: 'top' }}>
-        {diff ? <Marked parts={diff.before} /> : <Value value={row.before} meaning={row.meaning} context={context} />}
+        {diff ? <Marked parts={diff.before} /> : <Value value={row.before} meaning={row.meaning} context={row.context} side="before" />}
         {row.provenance && <ProvenanceTrail field={row.provenance} />}
       </TableCell>
       <TableCell sx={{ verticalAlign: 'top' }}>
-        {diff ? <Marked parts={diff.after} /> : <Value value={row.after} meaning={row.meaning} context={context} />}
+        {diff ? <Marked parts={diff.after} /> : <Value value={row.after} meaning={row.meaning} context={row.context} side="after" />}
         {row.sentence && (
           <Typography variant="body2" sx={{ mt: 0.5, color: row.meaning.event ? 'text.primary' : 'text.secondary' }}>
             {row.meaning.event && <Box component="span" sx={{ color: 'warning.main', fontWeight: 600, mr: 0.5 }}>→</Box>}
@@ -257,10 +259,9 @@ function fieldSpan(rows: FactRow[], from: number): number {
   return span;
 }
 
-export function FactTable({ groups, labels, context, answer }: {
+export function FactTable({ groups, labels, answer }: {
   groups: FactGroup[];
   labels: FactLabels;
-  context: ChangeContext;
   /**
    * The answer to one field — rendered once per field, in its own column, spanning every
    * row the field made. Absent on a card answered whole.
@@ -299,7 +300,7 @@ export function FactTable({ groups, labels, context, answer }: {
           {groups.map(group => (
             // The subject's own key where it has one: two works with one name are
             // two groups, and a key built from the label would hand one the other's rows.
-            <GroupRows key={group.subject.key ?? `${group.subject.kind}:${group.subject.label}`} group={group} columns={columns} context={context} answer={answer} />
+            <GroupRows key={group.subject.key ?? `${group.subject.kind}:${group.subject.label}`} group={group} columns={columns} answer={answer} />
           ))}
         </TableBody>
       </Table>
@@ -307,10 +308,9 @@ export function FactTable({ groups, labels, context, answer }: {
   );
 }
 
-function GroupRows({ group, columns, context, answer }: {
+function GroupRows({ group, columns, answer }: {
   group: FactGroup;
   columns: number;
-  context: ChangeContext;
   answer?: (field: string, rows: FactRow[], subject: FactSubject) => ReactNode;
 }) {
   const { rows } = group;
@@ -326,7 +326,7 @@ function GroupRows({ group, columns, context, answer }: {
               <Term meaning={row.meaning} />
               <Box sx={{ mt: 0.75 }}><KindMark kind={row.kind} /></Box>
             </TableCell>
-            <ValueCells row={row} context={context} />
+            <ValueCells row={row} />
             {answer && first && (
               // Centred rather than top-aligned wherever the cell spans more
               // than its own row: pinned to the top, the buttons sat beside the

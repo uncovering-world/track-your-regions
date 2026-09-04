@@ -251,7 +251,9 @@ export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
  */
 export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const proposed = item.proposed ?? [];
-  const context = { proposed, inDanger: item.in_danger, dangerSince: item.danger_since };
+  const context = {
+    proposed, inDanger: item.in_danger, dangerSince: item.danger_since, imageCredit: item.image_credit ?? null,
+  };
   const rows = rowsFor(proposed, context);
   // Whose edit the source is proposing over, by name. The queue selects the claimant
   // precisely so this card stops calling another curator's work "mine"; a card that
@@ -318,7 +320,6 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
             // and the trail under it says which one — the queue selects the claimant
             // precisely so this card stops calling another curator's work "mine".
             labels={{ before: 'as curated', after: 'the source proposes' }}
-            context={context}
             // One field at a time, because a run improves and damages in the same
             // breath: a better description arriving with a mangled name used to be
             // one button that took both or neither. The endpoint has always accepted

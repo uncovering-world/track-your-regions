@@ -167,6 +167,21 @@ describe('partGroups', () => {
     expect(onOpen).toHaveBeenCalledWith(wineGlass);
   });
 
+  it('builds a part’s rows in the part’s own context: its fields, and its picture’s credit', () => {
+    // A work's picture is credited to whoever photographed the work, never to the
+    // museum's photographer — and a rendering looks that up on the row it draws.
+    const museumCredit = { author: 'Museum photographer', license: 'CC BY 4.0', licenseUrl: null, detailsUrl: null };
+    const workCredit = { author: 'Google Arts Project', license: 'Public domain', licenseUrl: null, detailsUrl: null };
+    const [work] = partGroups(
+      [{ ...wineGlass, imageCredit: workCredit }],
+      { proposed: [{ field: 'imageUrl', old: null, new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Museum.jpg' }], imageCredit: museumCredit },
+      {}, () => {},
+    );
+
+    expect(work.rows[0].context.proposed).toBe(wineGlass.fields);
+    expect(work.rows[0].context.imageCredit).toEqual(workCredit);
+  });
+
   it('names a part by its reference where the source gave it no name', () => {
     const [group] = partGroups([{ ...montsegur, item: { name: null, ref: '1755-004' } }], NO_CONTEXT, {}, () => {});
     expect(group.subject.label).toBe('1755-004');

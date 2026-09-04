@@ -36,7 +36,7 @@ function objectGroup(proposed: ProposedField[], context: ChangeContext): FactGro
 
 describe('FactTable', () => {
   it('lays a proposal out as one row per fact, with both values in their own columns', () => {
-    render(<FactTable groups={objectGroup(BAMIYAN, BAMIYAN_CONTEXT)} labels={HELD_LABELS} context={BAMIYAN_CONTEXT} />);
+    render(<FactTable groups={objectGroup(BAMIYAN, BAMIYAN_CONTEXT)} labels={HELD_LABELS} />);
 
     expect(screen.getByRole('columnheader', { name: 'readers see' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'the run proposes' })).toBeInTheDocument();
@@ -48,14 +48,14 @@ describe('FactTable', () => {
   });
 
   it('keeps the definition on the term, reachable by keyboard', () => {
-    render(<FactTable groups={objectGroup(BAMIYAN, BAMIYAN_CONTEXT)} labels={HELD_LABELS} context={BAMIYAN_CONTEXT} />);
+    render(<FactTable groups={objectGroup(BAMIYAN, BAMIYAN_CONTEXT)} labels={HELD_LABELS} />);
     const term = screen.getByLabelText('in danger — what this fact is');
     expect(term).toHaveAttribute('tabindex', '0');
     expect(screen.queryByRole('button', { name: /what .* is/ })).not.toBeInTheDocument();
   });
 
   it('shows a value the way readers see it, with a dash for nothing', () => {
-    render(<FactTable groups={objectGroup(BAMIYAN, BAMIYAN_CONTEXT)} labels={HELD_LABELS} context={BAMIYAN_CONTEXT} />);
+    render(<FactTable groups={objectGroup(BAMIYAN, BAMIYAN_CONTEXT)} labels={HELD_LABELS} />);
     const [danger, criteria] = screen.getAllByRole('row').slice(1);
     // The badge is the badge, with its year; before it there was no badge.
     expect(within(danger).getByText('In Danger since 2003')).toBeInTheDocument();
@@ -67,7 +67,7 @@ describe('FactTable', () => {
   });
 
   it('puts one sentence about this change under the proposed value, arrowed for an event', () => {
-    render(<FactTable groups={objectGroup(BAMIYAN, BAMIYAN_CONTEXT)} labels={HELD_LABELS} context={BAMIYAN_CONTEXT} />);
+    render(<FactTable groups={objectGroup(BAMIYAN, BAMIYAN_CONTEXT)} labels={HELD_LABELS} />);
     const [danger, , credit] = screen.getAllByRole('row').slice(1);
     expect(within(danger).getByText(/Readers already see this badge/)).toHaveTextContent(/^→/);
     expect(within(credit).getByText('Readers see the picture uncredited today.')).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe('FactTable', () => {
 
   it('compares text a person wrote word by word, across the two columns', () => {
     const proposed = [{ field: 'shortDescription', old: 'The ruins of Aksum', new: 'The ruins of Axum' }];
-    render(<FactTable groups={objectGroup(proposed, { proposed })} labels={HELD_LABELS} context={{ proposed }} />);
+    render(<FactTable groups={objectGroup(proposed, { proposed })} labels={HELD_LABELS} />);
     const [row] = screen.getAllByRole('row').slice(1);
     const cells = within(row).getAllByRole('cell');
     expect(cells[1]).toHaveTextContent('The ruins of Aksum');
@@ -85,7 +85,7 @@ describe('FactTable', () => {
 
   it('answers a field once, in its own column, spanning every row the field made', () => {
     const answer = vi.fn((field: string) => <button type="button">answer {field}</button>);
-    render(<FactTable groups={objectGroup(BAMIYAN, BAMIYAN_CONTEXT)} labels={{ before: 'yours', after: 'the source proposes' }} context={BAMIYAN_CONTEXT} answer={answer} />);
+    render(<FactTable groups={objectGroup(BAMIYAN, BAMIYAN_CONTEXT)} labels={{ before: 'yours', after: 'the source proposes' }} answer={answer} />);
 
     expect(screen.getByRole('columnheader', { name: 'Your answer' })).toBeInTheDocument();
     // Two fields on the card — `metadata.inDanger` and `metadata` — so two answers, the
@@ -113,7 +113,7 @@ describe('FactTable', () => {
     ];
     const { unmount } = render(
       <FactTable groups={objectGroup(perLanguage, { proposed: perLanguage })}
-        labels={HELD_LABELS} context={{ proposed: perLanguage }} answer={answer} />,
+        labels={HELD_LABELS} answer={answer} />,
     );
     // Named from the vocabulary, not from the field: a row reading "name local
     // en" would be the language arm of `meaningOf` missing.
@@ -132,7 +132,7 @@ describe('FactTable', () => {
     const wholeMap: ProposedField[] = [{ field: 'nameLocal', old: wasCalled, new: languages }];
     render(
       <FactTable groups={objectGroup(wholeMap, { proposed: wholeMap })}
-        labels={HELD_LABELS} context={{ proposed: wholeMap }} answer={answer} />,
+        labels={HELD_LABELS} answer={answer} />,
     );
     // The same two rows, named the same way, and one answer across both.
     expect(screen.getAllByRole('row').slice(1).map(r => within(r).getAllByRole('cell')[0].textContent))
@@ -140,6 +140,29 @@ describe('FactTable', () => {
     expect(screen.getAllByRole('button', { name: /^answer/ }).map(b => b.textContent))
       .toEqual(['answer nameLocal']);
     expect(screen.getByText('Answers all 2.')).toBeInTheDocument();
+  });
+
+  it('draws a proposed picture beside the one readers see, each with its own credit', () => {
+    // Dona i Ocell — Miró's sculpture in Barcelona — as run 93 proposed to replace
+    // its picture: two addresses in two columns, until now, and no picture (#801).
+    const current = 'http://commons.wikimedia.org/wiki/Special:FilePath/Joan%20Miro%20-%20Dona%20i%20ocell%20%281%29.jpg';
+    const proposedPicture = 'http://commons.wikimedia.org/wiki/Special:FilePath/Dona%20i%20Ocell.JPG';
+    const proposed = [
+      { field: 'imageUrl', old: current, new: proposedPicture },
+      { field: 'metadata.imageCredit', old: null, new: { author: null, license: 'CC BY-SA 3.0', licenseUrl: null, detailsUrl: null } },
+    ];
+    render(<FactTable groups={objectGroup(proposed, { proposed, imageCredit: null })} labels={HELD_LABELS} />);
+
+    const [picture] = screen.getAllByRole('row').slice(1);
+    const [, before, after] = within(picture).getAllByRole('cell');
+    expect(within(before).getByRole('img', { name: 'Current picture' }))
+      .toHaveAttribute('src', expect.stringContaining('Joan%20Miro'));
+    expect(within(after).getByRole('img', { name: 'Proposed picture' }))
+      .toHaveAttribute('src', expect.stringContaining('Dona%20i%20Ocell.JPG?width=250'));
+    // The proposed picture's licence under it, and not under the one readers see today.
+    expect(within(after).getByText('CC BY-SA 3.0')).toBeInTheDocument();
+    expect(within(before).queryByText('CC BY-SA 3.0')).not.toBeInTheDocument();
+    expect(within(after).getByRole('link', { name: 'Dona i Ocell.JPG' })).toHaveAttribute('href', proposedPicture);
   });
 
   it('heads a part of the object with its name and a way to open it', () => {
@@ -151,7 +174,7 @@ describe('FactTable', () => {
       { subject: { kind: 'object', label: 'Royal Capetian Fortresses of Languedoc' }, rows: [] },
       { subject: { kind: 'place', label: 'Château de Montségur', detail: 'place 4 of 8', onOpen }, rows: rowsFor(proposed, { proposed }) },
     ];
-    render(<FactTable groups={groups} labels={HELD_LABELS} context={{ proposed }} />);
+    render(<FactTable groups={groups} labels={HELD_LABELS} />);
 
     expect(screen.getByText('a place of this object')).toBeInTheDocument();
     expect(screen.getByText('Château de Montségur')).toBeInTheDocument();

@@ -105,7 +105,11 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   // unkeyed, and a flag would carry one object's open work onto the next.
   const [openPart, setOpenPart] = useState<HeldPart | null>(null);
   const proposed = held?.proposed ?? [];
-  const context = { proposed, inDanger: item.in_danger, dangerSince: item.danger_since };
+  // The credit beside the danger fields: whose photograph readers see today, for a
+  // picture row on a card that proposes a picture and no credit beside it.
+  const context = {
+    proposed, inDanger: item.in_danger, dangerSince: item.danger_since, imageCredit: item.image_credit ?? null,
+  };
   const rows = rowsFor(proposed, context);
   // The held fields of the object's parts, one group per part under the object's
   // own (ADR-0037): a change inside a part is a change on the object's card, not
@@ -236,7 +240,6 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
               <FactTable
                 groups={[{ subject: { kind: 'object', label: item.name }, rows }, ...parts]}
                 labels={{ before: 'readers see', after: 'the run proposes' }}
-                context={context}
                 // One fact at a time (#722), because a run improves and damages in
                 // the same breath: run 68 wants to drop "(Phase II)" from Getbol's
                 // name and to rewrite its description for the 2026 extension, and

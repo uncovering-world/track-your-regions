@@ -36,6 +36,14 @@ export interface FactRow {
   kind: FactKind;
   /** One line about this change, where the fact has one. */
   sentence: string | null;
+  /**
+   * The card the row was built for, as a rendering may look at it beyond the row's
+   * two values. Carried on the row rather than handed to the table, because a table
+   * holds more than one subject: a part's rows are built in the part's own context —
+   * its fields, its picture's credit — and a rendering that read the object's would
+   * name the object's photographer under a work's picture.
+   */
+  context: ChangeContext;
   /** False for fields `accept-source` cannot write now (conflict cards). */
   acceptable?: boolean;
   /** Who claimed the field and what was answered before (conflict cards). */
@@ -119,6 +127,7 @@ function row(
     after,
     kind: kindOf(before, after),
     sentence: meaning.describeChange?.(before, after, context) ?? null,
+    context,
     acceptable: proposal.acceptable,
     // Only where there is one: a held card's fields carry no claim and no earlier
     // answer, and a trail on every row would be a guard that never guards.
@@ -225,6 +234,9 @@ export function partGroups(
       detail: partDetail(part, shape.offeredLocations),
       ...(openable(part) ? { onOpen: () => onOpen(part) } : {}),
     },
-    rows: rowsFor(part.fields, context),
+    // In the part's own context: its fields are what a rendering may look beside,
+    // and its picture's credit is whose photograph readers see of *it* — the
+    // object's would credit the museum's photographer under a work's picture.
+    rows: rowsFor(part.fields, { ...context, proposed: part.fields, imageCredit: part.imageCredit ?? null }),
   }));
 }
