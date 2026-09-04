@@ -145,6 +145,102 @@ describe('values as readers see them', () => {
   });
 });
 
+/**
+ * A picture row draws the picture (#801).
+ *
+ * Dona i Ocell — Miró's sculpture in Barcelona — as run 93 proposed to replace its
+ * picture: the file readers see today carries no credit, the proposed one is CC BY-SA
+ * with no author named. One of 86 such cards that run filed, each of which used to put
+ * two addresses in front of the curator and no picture at all.
+ */
+describe('a picture on the card', () => {
+  const CURRENT = 'http://commons.wikimedia.org/wiki/Special:FilePath/Joan%20Miro%20-%20Dona%20i%20ocell%20%281%29.jpg';
+  const PROPOSED = 'http://commons.wikimedia.org/wiki/Special:FilePath/Dona%20i%20Ocell.JPG';
+  const proposedCredit = {
+    author: null,
+    license: 'CC BY-SA 3.0',
+    licenseUrl: 'http://creativecommons.org/licenses/by-sa/3.0/',
+    detailsUrl: 'https://commons.wikimedia.org/wiki/File:Dona_i_Ocell.JPG',
+  };
+  const donaIOcell: ChangeContext = {
+    proposed: [
+      { field: 'imageUrl', old: CURRENT, new: PROPOSED },
+      { field: 'metadata.imageCredit', old: null, new: proposedCredit },
+    ],
+    imageCredit: null,
+  };
+  const picture = (value: unknown, context: ChangeContext, side: 'before' | 'after') =>
+    render(<>{meaningOf('imageUrl').render?.(value, context, side)}</>);
+
+  it('draws the picture as readers would see it, named by its file, the address behind the name', () => {
+    picture(PROPOSED, donaIOcell, 'after');
+
+    expect(screen.getByRole('img', { name: 'Proposed picture' }))
+      .toHaveAttribute('src', 'https://commons.wikimedia.org/wiki/Special:FilePath/Dona%20i%20Ocell.JPG?width=250');
+    expect(screen.getByRole('link', { name: 'Dona i Ocell.JPG' })).toHaveAttribute('href', PROPOSED);
+  });
+
+  it('credits each side with the photographer of that side’s picture', () => {
+    // Uncredited today, and the proposed credit must not be borrowed for it: a
+    // credit under the wrong picture names a person for a photograph that is not theirs.
+    const { unmount } = picture(CURRENT, donaIOcell, 'before');
+    expect(screen.getByRole('img', { name: 'Current picture' })).toBeInTheDocument();
+    expect(screen.queryByText(/CC BY-SA/)).not.toBeInTheDocument();
+    unmount();
+
+    picture(PROPOSED, donaIOcell, 'after');
+    expect(screen.getByText('CC BY-SA 3.0')).toBeInTheDocument();
+  });
+
+  it('credits what readers see today, and nobody for the proposal, where no credit row was filed', () => {
+    // A conflict card's shape: the picture is claimed, so the run resends the
+    // stored credit rather than resolving the source's (`creditToWrite`) and files
+    // no credit row. The only credit the card knows is the current picture's, and
+    // borrowed for the proposed one it would name a photographer for a photograph
+    // that is not theirs.
+    const bamiyanCredit = {
+      author: 'Carl Montgomery', license: 'CC BY 2.0',
+      licenseUrl: 'https://creativecommons.org/licenses/by/2.0',
+      detailsUrl: 'https://commons.wikimedia.org/wiki/File:Bamiyan_Valley2.jpg',
+    };
+    const context: ChangeContext = {
+      proposed: [{ field: 'imageUrl', old: CURRENT, new: PROPOSED }],
+      imageCredit: bamiyanCredit,
+    };
+    const { unmount } = picture(CURRENT, context, 'before');
+    expect(screen.getByRole('link', { name: 'Carl Montgomery' })).toBeInTheDocument();
+    unmount();
+
+    picture(PROPOSED, context, 'after');
+    expect(screen.getByRole('img', { name: 'Proposed picture' })).toBeInTheDocument();
+    expect(screen.queryByText('Carl Montgomery')).not.toBeInTheDocument();
+  });
+
+  it('reads the credit out of a whole source-data row on a card filed before the run named facts', () => {
+    // A card filed before ADR-0039 carries `metadata` whole, the credit a key inside it.
+    const context: ChangeContext = {
+      proposed: [
+        { field: 'imageUrl', old: null, new: PROPOSED },
+        { field: 'metadata', old: {}, new: { imageCredit: proposedCredit } },
+      ],
+    };
+    picture(PROPOSED, context, 'after');
+
+    expect(screen.getByText('CC BY-SA 3.0')).toBeInTheDocument();
+  });
+
+  it('says an address that is not one as text, and draws no frame', () => {
+    picture('not an address', donaIOcell, 'after');
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByText('not an address')).toBeInTheDocument();
+  });
+
+  it('reads as the address alone where a caller has no side to credit', () => {
+    expect(said('imageUrl', PROPOSED)).toBe(PROPOSED);
+  });
+});
+
 describe('what a change means, in one line', () => {
   /**
    * The contexts the queue can actually produce. `withDangerFields` dates a listing only

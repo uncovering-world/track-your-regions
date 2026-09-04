@@ -26,10 +26,12 @@
 
 import type { ReactNode } from 'react';
 import { Chip, Link, Stack, Tooltip } from '@mui/material';
+import type { ImageCredit } from '../../api/experiences';
 import { parseCriteria } from '../../utils/unescoCriteria';
 import { inDangerLabel } from '../../utils/dangerLabel';
 import { safeHref } from '../../utils/safeHref';
 import { creators } from '../../utils/creatorList';
+import { PictureFact } from './PictureFact';
 
 /** One field of a proposal, as the queue carries it. */
 export interface ProposedField {
@@ -41,16 +43,25 @@ export interface ProposedField {
 /**
  * What a rendering or a change sentence may look at beyond its own two values.
  *
- * `proposed` is every field on the card, because one field's meaning can hang on another:
- * a changed country *name* is a spelling correction unless the country *codes* changed
- * with it. `inDanger` / `dangerSince` are the object as readers see it now, which is what
- * "readers see no badge today" is a claim about, and what the badge's own year is read from.
+ * `proposed` is every field on the card's subject, because one field's meaning can hang
+ * on another: a changed country *name* is a spelling correction unless the country
+ * *codes* changed with it, and a picture's photographer is the credit row beside it. The
+ * subject is the object, or one part of it — a part's rows are built in the part's own
+ * context (`partGroups`), since a work's picture is not credited to the museum's
+ * photographer. `inDanger` / `dangerSince` are the object as readers see it now, which
+ * is what "readers see no badge today" is a claim about, and what the badge's own year
+ * is read from; `imageCredit` is whose photograph readers see today, for a picture row
+ * on a card that proposes no credit beside it.
  */
 export interface ChangeContext {
   proposed: ReadonlyArray<ProposedField>;
   inDanger?: boolean;
   dangerSince?: number | null;
+  imageCredit?: ImageCredit | null;
 }
+
+/** Which column of the table a value is rendered in: what readers see, or what is proposed. */
+export type FactSide = 'before' | 'after';
 
 export interface FieldMeaning {
   label: string;
@@ -58,8 +69,13 @@ export interface FieldMeaning {
   what: string;
   /** What a change usually means, and what to check. */
   whenItChanges: string;
-  /** The value as a person says it, or as readers see it. Absent: text as itself, anything else as JSON. */
-  render?: (value: unknown, context: ChangeContext) => ReactNode;
+  /**
+   * The value as a person says it, or as readers see it. Absent: text as itself, anything
+   * else as JSON. The side is for a rendering that differs by column — a picture is
+   * credited to the photographer of *that* side's picture — and absent where a caller
+   * renders a value on its own.
+   */
+  render?: (value: unknown, context: ChangeContext, side?: FactSide) => ReactNode;
   /** One sentence about this change, for the fields whose change carries a meaning of its own. */
   describeChange?: (before: unknown, after: unknown, context: ChangeContext) => string | null;
   /** A change to this fact is an event in the world, not a rewording — the card marks the sentence. */
@@ -130,6 +146,45 @@ function urlLabel(value: unknown): ReactNode {
   if (typeof value !== 'string') return String(value ?? '');
   const href = safeHref(value);
   return href ? <ExternalLink href={href}>{value}</ExternalLink> : value;
+}
+
+/**
+ * Whose photograph one side of a picture row shows.
+ *
+ * The credit row beside the picture, where the run filed one — its `old` is the
+ * photographer readers see today and its `new` the proposed picture's. A card filed
+ * before ADR-0039 carries the credit inside a whole `metadata` row, and is read the way
+ * `listedSince` reads the danger listing out of one.
+ *
+ * Where no credit row was filed, the column readers see is credited to the card's own
+ * stored credit, and the proposed picture to nobody. The absence of a row is not
+ * evidence that the credit is unchanged: for a claimed picture the run resends the
+ * stored credit rather than resolving the source's (`creditToWrite`, `imageCredit.ts`),
+ * and for a work whose picture is in conflict it files no credit at all
+ * (`creditChange`, `treasureWriter.ts`) — so a conflict card, which is about a claimed
+ * field by definition, never carries one, and the only credit it knows is the current
+ * picture's. Named nobody rather than that: a credit under the wrong picture names a
+ * person for a photograph that is not theirs, which is worse than naming nobody.
+ */
+function creditFor(context: ChangeContext, side: FactSide): ImageCredit | null {
+  for (const proposal of context.proposed) {
+    const value = side === 'before' ? proposal.old : proposal.new;
+    if (proposal.field === 'metadata.imageCredit') return isRecord(value) ? value as unknown as ImageCredit : null;
+    if (proposal.field === 'metadata' && isRecord(value) && 'imageCredit' in value) {
+      return isRecord(value.imageCredit) ? value.imageCredit as unknown as ImageCredit : null;
+    }
+  }
+  return side === 'before' ? context.imageCredit ?? null : null;
+}
+
+/**
+ * A picture as readers would see it, credited to that side's photographer, named by its
+ * file — and the address as text where it is not one, or where a caller renders the
+ * value with no side to credit.
+ */
+function pictureFact(value: unknown, context: ChangeContext, side?: FactSide): ReactNode {
+  if (typeof value !== 'string' || !side) return urlLabel(value);
+  return <PictureFact url={value} credit={creditFor(context, side)} side={side} />;
 }
 
 /**
@@ -379,7 +434,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
     label: 'picture',
     what: 'The picture readers see on the card.',
     whenItChanges: 'A different picture. Its credit changes with it — see the picture credit row.',
-    render: urlLabel,
+    render: pictureFact,
   },
   metadata: {
     label: 'source data',
@@ -573,7 +628,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
     label: 'picture',
     what: 'The picture readers see for the work.',
     whenItChanges: 'A different picture on Wikimedia Commons.',
-    render: urlLabel,
+    render: pictureFact,
   },
 };
 
