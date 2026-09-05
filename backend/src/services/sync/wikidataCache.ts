@@ -141,7 +141,7 @@ export async function setCacheTtl(
  * nothing, and a source that caches nothing says exactly that.
  */
 export const CACHED_KINDS_BY_CATEGORY: Record<number, CacheKind[]> = {
-  // Top Art Museums.
+  // Art Museums.
   2: ['classes', 'pool', 'statements', 'entities', 'edges'],
   // Public Art & Monuments.
   3: ['classes', 'pool', 'edges', 'entities'],

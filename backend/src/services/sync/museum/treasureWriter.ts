@@ -22,7 +22,7 @@ import { ICONIC_SITELINKS, ICONIC_RELEASE } from './tier1.js';
 import { isCommonsPictureUrl } from '../../../types/urlSafety.js';
 import { reconcileLinks } from './linkWithdrawal.js';
 
-/** `Top Art Museums` — the category a treasure reads its gate from, since it has none of its own. */
+/** `Art Museums` — the category a treasure reads its gate from, since it has none of its own. */
 const MUSEUM_CATEGORY_ID = 2;
 
 /**

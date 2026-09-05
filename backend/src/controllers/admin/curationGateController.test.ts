@@ -36,7 +36,7 @@ describe('setCurationGate', () => {
 
   it('writes the source and says nothing about its rows', async () => {
     mockedQuery.mockResolvedValueOnce({
-      rows: [{ id: 2, name: 'Top Art Museums', requires_curation: true }],
+      rows: [{ id: 2, name: 'Art Museums', requires_curation: true }],
     });
 
     await setCurationGate(makeReq(true), makeRes() as never);
@@ -66,20 +66,20 @@ describe('setCurationGate', () => {
     // The response is built from `RETURNING`, so a request that lost a race
     // reports what is stored rather than echoing its own body back.
     mockedQuery.mockResolvedValueOnce({
-      rows: [{ id: 2, name: 'Top Art Museums', requires_curation: false }],
+      rows: [{ id: 2, name: 'Art Museums', requires_curation: false }],
     });
     const res = makeRes();
 
     await setCurationGate(makeReq(true), res as never);
 
     expect(res.json).toHaveBeenCalledWith({
-      categoryId: 2, name: 'Top Art Museums', requiresCuration: false,
+      categoryId: 2, name: 'Art Museums', requiresCuration: false,
     });
   });
 
   it('turns a gate off with the same single statement', async () => {
     mockedQuery.mockResolvedValueOnce({
-      rows: [{ id: 2, name: 'Top Art Museums', requires_curation: false }],
+      rows: [{ id: 2, name: 'Art Museums', requires_curation: false }],
     });
 
     await setCurationGate(makeReq(false), makeRes() as never);

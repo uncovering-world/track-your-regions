@@ -117,8 +117,8 @@ describe('a refused row still wearing the Iconic badge', () => {
 
   it('names the row and the category that turned it away', () => {
     expect(assertion.describe({
-      experience_id: 6205, experience_name: 'British Museum', category_name: 'Top Art Museums',
-    })).toBe('British Museum: turned away from Top Art Museums and still badged as a must-see '
+      experience_id: 6205, experience_name: 'British Museum', category_name: 'Art Museums',
+    })).toBe('British Museum: turned away from Art Museums and still badged as a must-see '
       + '(experience 6205)');
   });
 

@@ -106,14 +106,34 @@ const GATE_COLUMNS: Array<[table: string, column: string]> = [
   ['treasures', 'curation_state'],
 ];
 
-/** The three sources that predate the gate and must keep publishing on arrival. */
+/**
+ * The three sources that predate the gate and must keep publishing on arrival,
+ * by the names they had when the gate arrived (migration 018). The guard in
+ * both files names them so, and must: a database that reaches it has never run
+ * a later migration, so it still holds these names.
+ */
 const CATEGORIES_BEFORE_THE_GATE = [
   'UNESCO World Heritage Sites',
   'Top Art Museums',
   'Public Art & Monuments',
 ];
 
+/**
+ * The same three rows as `01-schema.sql` seeds them today. One differs: the
+ * museum row is seeded as "Art Museums" since migration 045 renamed it
+ * (ADR-0045 §8, #818), so a fresh database never holds the old name and the
+ * seed, not the guard, is where its gate is decided.
+ */
+const SEEDED_SOURCES = [
+  'UNESCO World Heritage Sites',
+  'Art Museums',
+  'Public Art & Monuments',
+];
+
 const STATE_TABLES = ['experiences', 'experience_locations', 'experience_treasures', 'treasures'];
+
+/** The seed INSERTs of `01-schema.sql` — what a fresh database learns the rows from. */
+const categorySeeds = schema.match(/INSERT INTO experience_categories .*?ON CONFLICT [^;]*;/g) ?? [];
 
 describe('the curation gate exists in both schema homes', () => {
   for (const [table, column] of GATE_COLUMNS) {
@@ -154,6 +174,23 @@ describe('the curation gate exists in both schema homes', () => {
         expect(sql).toContain(`'${name}'`);
       }
     }
+  });
+
+  it('seeds the museum row under its reader-facing name and keeps the gate guard under its old one', () => {
+    // Migration 045 renamed "Top Art Museums" to "Art Museums" (ADR-0045 §8, #818).
+    // The seed is where a fresh database learns the row, so it carries the new name;
+    // the guard is reached only by a database that predates migration 018, which
+    // still holds the old name — so both files keep the guard as it was, and the
+    // new name never appears in the migration written before the rename.
+    expect(categorySeeds.length).toBeGreaterThan(0);
+    expect(categorySeeds.some(seed => seed.includes("VALUES ( 'Art Museums',"))).toBe(true);
+    // The old name survives in the schema only inside the guard: a seed still
+    // carrying it would give a fresh database the row under both names.
+    for (const seed of categorySeeds) {
+      expect(seed).not.toContain("'Top Art Museums'");
+    }
+    expect(schema).not.toContain("'Art Museums', 'Public Art & Monuments')");
+    expect(migration).not.toContain("'Art Museums'");
   });
 
   it('creates the gate column and answers for the three predating sources in one guard, identically in both files', () => {
@@ -205,7 +242,7 @@ describe('the curation gate exists in both schema homes', () => {
     // migration 018, so a seed that omits the column takes the `true` default
     // and gates a source the migrated database publishes from — the two homes
     // agreeing about columns while disagreeing about behaviour.
-    const seeds = schema.match(/INSERT INTO experience_categories .*?ON CONFLICT [^;]*;/g) ?? [];
+    const seeds = categorySeeds;
     // Every seed must be captured, or a future one written without ON CONFLICT
     // would slip past the loop below without failing anything.
     expect(seeds.length).toBe((schema.match(/INSERT INTO experience_categories/g) ?? []).length);
@@ -216,7 +253,7 @@ describe('the curation gate exists in both schema homes', () => {
     // Naming the column is not enough: a seed that names it and passes `true`
     // would gate a source on every fresh database while the migrated one keeps
     // publishing from it. The three that predate the gate must say `false`.
-    for (const name of CATEGORIES_BEFORE_THE_GATE) {
+    for (const name of SEEDED_SOURCES) {
       const seed = seeds.find(statement => statement.includes(`'${name}'`));
       expect(seed, `${name} is not seeded`).toBeDefined();
       expect(seed, `${name} is seeded gated`).toContain('false');

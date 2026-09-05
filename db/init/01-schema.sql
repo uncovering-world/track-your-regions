@@ -2412,7 +2412,7 @@ CREATE INDEX IF NOT EXISTS idx_experiences_first_seen ON experiences(first_seen_
 -- decides. The two above are statements about the world — the source stopped
 -- listing it; it no longer exists — and neither is true of a venue our own rule
 -- turned down. Wikidata goes on listing the British Museum, which stands open;
--- what changed is that *Top Art Museums* holds art museums and that one is an
+-- what changed is that *Art Museums* holds art museums and that one is an
 -- archaeological collection. Folding that into `former` would reproduce exactly
 -- the conflation ADR-0020 removed.
 --
@@ -2681,10 +2681,13 @@ CREATE INDEX IF NOT EXISTS idx_experience_location_regions_region ON experience_
 -- Stores notable items within experiences like museums (e.g., paintings,
 -- sculptures). Used for ranking museums by artwork fame.
 
--- Seed "Top Art Museums" as experience category
+-- Seed "Art Museums" as experience category. The row is the kind a reader
+-- browses by, and its name is the reader's (ADR-0045 decision 8, #818); it was
+-- seeded as "Top Art Museums" — the works-first selection rule's name — until
+-- migration 045 renamed it.
 INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation)
 VALUES (
-    'Top Art Museums',
+    'Art Museums',
     'World''s most notable museums ranked by artwork fame, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
     '{"userAgent": "TrackYourRegions/1.0"}'::jsonb,

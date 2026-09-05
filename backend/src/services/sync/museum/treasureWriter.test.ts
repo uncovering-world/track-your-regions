@@ -71,7 +71,7 @@ const upsertMuseumTreasures = (
 ) => writeTreasures(experienceId, artworks, credits, run, placedElsewhere);
 const mockedRetire = retirePassAfterNewContent as unknown as ReturnType<typeof vi.fn>;
 
-/** `Top Art Museums` — the category a treasure's gate is read from. */
+/** `Art Museums` — the category a treasure's gate is read from. */
 const MUSEUM_CATEGORY_ID = 2;
 const EXPERIENCE_ID = 77;
 
