@@ -98,7 +98,10 @@ async function upsertLandmarkExperience(
     creators: landmark.creators,
     year: landmark.year,
     sitelinksCount: landmark.sitelinks,
-    type: landmark.type,
+    // Not `type` here: the column is the type, and storing it twice made every
+    // run propose the same change twice — 124 of 1,685 public-art proposals on
+    // the development catalogue carried both (#814). Migration 044 cleared the
+    // key from the stored rows.
     wikipediaUrl: landmark.articleUrl || null,
     website: landmark.website || null,
     // `creator` is who made the sculpture; this is who photographed it. Two
