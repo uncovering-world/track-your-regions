@@ -14,7 +14,7 @@
 import { useState } from 'react';
 import { Box, Link, Stack, Tooltip, Typography } from '@mui/material';
 import { toThumbnailUrl } from '../../utils/imageUrl';
-import { wikidataItemUrl } from '../../utils/wikidataLinks';
+import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { creatorsBrief } from '../../utils/creatorList';
 import type { ImageCredit } from '../../api/experiences';
@@ -87,8 +87,13 @@ export function WorkCard({ work }: { work: CountedWork }) {
   // thumbnail and stopped, which answers "what does it look like" and not "what is
   // it" — and the second is the question a name like *Venus of Dolní Věstonice*
   // raises. Every treasure carries the id it was imported under, a Wikidata item, so
-  // the page it came from is one link away.
+  // the page it came from is one link away — and the article is a second one, resolved
+  // by Wikidata at the click rather than stored: the works writer never asks for an
+  // article, and 50 of 50 sampled works had an English one (#806). On the rare miss the
+  // link lands on Wikidata's own "no page found for that combination" form, not a 404,
+  // with the item itself linked from the name beside it.
   const link = wikidataItemUrl(work.externalId);
+  const article = wikipediaArticleUrl(work.externalId);
   // The normalised URL decides whether there is a picture at all: `toThumbnailUrl` answers
   // with an empty string for a host we do not trust, and `src=""` is not "no image" — the
   // browser resolves it against the page and draws a broken thumbnail. Every treasure image
@@ -131,7 +136,27 @@ export function WorkCard({ work }: { work: CountedWork }) {
             </Link>
           )
           : <Typography variant="caption" component="div" sx={{ fontWeight: 600 }}>{work.name}</Typography>}
-        {line && <Typography variant="caption" component="div">{line}</Typography>}
+        {(line || article) && (
+          <Typography variant="caption" component="div">
+            {/* Its own element, so the line stays one text node beside the link. */}
+            {line && <span>{line}</span>}
+            {line && article && ' · '}
+            {article && (
+              // Named for the work: a refusal's preview holds up to twelve of these,
+              // and a screen reader's link list of twelve bare "Wikipedia"s says
+              // nothing about which one opens what. The visible text leads the name.
+              <Link
+                href={article}
+                target="_blank"
+                rel="noopener noreferrer"
+                color="inherit"
+                aria-label={`Wikipedia article for ${work.name}`}
+              >
+                Wikipedia
+              </Link>
+            )}
+          </Typography>
+        )}
         {/* The line above already names the artist, and Commons names the painter
             as the author of a photograph of a painting — so this draws only where
             it carries something the row does not: a licence asking to be honoured,

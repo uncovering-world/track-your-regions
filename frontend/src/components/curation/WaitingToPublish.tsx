@@ -22,7 +22,7 @@
 
 import { useState } from 'react';
 import {
-  Box, Typography, Card, CardContent, Button, Stack, Divider,
+  Box, Typography, Card, CardContent, Button, Link, Stack, Divider,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -42,6 +42,7 @@ import { ObjectPreview } from './ObjectPreview';
 import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
 import { creatorsBrief } from '../../utils/creatorList';
+import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';
 
 /** One experience, with whatever a gated run left open about it. */
 export interface GatedGroup {
@@ -314,6 +315,12 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                 items={(contents?.pending_works ?? []).map(work => ({
                   id: work.id,
                   primary: work.name ?? 'Untitled',
+                  // The same two doors every surface that shows a work to a curator
+                  // opens (`WorkCard`): the name to the item, and the article resolved
+                  // from it. Both answer nothing for a row an older server sends
+                  // without the id, and the row reads as it did until then.
+                  href: wikidataItemUrl(work.externalId),
+                  article: wikipediaArticleUrl(work.externalId),
                   secondary: [creatorsBrief(work.artists, work.artistsCurated), work.year]
                     .filter(Boolean).join(', ') || null,
                 }))}
@@ -414,7 +421,15 @@ function runNote({ arrival }: GatedGroup): string {
  * exactly the silent truncation that makes a queue untrustworthy.
  */
 function ContentsList({ items, total, shown, noun }: {
-  items: Array<{ id: number; primary: string; secondary: string | null }>;
+  items: Array<{
+    id: number;
+    primary: string;
+    secondary: string | null;
+    /** Where the name opens, when the row has a page of its own. */
+    href?: string | null;
+    /** The row's article, when one can be resolved for it. */
+    article?: string | null;
+  }>;
   total: number;
   shown: number;
   noun: string;
@@ -425,8 +440,31 @@ function ContentsList({ items, total, shown, noun }: {
       <Stack component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }} spacing={0.25}>
         {items.map(item => (
           <Typography key={item.id} component="li" variant="caption" color="text.secondary">
-            {item.primary}
+            {/* `rel` on every outbound link, as `ObjectContext` does: these open
+                somebody else's site, in a new tab, because losing the queue to read
+                about one painting would cost the curator their place in it. */}
+            {item.href
+              ? <Link href={item.href} target="_blank" rel="noopener noreferrer" color="inherit">{item.primary}</Link>
+              : item.primary}
             {item.secondary && <span> — {item.secondary}</span>}
+            {item.article && (
+              <span>
+                {' · '}
+                {/* Named for the row: this list holds up to 25 of these, and a
+                    screen reader's link list of 25 bare "Wikipedia"s says nothing
+                    about which work each opens. The visible text leads the name, so
+                    a voice-control user saying it still reaches the link. */}
+                <Link
+                  href={item.article}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  color="inherit"
+                  aria-label={`Wikipedia article for ${item.primary}`}
+                >
+                  Wikipedia
+                </Link>
+              </span>
+            )}
           </Typography>
         ))}
       </Stack>

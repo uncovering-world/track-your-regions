@@ -196,4 +196,39 @@ describe('WorksPreview', () => {
     expect(screen.getAllByText(/Mbzt/)).toHaveLength(1);
     warned.mockRestore();
   });
+
+  it('opens each work at its item and at its article, in a new tab', async () => {
+    // The works writer never stores an article, and 50 of 50 sampled works have an
+    // English one — so the article is resolved by Wikidata at the click (#806).
+    await open(
+      <WorksPreview works={[{ name: 'Doryphoros', type: 'statue', artists: ['Polykleitos'], artistsCurated: false, imageUrl: null, year: -450, externalId: 'Q910' }]}>
+        {phrase}
+      </WorksPreview>,
+    );
+
+    const item = screen.getByRole('link', { name: 'Doryphoros' });
+    expect(item).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q910');
+    // Named for the work: a preview holds up to twelve of these, and a screen reader's
+    // link list of twelve bare "Wikipedia"s would say nothing about which opens what.
+    const article = screen.getByRole('link', { name: 'Wikipedia article for Doryphoros' });
+    expect(article).toHaveTextContent('Wikipedia');
+    expect(article).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q910');
+    for (const link of [item, article]) {
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    }
+  });
+
+  it('links a work nowhere when its id is not a Wikidata item', async () => {
+    // Nothing in the catalogue today, but the id is `NOT NULL` and not a QID by type: a
+    // link built by template literal would point at a page that does not exist.
+    await open(
+      <WorksPreview works={[{ name: 'Untitled', type: null, artists: [], artistsCurated: false, imageUrl: null, year: null, externalId: 'manual-7' }]}>
+        {phrase}
+      </WorksPreview>,
+    );
+
+    expect(screen.getByText('Untitled')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
 });
