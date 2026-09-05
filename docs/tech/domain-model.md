@@ -86,7 +86,7 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `NameLocal`: Multilingual names (JSONB)
   - `Description`: Full description
   - `ShortDescription`: Brief description for display
-  - `Category`: Per-source classification (e.g., 'cultural', 'natural', 'mixed' for UNESCO; 'art', 'history' for museums)
+  - `Type`: The type within the kind, one closed vocabulary per kind — 'cultural' / 'natural' / 'mixed' for a World Heritage site, 'monument' / 'sculpture' for public art — and NULL for a museum, whose kind has no types (ADR-0045, #814). The kind itself is `CategoryId`; see the glossary in [experiences.md](experiences.md#glossary)
   - `Tags`: Additional classification tags (JSONB)
   - `Location`: Geographic point (PostGIS Point, SRID 4326)
   - `Boundary`: Optional boundary geometry (PostGIS MultiPolygon)
