@@ -10,7 +10,7 @@ import TuneIcon from '@mui/icons-material/Tune';
 import BlockIcon from '@mui/icons-material/Block';
 import PlaceIcon from '@mui/icons-material/Place';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
-import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
+import { experienceColors, shortSourceName, VISITED_GREEN } from '../../utils/categoryColors';
 import { inDangerLabel } from '../../utils/dangerLabel';
 import type { Experience } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
@@ -82,10 +82,10 @@ export function ExperienceCard({
 }: ExperienceCardProps) {
   const isRejected = experience.is_rejected;
   const imageUrl = extractImageUrl(experience.image_url);
-  const colors = CATEGORY_COLORS[experience.category || ''];
-  const catStyle = colors
-    ? { bg: colors.bg, text: colors.text, border: colors.primary }
-    : { bg: '#E0E7FF', text: '#4F46E5', border: '#6366F1' };
+  // The kind's colour, refined by the type where the types are told apart —
+  // one rule for the card's edge, its chip and its pin (#814).
+  const colors = experienceColors(experience.category_id, experience.type);
+  const catStyle = { bg: colors.bg, text: colors.text, border: colors.primary };
 
   const cardStyle = computeCardSurfaceStyle({ isRejected, isVisited, isHovered, isSelected, catStyle });
   const { bgcolor, borderLeftColor, cardOpacity, titleColor } = cardStyle;
@@ -150,7 +150,9 @@ export function ExperienceCard({
             }}
           >
             <Typography sx={{ fontSize: '0.55rem', color: catStyle.text }}>
-              {experience.category?.charAt(0).toUpperCase() || '?'}
+              {/* The type's initial, or the kind's where the kind has no types — a
+                  museum is not "?", it is an art museum (#814). */}
+              {(experience.type ?? shortSourceName(experience.category_name))?.charAt(0).toUpperCase() || '?'}
             </Typography>
           </Box>
         )}
@@ -232,9 +234,9 @@ export function ExperienceCard({
               }}
             />
           )}
-          {experience.category && (
+          {experience.type && (
             <Chip
-              label={experience.category}
+              label={experience.type}
               size="small"
               sx={{
                 bgcolor: catStyle.bg,

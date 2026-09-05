@@ -1,12 +1,20 @@
 /**
- * Shared category color definitions for experience display
+ * The colour an object is drawn in — its pin, its row, its card's edge, its
+ * type chip — decided once (#814).
  *
- * Used across ExperienceList, ExperienceCard, ExperienceDetailPanel, and Discover pages.
+ * A colour says which *kind* of place this is: a World Heritage site, an art
+ * museum, a monument (ADR-0045). World Heritage is the one kind whose types a
+ * traveller tells apart on the map — a natural site is green where a cultural
+ * one is purple — so there the type refines the colour; every other kind is one
+ * colour. Keyed on the type value alone, as this file was, a museum's blue hung
+ * on the literal `art` every museum row carried, and a monument — whose types
+ * no map knew — fell into the cultural purple in the list while its pin was the
+ * map's teal fallback: the same object two colours depending on where you
+ * looked at it.
+ *
+ * Used across ExperienceList, ExperienceCard, ExperienceDetailPanel, the two
+ * marker layers and the Discover pages.
  */
-
-// =============================================================================
-// Experience Category Colors (cultural / natural / mixed)
-// =============================================================================
 
 export interface CategoryColorSet {
   /** Primary/border color */
@@ -20,28 +28,61 @@ export interface CategoryColorSet {
 const CULTURAL: CategoryColorSet = { primary: '#8B5CF6', bg: '#EDE9FE', text: '#7C3AED' };
 const NATURAL: CategoryColorSet = { primary: '#10B981', bg: '#D1FAE5', text: '#059669' };
 const MIXED: CategoryColorSet = { primary: '#F59E0B', bg: '#FEF3C7', text: '#D97706' };
-/**
- * The museum venue type, blue from `SOURCE_PALETTE` rather than a new colour.
- *
- * `category` is the venue type *within* a category, not one shared enum — art
- * museums write `art` where a UNESCO site writes `cultural`. Without an entry
- * here a museum takes the cultural purple on one surface and the map's teal
- * fallback on another, so the same building is two colours depending on where
- * you look at it; teal is also what public art already falls through to, which
- * would put museums and monuments in one colour.
- */
-const ART: CategoryColorSet = { primary: '#2563EB', bg: '#DBEAFE', text: '#1D4ED8' };
+/** Art museums: blue from `SOURCE_PALETTE`, so a museum and a monument are never one colour. */
+const ART_MUSEUMS: CategoryColorSet = { primary: '#2563EB', bg: '#DBEAFE', text: '#1D4ED8' };
+/** Public art: the teal the map's fallback always drew it in, now a colour of its own. */
+const PUBLIC_ART: CategoryColorSet = { primary: '#0d9488', bg: '#CCFBF1', text: '#0F766E' };
+/** A kind with no palette of its own, and a World Heritage row with no type. */
+const UNKNOWN: CategoryColorSet = { primary: '#6366F1', bg: '#E0E7FF', text: '#4F46E5' };
 
-export const CATEGORY_COLORS: Record<string, CategoryColorSet> = {
+/**
+ * The types a traveller tells apart by colour: World Heritage's three. No other
+ * kind's types are coloured — a monument and a sculpture are one kind and one
+ * pin — and a museum has no type at all.
+ */
+export const TYPE_COLORS: Record<string, CategoryColorSet> = {
   cultural: CULTURAL,
   natural: NATURAL,
   mixed: MIXED,
-  art: ART,
 };
 
-/** Get the primary color for a category (fallback to cultural purple) */
-export function getCategoryPrimaryColor(category: string | null | undefined): string {
-  return CATEGORY_COLORS[category ?? '']?.primary ?? CULTURAL.primary;
+/**
+ * The kinds with a colour of their own, by the id their source row is seeded
+ * with in `db/init/01-schema.sql` (1 UNESCO World Heritage Sites, 2 Top Art
+ * Museums, 3 Public Art & Monuments). Until the kind table of ADR-0045 §4
+ * lands, a kind is its source row, and the id is what a list row carries
+ * (`category_id`) — a name is renamed (#815). World Heritage's is the purple
+ * of its cultural sites, which is what the kind reads as where no type
+ * refines it — a count chip, a row whose type is not stored.
+ */
+const KIND_COLORS: Record<number, CategoryColorSet> = {
+  1: CULTURAL,
+  2: ART_MUSEUMS,
+  3: PUBLIC_ART,
+};
+
+/**
+ * The colour set an object is drawn in: its type's where the kind's types are
+ * told apart (World Heritage's three — the vocabularies are closed and
+ * disjoint, so a type value names its kind), its kind's otherwise, and a
+ * neutral indigo for a kind this file does not know — never another kind's
+ * colour.
+ */
+export function experienceColors(
+  categoryId: number | null | undefined,
+  type: string | null | undefined,
+): CategoryColorSet {
+  if (type && TYPE_COLORS[type]) return TYPE_COLORS[type];
+  if (categoryId != null && KIND_COLORS[categoryId]) return KIND_COLORS[categoryId];
+  return UNKNOWN;
+}
+
+/** The one colour of `experienceColors` — what a pin, a row stripe or a card edge takes. */
+export function experienceColor(
+  categoryId: number | null | undefined,
+  type: string | null | undefined,
+): string {
+  return experienceColors(categoryId, type).primary;
 }
 
 // =============================================================================
@@ -74,9 +115,17 @@ export const SOURCE_PALETTE = [
   '#EA580C', // orange
 ];
 
-/** Get a deterministic color for a category by its numeric ID */
+/**
+ * A kind's colour for a surface that shows the kind and not one object — the
+ * count chips of Discover — which is the same colour its objects are drawn in:
+ * `experienceColors` with no type, so "Art Museums 12" is the blue of the
+ * museum cards under it and "Art 40" the teal of the monument pins, rather
+ * than the palette's amber and blue over them. The palette answers only for a
+ * kind this file gives no colour of its own.
+ */
 export function getSourceColor(categoryId: number): string {
-  return SOURCE_PALETTE[categoryId % SOURCE_PALETTE.length];
+  const own = experienceColors(categoryId, null);
+  return own === UNKNOWN ? SOURCE_PALETTE[categoryId % SOURCE_PALETTE.length] : own.primary;
 }
 
 /**

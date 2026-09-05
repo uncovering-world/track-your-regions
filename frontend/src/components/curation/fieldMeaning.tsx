@@ -32,6 +32,7 @@ import { inDangerLabel } from '../../utils/dangerLabel';
 import { safeHref } from '../../utils/safeHref';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { creators } from '../../utils/creatorList';
+import { typeVocabularyOf } from '../../utils/experienceTypes';
 import { PictureFact } from './PictureFact';
 
 /** One field of a proposal, as the queue carries it. */
@@ -377,9 +378,12 @@ const MEANINGS: Record<string, FieldMeaning> = {
     what: 'The paragraph on the card readers open.',
     whenItChanges: 'The source rewrote it. Read both; a rewrite can drop what a curator added.',
   },
-  category: {
-    label: 'category',
-    what: 'UNESCO: cultural, natural or mixed — which kind of criteria the site meets. Landmarks: monument or sculpture. Museums: art.',
+  // The fallback for a value no kind declares; a value from a kind's own vocabulary
+  // is explained in that vocabulary's words by `meaningOf` (#814). Never "category":
+  // that word is the chip beside the object's name — the kind — and this row is not it.
+  type: {
+    label: 'type',
+    what: 'The type within its kind, in the kind’s own vocabulary — cultural, natural or mixed for a World Heritage site; monument or sculpture for public art. A museum has none.',
     whenItChanges: 'Reclassified by the source.',
   },
   tags: {
@@ -597,11 +601,6 @@ const MEANINGS: Record<string, FieldMeaning> = {
         : null
     ),
   },
-  'metadata.type': {
-    label: 'type',
-    what: 'Which of the source’s lists the object came from — monument or sculpture.',
-    whenItChanges: 'Reclassified on Wikidata.',
-  },
   'metadata.sitelinksCount': {
     label: 'language editions',
     what: 'How many Wikipedia language editions have an article — the source’s measure of fame, and how the import ranks what to include.',
@@ -661,7 +660,7 @@ const UNSEEN_BY_READERS = new Set([
   'tags',
   'metadata.criteria', 'metadata.region', 'metadata.areaHectares', 'metadata.transboundary',
   'metadata.wikidataQid', 'metadata.admittedFor', 'metadata.artworkCount', 'metadata.totalArtworkSitelinks',
-  'metadata.creators', 'metadata.year', 'metadata.type', 'metadata.sitelinksCount',
+  'metadata.creators', 'metadata.year', 'metadata.sitelinksCount',
 ]);
 
 /**
@@ -676,7 +675,17 @@ const UNSEEN_BY_READERS = new Set([
  * would fall through to "extra data from the source" and be marked as seen by
  * nobody.
  */
-export function meaningOf(field: string): FieldMeaning {
+export function meaningOf(field: string, ...samples: unknown[]): FieldMeaning {
+  // A type is explained in the words of the vocabulary its value is from — a
+  // monument in public art's, a natural site in World Heritage's — because the
+  // vocabularies are closed per kind, and one sentence for all of them read as
+  // UNESCO's on a monument's card (#814). The first sample from a vocabulary
+  // says which: the proposed value, or the stored one where the proposal clears
+  // the field and proposes nothing to read it from.
+  if (field === 'type') {
+    const vocabulary = samples.map(typeVocabularyOf).find(found => found !== null);
+    if (vocabulary) return { ...MEANINGS.type, what: vocabulary.what, whenItChanges: vocabulary.whenItChanges };
+  }
   const known = MEANINGS[field];
   if (known) return UNSEEN_BY_READERS.has(field) ? { ...known, unseen: true } : known;
   if (field.startsWith('nameLocal.')) {

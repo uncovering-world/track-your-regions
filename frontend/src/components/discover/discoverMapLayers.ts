@@ -113,16 +113,9 @@ export function addDiscoverMapLayers(map: maplibregl.Map): void {
       source: SOURCE_ID,
       filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-color': [
-          'match', ['get', 'category'],
-          'cultural', '#8B5CF6',
-          // Museums, named rather than left to the fallback below — which is also
-          // what public art takes, and the two must not share a pin colour.
-          'art', '#2563EB',
-          'natural', '#10B981',
-          'mixed', '#F59E0B',
-          '#0d9488',
-        ],
+        // Decided once, in `experienceColor`, and carried on the feature — see
+        // the marker layer in `experienceMarkers/layers.ts` (#814).
+        'circle-color': ['get', 'color'],
         'circle-radius': 6,
         'circle-stroke-width': 2,
         'circle-stroke-color': '#ffffff',

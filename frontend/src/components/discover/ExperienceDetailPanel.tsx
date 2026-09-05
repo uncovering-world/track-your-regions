@@ -49,7 +49,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { subscribeToHoverTarget, useHoverActions, useHoverSelector } from '../../hooks/useHoverContext';
 
-import { CATEGORY_COLORS } from '../../utils/categoryColors';
+import { experienceColors } from '../../utils/categoryColors';
 import { EmptyState } from '../shared/EmptyState';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ContentTile } from './ContentTile';
@@ -113,8 +113,9 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const imageFailed = !!imageUrl && failedUrl === imageUrl;
   const setImageFailed = () => setFailedUrl(imageUrl);
-  const colors = CATEGORY_COLORS[experience.category || ''];
-  const catStyle = colors ? { bg: colors.bg, text: colors.text } : { bg: '#E0E7FF', text: '#4F46E5' };
+  // The kind's colour, refined by the type where the types are told apart (#814).
+  const colors = experienceColors(experience.category_id, experience.type);
+  const catStyle = { bg: colors.bg, text: colors.text };
 
   let visitedStatusLabel = 'Not Started';
   if (visitedStatus === 'visited') visitedStatusLabel = 'Completed';
@@ -199,9 +200,9 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
 
         {/* Category + country chips */}
         <Box sx={{ display: 'flex', gap: 0.75, mb: 2, flexWrap: 'wrap' }}>
-          {experience.category && (
+          {experience.type && (
             <Chip
-              label={experience.category}
+              label={experience.type}
               size="small"
               sx={{ bgcolor: catStyle.bg, color: catStyle.text, fontWeight: 600, textTransform: 'capitalize' }}
             />

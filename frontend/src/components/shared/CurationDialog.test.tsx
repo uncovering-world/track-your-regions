@@ -45,7 +45,9 @@ const bamiyan: Experience = {
   external_id: '208',
   name: 'Cultural Landscape and Archaeological Remains of the Bamiyan Valley',
   short_description: 'The remains of the Buddhas and the monastic caves around them.',
-  category: 'cultural',
+  type: 'cultural',
+  // World Heritage: the one kind whose type a curator can set in this dialog.
+  category_id: 1,
   country_codes: ['AF'],
   country_names: ['Afghanistan'],
   image_url: OLD_PICTURE,
@@ -121,7 +123,7 @@ describe('CurationDialog clearing a field', () => {
     fireEvent.click(screen.getByRole('option', { name: 'None' }));
     save();
 
-    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { category: '' }));
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { type: '' }));
   });
 });
 

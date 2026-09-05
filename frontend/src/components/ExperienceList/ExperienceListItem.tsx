@@ -18,7 +18,7 @@ import type {
   ExperienceLocation,
 } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
-import { getCategoryPrimaryColor } from '../../utils/categoryColors';
+import { experienceColor } from '../../utils/categoryColors';
 import { preloadCardImage } from '../../utils/imagePreload';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
 import { subscribeToHoverTarget, useHoverActions } from '../../hooks/useHoverContext';
@@ -181,7 +181,7 @@ function ExperienceListItemComponent({
   } else if (isSelected) {
     expandIndicator = <ExpandLess fontSize="small" />;
   }
-  const color = getCategoryPrimaryColor(experience.category);
+  const color = experienceColor(experience.category_id, experience.type);
 
   // Use batch locations from parent (shared hook) — no per-item fetch
   const totalLocations = locations?.length ?? (experience.location_count ?? 0);

@@ -54,6 +54,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 import { EmptyState } from './EmptyState';
 import { ImageCreditLine } from './ImageCreditLine';
 import { PictureWithCredit } from './PictureWithCredit';
+import { typeOptionsFor } from '../../utils/experienceTypes';
 
 interface ApplySuggestionParams {
   setNewImageUrl: (url: string) => void;
@@ -129,7 +130,7 @@ function SearchResultBody({ exp, imageUrl }: { exp: ExperienceSearchResult; imag
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <ListItemText
           primary={exp.name}
-          secondary={[exp.category_name, exp.category, exp.country_names?.[0]].filter(Boolean).join(' \u00B7 ')}
+          secondary={[exp.category_name, exp.type, exp.country_names?.[0]].filter(Boolean).join(' \u00B7 ')}
           primaryTypographyProps={{ variant: 'body2', fontWeight: 500, noWrap: true }}
           secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
           sx={{ my: 0 }}
@@ -186,14 +187,18 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     if (open) {
       setActiveTab(defaultTab ?? 0);
       setNewCategoryId(defaultCategoryId ?? '');
+      // A type belongs to a kind: a value picked for the last kind is not one of this
+      // kind's, and a select holding a value outside its items renders blank.
+      setNewType('');
     }
   }, [open, defaultTab, defaultCategoryId]);
 
   // --- Create New tab state ---
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
-  const [newCategory, setNewCategory] = useState('');
+  const [newType, setNewType] = useState('');
   const [newCategoryId, setNewCategoryId] = useState<number | ''>(defaultCategoryId ?? '');
+  const typeOptions = typeOptionsFor(newCategoryId === '' ? null : newCategoryId);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [newWikipediaUrl, setNewWikipediaUrl] = useState('');
@@ -382,7 +387,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
       // Reset form state
       setNewName('');
       setNewDescription('');
-      setNewCategory('');
+      setNewType('');
       setNewCategoryId('');
       setCoords(null);
       setNewImageUrl('');
@@ -422,7 +427,9 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     createMutation.mutate({
       name: newName,
       shortDescription: newDescription || undefined,
-      category: newCategory || undefined,
+      // Always one of the chosen kind's own: the select lists only those, and a
+      // change of kind clears it.
+      type: newType || undefined,
       longitude: coords.lng,
       latitude: coords.lat,
       imageUrl: newImageUrl || undefined,
@@ -531,7 +538,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                 <Select
                   value={newCategoryId}
                   label="Category"
-                  onChange={(e) => setNewCategoryId(e.target.value as number | '')}
+                  onChange={(e) => { setNewCategoryId(e.target.value as number | ''); setNewType(''); }}
                 >
                   {categories?.map((s) => (
                     <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
@@ -539,20 +546,23 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                 </Select>
               </FormControl>
 
-              <FormControl fullWidth size="small">
-                <InputLabel>Category</InputLabel>
-                <Select
-                  value={newCategory}
-                  label="Category"
-                  onChange={(e) => setNewCategory(e.target.value)}
-                >
-                  <MenuItem value="">None</MenuItem>
-                  <MenuItem value="cultural">Cultural</MenuItem>
-                  <MenuItem value="natural">Natural</MenuItem>
-                  <MenuItem value="mixed">Mixed</MenuItem>
-                  <MenuItem value="art">Art</MenuItem>
-                </Select>
-              </FormControl>
+              {/* The chosen kind's own types, or no control for a kind without any
+                  — a museum (ADR-0045, #814). */}
+              {typeOptions.length > 0 && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>Type</InputLabel>
+                  <Select
+                    value={newType}
+                    label="Type"
+                    onChange={(e) => setNewType(e.target.value)}
+                  >
+                    <MenuItem value="">None</MenuItem>
+                    {typeOptions.map(option => (
+                      <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
             </Box>
 
             <LocationPicker

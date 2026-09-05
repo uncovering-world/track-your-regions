@@ -36,6 +36,7 @@ import { SOURCE_ID, HIGHLIGHT_SOURCE_ID } from './discoverMapLayers';
 import { useDiscoverMap } from './useDiscoverMap';
 import { useDiscoverHover } from './useDiscoverHover';
 import { frameGeoJson } from '../../utils/mapUtils';
+import { experienceColor } from '../../utils/categoryColors';
 
 /**
  * A set of places as one shape to frame. `LngLatBounds.extend` was the
@@ -338,9 +339,10 @@ export function DiscoverExperienceView({
           locationId: m.locationId,
           // No `name` here: nothing on this surface reads it. The hover card
           // resolves the object through `properties.id`, and the layer
-          // expressions read `category`, `locationCount` and `point_count`.
+          // expressions read `color`, `locationCount` and `point_count`.
           // `id` stays the object's, which is what the handlers ask for.
-          category: m.experience.category || '',
+          // The pin's colour, decided once for every surface (`experienceColor`).
+          color: experienceColor(m.experience.category_id, m.experience.type),
           // 1 for a place drawn as itself, the count only for a pin standing in
           // for places it does not draw — which is what the badge means.
           locationCount: m.locationCount,
