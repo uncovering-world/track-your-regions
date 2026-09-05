@@ -91,6 +91,33 @@ export function placeOfferedSql(alias = 'e'): string {
 }
 
 /**
+ * The membership a curator's click on `/:id/…` answers, as a scalar subquery
+ * over the place's id.
+ *
+ * A curator's endpoints are keyed on the place — `/:id/publish`,
+ * `/:id/decline-held`, `/:id/admission` — and the row they act on is the
+ * membership. Exactly one per place until #755 makes a second, so this picks
+ * the one there is; the order is what it means the day there are two: for a
+ * publish or a decline, the one *waiting* — unread first, then one holding a
+ * proposal; for an admission verdict, the *refused* one. Then the kind's
+ * order, then the id, so the answer is total. #755's API names the
+ * membership outright, and this helper is what it replaces.
+ */
+export function membershipToAnswerSql(
+  experienceIdExpr: string,
+  prefer: 'waiting' | 'refused',
+): string {
+  const first = prefer === 'refused'
+    ? `(${INNER}.admission = 'refused') DESC`
+    : `(${INNER}.curation_state = 'pending') DESC, (${INNER}.pending_change_sync_log_id IS NOT NULL) DESC`;
+  return `(SELECT ${INNER}.id FROM ${MEMBERSHIPS} ${INNER}
+        JOIN ${KINDS} k ON k.id = ${INNER}.kind_id
+        WHERE ${INNER}.experience_id = ${experienceIdExpr}
+        ORDER BY ${first}, k.display_priority, ${INNER}.id
+        LIMIT 1)`;
+}
+
+/**
  * A curator's pin on the admission axis: the answer a confirmation or an
  * override leaves behind, which every run's admission write honours.
  * `alias` is the membership alias.

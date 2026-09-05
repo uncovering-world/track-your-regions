@@ -57,7 +57,7 @@ export interface GatedGroup {
  * One group per experience, however many of the three kinds name it.
  *
  * Only one pair can actually occur, measured against the queries rather than
- * assumed: `held` fires only where `curation_state <> 'pending'` and `contents`
+ * assumed: `held` fires only where the membership's `curation_state <> 'pending'` (#822) and `contents`
  * hides a `pending` container outright, so an **arrival is always alone** and the
  * grouping exists for `held` + `contents` — the source wants to change the label
  * *and* the museum gained twelve paintings.

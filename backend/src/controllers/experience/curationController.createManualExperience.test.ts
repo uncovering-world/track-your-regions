@@ -83,22 +83,34 @@ describe('createManualExperience curation state', () => {
     queueQueries();
   });
 
-  it('writes the experience verified and published now, not read from any gate', async () => {
+  it('writes the membership verified and published now, not read from any gate', async () => {
     const { res, done } = callCreateManualExperience();
     await done;
 
-    const sql = statementFor(/INSERT INTO experiences/);
-    expect(sql).toMatch(/curation_state/);
-    expect(sql).toMatch(/'verified'/);
-    expect(sql).toMatch(/published_at/);
-    expect(sql).toMatch(/NOW\(\)/);
-    // A person's judgement does not depend on the source's setting: unlike
-    // the sync writer, nothing here may read experience_categories at all.
-    expect(sql).not.toMatch(/requires_curation/);
-    expect(sql).not.toMatch(/CASE/);
+    // The state is the membership's (#822): the place carries none, and the
+    // membership is written in the same transaction, for the kind the chosen
+    // source fills.
+    const place = statementFor(/INSERT INTO experiences/);
+    expect(place).not.toMatch(/curation_state/);
+    expect(place).not.toMatch(/published_at/);
 
-    // Both new values are literals, not new bound parameters - the params
-    // array is unchanged from before this insert carried them.
+    const membership = statementFor(/INSERT INTO experience_kind_memberships/);
+    expect(membership).toMatch(/curation_state/);
+    expect(membership).toMatch(/'verified'/);
+    expect(membership).toMatch(/published_at/);
+    expect(membership).toMatch(/NOW\(\)/);
+    expect(membership).toMatch(/\(SELECT kind_id FROM experience_categories WHERE id = \$2\)/);
+    // A person's judgement does not depend on the source's setting: unlike
+    // the sync writer, nothing here may read the gate at all.
+    expect(membership).not.toMatch(/requires_curation/);
+    expect(membership).not.toMatch(/CASE/);
+    const [, membershipParams] = mockClientQuery.mock.calls.find(
+      ([callSql]) => typeof callSql === 'string' && /INSERT INTO experience_kind_memberships/.test(callSql),
+    ) as [string, unknown[]];
+    expect(membershipParams).toEqual([EXPERIENCE_ID, CATEGORY_ID]);
+
+    // The state values are literals, not new bound parameters - the place's
+    // params array is unchanged from before the split.
     const [, params] = mockClientQuery.mock.calls.find(
       ([callSql]) => typeof callSql === 'string' && /INSERT INTO experiences/.test(callSql),
     ) as [string, unknown[]];

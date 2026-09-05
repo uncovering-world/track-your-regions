@@ -10,6 +10,7 @@ import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import type { UserRole } from '../../types/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
@@ -770,14 +771,11 @@ async function insertManualExperience(
     INSERT INTO experiences (
       category_id, external_id, name, short_description, type,
       location, image_url, tags, country_codes, country_names,
-      metadata, is_manual, created_by, status, curation_state, published_at
+      metadata, is_manual, created_by, status
     ) VALUES (
       $1, $2, $3, $4, $5,
       ST_SetSRID(ST_MakePoint($6, $7), 4326), $8, $9, $10, $11,
-      $12, true, $13, 'active',
-      -- Verified from the moment it is created, and visible from the moment
-      -- it exists: see the function comment above.
-      'verified', NOW()
+      $12, true, $13, 'active'
     ) RETURNING id
   `, [
     categoryId,
@@ -795,6 +793,18 @@ async function insertManualExperience(
     userId,
   ]);
   const experienceId = expResult.rows[0].id as number;
+
+  // The place's membership in the kind the chosen source fills (ADR-0045
+  // decision 4, #822). Verified from the moment it is created, and visible
+  // from the moment it exists: see the function comment above. A person's
+  // judgement does not depend on the source's gate, so nothing here reads it.
+  await client.query(`
+    INSERT INTO ${MEMBERSHIPS} (experience_id, kind_id, source_id, curation_state, published_at)
+    VALUES (
+      $1, (SELECT kind_id FROM experience_categories WHERE id = $2), $2,
+      'verified', NOW()
+    )
+  `, [experienceId, categoryId]);
 
   const locResult = await client.query(`
     INSERT INTO experience_locations (experience_id, name, ordinal, location, curation_state)

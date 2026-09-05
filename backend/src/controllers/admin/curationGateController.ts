@@ -31,10 +31,10 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
  * knowing before flipping it. Arrivals and unread contents stay put: only the insert
  * arm ever writes `pending`, and only a person moves a row out of it, through
  * `publish-waiting` or a card. A change a run is *holding* is the exception — it sits
- * on a visible row as `pending_change_sync_log_id`, and the hold is
- * `requires_curation AND curation_state <> 'pending'` (`syncUtils`), so with the gate
- * off the next run writes the proposed values and clears the pointer with no person
- * involved. A switch that published forty unreviewed objects silently is the thing
+ * on a visible place's membership as `pending_change_sync_log_id`, and the hold is
+ * `requires_curation` and a reader being able to see the place (`experienceUpsert`),
+ * so with the gate off the next run writes the proposed values and clears the pointer
+ * with no person involved. A switch that published forty unreviewed objects silently is the thing
  * the gate exists to prevent; a switch that quietly leaves a run free to apply what
  * it was holding is a different promise, and this one only makes the first.
  *

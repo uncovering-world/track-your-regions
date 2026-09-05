@@ -20,6 +20,7 @@ import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
+import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
@@ -113,7 +114,7 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
     //
     // The flag is part of that picture, not a separate concern. A run that
     // finds the object again clears `missing_since` and touches neither axis
-    // (`syncUtils.ts`), so a stale queue card matches on both while the
+    // (`experienceUpsert.ts`), so a stale queue card matches on both while the
     // question it asks has been withdrawn — and answering "former" there
     // records as delisted an object the source currently lists, which no
     // detection predicate will ever raise again.
@@ -314,21 +315,36 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     // covering any of the row's regions sees this card, and two answers racing
     // would leave the log asserting one verdict beside a column holding the
     // other.
+    // The lock first, in a statement of its own. The existence check above ran
+    // on the pool, on another connection and earlier in time. A row deleted in
+    // that window leaves nothing to lock, and reading the membership off it
+    // would answer 500 to a question whose true answer is 404.
+    // `setExperienceState` guards the same gap.
     const locked = await client.query(
-      `SELECT admission, admission_reason, curated_fields, curation_state
-         FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
-      [experienceId],
+      `SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
     );
-    const before = locked.rows[0];
-    // The existence check above ran on the pool, on another connection and
-    // earlier in time. A row deleted in that window leaves nothing to lock, and
-    // reading `curated_fields` off it would answer 500 to a question whose true
-    // answer is 404. `setExperienceState` guards the same gap.
-    if (!before) {
+    if (locked.rows.length === 0) {
       unusable = await rollbackQuietly(client);
       res.status(404).json({ error: 'Experience not found' });
       return;
     }
+    // The verdict, its reason, the pin and the gate state are the membership's
+    // (#822), read in the statement after the place's lock — the one every
+    // writer of the membership takes. Its own statement because a statement's
+    // snapshot is taken before it waits for the lock, and only the locked row
+    // is re-read once it is granted (`db/locks.ts`). Which membership: the
+    // refused one, the place's only one until #755.
+    const read = await client.query(
+      `SELECT m.id AS membership_id, m.admission, m.admission_reason, m.curated_fields,
+              m.curation_state
+         FROM experiences e
+         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'refused')}
+        WHERE e.id = $1`,
+      [experienceId],
+    );
+    // Present: a DELETE of the row waits on the lock this transaction holds.
+    const before = read.rows[0];
+    const membershipId = (before.membership_id as number | null) ?? null;
     const alreadyAnswered = ((before.curated_fields as string[]) ?? []).includes('admission');
 
     // Putting a row back is allowed whatever the pin says, and confirming is
@@ -342,7 +358,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     // the first one just put back. That row is no longer `refused` anyway, so
     // it is caught by the same condition.
     const confirmBlocked = !admitted && alreadyAnswered;
-    if (before.admission !== 'refused' || confirmBlocked) {
+    if (membershipId === null || before.admission !== 'refused' || confirmBlocked) {
       unusable = await rollbackQuietly(client);
       res.status(409).json({
         error: alreadyAnswered
@@ -393,20 +409,29 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
       ? `, curation_state = 'verified', published_at = COALESCE(published_at, NOW())`
       : '';
 
+    // The verdict, the pin, the badge and the publication on the membership;
+    // who decided, when and the note on the place, beside the lifecycle
+    // verdicts that share those columns. Two statements, one transaction, one
+    // lock (#822).
     await client.query(`
-      UPDATE experiences
+      UPDATE ${MEMBERSHIPS} m
       SET admission = $2,
           admission_reason = $3,
           curated_fields = $4,
-          state_decided_by = $5,
-          state_decided_at = NOW(),
-          state_note = $6,
           updated_at = NOW()${publishSet}${iconicAfterVerdictSql(admitted)}
-      WHERE id = $1
+      WHERE m.id = $1
     `, [
-      experienceId, admitted ? 'admitted' : 'refused', nextReason,
-      JSON.stringify(curated), userId, note ?? null,
+      membershipId, admitted ? 'admitted' : 'refused', nextReason,
+      JSON.stringify(curated),
     ]);
+    await client.query(`
+      UPDATE experiences
+      SET state_decided_by = $2,
+          state_decided_at = NOW(),
+          state_note = $3,
+          updated_at = NOW()
+      WHERE id = $1
+    `, [experienceId, userId, note ?? null]);
 
     ({ locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =
       await publishArrivalContents(client, experienceId, publishes));

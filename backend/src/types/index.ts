@@ -761,7 +761,8 @@ export const publishExperienceBodySchema = z.object({
   /**
    * The run whose held proposal the caller was looking at.
    *
-   * Compared under the write lock against `experiences.pending_change_sync_log_id`
+   * Compared under the place's write lock against the membership's
+   * `pending_change_sync_log_id` (`experience_kind_memberships`, #822)
    * — not against the newest changeset, as `accept-source` does. The card names
    * the run the pointer names, and a newer run overwrites the pointer, so
    * equality with the pointer is exactly the staleness question. Absent is a

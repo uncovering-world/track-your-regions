@@ -30,6 +30,7 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
@@ -93,11 +94,16 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
   // Ordered by id so a run of this endpoint is reproducible, and both kinds asked
   // for in one statement so the two cannot be answered against different snapshots
   // of the same source. `kind` decides the body each object is published with.
+  //
+  // What a source holds is the memberships its runs brought (#822), so the
+  // place is reached through them: the same set as the rows keyed on the
+  // source today, and the right set the day a place has two.
   const waiting = await pool.query(
     `SELECT e.id, e.name,
             CASE WHEN ${arrivalWaitingSql()} THEN 'arrival' ELSE 'contents' END AS kind
-       FROM experiences e
-      WHERE e.category_id = $1
+       FROM ${MEMBERSHIPS} m
+       JOIN experiences e ON e.id = m.experience_id
+      WHERE m.source_id = $1
         AND (${arrivalWaitingSql()} OR ${contentsWaitingSql()})
       ORDER BY e.id`,
     [categoryId],
@@ -221,8 +227,10 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
   try {
     const heldLeft = await pool.query(
       `${CURATOR_SCOPED_REGIONS_CTE}
-       SELECT count(*)::int AS n FROM experiences e
-        WHERE e.category_id = $2 AND ${heldWaitingSql()} AND ${scopeFilter}`,
+       SELECT count(*)::int AS n
+         FROM ${MEMBERSHIPS} m
+         JOIN experiences e ON e.id = m.experience_id
+        WHERE m.source_id = $2 AND ${heldWaitingSql()} AND ${scopeFilter}`,
       [userId, categoryId],
     );
     heldLeftForReview = heldLeft.rows[0].n as number;

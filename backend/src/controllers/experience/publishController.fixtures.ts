@@ -86,6 +86,10 @@ function lockedRow(opts: ClientOptions) {
   return [{
     // `admission` is here for the reason the others are: a mock missing it
     // would let the refused-row guard be deleted without a test noticing.
+    // The membership the click answers (#822): its id is what the publication
+    // is written against, and a mock without one describes a place no kind
+    // holds, which the endpoint refuses.
+    membership_id: 77,
     curation_state: 'pending',
     curated_fields: [],
     metadata: null,
@@ -99,6 +103,17 @@ function lockedRow(opts: ClientOptions) {
     pending_change_sync_log_id: null,
     ...(opts.row ?? {}),
   }];
+}
+
+/**
+ * The object's lock, in a statement of its own (`db/locks.ts`) — the id to
+ * hold, or nothing for the row that vanished — and the read after it, which
+ * answers with the row every decision rests on. `null` for any other statement.
+ */
+function lockedStatement(sql: string, opts: ClientOptions): { rows: unknown[] } | null {
+  if (sql.includes('FOR NO KEY UPDATE')) return { rows: opts.row === null ? [] : [{ id: 5 }] };
+  if (sql.includes('m.id AS membership_id')) return { rows: lockedRow(opts) };
+  return null;
 }
 
 /** The changeset row the pointer names, or none. */
@@ -133,7 +148,8 @@ function answer(sql: string, opts: ClientOptions): { rows: unknown[]; rowCount?:
   if (sql.includes('FROM treasures t') && sql.includes('FOR UPDATE')) {
     return { rows: opts.parts?.treasure ? [opts.parts.treasure] : [] };
   }
-  if (sql.includes('FOR NO KEY UPDATE')) return { rows: lockedRow(opts) };
+  const locked = lockedStatement(sql, opts);
+  if (locked) return locked;
   const counted = Object.entries(opts.rowCounts ?? {}).find(([fragment]) => sql.includes(fragment));
   return { rows: [], rowCount: counted ? counted[1] : 0 };
 }
@@ -141,8 +157,8 @@ function answer(sql: string, opts: ClientOptions): { rows: unknown[]; rowCount?:
 /**
  * Captures what the transaction ran, so assertions can read the statements.
  *
- * `row` is what the `FOR UPDATE` re-read returns — the state every decision here
- * rests on, read inside the lock rather than before it. `null` is the row that
+ * `row` is what the read after the lock returns — the state every decision here
+ * rests on, read under the lock rather than before it. `null` is the row that
  * vanished between the handler's existence check and the lock.
  */
 export function makeClient(opts: ClientOptions = {}) {

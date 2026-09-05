@@ -25,6 +25,7 @@
 import { Response } from 'express';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
+import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { answeredHeldRows, recordHeldAnswers } from './heldDecisions.js';
@@ -70,8 +71,8 @@ interface DeclineRefusal {
  * POST /api/experiences/:id/decline-held
  * Body: { fields?: string[], parts?: SelectedPart[], expectedSyncLogId: number }
  *
- * `expectedSyncLogId` is required and compared against
- * `experiences.pending_change_sync_log_id` under the write lock — the same
+ * `expectedSyncLogId` is required and compared against the membership's
+ * `pending_change_sync_log_id` (#822) under the place's write lock — the same
  * comparison publishing makes, against the same column, because the card names
  * the run the pointer names. Refusing the wrong run silences a proposal nobody
  * read, which is the mirror of publishing one nobody read.
@@ -164,14 +165,29 @@ async function refuseUnderLock(
       return { refusal: { status, error, pendingChangeSyncLogId } };
     };
 
+    // The lock first, in a statement of its own. The existence check in the
+    // handler ran on the pool, on another connection and earlier in time; a
+    // row deleted in that window leaves nothing to lock.
     const locked = await client.query(
-      `SELECT pending_change_sync_log_id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
+      `SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
+    );
+    if (locked.rows.length === 0) return await refuse(404, 'Experience not found');
+    // The pointer is the membership's (#822), read in the statement after the
+    // place's lock — the one every writer of the membership takes. Its own
+    // statement because a statement's snapshot is taken before it waits for
+    // the lock, and only the locked row is re-read once it is granted: a run
+    // that moved the pointer during the wait would be invisible to the check
+    // below (`db/locks.ts`). Which membership: the one holding a proposal, the
+    // place's only one until #755.
+    const read = await client.query(
+      `SELECT m.id AS membership_id, m.pending_change_sync_log_id
+         FROM experiences e
+         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting')}
+        WHERE e.id = $1`,
       [experienceId],
     );
-    // The existence check in the handler ran on the pool, on another connection
-    // and earlier in time. A row deleted in that window leaves nothing to lock.
-    if (locked.rows.length === 0) return await refuse(404, 'Experience not found');
-    const pointer = (locked.rows[0].pending_change_sync_log_id as number | null) ?? null;
+    const membershipId = (read.rows[0]?.membership_id as number | null) ?? null;
+    const pointer = (read.rows[0]?.pending_change_sync_log_id as number | null) ?? null;
 
     if (pointer === null) {
       return await refuse(409,
@@ -219,9 +235,9 @@ async function refuseUnderLock(
     const heldLeftOpen = open.length - selected.length;
     if (heldLeftOpen === 0) {
       await client.query(
-        `UPDATE experiences SET pending_change_sync_log_id = NULL, updated_at = NOW()
+        `UPDATE ${MEMBERSHIPS} SET pending_change_sync_log_id = NULL, updated_at = NOW()
           WHERE id = $1`,
-        [experienceId],
+        [membershipId],
       );
     }
 

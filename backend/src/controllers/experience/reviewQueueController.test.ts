@@ -22,6 +22,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { getReviewQueue } from './reviewQueueController.js';
+import { admissionPinnedSql, membershipAdmittedSql } from '../../db/membership.js';
 import { hidePendingSql, hideRefusedSql, offeredLocationSql } from './experienceLifecycle.js';
 import { CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
@@ -48,8 +49,12 @@ describe('getReviewQueue', () => {
     // open list — in both directions, so a confirmed row does not reappear
     // here either. It reappears in the kept-out list below, which is a
     // different thing: not a question, just the only way back.
-    const [refusedSql] = callMatching("NOT COALESCE(e.curated_fields ? 'admission', false)");
-    expect(refusedSql).toContain("e.admission = 'refused'");
+    // The verdict and the pin are the membership's (#822), through the one
+    // spelling of the pin the writers honour.
+    const [refusedSql] = callMatching(`NOT ${admissionPinnedSql('m')}`);
+    expect(refusedSql).toContain("m.admission = 'refused'");
+    expect(refusedSql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.category_id');
+    expect(refusedSql).toContain('m.admission_reason');
   });
 
   it('asks for the confirmed refusals too, since nothing else can show them', async () => {
@@ -59,9 +64,13 @@ describe('getReviewQueue', () => {
     // confirmed refusal is invisible everywhere else. Without this query the
     // "put it back" button has nowhere to live and one click is permanent.
     const [keptOutSql] = callMatching("'kept-out' AS kind");
-    expect(keptOutSql).toContain("e.admission = 'refused'");
-    expect(keptOutSql).toContain("COALESCE(e.curated_fields ? 'admission', false)");
-    expect(keptOutSql).not.toContain("NOT COALESCE(e.curated_fields ? 'admission', false)");
+    expect(keptOutSql).toContain("m.admission = 'refused'");
+    expect(keptOutSql).toContain(admissionPinnedSql('m'));
+    expect(keptOutSql).not.toContain(`NOT ${admissionPinnedSql('m')}`);
+    // The membership the row's own source brought, not any membership of the
+    // place: the day a place has two (#755), another source's refusal must
+    // not surface under this source's heading.
+    expect(keptOutSql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.category_id');
   });
 
   it('returns the confirmed refusals under their own key', async () => {
@@ -92,7 +101,7 @@ describe('getReviewQueue', () => {
   it('returns the refusals as their own group, with the reason on them', async () => {
     const res = makeRes();
     mockedQuery.mockImplementation(async (sql: string) => (
-      String(sql).includes("e.admission = 'refused'")
+      String(sql).includes("m.admission = 'refused'")
         ? { rows: [{ id: 6205, name: 'British Museum', admission_reason: 'not an art museum' }] }
         : { rows: [] }
     ));
@@ -196,7 +205,7 @@ describe('getReviewQueue', () => {
 
     // One query with one LIMIT per kind: a shared offset moved all of them at once, so a
     // kind whose page was full had a page 2 no control could ask for.
-    const [, refusedParams] = callMatching("e.admission = 'refused'\n      AND NOT");
+    const [, refusedParams] = callMatching("m.admission = 'refused'\n      AND NOT");
     const [, conflictParams] = callMatching("'conflict' AS kind");
     const [, missingParams] = callMatching('missing_since IS NOT NULL');
     expect(refusedParams.at(-1)).toBe(25);
@@ -209,7 +218,7 @@ describe('getReviewQueue', () => {
     // Exactly `limit + 1` rows come back: the extra one is the answer to "is there more",
     // and it must not reach the caller as an item.
     mockedQuery.mockImplementation(async (sql: string) => (
-      String(sql).includes("e.admission = 'refused'\n      AND NOT")
+      String(sql).includes("m.admission = 'refused'\n      AND NOT")
         ? { rows: Array.from({ length: 4 }, (_, i) => ({ id: i })) }
         : { rows: [] }
     ));
@@ -446,9 +455,9 @@ describe('getReviewQueue', () => {
    * anchor here is text only its own query carries.
    */
   const QUEUE_KIND_ANCHOR = {
-    arrival: "e.curation_state = 'pending'",
+    arrival: "m.curation_state = 'pending'",
     missing: 'e.missing_since IS NOT NULL',
-    held: 'e.pending_change_sync_log_id IS NOT NULL',
+    held: 'm.pending_change_sync_log_id IS NOT NULL',
     contents: "el.curation_state = 'pending'",
     withdrawn: 'el.missing_since IS NOT NULL',
     refused: "'refused' AS kind",
@@ -467,11 +476,14 @@ describe('getReviewQueue', () => {
 
   it('offers an arrival only where it is answerable', async () => {
     const sql = await capturedQueueSql('arrival');
-    expect(sql).toContain("e.curation_state = 'pending'");
+    // An arrival is a membership arriving (#822): its state and its
+    // admission are read off the membership, joined to the place.
+    expect(sql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.category_id');
+    expect(sql).toContain("m.curation_state = 'pending'");
     // A refused row is already invisible for a reason with its own card
     // (§ 2.3): asking "may readers see this?" about it asks the second
     // question first.
-    expect(sql).toContain(hideRefusedSql('e'));
+    expect(sql).toContain(membershipAdmittedSql('m'));
     // A row the source has stopped offering has no verdict to give (§ 3.6).
     expect(sql).toContain('e.missing_since IS NULL');
     // Without the scope filter a region curator is shown work they cannot open.
@@ -486,8 +498,11 @@ describe('getReviewQueue', () => {
 
   it('names the run whose proposal is held, and drops a card with nothing in it', async () => {
     const sql = await capturedQueueSql('held');
-    expect(sql).toContain('e.pending_change_sync_log_id IS NOT NULL');
-    expect(sql).toContain('ch.sync_log_id = e.pending_change_sync_log_id');
+    expect(sql).toContain('m.pending_change_sync_log_id IS NOT NULL');
+    expect(sql).toContain('ch.sync_log_id = m.pending_change_sync_log_id');
+    // One membership per place in the join — the row's own source's — so a
+    // place with two (#755) cannot raise the same held proposal twice.
+    expect(sql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.category_id');
     // jsonb_agg over an empty set returns NULL, and an empty card is worse than
     // none — on either half: the object's own held fields, or its parts'.
     expect(sql).toMatch(/WHERE \(q\.proposed IS NOT NULL OR q\.proposed_parts IS NOT NULL\)/);
@@ -513,9 +528,10 @@ describe('getReviewQueue', () => {
 
   it('excludes a refused row from the held card', async () => {
     // Already invisible for its own reason (§ 2.3) — the held proposal is not
-    // the question to ask about a row this category has turned down.
+    // the question to ask about a row this category has turned down. The
+    // membership's verdict, since the pointer is the membership's too (#822).
     const sql = await capturedQueueSql('held');
-    expect(sql).toContain(hideRefusedSql('e'));
+    expect(sql).toContain(membershipAdmittedSql('m'));
   });
 
   it('excludes a row the source has stopped listing from the held card', async () => {
@@ -527,7 +543,7 @@ describe('getReviewQueue', () => {
   });
 
   it('holds only the fields the gate refused, not a field a claim already refused', async () => {
-    // The pointer is set for *any* refused proposal (syncUtils.ts's
+    // The pointer is set for *any* refused proposal (experienceUpsert.ts's
     // proposedAnything), a curator's own claim included — so without this
     // filter a claimed field would carry both a `conflicts` card (answerable)
     // and a `held` twin (not), and the twin would outlive an `accept-source`
@@ -865,7 +881,7 @@ describe('getReviewQueue', () => {
   it('returns the three new kinds under their own response keys', async () => {
     const res = makeRes();
     mockedQuery.mockImplementation(async (sql: string) => (
-      String(sql).includes("e.curation_state = 'pending'")
+      String(sql).includes("m.curation_state = 'pending'")
         ? { rows: [{ id: 42, name: 'A newly-arrived museum' }] }
         : { rows: [] }
     ));
