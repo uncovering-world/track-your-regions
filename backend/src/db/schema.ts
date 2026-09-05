@@ -131,7 +131,21 @@ export const regionMembersRelations = relations(regionMembers, ({ one }) => ({
 // =============================================================================
 
 /**
- * Experience categories (UNESCO, museums, landmarks, etc.)
+ * A kind of place a traveller browses by (ADR-0045 decision 1): World Heritage
+ * sites, art museums, public art. Seeded under the ids of the sources that fill
+ * them, so a reader keyed on 1, 2, 3 reads the same thing either way until #819.
+ */
+export const experienceKinds = pgTable('experience_kinds', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull().unique(),
+  displayPriority: integer('display_priority').notNull().default(100),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+/**
+ * Sources: the lists a sync reads to fill a kind (ADR-0045 decision 3) — the
+ * UNESCO API, a Wikidata query — each with its endpoint, config and gate.
+ * Named "categories" until #819 renames the table.
  */
 export const experienceCategories = pgTable('experience_categories', {
   id: serial('id').primaryKey(),
@@ -143,10 +157,15 @@ export const experienceCategories = pgTable('experience_categories', {
   lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
   lastSyncStatus: varchar('last_sync_status', { length: 50 }),
   lastSyncError: varchar('last_sync_error', { length: 2000 }),
+  /** The kind this source fills (ADR-0045 decision 3); one per source today. */
+  kindId: integer('kind_id').notNull().references(() => experienceKinds.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
 /**
+ * The place (ADR-0045 decision 4): its identity, name, location, picture and
+ * what a source observes about the row. What a kind says about it — admission,
+ * the badge, the gate state — is its membership, `experienceKindMemberships`.
  * Generic experiences from various sources
  * Note: Geometry columns (location, boundary) are handled via raw SQL
  */
@@ -163,8 +182,9 @@ export const experiences = pgTable('experiences', {
   // Classification
   /**
    * The type within the kind — cultural / natural / mixed, monument / sculpture — and
-   * NULL for a museum, which is a kind without types (ADR-0045, #814). The kind itself
-   * is `categoryId`.
+   * NULL for a museum, which is a kind without types (ADR-0045, #814). The kind is the
+   * one `categoryId`'s source fills (`experience_categories.kind_id`, #822); `categoryId`
+   * itself names the source.
    */
   type: varchar('type', { length: 100 }),
   // tags stored as JSONB in DB
@@ -178,7 +198,6 @@ export const experiences = pgTable('experiences', {
   createdBy: integer('created_by'),  // References users(id) - handled at DB level
   curatedFields: jsonb('curated_fields').default([]),
   status: varchar('status', { length: 20 }).notNull().default('active'),
-  isIconic: boolean('is_iconic').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -246,12 +265,52 @@ export const experienceSyncLogs = pgTable('experience_sync_logs', {
   statusIdx: index('idx_experience_sync_logs_status').on(table.status),
 }));
 
+/**
+ * A place's membership in a kind (ADR-0045 decision 4): one row per (place,
+ * kind), carrying the source that brought it, the admission verdict and its
+ * reason, the work that qualified a museum, the must-see badge (decision 5),
+ * the curator's pins on those, and the gate state of the arrival — per member
+ * (decision 7). Written by the sync upsert, the admission writes and the
+ * curator's verdicts; read by every reader-facing read through
+ * `db/membership.ts`.
+ */
+export const experienceKindMemberships = pgTable('experience_kind_memberships', {
+  id: serial('id').primaryKey(),
+  experienceId: integer('experience_id').notNull().references(() => experiences.id, { onDelete: 'cascade' }),
+  kindId: integer('kind_id').notNull().references(() => experienceKinds.id),
+  sourceId: integer('source_id').notNull().references(() => experienceCategories.id, { onDelete: 'cascade' }),
+  admission: varchar('admission', { length: 10 }).notNull().default('admitted'),
+  admissionReason: text('admission_reason'),
+  // admittedFor stored as JSONB in DB ({ qid, label })
+  isIconic: boolean('is_iconic').notNull().default(false),
+  curatedFields: jsonb('curated_fields').notNull().default([]),
+  curationState: varchar('curation_state', { length: 10 }).notNull().default('auto'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  pendingChangeSyncLogId: integer('pending_change_sync_log_id').references(() => experienceSyncLogs.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  uniquePlaceKind: unique('experience_kind_memberships_experience_id_kind_id_key').on(table.experienceId, table.kindId),
+  kindIdx: index('idx_experience_kind_memberships_kind').on(table.kindId, table.admission),
+  sourceIdx: index('idx_experience_kind_memberships_source').on(table.sourceId, table.experienceId),
+}));
+
 // =============================================================================
 // Experience Relations
 // =============================================================================
 
-export const experienceCategoriesRelations = relations(experienceCategories, ({ many }) => ({
+export const experienceKindsRelations = relations(experienceKinds, ({ many }) => ({
+  sources: many(experienceCategories),
+  memberships: many(experienceKindMemberships),
+}));
+
+export const experienceCategoriesRelations = relations(experienceCategories, ({ one, many }) => ({
+  kind: one(experienceKinds, {
+    fields: [experienceCategories.kindId],
+    references: [experienceKinds.id],
+  }),
   experiences: many(experiences),
+  memberships: many(experienceKindMemberships),
   syncLogs: many(experienceSyncLogs),
 }));
 
@@ -260,10 +319,26 @@ export const experiencesRelations = relations(experiences, ({ one, many }) => ({
     fields: [experiences.categoryId],
     references: [experienceCategories.id],
   }),
+  memberships: many(experienceKindMemberships),
   regionAssignments: many(experienceRegions),
   userVisits: many(userVisitedExperiences),
   locations: many(experienceLocations),
   treasureLinks: many(experienceTreasures),
+}));
+
+export const experienceKindMembershipsRelations = relations(experienceKindMemberships, ({ one }) => ({
+  experience: one(experiences, {
+    fields: [experienceKindMemberships.experienceId],
+    references: [experiences.id],
+  }),
+  kind: one(experienceKinds, {
+    fields: [experienceKindMemberships.kindId],
+    references: [experienceKinds.id],
+  }),
+  source: one(experienceCategories, {
+    fields: [experienceKindMemberships.sourceId],
+    references: [experienceCategories.id],
+  }),
 }));
 
 export const experienceRegionsRelations = relations(experienceRegions, ({ one }) => ({
