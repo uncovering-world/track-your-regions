@@ -5,7 +5,7 @@
  * The two axes ADR-0020 defined are statements about the world: `former` says
  * the source stopped listing the object, `lost` says it no longer exists.
  * Neither is true of the British Museum, which stands open and which Wikidata
- * goes on listing — what changed is that *Top Art Museums* holds art museums
+ * goes on listing — what changed is that *Art Museums* holds art museums
  * and that one is an archaeological collection. One column cannot say both, so
  * this is a third axis rather than a third value.
  *

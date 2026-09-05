@@ -335,6 +335,16 @@ duplicate entry from the stored proposals; 124 of 1,685 public-art proposals on 
 development catalogue carried both). Guarded on the column's current name, so re-running it
 on a database already renamed changes nothing (#814, Epic #815).
 
+`045-the-museum-row-reads-art-museums.sql` renames the museum source row from "Top Art Museums"
+— the works-first selection rule's name — to "Art Museums", the kind's name a reader browses by
+(ADR-0045 decision 8, #818). Every surface that shows the row's name follows without a code
+change; `01-schema.sql` seeds the new name, while its `requires_curation` guard keeps the old
+one on purpose — a database that reaches that guard predates migration 018 and this file alike.
+It runs before the next re-application of `01-schema.sql`, whose seed would otherwise
+add a second museum row beside one still carrying the old name — and a database found in
+that state is refused with an error rather than renamed around, so the duplicate is removed
+by hand before the file is run again.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the

@@ -33,7 +33,7 @@ const mockedCounts = waitingCountsByCategory as unknown as ReturnType<typeof vi.
 
 const SOURCES = [
   { id: 1, name: 'UNESCO World Heritage Sites', is_active: true, requires_curation: false },
-  { id: 2, name: 'Top Art Museums', is_active: true, requires_curation: true },
+  { id: 2, name: 'Art Museums', is_active: true, requires_curation: true },
 ];
 
 function makeRes() {
@@ -90,7 +90,7 @@ describe('getCategories', () => {
     // sync. `null` rather than zeros, because a zero is a claim about the source and
     // nothing checked it — the same reason `heldLeftForReview` is nullable.
     expect(payload).toHaveLength(2);
-    expect(payload[1].name).toBe('Top Art Museums');
+    expect(payload[1].name).toBe('Art Museums');
     expect(payload[0].waiting).toBeNull();
     expect(payload[1].waiting).toBeNull();
     expect(errorSpy).toHaveBeenCalled();

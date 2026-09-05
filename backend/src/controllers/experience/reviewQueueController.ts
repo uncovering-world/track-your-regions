@@ -44,7 +44,7 @@ import { withDangerFields } from './experienceDanger.js';
  *   on, and the exception to the page's usual promise that nothing has changed
  *   what visitors see. It sits apart from the first kind because none of those
  *   three verdicts is true of it: the British Museum is open, so not `lost`; it
- *   was never a legitimate member of *Top Art Museums*, so not `former`; and the
+ *   was never a legitimate member of *Art Museums*, so not `former`; and the
  *   refusal was right, so not a false alarm. Its two answers are its own.
  * - **arrived from a gated source, and nobody has looked** — `curation_state =
  *   'pending'` (ADR-0025). Readers see nothing at this address; a curator sees

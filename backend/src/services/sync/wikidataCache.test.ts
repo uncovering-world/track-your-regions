@@ -41,7 +41,7 @@ describe('CACHED_KINDS_BY_CATEGORY', () => {
   });
 });
 
-/** Top Art Museums — every question here belongs to one source. */
+/** Art Museums — every question here belongs to one source. */
 const MUSEUM = 2;
 
 const ROWS = [{ w: { value: 'http://www.wikidata.org/entity/Q19675' } }];
