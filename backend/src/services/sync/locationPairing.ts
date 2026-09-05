@@ -131,7 +131,7 @@ export function claimedPointSql(alias: string): string {
 /**
  * The opening of a `CASE` that keeps a stored value a curator has claimed.
  *
- * The same guard `syncUtils` puts on an experience's columns (#488), one level
+ * The same guard `experienceUpsert.ts` puts on an experience's columns (#488), one level
  * down: a point is a thing a curator can be right about, and before this every
  * arm in `locationWriter.ts` wrote the source's name and coordinate over
  * whatever they had decided, on the next run, silently.

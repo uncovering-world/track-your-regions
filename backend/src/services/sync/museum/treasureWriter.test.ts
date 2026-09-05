@@ -21,10 +21,17 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../../db/index.js', () => ({
-  pool: { query: vi.fn() },
-  db: {},
-}));
+vi.mock('../../../db/index.js', () => {
+  const query = vi.fn();
+  return {
+    // The membership writes at the end run on a client of their own, holding
+    // the museum's lock (`db/locks.ts`). It answers through the same `query`,
+    // so a scripted run and the pointer assertions read one stream.
+    pool: { query, connect: vi.fn(async () => ({ query, release: vi.fn() })) },
+    rollbackQuietly: vi.fn(),
+    db: {},
+  };
+});
 
 vi.mock('../curationDecay.js', () => ({
   retirePassAfterNewContent: vi.fn(),
@@ -37,7 +44,7 @@ vi.mock('./linkWithdrawal.js', () => ({
   reconcileLinks: vi.fn().mockResolvedValue({ returned: [], withdrawn: [] }),
 }));
 
-import { pool } from '../../../db/index.js';
+import { pool, rollbackQuietly } from '../../../db/index.js';
 import { retirePassAfterNewContent } from '../curationDecay.js';
 import { reconcileLinks } from './linkWithdrawal.js';
 import { treasureMetadata, upsertMuseumTreasures as writeTreasures } from './treasureWriter.js';
@@ -46,6 +53,19 @@ import type { ProcessedContent } from '../types.js';
 import type { ImageCredit, StoredCredit } from '../imageCredit.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
+const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
+const mockedRollback = rollbackQuietly as unknown as ReturnType<typeof vi.fn>;
+/** The client the last transaction ran on — its `release` says how it ended. */
+const lastClient = async () => await mockedConnect.mock.results.at(-1)?.value;
+/** Every statement the writer sent, on the pool or on its transaction's client, in order. */
+const sentSql = () => mockedQuery.mock.calls.map(c => String(c[0]));
+
+beforeEach(() => {
+  // Calls, not the implementation: a test that expects no transaction must not
+  // see the one the previous test opened.
+  mockedConnect.mockClear();
+  mockedRollback.mockReset();
+});
 
 /**
  * What a run with nothing to say about photographs hands in.
@@ -308,7 +328,25 @@ describe('new works retire the pass that covered the museum', () => {
     await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
 
     expect(mockedRetire).toHaveBeenCalledTimes(1);
-    expect(mockedRetire).toHaveBeenCalledWith(pool, EXPERIENCE_ID);
+    // On the client holding the museum's lock, never the pool: the decay
+    // chooses rows by their state, and a statement on the pool would choose
+    // them under a snapshot older than the lock it waited for (`db/locks.ts`).
+    expect(mockedRetire).toHaveBeenCalledWith(await lastClient(), EXPERIENCE_ID);
+    const sql = sentSql();
+    const lock = sql.indexOf('SELECT id FROM experiences WHERE id = $1 FOR NO KEY UPDATE');
+    expect(sql.indexOf('BEGIN')).toBeLessThan(lock);
+    expect(lock).toBeLessThan(sql.indexOf('COMMIT'));
+    expect(mockedQuery.mock.calls[lock][1]).toEqual([EXPERIENCE_ID]);
+    expect((await lastClient()).release).toHaveBeenCalledWith(undefined);
+  });
+
+  it('opens no transaction for a museum that gained nothing and holds nothing', async () => {
+    scriptWorks('already linked');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
+
+    expect(mockedConnect).not.toHaveBeenCalled();
+    expect(sentSql()).not.toContain('BEGIN');
   });
 
   it('retires nothing when every work was already on show', async () => {
@@ -640,7 +678,6 @@ describe('a visible work under a gated source', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'The Wine Glass', was_held: wasHeld }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
   }
-  const sentSql = () => mockedQuery.mock.calls.map(c => String(c[0]));
 
   beforeEach(() => {
     mockedQuery.mockReset();
@@ -695,6 +732,37 @@ describe('a visible work under a gated source', () => {
     expect(pointer).toBeDefined();
     const call = mockedQuery.mock.calls.find(c => POINTER.test(String(c[0])));
     expect(call?.[1]).toEqual([EXPERIENCE_ID, 42]);
+    // Under the museum's lock, taken first in a statement of its own, and
+    // released by COMMIT: a lock folded into the UPDATE would choose the
+    // membership under the pre-wait snapshot (`db/locks.ts`).
+    const sql = sentSql();
+    const begin = sql.indexOf('BEGIN');
+    const lock = sql.indexOf('SELECT id FROM experiences WHERE id = $1 FOR NO KEY UPDATE');
+    const pointerAt = sql.findIndex(s => POINTER.test(s));
+    expect(begin).toBeGreaterThanOrEqual(0);
+    expect(lock).toBeGreaterThan(begin);
+    expect(pointerAt).toBeGreaterThan(lock);
+    expect(sql.indexOf('COMMIT')).toBeGreaterThan(pointerAt);
+    expect(mockedQuery.mock.calls[lock][1]).toEqual([EXPERIENCE_ID]);
+  });
+
+  it('rolls back and rethrows when the pointer cannot be written, releasing the client as marked', async () => {
+    scriptHeld(true);
+    const failure = new Error('deadlock detected');
+    mockedQuery.mockImplementation(async (sql: string) => {
+      if (POINTER.test(sql)) throw failure;
+      return { rows: [] };
+    });
+    mockedRollback.mockResolvedValueOnce(failure);
+
+    await expect(upsertMuseumTreasures(EXPERIENCE_ID, [offer()])).rejects.toBe(failure);
+
+    const client = await lastClient();
+    expect(mockedRollback).toHaveBeenCalledWith(client);
+    expect(sentSql()).not.toContain('COMMIT');
+    // What rollbackQuietly hands back is what release is told: a client whose
+    // ROLLBACK also failed must be destroyed, not pooled.
+    expect(client.release).toHaveBeenCalledWith(failure);
   });
 
   it('carries the new picture\'s credit beside a held picture, so publishing can credit it', async () => {

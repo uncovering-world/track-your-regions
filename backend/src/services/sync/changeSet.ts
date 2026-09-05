@@ -96,7 +96,7 @@ const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
  * proposal was computed against the moment somebody published the field beside
  * it.
  *
- * `syncUtils.ts` writes these keys past the gate for the same reason
+ * `experienceUpsert.ts` writes these keys past the gate for the same reason
  * `last_seen_at` goes past it, and the two halves have to agree. Ignored in the
  * diff but refused by the write would leave the counter frozen at whatever it
  * read when the gate went up — which is exactly what the Louvre's stored 2363
@@ -114,20 +114,19 @@ const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
  * named. `sitelinksCount` on a landmark is the same measurement as the museums'
  * sum, one object up — how many Wikipedia editions have an article, which is
  * what the import ranks by; sixteen of its moves had reached curators' cards.
- * `admittedFor` was held out on purpose the first time, as "the reason the row
- * exists and worth a look when it changes" — but it is the work with the most
- * language links among the ones the pass placed, no reader sees it, and the
- * look it was kept for is already taken by the admission rule itself, which is
- * re-run against live data every pass and files a refusal card the moment a
- * museum stops qualifying. A curator has no decision on the name of the work
- * that did the qualifying. `wikidataClasses` and `wikidataArtwork` on a
- * landmark are the same shape one source over (#754): every class the
- * public-art rule read, and whether an artwork class answered it, kept so
- * that Catalogue Checks can ask what an admitted row is typed as; the rule
- * re-reads them every run and files its own refusal when they stop passing.
+ * `admittedFor` was one of them — "the reason the row exists", the work with
+ * the most language links among the ones the pass placed, which no reader sees
+ * and which the admission rule re-decides every pass — until #822 moved it
+ * off the row altogether: it is what the kind says about the place, so it is
+ * written on the membership (`admitted_for`) and never enters metadata or
+ * this diff. `wikidataClasses` and `wikidataArtwork` on a landmark are the
+ * same shape one source over (#754): every class the public-art rule read,
+ * and whether an artwork class answered it, kept so that Catalogue Checks can
+ * ask what an admitted row is typed as; the rule re-reads them every run and
+ * files its own refusal when they stop passing.
  */
 export const SYNC_OWNED_METADATA_KEYS = [
-  'artworkCount', 'totalArtworkSitelinks', 'sitelinksCount', 'admittedFor',
+  'artworkCount', 'totalArtworkSitelinks', 'sitelinksCount',
   'wikidataClasses', 'wikidataArtwork',
 ] as const;
 
@@ -161,7 +160,7 @@ function sameMetadataValue(key: string, before: unknown, after: unknown): boolea
 
 /**
  * The `curated_fields` prefix for a per-key metadata claim (`metadata.website`,
- * never `metadata` itself). The upsert's SQL guard in `syncUtils.ts` parses the
+ * never `metadata` itself). The upsert's SQL guard in `experienceUpsert.ts` parses the
  * same claims out of the same column and needs the identical prefix to find
  * them and to know how many characters to strip off the front -- one constant
  * shared by both, instead of the same literal spelled out independently in
@@ -219,7 +218,7 @@ export const CURATED_KEY_BY_FIELD: Record<string, string> = {
  * every `metadata.*` to `metadata` would answer a whole-column question of a
  * per-key claim. Nothing claims one language of `name_local`: the upsert's guard
  * is `curated_fields ? 'name_local'` and keeps or replaces the map whole
- * (`syncUtils.ts`), and no editor writes the column at all, so the claim on a
+ * (`experienceUpsert.ts`), and no editor writes the column at all, so the claim on a
  * language is the claim on all of them.
  *
  * Read in two runtimes. `claimKeyFor` below is one; the queue's conflict SQL is
@@ -268,7 +267,7 @@ interface RawDiff {
    * Every field but a metadata key answers this from `curated_fields` and
    * `claimKeyFor`. A metadata key cannot: the upsert re-applies a per-key claim
    * only while the stored row still carries that key (`experiences.metadata ?
-   * claimed.k` in `syncUtils.ts`), so an orphaned claim falls through and the
+   * claimed.k` in `experienceUpsert.ts`), so an orphaned claim falls through and the
    * source's value lands — filing it as a conflict would offer a curator
    * "accept" on a value already applied. And a claim on the whole column
    * protects every key under it, which no per-key name matches. Both are facts
@@ -290,7 +289,7 @@ interface RawDiff {
    * by key over a column the claim covers; the claimed-key re-application there
    * filters on the same prefix and restores nothing. Reachable only for a claim
    * made *after* the run, since a claim standing at diff time holds every key.
-   * So `syncUtils.ts` still keeps the column whole on `curated_fields ?
+   * So `experienceUpsert.ts` still keeps the column whole on `curated_fields ?
    * 'metadata'` while publishing no longer does — which is why this flag's
    * answer stops at the diff.
    *
@@ -455,7 +454,7 @@ function metadataChanges(
   //
   // The filter mirrors the guard's own condition, not just its key: the SQL
   // only re-applies a claimed key when the stored row still carries it
-  // (`experiences.metadata ? claimed.k` in syncUtils.ts). That is key presence,
+  // (`experiences.metadata ? claimed.k` in experienceUpsert.ts). That is key presence,
   // not value truth — `'{"a":null}'::jsonb ? 'a'` is true — so a curator who
   // deliberately cleared a value and still claims it stays protected. `hasOwn`
   // is presence too, which is what makes the two sides agree; a truthiness test
@@ -619,7 +618,7 @@ function collectDifferences(
  *
  * `held` is the statement's own answer, not a rule re-applied here: the hold is
  * decided in SQL, against the stored row as the write locked it, and
- * `syncUtils.ts` hands that answer back (`was_held`). Re-deriving it on this side
+ * `experienceUpsert.ts` hands that answer back (`was_held`). Re-deriving it on this side
  * is what let the write and the report disagree about one run — see the note on
  * `RETURNING` there.
  */

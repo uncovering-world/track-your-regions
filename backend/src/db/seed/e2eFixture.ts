@@ -12,6 +12,7 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../index.js';
 import {
   experienceCategories,
+  experienceKindMemberships,
   experienceLocationRegions,
   experienceLocations,
   experienceRegions,
@@ -63,7 +64,7 @@ export async function seedE2eFixture(): Promise<void> {
     await tx.delete(worldViews).where(eq(worldViews.id, E2E_WORLD_VIEW_ID));
 
     const [category] = await tx
-      .select({ id: experienceCategories.id })
+      .select({ id: experienceCategories.id, kindId: experienceCategories.kindId })
       .from(experienceCategories)
       .where(eq(experienceCategories.name, UNESCO_CATEGORY_NAME));
     if (!category) {
@@ -102,7 +103,7 @@ export async function seedE2eFixture(): Promise<void> {
       // Unlike regions.geom, experiences.location and experience_locations.location
       // are NOT NULL, so an insert-then-update split fails on the insert itself.
       // Scalars and geometry therefore go in together, in one raw statement -
-      // the same split `upsertExperienceRecord` (services/sync/syncUtils.ts)
+      // the same split `upsertExperienceRecord` (services/sync/experienceUpsert.ts)
       // already uses for this exact NOT NULL constraint. sql.identifier()
       // resolves each scalar column name from the Drizzle model, so renaming
       // or dropping any of them still fails `npm run typecheck` even though
@@ -120,6 +121,19 @@ export async function seedE2eFixture(): Promise<void> {
               ST_SetSRID(ST_MakePoint(${exp.lon}, ${exp.lat}), 4326)
             )`,
       );
+
+      // The place's membership in the kind its source fills (#822). Without
+      // it every reader-facing read hides the place — not refused, not
+      // unread, simply never asked — and the smoke lane's region list is
+      // empty while nothing says why. Admitted and published, the way a
+      // trusted source's arrival is.
+      await tx.insert(experienceKindMemberships).values({
+        experienceId: exp.id,
+        kindId: category.kindId,
+        sourceId: category.id,
+        curationState: 'auto',
+        publishedAt: new Date(),
+      });
 
       const [location] = (
         await tx.execute<{ id: number }>(

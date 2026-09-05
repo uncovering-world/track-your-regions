@@ -167,7 +167,7 @@ export async function writeExperienceLocations(
    * between the check and the write. Evaluated inside the keeping arm on the
    * row it locked, and again in that arm's RETURNING, so the report cannot
    * disagree with the write about whether the write happened (`heldSql` in
-   * syncUtils.ts, and the reason it answers for itself: #519).
+   * experienceUpsert.ts, and the reason it answers for itself: #519).
    *
    * One column only. `location` is deliberately outside it: a kept row is
    * within ten metres of the source's point, which is the same place written
@@ -375,7 +375,7 @@ export async function writeExperienceLocations(
     //
     // `source_membership` is restored here as well as in the `returned` arm, and that
     // is what makes this the analogue of the experience upsert rather than a narrower
-    // copy of it: `syncUtils.ts` writes `present` unconditionally, so a still-listed
+    // copy of it: `experienceUpsert.ts` writes `present` unconditionally, so a still-listed
     // object carrying `former` is corrected on the next run. Gated on the flag, the
     // restore would reach a flagged row only, and a `former` written on an offered
     // point would be permanent (ADR-0021, and ADR-0026 decision 6, which states the
@@ -442,7 +442,7 @@ export async function writeExperienceLocations(
     // back for placement rather than being reported as unchanged.
     //
     // `source_membership` comes back with it, in the one direction, exactly as the
-    // experience upsert does it (`syncUtils.ts`, ADR-0021): the source listing a
+    // experience upsert does it (`experienceUpsert.ts`, ADR-0021): the source listing a
     // point is evidence about membership, and a curator's `former` was a claim about
     // the source's list that the source has just contradicted. Without this the row
     // returns visible while still recorded as delisted — and worse, it can never be
