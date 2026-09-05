@@ -145,7 +145,7 @@ function assignmentFor(field: string, value: unknown, bind: (value: unknown) => 
       if (typeof value === 'string' && value !== '' && !isDisplayablePictureUrl(value)) return null;
       return `${column} = ${bind(value)}`;
     default:
-      // name, description, short_description, category, country_codes,
+      // name, description, short_description, type, country_codes,
       // country_names. No cast: Postgres infers each parameter's type from the
       // column it is assigned to, which is how the two varchar arrays reach
       // `VARCHAR(10)[]` and `VARCHAR(255)[]` without this code having to know

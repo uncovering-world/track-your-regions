@@ -373,7 +373,9 @@ export function transformRecord(
     nameLocal: buildMultilingualNames(record),
     description: null, // UNESCO API doesn't provide full description
     shortDescription: record.short_description_en || null,
-    category: normalizeCategory(record.category),
+    // UNESCO's own field is called `category`; on our side it is the type within
+    // the World Heritage kind — cultural, natural or mixed (ADR-0045, #814).
+    type: normalizeCategory(record.category),
     tags: buildUnescoTags(record),
     lat: point.lat,
     lon: point.lon,
@@ -399,7 +401,7 @@ async function upsertExperience(
     nameLocal: exp.nameLocal,
     description: exp.description,
     shortDescription: exp.shortDescription,
-    category: exp.category,
+    type: exp.type,
     tags: exp.tags,
     lon: exp.lon,
     lat: exp.lat,

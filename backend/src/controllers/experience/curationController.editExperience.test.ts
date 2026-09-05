@@ -421,15 +421,15 @@ describe('editExperience and an emptied field', () => {
     expect(JSON.parse(String(patch))).toEqual({ imageCredit: null });
   });
 
-  it('stores a cleared description and category as NULL', async () => {
-    queueQueries({ lockedCurated: [], lockedRow: { short_description: 'A valley', category: 'cultural' } });
+  it('stores a cleared description and type as NULL', async () => {
+    queueQueries({ lockedCurated: [], lockedRow: { short_description: 'A valley', type: 'cultural' } });
 
-    await editWith({ shortDescription: '', category: '' }).done;
+    await editWith({ shortDescription: '', type: '' }).done;
 
     expect(stored('short_description')).toBeNull();
-    expect(stored('category')).toBeNull();
-    expect(claims()).toEqual(expect.arrayContaining(['short_description', 'category']));
-    expect(audited().category).toEqual({ old: 'cultural', new: null });
+    expect(stored('type')).toBeNull();
+    expect(claims()).toEqual(expect.arrayContaining(['short_description', 'type']));
+    expect(audited().type).toEqual({ old: 'cultural', new: null });
   });
 
   it('writes a cleared picture and a new name in the one save that carried both', async () => {

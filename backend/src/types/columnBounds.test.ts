@@ -316,11 +316,11 @@ const CASES: BoundCase[] = [
     build: (value) => ({ name: value }),
   },
   {
-    field: 'editExperienceBodySchema.category',
+    field: 'editExperienceBodySchema.type',
     schema: editExperienceBodySchema,
     table: 'experiences',
-    column: 'category',
-    build: (value) => ({ category: value }),
+    column: 'type',
+    build: (value) => ({ type: value }),
   },
   {
     field: 'editExperienceBodySchema.imageUrl',
@@ -346,11 +346,11 @@ const CASES: BoundCase[] = [
     build: (value) => manualExperience({ name: value }),
   },
   {
-    field: 'createManualExperienceBodySchema.category',
+    field: 'createManualExperienceBodySchema.type',
     schema: createManualExperienceBodySchema,
     table: 'experiences',
-    column: 'category',
-    build: (value) => manualExperience({ category: value }),
+    column: 'type',
+    build: (value) => manualExperience({ type: value }),
   },
   {
     field: 'createManualExperienceBodySchema.imageUrl',

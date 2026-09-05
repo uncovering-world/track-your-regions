@@ -133,7 +133,7 @@ describe('syncLandmarks', () => {
     await config.processItem(landmark({ classes: ['Q4989906', 'Q893745'], type: 'monument', artwork: false }), progress(), context);
 
     const params = mockedUpsert.mock.calls[0][0];
-    expect(params.category).toBe('monument');
+    expect(params.type).toBe('monument');
     expect(params.tags).toEqual(['outdoor', 'monument']);
     expect(params.metadata).toMatchObject({
       wikidataQid: 'Q337179',

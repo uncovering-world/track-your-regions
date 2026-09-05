@@ -41,9 +41,9 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
     conditions.push(`e.category_id = $${paramIndex++}`);
     params.push(parseInt(String(query.categoryId)));
   }
-  if (query.category) {
-    conditions.push(`e.category = $${paramIndex++}`);
-    params.push(String(query.category));
+  if (query.type) {
+    conditions.push(`e.type = $${paramIndex++}`);
+    params.push(String(query.type));
   }
   if (query.regionId) {
     // The roll-up says where an object's points are, including the ones a
@@ -119,7 +119,7 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
  *
  * Query params:
  * - sourceId: Filter by source
- * - category: Filter by category (cultural, natural, mixed)
+ * - type: Filter by the type within the kind (cultural, natural, mixed; monument, sculpture)
  * - regionId: Filter by region
  * - search: Search by name
  * - limit: Max results (default 50, max 5000)
@@ -141,7 +141,9 @@ export async function listExperiences(req: Request, res: Response): Promise<void
       e.external_id,
       e.name,
       e.short_description,
-      e.category,
+      e.type,
+      -- The kind, by its source row: what a colour is decided by (#814).
+      e.category_id,
       e.country_codes,
       e.country_names,
       e.image_url,
@@ -203,7 +205,7 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
       e.name_local,
       e.description,
       e.short_description,
-      e.category,
+      e.type,
       -- No tags: labels the import derives from facts the row already carries by
       -- name, rendered by nothing, and since #570 written past the curation gate
       -- -- which they can be only while no reader-facing read returns them.
@@ -406,7 +408,7 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
         e.id,
         e.name,
         e.short_description,
-        e.category,
+        e.type,
         e.category_id,
         e.country_names,
         e.image_url,
@@ -440,7 +442,7 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
       m.id,
       m.name,
       m.short_description,
-      m.category,
+      m.type,
       m.category_id,
       m.country_names,
       m.image_url,
