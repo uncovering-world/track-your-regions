@@ -677,6 +677,23 @@ describe('getReviewQueue', () => {
     }
   });
 
+  it('names each unread work by its own id, so the card can open it', async () => {
+    // The contents card lists the works waiting under a museum, and a curator
+    // deciding about twelve unread paintings needs somewhere to look each one up.
+    // The id is the work's Wikidata item, which is where the name links to and
+    // what the article link is resolved from (#806).
+    const sql = await capturedQueueSql('contents');
+    // One contiguous pattern over the works projection rather than two fragments
+    // that could each be satisfied elsewhere in the statement: the id is a key of
+    // the object every `pending_works` row is built from — the aggregate ordered
+    // by fame is the works lateral's own, the points' orders by ordinal — and it
+    // is read off the subquery that selects the treasure's columns.
+    expect(sql).toMatch(
+      /'iconic', is_iconic,\s*(?:--[^\n]*\n\s*)*'externalId', external_id\s*\)\s*ORDER BY sitelinks_count DESC NULLS LAST, id\)/,
+    );
+    expect(sql).toMatch(/t\.is_iconic, t\.sitelinks_count, t\.external_id,/);
+  });
+
   it('limits a curator to what their scope reaches, for each of the three new kinds', async () => {
     // The weak `curator_scoped_regions` check above is satisfied by the CTE
     // prelude alone, which every query carries whether or not it is actually

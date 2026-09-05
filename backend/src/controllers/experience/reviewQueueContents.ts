@@ -215,7 +215,11 @@ export async function queryContents(
                'artistsCurated', artists_curated,
                'year', year,
                'imageUrl', image_url,
-               'iconic', is_iconic
+               'iconic', is_iconic,
+               -- The source's own id, so the row can open the work where it came
+               -- from and at its article: a curator deciding about twelve unread
+               -- paintings needs somewhere to look each one up (#806).
+               'externalId', external_id
              ) ORDER BY sitelinks_count DESC NULLS LAST, id)
                FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
       FROM (
@@ -224,7 +228,7 @@ export async function queryContents(
         -- is a question. A work turned down globally leaves every venue at once,
         -- which is why the two are separate columns (ADR-0025).
         SELECT t.id, t.name, t.artists, t.curated_fields ? 'artists' AS artists_curated,
-               t.year, t.image_url, t.is_iconic, t.sitelinks_count,
+               t.year, t.image_url, t.is_iconic, t.sitelinks_count, t.external_id,
                row_number() OVER (ORDER BY t.sitelinks_count DESC NULLS LAST, t.id) AS rn
         FROM experience_treasures et
         JOIN treasures t ON t.id = et.treasure_id
