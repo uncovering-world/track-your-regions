@@ -44,7 +44,9 @@ import {
   unmarkAllLocationsVisited,
   unmarkLocationVisited,
 } from './experienceLocationController.js';
-import { offeredToReaderSql } from './experienceLifecycle.js';
+import {
+  experienceOfferedToReaderSql, hidePendingSql, hideRefusedSql, offeredToReaderSql,
+} from './experienceLifecycle.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -143,7 +145,7 @@ describe('reads that show a point', () => {
     // a `pending` experience is reachable by every column on the location
     // row itself, so only this container predicate, from `lifecycleFilter`'s
     // `hidePendingSql()`, keeps that pin off the map.
-    expect(locationRead()).toMatch(/e\.curation_state <> 'pending'/);
+    expect(locationRead()).toContain(hidePendingSql('e'));
   });
 
   it('leaves it out whether or not the region asks for its children', async () => {
@@ -221,8 +223,9 @@ describe('a visit outlives the point', () => {
     // "cannot have been visited" — true only if nothing can create that
     // visit. This query is the thing that does, for every location it
     // selects at once, so both the container's state and the location's own
-    // have to be checked before any of them is written.
-    expect(locationRead()).toMatch(/e\.curation_state <> 'pending'/);
+    // have to be checked before any of them is written. The container's two
+    // questions are asked of one membership together (#822).
+    expect(locationRead()).toContain(experienceOfferedToReaderSql('e'));
     expect(locationRead()).toMatch(/el\.curation_state <> 'pending'/);
   });
 
@@ -235,7 +238,7 @@ describe('a visit outlives the point', () => {
 
     // Two branches build this query; one being right proves nothing about
     // the other; see the note on the unregioned branch just above.
-    expect(locationRead()).toMatch(/e\.curation_state <> 'pending'/);
+    expect(locationRead()).toContain(experienceOfferedToReaderSql('e'));
     expect(locationRead()).toMatch(/el\.curation_state <> 'pending'/);
   });
 
@@ -379,7 +382,7 @@ describe('the single-mark write and the visited-ids read — #520', () => {
     expect(mockedQuery).toHaveBeenCalledTimes(1);
 
     const [sql] = mockedQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toMatch(/e\.curation_state <> 'pending'/);
+    expect(sql).toContain(experienceOfferedToReaderSql('e'));
     expect(sql).toMatch(/el\.curation_state <> 'pending'/);
   });
 
@@ -396,8 +399,8 @@ describe('the single-mark write and the visited-ids read — #520', () => {
     // traveller's own record. Three of them were missing when the gate was
     // added, which is how that disagreement arrived (#520).
     const [sql] = mockedQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql, 'a refused experience keeps its ticks').toMatch(/e\.admission <> 'refused'/);
-    expect(sql, 'an unread experience keeps its ticks').toMatch(/e\.curation_state <> 'pending'/);
+    expect(sql, 'a refused experience keeps its ticks').toContain(hideRefusedSql('e'));
+    expect(sql, 'an unread experience keeps its ticks').toContain(hidePendingSql('e'));
     expect(sql, 'a withdrawn point keeps its tick').toMatch(/el\.missing_since IS NULL/);
     expect(sql, 'an unread point keeps its tick').toMatch(/el\.curation_state <> 'pending'/);
   });
@@ -419,8 +422,8 @@ describe('the single-mark write and the visited-ids read — #520', () => {
     // uses, the numerator uses too. A predicate added to one and forgotten on
     // the other fails here rather than in someone's progress bar.
     for (const fragment of [
-      "e.admission <> 'refused'",
-      "e.curation_state <> 'pending'",
+      hideRefusedSql('e'),
+      hidePendingSql('e'),
       'el.missing_since IS NULL',
       "el.curation_state <> 'pending'",
     ]) {
@@ -545,7 +548,7 @@ describe('the by-id reads and a refused row', () => {
     // — coordinates, ordinals, a `totalLocations` — while `/:id` and
     // `/:id/locations` both answered 404. Anchored on the alias, as the
     // query-controller table is.
-    expect(locationRead()).toMatch(/e\.admission <> 'refused'/);
+    expect(locationRead()).toContain(hideRefusedSql('e'));
     // Inner, and that word is load-bearing: a LEFT JOIN carrying the same
     // predicate parses, runs, and hands back every row — it would only null out
     // columns nothing here selects.
@@ -581,7 +584,7 @@ describe('the by-id reads and a refused row', () => {
     // ADR-0025 widens — a curator viewing their own visited status gets the
     // same denominator as anyone else, unconditionally, on both the container
     // and the point.
-    expect(locationRead()).toMatch(/e\.curation_state <> 'pending'/);
+    expect(locationRead()).toContain(hidePendingSql('e'));
     expect(locationRead()).toMatch(/el\.curation_state <> 'pending'/);
     expect(locationRead()).not.toMatch(/::boolean OR/);
   });
@@ -609,7 +612,7 @@ describe('the by-id relaxation on /:id/locations', () => {
     // scope check nobody asked for.
     expect(mockedQuery).toHaveBeenCalledTimes(2);
     const [existenceSql, existenceParams] = mockedQuery.mock.calls[0] as [string, unknown[]];
-    expect(existenceSql).toMatch(/\$2::boolean OR e\.curation_state <> 'pending'/);
+    expect(existenceSql).toContain(`$2::boolean OR ${hidePendingSql('e')}`);
     expect(existenceParams).toEqual([1, false]);
 
     const [listSql, listParams] = mockedQuery.mock.calls[1] as [string, unknown[]];

@@ -13,6 +13,7 @@ import {
   getExperienceRegionCounts,
   listCategories,
 } from './experienceQueryController.js';
+import { hidePendingSql, hideRefusedSql } from './experienceLifecycle.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -131,7 +132,7 @@ describe('getExperience curation relaxation', () => {
     // a scope check nobody needs.
     expect(mockedQuery).toHaveBeenCalledTimes(2);
     const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toMatch(/\$2::boolean OR e\.curation_state <> 'pending'/);
+    expect(sql).toContain(`$2::boolean OR ${hidePendingSql('e')}`);
     expect(params).toEqual([281, false]);
   });
 
@@ -293,7 +294,7 @@ describe('lifecycle visibility across the read paths', () => {
       await run();
 
       const all = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
-      expect(all).toMatch(/e\.admission <> 'refused'/);
+      expect(all).toContain(hideRefusedSql('e'));
     });
   }
 
@@ -312,7 +313,7 @@ describe('lifecycle visibility across the read paths', () => {
       // in this loop is authenticated: the predicate is what a curator's
       // scope widens (Step 5), not something absent until then.
       const list = String(mockedQuery.mock.calls[0][0]);
-      expect(list).toMatch(/e\.curation_state <> 'pending'/);
+      expect(list).toContain(hidePendingSql('e'));
     });
   }
 
@@ -353,8 +354,8 @@ describe('lifecycle visibility across the read paths', () => {
     // predicate (`publishedContentSql('el')`), and an unanchored check would
     // pass on that alone even with the container-level gate missing — which
     // is exactly what happened here until this was anchored.
-    expect(list).toMatch(/e\.curation_state <> 'pending'/);
-    expect(count).toMatch(/e\.curation_state <> 'pending'/);
+    expect(list).toContain(hidePendingSql('e'));
+    expect(count).toContain(hidePendingSql('e'));
   });
 
   it('keeps search brackets round the name alternatives', async () => {
@@ -389,14 +390,14 @@ describe('lifecycle visibility across the read paths', () => {
     // control for a state almost no region has is worse than none
     const count = String(mockedQuery.mock.calls[1][0]);
     expect(count).toContain(
-      "FILTER (WHERE e.existence = 'lost' AND e.admission <> 'refused' AND e.curation_state <> 'pending')");
+      `FILTER (WHERE e.existence = 'lost' AND ${hideRefusedSql('e')} AND ${hidePendingSql('e')})`);
     expect(count).toContain('lost_hidden');
     // A refused row is not something the reader is being offered a look at:
     // revealing the lost would not bring it back (ADR-0024). Same for a
     // pending one: `curation_state` has no toggle here, unlike `existence`
     // (ADR-0025), so it rides along in both FILTER expressions unconditionally.
     expect(count).toContain(
-      "FILTER (WHERE e.admission <> 'refused' AND e.existence <> 'lost' AND e.curation_state <> 'pending')");
+      `FILTER (WHERE ${hideRefusedSql('e')} AND e.existence <> 'lost' AND ${hidePendingSql('e')})`);
   });
 
   it('counts everything as shown once the caller asked for them', async () => {
@@ -409,7 +410,7 @@ describe('lifecycle visibility across the read paths', () => {
     // curation_state have no toggle, so both survive into a count the caller
     // asked to widen.
     expect(String(mockedQuery.mock.calls[1][0])).toContain(
-      "FILTER (WHERE e.admission <> 'refused' AND e.curation_state <> 'pending')");
+      `FILTER (WHERE ${hideRefusedSql('e')} AND ${hidePendingSql('e')})`);
   });
 
   it('reports nothing hidden once it is showing them', async () => {

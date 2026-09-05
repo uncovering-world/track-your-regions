@@ -60,6 +60,7 @@ import {
   offeredToReaderSql,
   publishedContentSql,
 } from '../../experience/experienceLifecycle.js';
+import { MEMBERSHIPS } from '../../../db/membership.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import { heldFieldRefusedSql, heldPartRefusedSql } from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '../../../services/sync/changeSet.js';
@@ -522,11 +523,14 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
   // the other, from the same module the queue and the count compose.
   sql: `SELECT 'object' AS holder, e.id AS row_id, e.name AS row_name,
                split_part(split_part(e.image_url, '//', 2), '/', 1) AS host,
-               (${heldWaitingSql('e')}
-                AND EXISTS (SELECT 1 FROM experience_sync_changes ch
+               -- Through the membership, whose pointer names the run (#822).
+               EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m
+                        WHERE m.experience_id = e.id
+                          AND ${heldWaitingSql('e', 'm')}
+                          AND EXISTS (SELECT 1 FROM experience_sync_changes ch
                             CROSS JOIN LATERAL jsonb_array_elements(ch.changed_fields) AS f
                              WHERE ch.experience_id = e.id
-                               AND ch.sync_log_id = e.pending_change_sync_log_id
+                               AND ch.sync_log_id = m.pending_change_sync_log_id
                                AND (f->>'held')::boolean
                                AND NOT ${heldFieldRefusedSql('e.id')}
                                -- Both record shapes, because both are live. Since
@@ -567,8 +571,9 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                EXISTS (SELECT 1
                          FROM experience_treasures et
                          JOIN experiences e ON e.id = et.experience_id
+                         JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
                          JOIN experience_sync_changes ch ON ch.experience_id = e.id
-                                                        AND ch.sync_log_id = e.pending_change_sync_log_id
+                                                        AND ch.sync_log_id = m.pending_change_sync_log_id
                          CROSS JOIN LATERAL jsonb_array_elements(
                            COALESCE(ch.contents -> 'treasures' -> 'changed', '[]'::jsonb)) AS c
                          CROSS JOIN LATERAL jsonb_array_elements(c -> 'fields') AS f
@@ -578,7 +583,7 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                           -- pointer while the held card hides it, and keyed on the
                           -- pointer alone this would say "waiting" about a change
                           -- no screen offers to publish.
-                          AND ${heldWaitingSql('e')}
+                          AND ${heldWaitingSql('e', 'm')}
                           AND c -> 'item' ->> 'ref' = t.external_id
                           AND f ->> 'field' = 'metadata.imageCredit'
                           AND (f->>'held')::boolean

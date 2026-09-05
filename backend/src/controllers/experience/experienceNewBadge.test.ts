@@ -15,6 +15,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
+import { placeOfferedSql } from '../../db/membership.js';
 import { isNewSql, NEW_BADGE_PERSONAL_DAYS, markNewBadgesSeen } from './experienceNewBadge.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -26,7 +27,10 @@ function makeRes() {
 describe('isNewSql', () => {
   it('keys off becoming visible, not off the run that found the row', () => {
     const sql = isNewSql();
-    expect(sql).toContain('e.published_at IS NOT NULL');
+    // A place becomes visible in a kind: `published_at` is the membership's
+    // (#822), read through it.
+    expect(sql).toContain('km.published_at IS NOT NULL');
+    expect(sql).toContain('km.experience_id = e.id');
     // The whole of #529: a gated arrival is invisible until a curator answers, so
     // the run that found it is the wrong clock. Two clauses went with the old
     // anchor and must not come back — the `created` changeset proof (which existed
@@ -78,8 +82,11 @@ describe('isNewSql', () => {
     // Interpolated into queries that join several tables, so an unqualified
     // column is an ambiguity error at best and the wrong table's column at worst.
     const sql = isNewSql('x');
-    expect(sql).toContain('x.published_at IS NOT NULL');
-    expect(sql).toContain('c.id = x.category_id');
+    expect(sql).toContain('km.experience_id = x.id');
+    expect(sql).toContain('km.published_at IS NOT NULL');
+    // The window is the membership's source's, not the row's column.
+    expect(sql).toContain('c.id = km.source_id');
+    expect(sql).not.toContain('category_id');
     expect(sql).toContain('v.experience_id = x.id');
     expect(sql).not.toMatch(/(?<![.\w])published_at/);
   });
@@ -124,8 +131,7 @@ describe('markNewBadgesSeen', () => {
     // `existence` stays out, matching the by-id reads — a chip seen on something
     // since lost was still seen.
     const sql = String(mockedQuery.mock.calls[0][0]);
-    expect(sql).toContain("experiences.admission <> 'refused'");
-    expect(sql).toContain("experiences.curation_state <> 'pending'");
+    expect(sql).toContain(placeOfferedSql('experiences'));
     expect(sql).not.toContain('existence');
   });
 

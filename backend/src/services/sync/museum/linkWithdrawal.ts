@@ -21,6 +21,7 @@
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../../db/index.js';
 import { OBJECT_LOCK } from '../../../db/locks.js';
+import { placeOfferedSql } from '../../../db/membership.js';
 import type { ContentItem } from '../types.js';
 
 /** What the two arms compare the museum's links against. */
@@ -115,9 +116,11 @@ async function restore(
  * costs a reader nothing when it goes and is marked at once; so is a link of a
  * work the run places nowhere, whatever unread links of it stand elsewhere.
  *
- * The visibility terms repeat `linkedForReaderSql` and the work's own gate
- * rather than importing them — no service depends on a controller module —
- * and have to track that definition.
+ * The link's and the work's visibility terms repeat `linkedForReaderSql` and
+ * the work's own gate rather than importing them — no service depends on a
+ * controller module — and have to track that definition; the museum's own
+ * offer is the shared `placeOfferedSql` (`db/membership.ts`), which both
+ * layers read.
  */
 async function mark(
   client: PoolClient, experienceId: number, offered: number[], placedElsewhere: string[],
@@ -138,8 +141,7 @@ async function mark(
           AND EXISTS (
             SELECT 1 FROM experiences e
              WHERE e.id = et.experience_id
-               AND e.curation_state <> 'pending'
-               AND e.admission <> 'refused'
+               AND ${placeOfferedSql('e')}
           )
           -- ...of a work this run places at another admitted museum...
           AND t.external_id = ANY($3::text[])
@@ -151,8 +153,7 @@ async function mark(
                AND twin.id <> et.id
                AND twin.missing_since IS NULL
                AND twin.curation_state <> 'pending'
-               AND te.curation_state <> 'pending'
-               AND te.admission <> 'refused'
+               AND ${placeOfferedSql('te')}
           )
         )
       RETURNING t.name, t.external_id`,

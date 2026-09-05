@@ -22,6 +22,7 @@ vi.mock('../../../db/index.js', () => ({
 }));
 
 import { pool, rollbackQuietly } from '../../../db/index.js';
+import { placeOfferedSql } from '../../../db/membership.js';
 import { reconcileLinks } from './linkWithdrawal.js';
 
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -195,10 +196,11 @@ describe('the mark', () => {
 
     // Visible: the link, the work, and the museum all past the gate — the
     // same three `getExperienceTreasures` asks, plus the museum's admission.
+    // The museum's two are its membership's since #822, asked through the
+    // shared place-level fragment.
     expect(hold).toContain("et.curation_state <> 'pending'");
     expect(hold).toContain("t.curation_state <> 'pending'");
-    expect(hold).toContain("e.curation_state <> 'pending'");
-    expect(hold).toContain("e.admission <> 'refused'");
+    expect(hold).toContain(placeOfferedSql('e').replace(/\s+/g, ' '));
     // Placed elsewhere *this run*, from the proposal rather than the table:
     // the new museum may be written after this one, so at this museum's turn
     // its link is not there to be found.
@@ -212,8 +214,7 @@ describe('the mark', () => {
     expect(hold).toContain('twin.id <> et.id');
     expect(hold).toContain('twin.missing_since IS NULL');
     expect(hold).toContain("twin.curation_state <> 'pending'");
-    expect(hold).toContain("te.curation_state <> 'pending'");
-    expect(hold).toContain("te.admission <> 'refused'");
+    expect(hold).toContain(placeOfferedSql('te').replace(/\s+/g, ' '));
   });
 
   it('holds nothing that a reader cannot see, and nothing the run places nowhere', async () => {

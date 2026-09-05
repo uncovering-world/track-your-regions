@@ -24,7 +24,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { getVisitedExperiences, markVisited } from './experienceVisitController.js';
-import { experienceOfferedToReaderSql } from './experienceLifecycle.js';
+import { experienceOfferedToReaderSql, hidePendingSql } from './experienceLifecycle.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -48,9 +48,11 @@ describe('markVisited — #520', () => {
     // The composed predicate rather than its two fragments: this handler shipped
     // once carrying `curation_state` alone, and an assertion naming only the
     // fragment it did carry passed the whole time.
+    // Both halves asked of one membership (#822) is the composed fragment's own
+    // shape, pinned where it is spelled (`membership.test.ts`) — not re-derived
+    // here from two substrings that two separate EXISTS, one membership
+    // admitted and another visible, would satisfy just as well.
     expect(sql).toContain(experienceOfferedToReaderSql());
-    expect(sql).toMatch(/e\.admission <> 'refused'/);
-    expect(sql).toMatch(/e\.curation_state <> 'pending'/);
   });
 
   it('404s a row that fails either half, and writes nothing', async () => {
@@ -103,8 +105,8 @@ describe('getVisitedExperiences', () => {
       { query: {}, user: { id: 5 } } as never, makeRes() as never);
 
     const [listSql, countSql] = mockedQuery.mock.calls.map(c => String(c[0]));
-    expect(listSql, 'the list').toMatch(/e\.curation_state <> 'pending'/);
-    expect(countSql, 'the count').toMatch(/e\.curation_state <> 'pending'/);
+    expect(listSql, 'the list').toContain(hidePendingSql('e'));
+    expect(countSql, 'the count').toContain(hidePendingSql('e'));
     // Deliberately unfiltered on the other three, on both statements: a
     // traveller's own history must keep showing a place that has since left
     // the catalogue for any of those three reasons. Checked as the filter
@@ -128,6 +130,6 @@ describe('getVisitedExperiences', () => {
 
     const [, countSql] = mockedQuery.mock.calls.map(c => String(c[0]));
     expect(countSql).toContain('e.category_id = $2');
-    expect(countSql).toMatch(/e\.curation_state <> 'pending'/);
+    expect(countSql).toContain(hidePendingSql('e'));
   });
 });

@@ -54,6 +54,7 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { experienceOfferedToReaderSql } from './experienceLifecycle.js';
 
@@ -86,13 +87,21 @@ export const NEW_BADGE_PERSONAL_DAYS = 7;
  * more than the shape when the two are alternatives rather than filters.
  */
 export function isNewSql(alias = 'e', userIdParam: NewBadgeReaderParam = 'NULL'): string {
+  // `published_at` is the membership's since #822 — a place becomes visible
+  // in a kind — and the window is its source's, so both are read through the
+  // membership rather than off the row.
   return `(
-    ${alias}.published_at IS NOT NULL
+    EXISTS (
+      SELECT 1 FROM ${MEMBERSHIPS} km
+      WHERE km.experience_id = ${alias}.id
+        AND km.published_at IS NOT NULL
+    )
     AND (
       EXISTS (
-        SELECT 1 FROM experience_categories c
-        WHERE c.id = ${alias}.category_id
-          AND ${alias}.published_at > NOW() - (c.new_badge_days || ' days')::interval
+        SELECT 1 FROM ${MEMBERSHIPS} km
+        JOIN experience_categories c ON c.id = km.source_id
+        WHERE km.experience_id = ${alias}.id
+          AND km.published_at > NOW() - (c.new_badge_days || ' days')::interval
       )
       OR EXISTS (
         SELECT 1 FROM user_new_badge_views v
