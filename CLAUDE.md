@@ -73,7 +73,7 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 - **regions** — User-defined groups within a world view, hierarchical via `parent_region_id`. Has computed geometry, `focus_bbox`, `anchor_point`, `is_leaf`
 - **region_members** — Links regions to divisions, supports `custom_geom` for partial coverage
 - **experiences** — UNESCO sites, museums, public art. Multi-location via `experience_locations` table
-- **experience_categories** — UNESCO (id=1), Top Art Museums (id=2), Public Art & Monuments (id=3). `display_priority` controls ordering (lower = first)
+- **experience_categories** — UNESCO (id=1), Art Museums (id=2), Public Art & Monuments (id=3). `display_priority` controls ordering (lower = first)
 - **treasures** — Independently trackable items inside venues (artworks, artifacts). Globally unique by `external_id`. Linked to experiences via `experience_treasures` junction table (many-to-many). A link the source stops placing is marked (`missing_since`), never deleted, and only by a run that cleared the works coverage floor (ADR-0044); every reader-facing read of a museum's works carries `offeredLinkSql`. `artists` is a list, because a work often has more than one maker and which one the catalogue held used to be an accident of row order (ADR-0040)
 - **is_iconic** — Boolean flag on both `experiences` and `treasures` for highlighting must-see items
 

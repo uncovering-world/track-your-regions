@@ -98,7 +98,7 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
 ### ExperienceCategory
 
 - **Description**: A category of experiences (e.g., UNESCO World Heritage Sites,
-  Top Art Museums). Enables extensibility for multiple experience types.
+  Art Museums). Enables extensibility for multiple experience types.
 - **Attributes**:
   - `ID`: Unique identifier
   - `Name`: Category name (unique)

@@ -105,7 +105,7 @@ Three kinds are implemented, each filled by one source so far and assigned to re
 | Kind | Count | Types | Significance | Source today |
 |------|-------|-------|--------------|--------------|
 | World Heritage sites | ~1,250 | cultural, natural, mixed | — | UNESCO API; Wikidata only for the pictures (enrichment, not a second source) |
-| Art museums (the row still reads "Top Art Museums", #818) | ~100 | *none* — an art museum is a kind, not a type | iconic | Wikidata SPARQL, works-first (ADR-0023) |
+| Art Museums | ~100 | *none* — an art museum is a kind, not a type | iconic | Wikidata SPARQL, works-first (ADR-0023) |
 | Public art & monuments | ~170 | sculpture, monument | iconic | Wikidata SPARQL (class trees, a fame line) |
 
 Typing is live where a kind has types (cultural/natural/mixed for World Heritage, monument/sculpture for public art) and absent where it has none: the `art` every museum row used to carry went with #814. Art museums were the first kind to implement the significance model: the sync collects works above a fame threshold, then admits the museums holding them. Public art applies the same line to the objects themselves: an outdoor sculpture or monument at 22 Wikipedia-language sitelinks or more is the world tier and carries the badge, and a rule refuses what Wikidata calls a monument but a traveller would not — a cathedral, a cemetery, a museum, a work inside a church.
