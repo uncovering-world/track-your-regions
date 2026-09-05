@@ -134,13 +134,14 @@ describe('syncLandmarks', () => {
 
     const params = mockedUpsert.mock.calls[0][0];
     expect(params.type).toBe('monument');
+    // Once, in the column: the key that duplicated it in metadata is gone (#814).
+    expect(params.metadata).not.toHaveProperty('type');
     expect(params.tags).toEqual(['outdoor', 'monument']);
     expect(params.metadata).toMatchObject({
       wikidataQid: 'Q337179',
       wikidataClasses: ['Q4989906', 'Q893745'],
       wikidataArtwork: false,
       creators: ['Kārlis Zāle'],
-      type: 'monument',
       sitelinksCount: 41,
     });
   });

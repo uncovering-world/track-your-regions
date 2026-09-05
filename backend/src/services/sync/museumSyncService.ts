@@ -296,9 +296,10 @@ async function fetchMuseumItems(
 /**
  * Upsert a museum as an experience.
  *
- * `category` is the venue type, not UNESCO's triple: this category holds art museums and says
- * so. `country` is deliberately absent from the metadata — `country_names` already carries it,
- * and when both existed they disagreed.
+ * No type: an art museum is a kind, not a type within "Museums" (ADR-0045 decision 1), so the
+ * literal `art` every row used to carry said nothing the kind does not (#814). `country` is
+ * deliberately absent from the metadata — `country_names` already carries it, and when both
+ * existed they disagreed.
  */
 async function upsertMuseumExperience(
   museum: CollectedMuseum,
@@ -340,7 +341,10 @@ async function upsertMuseumExperience(
     nameLocal: { en: details.museumLabel },
     description: details.description,
     shortDescription: null,
-    category: 'art',
+    // No type: an art museum is a kind, not a type within "Museums" (ADR-0045
+    // decision 1), so the literal `art` every row used to carry said nothing the
+    // kind does not (#814).
+    type: null,
     tags: ['museum'],
     lon: details.lon!,
     lat: details.lat!,
