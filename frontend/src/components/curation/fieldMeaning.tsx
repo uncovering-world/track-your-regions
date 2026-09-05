@@ -30,6 +30,7 @@ import type { ImageCredit } from '../../api/experiences';
 import { parseCriteria } from '../../utils/unescoCriteria';
 import { inDangerLabel } from '../../utils/dangerLabel';
 import { safeHref } from '../../utils/safeHref';
+import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { creators } from '../../utils/creatorList';
 import { PictureFact } from './PictureFact';
 
@@ -127,10 +128,6 @@ function yesNo(value: unknown, yes: string, no: string): string {
   if (value === true) return yes;
   if (value === false) return no;
   return String(value ?? '');
-}
-
-function wikidataUrl(qid: unknown): string | null {
-  return typeof qid === 'string' && /^Q\d+$/.test(qid) ? `https://www.wikidata.org/wiki/${qid}` : null;
 }
 
 function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
@@ -261,15 +258,15 @@ function creditText(value: unknown): ReactNode {
 function workLabel(value: unknown): ReactNode {
   if (!isRecord(value)) return String(value ?? '');
   const label = typeof value.label === 'string' ? value.label : String(value.qid ?? '');
-  // Through safeHref although wikidataUrl only ever builds an https literal: the rule
+  // Through safeHref although wikidataItemUrl only ever builds an https literal: the rule
   // is declared once, and `urlSafety.test.ts` reads every href in a module that carries
   // a stored link as going through it.
-  const href = safeHref(wikidataUrl(value.qid));
+  const href = safeHref(wikidataItemUrl(value.qid));
   return href ? <ExternalLink href={href}><em>{label}</em></ExternalLink> : <em>{label}</em>;
 }
 
 function qidLabel(value: unknown): ReactNode {
-  const href = safeHref(wikidataUrl(value));
+  const href = safeHref(wikidataItemUrl(value));
   return href ? <ExternalLink href={href}>{`${String(value)} (Wikidata)`}</ExternalLink> : String(value ?? '');
 }
 
