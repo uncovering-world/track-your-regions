@@ -317,6 +317,24 @@ cache, so the next run of each source asks Wikidata again; re-running the file c
 and the next run of each source starts cold. The comment is the one thing `01-schema.sql` also
 states, for a fresh database.
 
+`044-an-object-has-a-type-not-a-category.sql` renames `experiences.category` to `type` — the
+column was the type within a kind (cultural / natural / mixed, monument / sculpture) carrying
+the word the code uses for the kind and its source — and moves everything that names the
+field by name with it in one transaction: a curator's claim in `curated_fields`, the
+`field` of every stored proposal in `experience_sync_changes.changed_fields`, a curator's
+answers in `experience_held_decisions.field` and `experience_conflict_decisions.field` — which
+the queue matches against the proposal entry by name, so an answer left under the old name
+would re-ask an answered question — and the three shapes in which
+`experience_curation_log.details` names a field (an edit's column keys, a publication's field
+list, a refusal's or an acceptance's `field` objects), so each keeps its identity under the
+new name. It runs before the next re-application of `01-schema.sql`, which now comments and
+indexes `experiences.type`. Two vocabularies end with it: a museum's type becomes NULL (the literal `art`
+every row carried said nothing the kind does not — an art museum is a kind, ADR-0045), and
+public art stops holding its type twice (`metadata.type` is removed from the rows and the
+duplicate entry from the stored proposals; 124 of 1,685 public-art proposals on the
+development catalogue carried both). Guarded on the column's current name, so re-running it
+on a database already renamed changes nothing (#814, Epic #815).
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the
