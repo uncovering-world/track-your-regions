@@ -47,7 +47,7 @@ The authentication system uses:
 
 ### What Requires Curator (or Admin)
 - Reject/unreject experiences per region
-- Edit experience fields (`name`, descriptions, `category`, `image_url`, tags)
+- Edit experience fields (`name`, descriptions, `type`, `image_url`, tags)
 - Manually assign/unassign experiences to regions
 - Create manual experiences (stored under **Curator Picks** source)
 - View curation audit history
