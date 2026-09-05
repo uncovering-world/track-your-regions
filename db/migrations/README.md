@@ -345,6 +345,27 @@ add a second museum row beside one still carrying the old name — and a databas
 that state is refused with an error rather than renamed around, so the duplicate is removed
 by hand before the file is run again.
 
+`046-a-kind-is-its-own-table-and-a-membership-its-own-row.sql` lands the place/membership split
+of ADR-0045 decision 4 (#822). A row of `experiences` was at once the place and its membership in
+a source, so the Statue of Liberty was two rows and a second source of a kind had nowhere to say
+which source brought a row. The file adds `experience_kinds` (seeded with the three kinds under
+the ids of the three sources that fill them), `experience_categories.kind_id` (the kind each
+source fills, required once every row names one — a source it cannot place is refused rather than
+left filling nothing), and `experience_kind_memberships`, one row per (place, kind) carrying what
+moved off `experiences`: `admission` and `admission_reason`, `metadata.admittedFor` as
+`admitted_for`, `is_iconic`, the curator's pins on those two out of `curated_fields`, and the
+gate state — `curation_state`, `published_at`, `pending_change_sync_log_id`. It backfills one
+membership per row, strips what moved from the rows and from the stored proposals — the
+`metadata.admittedFor` entries, and the key inside the catch-all `metadata` entries of cards filed
+before ADR-0039 (143 of those on the development catalogue, on 100 museums), which publishing
+would otherwise spread back onto the place — as 044 did for `metadata.type`, drops
+the six columns, and refuses to commit if any place is left without a membership or any
+membership names a source other than the one its row is keyed on. `experiences.category_id`
+stays as the identity arbiter until #755. Re-runnable — the backfill runs only while the moved
+columns exist — and order-independent with `01-schema.sql`, which creates the same tables empty
+and no longer touches the moved columns; the backend of the same change reads memberships, so
+run this before starting it against a database that holds a catalogue.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the

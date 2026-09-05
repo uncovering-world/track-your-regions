@@ -2141,6 +2141,46 @@ CREATE INDEX IF NOT EXISTS idx_regions_world_view_id ON regions(world_view_id);
 -- Designed to be extensible for multiple data sources (UNESCO, national parks, etc.)
 
 -- Experience categories (UNESCO, museums, landmarks, etc.)
+-- =============================================================================
+-- Kinds of place (ADR-0045 decision 1)
+-- =============================================================================
+-- What a traveller browses by, and what they would call the thing in front of
+-- them: a World Heritage site, an art museum, a monument. Each kind is its own
+-- list, pin colour and count, and it is offered to readers only once a sync
+-- fills it on its own terms (decision 2). A *source* -- a row of
+-- experience_categories below -- is a list we read to fill a kind: a kind may
+-- have several, and one source may feed several kinds (decision 3). Until #819
+-- every reader still keys on the source row through experiences.category_id,
+-- which is why the three kinds are seeded under the ids of the three sources
+-- that fill them: a reader keyed on 1, 2 and 3 reads the same colour and order
+-- either way, and switching it is a join and not a renumbering.
+CREATE TABLE IF NOT EXISTS experience_kinds (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    display_priority INTEGER NOT NULL DEFAULT 100,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE experience_kinds IS 'A kind of place a traveller browses by (ADR-0045 decision 1): its own list, pin colour and count. Filled by one or more sources (experience_categories); a place''s membership in it is a row of experience_kind_memberships.';
+COMMENT ON COLUMN experience_kinds.name IS 'What a traveller calls the thing in front of them -- World Heritage Sites, Art Museums -- never a source''s name for a selection rule (ADR-0045 decision 8).';
+COMMENT ON COLUMN experience_kinds.display_priority IS 'Display order of the kind''s list and pills (lower = shown first).';
+
+-- The three kinds the three sources fill, under the sources' own ids (see
+-- above). Explicit ids, so the sequence is moved past them afterwards.
+INSERT INTO experience_kinds (id, name, display_priority) VALUES
+    (1, 'World Heritage Sites', 1),
+    (2, 'Art Museums', 2),
+    (3, 'Public Art & Monuments', 3)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
+
+-- =============================================================================
+-- Sources (ADR-0045 decision 3)
+-- =============================================================================
+-- One row per list we read to fill a kind -- the UNESCO API, a Wikidata query --
+-- with its endpoint, its config, its gate (requires_curation) and the sync
+-- service registered under it. Named "categories" until #819 renames the table
+-- and every reader says which of the two words it means.
 CREATE TABLE IF NOT EXISTS experience_categories (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
@@ -2152,10 +2192,15 @@ CREATE TABLE IF NOT EXISTS experience_categories (
     last_sync_status VARCHAR(50),  -- 'success', 'partial', 'failed'
     last_sync_error TEXT,
     display_priority INTEGER NOT NULL DEFAULT 100,
+    kind_id INTEGER REFERENCES experience_kinds(id),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE experience_categories IS 'Experience categories (UNESCO, museums, landmarks, etc.)';
+COMMENT ON TABLE experience_categories IS 'Sources: the lists a sync reads to fill a kind (ADR-0045 decision 3). One row per sync service, with its endpoint, config and gate.';
+-- For a database that predates the column; a fresh one has it from the CREATE.
+-- Filled and made required below the seeds, once every row can name its kind.
+ALTER TABLE experience_categories ADD COLUMN IF NOT EXISTS kind_id INTEGER REFERENCES experience_kinds(id);
+COMMENT ON COLUMN experience_categories.kind_id IS 'The kind this source fills (ADR-0045 decision 3). One kind per source today; a membership records which source brought it, so a kind can have several sources.';
 COMMENT ON COLUMN experience_categories.api_config IS 'Category-specific API configuration (pagination, auth, etc.)';
 COMMENT ON COLUMN experience_categories.last_sync_status IS 'Status of last sync: success, partial, or failed';
 COMMENT ON COLUMN experience_categories.display_priority IS 'Display order in experience list (lower = shown first)';
@@ -2193,15 +2238,16 @@ BEGIN
 END $$;
 COMMENT ON COLUMN experience_categories.requires_curation IS 'Does a run from this source wait for a curator before its rows reach a reader (ADR-0025). Only an admin sets it; no run ever changes it.';
 
--- Seed UNESCO as the first category
-INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation)
+-- Seed UNESCO as the first source, filling the World Heritage kind
+INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     'UNESCO World Heritage Sites',
     'Official UNESCO World Heritage List - Cultural, Natural, and Mixed sites worldwide',
     'https://data.unesco.org/api/explore/v2.1/catalog/datasets/whc001/records',
     '{"pageSize": 100}'::jsonb,
     1,
-    false
+    false,
+    (SELECT id FROM experience_kinds WHERE name = 'World Heritage Sites')
 )
 ON CONFLICT (name) DO NOTHING;
 
@@ -2219,7 +2265,8 @@ CREATE TABLE IF NOT EXISTS experiences (
     description TEXT,
     short_description TEXT,
 
-    -- Classification: the type within the kind (see the column comment); the kind is category_id
+    -- Classification: the type within the kind (see the column comment). The kind is the one
+    -- category_id's source fills (experience_categories.kind_id); category_id names the source
     type VARCHAR(100),
     tags JSONB,  -- ["architecture", "religious", "ancient"]
 
@@ -2245,7 +2292,6 @@ CREATE TABLE IF NOT EXISTS experiences (
     created_by INTEGER REFERENCES users(id),
     curated_fields JSONB DEFAULT '[]'::jsonb,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'draft', 'archived')),
-    is_iconic BOOLEAN NOT NULL DEFAULT FALSE,
 
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -2265,7 +2311,6 @@ COMMENT ON COLUMN experiences.location IS 'Required point location for the exper
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
 COMMENT ON COLUMN experiences.metadata IS 'Category-specific data (UNESCO: date_inscribed, danger, criteria, etc.)';
-COMMENT ON COLUMN experiences.is_iconic IS 'Whether this experience is considered iconic/must-see';
 
 -- Spatial indexes for experiences
 CREATE INDEX IF NOT EXISTS idx_experiences_location ON experiences USING GIST(location);
@@ -2274,7 +2319,6 @@ CREATE INDEX IF NOT EXISTS idx_experiences_name_trgm ON experiences USING GIN(na
 CREATE INDEX IF NOT EXISTS idx_experiences_category_id ON experiences(category_id);
 CREATE INDEX IF NOT EXISTS idx_experiences_type ON experiences(type) WHERE type IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experiences_external_id ON experiences(category_id, external_id);
-CREATE INDEX IF NOT EXISTS idx_experiences_iconic ON experiences(is_iconic) WHERE is_iconic = true;
 
 -- Experience-Region junction table (auto-computed via spatial containment)
 -- When an experience point falls within a region's geometry, it gets assigned
@@ -2406,64 +2450,96 @@ CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) W
 CREATE INDEX IF NOT EXISTS idx_experiences_first_seen ON experiences(first_seen_sync_log_id);
 
 -- =============================================================================
--- Admission (ADR-0024)
+-- A place's membership in a kind (ADR-0045 decision 4; #822)
 -- =============================================================================
--- A third axis, independent of the two above, and the only one the machine
--- decides. The two above are statements about the world — the source stopped
--- listing it; it no longer exists — and neither is true of a venue our own rule
--- turned down. Wikidata goes on listing the British Museum, which stands open;
--- what changed is that *Art Museums* holds art museums and that one is an
--- archaeological collection. Folding that into `former` would reproduce exactly
--- the conflation ADR-0020 removed.
+-- A row of `experiences` is the place: its identity, its locations, its
+-- picture, a traveller's visit. What a *kind* says about it -- that it is an
+-- art museum, that the works-first source brought it, that the rule admitted
+-- or refused it and why, the must-see badge, whether a curator has passed its
+-- arrival -- is its membership in that kind, one row here per (place, kind).
+-- Cologne Cathedral is one place and, once a second kind admits it, two
+-- memberships: a card in each list, a pin in each colour, one visit seen
+-- through both.
 --
--- The machine may write this one because a refusal is not an observation: it is
--- a deterministic rule applied to data we hold, naming the object before it
--- says no, and re-running it gives the same answer. A curator who disagrees
--- pins 'admission' in curated_fields, and every write below skips the row.
-
-ALTER TABLE experiences ADD COLUMN IF NOT EXISTS admission VARCHAR(10) NOT NULL DEFAULT 'admitted';
-ALTER TABLE experiences ADD COLUMN IF NOT EXISTS admission_reason TEXT;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experiences_admission_check') THEN
-        ALTER TABLE experiences ADD CONSTRAINT experiences_admission_check
-            CHECK (admission IN ('admitted', 'refused'));
-    END IF;
-END $$;
-
-COMMENT ON COLUMN experiences.admission IS
-    'admitted or refused. Whether this category accepts the row, independent of whether the source still lists it. '
-    'The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. '
-    'A refused row is hidden from every read that offers somewhere to go, and from none that records a visit.';
-COMMENT ON COLUMN experiences.admission_reason IS
-    'Why the category refused it, stated verbatim to the curator. On the row rather than in '
-    'experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
-
-CREATE INDEX IF NOT EXISTS idx_experiences_admission ON experiences(admission) WHERE admission <> 'admitted';
-
--- The fourth column that can take a row off a reader's screen, and it is not
--- interchangeable with the other three (ADR-0025): `existence` answers is it
--- still standing, `admission` does it belong in this catalogue,
--- `missing_since` does the source still offer this point, and this one answers
--- has anyone looked at it yet. They compose rather than collapse.
+-- What each half carries. The badge and the gate state are decided here, per
+-- membership: the badge is the world tier of a kind (decision 5), and a kind
+-- fed by a gated source holds the gated members per member (decision 7).
 --
--- Default `auto`, not `pending`: the sync path sets `pending` explicitly
--- because it knows about the gate, so a writer that forgets this column keeps
--- today's behaviour. The other default would let such a writer remove its rows
--- from the product silently.
-ALTER TABLE experiences ADD COLUMN IF NOT EXISTS curation_state VARCHAR(10) NOT NULL DEFAULT 'auto';
-ALTER TABLE experiences ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
--- ON DELETE SET NULL, like the two provenance pointers beside it: deleting a
--- sync log is a supported operation here, and a pointer to a log that no longer
--- exists names nothing. The hold itself is carried by `curation_state`, so
--- losing the pointer loses the way to find the proposal, not the hold.
-ALTER TABLE experiences ADD COLUMN IF NOT EXISTS pending_change_sync_log_id INTEGER
-    REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
-COMMENT ON COLUMN experiences.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a pending row (ADR-0025).';
-COMMENT ON COLUMN experiences.published_at IS 'When the row became visible. NULL while pending and for every row that predates the gate. This is what the "New" chip counts from (#529): a gated row is found months before a reader can see it, so the run that found it is the wrong clock.';
-COMMENT ON COLUMN experiences.pending_change_sync_log_id IS 'The run whose content proposal is held for an already-visible row. NULL when nothing is held. Contents need no equivalent — a content row is held by being written pending rather than withheld.';
-CREATE INDEX IF NOT EXISTS idx_experiences_curation_state ON experiences(curation_state) WHERE curation_state = 'pending';
+--   place       name, description, type, location, boundary, picture, tags,
+--               what a source observes about the row (missing_since,
+--               source_membership) and what the world says of it (existence),
+--               the visit
+--   membership  kind, source, admission and its reason, admitted_for,
+--               is_iconic, the curator's pins on those, curation_state,
+--               published_at, pending_change_sync_log_id
+--
+-- `experiences.category_id` stays: it is the arbiter of the row's identity
+-- (UNIQUE(category_id, external_id)) until the identity work of ADR-0046
+-- decision 1 moves a source's id onto the membership (#755). Every row's
+-- membership names that same source today, and the admin panel's catalogue
+-- checks say so (`membership-source-disagrees-with-row`).
+--
+-- Four columns can take a row off a reader's screen, and they compose rather
+-- than collapse (ADR-0025): `existence` answers is it still standing,
+-- `admission` does this kind accept it, `missing_since` does the source still
+-- offer this point, `curation_state` has anyone looked at it yet. The first
+-- and third stay on the place; the second and fourth are here, and a
+-- reader-facing read asks them of the place through its memberships
+-- (`backend/src/db/membership.ts`): a place is offered when some membership
+-- of it is admitted and passed.
+--
+-- Admission (ADR-0024) is the one axis the machine writes: a refusal is not an
+-- observation but our own rule applied to data we hold, naming the object
+-- before it says no, and re-running it gives the same answer. Wikidata goes on
+-- listing the British Museum, which stands open; what changed is that Art
+-- Museums holds art museums and that one is an archaeological collection --
+-- folding that into `former` would reproduce exactly the conflation ADR-0020
+-- removed. A curator who disagrees pins 'admission' in the membership's
+-- curated_fields, and every write skips the row.
+--
+-- Default `auto` for curation_state, not `pending`: the sync path sets
+-- `pending` explicitly because it knows about the gate, so a writer that
+-- forgets this column keeps today's behaviour. The other default would let
+-- such a writer remove its rows from the product silently.
+CREATE TABLE IF NOT EXISTS experience_kind_memberships (
+    id SERIAL PRIMARY KEY,
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    kind_id INTEGER NOT NULL REFERENCES experience_kinds(id),
+    source_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE,
+    admission VARCHAR(10) NOT NULL DEFAULT 'admitted' CHECK (admission IN ('admitted', 'refused')),
+    admission_reason TEXT,
+    admitted_for JSONB,
+    is_iconic BOOLEAN NOT NULL DEFAULT FALSE,
+    curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+    curation_state VARCHAR(10) NOT NULL DEFAULT 'auto' CHECK (curation_state IN ('pending', 'auto', 'verified')),
+    published_at TIMESTAMPTZ,
+    -- ON DELETE SET NULL, like the provenance pointers on the place: deleting a
+    -- sync log is a supported operation here, and a pointer to a log that no
+    -- longer exists names nothing. The hold itself is carried by
+    -- curation_state, so losing the pointer loses the way to find the
+    -- proposal, not the hold.
+    pending_change_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (experience_id, kind_id)
+);
+
+COMMENT ON TABLE experience_kind_memberships IS 'A place''s membership in a kind (ADR-0045 decision 4): one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival. The place itself is the experiences row.';
+COMMENT ON COLUMN experience_kind_memberships.source_id IS 'The source that brought this membership (ADR-0045 decision 3): a kind may have several, and a run writes, refuses and badges only the memberships its own source brought.';
+COMMENT ON COLUMN experience_kind_memberships.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
+COMMENT ON COLUMN experience_kind_memberships.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
+COMMENT ON COLUMN experience_kind_memberships.admitted_for IS 'The work whose fame qualified a museum for the works-first source ({qid, label}, ADR-0023): the reason this membership exists. The run''s own bookkeeping, never proposed to a curator (#571).';
+COMMENT ON COLUMN experience_kind_memberships.is_iconic IS 'The must-see badge, the world tier of this kind (ADR-0045 decision 5): set by a source whose admission rule is a fame line, cleared with a refusal, pinned by a curator in curated_fields. The membership''s, not the place''s: a place admitted to a second kind carries that kind''s badge on that kind''s terms.';
+COMMENT ON COLUMN experience_kind_memberships.curated_fields IS 'Field names a curator has pinned on this membership -- admission (a confirmed or overridden refusal), is_iconic -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
+COMMENT ON COLUMN experience_kind_memberships.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a place none of whose memberships has passed (ADR-0025; per member since ADR-0045 decision 7).';
+COMMENT ON COLUMN experience_kind_memberships.published_at IS 'When this membership became visible. NULL while pending and for every row that predates the gate. What the "New" chip counts from (#529): a gated row is found months before a reader can see it, so the run that found it is the wrong clock.';
+COMMENT ON COLUMN experience_kind_memberships.pending_change_sync_log_id IS 'The run of this membership''s source whose content proposal for the place is held while a reader can see it. NULL when nothing is held. Contents need no equivalent -- a content row is held by being written pending rather than withheld.';
+
+CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_kind ON experience_kind_memberships(kind_id, admission);
+CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_source ON experience_kind_memberships(source_id, experience_id);
+CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_pending ON experience_kind_memberships(experience_id) WHERE curation_state = 'pending';
+CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_held ON experience_kind_memberships(experience_id) WHERE pending_change_sync_log_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_iconic ON experience_kind_memberships(kind_id) WHERE is_iconic;
 
 -- Per-object record of what a run did. 'unchanged' is deliberately NOT stored;
 -- it is only counted, or every UNESCO run would write 1247 rows of noise.
@@ -2681,32 +2757,55 @@ CREATE INDEX IF NOT EXISTS idx_experience_location_regions_region ON experience_
 -- Stores notable items within experiences like museums (e.g., paintings,
 -- sculptures). Used for ranking museums by artwork fame.
 
--- Seed "Art Museums" as experience category. The row is the kind a reader
--- browses by, and its name is the reader's (ADR-0045 decision 8, #818); it was
--- seeded as "Top Art Museums" — the works-first selection rule's name — until
--- migration 045 renamed it.
-INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation)
+-- Seed the works-first museum source, filling the Art Museums kind. The row's
+-- name is the reader's (ADR-0045 decision 8, #818); it was seeded as "Top Art
+-- Museums" — the works-first selection rule's name — until migration 045
+-- renamed it.
+INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     'Art Museums',
     'World''s most notable museums ranked by artwork fame, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
     '{"userAgent": "TrackYourRegions/1.0"}'::jsonb,
     2,
-    false
+    false,
+    (SELECT id FROM experience_kinds WHERE name = 'Art Museums')
 )
 ON CONFLICT (name) DO NOTHING;
 
--- Seed "Public Art & Monuments" as experience category
-INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation)
+-- Seed the public-art source, filling the Public Art & Monuments kind
+INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     'Public Art & Monuments',
     'Notable outdoor sculptures and monuments worldwide, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
     '{"userAgent": "TrackYourRegions/1.0"}'::jsonb,
     3,
-    false
+    false,
+    (SELECT id FROM experience_kinds WHERE name = 'Public Art & Monuments')
 )
 ON CONFLICT (name) DO NOTHING;
+
+-- Every source names the kind it fills (ADR-0045 decision 3). Filled by name
+-- for a database whose rows predate the column -- the museum source under
+-- either of its names -- and then required: a source row naming no kind would
+-- fill nothing a reader can browse. Guarded so a re-application changes
+-- nothing once the column is required.
+UPDATE experience_categories c
+   SET kind_id = k.id
+  FROM experience_kinds k
+ WHERE c.kind_id IS NULL
+   AND k.name = CASE c.name
+                  WHEN 'UNESCO World Heritage Sites' THEN 'World Heritage Sites'
+                  WHEN 'Top Art Museums' THEN 'Art Museums'
+                  ELSE c.name
+                END;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM experience_categories WHERE kind_id IS NULL) THEN
+        ALTER TABLE experience_categories ALTER COLUMN kind_id SET NOT NULL;
+    END IF;
+END $$;
 
 -- =============================================================================
 -- Treasures (artworks, artifacts — can belong to multiple venues)
@@ -2813,12 +2912,10 @@ CREATE INDEX IF NOT EXISTS idx_experience_treasures_offered
 -- Guarded rather than dropped-and-added: these are new constraints, not widened
 -- ones, so the drop/add idiom used for the changeset's change_type check would
 -- be doing nothing on a fresh database and hiding a failure on an old one.
+-- The object's own state is on its membership since #822, whose CREATE TABLE
+-- carries the CHECK inline; the three parts keep theirs here.
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experiences_curation_state_check') THEN
-        ALTER TABLE experiences ADD CONSTRAINT experiences_curation_state_check
-            CHECK (curation_state IN ('pending', 'auto', 'verified'));
-    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experience_locations_curation_state_check') THEN
         ALTER TABLE experience_locations ADD CONSTRAINT experience_locations_curation_state_check
             CHECK (curation_state IN ('pending', 'auto', 'verified'));

@@ -35,7 +35,8 @@ export interface Experience {
   /**
    * The type within the kind — `cultural` / `natural` / `mixed` on a World Heritage
    * site, `monument` / `sculpture` on public art — and `null` on a museum, whose
-   * kind has no types (ADR-0045, #814). The kind is `category_id`.
+   * kind has no types (ADR-0045, #814). The kind is the one `category_id`'s source
+   * fills (`experience_categories.kind_id`, #822); `category_id` names the source.
    */
   type: string | null;
   /** The kind, by its source row — what a colour and a group are decided by. */

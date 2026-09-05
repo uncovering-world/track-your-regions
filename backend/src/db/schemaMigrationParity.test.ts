@@ -21,7 +21,14 @@ import { join } from 'node:path';
  * the expected text stays a plain literal.
  */
 const repoRoot = join(__dirname, '..', '..', '..');
-const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
+/**
+ * Line comments go first, then the whitespace: a `);` inside a `--` comment
+ * ended the `experiences` block of `createTable` a hundred lines early, and every
+ * "not on experiences" assertion below passed on the truncated block — for
+ * nothing. Stripped before collapsing, because a collapsed file has no line
+ * ends left to say where a comment stops.
+ */
+const collapse = (sql: string) => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ');
 const schema = collapse(readFileSync(join(repoRoot, 'db', 'init', '01-schema.sql'), 'utf8'));
 const migration = collapse(
   readFileSync(join(repoRoot, 'db', 'migrations', '018-curation-gate.sql'), 'utf8'),
@@ -97,14 +104,25 @@ const backendTypesSource = collapse(
   readFileSync(join(__dirname, '..', 'types', 'index.ts'), 'utf8'),
 );
 
-const GATE_COLUMNS: Array<[table: string, column: string]> = [
-  ['experiences', 'curation_state'],
-  ['experiences', 'published_at'],
-  ['experiences', 'pending_change_sync_log_id'],
+/**
+ * The object's own gate columns. Migration 018 put them on `experiences`; since
+ * #822 they are the membership's (ADR-0045 decision 7 — a kind holds the gated
+ * members per member), moved there by migration 046. So 018 still adds them to
+ * `experiences`, as history, while the schema file carries them on
+ * `experience_kind_memberships` and never on `experiences` any more.
+ */
+const OBJECT_GATE_COLUMNS = ['curation_state', 'published_at', 'pending_change_sync_log_id'];
+/** The parts' gate columns, still where 018 put them. */
+const PART_GATE_COLUMNS: Array<[table: string, column: string]> = [
   ['experience_locations', 'curation_state'],
   ['experience_treasures', 'curation_state'],
   ['treasures', 'curation_state'],
 ];
+const splitMigrationRaw = readFileSync(
+  join(repoRoot, 'db', 'migrations', '046-a-kind-is-its-own-table-and-a-membership-its-own-row.sql'),
+  'utf8',
+);
+const splitMigration = collapse(splitMigrationRaw);
 
 /**
  * The three sources that predate the gate and must keep publishing on arrival,
@@ -130,13 +148,44 @@ const SEEDED_SOURCES = [
   'Public Art & Monuments',
 ];
 
+/** Where 018 constrained the state column: the object and its three parts. */
 const STATE_TABLES = ['experiences', 'experience_locations', 'experience_treasures', 'treasures'];
+/** Where the schema file constrains it today: the parts; the object's is inline on its membership. */
+const PART_STATE_TABLES = STATE_TABLES.filter(table => table !== 'experiences');
+const STATE_CHECK = "CHECK (curation_state IN ('pending', 'auto', 'verified'))";
 
 /** The seed INSERTs of `01-schema.sql` — what a fresh database learns the rows from. */
 const categorySeeds = schema.match(/INSERT INTO experience_categories .*?ON CONFLICT [^;]*;/g) ?? [];
 
+/**
+ * One `CREATE TABLE` block of a collapsed file, from its opening to the `);`
+ * that ends it — so a column can be asserted present or absent *in that table*
+ * rather than anywhere in a file that declares the same name on three others
+ * (`curation_state` lives on four tables, `is_iconic` on two).
+ */
+function createTable(sql: string, table: string): string {
+  const opener = `CREATE TABLE IF NOT EXISTS ${table} (`;
+  const start = sql.indexOf(opener);
+  expect(start, `no CREATE TABLE ${table}`).toBeGreaterThanOrEqual(0);
+  const end = sql.indexOf(');', start);
+  expect(end, `unterminated CREATE TABLE ${table}`).toBeGreaterThan(start);
+  return sql.slice(start, end + 2);
+}
+/**
+ * The `experiences` block, proven whole: its readers assert *absence* (a moved
+ * column must not be there), and an extraction cut short at a stray `);` would
+ * pass every one of them for nothing — so the block has to reach the arbiter
+ * that closes it.
+ */
+function experiencesTable(sql: string): string {
+  const table = createTable(sql, 'experiences');
+  expect(table, 'the experiences block was cut short').toContain('UNIQUE(category_id, external_id)');
+  return table;
+}
+const membershipTable = (sql: string) => createTable(sql, 'experience_kind_memberships');
+
 describe('the curation gate exists in both schema homes', () => {
-  for (const [table, column] of GATE_COLUMNS) {
+  for (const [table, column] of PART_GATE_COLUMNS) {
     it(`01-schema.sql adds ${table}.${column}`, () => {
       expect(schema).toContain(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column}`);
     });
@@ -146,17 +195,47 @@ describe('the curation gate exists in both schema homes', () => {
     });
   }
 
+  for (const column of OBJECT_GATE_COLUMNS) {
+    it(`migration 018 adds experiences.${column}, and 046 moves it onto the membership`, () => {
+      // 018 is history and keeps adding the column to the object; a database
+      // that runs 018 and 046 in order ends with the column on the membership
+      // alone, which is what the drop asserts.
+      expect(migration).toContain(`ALTER TABLE experiences ADD COLUMN IF NOT EXISTS ${column}`);
+      // Delimited, because `admission` is a prefix of `admission_reason`: the
+      // bare substring passes for the first with only the second dropped.
+      const dropped = [`DROP COLUMN IF EXISTS ${column},`, `DROP COLUMN IF EXISTS ${column};`]
+        .some(clause => splitMigration.includes(clause));
+      expect(dropped, `${column} is not dropped as a clause of its own`).toBe(true);
+      expect(membershipTable(splitMigration)).toContain(` ${column} `);
+    });
+
+    it(`01-schema.sql carries ${column} on the membership and not on experiences`, () => {
+      // A fresh database must never get the column on `experiences` back: a
+      // writer that found it there would write a state nothing reads.
+      expect(schema).not.toContain(`ALTER TABLE experiences ADD COLUMN IF NOT EXISTS ${column}`);
+      expect(experiencesTable(schema)).not.toContain(` ${column} `);
+      expect(membershipTable(schema)).toContain(` ${column} `);
+    });
+  }
+
   it('every state column is constrained to the three states, per table, in both files', () => {
     // A column that accepts any string is a column that will eventually hold
     // 'Pending' or 'published' and silently stop matching every predicate.
     // Named per table rather than counted: four occurrences with two on one
     // table and none on another satisfies a count and leaves a column open.
     for (const table of STATE_TABLES) {
-      const constraint =
-        `ADD CONSTRAINT ${table}_curation_state_check ` +
-        `CHECK (curation_state IN ('pending', 'auto', 'verified'))`;
-      expect(schema).toContain(constraint);
-      expect(migration).toContain(constraint);
+      expect(migration).toContain(`ADD CONSTRAINT ${table}_curation_state_check ${STATE_CHECK}`);
+    }
+    for (const table of PART_STATE_TABLES) {
+      expect(schema).toContain(`ADD CONSTRAINT ${table}_curation_state_check ${STATE_CHECK}`);
+    }
+    // The object's state is on its membership, constrained inline where the
+    // column is declared — in both files, since both declare the table.
+    expect(schema).not.toContain('experiences_curation_state_check');
+    for (const sql of [schema, splitMigration]) {
+      expect(membershipTable(sql)).toContain(
+        `curation_state VARCHAR(10) NOT NULL DEFAULT 'auto' ${STATE_CHECK}`,
+      );
     }
   });
 
@@ -476,14 +555,12 @@ describe('a held withdrawal has a column in both schema homes', () => {
   });
 
   it('nothing on experiences can move a column out from under the upsert', () => {
-    // The second of the two facts that make `RETURNING ${HELD} AS was_held`
-    // answer with the value the guards read (`syncUtils.ts`). The first — that
-    // `curation_state` is never assigned in the `DO UPDATE SET` list — is
-    // asserted where that list is built. This is the other one: `RETURNING`
-    // reads the post-write tuple, so a BEFORE trigger on `experiences` that
-    // touched `curation_state` would make the reported hold describe a
-    // different row version than the one the statement acted on, and a held
-    // field would be reported as applied (#519) with nothing failing.
+    // The object upsert reads the row it is about to write under a lock it
+    // takes first, and its `RETURNING` reads the post-write tuple to label the
+    // changeset (`experienceUpsert.ts`). A BEFORE trigger on `experiences` that
+    // touched a content column would make what the changeset reports describe
+    // a different row version than the one the statement acted on — the shape
+    // of #519, with nothing failing.
     //
     // Every trigger in this schema is on `regions` or `administrative_divisions`
     // (geometry simplification, region metadata, focus data, is_leaf). Asserted
@@ -750,5 +827,123 @@ describe('a withdrawn link and a skipped withdrawal have columns in both schema 
 
   it('migration 041 is not defeated by how it is invoked', () => {
     expect(withdrawalMigrationRaw).toMatch(/^\\set ON_ERROR_STOP on$/m);
+  });
+});
+
+/**
+ * A kind and a place's membership in it, in both schema homes (ADR-0045
+ * decision 4, #822).
+ *
+ * Two tables and a column, plus six columns that *left* `experiences` for the
+ * membership. The direction is what makes this guard worth having: a column
+ * added to one home and forgotten in the other is loud, but a column dropped
+ * from the migration and quietly kept by the schema file gives a fresh database
+ * an `admission` on the place that no reader asks and every writer of the
+ * membership ignores — the two homes agreeing about the new table while
+ * disagreeing about where the verdict lives.
+ */
+describe('a kind and a membership exist in both schema homes', () => {
+  const MOVED_COLUMNS = [
+    'admission', 'admission_reason', 'is_iconic',
+    'curation_state', 'published_at', 'pending_change_sync_log_id',
+  ];
+  const KIND_SEED =
+    "INSERT INTO experience_kinds (id, name, display_priority) VALUES "
+    + "(1, 'World Heritage Sites', 1), (2, 'Art Museums', 2), (3, 'Public Art & Monuments', 3) "
+    + 'ON CONFLICT (name) DO NOTHING;';
+
+  it('both files create the kinds table and seed the three kinds under the sources\' ids', () => {
+    // The ids are the contract: `categoryColors.ts` and the two sync services
+    // key on 1, 2 and 3, and the seed is what keeps a fresh database's kinds
+    // under the same numbers as its sources. Explicit ids need the sequence
+    // moved past them, in both files, or the fourth kind collides with the third.
+    for (const sql of [schema, splitMigration]) {
+      expect(createTable(sql, 'experience_kinds')).toContain('name VARCHAR(255) NOT NULL UNIQUE');
+      expect(sql).toContain(KIND_SEED);
+      expect(sql).toContain("SELECT setval('experience_kinds_id_seq'");
+    }
+  });
+
+  it('both files give every source the kind it fills', () => {
+    // `ADD COLUMN IF NOT EXISTS` for a database that predates the column; the
+    // schema file also declares it inline for a fresh one, and its seeds name
+    // it — a seed without it would leave a source filling nothing.
+    const addColumn =
+      'ALTER TABLE experience_categories ADD COLUMN IF NOT EXISTS kind_id INTEGER REFERENCES experience_kinds(id);';
+    expect(schema).toContain(addColumn);
+    expect(splitMigration).toContain(addColumn);
+    expect(createTable(schema, 'experience_categories')).toContain('kind_id INTEGER REFERENCES experience_kinds(id)');
+    for (const seed of categorySeeds) {
+      expect(seed).toContain('kind_id');
+      expect(seed).toMatch(/\(SELECT id FROM experience_kinds WHERE name = '[^']+'\)/);
+    }
+    for (const sql of [schema, splitMigration]) {
+      expect(sql).toContain('ALTER TABLE experience_categories ALTER COLUMN kind_id SET NOT NULL');
+    }
+  });
+
+  it('both files declare the membership table with the same key', () => {
+    // One membership per (place, kind): the row a merge moves (ADR-0046
+    // decision 5) and a kind's count counts (decision 8).
+    for (const sql of [schema, splitMigration]) {
+      const table = membershipTable(sql);
+      expect(table).toContain('experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE');
+      expect(table).toContain('kind_id INTEGER NOT NULL REFERENCES experience_kinds(id)');
+      expect(table).toContain('source_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE');
+      expect(table).toContain("admission VARCHAR(10) NOT NULL DEFAULT 'admitted' CHECK (admission IN ('admitted', 'refused'))");
+      expect(table).toContain("curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb");
+      expect(table).toContain('pending_change_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL');
+      expect(table).toContain('UNIQUE (experience_id, kind_id)');
+    }
+  });
+
+  for (const column of MOVED_COLUMNS) {
+    it(`${column} is the membership's, and no longer the place's, in both files`, () => {
+      for (const sql of [schema, splitMigration]) {
+        expect(membershipTable(sql)).toContain(` ${column} `);
+      }
+      expect(experiencesTable(schema)).not.toContain(` ${column} `);
+      expect(schema).not.toContain(`ALTER TABLE experiences ADD COLUMN IF NOT EXISTS ${column}`);
+      // Delimited, because `admission` is a prefix of `admission_reason`: the
+      // bare substring passes for the first with only the second dropped.
+      const dropped = [`DROP COLUMN IF EXISTS ${column},`, `DROP COLUMN IF EXISTS ${column};`]
+        .some(clause => splitMigration.includes(clause));
+      expect(dropped, `${column} is not dropped as a clause of its own`).toBe(true);
+    });
+  }
+
+  it('the migration trims the moved key out of the catch-all proposals too, not only the dotted entries', () => {
+    // A card filed before ADR-0039 carries one `metadata` entry whose payloads
+    // are the whole object; publishing spreads `new` over the stored object, so
+    // a key left inside it would come straight back onto the place the step
+    // above just cleared. Both sides, and only where the side is an object, so
+    // a null side stays null rather than becoming `{"old": null}`.
+    expect(splitMigration).toContain("CASE WHEN f->>'field' = 'metadata' THEN f");
+    expect(splitMigration).toContain("jsonb_build_object('old', (f->'old') - 'admittedFor')");
+    expect(splitMigration).toContain("jsonb_build_object('new', (f->'new') - 'admittedFor')");
+    expect(splitMigration).toContain("WHEN jsonb_typeof(f->'old') = 'object'");
+    expect(splitMigration).toContain("AND ((f->'old') ? 'admittedFor' OR (f->'new') ? 'admittedFor')");
+  });
+
+  it('the migration backfills only while the moved columns still exist', () => {
+    // A second run, or a run after the schema file was re-applied first, finds
+    // the columns gone; the guard is what lets the file be re-runnable rather
+    // than fail on `e.admission` at step 4.
+    expect(splitMigration).toContain(
+      "IF EXISTS ( SELECT 1 FROM information_schema.columns WHERE table_name = 'experiences' AND column_name = 'admission' ) THEN INSERT INTO experience_kind_memberships",
+    );
+    expect(splitMigration.indexOf('INSERT INTO experience_kind_memberships'))
+      .toBeLessThan(splitMigration.indexOf('DROP COLUMN IF EXISTS admission'));
+  });
+
+  it('the migration refuses a place without a membership, or one keyed on another source', () => {
+    // The two facts every reader now rests on, checked before COMMIT rather
+    // than discovered by a reader that hides every place at once.
+    expect(splitMigration).toContain('hold no membership after the backfill');
+    expect(splitMigration).toContain('name a source other than the one their row is keyed on');
+  });
+
+  it('migration 046 is not defeated by how it is invoked', () => {
+    expect(splitMigrationRaw).toMatch(/^\\set ON_ERROR_STOP on$/m);
   });
 });
