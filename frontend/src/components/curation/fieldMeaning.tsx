@@ -256,17 +256,10 @@ function creditText(value: unknown): ReactNode {
   );
 }
 
-function workLabel(value: unknown): ReactNode {
-  if (!isRecord(value)) return String(value ?? '');
-  const label = typeof value.label === 'string' ? value.label : String(value.qid ?? '');
+function qidLabel(value: unknown): ReactNode {
   // Through safeHref although wikidataItemUrl only ever builds an https literal: the rule
   // is declared once, and `urlSafety.test.ts` reads every href in a module that carries
   // a stored link as going through it.
-  const href = safeHref(wikidataItemUrl(value.qid));
-  return href ? <ExternalLink href={href}><em>{label}</em></ExternalLink> : <em>{label}</em>;
-}
-
-function qidLabel(value: unknown): ReactNode {
   const href = safeHref(wikidataItemUrl(value));
   return href ? <ExternalLink href={href}>{`${String(value)} (Wikidata)`}</ExternalLink> : String(value ?? '');
 }
@@ -568,12 +561,6 @@ const MEANINGS: Record<string, FieldMeaning> = {
     event: true,
     describeChange: () => 'A different Wikidata item — check the name and the pin.',
   },
-  'metadata.admittedFor': {
-    label: 'admitted for',
-    what: 'The single most famous work held here — the one whose fame qualified the museum for this list. The reason the row exists.',
-    whenItChanges: 'A different work now tops the count. Not an event on the ground, and no longer a question: newer runs write it without asking.',
-    render: workLabel,
-  },
   'metadata.artworkCount': {
     label: 'works placed',
     what: 'How many works the last run hung in this museum — the run’s own bookkeeping.',
@@ -659,7 +646,7 @@ function unknownMeaning(label: string): FieldMeaning {
 const UNSEEN_BY_READERS = new Set([
   'tags',
   'metadata.criteria', 'metadata.region', 'metadata.areaHectares', 'metadata.transboundary',
-  'metadata.wikidataQid', 'metadata.admittedFor', 'metadata.artworkCount', 'metadata.totalArtworkSitelinks',
+  'metadata.wikidataQid', 'metadata.artworkCount', 'metadata.totalArtworkSitelinks',
   'metadata.creators', 'metadata.year', 'metadata.sitelinksCount',
 ]);
 

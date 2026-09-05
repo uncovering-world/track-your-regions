@@ -127,12 +127,6 @@ describe('values as readers see them', () => {
     expect(screen.getByRole('link', { name: 'terms' })).toHaveAttribute('href', 'https://whc.unesco.org/en/list/208');
   });
 
-  it('names the work a museum was admitted for, linked, without a bare Q-number', () => {
-    render(<>{meaningOf('metadata.admittedFor').render?.({ qid: 'Q45130', label: 'The Geographer' }, NO_CONTEXT)}</>);
-    const link = screen.getByRole('link', { name: 'The Geographer' });
-    expect(link).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q45130');
-  });
-
   it('glosses a Wikidata identifier and refuses to link one that is not one', () => {
     render(<>{meaningOf('metadata.wikidataQid').render?.('Q19675', NO_CONTEXT)}</>);
     expect(screen.getByRole('link', { name: 'Q19675 (Wikidata)' })).toBeInTheDocument();
