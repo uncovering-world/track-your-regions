@@ -10,6 +10,8 @@ import {
   hideLostSql, hideRefusedSql, hidePendingSql, lifecycleSelectSql, includeLost,
   offeredLocationSql, publishedContentSql, readerPositionSql, readerRegionMembershipSql,
 } from './experienceLifecycle.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
+import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { dangerSelectSql, withDangerFields } from './experienceDanger.js';
@@ -358,17 +360,15 @@ export async function listCategories(_req: Request, res: Response): Promise<void
       s.last_sync_at,
       s.last_sync_status,
       s.display_priority,
-      -- The same predicates every list under this heading carries. Without them
-      -- the API reported 128 art museums where the catalogue offers 101 — the
-      -- 27 rows this category's own rule turned down (#503).
+      -- A kind's count is of memberships (ADR-0046 decision 8, #822): the
+      -- memberships the kind this source fills offers, each once. The same
+      -- three questions every list under this heading asks. Without them the
+      -- API reported 128 art museums where the catalogue offers 101 — the 27
+      -- rows this category's own rule turned down (#503).
       --
       -- Unconditional rather than includeLost-aware: this number labels a
       -- category, not a page, and no caller passes that parameter here.
-      (SELECT COUNT(*) FROM experiences e
-        WHERE e.category_id = s.id
-          AND ${hideLostSql()}
-          AND ${hideRefusedSql()}
-          AND ${hidePendingSql()}) as experience_count
+      ${kindCountSql('s.kind_id')} as experience_count
     FROM experience_categories s
     WHERE s.is_active = true
     ORDER BY s.display_priority, s.name
@@ -532,35 +532,40 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
     return;
   }
 
-  // Get counts broken down by source for regions at the requested level.
+  // Get counts broken down by kind for regions at the requested level.
   // Rejected and lost are both excluded: these counts say how much there is to
   // go and see in a region, and neither is. A `lost` object someone already
   // visited is not lost to them — that lives in their visit history, which
   // does not filter, so the count shrinking cannot erase a visit.
+  //
+  // A kind's count is of memberships (ADR-0046 decision 8, #822): a place in
+  // two kinds is in both lists and counts once in each. The kind is returned
+  // under the key readers group by — the kinds carry their sources' ids — and
+  // the membership's own admission and gate are asked, the way the list under
+  // each header asks them.
   const result = await pool.query(`
     SELECT
       r.id as region_id,
       r.name as region_name,
       r.color as region_color,
       EXISTS(SELECT 1 FROM regions c WHERE c.parent_region_id = r.id LIMIT 1) as has_subregions,
-      e.category_id,
-      COUNT(DISTINCT er.experience_id) as count
+      m.kind_id AS category_id,
+      ${countedMembershipsSql('m')} as count
     FROM regions r
     JOIN experience_regions er ON r.id = er.region_id
     JOIN experiences e ON er.experience_id = e.id
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
     LEFT JOIN experience_rejections rej ON rej.experience_id = e.id AND rej.region_id = r.id
     WHERE r.world_view_id = $1
       AND ${parentRegionId ? 'r.parent_region_id = $2' : 'r.parent_region_id IS NULL'}
       AND rej.id IS NULL
-      AND ${hideLostSql()}
-      AND ${hideRefusedSql()}
-      AND ${hidePendingSql()}
+      AND ${countedMembershipSql('m', 'e')}
       -- Counted the way the region's own list counts them (#521): a number on
       -- the tree that includes an object placed here by a point nobody may see
       -- sends a reader into a region to find one fewer thing than the tree
       -- promised, or none at all.
       AND ${readerRegionMembershipSql()}
-    GROUP BY r.id, r.name, r.color, e.category_id
+    GROUP BY r.id, r.name, r.color, m.kind_id
     ORDER BY r.name
   `, parentRegionId ? [worldViewId, parentRegionId] : [worldViewId]);
 
