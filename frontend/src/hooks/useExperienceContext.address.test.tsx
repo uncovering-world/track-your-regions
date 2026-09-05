@@ -23,7 +23,7 @@ vi.mock('../api/experiences', async (importOriginal) => {
 
 import { ExperienceProvider, useExperienceContext } from './useExperienceContext';
 
-const STONEHENGE = { id: 1234, name: 'Stonehenge', category: 'unesco', category_name: 'UNESCO World Heritage Sites' } as Experience;
+const STONEHENGE = { id: 1234, name: 'Stonehenge', type: 'cultural', category_name: 'UNESCO World Heritage Sites' } as Experience;
 
 function wrapperAt(entry: string, regionId: number | null = 6737) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

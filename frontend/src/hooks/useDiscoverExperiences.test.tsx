@@ -59,7 +59,7 @@ const WV5 = { id: 5, name: 'Administrative', isDefault: false, isPublic: true };
 const WV2 = { id: 2, name: 'Wikivoyage Regions', isDefault: false, isPublic: true };
 const EUROPE = { id: 6737, worldViewId: 5, name: 'Europe', parentRegionId: null, color: null, hasSubregions: true };
 const MALTA = { id: 7100, worldViewId: 5, name: 'Malta', parentRegionId: 6737, color: null, hasSubregions: false };
-const STONEHENGE = { id: 1234, name: 'Stonehenge', category: 'unesco', category_name: 'UNESCO World Heritage Sites' } as Experience;
+const STONEHENGE = { id: 1234, name: 'Stonehenge', type: 'cultural', category_name: 'UNESCO World Heritage Sites' } as Experience;
 
 function makeWrapper(entry = '/discover/wv/5') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

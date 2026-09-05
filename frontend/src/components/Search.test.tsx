@@ -47,7 +47,7 @@ const RIJKSMUSEUM = {
   id: 6198,
   name: 'Rijksmuseum',
   short_description: null,
-  category: 'art',
+  type: null,
   category_id: 2,
   category_name: 'Top Art Museums',
   country_names: ['Netherlands'],
