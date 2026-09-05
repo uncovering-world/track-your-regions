@@ -8,7 +8,7 @@ Conventions and patterns for writing code in this project. Follow these to keep 
 
 Before implementing anything new, **search the codebase for similar patterns**:
 
-- **Backend utilities:** Check `backend/src/services/sync/syncUtils.ts` (upsert, single-location write, sync log), `wikidataUtils.ts` (SPARQL, QID parsing), and service-level shared code before writing new helpers.
+- **Backend utilities:** Check `backend/src/services/sync/experienceUpsert.ts` (the object upsert and its membership), `syncUtils.ts` (single-location write, sync log), `wikidataUtils.ts` (SPARQL, QID parsing), `backend/src/db/membership.ts` (the one spelling of "admitted" and "passed" over a place's memberships), and service-level shared code before writing new helpers.
 - **Frontend utilities:** Check `frontend/src/utils/` (categoryColors, dateFormat, imageUrl, coordinateParser, mapUtils) before creating inline helpers.
 - **Frontend hooks:** Check `frontend/src/hooks/` for app-level hooks and component directories for co-located hooks.
 - **Frontend components:** Check `frontend/src/components/shared/` (CurationDialog, AddExperienceDialog, LocationPicker) before building new dialogs or UI patterns.
@@ -114,7 +114,8 @@ services/
 ├── sync/
 │   ├── index.ts               ← barrel with orchestrator + status
 │   ├── syncOrchestrator.ts    ← generic orchestration framework
-│   ├── syncUtils.ts           ← shared: upsert, single-location write, sync log
+│   ├── experienceUpsert.ts    ← shared: the object upsert, lock-first, place + membership
+│   ├── syncUtils.ts           ← shared: single-location write, sync log
 │   ├── wikidataUtils.ts       ← shared: SPARQL queries, QID parsing
 │   ├── unescoSyncService.ts   ← category-specific sync
 │   ├── museumSyncService.ts
@@ -130,7 +131,7 @@ services/
 
 **Rules:**
 
-1. **Shared utilities go in shared files.** `syncUtils.ts` and `wikidataUtils.ts` are reused across all sync services. Don't duplicate their logic.
+1. **Shared utilities go in shared files.** `experienceUpsert.ts`, `syncUtils.ts` and `wikidataUtils.ts` are reused across all sync services. Don't duplicate their logic.
 2. **New sync category?** Create a new `*SyncService.ts` file that implements `SyncServiceConfig<T>` from `syncOrchestrator.ts`. Reuse shared utilities.
 3. **Co-locate tests.** Test files sit next to source: `syncOrchestrator.test.ts` alongside `syncOrchestrator.ts`.
 

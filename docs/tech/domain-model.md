@@ -80,13 +80,15 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md) for the full model.
 - **Attributes**:
   - `ID`: Unique identifier
-  - `CategoryID`: ID of the experience category (UNESCO, etc.)
+  - `CategoryID`: The source that brought the place (UNESCO, etc.) — with `ExternalID`, the
+    identity arbiter until #755; what the place *is* to a traveller is its memberships
+    (`ExperienceKindMembership`, ADR-0045 decision 4)
   - `ExternalID`: ID from the original data source
   - `Name`: Name of the experience
   - `NameLocal`: Multilingual names (JSONB)
   - `Description`: Full description
   - `ShortDescription`: Brief description for display
-  - `Type`: The type within the kind, one closed vocabulary per kind — 'cultural' / 'natural' / 'mixed' for a World Heritage site, 'monument' / 'sculpture' for public art — and NULL for a museum, whose kind has no types (ADR-0045, #814). The kind itself is `CategoryId`; see the glossary in [experiences.md](experiences.md#glossary)
+  - `Type`: The type within the kind, one closed vocabulary per kind — 'cultural' / 'natural' / 'mixed' for a World Heritage site, 'monument' / 'sculpture' for public art — and NULL for a museum, whose kind has no types (ADR-0045, #814). The kind is the one `CategoryId`'s source fills (`experience_categories.kind_id` → `experience_kinds`, #822), and `CategoryId` names the source; see the glossary in [experiences.md](experiences.md#glossary)
   - `Tags`: Additional classification tags (JSONB)
   - `Location`: Geographic point (PostGIS Point, SRID 4326)
   - `Boundary`: Optional boundary geometry (PostGIS MultiPolygon)
@@ -95,13 +97,47 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `ImageURL`: URL to representative image
   - `Metadata`: Source-specific data (JSONB)
 
+### ExperienceKind
+
+- **Description**: What a traveller browses by — World Heritage Sites, Art Museums,
+  Public Art & Monuments — a sibling of the others, never a parent (ADR-0045 decision 1).
+  Seeded under the ids of the sources that fill them, so every reader keyed on ids
+  needs nothing when #819 switches it. See [Experiences System](experiences.md) § Kinds
+  and sources.
+- **Attributes**:
+  - `ID`: Unique identifier
+  - `Name`: Kind name (unique)
+  - `DisplayPriority`: Ordering (lower = first)
+
+### ExperienceKindMembership
+
+- **Description**: A place's membership in a kind — one row per (place, kind), what
+  one row of `Experience` carried until #822: the source that brought it, whether the
+  kind's rule admitted it and why, the work that qualified a museum, the must-see badge
+  (the world tier of that kind, ADR-0045 decision 5), the curator's pins on those, and
+  the gate state of the arrival (ADR-0045 decision 7). Every reader-facing read asks
+  admission and the gate of a place through its memberships (`backend/src/db/membership.ts`);
+  a kind's count is of memberships, a region's count is of places (ADR-0046 decision 8).
+- **Attributes**:
+  - `ExperienceID`: The place
+  - `KindID`: The kind
+  - `SourceID`: The source (`ExperienceCategory`) that brought the membership
+  - `Admission` / `AdmissionReason`: 'admitted' or 'refused', and the rule's reason
+  - `AdmittedFor`: The work that qualified a museum (JSONB `{qid, label}`)
+  - `IsIconic`: The must-see badge within the kind
+  - `CuratedFields`: The curator's pins on `admission` and `is_iconic`
+  - `CurationState` / `PublishedAt` / `PendingChangeSyncLogID`: The gate state of the
+    arrival, when it was passed, and the run whose proposal is being held
+
 ### ExperienceCategory
 
-- **Description**: A category of experiences (e.g., UNESCO World Heritage Sites,
-  Art Museums). Enables extensibility for multiple experience types.
+- **Description**: A *source*: the sync that fills a kind (UNESCO World Heritage
+  Sites, Art Museums, Public Art & Monuments). Keeps its table name until #819; every
+  reader still keys on it through `Experience.CategoryID`.
 - **Attributes**:
   - `ID`: Unique identifier
   - `Name`: Category name (unique)
+  - `KindID`: The kind this source fills (`ExperienceKind`, NOT NULL)
   - `Description`: Human-readable description
   - `APIEndpoint`: External API URL for syncing
   - `APIConfig`: Configuration for sync process (JSONB)
