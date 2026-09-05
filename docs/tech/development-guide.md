@@ -331,7 +331,8 @@ Shared utilities live in `frontend/src/utils/`, one module per concern:
 | Module | Purpose |
 |--------|---------|
 | `appUrl.ts` | The URL grammar: parse, build, slugs, the legacy `?wv=` redirect. One module, with a round-trip test |
-| `categoryColors.ts` | Category color mapping, shared color constants |
+| `categoryColors.ts` | The colour an object is drawn in (`experienceColors`: its kind's, refined by its type for World Heritage), source palette, shared colour constants |
+| `experienceTypes.ts` | The closed vocabulary of types per kind (`typeOptionsFor`), and which vocabulary a value is from (`typeVocabularyOf`) |
 | `dateFormat.ts` | Date/time formatting helpers |
 | `imageUrl.ts` | Thumbnail URL generation |
 | `queryInvalidation.ts` | TanStack Query cache invalidation helpers |
