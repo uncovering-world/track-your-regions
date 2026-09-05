@@ -31,7 +31,7 @@ export function ItemHeader({ item }: { item: ReviewQueueItem }) {
     <>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.name}</Typography>
-        <SourceId id={item.external_id} category={item.category_name} />
+        <SourceId id={item.external_id} category={item.category_name} sourcePage={item.website_url} />
         <Chip label={item.category_name} size="small" variant="outlined" />
       </Stack>
       <ObjectContext item={item} />
