@@ -72,10 +72,12 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 - **world_views** — Custom regional hierarchies. Default world view (id=1) is GADM itself
 - **regions** — User-defined groups within a world view, hierarchical via `parent_region_id`. Has computed geometry, `focus_bbox`, `anchor_point`, `is_leaf`
 - **region_members** — Links regions to divisions, supports `custom_geom` for partial coverage
-- **experiences** — UNESCO sites, museums, public art. Multi-location via `experience_locations` table
-- **experience_categories** — UNESCO (id=1), Art Museums (id=2), Public Art & Monuments (id=3). `display_priority` controls ordering (lower = first)
+- **experiences** — the *place* (ADR-0045 decision 4): UNESCO sites, museums, public art — identity, name, location, picture, the visit. Multi-location via `experience_locations` table
+- **experience_kinds** — what a traveller browses by: World Heritage Sites (id=1), Art Museums (id=2), Public Art & Monuments (id=3), under the ids of the sources that fill them
+- **experience_kind_memberships** — a place's membership in a kind, one row per (place, kind): the source that brought it, `admission` and its reason, `admitted_for`, `is_iconic`, the curator's pins on those, and the gate state of the arrival (`curation_state`, `published_at`, `pending_change_sync_log_id`). Every reader-facing read asks admission and the gate of a place through its memberships (`backend/src/db/membership.ts`); a run and a curator write the membership the way they used to write the row (#822)
+- **experience_categories** — the *sources*: UNESCO (id=1), Art Museums (id=2), Public Art & Monuments (id=3), each naming the kind it fills (`kind_id`). `display_priority` controls ordering (lower = first). Every reader still keys on it through `experiences.category_id` until #819
 - **treasures** — Independently trackable items inside venues (artworks, artifacts). Globally unique by `external_id`. Linked to experiences via `experience_treasures` junction table (many-to-many). A link the source stops placing is marked (`missing_since`), never deleted, and only by a run that cleared the works coverage floor (ADR-0044); every reader-facing read of a museum's works carries `offeredLinkSql`. `artists` is a list, because a work often has more than one maker and which one the catalogue held used to be an accident of row order (ADR-0040)
-- **is_iconic** — Boolean flag on both `experiences` and `treasures` for highlighting must-see items
+- **is_iconic** — Boolean flag on a place's membership in a kind (`experience_kind_memberships` — the world tier of that kind, ADR-0045 decision 5) and on `treasures`, for highlighting must-see items
 
 ### Structure notes (non-obvious contracts; layout itself — see `ls backend/src`, `ls frontend/src`)
 - Startup cleanup in backend `index.ts` marks orphaned `running` sync logs as `failed`

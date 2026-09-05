@@ -22,28 +22,71 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 
 | Word | What it is | Where it lives today | What the code calls it |
 |---|---|---|---|
-| **Kind** | What a traveller browses by — a World Heritage site, an art museum, an archaeology museum, a monument. Siblings: each its own list, pin colour and count, each with a sync of its own and its own rule of what complete means — a kind's sources are that sync's inputs (ADR-0045 §1, §2, §3) | The same row as the source, until the place/membership split of ADR-0045 §4 lands — #755 is its first use; #819 then makes every reader say kind or source | `category`, `category_id`, `category_name`, `categoryId`; the chip beside an object's name on a review card, the Discover pills, the group headers |
-| **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query — an input of the kind's sync, carrying its own gate (§3, §7); the sync and the rule of completeness are the kind's. A kind may have several; one source may feed several kinds | `experience_categories` — one row per source today, which is also the row the sync service is registered under | `experience_categories`, `category_id` on `experience_sync_logs`, the curator scope `'category'`, `requires_curation`, `SOURCE_PALETTE` |
+| **Kind** | What a traveller browses by — a World Heritage site, an art museum, an archaeology museum, a monument. Siblings: each its own list, pin colour and count, each with a sync of its own and its own rule of what complete means — a kind's sources are that sync's inputs (ADR-0045 §1, §2, §3) | `experience_kinds` (#822), and a place's membership in it is a row of `experience_kind_memberships`. Every reader still keys on the source row through `experiences.category_id` until #819 makes each say kind or source | `category`, `category_id`, `category_name`, `categoryId`; the chip beside an object's name on a review card, the Discover pills, the group headers |
+| **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query — an input of the kind's sync, carrying its own gate (§3, §7); the sync and the rule of completeness are the kind's. A kind may have several; one source may feed several kinds | `experience_categories` — one row per source, the row the sync service is registered under, naming the kind it fills (`kind_id`, #822) | `experience_categories`, `category_id` on `experience_sync_logs`, `source_id` on a membership, the curator scope `'category'`, `requires_curation`, `SOURCE_PALETTE` |
 | **Type** | A distinction inside a kind whose members a traveller still browses together — cultural / natural / mixed, monument / sculpture — and none for a museum (§1, #814) | `experiences.type`; the vocabularies in `frontend/src/utils/experienceTypes.ts` | `type`, `?type=`, `TYPE_COLORS`, `typeOptionsFor` |
 | **Treasure type** | What kind of thing a work is, independent of its venue's kind and type | `treasures.treasure_type` | `treasure_type` |
 
-**How to read "category" below.** Until the place/membership split lands (#755 is its first use, and #819 then makes every reader say which it means), the row is both a kind and a source, and the code's word for the row is *category*. In the sections below a sentence that means the kind specifically says *kind* — what a reader browses by, counts, admits and refuses — and one that means the source says *source* — a run, its gate, its cache, its log; *category* is kept where it names the table, a column, an API path or a scope value as the code spells them. The vision documents use the same words ([`EXPERIENCE-TYPE-AND-SIGNIFICANCE.md`](../vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md), [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md)).
+**How to read "category" below.** The place and its membership in a kind are separate rows since #822 (the tables are described just below), but every reader still keys on the source row through `experiences.category_id` until #819 makes each say which of the two it means, and the code's word for that row is *category*. In the sections below a sentence that means the kind specifically says *kind* — what a reader browses by, counts, admits and refuses — and one that means the source says *source* — a run, its gate, its cache, its log; *category* is kept where it names the table, a column, an API path or a scope value as the code spells them. The vision documents use the same words ([`EXPERIENCE-TYPE-AND-SIGNIFICANCE.md`](../vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md), [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md)).
 
-**What the code holds today** is one table for both words. `experience_categories` is the source table — one row per sync service, with its endpoint, its config, its gate (`requires_curation`, ADR-0025) and its `display_priority` (lower first) — and every reader-facing grouping still keys on it through `experiences.category_id`: the groups of the map-mode list, the Discover pills, the pin colour, the counts, the curator scopes, the admin routes. Three rows exist, and each is at present both a source and the only source of one kind:
+**What the code holds today** is three tables for the two words (#822, ADR-0045 decision 4). `experience_kinds` is what a traveller browses by, three rows seeded under the ids of the sources that fill them — `World Heritage Sites` (1), `Art Museums` (2), `Public Art & Monuments` (3) — so a reader keyed on 1, 2 and 3 reads the same colour and order either way and switching it (#819) is a join, not a renumbering. `experience_categories` is the source table — one row per sync service, with its endpoint, its config, its gate (`requires_curation`, ADR-0025), its `display_priority` (lower first) and the kind it fills (`kind_id`) — and every reader-facing grouping still keys on it through `experiences.category_id`: the groups of the map-mode list, the Discover pills, the pin colour, the curator scopes, the admin routes. Three rows exist, each the only source of one kind:
 
-- `UNESCO World Heritage Sites` (priority `1`) — the kind of the same name
-- `Art Museums` (priority `2`) — the kind of the same name, filled by the works-first source (ADR-0023); the row read "Top Art Museums", the selection rule's name, until migration 045 gave it the reader's (ADR-0045 §8, #818)
-- `Public Art & Monuments` (priority `3`) — the kind of the same name
+- `UNESCO World Heritage Sites` (priority `1`) — fills World Heritage Sites
+- `Art Museums` (priority `2`) — fills Art Museums with the works-first selection (ADR-0023); the row read "Top Art Museums", the selection rule's name, until migration 045 gave it the reader's (ADR-0045 §8, #818)
+- `Public Art & Monuments` (priority `3`) — fills Public Art & Monuments
 
-`experiences.type` is the **type within a kind** (#814; the column was called `category` until then, the word the rest of the code uses for the kind and its source): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, and **NULL for a museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A row is still both a place and its membership in a source: a monument that is also a World Heritage point is two rows (#755). The split ADR-0045 decides — a kind of its own, memberships as their own rows, refusal as a curator-confirmed withdrawal of one membership — lands issue by issue; until it does, "category" in the sections below means this one table, read the way the glossary above says.
+`experiences.type` is the **type within a kind** (#814; the column was called `category` until then, the word the rest of the code uses for the kind and its source): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, and **NULL for a museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A place is one row of `experiences` and each of its memberships in a kind is a row of `experience_kind_memberships` (below); a monument that is also a World Heritage point is still two places today — the Statue of Liberty is ids 382 and 11565 — and becomes one place with two memberships by #755's merge. Refusal as a curator-confirmed withdrawal of one membership (ADR-0045 decision 6) lands with #755 as well; today a refusal is the run's write on the membership, and the curator confirms or overrides it.
 
-**How two rows become one place** is [ADR-0046](../decisions/0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md). A place has an identity of its own, assigned by us; a source's id — a Wikidata item, a World Heritage id — is a property of a membership, and for a serial World Heritage site identity is decided per location. Two signals are universal: an equal Wikidata item merges without a question, and coordinates within a threshold that grows with the place's extent plus a name at trigram similarity 0.5 or better produce a proposal a curator confirms through the same gate as every other open decision; distance alone proposes nothing, and each kind adds its threshold and any signal of its own. A merge keeps both rows in the history and can be undone. A second relation, **part of** (the Neues Museum on Museum Island, a monument on Red Square), comes from Wikidata's *part of* / *location* chains, from a site's boundary polygons once #714 sources them, or from geometry as a curator's proposal; a visit to the part marks the whole visited, never the reverse — and never across a serial World Heritage site, where a visit is recorded on the location and whether the site as a whole counts as visited is #768's decision. **None of this exists in the code yet**: there is no place table, no membership table and no merge, `metadata.wikidataQid` is written by the syncs and read only to label or hide it on a curator's card (`fieldMeaning.tsx`), never to match one row with another, and `user_visited_experiences` / `user_visited_locations` record a visit against the row, with no cascade. The rows that the two signals already match are listed on #780 and #755.
+**How two rows become one place** is [ADR-0046](../decisions/0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md). A place has an identity of its own, assigned by us; a source's id — a Wikidata item, a World Heritage id — is a property of a membership, and for a serial World Heritage site identity is decided per location. Two signals are universal: an equal Wikidata item merges without a question, and coordinates within a threshold that grows with the place's extent plus a name at trigram similarity 0.5 or better produce a proposal a curator confirms through the same gate as every other open decision; distance alone proposes nothing, and each kind adds its threshold and any signal of its own. A merge keeps both rows in the history and can be undone. A second relation, **part of** (the Neues Museum on Museum Island, a monument on Red Square), comes from Wikidata's *part of* / *location* chains, from a site's boundary polygons once #714 sources them, or from geometry as a curator's proposal; a visit to the part marks the whole visited, never the reverse — and never across a serial World Heritage site, where a visit is recorded on the location and whether the site as a whole counts as visited is #768's decision. **The place and the membership exist since #822; the merge, the signals and "part of" do not**: `metadata.wikidataQid` is written by the syncs and read only to label or hide it on a curator's card (`fieldMeaning.tsx`), never to match one row with another; a source's id is still the place's key (`UNIQUE(category_id, external_id)`) rather than the membership's; and `user_visited_experiences` / `user_visited_locations` record a visit against the row, with no cascade (#823). The rows that the two signals already match are listed on #780 and #755.
+
+### The place and its memberships (#822)
+
+Three tables hold what one row held (ADR-0045 decision 4; the calls this slice took are ADR-0045 §5 and §7 read to the letter — the badge and the gate state are a membership's):
+
+| Table | What it carries |
+|---|---|
+| `experiences` — the **place** | identity (`category_id` + `external_id`, the upsert's arbiter until #755 moves a source's id onto the membership — ADR-0046 decision 1), name, description, `type`, `location` and `boundary`, picture and credit, `tags`, `metadata`, what a source observes about the row (`missing_since`, `source_membership`, the provenance pointers) and what the world says of it (`existence`), the curator's claims on those fields, who decided a verdict and when (`state_decided_*`), the visit |
+| `experience_kinds` — the **kind** | `name` as a traveller says it, `display_priority`; ids equal to the sources' until #819 |
+| `experience_kind_memberships` — the **membership** | `experience_id` + `kind_id` (unique), `source_id` (the source that brought it — ADR-0045 decision 3: a kind may have several, and a run writes, refuses and badges only what its own source brought), `admission` and `admission_reason` (ADR-0024), `admitted_for` (the work that qualified a museum, ADR-0023 — the run's own bookkeeping, never a question for a curator), `is_iconic` (the world tier of the kind, decision 5), the curator's pins on those two (`curated_fields`, the shape the place's has), and the gate state of the arrival — `curation_state`, `published_at`, `pending_change_sync_log_id` (ADR-0025; per member, decision 7) |
+
+What follows from the split, in the code as it stands:
+
+- **A reader-facing read asks the four questions of the place through its memberships.** `db/membership.ts` is the one spelling: `placeAdmittedSql` (some membership admitted), `placeVisibleSql` (some membership passed) and `placeOfferedSql` (both, of *one* membership — the composition matters the day a place has two, since one membership admitted and another passed is offered by no single kind). `hideRefusedSql`, `hidePendingSql` and `experienceOfferedToReaderSql` in `experienceLifecycle.ts` delegate to them, so every list, count, search and map feed reads as it did — a place has exactly one membership today, and migration 046 refuses a database where it does not.
+- **A run writes the membership beside the place** (`experienceUpsert.ts`): the kind read off the source, the source, `admitted_for`, and the gate state of the arrival — `pending` with no `published_at` under a gate, `auto` and now otherwise. The hold (a gated source may not overwrite what a reader can see) is a question about the memberships now, which is why the upsert became one transaction per object that locks the place in a statement of its own and reads the hold in the next — see § Change provenance. The admission writes (`admission.ts`), the held-proposal pointer and the curator-pass decay target the membership the run's own source brought.
+- **A curator answers the membership** where the endpoint is keyed on the place — `/:id/publish`, `/:id/decline-held`, `/:id/admission` — through `membershipToAnswerSql`: the one waiting for a publish or a decline, the refused one for a verdict, the place's only one until #755 makes a second and its API names it. The publication and the verdict land on the membership; the content, and who decided and when, on the place.
+- **Counts follow ADR-0046 decision 8** (`experienceCounts.ts`): a kind's count is of memberships — `/categories`' `experience_count` and the tree's per-kind counts — and a region's count is of places; equal today, apart from the first merge.
+- **Two catalogue checks state what every reader rests on**: `place-without-membership` and `membership-source-disagrees-with-row` (`experiences.category_id` and the membership's `source_id` name the same source on every row).
+- **One gap, on purpose, until #755**: the hold asks whether a reader can see the *place*, so a gated second membership of a place another source made visible would be held by the upsert — and the pointer is set only on a visible membership of the run's own source, so that proposal would get no card. The shape arrives with the merge, whose design it is.
+
+### Readers of `category_id`, by what they mean
+
+The checklist #819 is reviewed against (ADR-0045's consequences: every reader "has to learn which of the two it meant"). Every reader of `category_id` / `categoryId` / `category_name` / `category_priority` on both stacks, grouped by surface and tagged by the word it means; a file that reads it both ways is listed under both.
+
+**Kind** — what a traveller browses by; #819 switches these to the membership's `kind_id` and the kind's name:
+
+- the map-mode list's groups and headers: `ExperienceList.tsx`, `ExperienceList/GroupHeader.tsx`, `ExperienceList/utils.ts`, `ExperienceList/useInViewFilter.ts`, `ExperienceListItem.tsx`, `ExperienceExpandedDetails.tsx`
+- Discover's pills, lists, cards and hover: `hooks/useDiscoverExperiences.ts`, `discover/DiscoverRegionList.tsx`, `DiscoverExperienceView.tsx`, `DiscoverExperienceList.tsx`, `ExperienceCard.tsx`, `ExperienceDetailPanel.tsx`, `DiscoverHoverCard.tsx`, `useDiscoverHover.ts`
+- the address (`?cat=`): `utils/appUrl.ts`, `hooks/useAddressedRegion.ts`, `hooks/useNavigation.tsx`
+- pin and card colours: `utils/categoryColors.ts` (`experienceColors`, keyed on the ids 1–3 the kinds now carry), `experienceMarkers/buildMarkers.ts`, `experienceMarkers/useMarkerInteractions.ts`, `ExperienceMarkers.tsx`, `regionMap/HoverPreviewCard.tsx`, `hooks/useHoverContext.tsx`
+- the counts: `experienceQueryController.ts` (`listCategories`, `getExperienceRegionCounts` — already read the memberships, and return the kind under the `category_id` key), `Header.tsx`
+- the type vocabulary per kind: `utils/experienceTypes.ts`
+- search results and the visit list: `Search.tsx`, `ExperienceSearchResults.tsx`, `hooks/useVisitedExperiences.ts`, `experienceVisitController.ts` (the `categoryId` filter), `experienceQueryController.ts` and `experienceRegionQuery.ts` (`category_name`, `category_priority` on every row), `types/index.ts` (the `categoryId` query filters)
+- the review card's chip and the queue rows: `reviewQueueController.ts` and `reviewQueueContents.ts` (`category_name`), `curation/queueRows.ts`, `curation/queueCard.tsx`, `shared/CurationDialog.tsx`, `shared/AddExperienceDialog.tsx` (the kind a curator picks), `api/experiences.ts`
+
+**Source** — a run, its gate, its cache, its log, its scope; these keep the source row, which #819 renames:
+
+- the admin sync panel and its routes: `controllers/admin/syncController.ts`, `routes/adminRoutes.ts`, `api/admin/index.ts`, `components/admin/SyncPanel.tsx`, `SyncHistoryPanel.tsx`, `WikidataCacheSection.tsx`, `CuratorPanel.tsx`, `controllers/admin/curatorController.ts`
+- the sync services and what a run writes: `syncOrchestrator.ts`, `experienceUpsert.ts` (the arbiter `(category_id, external_id)` and the membership's `source_id`), `syncUtils.ts`, `unescoSyncService.ts`, `museumSyncService.ts`, `landmarkSyncService.ts`, `admission.ts` (`m.source_id`), `missingDetection.ts`, `placement.ts`, `locationWriter.ts`, `museum/treasureWriter.ts`, `imageCredit.ts`, `unescoImageRepair.ts`, `curationDecay.ts`, `heldProposalPointer.ts`, `regionAssignmentService.ts`, `wikidataCache.ts` (the cache key of ADR-0047), `services/sync/types.ts`
+- the gate and the curator scope: `middleware/auth.ts` (`curatorUnrestrictedScopeExists`), `experienceScope.ts`, `curationController.ts`, `admin/curationGateController.ts`, `lifecycleController.ts`, `publishController.ts`, `publishWaitingController.ts`, `declineHeldController.ts`, `declineSourceController.ts`, `acceptSourceController.ts`, `workEditController.ts`, `locationEditController.ts`, `locationStateController.ts`, `waitingCounts.ts` (per source of the membership), `routes/experienceRoutes.ts`, `routes/userRoutes.ts`
+- the logs, the "New" window and the checks: `experienceNewBadge.ts` (`new_badge_days`, the source's cadence — read through the membership's source), `experienceSyncLogs` in `db/schema.ts`, `admin/dataAssertions/objectAssertions.ts`, `db/seed/e2eFixture.ts`
 
 ## Core Data Model
 
 ### Main tables
 
-- `experiences`: canonical experience record (`location`, optional `boundary`, curation metadata)
+- `experiences`: the place (`location`, optional `boundary`, the curator's claims, what a source observes about the row)
+- `experience_kinds`: what a traveller browses by (ADR-0045 decision 1); three rows under the sources' ids
+- `experience_kind_memberships`: a place's membership in a kind (ADR-0045 decision 4, #822) — the source that brought it, the admission verdict and its reason, `admitted_for`, the must-see badge, the curator's pins on those, and the gate state of the arrival
 - `experience_regions`: assignment to regions (`assignment_type = auto | manual`)
 - `user_visited_experiences`: per-user visit state
 - `experience_sync_logs`: sync audit log by source (`category_id`)
@@ -432,11 +475,12 @@ Generic `getSyncStatus(categoryId)` and `cancelSync(categoryId)` replace per-ser
 
 ### Shared modules
 
-Common sync logic lives in ten shared utility files:
+Common sync logic lives in eleven shared utility files:
 
 - **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by the source's id (`category_id`), and `isCancellable()` — the single rule for whether a cancel would be acted on, which `cancelSync` enforces, the status endpoint reports as `cancellable`, and the admin panel disables its button on rather than re-deriving.
 - **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
-- **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), and sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs). Used by all three services. It deletes nothing: the FK-ordered per-source cleanup that force sync used lived here and is gone with it.
+- **`experienceUpsert.ts`** — The object upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`): one transaction per object that locks the place first (`OBJECT_LOCK`, in a statement of its own), decides the hold and the `before` snapshot in the statement after it — a statement's snapshot predates the lock it waits for, `db/locks.ts` — writes the place and — in the same statement — its membership in the kind the run's source fills (#822), then the decay and the pointer on the same connection. Its preview (`dryRun`) asks the hold rule of the same memberships with one unlocked `SELECT`. Also the run's picture rule (`withShowablePicture`, ADR-0043). Re-exported from `syncUtils.ts`, so the three services keep one import.
+- **`syncUtils.ts`** — Single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), and sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs). Used by all three services. It deletes nothing: the FK-ordered per-source cleanup that force sync used lived here and is gone with it.
 - **`locationWriter.ts`** — Writes an experience's locations so a point that has not moved keeps its row, and therefore its region assignments (`writeExperienceLocations()`). Identity is `(point, external_ref)`: the reference alone repeats across a transboundary component's per-country entries, and the point alone repeats across the sub-units of one named locality. A point the source stops offering is marked (`missing_since`, `ordinal` NULL) rather than deleted, and one offered again is found by the same identity and given its place back. Returns the rows inserted, moved or offered again — what the run then assigns — and how many it was the first to find missing. Two modules hold what its statements are built from, split out when the per-point diff took it past the guide's length limit: `locationPairing.ts` — identity (`samePointSql`, `claimedPointSql`), the guard that keeps a claimed column, and what a kept row's own columns say happened to it (`keptChanges`) — and `locationIncoming.ts`, the source's list before anything is known about the store (its CTE, its parameters, and the duplicates the source itself ships)
 - **`placement.ts`** — Placing what a run moved, and reporting when that fails (`finishPlacement()`, `placeMovedExperiences()`, `recordPlacementFailure()`, `enterAssigningPhase()`, `terminalStatus()`). Split from the orchestrator because it is a separate responsibility: the loop runs a source's items, this decides where the objects that moved now belong, and it reaches for `regionAssignmentService`, `syncLogMarkers` and `annotateClosedSyncLog` — none of which the loop touches
 - **`changeSet.ts`** — Pure diff between the stored row and the incoming record (`computeChangeSet()`). No database, no network. Normalises before comparing: JSONB by value rather than key order, country and tag arrays as sets, coordinates by distance (below 10 m is jitter, above 1 km is `major`), and `null`/`''`/absent as one absence. Two jsonb columns are reported **per part** rather than whole, because an answer is addressed to an entry: `metadata.<key>` for every metadata key that differs (ADR-0039), `nameLocal.<lang>` for every language of the local names that differs (#728). Also home to `claimKeyFor`, the one lookup four readers share for "which `curated_fields` entry protects this"
@@ -506,7 +550,10 @@ keys below and one column fall under it:
   it changes". It is the work with the most language links among the ones the pass placed —
   derived from the counter above — no reader sees it, and the look it was kept for is already
   taken by the admission rule, which re-runs against live data every pass and files a refusal
-  card the moment a museum stops qualifying. In the set.
+  card the moment a museum stops qualifying. It sat in the set until #822 moved it off the row
+  altogether: the run writes it on the membership (`admitted_for`), migration 046 stripped it
+  from every row, proposal and held decision, and it never enters `metadata` or this diff now —
+  `changeSet.test.ts` pins the constant as *not* naming it.
 - `wikidataClasses` and `wikidataArtwork` on a landmark are what the public-art rule read —
   every `P31` the entity carries, and whether an artwork class answered a building's veto — kept
   so that Catalogue Checks can ask what an admitted row is typed as (#754). The rule re-reads
@@ -634,11 +681,12 @@ and that is the surface #544 is about.
 source are written invisible rather than withheld ([ADR-0025](../decisions/0025-per-source-curation-gate.md)),
 but an experience row that is already published has no second row to hide an unreviewed value behind
 — so for that row alone the run keeps the stored content instead. The condition is
-`requires_curation AND experiences.curation_state <> 'pending'`, computed inside the upsert because it
-depends on the stored state the same statement is about to write, and it rides on every content column but `tags` (#570)
-beside that column's own `curated_fields` guard. A row still `pending` is *not* held: nobody can see
-it, so the run refreshes it in place and the curator reviews the newest state rather than whatever
-landed first.
+`requires_curation` and a reader being able to see the place — some membership of it passed
+(`placeVisibleSql`, the membership's state since #822) — decided under the lock the upsert takes
+first, in the statement after it, because it depends on the stored state the write is about to overwrite, and it rides on every
+content column but `tags` (#570) beside that column's own `curated_fields` guard. A place still
+unread is *not* held: nobody can see it, so the run refreshes it in place and the curator reviews
+the newest state rather than whatever landed first.
 
 **And a field of a part readers can already see is held the same way**
 ([ADR-0037](../decisions/0037-a-part-field-readers-see-is-held-like-the-objects.md)). A run rewrote a
@@ -676,28 +724,49 @@ same key under the same name, so the card's vocabulary needs nothing new to say 
 every difference in exactly one of three buckets, and the bucket is what the run reports:
 `changedFields` means *written*, `curatedConflicts` means a curator's claim refused it, `heldFields`
 means the gate refused it. The hold itself is decided in SQL — it reads the stored `curation_state`
-the same statement is about to overwrite — and the statement **answers the question once and hands
-the answer back**, as `${HELD} AS was_held` in the upsert's `RETURNING` and the same expression in
-the preview's `SELECT`; `heldSql` in `syncUtils.ts` is the rule's only home, and the diff takes the
-answer as a boolean rather than re-deriving anything. A row whose only differences were held is
+the same statement is about to overwrite — and the rule **is answered once and the answer handed
+on**: since #822 the hold is a question about the place's memberships (some membership passed),
+which an `ON CONFLICT DO UPDATE` cannot read under the row lock — a subselect there reads the
+statement's snapshot — so the upsert locks the place first, in a statement of its own, answers
+`was_held` in the next statement beside the `before` snapshot, and binds the answer into the write as a parameter every guard reads
+(`(SELECT held FROM hold)`); the preview asks the same expression in its own `SELECT`. `heldSql`
+in `experienceUpsert.ts` is the rule's only home, and the diff takes the answer as a boolean
+rather than re-deriving anything. A row whose only differences were held is
 therefore `unchanged` (nothing about it changed) and its changeset row is `change_type = 'held'`.
 
-The answer has to come from `RETURNING` rather than from the `before` CTE, and this is not a detail
-of style. Inside `ON CONFLICT DO UPDATE`, `experiences.curation_state` is the stored value **as
-re-read under the row lock**, while a CTE reads the statement's own snapshot — and the two differ
-whenever a curator's publish commits in between. Measured against a real database: with a publish
-landing in that window, the CTE said `pending` while the guards said `verified` for the same run, so
-a report derived from the CTE called the write applied while the statement had held it — #519 again,
-for one run, self-healing on the next. Deriving the *guards* from the CTE instead would be far
-worse: the run would then overwrite a row the curator had just published, leaving unreviewed content
-live with no pointer, no card and nothing anywhere to say so — the gate's central promise broken
-permanently rather than a report wrong once. Worse still in a second way: the decay does not fire
-under a gated source, so the row would go on saying `verified` — asserting a curator's pass over
-content nobody had seen. And the divergence is one-directional, because nothing returns a row to
-`pending`, so every reachable instance of it is that case rather than the harmless mirror.
-`RETURNING` reads the tuple as it stands after the write, which equals the value the guards were
-built on only because this statement never assigns `curation_state` — a test pins that, on the
-SET-list's text rather than on parsed assignments, since the assignment can be written mid-line.
+The answer has to be decided **under the lock**, and this is not a detail of style. A statement's
+subselects and CTEs read the statement's own snapshot, taken before any row lock is acquired, while
+`ON CONFLICT DO UPDATE` acts on the row as re-read under the lock — and the two differ whenever a
+curator's publish commits in between. While the state was the row's own column, the guards could
+read it under the lock inside the statement and hand it back through `RETURNING`; the report derived
+from a `before` CTE instead was measured disagreeing with them — with a publish landing in that
+window, the CTE said `pending` while the guards said `verified` for the same run, so the report
+called the write applied while the statement had held it (#519 again, for one run, self-healing on
+the next). Now that the state is the membership's (#822) the guards themselves could only reach it
+through a subselect, which is the snapshot side of that same window: a run would then overwrite a
+place the curator had just put in front of readers, leaving unreviewed content live with no pointer,
+no card and nothing anywhere to say so — the gate's central promise broken permanently rather than a
+report wrong once. Worse still in a second way: the decay does not fire under a gated source, so the
+membership would go on saying `verified` — asserting a curator's pass over content nobody had seen.
+And the divergence is one-directional, because nothing returns a membership to `pending`, so every
+reachable instance of it is that case rather than the harmless mirror. So the upsert locks the place
+first (`OBJECT_LOCK`, the mode every curator write takes on the same row) **in a statement of its
+own**, reads the `before` snapshot and the hold in the next, and binds the answer into the write: one
+value, read by every guard, the membership's pointer arm and the diff alike. Two statements and not
+one, because a locking read is no better than a subselect for a row of another table: in READ
+COMMITTED the statement's snapshot is taken before it waits for the lock, and once the lock is
+granted only the locked row is re-read — measured on 2026-09-05, a `SELECT … FOR NO KEY UPDATE OF e`
+that waited for a publish answered `false` to "has a membership of the place been passed?" after
+that publish had committed, and the next statement on the same connection answered `true`. The
+curator's writes read the membership the same way — the lock in one statement, the membership in
+the next (`publishUnderLock`, `refuseUnderLock`, `setExperienceAdmission`) — and the treasure
+writer's pointer and decay, which ran on the pool, run in one transaction that takes the museum
+first. Folding the lock into the UPDATE's own sub-select is not a substitute: it waits, but it chooses
+its rows under the pre-wait snapshot — measured, a decay written that way updated 0 rows for a
+membership the publish had just passed, and lock-then-update updated 1. `db/locks.ts` states the rule
+once. What the membership CTE never assigns
+on conflict — `curation_state`, `published_at`, the verdict, the badge — a test pins on the
+SET-list's text rather than on parsed assignments, since an assignment can be written mid-line.
 
 Before all of this, a held field landed in `changedFields` — the bucket that means written — so the
 run reported an update over a row where nothing had moved, and the change list drew `old → new` with
@@ -938,7 +1007,7 @@ The date is most of what the fact means on the ground, so the list reads send it
 
 **Where a World Heritage property's picture comes from.** Wikidata states one (P18) for the item carrying the property's id (P757), and the match is by that id and nothing looser: the site's own number first, then a later numbering of the same property (`166rev`, `292bis`), then the lowest-numbered of its components (`1142-01bis`) — UNESCO's own ordering of a serial property's parts, not a query planner's. Measured 2026-09-01: 1131, 1206 and 1220 of the 1260, 96.8 %. Deterministic at every step (`MIN` over an item's several pictures, a sort within a tier), because on a gated source a picture that changed between runs is a proposal somebody has to answer. A component's picture may stand in for the property; a component's *article* may not — a reader following it from the card would land on the wrong page — so the article is taken from the property's own item only. The 40 left have a Wikidata item (38), a Commons category (16), a part with a picture (17): pools a person can choose from, not statements a run can act on. `Category:Wudang Mountains` opens with a portrait of a person, and a licence-filtered aggregator answers "Deer Stone Monuments" with a cemetery in New Orleans. They show no picture and keep their link.
 
-**Which hosts a picture may come from is decided in one place per side and pinned across the boundary.** `DISPLAYABLE_PICTURE_HOSTS` (`backend/src/types/urlSafety.ts`) and `TRUSTED_IMAGE_DOMAINS` (`frontend/src/utils/imageUrl.ts`) hold the same two Commons hosts; no import can cross (#527), so `urlSafety.test.ts` reads the frontend's declaration and fails when the two differ. `isDisplayablePictureUrl` also asks that a Commons file *name a picture* — Commons hosts PDFs, videos and scanned books under the same `Special:FilePath` shape, and a stored one is the empty frame this rule exists to stop — and that it be the file rather than the `/wiki/File:` page about it, which ends the same way and answers HTML; on `upload.wikimedia.org` (or a subdomain of it) only `/wikipedia/commons/` is Commons'. **Every writer of `image_url` holds the line at the writer, and there are two lines.** A run is held to `isCommonsPictureUrl` — a picture file on a Commons host, and nothing else, since a source's picture is a Commons file by construction and no run writes a path of ours: the sync upsert (`withShowablePicture`, `syncUtils.ts`, binding all three experience collectors), the works writer (`treasureWriter.ts`) and both repairs (`pictureRepair.ts`). A person is held to `isDisplayablePictureUrl`, which adds the one local shape the drawing side maps, an `/images/…` path for a file we host: a curator's edit (`safeImageUrlSchema`, and the controller's own second reading) and publishing a held proposal (`publishHeldFields.ts`, which refuses the card rather than dropping the value — a card filed before the rule can still be proposing the portal's photograph). A refused picture takes its credit with it, so no photographer is named beside an empty frame — for a picture the run owns; a picture a curator claimed stays, and so does the credit under it (`creditToWrite` resends it, and the upsert re-applies it whatever the run sent).
+**Which hosts a picture may come from is decided in one place per side and pinned across the boundary.** `DISPLAYABLE_PICTURE_HOSTS` (`backend/src/types/urlSafety.ts`) and `TRUSTED_IMAGE_DOMAINS` (`frontend/src/utils/imageUrl.ts`) hold the same two Commons hosts; no import can cross (#527), so `urlSafety.test.ts` reads the frontend's declaration and fails when the two differ. `isDisplayablePictureUrl` also asks that a Commons file *name a picture* — Commons hosts PDFs, videos and scanned books under the same `Special:FilePath` shape, and a stored one is the empty frame this rule exists to stop — and that it be the file rather than the `/wiki/File:` page about it, which ends the same way and answers HTML; on `upload.wikimedia.org` (or a subdomain of it) only `/wikipedia/commons/` is Commons'. **Every writer of `image_url` holds the line at the writer, and there are two lines.** A run is held to `isCommonsPictureUrl` — a picture file on a Commons host, and nothing else, since a source's picture is a Commons file by construction and no run writes a path of ours: the sync upsert (`withShowablePicture`, `experienceUpsert.ts`, binding all three experience collectors), the works writer (`treasureWriter.ts`) and both repairs (`pictureRepair.ts`). A person is held to `isDisplayablePictureUrl`, which adds the one local shape the drawing side maps, an `/images/…` path for a file we host: a curator's edit (`safeImageUrlSchema`, and the controller's own second reading) and publishing a held proposal (`publishHeldFields.ts`, which refuses the card rather than dropping the value — a card filed before the rule can still be proposing the portal's photograph). A refused picture takes its credit with it, so no photographer is named beside an empty frame — for a picture the run owns; a picture a curator claimed stays, and so does the credit under it (`creditToWrite` resends it, and the upsert re-applies it whatever the run sent).
 
 **Repairing what is stored is the admin's action, not a run's proposal.** UNESCO is gated, so a run offering a Commons picture for a visible row files a held proposal, and 1260 rows carrying a picture the product may not show are not 1260 questions for a curator. *Fix pictures* on the source's card in the sync panel (`POST /api/admin/sync/categories/:id/fix-images`, `fixUnescoImages`) writes now: a Commons picture with its credit where Wikidata states one, nothing where it does not (the portal's photograph and its credit taken off), and never a picture a curator owns. One outcome is for the whole run rather than a row: when Wikidata does not answer, the repair stops before touching anything and says so — *Wikidata did not answer, so nothing was changed — try again later* — because an unanswered query is not the same as a property with no picture, and read alike it would have emptied every selected row. The same button fills in museums' missing pictures (`fixMuseumImages`); the two share `pictureRepair.ts`, and the panel offers the button exactly where the route acts, read from `repairsPictures` on the source.
 
@@ -1051,10 +1120,10 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   `experience_treasures` currently holds, before writing anything — during design this caught
   second-order regressions (a corroboration fix that silently routed a work to the wrong museum,
   and the next fix that silently dropped a work's true venue) that no test did
-- Writes an admitted museum as an experience with no `type` (an art museum is a kind, not a type — the literal `art` went with #814) and `is_iconic = true`, and
+- Writes an admitted museum as a place with no `type` (an art museum is a kind, not a type — the literal `art` went with #814) whose Art Museums membership carries `is_iconic = true` and the work that qualified it (`admitted_for`, #822), and
   each work it holds as a treasure whose own `is_iconic` joins at the same 22-sitelink threshold
   and releases only below 18 (`ICONIC_RELEASE`), so the badge does not flicker as Wikipedia's
-  coverage grows. The museum's own flag goes with its admission, and it has four writers — three
+  coverage grows. The membership's flag goes with its admission, and it has four writers — three
   in `admission.ts` and one beside the curator's verdict: the run badges the museums it admits
   (`markIconic`), the run's two refusal writes (`CLEAR_ICONIC`) clear it, and a curator's
   confirmation of a refusal (`setExperienceAdmission`, `lifecycleController.ts`) clears it through
@@ -1251,8 +1320,8 @@ source is what its runs read, and clearing it clears exactly that. Migration 043
 table of the rows keyed the old way and corrects the column's comment; a database that skips it
 carries them as dead weight until each kind's lifetime passes.
 
-**Belonging is the badge.** The source declares `badgesAdmitted`, so every row the world tier
-admits carries `is_iconic`, written after the admission step (ADR-0045 decision 5, #760) — a
+**Belonging is the badge.** The source declares `badgesAdmitted`, so every membership the world
+tier admits carries `is_iconic`, written after the admission step (ADR-0045 decision 5, #760) — a
 flag this source never wrote before; the regional tier, when it comes, carries none.
 
 **What is kept** — four cache kinds (`CACHED_KINDS_BY_CATEGORY[3]`): `classes` for the closures
@@ -1351,8 +1420,8 @@ query, and the rule is deliberately asymmetric because the reasons are:
 | flagged `missing_since` only | shown | shown | **nothing** |
 | `former` | shown | shown | `Former` chip |
 | `lost` | hidden | **shown** | `Lost` chip |
-| `admission = 'refused'` | hidden | **shown** | not reachable |
-| `curation_state = 'pending'` | hidden | **hidden** | not reachable, except `GET /:id`, `/:id/locations` and `/:id/treasures` for a curator/admin whose scope reaches the experience |
+| the membership's `admission = 'refused'` | hidden | **shown** | not reachable |
+| the membership's `curation_state = 'pending'` | hidden | **hidden** | not reachable, except `GET /:id`, `/:id/locations` and `/:id/treasures` for a curator/admin whose scope reaches the experience |
 
 `former` is a claim about the source's catalogue, not about the world: the place still stands
 and you can still go, so nothing about who sees it changes. `lost` is a claim about the world,
@@ -1382,23 +1451,30 @@ wall — and Wikidata goes on listing every one of them, so neither of the other
 say it without asserting something false. `hideRefusedSql()` is a separate fragment from
 `hideLostSql()` for the same reason they are separate columns, and because the two are toggled
 independently: `includeLost` is a reader asking to see what is gone, and it must leave
-admission alone.
+admission alone. The verdict is the membership's since #822 (§ Kinds and sources), so the
+fragment asks whether *some* membership of the place is admitted (`placeAdmittedSql`,
+`db/membership.ts`) — the same answer as the row's column while a place has one membership,
+which every place does today.
 
 `curation_state` ([ADR-0025](../decisions/0025-per-source-curation-gate.md)) is the fourth column
-that can take a row off a reader's screen, carried by `experiences`, `experience_locations`,
-`experience_treasures` and `treasures` rather than by the experience alone, because a gated
-source's points and works are exactly what a run can add unchecked between one curator visit and
-the next. It answers a question none of the other three do: has anyone looked at this row yet —
-not whether the source still lists it, not whether it still exists, not whether this kind
-accepts it. A sync run writes it — `pending` for a row from a gated source, `auto` everywhere
-else. `createManualExperience` writes `verified` instead, on both the experience and its one
-location: there is no source here to gate, and the curator who typed the row in and placed the
-point already read it — `auto` would say "published unread" about something a person wrote.
+that can take a row off a reader's screen, carried by the place's membership
+(`experience_kind_memberships`, since #822 — a kind fed by a gated source holds the gated members
+per member, ADR-0045 decision 7), `experience_locations`, `experience_treasures` and `treasures`
+rather than by the experience alone, because a gated source's points and works are exactly what a
+run can add unchecked between one curator visit and the next. It answers a question none of the
+other three do: has anyone looked at this row yet — not whether the source still lists it, not
+whether it still exists, not whether this kind accepts it. A sync run writes it — `pending` for a
+membership from a gated source, `auto` everywhere else. `createManualExperience` writes `verified`
+instead, on both the membership and its one location: there is no source here to gate, and the
+curator who typed the row in and placed the point already read it — `auto` would say "published
+unread" about something a person wrote.
 `existence`, `admission`, `missing_since` and `curation_state` answer different questions and
 compose rather than collapse: merging any two into one column is forbidden, because it would make
 it impossible to ask about either again.
 
-Every reader-facing read now honours it. `hidePendingSql()` gates an experience row and
+Every reader-facing read now honours it. `hidePendingSql()` gates a place — some membership of it
+passed (`placeVisibleSql`), and `experienceOfferedToReaderSql()` asks both questions of *one*
+membership, which is what every writer of a reader's claim composes — and
 `publishedContentSql()` gates a content row — a location, a treasure link, a treasure — because
 ADR-0025's split is load-bearing: a published museum may hold newly-written, unread paintings, and
 a predicate that only checked the experience would publish them the moment a run wrote them. Both
@@ -1499,14 +1575,16 @@ are the same refusal.
 Unlike the other two, the machine writes this one. A refusal is not an ambiguous observation:
 the run matched the object in the source's own answer and applied a deterministic rule to it,
 and a candidate that fails the same rule is never created at all — so a row that predates the
-rule has to end up where a new one would. Four writes (`services/sync/admission.ts`) — the three
-that move `admission` all skipping a row whose `curated_fields` holds `admission` and all skipping
-`is_manual` rows, while the fourth, about the badge rather than about admission, honours the
-flag's own pin instead, so a row a curator overrode is badged:
+rule has to end up where a new one would. Four writes (`services/sync/admission.ts`), every one
+on the membership the run's own source brought (`m.source_id`, joined to its place by the external
+id the run names — a run refuses, restores and badges what it brought and nothing another source
+did) — the three that move `admission` all skipping a membership whose `curated_fields` holds
+`admission` and all skipping `is_manual` places, while the fourth, about the badge rather than
+about admission, honours the flag's own pin instead, so a membership a curator overrode is badged:
 
 - `markRefused` — unconditional, for the entities the fetch named and a rule turned down. The
-  rule's own words go into `admission_reason` on the row, because a changeset entry is keyed by
-  the external id the run named and that is not always the row's.
+  rule's own words go into `admission_reason` on the membership, because a changeset entry is
+  keyed by the external id the run named and that is not always the row's.
 - `restoreAdmission` — a row this run admits comes back. Without it the axis is a one-way door.
 - `markNotAdmitted` — the sweep, only for a source whose `SyncServiceConfig` declares
   `recomputesMembership`. It reaches the case matching by external id cannot: `Roman Forum and
@@ -1515,7 +1593,7 @@ flag's own pin instead, so a row a curator overrode is badged:
   the admitted set holding at least half the previous one — looser than missing detection's
   90 %, because that floor guards a listing and this one guards a rule, and a rule is meant to
   move the set.
-- `markIconic` — the must-see badge on the rows the run admits, only for a source whose
+- `markIconic` — the must-see badge on the memberships the run admits, only for a source whose
   `SyncServiceConfig` declares `badgesAdmitted` (works-first museums, where belonging *is* the
   badge — ADR-0023; a listing or a rule that is not fame badges nothing however its membership is
   computed, ADR-0045 decision 5). Written after the admission step, once every row of the run has
@@ -1588,8 +1666,8 @@ Every read below except `/search` and `/categories` carries `optionalAuth`, beca
 | GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `includeLost`, `limit` (default 100, max 5000), `offset`; optional auth affects rejection visibility. Rows come back `ORDER BY e.name`, so a `limit` under the region's size truncates alphabetically rather than paging — both callers pass `WHOLE_REGION_LIMIT` and take the region whole. `total` is a `COUNT(DISTINCT e.id) FILTER (…)` over the same predicate the list uses — which includes the lifecycle rule, so it follows `includeLost` — and not the page size, so `offset + experiences.length < total` says rows remain beyond the returned window — truncation for a caller that started at `offset` 0 and asked for the whole region, plain `hasMore` for one that is paging; the server cannot distinguish those, since the difference is intent. Distinct because the rejection join can multiply rows per experience. `lostHidden` reports how many the region holds that no longer exist and are **not** being shown — zero once `includeLost` is on, since nothing is hidden then, and it excludes `pending` rows too, or a row gated for both reasons would be counted as something the toggle would reveal. `pending` rows are excluded from both the list and the count unconditionally, for every caller including a curator: this is a *set*, not one of the three by-id reads the pending gate relaxes |
 | GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Supports `includeChildren` and `includeLost`, the latter because this batch has to follow the list: a row the list shows but this omits arrives with no markers and a confident `0/N in region`. Eliminates N+1 per-experience location fetches. Excludes a `pending` container or a `pending` location, unconditionally |
 | GET | `/api/experiences/search` | `q`, `limit`. Also excludes `pending` rows unconditionally. Each result carries `category_name` and `regions[]` — **where it can be opened**: the regions that name the object to a reader (`readerRegionMembershipSql`, the same predicate `/:id`'s `regions[]` uses), in **published, active** world views only, minus any pair a curator rejected (a rejection leaves the membership row standing, so without that predicate a search row would link to a list that drops the card), ordered smallest first by `geom_area_km2` (nulls last) so a caller opening one frames the object rather than its continent. Empty where nothing published places it — 28 of the 1577 visible objects on 2026-09-01. Published-only rather than caller-shaped, because this route deliberately carries no session; the region context is computed *after* the LIMIT, in a select over a `matches` CTE, so the placement lookup runs for the page rather than for every name that matched ([ADR-0042](../decisions/0042-a-search-answers-about-the-catalogue-and-opens-where-the-reader-is.md)) |
-| GET | `/api/experiences/categories` | The active kinds (their source rows) ordered by priority. `experience_count` excludes `lost`, `admission = 'refused'` and `curation_state = 'pending'` rows, unconditionally — it labels the kind, not a page, and no caller passes `includeLost` here |
-| GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId`. Also excludes `pending` rows unconditionally |
+| GET | `/api/experiences/categories` | The active kinds (their source rows) ordered by priority. `experience_count` is a kind's count of ADR-0046 decision 8 — the memberships the kind offers, admitted and passed, of places not `lost`, each once (`kindCountSql`, #822) — unconditionally: it labels the kind, not a page, and no caller passes `includeLost` here |
+| GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId`. Per kind per region, of memberships — a kind's count, ADR-0046 decision 8 (`countedMembershipsSql`), returned under the `category_id` key since the kinds carry their sources' ids. One per place within a kind, because a place holds at most one membership per kind (`UNIQUE (experience_id, kind_id)`): a place in two kinds counts once under each and never twice under one; a region's total of *places* is the region list's own number (`countedPlacesSql`), not this endpoint's. Excludes `pending` and refused memberships and `lost` places unconditionally |
 | GET | `/api/experiences/:id/locations` | Multi-location list; optional `regionId` adds `in_region`. 404s for a refused row, like `/:id`. Also 404s a `pending` container, and excludes a `pending` location from the list — both relaxed together for a curator/admin whose scope reaches the experience, so a queue item that is itself one pending location inside an otherwise-published experience is still visible once past the gate |
 | GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts). Carries `hideRefusedSql()` on the container, so a refused museum's works come back empty: the contents follow the container, and answering with them would put back on screen exactly what hiding the museum took off it. Three more predicates gate `curation_state` — on the experience, the `experience_treasures` link and the treasure itself — because any of the three can be `pending` independently; all three relax together for a curator/admin whose scope reaches the experience |
 
@@ -1759,11 +1837,12 @@ Wednesday, the curator answers Thursday — and by then the arrival's own run is
 so the chip never appeared for anyone. With no intervening run it was no better: the window was
 counted from the run's completion, so it was being spent while nobody could see the row.
 `published_at` is when a reader could first see it, which is the only moment "new" can honestly
-mean once a gate exists.
+mean once a gate exists. It is the membership's since #822 — a place becomes visible *in a kind* —
+and the window is the membership's source's, so both are read through the membership.
 
 ```text
-is_new = published_at IS NOT NULL
-         AND ( published_at inside category.new_badge_days
+is_new = some membership's published_at IS NOT NULL
+         AND ( that published_at inside its source's new_badge_days
                OR this reader first saw the chip < 7 days ago )
 ```
 
@@ -2038,7 +2117,7 @@ the verdict alone catches it — it would undo an answer its author never saw an
 in exactly the shape `flagMissingExperiences` re-stamps, reopening the entry they had closed.
 
 The flag belongs in that comparison rather than beside it. A run that finds the object again
-clears `missing_since` and touches neither axis (`syncUtils.ts`), so a queue card still
+clears `missing_since` and touches neither axis (`experienceUpsert.ts`), so a queue card still
 matches on both while the question it asks has been withdrawn — and answering `former` there
 records as delisted an object the source currently lists, which drops it out of all three
 detection predicates and leaves the correction path as the only way back.
@@ -2200,7 +2279,7 @@ conflict's claim up by name — the queue through the same map, `accept-source` 
 through `claimKeyFor` — which sends `metadata.website` to itself, and `['metadata']` does not
 contain it, so those conflicts reach no card and no answer. **Publishing is a fourth reader and
 loses more than the asking**: its skip list is the same lookup, so the per-key entries are not
-skipped and are written key by key over the column the claim covers, while `syncUtils.ts` still
+skipped and are written key by key over the column the claim covers, while `experienceUpsert.ts` still
 keeps that column whole on `curated_fields ? 'metadata'`. Reachable only for a claim made *after*
 the run, since one standing at diff time holds every key. Unreachable today, since nothing writes a
 bare `metadata` claim, and the same class as the per-key gap the paragraph below records.
@@ -2285,9 +2364,9 @@ visible, and one source can hold `auto` rows from before the switch beside `pend
 after it. And it names no content column, so **turning it off publishes nothing** — the statement moves
 no row. What a backlog does next depends on its kind. Unread objects and unread contents stay put,
 because only the insert arm ever writes `pending` and only a person moves a row out of it. A change
-a run is holding does the opposite: the hold is `requires_curation AND curation_state <> 'pending'`,
-so it stops existing with the gate, and the next ungated run writes the proposed values and clears
-the pointer with nobody involved. The flip is logged with
+a run is holding does the opposite: the hold is `requires_curation` and a reader being able to see
+the place — some membership passed (`experienceUpsert.ts`) — so it stops existing with the gate,
+and the next ungated run writes the proposed values and clears the pointer with nobody involved. The flip is logged with
 the actor's id; there is no per-source audit table, and the switch that decides whether a
 whole source reaches readers unreviewed should not leave no trace at all.
 
@@ -2366,21 +2445,22 @@ row shaped like each of the three below raises no card in any of them. All three
 carry the same scope filter as the four older kinds, or a region-scoped curator would be offered
 work outside what they cover.
 
-**Arrivals** — a row from a gated source, `curation_state = 'pending'`, that nobody has looked
-at. The whole object is the proposal, so there is nothing to show beside it but the object
-itself; the queue's own version of "created," for a source that does not get to publish on its
-own say. Ordered newest-arrived first by `first_seen_sync_log_id`. A row the source has since
+**Arrivals** — a membership from a gated source, `curation_state = 'pending'`, that nobody has
+looked at (an arrival is a membership arriving, #822: its state and its admission are read off
+the membership, the source's observation off the place). The whole object is the proposal, so
+there is nothing to show beside it but the object itself; the queue's own version of "created,"
+for a source that does not get to publish on its own say. Ordered newest-arrived first by `first_seen_sync_log_id`. A row the source has since
 stopped offering withdraws instead of raising a card, guarded by `missing_since IS NULL`
 (ADR-0025 § 3.6) — nobody has ever seen it, so there is no verdict to give either about whether
 it disappeared. That same row raises no `missing` card either, per the predicate change noted
 above, so it is correctly invisible under both headings rather than wrongly visible under one.
 
-**Held** — an already-visible row (`curation_state <> 'pending'`) whose newest content proposal
-was kept out by the upsert's own gate rather than applied — the mechanism `syncUtils.ts`
-documents under "A gated source may not overwrite what a reader can already see" (above), and
-reported by the run as `change_type = 'held'` with each kept-out field flagged `held`.
-`pending_change_sync_log_id` names the run whose proposal is waiting, and the proposal itself is
-read straight from that run's changeset row.
+**Held** — an already-visible membership (`curation_state <> 'pending'`) whose newest content
+proposal was kept out by the upsert's own gate rather than applied — the mechanism
+`experienceUpsert.ts` documents under "A gated source may not overwrite what a reader can already
+see" (above), and reported by the run as `change_type = 'held'` with each kept-out field flagged
+`held`. The membership's `pending_change_sync_log_id` names the run whose proposal is waiting, and
+the proposal itself is read straight from that run's changeset row.
 
 Two halves to the card since [ADR-0037](../decisions/0037-a-part-field-readers-see-is-held-like-the-objects.md):
 `proposed`, the object's own held fields off `changed_fields`, and `proposed_parts`, the held fields
@@ -2397,7 +2477,7 @@ lowest id breaks a tie, and the one referenceless point is found because the ref
 with `IS NOT DISTINCT FROM`. Offered rows only; a part the source has since withdrawn keeps its
 group on the card with nothing to open.
 
-The pointer is not proof the gate is what held every field on it. `syncUtils.ts`'s
+The pointer is not proof the gate is what held every field on it. `experienceUpsert.ts`'s
 `proposedAnything` sets the pointer for *any* refused proposal — a curator's own `curated_fields`
 claim included, and not only the gate-held fields this card is about — so without a filter a field
 refused only by a claim would carry two contradictory cards at once: `conflicts`, which
@@ -2431,7 +2511,7 @@ one-row publish possible at all — a card that keeps its pointer would otherwis
 value it has just applied, since a run's record is never rewritten to say otherwise.
 
 **Two endpoints answer a `held` card**, and between them they are the only writers that clear the
-pointer in response to a person — `syncUtils.ts` clears it otherwise only when a *later run*
+pointer in response to a person — `experienceUpsert.ts` clears it otherwise only when a *later run*
 proposes nothing at all, the source having come back to what is stored. `POST /:id/publish` writes
 the value; `POST /:id/decline-held` refuses it and writes nothing at all. Both clear the pointer
 only when nothing on the card is left open, so answering one row of six leaves the other five
@@ -2496,8 +2576,8 @@ that; a *list* cannot, and would have shown each point twelve times. Aggregated 
 has nowhere to form, and each side carries its own `LIMIT`.
 
 An `arrival` can never share a row with `held` or `contents`: `held` requires
-`pending_change_sync_log_id IS NOT NULL`, and the pointer is only ever *set* on a row whose
-`curation_state <> 'pending'` (`upsertExperienceRecord`'s guard, `syncUtils.ts`), while
+`pending_change_sync_log_id IS NOT NULL`, and the pointer is only ever *set* on a membership whose
+`curation_state <> 'pending'` (`heldProposalPointer.ts`), while
 `contents` requires `hidePendingSql()` directly. Both therefore exclude `curation_state =
 'pending'` by construction, the same column `arrivals` requires to equal it — not a coincidence
 enforced by extra code, but the same column read two ways. A `pending` experience *can* hold a
@@ -2730,6 +2810,10 @@ to a person, because the batch leaves held proposals for the card that can show 
 `SELECT … FOR NO KEY UPDATE`, shaped after `applyProposedFields`: everything the decision rests on —
 the pointer, the proposal, `curated_fields`, `curation_state`, `admission`, `metadata` — is
 re-read inside the lock that writes, and every refusal is awaited before the client is released.
+The state, the verdict and the pointer are the membership's (#822), read beside the place under the
+place's lock — the lock every writer of the membership takes — and written on the membership the
+click answers (`membershipToAnswerSql`, the place's only one until #755), while the content lands
+on the place: two statements in the one transaction.
 
 It is two modules. `publishController.ts` is the transaction shell — the lock, the staleness check,
 the contents, the released withdrawal, the placement, the audit line. `publishHeldFields.ts` is the
@@ -2876,7 +2960,7 @@ through is `POST /:id/admission` with `override`, which publishes in the same tr
 "Overriding a refusal is the other half" below for what that writes. Contents publishes are refused
 on a refused container too, since the `contents` card excludes it as well.
 
-**`expectedSyncLogId` is compared against `experiences.pending_change_sync_log_id`**, not against
+**`expectedSyncLogId` is compared against the membership's `pending_change_sync_log_id`**, not against
 the newest changeset as `accept-source` does: the card names the run the pointer names, and a newer
 run overwrites the pointer, so equality with the pointer is the whole staleness question. Absent is
 a claim too — "this row was holding nothing" — so a proposal that arrived after the card was drawn
@@ -2900,7 +2984,7 @@ untouched, which is why skipping the check for a call that writes nothing costs 
 object's row is not being answered for either way.
 
 **An arrival has no staleness check available at all**, and the parameter must not be read as
-covering it. A `pending` row never holds a pointer — `syncUtils.ts` sets one only where
+covering it. A `pending` membership never holds a pointer — `heldProposalPointer.ts` sets one only where
 `curation_state <> 'pending'`, because a row nobody can see is refreshed in place rather than held,
 so that a curator reviews the newest state instead of whatever landed first. A run that rewrites an
 arrival between the card being drawn and the click is therefore invisible to the curator and to this
@@ -2954,7 +3038,7 @@ it writes exactly what that card showed and nothing beside it — and reads the 
 inferring it from the absence of a claim (#519), since an elimination would hand this writer, which
 assigns all eleven content columns, any future field refused for some third reason.
 
-**`published_at` is stamped only where the row was `pending`.** `COALESCE(published_at, NOW())`
+**`published_at` is stamped only where the membership was `pending`.** `COALESCE(published_at, NOW())`
 alone would not restart an existing New-chip window, but it would invent one for the rows that
 predate the gate — 1603 of the catalogue's 1604, measured 2026-08-11 — visible for months with
 `published_at` NULL, because migration 018 deliberately did not date them. So an already-visible
@@ -3024,10 +3108,12 @@ whether or not anything else does, because the assignment list is fixed rather t
 
 `POST /:id/admission` (`setExperienceAdmission`, `lifecycleController.ts`) is where a refused row
 comes back, and `override` on a **`pending`** row is the only path that publishes without going
-through `publishExperience` at all — the two assignments are appended to the same `UPDATE
-experiences` this endpoint already runs, inside the transaction that already holds the row `FOR
-UPDATE`, rather than a second call to the publish writer. `confirm` never publishes, on any state:
-it is the verdict that leaves an already-invisible row invisible.
+through `publishExperience` at all — the two assignments are appended to the membership's `UPDATE`
+this endpoint already runs (the verdict, its reason, the pin and the badge are the membership's
+since #822; who decided and the note stay on the place, beside the lifecycle verdicts that share
+those columns), inside the transaction that already holds the place `FOR NO KEY UPDATE`, rather
+than a second call to the publish writer. `confirm` never publishes, on any state: it is the
+verdict that leaves an already-invisible row invisible.
 
 The decision is narrower than "override publishes":
 
@@ -3055,7 +3141,7 @@ already-visible row would invent a New-chip window for something visitors could 
 lesson already paid for once: a parameter used both as a varchar value and as the left side of a
 text comparison gives Postgres two types to deduce for one placeholder — "inconsistent types
 deduced for parameter $2" — invisible to a mocked-pool test and immediate on the first real click.
-`publishes` is a plain boolean computed from the locked read, and the `SET` fragment it selects is
+`publishes` is a plain boolean computed from the read under the lock, and the `SET` fragment it selects is
 a literal string with no parameter in it at all.
 
 **Does not place.** Verified against a live database rather than assumed: a refused row's

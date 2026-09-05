@@ -344,7 +344,8 @@ excusing. `picture-with-nobody-credited`'s `credit_waiting` arms narrowed alongs
 though on a refusal alone rather than on any answer — see its own section for why.
 
 **The refused-badge rule** (`refused-row-wearing-iconic`) is about two columns
-of one row that the same writes are supposed to move together. A museum carries
+of one membership (`experience_kind_memberships`, where the verdict and the
+badge live since #822) that the same writes are supposed to move together. A museum carries
 `is_iconic` because it holds a work above the fame line, and every museum in the
 catalogue was admitted for exactly that (ADR-0023), so the flag has been a
 synonym of belonging: the run sets it on admission and its two refusal writes
@@ -376,8 +377,10 @@ because an admitted museum without the badge is a legitimate state
 decision 5) and what the badge should mean beyond works-first admission is
 #603's question.
 
-**The public-art rule** (`public-art-row-typed-a-building`) asks the stored rows
-the question the public-art import asks every candidate (#754,
+**The public-art rule** (`public-art-row-typed-a-building`) asks the stored rows —
+the memberships the public-art source brought, whose classes its run wrote and
+whose admission is that source's rule — the question the public-art import asks
+every candidate (#754,
 `docs/tech/experiences.md` § Public Art & Monuments): is this admitted row
 something a traveller stands in front of, or a building, a place of worship, a
 camp, a stadium, an archaeological site, a tomb, an organisation, a settlement
@@ -403,6 +406,22 @@ one the writers leave alone: an admission a curator pinned by overriding the
 refusal, since naming that row every run would be the rule arguing back. The
 remedy is a live run of the source, which refuses the row with the reason and
 puts it in front of a curator.
+
+**The two membership rules** (`place-without-membership`,
+`membership-source-disagrees-with-row`) state what every reader rests on since
+the place and its membership in a kind came apart (#822, ADR-0045 decision 4).
+Every reader-facing read asks the four lifecycle questions of a place through
+its memberships (`db/membership.ts`), so a row of `experiences` with no
+membership at all is on no list, map, count or search and in no queue — not
+refused, not unread, simply never asked — and nothing on any screen says why.
+Migration 046 refuses to commit with such a row and the three writers that
+create a place write the membership with it; a row here came in by a path that
+did not. The second rule is about the two halves of the catalogue agreeing:
+`experiences.category_id` stays the row's identity arbiter until #755, and the
+lists, pins and scopes still read it, while the counts read the membership's
+`source_id` — a row where the two disagree is shown in one kind and counted in
+another, and the readers #819 switches would then move it in front of a reader
+without anyone deciding to.
 
 **The credit rule** (`picture-with-nobody-credited`) is a licence obligation
 rather than a consistency rule. Most Commons
@@ -479,7 +498,8 @@ go in a file of their own beside it, exporting an array the registry imports and
 spreads — `regionGeometryAssertions.ts` was the first, five rules about a
 region's shape, its focus box, its anchor and the rungs the map draws it from;
 `divisionTreeAssertions.ts` and `objectAssertions.ts` (the danger flag, the
-refused badge, the works' makers, the public-art row typed as a building) take the same shape, and a rule about an
+refused badge, the works' makers, the public-art row typed as a building, the place
+no kind holds and the membership keyed on another source) take the same shape, and a rule about an
 object as a row joins the last of those rather than the registry. Two things follow for that shape:
 the type and the row helpers come from `assertion.ts` rather than from the
 registry, so the two files do not import each other; and the tests live beside
