@@ -13,6 +13,7 @@ import {
   getExperienceRegionCounts,
   listCategories,
 } from './experienceQueryController.js';
+import { membershipAdmittedSql, membershipVisibleSql } from '../../db/membership.js';
 import { hidePendingSql, hideRefusedSql } from './experienceLifecycle.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -213,7 +214,15 @@ describe('lifecycle visibility across the read paths', () => {
     mockedQuery.mockResolvedValue({ rows: [{ count: '0', total: 0 }] });
   });
 
-  const paths: Array<{ name: string; run: () => Promise<unknown>; filtersLost: boolean }> = [
+  /**
+   * `countsMemberships` names the alias a path counts memberships under: a
+   * kind's count is of memberships (ADR-0046 decision 8, #822), so the two
+   * count paths ask the membership's own admission and gate rather than the
+   * place-level fragments every list asks.
+   */
+  const paths: Array<{
+    name: string; run: () => Promise<unknown>; filtersLost: boolean; countsMemberships?: string;
+  }> = [
     {
       name: 'a region list',
       filtersLost: true,
@@ -233,6 +242,7 @@ describe('lifecycle visibility across the read paths', () => {
     {
       name: 'the region counts',
       filtersLost: true,
+      countsMemberships: 'm',
       run: () => getExperienceRegionCounts({ query: { worldViewId: '1' } } as never, makeRes() as never),
     },
     {
@@ -242,6 +252,7 @@ describe('lifecycle visibility across the read paths', () => {
       // page: there is no `includeLost` here to widen it.
       name: 'the category counts',
       filtersLost: true,
+      countsMemberships: 'km',
       run: () => listCategories({} as never, makeRes() as never),
     },
     {
@@ -289,16 +300,28 @@ describe('lifecycle visibility across the read paths', () => {
     });
   }
 
-  for (const { name, run } of paths) {
+  for (const { name, run, countsMemberships } of paths) {
     it(`hides what this category refused from ${name}`, async () => {
       await run();
 
-      const all = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
-      expect(all).toContain(hideRefusedSql('e'));
+      // Statement by statement rather than over every statement joined: a path
+      // that sends a list and a count has to carry the predicate in each, and
+      // a joined string passes while one of them forgot it. Held to it: every
+      // statement that reads the catalogue — the places, or the memberships a
+      // count is of.
+      const reads = mockedQuery.mock.calls
+        .map(c => String(c[0]))
+        .filter(sql => /\b(FROM|JOIN) experiences\b/.test(sql) || sql.includes('FROM experience_kind_memberships'));
+      expect(reads.length).toBeGreaterThan(0);
+      for (const sql of reads) {
+        expect(sql).toContain(countsMemberships
+          ? membershipAdmittedSql(countsMemberships)
+          : hideRefusedSql('e'));
+      }
     });
   }
 
-  for (const { name, run } of paths) {
+  for (const { name, run, countsMemberships } of paths) {
     it(`hides an unread row from ${name}`, async () => {
       await run();
 
@@ -313,7 +336,9 @@ describe('lifecycle visibility across the read paths', () => {
       // in this loop is authenticated: the predicate is what a curator's
       // scope widens (Step 5), not something absent until then.
       const list = String(mockedQuery.mock.calls[0][0]);
-      expect(list).toContain(hidePendingSql('e'));
+      expect(list).toContain(countsMemberships
+        ? membershipVisibleSql(countsMemberships)
+        : hidePendingSql('e'));
     });
   }
 
@@ -673,7 +698,7 @@ describe('region membership a reader can see', () => {
 /**
  * The tags column, and why the by-id read leaves it out (#570).
  *
- * The gate bypass in syncUtils.ts rests on "no reader-facing read returns the
+ * The gate bypass in experienceUpsert.ts rests on "no reader-facing read returns the
  * column". This read was the one that did, so the premise is pinned here rather
  * than stated: a select that picked `e.tags` back up would hand an anonymous
  * caller a value no curator looked at.

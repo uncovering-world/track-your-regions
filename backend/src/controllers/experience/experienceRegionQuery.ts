@@ -19,6 +19,9 @@ import {
   readerPositionSql,
   readerRegionMembershipSql,
 } from './experienceLifecycle.js';
+// A region's count is of places (ADR-0046 decision 8, #822): the cards it
+// offers, each once, whatever kinds they belong to.
+import { countedPlacesSql } from './experienceCounts.js';
 import { isNewSql } from './experienceNewBadge.js';
 import { dangerSelectSql } from './experienceDanger.js';
 
@@ -166,8 +169,8 @@ export function buildRegionQueries(opts: {
         JOIN descendant_regions dr ON r.parent_region_id = dr.id
       )
       SELECT
-        COUNT(DISTINCT e.id) FILTER (WHERE ${lifecyclePredicate})::int AS total,
-        COUNT(DISTINCT e.id) FILTER (WHERE ${lostHiddenPredicate})::int AS lost_hidden
+        ${countedPlacesSql('e')} FILTER (WHERE ${lifecyclePredicate})::int AS total,
+        ${countedPlacesSql('e')} FILTER (WHERE ${lostHiddenPredicate})::int AS lost_hidden
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
       JOIN experience_categories s ON e.category_id = s.id
@@ -228,8 +231,8 @@ export function buildRegionQueries(opts: {
     `;
     countQuery = `
       SELECT
-        COUNT(DISTINCT e.id) FILTER (WHERE ${lifecyclePredicate})::int AS total,
-        COUNT(DISTINCT e.id) FILTER (WHERE ${lostHiddenPredicate})::int AS lost_hidden
+        ${countedPlacesSql('e')} FILTER (WHERE ${lifecyclePredicate})::int AS total,
+        ${countedPlacesSql('e')} FILTER (WHERE ${lostHiddenPredicate})::int AS lost_hidden
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
       JOIN experience_categories s ON e.category_id = s.id
