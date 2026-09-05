@@ -32,7 +32,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 **What the code holds today** is one table for both words. `experience_categories` is the source table — one row per sync service, with its endpoint, its config, its gate (`requires_curation`, ADR-0025) and its `display_priority` (lower first) — and every reader-facing grouping still keys on it through `experiences.category_id`: the groups of the map-mode list, the Discover pills, the pin colour, the counts, the curator scopes, the admin routes. Three rows exist, and each is at present both a source and the only source of one kind:
 
 - `UNESCO World Heritage Sites` (priority `1`) — the kind of the same name
-- `Top Art Museums` (priority `2`) — the works-first source (ADR-0023) of the kind *Art museums*; the row's name is the selection rule's, not the kind's
+- `Art Museums` (priority `2`) — the kind of the same name, filled by the works-first source (ADR-0023); the row read "Top Art Museums", the selection rule's name, until migration 045 gave it the reader's (ADR-0045 §8, #818)
 - `Public Art & Monuments` (priority `3`) — the kind of the same name
 
 `experiences.type` is the **type within a kind** (#814; the column was called `category` until then, the word the rest of the code uses for the kind and its source): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, and **NULL for a museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A row is still both a place and its membership in a source: a monument that is also a World Heritage point is two rows (#755). The split ADR-0045 decides — a kind of its own, memberships as their own rows, refusal as a curator-confirmed withdrawal of one membership — lands issue by issue; until it does, "category" in the sections below means this one table, read the way the glossary above says.
@@ -872,7 +872,7 @@ finished clean and uncancelled, and it saw at least 90 % of the previously prese
 When detection is skipped the reason is stored in `experience_sync_logs.detection_skipped_reason`.
 
 A museum's *works* have a floor of their own, since the source is `ranked` and never reaches
-this one: the works coverage floor (ADR-0044, § Top Art Museums below). Its refusal lands in
+this one: the works coverage floor (ADR-0044, § Art Museums below). Its refusal lands in
 `experience_sync_logs.withdrawal_skipped_reason`, and unlike detection's it downgrades the run to
 `partial` — a run that saw too little to say what left is not a success, whatever its items did.
 The orchestrator carries that verdict from `fetchItems` (`withdrawalSkippedReason` on the result)
@@ -978,7 +978,7 @@ The sharp edge is what the failure is held as. **Where a component outlives one 
 
 Every source is somebody else's server, and all of them fail the same way. `withRetries` holds the loop — bounded by a `WaitBudget` the whole run shares rather than by a count, waking early when the run is cancelled, reporting each wait through `SourceWait` so a panel can say what is happening — and each client keeps only what its own errors *mean*, as a `classify` function. `sparqlQuery` and `fetchUnescoRecords` are both that loop with a different classifier; `abortOn` gives each attempt a deadline **and** a cancel hook on one signal.
 
-### Top Art Museums (`museumSyncService.ts`, `museum/*.ts`)
+### Art Museums (`museumSyncService.ts`, `museum/*.ts`)
 
 Works-first: the sync decides what belongs in the catalogue by which artworks the world knows,
 then admits the museums holding them — not by which Wikidata entity happens to own a famous
@@ -1119,7 +1119,7 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    (95), tell (66) and hypogeum (57) — burial and archaeology, not public art. `sculpture` refuses
    its second hop (142 841 classes) exactly as it does for the museums, and keeps its first (237).
 2. **Pool** — the four broad roots (sculpture, statue, monument, memorial) sitelinks-first in fame
-   bands (100+, 50–99, 30–49, 22–29, 18–21, 15–17 — the museums' shape, § Top Art Museums above),
+   bands (100+, 50–99, 30–49, 22–29, 18–21, 15–17 — the museums' shape, § Art Museums above),
    every other admitting class in batches of 25 taken whole, all at 15 sitelinks or more with a
    `P625`: the floor sits below the stay line so that an admitted row that slipped to 17 is still
    fetched and refused by name rather than swept — and the admitted rows no class question named
@@ -1538,7 +1538,7 @@ alternatives (unbracketed, `OR` binds looser than the lifecycle `AND` and every 
 matching by trigram comes straight back), and the by-region **count** has to carry the same
 rule as the list or the page says one number and shows another. `listCategories` carries both
 predicates in its per-kind `experience_count` for the same reason — without them it
-reported 128 experiences in *Top Art Museums* where the catalogue offers 101 — the 27 rows that
+reported 128 experiences in *Art Museums* where the catalogue offers 101 — the 27 rows that
 kind's own rule turned down (#503). Both, though the `hideLostSql()` half changes nothing
 today: measured 2026-08-09, all three kinds hold zero `lost` rows, so the whole 128→101 gap
 is refusals. It is still the half to have, because the vision promises that what no longer exists
@@ -1754,7 +1754,7 @@ the chip claimed to mean arrival.
 **Why the anchor moved from the run to publication (#529).** Under a gated source, arriving and
 becoming visible are different moments, and the gap is a curator's working week. An arrival is
 invisible until someone passes it, so a chip keyed to the run that found it failed in the
-ordinary case rather than an exotic one: a museum arrives Monday, Top Art Museums runs again
+ordinary case rather than an exotic one: a museum arrives Monday, Art Museums runs again
 Wednesday, the curator answers Thursday — and by then the arrival's own run is not the latest,
 so the chip never appeared for anyone. With no intervening run it was no better: the window was
 counted from the run's completion, so it was being spent while nobody could see the row.
@@ -1919,7 +1919,7 @@ decision about the *asking* rather than about the object.
 **Refused rows** — the one kind of item here a run has *already* acted on, and the exception
 to the page's standing promise that nothing on it has changed what visitors see. None of the
 three answers below is true of one: the British Museum is open, so not `lost`; it was never a
-legitimate member of *Top Art Museums*, so not `former`; and the refusal was right, so not a
+legitimate member of *Art Museums*, so not `former`; and the refusal was right, so not a
 false alarm. Its two answers are its own — the rule was right, or the rule was wrong — and the
 card carries the rule's objection, because "refused" alone leaves a curator guessing while the
 reason lets them confirm a rule or spot a bad one. A confirmed row is not deleted: the refused
@@ -3106,7 +3106,7 @@ apart without a reader having to infer it from which columns moved.
 ## Frontend Integration Notes
 
 - Discover and Map UIs share `CurationDialog` and `AddExperienceDialog`
-- `AddExperienceDialog` has Create New as the first (default) tab, Search & Add as the second. Props: `defaultCategoryId` pre-selects the category dropdown, `defaultTab` controls which tab opens (0=Create, 1=Search). Dialog closes automatically on successful creation and invalidates experience queries so map markers and lists refresh immediately. Category selector filters out "Curator Picks" — curators must assign new experiences to an existing category (UNESCO, Top Art Museums, or Public Art & Monuments). Category is required for creation. When the curator types a name (3+ chars, debounced 800ms), the system auto-fills coordinates (Nominatim), image URL, description, and link URL (Wikidata 3-layer lookup: direct QID → spatial SPARQL → name search). The link is auto-filled from the English Wikipedia sitelink in the Wikidata entity. The Nominatim query appends the current region name for geo-disambiguation. Auto-fill fires only once — after the first successful lookup, name edits don't re-trigger. After auto-fill, a suggestion info box appears below the name field showing the matched Wikidata entity (label + QID) with a prominent "Re-lookup" link. Clicking Re-lookup re-runs the full auto-fill pipeline (Nominatim + Wikidata), overwriting all previously auto-filled fields. Auto-filled fields use `useRef` flags (including `linkAutoFilled`) so Re-lookup overwrites them but manual edits are preserved. Thumbnail preview shown when image URL is set. Uses `LocationPicker` for coordinate input — supports 4 modes: click-on-map, Nominatim search, multi-format coordinate paste, and AI geocoding. Accepts `regionName` prop from both call sites (Map mode via `useNavigation().selectedRegion.name`, Discover mode via `activeView.regionName`)
+- `AddExperienceDialog` has Create New as the first (default) tab, Search & Add as the second. Props: `defaultCategoryId` pre-selects the category dropdown, `defaultTab` controls which tab opens (0=Create, 1=Search). Dialog closes automatically on successful creation and invalidates experience queries so map markers and lists refresh immediately. Category selector filters out "Curator Picks" — curators must assign new experiences to an existing category (UNESCO, Art Museums, or Public Art & Monuments). Category is required for creation. When the curator types a name (3+ chars, debounced 800ms), the system auto-fills coordinates (Nominatim), image URL, description, and link URL (Wikidata 3-layer lookup: direct QID → spatial SPARQL → name search). The link is auto-filled from the English Wikipedia sitelink in the Wikidata entity. The Nominatim query appends the current region name for geo-disambiguation. Auto-fill fires only once — after the first successful lookup, name edits don't re-trigger. After auto-fill, a suggestion info box appears below the name field showing the matched Wikidata entity (label + QID) with a prominent "Re-lookup" link. Clicking Re-lookup re-runs the full auto-fill pipeline (Nominatim + Wikidata), overwriting all previously auto-filled fields. Auto-filled fields use `useRef` flags (including `linkAutoFilled`) so Re-lookup overwrites them but manual edits are preserved. Thumbnail preview shown when image URL is set. Uses `LocationPicker` for coordinate input — supports 4 modes: click-on-map, Nominatim search, multi-format coordinate paste, and AI geocoding. Accepts `regionName` prop from both call sites (Map mode via `useNavigation().selectedRegion.name`, Discover mode via `activeView.regionName`)
 - `CurationDialog` fetches full experience detail to populate two link fields: Wikipedia URL (from `metadata.wikipediaUrl`) and Website URL (from `metadata.website`). Both fields are editable and saved via JSONB merge. `AddExperienceDialog` auto-fills the Wikipedia URL from Wikidata lookup and provides a separate Website URL field. The backend edit/create endpoints accept both `wikipediaUrl` and `websiteUrl`
 - `CurationDialog` sends a field only when it changed, and an **emptied** field travels as `''` — the API's way of clearing it. It used to fold an emptied box into `undefined`, which `JSON.stringify` drops, so a removal never left the browser: alone it was answered "No fields to update", beside another change it was reported saved with the picture still there (#696). `CurationDialog.test.tsx` pins the request an emptied picture, description, type and link produce
 - `CurationDialog` draws the picture the Image URL box names under the box, through `PictureWithCredit` — the same component the create dialog's preview now uses — with `ImageCreditLine` for the stored credit (#801). The credit goes only with the stored address (`creditForPreview`: the row's `image_credit` where the row carries it, the detail's `metadata.imageCredit` otherwise); an address typed and not yet saved is previewed without one, since none exists until `PATCH /experiences/:id/edit` resolves it; an emptied box draws nothing; an address `toThumbnailUrl` refuses draws no frame; and a picture that fails to load takes its credit with it, the failure held by address because the dialog is mounted for as long as the list is. The same test file pins each of those
