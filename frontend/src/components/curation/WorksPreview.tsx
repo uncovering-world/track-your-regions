@@ -14,6 +14,7 @@
 import { useState } from 'react';
 import { Box, Link, Stack, Tooltip, Typography } from '@mui/material';
 import { toThumbnailUrl } from '../../utils/imageUrl';
+import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { creatorsBrief } from '../../utils/creatorList';
 import type { ImageCredit } from '../../api/experiences';
@@ -38,20 +39,6 @@ export interface CountedWork {
    * row's own comment argues against.
    */
   externalId: string;
-}
-
-/**
- * Where a work goes when a curator does not recognise it.
- *
- * The preview showed a thumbnail and stopped, which answers "what does it look like" and
- * not "what is it" — and the second is the question a name like *Venus of Dolní Věstonice*
- * raises. Every treasure here carries the id it was imported under, and that id is a
- * Wikidata entity, so the page it came from is one link away.
- */
-function sourceLink(work: CountedWork): string | null {
-  return /^Q\d+$/.test(work.externalId)
-    ? `https://www.wikidata.org/wiki/${work.externalId}`
-    : null;
 }
 
 /**
@@ -96,7 +83,12 @@ export function WorkCard({ work }: { work: CountedWork }) {
   // instead.
   const [failed, setFailed] = useState(false);
   const line = subtitle(work);
-  const link = sourceLink(work);
+  // Where a work goes when a curator does not recognise it. The preview showed a
+  // thumbnail and stopped, which answers "what does it look like" and not "what is
+  // it" — and the second is the question a name like *Venus of Dolní Věstonice*
+  // raises. Every treasure carries the id it was imported under, a Wikidata item, so
+  // the page it came from is one link away.
+  const link = wikidataItemUrl(work.externalId);
   // The normalised URL decides whether there is a picture at all: `toThumbnailUrl` answers
   // with an empty string for a host we do not trust, and `src=""` is not "no image" — the
   // browser resolves it against the page and draws a broken thumbnail. Every treasure image

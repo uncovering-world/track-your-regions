@@ -32,6 +32,7 @@ import { type MatchTreeNode, type ReviewChildAction, getChildrenRegionGeometry }
 import { frameGeoJson } from '../../utils/mapUtils';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 import { safeHref } from '../../utils/safeHref';
+import { wikidataItemUrl } from '../../utils/wikidataLinks';
 
 // COVERAGE_MAP_STYLE is duplicated in GapAnalysis.tsx to break the circular
 // import between these two modules (they mutually import component helpers).
@@ -541,6 +542,12 @@ export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, is
     // Built on the server from a Wikivoyage title today, and held to what a
     // link may be all the same: a page the rule refuses is not offered (#703).
     const sourceHref = safeHref(action.sourceUrl);
+    // The QID is the model's own answer, held by the schema to a string of at
+    // most 100 characters and nothing more, so the address is built only from
+    // one that is a QID — and through safeHref like the page above, since
+    // `urlSafety.test.ts` reads every href in a module that carries a stored
+    // link as going through it.
+    const itemHref = safeHref(wikidataItemUrl(action.sourceExternalId));
     return (
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
         {sourceHref && (
@@ -552,15 +559,22 @@ export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, is
           </Typography>
         )}
         {action.sourceExternalId && (
+          // The id stays on screen whether or not it links: approving the action
+          // stores it (`region_import_state.source_external_id`), so a malformed
+          // answer — "unknown", a P-number — is the one the admin most needs to see.
           <Typography variant="caption" color="text.secondary">
-            <MuiLink
-              href={`https://www.wikidata.org/wiki/${action.sourceExternalId}`}
-              target="_blank"
-              rel="noopener"
-              sx={{ fontSize: 'inherit' }}
-            >
-              {action.sourceExternalId}
-            </MuiLink>
+            {itemHref
+              ? (
+                <MuiLink
+                  href={itemHref}
+                  target="_blank"
+                  rel="noopener"
+                  sx={{ fontSize: 'inherit' }}
+                >
+                  {action.sourceExternalId}
+                </MuiLink>
+              )
+              : action.sourceExternalId}
           </Typography>
         )}
       </Box>
