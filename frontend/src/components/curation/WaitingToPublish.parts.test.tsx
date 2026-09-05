@@ -41,7 +41,7 @@ beforeEach(() => {
 function held(): ReviewQueueItem {
   return {
     id: 6194, external_id: 'Q165631', name: 'Gemäldegalerie Berlin',
-    category_id: 2, category_name: 'Top Art Museums',
+    category_id: 2, category_name: 'Art Museums',
     missing_since: null, source_membership: 'present', existence: 'extant',
     kind: 'held', sync_log_id: 64, proposed: null,
     counted_works_total: 27,

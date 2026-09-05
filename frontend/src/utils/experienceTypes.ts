@@ -49,7 +49,7 @@ const PUBLIC_ART: TypeVocabulary = {
 
 /**
  * The kinds' vocabularies, by the id each kind's source row is seeded with in
- * `db/init/01-schema.sql` (1 World Heritage, 2 Top Art Museums, 3 Public Art &
+ * `db/init/01-schema.sql` (1 World Heritage, 2 Art Museums, 3 Public Art &
  * Monuments). Until the kind table of ADR-0045 §4 lands, a kind is its source
  * row and the id is what every read carries — a name is renamed (#815). A kind
  * absent here has no types; a museum is absent on purpose.

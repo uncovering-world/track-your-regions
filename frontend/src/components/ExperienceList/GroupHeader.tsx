@@ -32,6 +32,9 @@ export function GroupHeader({
   // that the category holds more, which one number cannot (#553).
   const shown = group.experiences.length;
   const count = regionTotal !== null && regionTotal > shown ? `${shown} of ${regionTotal}` : `${shown}`;
+  // The row's name as it is: since migration 045 no source row starts with
+  // "Top ", so "Add new art museums" needs nothing stripped (#818).
+  const addLabel = `Add new ${group.categoryName.toLowerCase()}`;
 
   return (
     <ListItem
@@ -65,10 +68,10 @@ export function GroupHeader({
       </ListItemButton>
       {/* Per-source "+" button to create a new experience under this source */}
       {canAdd && (
-        <Tooltip title={`Add new ${group.categoryName.toLowerCase().replace(/^top /, '')}`}>
+        <Tooltip title={addLabel}>
           <IconButton
             size="small"
-            aria-label={`Add new ${group.categoryName.toLowerCase().replace(/^top /, '')}`}
+            aria-label={addLabel}
             onClick={(e) => {
               e.stopPropagation();
               onAdd();

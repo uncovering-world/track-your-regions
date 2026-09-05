@@ -49,7 +49,7 @@ const RIJKSMUSEUM = {
   short_description: null,
   type: null,
   category_id: 2,
-  category_name: 'Top Art Museums',
+  category_name: 'Art Museums',
   country_names: ['Netherlands'],
   image_url: null,
   longitude: 4.88,

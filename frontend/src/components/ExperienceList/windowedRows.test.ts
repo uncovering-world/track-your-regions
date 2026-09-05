@@ -136,7 +136,7 @@ describe('the windowed experience list', () => {
 describe('what the list opens by itself', () => {
   const groups = [
     group('UNESCO World Heritage Sites', [1, 2, 3]),
-    group('Top Art Museums', [10, 11]),
+    group('Art Museums', [10, 11]),
     group('Public Art & Monuments', [20]),
   ];
   const base = {
@@ -153,7 +153,7 @@ describe('what the list opens by itself', () => {
 
   it('opens the group holding the card the address named', () => {
     const decision = expansionForSelection({ ...base, selectedExperienceId: 11 });
-    expect(decision?.open).toEqual(new Set(['Top Art Museums']));
+    expect(decision?.open).toEqual(new Set(['Art Museums']));
     expect(decision?.forCard).toBe(11);
   });
 
@@ -167,7 +167,7 @@ describe('what the list opens by itself', () => {
       expanded: new Set(['UNESCO World Heritage Sites']),
       openedForRegion: true,
     });
-    expect(decision?.open).toEqual(new Set(['UNESCO World Heritage Sites', 'Top Art Museums']));
+    expect(decision?.open).toEqual(new Set(['UNESCO World Heritage Sites', 'Art Museums']));
   });
 
   it('answers a card whose group is already open without writing anything', () => {

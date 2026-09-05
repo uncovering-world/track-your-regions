@@ -24,7 +24,7 @@ vi.mock('../../api/admin', async () => ({
 function source(overrides: Partial<ExperienceCategory> = {}): ExperienceCategory {
   return {
     id: 2,
-    name: 'Top Art Museums',
+    name: 'Art Museums',
     description: 'Museums selected by what they hold',
     is_active: true,
     requires_curation: false,
@@ -60,7 +60,7 @@ describe('CurationGateControls', () => {
   });
 
   it('asks the server to hold this source, and only this source', async () => {
-    mockedSetCurationGate.mockResolvedValue({ categoryId: 2, name: 'Top Art Museums', requiresCuration: true });
+    mockedSetCurationGate.mockResolvedValue({ categoryId: 2, name: 'Art Museums', requiresCuration: true });
     renderControls(source({ requires_curation: false }));
 
     fireEvent.click(screen.getByRole('checkbox'));
@@ -72,7 +72,7 @@ describe('CurationGateControls', () => {
   });
 
   it('asks the server to stop holding it when the switch is already on', async () => {
-    mockedSetCurationGate.mockResolvedValue({ categoryId: 2, name: 'Top Art Museums', requiresCuration: false });
+    mockedSetCurationGate.mockResolvedValue({ categoryId: 2, name: 'Art Museums', requiresCuration: false });
     renderControls(source({ requires_curation: true }));
 
     fireEvent.click(screen.getByRole('checkbox'));
@@ -83,7 +83,7 @@ describe('CurationGateControls', () => {
   });
 
   it('refetches the sources after a flip, since every sentence here reads the flag', async () => {
-    mockedSetCurationGate.mockResolvedValue({ categoryId: 2, name: 'Top Art Museums', requiresCuration: true });
+    mockedSetCurationGate.mockResolvedValue({ categoryId: 2, name: 'Art Museums', requiresCuration: true });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const invalidate = vi.spyOn(client, 'invalidateQueries');
     render(
