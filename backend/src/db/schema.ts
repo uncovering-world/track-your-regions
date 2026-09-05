@@ -161,7 +161,12 @@ export const experiences = pgTable('experiences', {
   description: varchar('description', { length: 10000 }),
   shortDescription: varchar('short_description', { length: 2000 }),
   // Classification
-  category: varchar('category', { length: 100 }),
+  /**
+   * The type within the kind — cultural / natural / mixed, monument / sculpture — and
+   * NULL for a museum, which is a kind without types (ADR-0045, #814). The kind itself
+   * is `categoryId`.
+   */
+  type: varchar('type', { length: 100 }),
   // tags stored as JSONB in DB
   // Location geometry handled via raw SQL (location, boundary, area_km2)
   // Country info as arrays handled via raw SQL (country_codes, country_names)
@@ -178,7 +183,7 @@ export const experiences = pgTable('experiences', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   categoryIdx: index('idx_experiences_category_id').on(table.categoryId),
-  categoryClassIdx: index('idx_experiences_category').on(table.category),
+  typeIdx: index('idx_experiences_type').on(table.type),
   uniqueCategoryExternal: unique('unique_category_external_id').on(table.categoryId, table.externalId),
 }));
 

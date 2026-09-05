@@ -2219,8 +2219,8 @@ CREATE TABLE IF NOT EXISTS experiences (
     description TEXT,
     short_description TEXT,
 
-    -- Classification
-    category VARCHAR(100),
+    -- Classification: the type within the kind (see the column comment); the kind is category_id
+    type VARCHAR(100),
     tags JSONB,  -- ["architecture", "religious", "ancient"]
 
     -- Location (required point - every experience must have a location)
@@ -2256,10 +2256,11 @@ CREATE TABLE IF NOT EXISTS experiences (
 COMMENT ON TABLE experiences IS 'Location-based experiences from various categories (UNESCO sites, museums, etc.)';
 COMMENT ON COLUMN experiences.external_id IS 'ID from the category system (e.g., UNESCO id_no)';
 COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "fr": "...", ...}';
-COMMENT ON COLUMN experiences.category IS
-  'Venue type within the category, per docs/vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md: '
-  '''art''/''history''/''archaeology''… for museums, ''cultural''/''natural''/''mixed'' for '
-  'UNESCO, ''monument''/''sculpture'' for public art. Not one shared enum.';
+COMMENT ON COLUMN experiences.type IS
+  'The type within the kind, where a kind has types a traveller still browses together '
+  '(ADR-0045): ''cultural''/''natural''/''mixed'' for World Heritage, ''monument''/''sculpture'' '
+  'for public art. NULL for a museum: an art museum and an archaeology museum are two kinds, '
+  'not two types. One vocabulary per kind, not one shared enum (#814).';
 COMMENT ON COLUMN experiences.location IS 'Required point location for the experience';
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
@@ -2271,7 +2272,7 @@ CREATE INDEX IF NOT EXISTS idx_experiences_location ON experiences USING GIST(lo
 CREATE INDEX IF NOT EXISTS idx_experiences_boundary ON experiences USING GIST(boundary) WHERE boundary IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experiences_name_trgm ON experiences USING GIN(name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_experiences_category_id ON experiences(category_id);
-CREATE INDEX IF NOT EXISTS idx_experiences_category ON experiences(category) WHERE category IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_experiences_type ON experiences(type) WHERE type IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experiences_external_id ON experiences(category_id, external_id);
 CREATE INDEX IF NOT EXISTS idx_experiences_iconic ON experiences(is_iconic) WHERE is_iconic = true;
 
