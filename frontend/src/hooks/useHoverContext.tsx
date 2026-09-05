@@ -30,7 +30,6 @@ export interface HoverPreview {
   locationId: number | null;
   locationName: string | null;
   categoryName: string | null;
-  category: string | null;
   imageUrl: string | null;
   /** Whose photograph it is. Carried with the picture, because the card shows one. */
   imageCredit: ImageCredit | null;

@@ -32,7 +32,14 @@ export interface Experience {
   external_id: string;
   name: string;
   short_description: string | null;
-  category: string | null;
+  /**
+   * The type within the kind — `cultural` / `natural` / `mixed` on a World Heritage
+   * site, `monument` / `sculpture` on public art — and `null` on a museum, whose
+   * kind has no types (ADR-0045, #814). The kind is `category_id`.
+   */
+  type: string | null;
+  /** The kind, by its source row — what a colour and a group are decided by. */
+  category_id: number;
   country_codes: string[];
   country_names: string[];
   image_url: string | null;
@@ -192,7 +199,8 @@ export interface ExperienceSearchResult {
   id: number;
   name: string;
   short_description: string | null;
-  category: string | null;
+  /** The type within the kind; `null` on a museum (#814). */
+  type: string | null;
   category_id: number;
   /** Always present: `experiences.category_id` is NOT NULL. */
   category_name: string;
@@ -1291,7 +1299,8 @@ export async function assignExperienceToRegion(
 export async function createManualExperience(data: {
   name: string;
   shortDescription?: string;
-  category?: string;
+  /** The type within the kind the row is created under — never the kind itself, which is `categoryId`. */
+  type?: string;
   longitude: number;
   latitude: number;
   imageUrl?: string;
@@ -1318,7 +1327,7 @@ export async function editExperience(
     name?: string;
     shortDescription?: string;
     description?: string;
-    category?: string;
+    type?: string;
     imageUrl?: string;
     tags?: string[];
     websiteUrl?: string;

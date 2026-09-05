@@ -101,7 +101,6 @@ function previewOf(exp: Experience): HoverPreview {
     locationId: null,
     locationName: null,
     categoryName: exp.category_name || '',
-    category: exp.category ?? null,
     imageUrl: rawImg ? toThumbnailUrl(rawImg, 250) : null,
     imageCredit: exp.image_credit ?? null,
     longitude: exp.longitude,

@@ -28,7 +28,7 @@ import { ObjectPreview } from './ObjectPreview';
 
 function detail(over: Partial<ExperienceDetail> = {}): ExperienceDetail {
   return {
-    id: 1, external_id: 'Q1', name: 'Aksum', short_description: null, category: null,
+    id: 1, external_id: 'Q1', name: 'Aksum', short_description: null, type: null,
     country_codes: [], country_names: [], image_url: null, in_danger: false,
     longitude: 38.7, latitude: 14.1, category_name: 'UNESCO World Heritage Sites',
     category_id: 1, name_local: null, description: 'A place.', tags: null,

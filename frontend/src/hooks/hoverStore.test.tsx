@@ -31,7 +31,7 @@ const renders: Record<string, number> = {};
 /** One preview object, so tests can assert on identity rather than shape. */
 const PREVIEW = {
   experienceId: 10, experienceName: 'Peterhof', locationId: 2, locationName: 'Grand Palace',
-  categoryName: null, category: null, imageUrl: null, imageCredit: null,
+  categoryName: null, imageUrl: null, imageCredit: null,
   longitude: 29.9, latitude: 59.88,
 };
 
