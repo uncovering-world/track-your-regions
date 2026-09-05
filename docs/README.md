@@ -65,11 +65,11 @@ docs/
 | Document | Topic |
 |----------|-------|
 | [vision.md](vision/vision.md) | **Root vision** — project idea, user roles, design principles |
-| [EXPERIENCES-OVERVIEW.md](vision/EXPERIENCES-OVERVIEW.md) | **Experiences master overview** — categories, venues & treasures, type & significance, tracking, gamification, phases (start here for experiences) |
+| [EXPERIENCES-OVERVIEW.md](vision/EXPERIENCES-OVERVIEW.md) | **Experiences master overview** — kinds and sources, venues & treasures, type & significance, tracking, gamification, phases (start here for experiences) |
 | [QUIZ-SYSTEM.md](vision/QUIZ-SYSTEM.md) | Quiz design: card types, rounds, adaptiveness, data import |
 | [CONNECTION-LEVEL-CHECKLIST.md](vision/CONNECTION-LEVEL-CHECKLIST.md) | Depth-of-connection criteria and mechanics |
-| [PROPOSED-EXPERIENCE-CATEGORIES.md](vision/PROPOSED-EXPERIENCE-CATEGORIES.md) | Detailed proposals for 25+ experience categories with data sources |
-| [EXPERIENCE-TYPE-AND-SIGNIFICANCE.md](vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md) | Per-category type enums and binary significance (Iconic or default) |
+| [PROPOSED-EXPERIENCE-CATEGORIES.md](vision/PROPOSED-EXPERIENCE-CATEGORIES.md) | Detailed proposals for 25+ kinds of experience with their data sources (the file keeps its older name) |
+| [EXPERIENCE-TYPE-AND-SIGNIFICANCE.md](vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md) | Kinds and the closed type vocabulary a kind may have inside it (ADR-0045), and binary significance (Iconic or default) |
 | [REGIONAL-PROFILE.md](vision/REGIONAL-PROFILE.md) | Region snapshot cards, "changes since your visit" |
 | [LOCALS-PERSPECTIVE.md](vision/LOCALS-PERSPECTIVE.md) | User-generated local knowledge content |
 | [user-stories-general.md](vision/user-stories-general.md) | Core user stories (registration, tracking, social) |

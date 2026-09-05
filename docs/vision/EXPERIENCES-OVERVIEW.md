@@ -14,15 +14,15 @@ The defining property: an experience is **trackable**. You can mark it as done, 
 
 ## Core Concepts
 
-### Categories
+### Kinds
 
-Experiences are organized into **categories** — the user-facing grouping. Each category has its own natural tracking verb, data sources, and UI needs. Categories are the real structure of the system — all other concepts (type, significance, treasures) exist within them.
+Experiences are organized into **kinds** — what a traveller browses by, what they would call the thing in front of them ([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md)). Each kind is its own list, pin colour and count, with its own natural tracking verb, sources and UI needs. Kinds are the real structure of the system — all other concepts (type, significance, treasures) exist within them. The screens and the code still say *category* for a kind; the glossary in [`experiences.md`](../tech/experiences.md#glossary) maps the words.
 
-Examples of categories: UNESCO Sites (visited), Museums (visited), Books (read), Films (watched), Regional Food (tried), Languages (learned), Festivals (attended), Hiking Trails (walked), Wildlife (observed).
+Examples of kinds: World Heritage sites (visited), Art museums (visited), Archaeology museums (visited), Public art & monuments (visited), Books (read), Films (watched), Regional Food (tried), Languages (learned), Festivals (attended), Hiking Trails (walked), Wildlife (observed). Kinds are siblings: an art museum and an archaeology museum are two lists to a person who wants one and not the other, not two entries under "Museums".
 
-Some categories are **location-bound** (museums — you go there), some are **not** (books — read anywhere), some are **mixed** (food — authentic in the region, but you can cook at home). Some are **time-dependent** (festivals, seasonal wildlife). Seasonality is an availability property of the experience, not a separate kind of experience.
+Some kinds are **location-bound** (museums — you go there), some are **not** (books — read anywhere), some are **mixed** (food — authentic in the region, but you can cook at home). Some are **time-dependent** (festivals, seasonal wildlife). Seasonality is an availability property of the experience, not a separate kind of experience.
 
-Data sources are an implementation detail — a single category can be populated from multiple sources (a Books category might combine Wikidata, OpenLibrary, and curator input). What users see is the category.
+A **source** is a list we read to fill a kind — the UNESCO API, a Wikidata query, curator input — and is never what a visitor sees. A kind may be filled from several sources (art museums: the works-first selection and, later, a regional list that asks nothing about famous works) and one source may feed several kinds. A kind appears to readers only once it has a sync of its own and a rule that says what complete means for it.
 
 ### Locations
 
@@ -40,12 +40,12 @@ Every experience is classified along two orthogonal axes, following the pattern 
 
 **Type** — a closed enum describing *what kind of thing* something is. Type applies at two independent levels:
 
-- **Experience (venue) type** — per category. Museums have museum types (art, history, science, nature...), festivals have festival types (music, religious, seasonal...). Used for UI filtering: tap "Art" in the Museums category to get art museums
-- **Treasure type** — what kind of treasure is inside a venue (artworks, species, etc.). Independent of the venue type — a cathedral and an art museum can both hold artworks
+- **Experience (venue) type** — a distinction *inside* a kind whose members a traveller still browses together, with a closed vocabulary of the kind's own: a World Heritage site is cultural, natural or mixed; a piece of public art is a monument or a sculpture. Used for filtering inside the kind: tap "Natural" in World Heritage to get the natural sites. A kind whose members a traveller would want as separate lists has no types — an art museum and a history museum are two kinds, so a museum carries none
+- **Treasure type** — what kind of treasure is inside a venue (artworks, species, etc.). Independent of the venue's kind and type — a cathedral and an art museum can both hold artworks
 
 These are separate enums. A venue's type describes the venue; a treasure's type describes the treasure. See [`EXPERIENCE-TYPE-AND-SIGNIFICANCE.md`](EXPERIENCE-TYPE-AND-SIGNIFICANCE.md) for the full model.
 
-**Significance** — a binary flag: an experience is either **Iconic** (world-class, a global reference point in its category) or it isn't. Iconic drives must-see lists, badge display, and the highlights system. Everything without an Iconic badge is still valuable — it's just not globally famous.
+**Significance** — a binary flag: an experience is either **Iconic** (world-class, a global reference point in its kind) or it isn't. Iconic drives must-see lists, badge display, and the highlights system. Everything without an Iconic badge is still valuable — it's just not globally famous.
 
 Iconic is computed from automated signals (Wikipedia language count, visitor numbers, UNESCO connection, iconic collection treasures) with curator override. The threshold is deliberately high: only experiences that are unambiguously world-class. More granularity (national, regional tiers) can be added later if the data supports meaningful distinctions.
 
@@ -62,9 +62,9 @@ Treasure types and venue types are **independent enums** — they are not 1:1. A
 | Artworks | Paintings, sculptures, artifacts, architectural features | Museums, galleries, cathedrals, palaces, public spaces |
 | Species | Animals, plants | National parks, zoos, aquariums, wild reserves |
 
-More treasure types will be defined as new categories are built. These are orthogonal to venue types — the same Rodin sculpture is an artwork whether it's in a museum, a park, or a cathedral. Most venues hold one treasure type in practice, but the model doesn't enforce this — a venue with both artworks and species is structurally valid.
+More treasure types will be defined as new kinds are built. These are orthogonal to venue types — the same Rodin sculpture is an artwork whether it's in a museum, a park, or a cathedral. Most venues hold one treasure type in practice, but the model doesn't enforce this — a venue with both artworks and species is structurally valid.
 
-Both experiences and treasures can have **tags** — cross-cutting properties that enable curated browsable lists across categories, venues, and regions:
+Both experiences and treasures can have **tags** — cross-cutting properties that enable curated browsable lists across kinds, venues, and regions:
 
 | Tag | Level | What it enables |
 |-----|-------|-----------------|
@@ -72,7 +72,7 @@ Both experiences and treasures can have **tags** — cross-cutting properties th
 | Lazarus | Treasure (species) | "Lazarus species and where to find them" — animals rediscovered after presumed extinction, browsable across venues worldwide |
 | Endemic | Treasure (species) | "Species you can only see here" — animals and plants found exclusively in this region |
 
-Tags are not types — a Lazarus species is still a species, an endemic dish is still a food experience. Tags enable cross-cutting queries that work across categories and regions. More tags will emerge as new categories are built.
+Tags are not types — a Lazarus species is still a species, an endemic dish is still a food experience. Tags enable cross-cutting queries that work across kinds and regions. More tags will emerge as new kinds are built.
 
 **Highlights** are a globally curated top tier of treasures per type — e.g., "Top 100 Artworks." This is a single global list, not per-region. Treasures appear in two browsing contexts:
 
@@ -86,11 +86,12 @@ The system collects broader treasure data than what qualifies as highlights (e.g
 | Term | Meaning |
 |------|---------|
 | **Experience** | Anything a user can engage with in connection with a region — must be trackable |
-| **Category** | The user-facing grouping: museums, books, films, food, languages, etc. |
+| **Kind** | What a traveller browses by: World Heritage sites, art museums, archaeology museums, books, films, food, languages, etc. Each its own list, pin colour and count. Called a *category* on the screens and in the code today |
+| **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query, curator input. Never what a visitor sees; a kind may have several |
 | **Treasure** | An independently trackable thing inside a venue (artwork, species, artifact). Many-to-many with venues |
 | **Venue** | An experience that holds treasures (museum, zoo, national park) |
 | **Highlight** | A treasure on a globally curated top list (e.g., Top 100 Artworks). Badged inside venues, browsable by region |
-| **Type** | Classification enum at two levels: venue type (art museum, science museum...) and treasure type (artworks, species...). Independent enums |
+| **Type** | Classification at two levels, each a closed vocabulary: venue type inside a kind whose members are browsed together (cultural / natural / mixed; monument / sculpture — none for a museum) and treasure type (artworks, species...). Independent enums |
 | **Tag** | Cross-cutting property on experiences or treasures enabling curated lists (endemic, Lazarus). Not a type — orthogonal |
 | **Significance** | Binary: Iconic (world-class) or default. For treasures, Iconic = highlight |
 | **Connection state** | User's relationship depth with a region. Visit-based states first; Aware state added with quiz system |
@@ -99,27 +100,27 @@ The system collects broader treasure data than what qualifies as highlights (e.g
 
 ## What's Live Today
 
-Three experience categories are implemented, each populated from external data sources and assigned to regions automatically:
+Three kinds are implemented, each filled by one source so far and assigned to regions automatically:
 
-| Category | Count | Types | Significance | Current data sources |
-|----------|-------|-------|--------------|---------------------|
-| UNESCO World Heritage Sites | ~1,250 | cultural, natural, mixed | — | UNESCO API, Wikidata (enrichment) |
-| Top Art Museums | ~100 | art | iconic | Wikidata SPARQL |
-| Public Art & Monuments | ~170 | sculpture, monument | iconic | Wikidata SPARQL (class trees, a fame line) |
+| Kind | Count | Types | Significance | Source today |
+|------|-------|-------|--------------|--------------|
+| World Heritage sites | ~1,250 | cultural, natural, mixed | — | UNESCO API; Wikidata only for the pictures (enrichment, not a second source) |
+| Art museums (the row still reads "Top Art Museums", #818) | ~100 | *none* — an art museum is a kind, not a type | iconic | Wikidata SPARQL, works-first (ADR-0023) |
+| Public art & monuments | ~170 | sculpture, monument | iconic | Wikidata SPARQL (class trees, a fame line) |
 
-Category-level typing is already live (cultural/natural/mixed for UNESCO, monument/sculpture for landmarks). Museums were the first category to implement the Type & Significance model: the sync collects works above a fame threshold, then admits the museums holding them. Public art applies the same line to the objects themselves: an outdoor sculpture or monument at 22 Wikipedia-language sitelinks or more is the world tier and carries the badge, and a rule refuses what Wikidata calls a monument but a traveller would not — a cathedral, a cemetery, a museum, a work inside a church.
+Typing is live where a kind has types (cultural/natural/mixed for World Heritage, monument/sculpture for public art) and absent where it has none: the `art` every museum row used to carry went with #814. Art museums were the first kind to implement the significance model: the sync collects works above a fame threshold, then admits the museums holding them. Public art applies the same line to the objects themselves: an outdoor sculpture or monument at 22 Wikipedia-language sitelinks or more is the world tier and carries the badge, and a rule refuses what Wikidata calls a monument but a traveller would not — a cathedral, a cemetery, a museum, a work inside a church.
 
-**Numbers**: 466 multi-location experiences with 6,519 individual locations (mostly UNESCO serial nominations). The same fame threshold decides both halves of the museum significance model: 326 works clear it, and the 100 museums holding at least one make up the category — the global highlights list and region-scoped highlight browsing are planned.
+**Numbers**: 466 multi-location experiences with 6,519 individual locations (mostly UNESCO serial nominations). The same fame threshold decides both halves of the museum significance model: 326 works clear it, and the 100 museums holding at least one make up the kind — the global highlights list and region-scoped highlight browsing are planned.
 
 **Browsing**: two complementary views:
-- **Map mode** — select a region, see experiences grouped by category below. Hover a marker for a preview card
+- **Map mode** — select a region, see experiences grouped by kind below. Hover a marker for a preview card
 - **Discover mode** — tree-based navigation with breadcrumbs, map + card list side by side, slide-in detail panel
 
 **Curation**: curators reject bad assignments, edit metadata, add missing treasures, and create new experiences with AI-assisted lookup. See [`experiences.md`](../tech/experiences.md) for implementation details.
 
 ---
 
-## Future Categories
+## Future Kinds
 
 Beyond the current three, the platform can grow to cover many more dimensions of a region:
 
@@ -139,7 +140,7 @@ Beyond the current three, the platform can grow to cover many more dimensions of
 
 **Hospitality** — Historic Hotels & Restaurants, Universities & Libraries
 
-See [`PROPOSED-EXPERIENCE-CATEGORIES.md`](PROPOSED-EXPERIENCE-CATEGORIES.md) for detailed proposals with data sources and gamification ideas per category.
+See [`PROPOSED-EXPERIENCE-CATEGORIES.md`](PROPOSED-EXPERIENCE-CATEGORIES.md) for detailed proposals with data sources and gamification ideas per kind.
 
 ---
 
@@ -147,7 +148,7 @@ See [`PROPOSED-EXPERIENCE-CATEGORIES.md`](PROPOSED-EXPERIENCE-CATEGORIES.md) for
 
 ### Tracking
 
-Users mark experiences, their individual locations, and treasures as engaged — each level tracked independently. The system shows per-region completion counts ("12 of 47 experiences visited in Italy"), per-category progress, and a personal travel map colored by visited regions.
+Users mark experiences, their individual locations, and treasures as engaged — each level tracked independently. The system shows per-region completion counts ("12 of 47 experiences visited in Italy"), per-kind progress, and a personal travel map colored by visited regions.
 
 Currently binary (engaged / not engaged). The connection state system (below) will add nuance.
 
@@ -185,8 +186,8 @@ See [`curator-system.md`](../tech/planning/curator-system.md) for what's impleme
 
 Engagement mechanics unified by a single philosophy: **progress over competition, depth over breadth**.
 
-- **Per-region progress** — "23 of 47 experiences confirmed in Italy." Progress bars per region, per category. Motivates exploration within a place, not just checking off countries
-- **Cross-category achievements** — "Visited a region with population under 100K", "Collected all Eurozone coins", "Saw a Lazarus species in the wild"
+- **Per-region progress** — "23 of 47 experiences confirmed in Italy." Progress bars per region, per kind. Motivates exploration within a place, not just checking off countries
+- **Cross-kind achievements** — "Visited a region with population under 100K", "Collected all Eurozone coins", "Saw a Lazarus species in the wild"
 - **Connection map** — a personal world map colored by connection state. Vivid where memories are fresh, muted where they're fading
 - **Curator recognition** — most active per region, quality metrics, path from contributor to curator
 - **"Changes since visit" loop** — the Regional Profile's delta tracking is itself gamification — a reason to come back and check on "your" regions
@@ -208,9 +209,9 @@ A rough ordering based on dependencies and user value.
 
 | Phase | What | Status |
 |-------|------|--------|
-| **1. Core Experiences** | Three categories (UNESCO, museums, public art), sync, region assignment, browsing, tracking, treasure data collection, curation | Done |
-| **2. Classification** | Type & significance model, museum type expansion, automated significance computation, enhanced curation | Partially done |
-| **3. New Categories** | Books, films, food, festivals, notable people, wildlife, tags (endemic, Lazarus) | Planned |
+| **1. Core Experiences** | Three kinds (World Heritage, art museums, public art), sync, region assignment, browsing, tracking, treasure data collection, curation | Done |
+| **2. Classification** | Type & significance model, automated significance computation, enhanced curation | Partially done |
+| **3. New Kinds** | Archaeology and history museums (#581), books, films, food, festivals, notable people, wildlife, tags (endemic, Lazarus) | Planned |
 | **4. Connection States** | Visit-based states (Stranger → Deep Connection), checklists, decay mechanics, visual map representation | Planned |
 | **5. Quiz System** | Card types, rounds, adaptiveness, content pipeline. Enables the Aware connection state | Planned |
 | **6. Social & Gamification** | Follow users, journey planning, achievements, connection map, refresh streaks | Planned |
