@@ -16,13 +16,26 @@ Experiences are location-based entities linked to regions. The system supports:
 
 Two words, decided apart in [ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md). A **kind** is what a traveller browses by — what they would call the thing in front of them: a World Heritage site, an art museum, an archaeology museum, a monument. Each kind is its own list, pin colour and count. A **source** is a list we read to fill a kind — the UNESCO API, a Wikidata query — and is not something a visitor sees. A kind may have several sources and a source may feed several kinds; a kind is offered to readers only once it has a sync of its own and a rule that says what complete means for it — a partial list other imports happened to fill is not offered. A place can belong to several kinds at once (Cologne Cathedral is a World Heritage site and a cathedral), and a visit recorded on the place is seen through every membership.
 
+### Glossary
+
+Four concepts, and the words this document and the code use for each (Epic #815 is the vocabulary landing in code; ADR-0045 is the decision):
+
+| Word | What it is | Where it lives today | What the code calls it |
+|---|---|---|---|
+| **Kind** | What a traveller browses by — a World Heritage site, an art museum, an archaeology museum, a monument. Siblings: each its own list, pin colour and count, each with a sync of its own and its own rule of what complete means — a kind's sources are that sync's inputs (ADR-0045 §1, §2, §3) | The same row as the source, until the place/membership split of ADR-0045 §4 lands — #755 is its first use; #819 then makes every reader say kind or source | `category`, `category_id`, `category_name`, `categoryId`; the chip beside an object's name on a review card, the Discover pills, the group headers |
+| **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query — an input of the kind's sync, carrying its own gate (§3, §7); the sync and the rule of completeness are the kind's. A kind may have several; one source may feed several kinds | `experience_categories` — one row per source today, which is also the row the sync service is registered under | `experience_categories`, `category_id` on `experience_sync_logs`, the curator scope `'category'`, `requires_curation`, `SOURCE_PALETTE` |
+| **Type** | A distinction inside a kind whose members a traveller still browses together — cultural / natural / mixed, monument / sculpture — and none for a museum (§1, #814) | `experiences.type`; the vocabularies in `frontend/src/utils/experienceTypes.ts` | `type`, `?type=`, `TYPE_COLORS`, `typeOptionsFor` |
+| **Treasure type** | What kind of thing a work is, independent of its venue's kind and type | `treasures.treasure_type` | `treasure_type` |
+
+**How to read "category" below.** Until the place/membership split lands (#755 is its first use, and #819 then makes every reader say which it means), the row is both a kind and a source, and the code's word for the row is *category*. In the sections below a sentence that means the kind specifically says *kind* — what a reader browses by, counts, admits and refuses — and one that means the source says *source* — a run, its gate, its cache, its log; *category* is kept where it names the table, a column, an API path or a scope value as the code spells them. The vision documents use the same words ([`EXPERIENCE-TYPE-AND-SIGNIFICANCE.md`](../vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md), [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md)).
+
 **What the code holds today** is one table for both words. `experience_categories` is the source table — one row per sync service, with its endpoint, its config, its gate (`requires_curation`, ADR-0025) and its `display_priority` (lower first) — and every reader-facing grouping still keys on it through `experiences.category_id`: the groups of the map-mode list, the Discover pills, the pin colour, the counts, the curator scopes, the admin routes. Three rows exist, and each is at present both a source and the only source of one kind:
 
 - `UNESCO World Heritage Sites` (priority `1`) — the kind of the same name
 - `Top Art Museums` (priority `2`) — the works-first source (ADR-0023) of the kind *Art museums*; the row's name is the selection rule's, not the kind's
 - `Public Art & Monuments` (priority `3`) — the kind of the same name
 
-`experiences.type` is the **type within a kind** (#814; the column was called `category` until then, the word the rest of the code uses for the kind and its source): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, and **NULL for a museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A row is still both a place and its membership in a source: a monument that is also a World Heritage point is two rows (#755). The split ADR-0045 decides — a kind of its own, memberships as their own rows, refusal as a curator-confirmed withdrawal of one membership — lands issue by issue; until it does, "category" in the sections below means this one table.
+`experiences.type` is the **type within a kind** (#814; the column was called `category` until then, the word the rest of the code uses for the kind and its source): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, and **NULL for a museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A row is still both a place and its membership in a source: a monument that is also a World Heritage point is two rows (#755). The split ADR-0045 decides — a kind of its own, memberships as their own rows, refusal as a curator-confirmed withdrawal of one membership — lands issue by issue; until it does, "category" in the sections below means this one table, read the way the glossary above says.
 
 **How two rows become one place** is [ADR-0046](../decisions/0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md). A place has an identity of its own, assigned by us; a source's id — a Wikidata item, a World Heritage id — is a property of a membership, and for a serial World Heritage site identity is decided per location. Two signals are universal: an equal Wikidata item merges without a question, and coordinates within a threshold that grows with the place's extent plus a name at trigram similarity 0.5 or better produce a proposal a curator confirms through the same gate as every other open decision; distance alone proposes nothing, and each kind adds its threshold and any signal of its own. A merge keeps both rows in the history and can be undone. A second relation, **part of** (the Neues Museum on Museum Island, a monument on Red Square), comes from Wikidata's *part of* / *location* chains, from a site's boundary polygons once #714 sources them, or from geometry as a curator's proposal; a visit to the part marks the whole visited, never the reverse — and never across a serial World Heritage site, where a visit is recorded on the location and whether the site as a whole counts as visited is #768's decision. **None of this exists in the code yet**: there is no place table, no membership table and no merge, `metadata.wikidataQid` is written by the syncs and read only to label or hide it on a curator's card (`fieldMeaning.tsx`), never to match one row with another, and `user_visited_experiences` / `user_visited_locations` record a visit against the row, with no cascade. The rows that the two signals already match are listed on #780 and #755.
 
@@ -33,7 +46,7 @@ Two words, decided apart in [ADR-0045](../decisions/0045-a-traveller-browses-by-
 - `experiences`: canonical experience record (`location`, optional `boundary`, curation metadata)
 - `experience_regions`: assignment to regions (`assignment_type = auto | manual`)
 - `user_visited_experiences`: per-user visit state
-- `experience_sync_logs`: sync audit log by category
+- `experience_sync_logs`: sync audit log by source (`category_id`)
 
 ### Location model
 
@@ -192,7 +205,7 @@ moment the arrival is published.
 None of this changes an ungated run: every point such a run inserts lands `auto`, so the pairing
 statement is skipped outright when the insert returned no `pending` row, and the two housekeeping
 statements match nothing. Verified by running the same fixture on both sides of the commit:
-identical return values and identical rows. `requires_curation` is false on all three categories
+identical return values and identical rows. `requires_curation` is false on all three sources
 on the database as it stands today, which is a fact about the data rather than a property to rely
 on — an admin gates a source in one click, and from then on this paragraph describes only the
 sources they left alone.
@@ -411,7 +424,7 @@ Each source has a dedicated sync service in `backend/src/services/sync/`. All fo
 
 The generic sync lifecycle (progress init, already-running check, sync log creation, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`. Each service provides a `SyncServiceConfig<T>` with domain-specific callbacks:
 
-- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, withdrawalSkippedReason? }`, where `filtered` names entities the source offered that this category cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands.
+- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, withdrawalSkippedReason? }`, where `filtered` names entities the source offered that this kind cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands.
 - **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview, and `onLocationsChanged(experienceId)`, which a service calls **at the location write** to have the run place that experience before it ends. Called there rather than returned on the result on purpose: a service can throw after moving a point — the museum one upserts treasures afterwards — and a returned field would be lost with the throw while the point had already moved on disk. Throw to count as error.
 - **`getItemName(item)`** / **`getItemId(item)`** — Display name and external ID for progress messages and error reporting.
 
@@ -421,9 +434,9 @@ Generic `getSyncStatus(categoryId)` and `cancelSync(categoryId)` replace per-ser
 
 Common sync logic lives in ten shared utility files:
 
-- **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by category ID, and `isCancellable()` — the single rule for whether a cancel would be acted on, which `cancelSync` enforces, the status endpoint reports as `cancellable`, and the admin panel disables its button on rather than re-deriving.
+- **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by the source's id (`category_id`), and `isCancellable()` — the single rule for whether a cancel would be acted on, which `cancelSync` enforces, the status endpoint reports as `cancellable`, and the admin panel disables its button on rather than re-deriving.
 - **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
-- **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), and sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs). Used by all three services. It deletes nothing: the FK-ordered category cleanup that force sync used lived here and is gone with it.
+- **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), and sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs). Used by all three services. It deletes nothing: the FK-ordered per-source cleanup that force sync used lived here and is gone with it.
 - **`locationWriter.ts`** — Writes an experience's locations so a point that has not moved keeps its row, and therefore its region assignments (`writeExperienceLocations()`). Identity is `(point, external_ref)`: the reference alone repeats across a transboundary component's per-country entries, and the point alone repeats across the sub-units of one named locality. A point the source stops offering is marked (`missing_since`, `ordinal` NULL) rather than deleted, and one offered again is found by the same identity and given its place back. Returns the rows inserted, moved or offered again — what the run then assigns — and how many it was the first to find missing. Two modules hold what its statements are built from, split out when the per-point diff took it past the guide's length limit: `locationPairing.ts` — identity (`samePointSql`, `claimedPointSql`), the guard that keeps a claimed column, and what a kept row's own columns say happened to it (`keptChanges`) — and `locationIncoming.ts`, the source's list before anything is known about the store (its CTE, its parameters, and the duplicates the source itself ships)
 - **`placement.ts`** — Placing what a run moved, and reporting when that fails (`finishPlacement()`, `placeMovedExperiences()`, `recordPlacementFailure()`, `enterAssigningPhase()`, `terminalStatus()`). Split from the orchestrator because it is a separate responsibility: the loop runs a source's items, this decides where the objects that moved now belong, and it reaches for `regionAssignmentService`, `syncLogMarkers` and `annotateClosedSyncLog` — none of which the loop touches
 - **`changeSet.ts`** — Pure diff between the stored row and the incoming record (`computeChangeSet()`). No database, no network. Normalises before comparing: JSONB by value rather than key order, country and tag arrays as sets, coordinates by distance (below 10 m is jitter, above 1 km is `major`), and `null`/`''`/absent as one absence. Two jsonb columns are reported **per part** rather than whole, because an answer is addressed to an entry: `metadata.<key>` for every metadata key that differs (ADR-0039), `nameLocal.<lang>` for every language of the local names that differs (#728). Also home to `claimKeyFor`, the one lookup four readers share for "which `curated_fields` entry protects this"
@@ -440,14 +453,14 @@ per-field diff in `changed_fields`. Rows that came through **unchanged are count
 a UNESCO run would otherwise write 1247 rows of noise around the few dozen that carry
 information. Four kinds of unchanged row are stored anyway, because each carries news the
 counters cannot: `conflict`, where `curated_fields` refused the source's edit and the two now
-disagree; `held`, where the category's gate refused it (below); `returned`, where an object
+disagree; `held`, where the source's gate refused it (below); `returned`, where an object
 flagged `missing_since` is listed again — typically unmodified, after a transient source gap,
 which is precisely when a field-change requirement would have hidden it; and one whose own fields
 all came through while **what it holds** moved (next section).
 
 `changed_fields` holds the value the source proposed for a field **even when the run refused to
 write it**, and each entry says which of the two refusals it was: `curatedConflict` for a field a
-curator had claimed, `held` for one the category's gate kept out (#519). Both flags are `false`
+curator had claimed, `held` for one the source's gate kept out (#519). Both flags are `false`
 on a field the run applied. That is what makes a curator's later answer possible — "accept
 source" for the first, publishing for the second — and without it the proposed value exists
 nowhere. The two are never both true of one field: they are answered by different endpoints, so a
@@ -858,7 +871,7 @@ per service in `SyncServiceConfig`, `ranked` for the two top-N Wikidata sources)
 finished clean and uncancelled, and it saw at least 90 % of the previously present rows.
 When detection is skipped the reason is stored in `experience_sync_logs.detection_skipped_reason`.
 
-A museum's *works* have a floor of their own, since the category is `ranked` and never reaches
+A museum's *works* have a floor of their own, since the source is `ranked` and never reaches
 this one: the works coverage floor (ADR-0044, § Top Art Museums below). Its refusal lands in
 `experience_sync_logs.withdrawal_skipped_reason`, and unlike detection's it downgrades the run to
 `partial` — a run that saw too little to say what left is not a success, whatever its items did.
@@ -911,7 +924,7 @@ path needs.
 
 **Three fields the importer asked for wrongly, and a dry run that found them.** Naming the fields in `select` turned the first into a 400 that said `Unknown field: criteria` — that field does not exist in `whc001` and never did, so `buildUnescoTags` produced no criterion tag for any site: measured on the live database, **0 of 1272**. The real name is `criteria_txt` (`(i)(ii)(iii)(iv)` for the Bamiyan Valley), present on 1256 of 1273 records. The other two were found by previewing the fix: `danger` and `transboundary` are compared against the number `1`, and the portal sends the **strings** `"True"` / `"False"` — from either endpoint. So `metadata.inDanger` was false for all 1272 sites, 58 of which are listed in danger, and not one of the 51 transboundary sites carried its tag. The `in_danger` tag survived only because `danger_list` is a string and was tested beside the flag. `isSet` now reads a yes in any of the shapes a portal might send it, rather than the one shape seen today.
 
-**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata.criteria` on 1255 (the criteria string), `metadata.inDanger` on 58, `shortDescription` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false for all three categories in the seed (`db/init/01-schema.sql`), and gating one is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands. The `metadata.inDanger` row of that table is spent on a database that has had migration 035: those 58 rows already carry the flag, so a run finds nothing to propose about it — see below for why that half was repaired rather than queued. A card a run has *already* filed keeps its `false → true` line, since a changeset records what a run did (ADR-0026) and publishing it writes the value the migration wrote; the rest of that card — the criteria string — is what still needs a curator; the criterion tags filed beside it are no longer a question and no longer a row on the card (#570), though publishing such a card still writes them. The counts above are the entry shape of the run that was measured, and one of them has since changed: a run records each **language** that differs on its own (#728), so Getbol's single `nameLocal` entry is one entry per moved language now — two of its six on that dry run, six on the runs that followed, which all drop "(Phase II)" from every language. The site count does not move; what a curator answers does.
+**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata.criteria` on 1255 (the criteria string), `metadata.inDanger` on 58, `shortDescription` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false for all three sources in the seed (`db/init/01-schema.sql`), and gating one is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands. The `metadata.inDanger` row of that table is spent on a database that has had migration 035: those 58 rows already carry the flag, so a run finds nothing to propose about it — see below for why that half was repaired rather than queued. A card a run has *already* filed keeps its `false → true` line, since a changeset records what a run did (ADR-0026) and publishing it writes the value the migration wrote; the rest of that card — the criteria string — is what still needs a curator; the criterion tags filed beside it are no longer a question and no longer a row on the card (#570), though publishing such a card still writes them. The counts above are the entry shape of the run that was measured, and one of them has since changed: a run records each **language** that differs on its own (#728), so Getbol's single `nameLocal` entry is one entry per moved language now — two of its six on that dry run, six on the runs that followed, which all drop "(Phase II)" from every language. The site count does not move; what a curator answers does.
 
 **A site in danger, and since when.** The World Heritage list carries 58 sites inscribed on the [List of World Heritage in Danger](https://whc.unesco.org/en/danger/), and the catalogue stores that fact **twice**: as the `in_danger` tag and as `metadata.inDanger`, which is the field every badge keys on. The two came from different halves of the source — the tag from either of `danger` and `danger_list`, the flag from `danger` alone — so the reading bug above left the tag right on 58 rows and the flag false on all 1272, and the badge three surfaces draw appeared for nobody ([#600](https://github.com/uncovering-world/track-your-regions/issues/600)). Both writers ask one predicate now (`isInDanger`), so a portal that empties either field cannot end the answer in silence, and a delisted site is still not badged: the field's vocabulary is Y/N and the parser reads the answer rather than the field's presence — Belize Barrier Reef Reserve System, off the list since 2018, answers `danger: "False"` with `danger_list: null` (measured 2026-08-27, when the two fields agreed exactly on 58 of 1273 records).
 
@@ -923,7 +936,7 @@ The date is most of what the fact means on the ground, so the list reads send it
 
 **Every picture a run writes is a Wikimedia Commons file, and that is a licence rule before it is a technical one** ([ADR-0043](../decisions/0043-a-picture-we-show-is-one-we-may-show.md)); the one other picture the catalogue may show is a file we host ourselves, as an `/images/…` path a curator names. Until 2026-09-01 four in five were the World Heritage Centre's own — 1260 of 1591 pointed at `whc.unesco.org/document/<id>` — and their terms say those photographs "may not be copied or retransmitted by any means without explicit authorisation" and that a site may "only link to, not replicate" them. Every route #557 had weighed for resizing them (a proxy, a stored variant, the free third-party resizer that was already on the reader's path) made a copy. So the portal is linked to instead, by `metadata.website`, which every row carries and which its terms invite, and the picture comes from Commons.
 
-**Where a World Heritage property's picture comes from.** Wikidata states one (P18) for the item carrying the property's id (P757), and the match is by that id and nothing looser: the site's own number first, then a later numbering of the same property (`166rev`, `292bis`), then the lowest-numbered of its components (`1142-01bis`) — UNESCO's own ordering of a serial property's parts, not a query planner's. Measured 2026-09-01: 1131, 1206 and 1220 of the 1260, 96.8 %. Deterministic at every step (`MIN` over an item's several pictures, a sort within a tier), because on a gated category a picture that changed between runs is a proposal somebody has to answer. A component's picture may stand in for the property; a component's *article* may not — a reader following it from the card would land on the wrong page — so the article is taken from the property's own item only. The 40 left have a Wikidata item (38), a Commons category (16), a part with a picture (17): pools a person can choose from, not statements a run can act on. `Category:Wudang Mountains` opens with a portrait of a person, and a licence-filtered aggregator answers "Deer Stone Monuments" with a cemetery in New Orleans. They show no picture and keep their link.
+**Where a World Heritage property's picture comes from.** Wikidata states one (P18) for the item carrying the property's id (P757), and the match is by that id and nothing looser: the site's own number first, then a later numbering of the same property (`166rev`, `292bis`), then the lowest-numbered of its components (`1142-01bis`) — UNESCO's own ordering of a serial property's parts, not a query planner's. Measured 2026-09-01: 1131, 1206 and 1220 of the 1260, 96.8 %. Deterministic at every step (`MIN` over an item's several pictures, a sort within a tier), because on a gated source a picture that changed between runs is a proposal somebody has to answer. A component's picture may stand in for the property; a component's *article* may not — a reader following it from the card would land on the wrong page — so the article is taken from the property's own item only. The 40 left have a Wikidata item (38), a Commons category (16), a part with a picture (17): pools a person can choose from, not statements a run can act on. `Category:Wudang Mountains` opens with a portrait of a person, and a licence-filtered aggregator answers "Deer Stone Monuments" with a cemetery in New Orleans. They show no picture and keep their link.
 
 **Which hosts a picture may come from is decided in one place per side and pinned across the boundary.** `DISPLAYABLE_PICTURE_HOSTS` (`backend/src/types/urlSafety.ts`) and `TRUSTED_IMAGE_DOMAINS` (`frontend/src/utils/imageUrl.ts`) hold the same two Commons hosts; no import can cross (#527), so `urlSafety.test.ts` reads the frontend's declaration and fails when the two differ. `isDisplayablePictureUrl` also asks that a Commons file *name a picture* — Commons hosts PDFs, videos and scanned books under the same `Special:FilePath` shape, and a stored one is the empty frame this rule exists to stop — and that it be the file rather than the `/wiki/File:` page about it, which ends the same way and answers HTML; on `upload.wikimedia.org` (or a subdomain of it) only `/wikipedia/commons/` is Commons'. **Every writer of `image_url` holds the line at the writer, and there are two lines.** A run is held to `isCommonsPictureUrl` — a picture file on a Commons host, and nothing else, since a source's picture is a Commons file by construction and no run writes a path of ours: the sync upsert (`withShowablePicture`, `syncUtils.ts`, binding all three experience collectors), the works writer (`treasureWriter.ts`) and both repairs (`pictureRepair.ts`). A person is held to `isDisplayablePictureUrl`, which adds the one local shape the drawing side maps, an `/images/…` path for a file we host: a curator's edit (`safeImageUrlSchema`, and the controller's own second reading) and publishing a held proposal (`publishHeldFields.ts`, which refuses the card rather than dropping the value — a card filed before the rule can still be proposing the portal's photograph). A refused picture takes its credit with it, so no photographer is named beside an empty frame — for a picture the run owns; a picture a curator claimed stays, and so does the credit under it (`creditToWrite` resends it, and the upsert re-applies it whatever the run sent).
 
@@ -1015,8 +1028,9 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   statement carrying `pq:P582`), the rule a work's `P276` is read under; resolution itself still
   walks `P361` only, and `EDITORIAL_OUT` is what keeps an excluded quarter from being a door
 - Once folding settles, each surviving venue must also be an *art* museum (`artTest.ts`) — the
-  category holds art museums by product decision (2026-08-05); archaeology, egyptology,
-  natural-history and military museums are a separate import with their own category. Thirteen
+  kind holds art museums by product decision (2026-08-05); archaeology, egyptology,
+  natural-history and military museums are not art museums, and #581 imports archaeology and
+  history museums as kinds of their own, starting from the rows the art test expelled. Thirteen
   Wikidata classes (art museum, national gallery, kunsthalle, pinacotheca, glyptotheque, sculpture
   museum and others — `ART_CLASSES`) admit a venue outright, whatever else it is typed or holds.
   Without one, the venue's own held works decide by painting-to-sculpture share — a work counts as
@@ -1037,7 +1051,7 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   `experience_treasures` currently holds, before writing anything — during design this caught
   second-order regressions (a corroboration fix that silently routed a work to the wrong museum,
   and the next fix that silently dropped a work's true venue) that no test did
-- Writes an admitted museum as an experience with `category = 'art'` and `is_iconic = true`, and
+- Writes an admitted museum as an experience with no `type` (an art museum is a kind, not a type — the literal `art` went with #814) and `is_iconic = true`, and
   each work it holds as a treasure whose own `is_iconic` joins at the same 22-sitelink threshold
   and releases only below 18 (`ICONIC_RELEASE`), so the badge does not flicker as Wikipedia's
   coverage grows. The museum's own flag goes with its admission, and it has four writers — three
@@ -1190,7 +1204,7 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    spot rather than in the Stele Forest that holds it), Villa d'Este (typed fountain).
 5. **The line, then the write** — a candidate that passes enters at **22 sitelinks and stays until
    it falls below 18** (`ENTER_SITELINKS`/`STAY_SITELINKS` in the pipeline; the museums' own line,
-   ADR-0023), read against what the category already admits (`admittedExternalIds`). An admitted
+   ADR-0023), read against what the kind already admits (`admittedExternalIds`). An admitted
    row that fell below 18 is refused by name — `17 sitelinks: below the world tier's line (22 to
    enter, 18 to stay)` — and a candidate below the line that was never in is simply out, and
    nothing is said about it: a refusal names a rule, and none ran on it. The admitted are written
@@ -1206,7 +1220,7 @@ data (171 on the dry run of 2026-09-04, against 205 under the cut). A per-region
 is the regional tier's question, and belongs to the rules #799 writes.
 
 **Refusals and the badge.** Every candidate the rule refuses comes back as the run's `filtered`
-(§ Change provenance), which marks the rows the category holds under those ids `refused` with the
+(§ Change provenance), which marks the rows the kind holds under those ids `refused` with the
 rule's reason, and the review page's *kept out* card asks whether the rule was right (ADR-0024).
 The reasons are written for that card — `inside St. Peter's Basilica: a work of a place of
 worship, not public art`, `not an artwork, and typed: palace; castle`, `not public art:
@@ -1286,7 +1300,7 @@ the experiences whose locations were inserted, moved or dropped. Because `locati
 keeps the row of a point that stayed put, an ordinary run reaches this with an empty set and
 does nothing at all. Through it the run stays open on purpose: `progress.status` becomes `'assigning'` rather than
 a terminal value, so `isSyncStillRunning` keeps a poller polling for what can be minutes on a
-category's first run. `cancelSync` refuses it — placement is past the point `progress.cancel` is read, so
+source's first run. `cancelSync` refuses it — placement is past the point `progress.cancel` is read, so
 accepting would report a cancellation that never happens. The refusal actually starts a phase
 earlier: `isCancellable` accepts only while there is an item loop left to interrupt, so the
 post-loop window — missing detection, changeset recording, log closure — is refused too. The
@@ -1353,7 +1367,7 @@ was never shown to this reader, so a visit to one cannot be a visit they made. F
 three would erase history; filtering this one can only hide something that was never real.
 
 **A by-id read is the documented exception, and it is `lost` only.** `getExperience` and its
-siblings hide a row the category refused but leave a `lost` one reachable, so an object judged
+siblings hide a row the kind refused but leave a `lost` one reachable, so an object judged
 lost still answers at its own address rather than 404ing there. That gap predates the admission
 axis and closing it is a separate decision about a different question — recorded here because
 the code says so in three comments and this file is where a reader looks first. (The `Lost` chip
@@ -1362,7 +1376,7 @@ the by-id answer carries the row without carrying the mark.)
 
 A third axis, `admission` ([ADR-0024](../decisions/0024-a-category-may-refuse-what-the-source-still-lists.md)),
 answers a different question again: not whether the source still lists the object, and not
-whether it still exists, but whether *this category* accepts it. The works-first museum
+whether it still exists, but whether *this kind* accepts it. The works-first museum
 importer refuses an archaeological collection, a natural history museum, a church or a painted
 wall — and Wikidata goes on listing every one of them, so neither of the other two axes can
 say it without asserting something false. `hideRefusedSql()` is a separate fragment from
@@ -1375,7 +1389,7 @@ that can take a row off a reader's screen, carried by `experiences`, `experience
 `experience_treasures` and `treasures` rather than by the experience alone, because a gated
 source's points and works are exactly what a run can add unchecked between one curator visit and
 the next. It answers a question none of the other three do: has anyone looked at this row yet —
-not whether the source still lists it, not whether it still exists, not whether this category
+not whether the source still lists it, not whether it still exists, not whether this kind
 accepts it. A sync run writes it — `pending` for a row from a gated source, `auto` everywhere
 else. `createManualExperience` writes `verified` instead, on both the experience and its one
 location: there is no source here to gate, and the curator who typed the row in and placed the
@@ -1398,7 +1412,7 @@ leave it gated — measured live: without the fix, `lostHidden` read 1 for such 
 **The relaxation is narrower than the gate.** `GET /:id`, `/:id/locations` and `/:id/treasures` —
 and only those three — widen the predicate for a curator or admin whose scope reaches the
 experience, resolved by `maySeeUnreadExperience()` (`experienceScope.ts`). Every other read that
-carries the gate — the flat list, search, the by-region list and its counts, the category counts,
+carries the gate — the flat list, search, the by-region list and its counts, the per-kind counts,
 region-counts, the map feed, and the per-user visited-status denominator — applies it
 unconditionally, to everyone: a curator comparing "what the catalogue offers" against a reader's
 view has to see the same numbers, or the two could never agree on what the catalogue offers.
@@ -1471,7 +1485,7 @@ record of what a person did is theirs and stays.** A read that describes an expe
 where it is, a reader's denominator of points visited there — is the catalogue talking, so it
 refuses a kept-out row. A read that lists what *this person* did (`getVisitedExperiences`) is not,
 so it does not filter, and neither does the write path: if a traveller stood in the British Museum,
-that is true whether or not this category calls it an art museum.
+that is true whether or not this kind calls it an art museum.
 
 **The shape of the refusal follows what the answer is**, which is why the rule is not "it 404s":
 404 where the answer is the row, and an empty list where the answer is other objects that merely
@@ -1523,15 +1537,15 @@ lies. Two traps it has already caught: `searchExperiences` needs brackets round 
 alternatives (unbracketed, `OR` binds looser than the lifecycle `AND` and every lost object
 matching by trigram comes straight back), and the by-region **count** has to carry the same
 rule as the list or the page says one number and shows another. `listCategories` carries both
-predicates in its per-category `experience_count` for the same reason — without them it
+predicates in its per-kind `experience_count` for the same reason — without them it
 reported 128 experiences in *Top Art Museums* where the catalogue offers 101 — the 27 rows that
-category's own rule turned down (#503). Both, though the `hideLostSql()` half changes nothing
-today: measured 2026-08-09, all three categories hold zero `lost` rows, so the whole 128→101 gap
+kind's own rule turned down (#503). Both, though the `hideLostSql()` half changes nothing
+today: measured 2026-08-09, all three kinds hold zero `lost` rows, so the whole 128→101 gap
 is refusals. It is still the half to have, because the vision promises that what no longer exists
 leaves "the lists, the map and the counts" (`docs/vision/vision.md`, *Places that changed*), and
 without the predicate that promise would only be accidentally true. The rule that makes this
 checkable holds everywhere a count appears: **no count advertises more than its list shows by
-default, and a count that labels a category rather than a page does not move when a caller widens
+default, and a count that labels a kind rather than a page does not move when a caller widens
 the list.**
 
 `?includeLost=true` puts them back — named in the **query schemas** as well as read in the
@@ -1559,7 +1573,7 @@ the correction has to send the flag as seen rather than infer it from the verdic
 `ExperienceListItem` and Discover's `ExperienceCard` — since both read the same by-region
 response and a labelled row in one is an unexplained one in the other. The reveal affordance
 is Map mode only for now: Discover's list is filtered the same way, but has no place to put
-the control that would not compete with its category filters.
+the control that would not compete with its kind filters.
 
 ## API Endpoints
 
@@ -1570,11 +1584,11 @@ Every read below except `/search` and `/categories` carries `optionalAuth`, beca
 | Method | Endpoint | Notes |
 |--------|----------|-------|
 | GET | `/api/experiences` | Filters: `categoryId`, `type` (the type within the kind: `cultural`, `monument` …), `country`, `regionId`, `search`, `bbox`, `includeLost`, `limit`, `offset`. `bbox` matches a place the same caller may see, and the object's own coordinate only where it has none — the same set of places the position is drawn from (ADR-0028), so a box can no longer match an object on a coordinate the row does not answer with. What one coordinate per row still cannot promise is that the pin is *inside* the box: a serial site matched on one part is answered with the part nearest its anchor, which may be another one — four of the 47 objects an Alps-sized box holds, the Beech Forests among them, matched in the Alps and answered in the Carpathians. Drawing every part is [#558](https://github.com/uncovering-world/track-your-regions/issues/558). A box with `west > east` crosses the antimeridian and is matched as its two halves. Also excludes `pending` rows unconditionally — no `includeUnread` toggle exists |
-| GET | `/api/experiences/:id` | Full detail — without `tags`, which nothing renders and which a gated run now writes unreviewed, a bypass that holds only while no reader-facing read returns them (#570; `experienceQueryController.test.ts` pins the select). 404s for a refused row — the class rule, not this row's exception: every read that describes an experience refuses one the category kept out, and every by-id read whose answer *is* the row answers 404 (see § Lifecycle filtering, which also says what shape the refusal takes where the answer is not the row). Also 404s a `pending` row, except for a curator/admin whose scope reaches the experience (`maySeeUnreadExperience()`) |
+| GET | `/api/experiences/:id` | Full detail — without `tags`, which nothing renders and which a gated run now writes unreviewed, a bypass that holds only while no reader-facing read returns them (#570; `experienceQueryController.test.ts` pins the select). 404s for a refused row — the class rule, not this row's exception: every read that describes an experience refuses one the kind kept out, and every by-id read whose answer *is* the row answers 404 (see § Lifecycle filtering, which also says what shape the refusal takes where the answer is not the row). Also 404s a `pending` row, except for a curator/admin whose scope reaches the experience (`maySeeUnreadExperience()`) |
 | GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `includeLost`, `limit` (default 100, max 5000), `offset`; optional auth affects rejection visibility. Rows come back `ORDER BY e.name`, so a `limit` under the region's size truncates alphabetically rather than paging — both callers pass `WHOLE_REGION_LIMIT` and take the region whole. `total` is a `COUNT(DISTINCT e.id) FILTER (…)` over the same predicate the list uses — which includes the lifecycle rule, so it follows `includeLost` — and not the page size, so `offset + experiences.length < total` says rows remain beyond the returned window — truncation for a caller that started at `offset` 0 and asked for the whole region, plain `hasMore` for one that is paging; the server cannot distinguish those, since the difference is intent. Distinct because the rejection join can multiply rows per experience. `lostHidden` reports how many the region holds that no longer exist and are **not** being shown — zero once `includeLost` is on, since nothing is hidden then, and it excludes `pending` rows too, or a row gated for both reasons would be counted as something the toggle would reveal. `pending` rows are excluded from both the list and the count unconditionally, for every caller including a curator: this is a *set*, not one of the three by-id reads the pending gate relaxes |
 | GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Supports `includeChildren` and `includeLost`, the latter because this batch has to follow the list: a row the list shows but this omits arrives with no markers and a confident `0/N in region`. Eliminates N+1 per-experience location fetches. Excludes a `pending` container or a `pending` location, unconditionally |
 | GET | `/api/experiences/search` | `q`, `limit`. Also excludes `pending` rows unconditionally. Each result carries `category_name` and `regions[]` — **where it can be opened**: the regions that name the object to a reader (`readerRegionMembershipSql`, the same predicate `/:id`'s `regions[]` uses), in **published, active** world views only, minus any pair a curator rejected (a rejection leaves the membership row standing, so without that predicate a search row would link to a list that drops the card), ordered smallest first by `geom_area_km2` (nulls last) so a caller opening one frames the object rather than its continent. Empty where nothing published places it — 28 of the 1577 visible objects on 2026-09-01. Published-only rather than caller-shaped, because this route deliberately carries no session; the region context is computed *after* the LIMIT, in a select over a `matches` CTE, so the placement lookup runs for the page rather than for every name that matched ([ADR-0042](../decisions/0042-a-search-answers-about-the-catalogue-and-opens-where-the-reader-is.md)) |
-| GET | `/api/experiences/categories` | Active categories ordered by priority. `experience_count` excludes `lost`, `admission = 'refused'` and `curation_state = 'pending'` rows, unconditionally — it labels the category, not a page, and no caller passes `includeLost` here |
+| GET | `/api/experiences/categories` | The active kinds (their source rows) ordered by priority. `experience_count` excludes `lost`, `admission = 'refused'` and `curation_state = 'pending'` rows, unconditionally — it labels the kind, not a page, and no caller passes `includeLost` here |
 | GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId`. Also excludes `pending` rows unconditionally |
 | GET | `/api/experiences/:id/locations` | Multi-location list; optional `regionId` adds `in_region`. 404s for a refused row, like `/:id`. Also 404s a `pending` container, and excludes a `pending` location from the list — both relaxed together for a curator/admin whose scope reaches the experience, so a queue item that is itself one pending location inside an otherwise-published experience is still visible once past the gate |
 | GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts). Carries `hideRefusedSql()` on the container, so a refused museum's works come back empty: the contents follow the container, and answering with them would put back on screen exactly what hiding the museum took off it. Three more predicates gate `curation_state` — on the experience, the `experience_treasures` link and the treasure itself — because any of the three can be `pending` independently; all three relax together for a curator/admin whose scope reaches the experience |
@@ -1606,7 +1620,7 @@ points and how many of them they have reached — so it 404s for a refused row, 
 whose answer is the row. It is `requireAuth` only, no curator role and no scope, so before #503 any
 authenticated account could read a refused row's points there. Everything else in this table is the
 person's own record — what they visited, marking and unmarking it — and stays unfiltered whatever a
-category later decides about the building.
+kind later decides about the building.
 
 ### Curator (`requireAuth + requireCurator`)
 
@@ -1629,7 +1643,7 @@ category later decides about the building.
 | POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted. Also deletes any standing refusal of those fields, since a refusal belongs to the claim being released. Accepting `imageUrl` releases `metadata.imageCredit` with it, drops the stored key, and **says so where there was one** — `releasedCredit` in the response, in the `accepted_source` audit row, and as a clause in the curator's confirmation line. The deletion is unconditional and the report is not: an edit that could not resolve a credit stores the key as `null`, and announcing that as a removal would name something nobody could see. Reported on the same footing as the released pin and for the same reason: the value deleted is the curator's own and the card they answered never mentioned a photographer. It does so for the reason the coordinate below gives: the two were written in one transaction and mean one thing, and releasing half would leave the source's photograph credited to the curator's photographer — permanently, since the per-key re-apply would put that name back on every later run. Accepting `location` releases the claim on **the point the anchor was taken from** as well, and answers `releasedPoints` naming it: the object's coordinate and that point's are the same fact (ADR-0028), the only path that claims `location` on an experience is `/locations/:locationId/edit`, which claims both together, and releasing one of them alone would have the next run write the source's coordinate to the object while the pin a curator corrected stays where they put it — #550, made by the two endpoints written to close it. That point is matched by its coordinate rather than by re-deriving the anchor rule, and the difference is not academic: an object that gains a second published point and has *it* corrected carries a claim the anchor never came from, and a release written as "every claiming point" would undo that correction in answer to a card about the anchor. Each released point is also **put back on the coordinate that run offered for it**, and those are answered as `movedPoints`: the pairing bounds a point's identity by the reference *and* ten metres, and the claim was the only thing letting a corrected row pair at any distance, so releasing alone would have the run retire the row and insert the source's point beside it — a `withdrawn` card for a component nobody delisted, with the visit record left on a pin no reader is shown. The coordinate is the source's own for that row, read from the same run's contents record; where that run offered none, nothing is written. A moved pin re-places the experience after the commit and answers `placementFailed`/`placementFailedWorldViews` where that failed — which is also why the route is rate-limited (`authenticatedLimiter`), like every other curator route whose work outlives its transaction. The object's own coordinate is not written here and follows at the next run, since `location` is not an acceptable field |
 | POST | `/api/experiences/:id/decline-source` | `{ fields: string[], expectedSyncLogId }` — the opposite answer to the same card: record that the curator stands by the stored value, so the queue stops asking. Writes nothing to the experience — the stored value has already won every run since the disagreement began. The refused **value** is read from the locked proposal, never from the request, because the queue suppresses by comparing it against what the source proposes now. Every field is refusable, including the ones `accept-source` cannot write. Needs migration 022 applied, or the audit insert violates the `action` CHECK and the whole call 500s |
 | POST | `/api/experiences/:id/decline-held` | `{ fields?: string[], parts?: [{ kind, ref, name, fields }], expectedSyncLogId }` — the other answer to a held row (#722, [ADR-0038](../decisions/0038-a-held-proposal-is-answered-per-field.md)): the curator says "not this" to what a gated run proposed, without claiming the field. At least one row, named as the queue named it — the object's own field by name, a part by the kind and the reference and name the record carries, since the record names a part and never identifies it (ADR-0026 decision 4). `expectedSyncLogId` is required — unconditionally here, where publishing requires it only once a held selection is named (#722), because every call to this endpoint answers a held card and a held card always names the run whose proposal it shows. It is compared under the write lock against `pending_change_sync_log_id` and refused rather than substituted. Writes nothing to the experience or its parts — the stored value has already won every run since the gate first held this one — and nothing to `curated_fields`, which is the whole difference from the lever it replaces (edit the field, which claims it, then publish, which skips it). What it writes is the answer, into `experience_held_decisions`, storing **the value**: the queue suppresses the row only while the proposal is jsonb-equal to it, so a source that changes its mind is heard. The pointer is cleared only when nothing on the card is left open. Answers 409 on a stale run, on a proposal the pointer no longer names, and on a row nothing is waiting on. Needs migration 039 applied, or the audit insert violates the `action` CHECK and the whole call 500s |
-| POST | `/api/experiences/:id/publish` | `{ contentsOnly?: true, fieldsOnly?: true, locationIds?: number[], treasureIds?: number[], heldFields?: string[], heldParts?: [{ kind, ref, name, fields }], expectedSyncLogId? }` — say that a reader may see this (ADR-0025). An empty body publishes the object: any held content fields, `curation_state = 'verified'`, `published_at` if the row was `pending`, the pointer cleared, and every unread point and work it holds. `contentsOnly: true` or naming either array is a contents publish, leaving the experience's own state alone — `contentsOnly` for every pending content row, naming an array for exactly those rows. `fieldsOnly: true` is the mirror and closes the first half of #524: it applies what the run proposed for the object's own fields and leaves every unread point and work where it is, so a curator doubting one proposed sentence no longer holds back twelve checked paintings by answering it. It is exclusive with all three contents shapes, since a body naming both halves is asking for the object publish it could have asked for by naming nothing. The trail records which of the three this was — `scope`, one of `object`, `contents` or `fields` — because the numbers cannot say: an object publish over a row holding no unread contents writes the same zeros as a fields-only one. All five are explicit rather than inferred, and the `.refine`s make the alternatives among them exclusive — `fieldsOnly` beside a held selection is deliberately *not* refused, since the selection is already the fields half and restating it has one reading rather than two: leaving everything absent used to be read as "the object", full stop, and a card with no ids to send had no other way to ask for its contents alone. `expectedSyncLogId` is the run the caller's card named, compared under the write lock against `pending_change_sync_log_id`, and only when the call will actually write a held field or the caller named a run at all — a pointer whose one held field is already claimed writes nothing and answers success rather than 409 forever. It may not accompany a contents publish, named or bare, and it is **required** whenever `heldFields` or `heldParts` is named: a per-row answer names the run it answers, so a selection sent without one is a 400 rather than a selection applied against whatever the object happens to hold now. `heldFields`/`heldParts` narrow the fields publish the way the id arrays narrow the contents one (#722): those rows are written, the rest stay open, and what stays open is what keeps the pointer — so publishing one of six leaves the card standing with the other five rather than clearing them unanswered. Naming either makes the call a fields publish, so it is exclusive with the contents shapes and refused on a `pending` row; a selection reaching no open row answers 409. A field the curator claims in `curated_fields` is skipped rather than refused; a row its category refused answers 409, because admission is asked first (ADR-0025 decision 4) and `override` on the refusal is what publishes it; a point the source has withdrawn is never published, matching the `contents` card. Needs migration 019 applied, or the audit insert violates the `action` CHECK and the whole call 500s. See § Publishing for what it writes and why it does not place |
+| POST | `/api/experiences/:id/publish` | `{ contentsOnly?: true, fieldsOnly?: true, locationIds?: number[], treasureIds?: number[], heldFields?: string[], heldParts?: [{ kind, ref, name, fields }], expectedSyncLogId? }` — say that a reader may see this (ADR-0025). An empty body publishes the object: any held content fields, `curation_state = 'verified'`, `published_at` if the row was `pending`, the pointer cleared, and every unread point and work it holds. `contentsOnly: true` or naming either array is a contents publish, leaving the experience's own state alone — `contentsOnly` for every pending content row, naming an array for exactly those rows. `fieldsOnly: true` is the mirror and closes the first half of #524: it applies what the run proposed for the object's own fields and leaves every unread point and work where it is, so a curator doubting one proposed sentence no longer holds back twelve checked paintings by answering it. It is exclusive with all three contents shapes, since a body naming both halves is asking for the object publish it could have asked for by naming nothing. The trail records which of the three this was — `scope`, one of `object`, `contents` or `fields` — because the numbers cannot say: an object publish over a row holding no unread contents writes the same zeros as a fields-only one. All five are explicit rather than inferred, and the `.refine`s make the alternatives among them exclusive — `fieldsOnly` beside a held selection is deliberately *not* refused, since the selection is already the fields half and restating it has one reading rather than two: leaving everything absent used to be read as "the object", full stop, and a card with no ids to send had no other way to ask for its contents alone. `expectedSyncLogId` is the run the caller's card named, compared under the write lock against `pending_change_sync_log_id`, and only when the call will actually write a held field or the caller named a run at all — a pointer whose one held field is already claimed writes nothing and answers success rather than 409 forever. It may not accompany a contents publish, named or bare, and it is **required** whenever `heldFields` or `heldParts` is named: a per-row answer names the run it answers, so a selection sent without one is a 400 rather than a selection applied against whatever the object happens to hold now. `heldFields`/`heldParts` narrow the fields publish the way the id arrays narrow the contents one (#722): those rows are written, the rest stay open, and what stays open is what keeps the pointer — so publishing one of six leaves the card standing with the other five rather than clearing them unanswered. Naming either makes the call a fields publish, so it is exclusive with the contents shapes and refused on a `pending` row; a selection reaching no open row answers 409. A field the curator claims in `curated_fields` is skipped rather than refused; a row its kind refused answers 409, because admission is asked first (ADR-0025 decision 4) and `override` on the refusal is what publishes it; a point the source has withdrawn is never published, matching the `contents` card. Needs migration 019 applied, or the audit insert violates the `action` CHECK and the whole call 500s. See § Publishing for what it writes and why it does not place |
 | POST | `/api/experiences/categories/:categoryId/publish-waiting` | no body — release everything this source is holding: every unread object as an object publish, every visible object holding unread contents as a contents publish. One transaction and one `published` log row per object. Held field proposals are deliberately left for their own cards. Answers `published[]` (each object with `locationsPublished`, `treasureLinksPublished`/`treasuresPublished` — both axes, since a work passed in one venue and unread in another moves the link and not the row — `withdrawalsReleased`, and with `placementFailed`/`placementFailedWorldViews` where re-placing failed), `refused[]`, `outOfScope` and `heldLeftForReview` — `null` where the count itself failed after the publications had committed — all scoped to the caller. Rate-limited (`authenticatedLimiter`) |
 | POST | `/api/experiences/new-badges/seen` | `{ experienceIds: number[] }` — records that these chips were shown to the caller. Rate-limited (`authenticatedLimiter`), unlike the curator routes beside it: this is an ordinary authenticated action and the only one here a client sends on its own initiative. Only the first impression per experience is kept; a stale id is ignored rather than failing the call, and the response names what was actually recorded |
 
@@ -1733,7 +1747,7 @@ value as it is, which is what #708 is for.
 `is_new` is decided server-side and means **the reader could first see it recently** — not
 "recently created", and no longer "arrived in the latest run". All three mark a first
 appearance, of different things. `created_at` is when the row entered *this database*, which
-for a bulk-loaded category is one instant for thousands of objects that entered the source
+for a bulk-loaded source is one instant for thousands of objects that entered the source
 years apart; the client-side `isNewExperience(created_at)` this replaced measured that while
 the chip claimed to mean arrival.
 
@@ -1753,15 +1767,15 @@ is_new = published_at IS NOT NULL
                OR this reader first saw the chip < 7 days ago )
 ```
 
-The two clauses are a **maximum, not a choice**. The category window is the floor everyone gets
-— sources have different cadences, so it is per category — and a reader who arrives near its end
+The two clauses are a **maximum, not a choice**. The source's window is the floor everyone gets
+— sources have different cadences, so it is per source — and a reader who arrives near its end
 keeps the chip a week from their own first sighting rather than losing it the next day. Anonymous
 readers get the first clause alone; there is nobody to have shown it to, and `v.user_id = NULL`
 is never true, so the personal clause drops out without needing a second query.
 
 **Two clauses were removed with the old anchor, and both removals are deliberate.** The
 `EXISTS … change_type = 'created'` proof of a sighting existed only because migration 009
-backfilled `first_seen_sync_log_id` to the newest run of each category, so the column alone
+backfilled `first_seen_sync_log_id` to the newest run of each source, so the column alone
 credited 1547 of 1547 rows to a run that never inserted them; `published_at` is never
 backfilled — migration 018 left 1603 of 1604 rows NULL on purpose — so a publication needs no
 proof. And the latest-completed-run bound existed to stop chips accumulating, which the window
@@ -1769,10 +1783,10 @@ already does; under piecemeal approval "the newest batch" has stopped being a un
 curator answers eighteen arrivals across a week and no run divides them.
 
 **Two consequences, stated here rather than discovered later.** Chips no longer clear when a
-category next runs — each lasts its own full window, so a weekly source shows roughly four
+source next runs — each lasts its own full window, so a weekly source shows roughly four
 windows' worth at once instead of one batch. And everything published before the gate existed
 wears no chip at all, because `published_at` is NULL for it: the column starts meaning something
-from the first publication forward. Nothing re-inserts a whole category any more — force sync is
+from the first publication forward. Nothing re-inserts a whole source any more — force sync is
 gone — so no single act can chip a whole source, which is the property the removed bound was
 protecting. No retention job is needed for `user_new_badge_views` either: the personal clause is
 bounded by its own seven days.
@@ -1791,7 +1805,7 @@ exists, so nothing about the chip should be read from it.
 
 The `completed_at`-versus-id warning that used to live here went with the clause it was about: a
 run that starts earlier can finish later, so ordering runs by id could name a months-old run as
-the latest and switch every chip in a category off at once. Nothing in the predicate orders runs
+the latest and switch every chip in a source off at once. Nothing in the predicate orders runs
 any more, which is why that trap is gone rather than fixed.
 
 **Impressions** arrive by `POST /api/experiences/new-badges/seen` rather than as a side effect
@@ -1909,7 +1923,7 @@ legitimate member of *Top Art Museums*, so not `former`; and the refusal was rig
 false alarm. Its two answers are its own — the rule was right, or the rule was wrong — and the
 card carries the rule's objection, because "refused" alone leaves a curator guessing while the
 reason lets them confirm a rule or spot a bad one. A confirmed row is not deleted: the refused
-set is the list the archaeology category will be built from. Refused rows are excluded from
+set is the list the archaeology kind will be built from. Refused rows are excluded from
 the missing group, or the same row would appear twice under two contradictory framings.
 
 **A refusal is shown in two sizes.** `admission_reason` is written by and for the rule —
@@ -2008,7 +2022,7 @@ read. Clearing the flag is necessary but not sufficient for *lost*: the source w
 not listing the object, so detection would stamp it again on the next clean run and the only
 exit would be answering a different question. Detection therefore skips `existence = 'lost'`
 rows — a judged object is not asked about again — and drops them from the coverage ratio on
-both sides, since a row that can never be seen would otherwise drag the category toward the
+both sides, since a row that can never be seen would otherwise drag the source toward the
 90 % floor that switches detection off. That the two axes stay independent is the point: a
 *lost* verdict says nothing about whether the source still lists it, and coupling them would
 undo what ADR-0020 separated. The two axes are set independently, so a call may carry either or both, and each one
@@ -2115,7 +2129,7 @@ newer conflict is not evidence that the old one stands. What such a run does lea
 object and had nothing to propose — **once that run has finished**. `last_seen` is stamped
 per item inside the loop while the changeset is written in one batch after it, so mid-run the
 newer value exists and the rows it would be read against do not; without the completion check
-every conflict in a category would vanish for the length of the run, and a curator clicking a
+every conflict in a source would vanish for the length of the run, and a curator clicking a
 card fetched beforehand would be told there is no proposal on record. The batch lands before
 the log is closed, which is what makes a completed log the point to read from — but not on
 its own. Two paths close a log that recorded nothing: a failed changeset insert is caught
@@ -2263,18 +2277,18 @@ nobody: the schema sets it, migration 018 seeded it `false` on all three sources
 meant hand-written SQL against production. Three things closed that.
 
 **The switch.** `PUT /api/admin/sync/categories/:categoryId/curation-gate`, admin-only like
-everything on that router, and beside the other category writes because the gate is a property
+everything on that router, and beside the other source writes because the gate is a property
 of the source rather than of any object. Two promises are properties of its single statement
 rather than of anything it checks: it touches `experience_categories` and nothing else, so
 **turning it on is not retroactive** — rows the source already published stay `auto` and stay
-visible, and one category can hold `auto` rows from before the switch beside `pending` ones from
+visible, and one source can hold `auto` rows from before the switch beside `pending` ones from
 after it. And it names no content column, so **turning it off publishes nothing** — the statement moves
 no row. What a backlog does next depends on its kind. Unread objects and unread contents stay put,
 because only the insert arm ever writes `pending` and only a person moves a row out of it. A change
 a run is holding does the opposite: the hold is `requires_curation AND curation_state <> 'pending'`,
 so it stops existing with the gate, and the next ungated run writes the proposed values and clears
 the pointer with nobody involved. The flip is logged with
-the actor's id; there is no per-category audit table, and the switch that decides whether a
+the actor's id; there is no per-source audit table, and the switch that decides whether a
 whole source reaches readers unreviewed should not leave no trace at all.
 
 **What a source is holding.** `getCategories` answers `requires_curation` and a `waiting` object
@@ -2389,7 +2403,7 @@ claim included, and not only the gate-held fields this card is about — so with
 refused only by a claim would carry two contradictory cards at once: `conflicts`, which
 `accept-source` can answer, and a `held` twin answered by publishing, and the twin would
 outlive an `accept-source` call showing a value already written. The query therefore requires
-`(f->>'held')::boolean` on each field — this card is only ever the fields the *category's gate*
+`(f->>'held')::boolean` on each field — this card is only ever the fields the *source's gate*
 held, never one a claim refused for its own, separately-answerable reason. Read off the field's own
 flag, not inferred from the absence of a claim (#519): the elimination was right only while the gate
 was the sole other reason a write could be refused, and a third reason would have been silently
@@ -2487,7 +2501,7 @@ An `arrival` can never share a row with `held` or `contents`: `held` requires
 `contents` requires `hidePendingSql()` directly. Both therefore exclude `curation_state =
 'pending'` by construction, the same column `arrivals` requires to equal it — not a coincidence
 enforced by extra code, but the same column read two ways. A `pending` experience *can* hold a
-`pending` location at the same time (the location's own gate is keyed off the category, not off
+`pending` location at the same time (the location's own gate is keyed off the source, not off
 the container's current state), and such a row is real; it is classified only as an `arrival`,
 never as `contents`, for exactly that reason. `missing` and `held` are not mutually exclusive the
 same way, though — both read a row's *own* `missing_since` and `pending_change_sync_log_id`
@@ -2854,7 +2868,7 @@ marked `verified` — a coordinate no card ever showed a curator, recorded as on
 
 **A refused row cannot be published** — 409, naming the order to work in. ADR-0025 decision 4:
 admission is asked before publication, so whether anyone has looked at an object is a question asked
-only once its category's own rule has answered yes (ADR-0024). All three of the gate's queue kinds
+only once its kind's own rule has answered yes (ADR-0024). All three of the gate's queue kinds
 carry `hideRefusedSql()` for the same reason, and the consequence of allowing it is not cosmetic:
 nothing returns a `verified` row to `pending`, so the row would leave `arrivals` for ever and a
 later `override` would put it in front of readers with nobody having reviewed its contents. The way
@@ -3019,14 +3033,14 @@ The decision is narrower than "override publishes":
 
 - **Only `override`.** `confirm` says the rule was right, so the row stays refused and hidden — the
   opposite of a publication.
-- **Only from `pending`.** An `auto` row was already visible before its category refused it — the
+- **Only from `pending`.** An `auto` row was already visible before its kind refused it — the
   refusal is what hid it, not the gate — so putting it back changes `admission` alone.
   `curation_state` and `published_at` are untouched, and the response's `published: false` says so.
   Only a row nobody had looked at (`pending`) turns "the rule was wrong" into a first publish.
 
 `curation_state` is set to **`verified`, not `auto`.** The default a run leaves behind means "nobody
 has looked"; a curator did — they read the card, the reason and the object's name, and overruled a
-category rule about this specific row. That claim is real but narrower than `publishExperience`'s:
+kind's rule about this specific row. That claim is real but narrower than `publishExperience`'s:
 nobody has passed the description, the image or the treasures underneath, only the admission
 question. That is the deliberate cost of not asking the same question twice — the alternative is
 leaving a `pending` row unread forever because the one card that could resolve it is answered
@@ -3094,13 +3108,13 @@ apart without a reader having to infer it from which columns moved.
 - Discover and Map UIs share `CurationDialog` and `AddExperienceDialog`
 - `AddExperienceDialog` has Create New as the first (default) tab, Search & Add as the second. Props: `defaultCategoryId` pre-selects the category dropdown, `defaultTab` controls which tab opens (0=Create, 1=Search). Dialog closes automatically on successful creation and invalidates experience queries so map markers and lists refresh immediately. Category selector filters out "Curator Picks" — curators must assign new experiences to an existing category (UNESCO, Top Art Museums, or Public Art & Monuments). Category is required for creation. When the curator types a name (3+ chars, debounced 800ms), the system auto-fills coordinates (Nominatim), image URL, description, and link URL (Wikidata 3-layer lookup: direct QID → spatial SPARQL → name search). The link is auto-filled from the English Wikipedia sitelink in the Wikidata entity. The Nominatim query appends the current region name for geo-disambiguation. Auto-fill fires only once — after the first successful lookup, name edits don't re-trigger. After auto-fill, a suggestion info box appears below the name field showing the matched Wikidata entity (label + QID) with a prominent "Re-lookup" link. Clicking Re-lookup re-runs the full auto-fill pipeline (Nominatim + Wikidata), overwriting all previously auto-filled fields. Auto-filled fields use `useRef` flags (including `linkAutoFilled`) so Re-lookup overwrites them but manual edits are preserved. Thumbnail preview shown when image URL is set. Uses `LocationPicker` for coordinate input — supports 4 modes: click-on-map, Nominatim search, multi-format coordinate paste, and AI geocoding. Accepts `regionName` prop from both call sites (Map mode via `useNavigation().selectedRegion.name`, Discover mode via `activeView.regionName`)
 - `CurationDialog` fetches full experience detail to populate two link fields: Wikipedia URL (from `metadata.wikipediaUrl`) and Website URL (from `metadata.website`). Both fields are editable and saved via JSONB merge. `AddExperienceDialog` auto-fills the Wikipedia URL from Wikidata lookup and provides a separate Website URL field. The backend edit/create endpoints accept both `wikipediaUrl` and `websiteUrl`
-- `CurationDialog` sends a field only when it changed, and an **emptied** field travels as `''` — the API's way of clearing it. It used to fold an emptied box into `undefined`, which `JSON.stringify` drops, so a removal never left the browser: alone it was answered "No fields to update", beside another change it was reported saved with the picture still there (#696). `CurationDialog.test.tsx` pins the request an emptied picture, description, category and link produce
+- `CurationDialog` sends a field only when it changed, and an **emptied** field travels as `''` — the API's way of clearing it. It used to fold an emptied box into `undefined`, which `JSON.stringify` drops, so a removal never left the browser: alone it was answered "No fields to update", beside another change it was reported saved with the picture still there (#696). `CurationDialog.test.tsx` pins the request an emptied picture, description, type and link produce
 - `CurationDialog` draws the picture the Image URL box names under the box, through `PictureWithCredit` — the same component the create dialog's preview now uses — with `ImageCreditLine` for the stored credit (#801). The credit goes only with the stored address (`creditForPreview`: the row's `image_credit` where the row carries it, the detail's `metadata.imageCredit` otherwise); an address typed and not yet saved is previewed without one, since none exists until `PATCH /experiences/:id/edit` resolves it; an emptied box draws nothing; an address `toThumbnailUrl` refuses draws no frame; and a picture that fails to load takes its credit with it, the failure held by address because the dialog is mounted for as long as the list is. The same test file pins each of those
 - External links are unified across all sources — no source-specific rendering logic. Every experience shows up to two links based solely on metadata: a **Wikipedia** button (`MenuBook` icon, from `metadata.wikipediaUrl`) and a **Website** button (`Language` icon, from `metadata.website`). UNESCO page URLs are stored in `metadata.website` during sync, so they appear as "Website" alongside any Wikipedia link. Both Map mode (icon buttons) and Discover mode (text buttons in detail panel) use the same unified logic
-- In Map mode (`ExperienceList.tsx`), each category group header has a "+" button that opens AddExperienceDialog with `defaultCategoryId` pre-set for that category. An "Add experience of a new category" button at the top opens Create New with no category pre-selected. Category name → ID mapping is resolved via the `experience-categories` query
+- In Map mode (`ExperienceList.tsx`), each kind's group header has a "+" button that opens AddExperienceDialog with `defaultCategoryId` pre-set for that kind. An "Add experience of a new category" button (the screen's word for a kind) at the top opens Create New with no kind pre-selected. Category name → ID mapping is resolved via the `experience-categories` query
 - In Discover mode, add buttons appear in two places: (1) the list header "Add" button when viewing a specific category for a region — opens with `defaultCategoryId` pre-set from `activeView.categoryId`; (2) a "+" icon button in each region row's category pills area (in `DiscoverRegionList`) — opens with no category pre-selected so the curator can pick any category. The tree-level "+" is scope-aware: `DiscoverPage` fetches curator assignments from `/api/users/me` and passes a `canAddToRegion` predicate to the list. Admins and global/category-scoped curators see "+" on all regions. Region-scoped curators see "+" only on their assigned regions and descendants (detected via breadcrumb ancestry match)
 - Cache invalidation after mutations must include `['experiences', 'by-region', regionId]` (Map mode), `['discover-experiences']` (Discover mode) and `['region-locations', regionId]` — the last because the location batch answers for the rows the list is showing, so anything changing that set leaves its markers stale. The key stops at the region on purpose: the full key carries `includeLost` and `includeChildren` as well — three entries with call sites today, since Map mode reads a region without its descendants under either `includeLost` and Discover reads it with them — and a longer invalidation would clear one of them and leave the rest answering from the old set. `invalidateExperiences` (`utils/queryInvalidation.ts`) does all of it; both `AddExperienceDialog` and `CurationDialog` go through it
-- Discover's experiences query is keyed `['discover-experiences', regionId]` — **not** by category. The response is category-independent; the category filter runs in `select`, per observer. Keying by category would give each tab its own cache entry and refetch the whole region on every switch
+- Discover's experiences query is keyed `['discover-experiences', regionId]` — **not** by kind. The response is kind-independent; the kind filter (`?cat=`) runs in `select`, per observer. Keying by kind would give each tab its own cache entry and refetch the whole region on every switch
 - Creating a manual experience inserts into 4 tables within a transaction: `experiences`, `experience_locations`, `experience_regions`, and `experience_location_regions`. The last one matters — without it the location's `in_region` flag is false. The markers still appear (`representablePlaces()` falls back to *every* out-of-region place, so a hand-assigned experience is not invisible and is drawn as the places it has), but everything that counts in-region locations reads zero: the `0/N` chip on the row, the visited counts, and the mark-all-locations checkbox, which marks in-region locations and so marks nothing
 - `LocationPicker` lives in `frontend/src/components/shared/` with coordinate parsing in `frontend/src/utils/coordinateParser.ts`. Accepts `name` prop to pre-populate search/AI fields; coordinates sync across all modes (e.g. map click shows in Coordinates tab). Exposes `onPlaceSelect` callback that passes Wikidata ID from Nominatim search results
 - Visited tracking uses location-level system (`user_visited_locations`) for both the root checkbox and the "Mark Visited" button. The experience-level table (`user_visited_experiences`) is maintained for backward compatibility but the UI is driven entirely by location visits. The `markAllLocations` batch endpoint handles both single- and multi-location experiences consistently
