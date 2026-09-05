@@ -674,6 +674,12 @@ export interface ReviewQueueItem {
     year: number | null;
     imageUrl: string | null;
     iconic: boolean;
+    /**
+     * The work's own Wikidata id, where the row opens the item and its article
+     * from (#806). Optional because an older server sends the row without it,
+     * and a row without a link is the shape it had until then.
+     */
+    externalId?: string;
   }>;
   /** Whether anyone has passed the row. `arrival` items only, where it is `pending`. */
   curation_state?: string;
