@@ -47,7 +47,12 @@ describe('valuesEqual', () => {
 });
 
 describe('changedKeys', () => {
-  /** The Louvre's metadata, as museum run 64 found it. */
+  /**
+   * The Louvre's metadata, as museum run 64 found it. `admittedFor` lived in
+   * `metadata` when that run wrote it; #822 moved it onto the membership
+   * (`admitted_for`), and the util under test is key-agnostic — the fixture is
+   * the run's record, not the current shape.
+   */
   const louvre = {
     website: 'https://www.louvre.fr/zh-hans',
     admittedFor: { qid: 'Q12418', label: 'Mona Lisa' },
