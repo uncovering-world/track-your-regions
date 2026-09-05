@@ -283,9 +283,9 @@ describe('CurationGateControls', () => {
 
     // The exception, and the more damaging half to get wrong: a held change is not a
     // `pending` row but a visible one carrying a pointer, and the hold is
-    // `requires_curation AND curation_state <> 'pending'` — so with the gate off the
-    // next run writes the proposed values and clears the pointer, and no curator ever
-    // sees the card.
+    // `requires_curation` and a reader being able to see the place (some membership
+    // of it passed, `placeVisibleSql`) — so with the gate off the next run writes the
+    // proposed values and clears the pointer, and no curator ever sees the card.
     const copy = screen.getByText(/will be applied by the next run of this source/);
     expect(copy.textContent).toContain('The 2 changes');
     expect(copy.textContent).toContain('holding them back');

@@ -36,6 +36,7 @@ import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
+import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
@@ -486,7 +487,20 @@ export async function publishUnderLock(
       return { refusal: { status, error, pendingChangeSyncLogId } };
     };
 
+    // The lock first, in a statement of its own: a row to hold, or the 404 the
+    // handler's existence check — on the pool, on another connection, earlier
+    // in time — could not see. Its own statement because the read below
+    // crosses to the membership, and a statement's snapshot is taken before it
+    // waits for the lock: only the locked row would be re-read fresh, while a
+    // run that pointed the membership at a newer proposal during the wait
+    // would be invisible to the staleness check further down — its proposal
+    // applied over and lost (`db/locks.ts`).
     const locked = await client.query(
+      `SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
+    );
+    if (locked.rows.length === 0) return await refuse(404, 'Experience not found');
+
+    const read = await client.query(
       // `image_url` joins the read for the credit rule (#722): the credit a run
       // fetched belongs to the picture that run offers, so deciding whether it
       // may be written means comparing that picture with the stored one.
@@ -495,17 +509,29 @@ export async function publishUnderLock(
       // language at a time (#728), so publishing one of them merges it onto the
       // map as it stands under this lock rather than assigning the run's whole
       // map over the five languages nobody answered.
-      `SELECT curation_state, curated_fields, metadata, name_local, image_url, admission,
-              pending_change_sync_log_id
-         FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
+      //
+      // The state, the verdict and the pointer are the membership's (#822),
+      // read beside the place in the statement after the place's lock — the
+      // lock every writer of the membership takes, so nothing moves it between
+      // this read and the write below. Which membership: the one this click
+      // answers (`membershipToAnswerSql`), the place's only one until #755.
+      `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url,
+              m.id AS membership_id, m.curation_state, m.admission,
+              m.pending_change_sync_log_id
+         FROM experiences e
+         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting')}
+        WHERE e.id = $1`,
       [experienceId],
     );
-    const before = locked.rows[0];
-    // The existence check in the handler ran on the pool, on another connection
-    // and earlier in time. A row deleted in that window leaves nothing to lock,
-    // and reading `curated_fields` off it would answer 500 to a question whose
-    // true answer is 404.
-    if (!before) return await refuse(404, 'Experience not found');
+    // Present: a DELETE of the row waits on the lock this transaction holds.
+    const before = read.rows[0];
+    // A place no kind holds is on no screen and in no queue; the catalogue
+    // check `place-without-membership` names it, and publishing has nothing
+    // to write a state on.
+    const membershipId = (before.membership_id as number | null) ?? null;
+    if (membershipId === null) {
+      return await refuse(409, 'This place belongs to no kind — see the Catalogue Checks');
+    }
 
     // The two refusals this row earns before anything is written, in one place
     // rather than as two branches of a function the linter already reads as
@@ -540,7 +566,7 @@ export async function publishUnderLock(
       //
       // What this cannot cover, so that nobody assumes it does: **an arrival has
       // no staleness check available at all.** A `pending` row never holds a
-      // pointer — `syncUtils.ts` sets one only `WHERE curation_state <>
+      // pointer — `heldProposalPointer.ts` sets one only `WHERE curation_state <>
       // 'pending'` — because a row nobody can see is refreshed in place instead
       // of held (sub-branch 1's decision, and the right one: the curator should
       // review the newest state, not whatever landed first). So a run that
@@ -569,12 +595,19 @@ export async function publishUnderLock(
       claimedFieldsSkipped = write.claimedFieldsSkipped;
       heldLeftOpen = write.leftOpen.length + parts.leftOpen.length;
 
+      // The content on the place, the publication on its membership (#822):
+      // two statements in the one transaction, under the one lock.
       await client.query(
         `UPDATE experiences
-         SET ${[...write.assignments, ...publicationAssignments(before, heldLeftOpen)].join(',\n             ')},
-             updated_at = NOW()
+         SET ${[...write.assignments, 'updated_at = NOW()'].join(',\n             ')}
          WHERE id = $1`,
         write.params,
+      );
+      await client.query(
+        `UPDATE ${MEMBERSHIPS}
+         SET ${[...publicationAssignments(before, heldLeftOpen), 'updated_at = NOW()'].join(',\n             ')}
+         WHERE id = $1`,
+        [membershipId],
       );
 
       // The parts, after the object and in the same transaction: a held

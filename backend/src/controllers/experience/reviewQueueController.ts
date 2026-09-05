@@ -11,6 +11,7 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
+import { MEMBERSHIPS, admissionPinnedSql, membershipAdmittedSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { hidePendingSql, hideRefusedSql, lifecycleSelectSql } from './experienceLifecycle.js';
@@ -166,18 +167,30 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // here — the page is a list someone is walking down.
   //
   // An answered row is gone from this query, because both answers pin
-  // `admission` in `curated_fields`. That pin is also what stops a later run
-  // reversing either answer.
+  // `admission` in the membership's `curated_fields`. That pin is also what
+  // stops a later run reversing either answer.
+  //
+  // The verdict, its reason and the pin are the membership's (#822): the card
+  // is about the place, and the refusal is the kind's.
+  //
+  // Each of the four membership queues joins the membership the row's own
+  // source brought — `m.source_id = e.category_id`, the equality the catalogue
+  // check `membership-source-disagrees-with-row` asserts — rather than any
+  // membership of the place. Today a place has one; the day #755 gives it two,
+  // a card is per membership (ADR-0045 decision 7) and the queue is keyed on
+  // it rather than on the place. Said in the join so that day cannot show one
+  // source's refusal under another's heading, or the same held proposal twice.
   const refused = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
-           e.admission_reason,
+           m.admission_reason,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'refused' AS kind, ${countedWorksSelectSql()},
            NULL::jsonb AS proposed
     FROM experiences e
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
     JOIN experience_categories c ON c.id = e.category_id
-    WHERE e.admission = 'refused'
-      AND NOT COALESCE(e.curated_fields ? 'admission', false)
+    WHERE m.admission = 'refused'
+      AND NOT ${admissionPinnedSql('m')}
       ${categoryFilter}
       AND ${scopeFilter}
     ORDER BY e.id
@@ -205,14 +218,15 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // mis-click, and the row they want is the last one they touched.
   const keptOut = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
-           e.admission_reason, e.state_decided_at, e.state_note,
+           m.admission_reason, e.state_decided_at, e.state_note,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'kept-out' AS kind, ${countedWorksSelectSql()},
            NULL::jsonb AS proposed
     FROM experiences e
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
     JOIN experience_categories c ON c.id = e.category_id
-    WHERE e.admission = 'refused'
-      AND COALESCE(e.curated_fields ? 'admission', false)
+    WHERE m.admission = 'refused'
+      AND ${admissionPinnedSql('m')}
       ${categoryFilter}
       AND ${scopeFilter}
     ORDER BY e.state_decided_at DESC NULLS LAST, e.id
@@ -416,15 +430,19 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // guarded by `missing_since IS NULL` — there is nobody it could be shown to
   // either way, and `missing` excludes the same row so it raises no card
   // under that heading either.
+  //
+  // An arrival is a membership arriving (#822): the gate state and the
+  // admission are the membership's, the source's observation is the row's.
   const arrivals = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
-           e.curation_state, e.first_seen_sync_log_id AS sync_log_id,
+           m.curation_state, e.first_seen_sync_log_id AS sync_log_id,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'arrival' AS kind, NULL::jsonb AS proposed
     FROM experiences e
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
     JOIN experience_categories c ON c.id = e.category_id
-    WHERE e.curation_state = 'pending'
-      AND ${hideRefusedSql()}
+    WHERE m.curation_state = 'pending'
+      AND ${membershipAdmittedSql('m')}
       AND e.missing_since IS NULL
       AND ${scopeFilter} ${categoryFilter}
     ORDER BY e.first_seen_sync_log_id DESC NULLS LAST, e.id
@@ -433,10 +451,10 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
 
   // held: an already-visible row whose newest content proposal was kept out
   // by the upsert's own gate (ADR-0025 § "A gated source may not overwrite
-  // what a reader can already see", `syncUtils.ts`) rather than applied.
+  // what a reader can already see", `experienceUpsert.ts`) rather than applied.
   //
   // The pointer is set for *any* refused proposal, not only a gate-held one:
-  // `syncUtils.ts`'s `proposedAnything` fires equally for a field a curator
+  // `experienceUpsert.ts`'s `proposedAnything` fires equally for a field a curator
   // individually claimed. Without the filter below, a row refused only by a
   // `curated_fields` claim would carry the same field under two contradictory
   // cards — `conflicts`, which `accept-source` answers, and `held`, which
@@ -460,7 +478,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // a curator's `expectedSyncLogId` matches what is stored (or, for a publish,
   // the call has nothing left to be stale about) — and only once nothing on
   // the card is left open, so answering one row of six leaves the other five
-  // findable (#722). `syncUtils.ts` is the only other thing that ever clears
+  // findable (#722). `experienceUpsert.ts` is the only other thing that ever clears
   // it, and only when a *later run* proposes nothing at all (the source came
   // back to what is stored). Answering a refusal at `POST /:id/admission` does not, even
   // though an override can publish the same row: admitting it says the object
@@ -496,11 +514,14 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                  AND NOT ${heldFieldAnsweredSql('e.id')}) AS proposed,
              ${heldPartsSelectSql('ch', 'e')}
       FROM experiences e
+      -- The pointer is the membership's (#822): the proposal was held for the
+      -- source that made it, on the membership that source brought.
+      JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
       JOIN experience_categories c ON c.id = e.category_id
       JOIN experience_sync_changes ch ON ch.experience_id = e.id
-                                     AND ch.sync_log_id = e.pending_change_sync_log_id
-      WHERE e.pending_change_sync_log_id IS NOT NULL
-        AND ${hideRefusedSql()}
+                                     AND ch.sync_log_id = m.pending_change_sync_log_id
+      WHERE m.pending_change_sync_log_id IS NOT NULL
+        AND ${membershipAdmittedSql('m')}
         AND e.missing_since IS NULL
         AND (${heldFieldExistsSql('ch')} OR ${heldPartExistsSql('ch')})
         AND ${scopeFilter} ${categoryFilter}

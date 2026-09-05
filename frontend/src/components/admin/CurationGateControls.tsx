@@ -52,9 +52,11 @@ function waitingSentence(waiting: WaitingCounts | null): string {
  *   only a person moves a row out of `pending` (ADR-0025 decision 5: publishing is an
  *   update to that predicate, not a replay of something withheld);
  * - a change the run is holding does the opposite. It is not a `pending` row but a
- *   visible one carrying a pointer, and the hold is `requires_curation AND
- *   curation_state <> 'pending'`, so with the gate off the next run writes the
- *   proposed values and clears the pointer. No curator ever sees that card.
+ *   visible one carrying a pointer, and the hold is `requires_curation` and a reader
+ *   being able to see the place — some membership of it passed (`placeVisibleSql`,
+ *   an `EXISTS` over `experience_kind_memberships`, #822) — so with the gate off the
+ *   next run writes the proposed values and clears the pointer. No curator ever sees
+ *   that card.
  *
  * **Both answers are said in both switch positions**, and that is the whole point of the
  * split below: while the gate is on they are subjunctive — what the click *would* do,
@@ -126,7 +128,8 @@ function ungatedConsequence(waiting: WaitingCounts): string {
   }
   // A held change is the exception, and saying otherwise here would be the more
   // damaging half: it is not a `pending` row but a *visible* one carrying a pointer,
-  // and the hold is `requires_curation AND curation_state <> 'pending'` (`syncUtils`).
+  // and the hold is `requires_curation` and a reader being able to see the place —
+  // some membership of it passed (`placeVisibleSql`, read by `experienceUpsert.ts`).
   // With the gate off that condition is false, so the next run of this source writes
   // the proposed values and clears the pointer — no curator ever sees the card.
   if (waiting.held > 0) {

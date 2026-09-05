@@ -426,8 +426,13 @@ describe('setExperienceAdmission', () => {
       client: {
         query: vi.fn(async (sql: string, params?: unknown[]) => {
           queries.push({ sql, params: params ?? [] });
-          if (sql.includes(OBJECT_LOCK)) {
+          // The lock, in a statement of its own, then the read (`db/locks.ts`).
+          if (sql.includes(OBJECT_LOCK)) return { rows: [{ id: 5 }] };
+          if (sql.includes('m.id AS membership_id')) {
             return { rows: [{
+              // The refused membership the click answers (#822); its id is
+              // what the verdict is written against.
+              membership_id: 77,
               admission: 'refused',
               admission_reason: 'not an art museum',
               curated_fields: [],
@@ -455,7 +460,7 @@ describe('setExperienceAdmission', () => {
     await setExperienceAdmission(
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(update.params[1]).toBe('admitted');
     expect(JSON.parse(String(update.params[3]))).toContain('admission');
     // This row was already `auto` — visible before the rule caught it — so
@@ -474,7 +479,7 @@ describe('setExperienceAdmission', () => {
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
       makeRes() as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(update.params[1]).toBe('refused');
     // Pinned either way: a curator who looked at the thing outranks the rule in
     // both directions, so a later run must not re-admit a confirmed row.
@@ -494,7 +499,7 @@ describe('setExperienceAdmission', () => {
     // so whatever the flag holds after it is what it holds for good (#760).
     // The same fragment the run's two refusal writes use, so a curator's pin on
     // `is_iconic` is honoured here exactly as it is there.
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(collapse(update.sql)).toContain(collapse(CLEAR_ICONIC));
   });
 
@@ -510,7 +515,7 @@ describe('setExperienceAdmission', () => {
     // An admitted museum without the badge is a legitimate state (ADR-0045
     // decision 5); what the badge should mean beyond works-first admission is
     // #603's question, not this endpoint's.
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(update.sql).not.toContain('is_iconic');
   });
 
@@ -525,7 +530,7 @@ describe('setExperienceAdmission', () => {
 
     // The refused set is the list the archaeology category gets built from, so
     // the rule's objection has to survive being agreed with.
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(update.params[2]).toBe('not an art museum');
   });
 
@@ -538,7 +543,7 @@ describe('setExperienceAdmission', () => {
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
       makeRes() as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(update.params[2]).toBeNull();
   });
 
@@ -564,7 +569,7 @@ describe('setExperienceAdmission', () => {
     await setExperienceAdmission(
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(update.sql).toContain(`curation_state = 'verified'`);
     expect(update.sql).toContain('published_at = COALESCE(published_at, NOW())');
     expect(res.json).toHaveBeenCalledWith(
@@ -682,7 +687,7 @@ describe('setExperienceAdmission', () => {
     await setExperienceAdmission(
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(update.sql).not.toContain('curation_state');
     expect(update.sql).not.toContain('published_at');
     // Not just zero counts — no content statement fires at all, so a row with
@@ -722,7 +727,7 @@ describe('setExperienceAdmission', () => {
     await setExperienceAdmission(
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(update.sql).not.toContain('curation_state');
     expect(update.sql).not.toContain('published_at');
     // Confirming never publishes the object, and must not publish its
@@ -749,9 +754,9 @@ describe('setExperienceAdmission', () => {
     await setExperienceAdmission(
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, makeRes() as never);
 
-    const locked = queries.find(q => q.sql.includes(OBJECT_LOCK))!;
+    const read = queries.find(q => q.sql.includes('m.id AS membership_id'))!;
     for (const column of ['admission', 'admission_reason', 'curated_fields', 'curation_state']) {
-      expect(locked.sql, `the locked read does not select ${column}`).toContain(column);
+      expect(read.sql, `the read under the lock does not select ${column}`).toContain(column);
     }
   });
 
@@ -780,7 +785,7 @@ describe('setExperienceAdmission', () => {
     await setExperienceAdmission(
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(update.params[1]).toBe('admitted');
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ experienceId: 5, admission: 'admitted', published: false }));
@@ -870,5 +875,10 @@ describe('setExperienceAdmission', () => {
     // verdict beside a column holding the other.
     expect(queries[0].sql).toBe('BEGIN');
     expect(queries[1].sql).toContain(OBJECT_LOCK);
+    // The membership in the statement after it, with no lock of its own: a
+    // statement's snapshot is taken before it waits for the lock, so the
+    // locking statement cannot see what the lock holder wrote (`db/locks.ts`).
+    expect(queries[2].sql).toContain('m.id AS membership_id');
+    expect(queries[2].sql).not.toContain(OBJECT_LOCK);
   });
 });

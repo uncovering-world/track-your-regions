@@ -100,9 +100,11 @@ describe('publishing an arrival', () => {
 
     const res = await publish({}, client);
 
-    // The row itself, and the two states that make it visible.
-    const update = only(queries, 'UPDATE experiences');
+    // The membership itself, and the two states that make it visible (#822):
+    // the publication lands on the place's membership, the content on the place.
+    const update = only(queries, 'UPDATE experience_kind_memberships');
     expect(update.sql).toContain(`curation_state = 'verified'`);
+    expect(update.params).toEqual([77]);
     // Its contents go with it: naming none means all of them, which is what an
     // arrival card asks about — the whole object, nobody having seen any of it.
     expect(only(queries, 'UPDATE experience_locations SET curation_state').sql).not.toContain('ANY($2::int[])');
@@ -121,7 +123,7 @@ describe('publishing an arrival', () => {
     // COALESCE rather than NOW(): nothing returns a published row to `pending`
     // today, so this is a floor rather than a live case — but a bare NOW() here
     // is the shape that would restart a New-chip window if one ever did.
-    expect(only(queries, 'UPDATE experiences').sql)
+    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
       .toContain('published_at = COALESCE(published_at, NOW())');
   });
 
@@ -336,7 +338,7 @@ describe('publishing a held proposal', () => {
 
     // Until this endpoint existed only a later run proposing nothing at all
     // ever cleared it, so a `held` card had no answer.
-    expect(only(queries, 'UPDATE experiences').sql).toContain('pending_change_sync_log_id = NULL');
+    expect(only(queries, 'UPDATE experience_kind_memberships').sql).toContain('pending_change_sync_log_id = NULL');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ fromSyncLogId: 53 }));
   });
 
@@ -356,7 +358,8 @@ describe('publishing a held proposal', () => {
     const update = only(queries, 'UPDATE experiences');
     expect(update.sql).toContain('name = ');
     expect(update.sql).not.toContain('description = ');
-    expect(update.sql).not.toContain('pending_change_sync_log_id = NULL');
+    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
+      .not.toContain('pending_change_sync_log_id = NULL');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: ['name'], heldLeftOpen: 1,
     }));
@@ -395,7 +398,8 @@ describe('publishing a held proposal', () => {
     expect(update.sql).toContain('name = ');
     expect(update.sql).not.toContain('description = ');
     // Nothing else was left open, so the card goes.
-    expect(update.sql).toContain('pending_change_sync_log_id = NULL');
+    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
+      .toContain('pending_change_sync_log_id = NULL');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ appliedFields: ['name'] }));
   });
 
@@ -463,7 +467,7 @@ describe('publishing a held proposal', () => {
     // Not even through COALESCE: 1576 rows predate the gate with `published_at`
     // NULL, having been visible for months, and stamping one now would not
     // restart a window but invent one.
-    expect(only(queries, 'UPDATE experiences').sql).not.toContain('published_at');
+    expect(only(queries, 'UPDATE experience_kind_memberships').sql).not.toContain('published_at');
   });
 
   it('reads the proposal under the lock that writes it', async () => {
@@ -487,6 +491,28 @@ describe('publishing a held proposal', () => {
     // Named by the proposal read rather than by the table, since the answers
     // already standing against that proposal are read off the same table (#722).
     expect(only(queries, 'SELECT changed_fields').params).toEqual([5, 53]);
+  });
+
+  it('takes the lock in a statement of its own and reads the membership in the next', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53 },
+      proposal: HELD,
+    });
+
+    await publish({ expectedSyncLogId: 53 }, client);
+
+    // A statement's snapshot is taken before it waits for the lock, and only
+    // the locked row is re-read once it is granted. The pointer and the state
+    // are the membership's (#822), so a read in the locking statement would
+    // miss a run that pointed the membership at a newer proposal during the
+    // wait — the staleness check would pass on the old pointer and apply that
+    // proposal over, losing it (`db/locks.ts`).
+    const locked = queries.findIndex(q => q.sql.includes(OBJECT_LOCK));
+    expect(queries[locked].sql).toBe(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`);
+    expect(queries[locked + 1].sql).toContain('m.id AS membership_id');
+    expect(queries[locked + 1].sql).not.toContain(OBJECT_LOCK);
+    expect(queries[locked + 1].params).toEqual([5]);
   });
 
   it('writes all eleven content fields, not the five accept-source can', async () => {
@@ -686,10 +712,10 @@ describe('publishing a held proposal', () => {
     // Nothing was applied — the only held field was claimed — but the row is
     // still marked read and the stale pointer still clears, since a fully
     // claimed proposal has nothing further to hold onto.
-    const update = only(queries, 'UPDATE experiences');
-    expect(update.sql).toContain(`curation_state = 'verified'`);
-    expect(update.sql).toContain('pending_change_sync_log_id = NULL');
-    expect(update.sql).not.toContain('name = ');
+    const membership = only(queries, 'UPDATE experience_kind_memberships');
+    expect(membership.sql).toContain(`curation_state = 'verified'`);
+    expect(membership.sql).toContain('pending_change_sync_log_id = NULL');
+    expect(only(queries, 'UPDATE experiences').sql).not.toContain('name = ');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: [], claimedFieldsSkipped: ['name'], fromSyncLogId: 53,
     }));
@@ -952,18 +978,22 @@ describe('refusing to publish', () => {
     await publish({}, client);
 
     // The one assertion in this file that has to be about the statement's text
-    // rather than its effect. The mocked client answers `FOR UPDATE` with a full
-    // row whatever the SELECT actually named, so a column dropped from that list
-    // is invisible to every other test here while being `undefined` in
-    // production — the refused-row guard silently stops firing, the claim filter
-    // stops skipping, the pointer reads as "nothing held", and `published_at`
-    // stops being stamped. Proved by mutation: removing `admission` from the
-    // list killed no test until this one existed.
-    const locked = only(queries, OBJECT_LOCK);
+    // rather than its effect. The mocked client answers the read after the lock
+    // with a full row whatever the SELECT actually named, so a column dropped
+    // from that list is invisible to every other test here while being
+    // `undefined` in production — the refused-row guard silently stops firing,
+    // the claim filter stops skipping, the pointer reads as "nothing held", and
+    // `published_at` stops being stamped. Proved by mutation: removing
+    // `admission` from the list killed no test until this one existed.
+    const read = only(queries, 'm.id AS membership_id');
+    // `name_local` and `image_url` too: `heldFieldWrites` reads both off `before`
+    // (#728's one-language merge, #722's credit rule), and the fixture answers
+    // them whatever the SELECT names.
     for (const column of [
-      'curation_state', 'curated_fields', 'metadata', 'admission', 'pending_change_sync_log_id',
+      'curation_state', 'curated_fields', 'metadata', 'name_local', 'image_url',
+      'admission', 'pending_change_sync_log_id',
     ]) {
-      expect(locked.sql, `the locked read does not select ${column}`).toContain(column);
+      expect(read.sql, `the read under the lock does not select ${column}`).toContain(column);
     }
   });
 
@@ -1012,7 +1042,7 @@ describe('refusing to publish', () => {
 
     // The other direction, or the guard above could be an unconditional refusal.
     expect(res.status).not.toHaveBeenCalled();
-    expect(only(queries, 'UPDATE experiences').sql).toContain(`curation_state = 'verified'`);
+    expect(only(queries, 'UPDATE experience_kind_memberships').sql).toContain(`curation_state = 'verified'`);
   });
 
   it('destroys a client whose rollback also failed', async () => {

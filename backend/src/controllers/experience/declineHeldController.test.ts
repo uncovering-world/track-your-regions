@@ -61,8 +61,12 @@ function makeClient(opts: ClientOptions = {}) {
         if (sql.includes('SELECT changed_fields')) {
           return { rows: opts.proposal === null ? [] : [opts.proposal ?? { changed_fields: [] }] };
         }
-        if (sql.includes(OBJECT_LOCK)) {
-          return { rows: [{ pending_change_sync_log_id: opts.pointer ?? 68 }] };
+        // The lock, in a statement of its own, then the read (`db/locks.ts`).
+        if (sql.includes(OBJECT_LOCK)) return { rows: [{ id: 5 }] };
+        if (sql.includes('m.id AS membership_id')) {
+          // The pointer is the membership's (#822), read in the statement after
+          // the place's lock; the id is what the clear is written against.
+          return { rows: [{ membership_id: 77, pending_change_sync_log_id: opts.pointer ?? 68 }] };
         }
         return { rows: [] };
       }),
@@ -153,7 +157,9 @@ describe('declineHeldValue', () => {
     // the object is not written at all — asserted as an absence rather than
     // through `every()` over an empty list, which passes whatever the endpoint
     // writes.
-    expect(queries.filter(q => q.sql.includes('UPDATE experiences'))).toEqual([]);
+    // Neither the place nor its membership: `UPDATE experience` is the prefix
+    // both statements share.
+    expect(queries.filter(q => q.sql.includes('UPDATE experience'))).toEqual([]);
   });
 
   it('touches nothing but the pointer even on the write it does make', async () => {
@@ -166,8 +172,12 @@ describe('declineHeldValue', () => {
     // UPDATE: answering the last open row clears the pointer, and the statement
     // that does it may carry nothing else — a claim least of all, since the
     // claim is the statement this endpoint exists to avoid making.
-    const write = queries.find(q => q.sql.includes('UPDATE experiences'));
+    // On the membership, where the pointer lives (#822); the place is not
+    // written at all.
+    expect(queries.find(q => q.sql.includes('UPDATE experiences'))).toBeUndefined();
+    const write = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
     expect(write?.sql).toContain('pending_change_sync_log_id = NULL');
+    expect(write?.params).toEqual([77]);
     expect(write?.sql).not.toContain('curated_fields');
     expect(write?.sql).not.toContain('name = ');
     expect(write?.sql).not.toContain('short_description');

@@ -132,7 +132,7 @@ function assignmentFor(field: string, value: unknown, bind: (value: unknown) => 
       // The curator's rule, `isDisplayablePictureUrl` — the one their edit is
       // held to, which admits an `/images/…` path of ours beside a Commons file —
       // rather than the narrower one a run holds (`withShowablePicture`,
-      // `syncUtils.ts`): publishing is a person's act on a proposal, and sits on
+      // `experienceUpsert.ts`): publishing is a person's act on a proposal, and sits on
       // the person's side of ADR-0043. Either way a picture from a host whose
       // terms do not let this product draw it is not stored, whichever door it
       // arrives through. Publishing is the third door, and it
@@ -379,7 +379,7 @@ function mergedFromEntries(
  * ever and this endpoint would clear the pointer without applying it.
  *
  * Last, whatever the curator claims per key is re-applied from what is stored,
- * mirroring the upsert's own re-application (`syncUtils.ts`) including its
+ * mirroring the upsert's own re-application (`experienceUpsert.ts`) including its
  * condition: only where the stored row still carries the key, because a claim
  * whose key is gone falls straight through there too. A claim made *after* the
  * run is what makes this necessary: the proposal was computed against a row
@@ -672,7 +672,10 @@ export async function heldFieldWrites(
 }
 
 /**
- * The three assignments that make the row itself published.
+ * The three assignments that make the membership itself published — the
+ * object's state, its publication moment and its pointer are the place's
+ * membership's since #822, so these land on `experience_kind_memberships`
+ * while the content assignments land on the place.
  *
  * `published_at` is stamped only where the row was actually invisible until now,
  * which is narrower than `COALESCE(published_at, NOW())` on its own and for a
