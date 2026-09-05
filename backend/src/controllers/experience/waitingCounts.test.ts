@@ -28,26 +28,35 @@ import {
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
 describe('the waiting predicates', () => {
-  it('counts an arrival only while the source still offers it and the catalogue accepts it', () => {
+  it('counts an arrival only while the source still offers it and the kind accepts it', () => {
     const sql = arrivalWaitingSql();
-    expect(sql).toContain("e.curation_state = 'pending'");
+    // The arrival is the membership's (#822): its gate state and its admission
+    // are read off the membership alias, the source's observation off the row.
+    expect(sql).toContain("m.curation_state = 'pending'");
     // Both, not either: a withdrawn unread row is `missing`'s question, and a
     // refused one is answered rather than waiting. The queue's `arrivals` query
     // carries the same pair, and a count that dropped one would send a curator
     // looking for a card that is not there.
     expect(sql).toContain('e.missing_since IS NULL');
-    expect(sql).toContain("e.admission <> 'refused'");
+    expect(sql).toContain("m.admission <> 'refused'");
+  });
+
+  it('takes both aliases, so a query can name its own', () => {
+    expect(arrivalWaitingSql('x', 'y')).toContain("y.curation_state = 'pending' AND x.missing_since IS NULL AND y.admission <> 'refused'");
+    expect(heldWaitingSql('x', 'y')).toContain('y.pending_change_sync_log_id IS NOT NULL');
+    expect(heldWaitingSql('x', 'y')).toContain('ch.experience_id = x.id');
+    expect(contentsWaitingSql('x', 'y')).toContain("y.curation_state <> 'pending'");
   });
 
   it('counts a held proposal by the field saying so, not by the absence of a claim', () => {
     const sql = heldWaitingSql();
-    expect(sql).toContain('e.pending_change_sync_log_id IS NOT NULL');
+    expect(sql).toContain('m.pending_change_sync_log_id IS NOT NULL');
     expect(sql).toMatch(/\(f->>'held'\)::boolean/);
     // #519: a field refused because a curator claimed it is a different card with
     // a different answer, so `curatedConflict` must not reach this count. The
     // predicate names `held` positively, which is what keeps it out.
     expect(sql).not.toContain('curatedConflict');
-    expect(sql).toContain('ch.sync_log_id = e.pending_change_sync_log_id');
+    expect(sql).toContain('ch.sync_log_id = m.pending_change_sync_log_id');
   });
 
   it('counts a proposal held on a field of a part, which the same card carries', () => {
@@ -84,8 +93,8 @@ describe('the waiting predicates', () => {
 
   it('asks both content axes, and only about points the source still offers', () => {
     const sql = contentsWaitingSql();
-    // A visible row: an unread row itself is an arrival, counted once above.
-    expect(sql).toContain("e.curation_state <> 'pending'");
+    // A visible membership: an unread one is itself an arrival, counted once above.
+    expect(sql).toContain("m.curation_state <> 'pending'");
     expect(sql).toContain('el.missing_since IS NULL');
     expect(sql).toContain("el.curation_state = 'pending'");
     // Two tables, because a link's state and its work's state are independent —
@@ -109,7 +118,10 @@ describe('waitingCountsByCategory', () => {
 
     expect(mockedQuery).toHaveBeenCalledTimes(1);
     const [sql] = mockedQuery.mock.calls[0] as [string];
-    expect(sql).toContain('GROUP BY e.category_id');
+    // Per source of the membership, not per row: what a source holds is the
+    // memberships its runs brought (#822).
+    expect(sql).toContain('FROM experience_kind_memberships m');
+    expect(sql).toContain('GROUP BY m.source_id');
     for (const kind of [arrivalWaitingSql(), heldWaitingSql(), contentsWaitingSql()]) {
       expect(sql).toContain(kind);
     }

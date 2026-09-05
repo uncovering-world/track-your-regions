@@ -22,19 +22,26 @@
  * `held`) must count zero and raise no `held` card. `waitingCounts.test.ts` and
  * the live cross-check in the branch's report both drive that row.
  *
- * A `pending` row never carries a proposal pointer — `syncUtils` writes the
- * pointer only `WHERE curation_state <> 'pending'` — so `held` needs no
+ * A `pending` membership never carries a proposal pointer — `heldProposalPointer.ts`
+ * writes the pointer only `WHERE curation_state <> 'pending'` — so `held` needs no
  * "not pending" clause, and adding one would spell a conjunction the database
  * already guarantees.
+ *
+ * Each predicate takes two aliases since #822: the place (`experiences`, for
+ * what the source observes about the row) and its membership in a kind
+ * (`experience_kind_memberships`, for the gate state and the admission), which
+ * the query has to join — an arrival *is* a membership arriving, and what a
+ * source holds is counted per membership its runs brought.
  */
 
 import { pool } from '../../db/index.js';
-import { hideRefusedSql, offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
+import { MEMBERSHIPS, membershipAdmittedSql, membershipVisibleSql } from '../../db/membership.js';
+import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 
-/** A row nobody has read yet, and that the source still offers. */
-export function arrivalWaitingSql(alias = 'e'): string {
-  return `${alias}.curation_state = 'pending' AND ${alias}.missing_since IS NULL AND ${hideRefusedSql(alias)}`;
+/** A membership nobody has read yet, of a place the source still offers. */
+export function arrivalWaitingSql(alias = 'e', membership = 'm'): string {
+  return `${membership}.curation_state = 'pending' AND ${alias}.missing_since IS NULL AND ${membershipAdmittedSql(membership)}`;
 }
 
 /**
@@ -86,13 +93,13 @@ export function heldPartExistsSql(alias = 'ch'): string {
  * or on a field of one of its parts. Both, because the queue's held card
  * carries both and this count has to agree with it row for row.
  */
-export function heldWaitingSql(alias = 'e'): string {
-  return `${alias}.pending_change_sync_log_id IS NOT NULL
-    AND ${alias}.missing_since IS NULL AND ${hideRefusedSql(alias)}
+export function heldWaitingSql(alias = 'e', membership = 'm'): string {
+  return `${membership}.pending_change_sync_log_id IS NOT NULL
+    AND ${alias}.missing_since IS NULL AND ${membershipAdmittedSql(membership)}
     AND EXISTS (
       SELECT 1 FROM experience_sync_changes ch
       WHERE ch.experience_id = ${alias}.id
-        AND ch.sync_log_id = ${alias}.pending_change_sync_log_id
+        AND ch.sync_log_id = ${membership}.pending_change_sync_log_id
         AND (${heldFieldExistsSql('ch')} OR ${heldPartExistsSql('ch')})
     )`;
 }
@@ -117,9 +124,9 @@ export function heldWaitingSql(alias = 'e'): string {
  * asks the opposite question, and `NOT (…)` around a fragment named for the
  * other direction reads worse than the four words it replaces.
  */
-export function contentsWaitingSql(alias = 'e'): string {
-  return `${alias}.curation_state <> 'pending'
-    AND ${alias}.missing_since IS NULL AND ${hideRefusedSql(alias)}
+export function contentsWaitingSql(alias = 'e', membership = 'm'): string {
+  return `${membershipVisibleSql(membership)}
+    AND ${alias}.missing_since IS NULL AND ${membershipAdmittedSql(membership)}
     AND (
       EXISTS (
         SELECT 1 FROM experience_locations el
@@ -147,22 +154,27 @@ export interface WaitingCounts {
 }
 
 /**
- * One pass over `experiences`, one row per category.
+ * One pass over the memberships, one row per source.
  *
  * Not scoped to a curator: this feeds the admin sync panel, which is behind
  * `requireAdmin`, and an admin's scope is every category. The queue itself
  * restricts what a *curator* is asked about, so the panel's number can be larger
  * than what a region-scoped curator will find there — the panel answers "is this
  * source holding anything", not "is there work for me".
+ *
+ * Grouped by the membership's source rather than the row's `category_id`: what
+ * a source holds is the memberships its runs brought, which is the same set
+ * today and stops being one the day a place has two (#755).
  */
 export async function waitingCountsByCategory(): Promise<Map<number, WaitingCounts>> {
   const result = await pool.query(`
-    SELECT e.category_id,
+    SELECT m.source_id AS category_id,
            COUNT(*) FILTER (WHERE ${arrivalWaitingSql()})::int  AS arrivals,
            COUNT(*) FILTER (WHERE ${heldWaitingSql()})::int     AS held,
            COUNT(*) FILTER (WHERE ${contentsWaitingSql()})::int AS contents
-    FROM experiences e
-    GROUP BY e.category_id
+    FROM ${MEMBERSHIPS} m
+    JOIN experiences e ON e.id = m.experience_id
+    GROUP BY m.source_id
   `);
   return new Map(result.rows.map(r => [
     r.category_id as number,

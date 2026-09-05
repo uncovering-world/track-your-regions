@@ -22,7 +22,9 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { getExperienceTreasures, markTreasureViewed } from './experienceTreasureController.js';
-import { linkedForReaderSql } from './experienceLifecycle.js';
+import {
+  experienceOfferedToReaderSql, hidePendingSql, hideRefusedSql, linkedForReaderSql,
+} from './experienceLifecycle.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -39,8 +41,11 @@ describe('getExperienceTreasures gate', () => {
     await getExperienceTreasures({ params: { id: '1' } } as never, makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
-    expect(sql).toMatch(/e\.admission <> 'refused'/);
-    expect(sql).toMatch(/e\.curation_state <> 'pending'/);
+    // The container's two questions are its membership's (#822), asked
+    // through the shared fragments — separately here, since the gate is the
+    // one a curator's by-id read relaxes.
+    expect(sql).toContain(hideRefusedSql('e'));
+    expect(sql).toContain(hidePendingSql('e'));
     expect(sql).toMatch(/et\.curation_state <> 'pending'/);
     expect(sql).toMatch(/t\.curation_state <> 'pending'/);
   });
@@ -191,7 +196,7 @@ describe('markTreasureViewed auto-mark — #520', () => {
     );
 
     const [linkSql] = mockedQuery.mock.calls[2] as [string, unknown[]];
-    expect(linkSql).toMatch(/e\.curation_state <> 'pending'/);
+    expect(linkSql).toContain(experienceOfferedToReaderSql('e'));
     expect(linkSql).toMatch(/et\.curation_state <> 'pending'/);
     // The treasure was already checked at the lookup above; re-checking it
     // here would just repeat that predicate under an alias this statement
@@ -240,7 +245,7 @@ describe('markTreasureViewed auto-mark — #520', () => {
       .map(c => String(c[0]))
       .find(sql => /INSERT INTO user_visited_locations/.test(sql));
     expect(insertLocations).toBeDefined();
-    expect(insertLocations).toMatch(/e\.curation_state <> 'pending'/);
+    expect(insertLocations).toContain(hidePendingSql('e'));
     expect(insertLocations).toMatch(/el\.curation_state <> 'pending'/);
   });
 });

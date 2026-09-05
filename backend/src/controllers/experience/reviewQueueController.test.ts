@@ -22,7 +22,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { getReviewQueue } from './reviewQueueController.js';
-import { offeredLocationSql } from './experienceLifecycle.js';
+import { hidePendingSql, hideRefusedSql, offeredLocationSql } from './experienceLifecycle.js';
 import { CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
 
@@ -86,7 +86,7 @@ describe('getReviewQueue', () => {
     // The same row under both headings would ask two contradictory questions,
     // and only one of them has a true answer.
     const [missingSql] = callMatching('missing_since IS NOT NULL');
-    expect(missingSql).toContain("e.admission <> 'refused'");
+    expect(missingSql).toContain(hideRefusedSql('e'));
   });
 
   it('returns the refusals as their own group, with the reason on them', async () => {
@@ -471,7 +471,7 @@ describe('getReviewQueue', () => {
     // A refused row is already invisible for a reason with its own card
     // (§ 2.3): asking "may readers see this?" about it asks the second
     // question first.
-    expect(sql).toContain("e.admission <> 'refused'");
+    expect(sql).toContain(hideRefusedSql('e'));
     // A row the source has stopped offering has no verdict to give (§ 3.6).
     expect(sql).toContain('e.missing_since IS NULL');
     // Without the scope filter a region curator is shown work they cannot open.
@@ -481,7 +481,7 @@ describe('getReviewQueue', () => {
   it('raises no missing card for a row no reader ever saw', async () => {
     // ADR-0025 § 3.6: nobody has seen this row yet, so there is no verdict
     // to give about whether it disappeared from in front of anyone.
-    expect(await capturedQueueSql('missing')).toContain("e.curation_state <> 'pending'");
+    expect(await capturedQueueSql('missing')).toContain(hidePendingSql('e'));
   });
 
   it('names the run whose proposal is held, and drops a card with nothing in it', async () => {
@@ -515,7 +515,7 @@ describe('getReviewQueue', () => {
     // Already invisible for its own reason (§ 2.3) — the held proposal is not
     // the question to ask about a row this category has turned down.
     const sql = await capturedQueueSql('held');
-    expect(sql).toContain("e.admission <> 'refused'");
+    expect(sql).toContain(hideRefusedSql('e'));
   });
 
   it('excludes a row the source has stopped listing from the held card', async () => {
@@ -595,7 +595,7 @@ describe('getReviewQueue', () => {
 
   it('counts a visible experience holding unread locations, and only unread ones', async () => {
     const sql = await capturedQueueSql('contents');
-    expect(sql).toContain("e.curation_state <> 'pending'"); // an arrival is the other card
+    expect(sql).toContain(hidePendingSql('e')); // an arrival is the other card
     // Anchored inside the points subquery rather than on the statement, because the
     // same fragment is legitimately elsewhere in it: `offeredLocationSql` is what
     // `contentsWaitingSql` composes too, and a `.toContain` over the whole text
@@ -664,7 +664,7 @@ describe('getReviewQueue', () => {
 
   it('excludes a refused row from the contents card', async () => {
     const sql = await capturedQueueSql('contents');
-    expect(sql).toContain("e.admission <> 'refused'");
+    expect(sql).toContain(hideRefusedSql('e'));
   });
 
   it('names the category and external id on all three new kinds, like the older four do', async () => {
@@ -833,8 +833,8 @@ describe('getReviewQueue', () => {
     // Same reasoning the other kinds carry: a refused row is already invisible for
     // a reason with its own card, and nobody has seen an unread one, so no point
     // inside it disappeared from in front of anyone.
-    expect(sql).toContain("e.admission <> 'refused'");
-    expect(sql).toContain("e.curation_state <> 'pending'");
+    expect(sql).toContain(hideRefusedSql('e'));
+    expect(sql).toContain(hidePendingSql('e'));
   });
 
   it('limits a curator to what their scope reaches on the withdrawal card too', async () => {
@@ -924,7 +924,7 @@ describe('getReviewQueue', () => {
       // the deliberate part: copied from the card above, the guards would take a
       // verdict off the only screen that can undo it.
       const [answeredSql] = callMatching("'withdrawn-answered' AS kind");
-      expect(answeredSql).not.toContain("e.admission <> 'refused'");
+      expect(answeredSql).not.toContain(hideRefusedSql('e'));
       expect(answeredSql).not.toContain('e.missing_since IS NULL');
     });
 

@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { placeAdmittedSql, placeOfferedSql, placeVisibleSql } from '../../db/membership.js';
 import {
   hideLostSql,
   hideRefusedSql,
@@ -90,8 +91,11 @@ describe('hideRefusedSql', () => {
     expect(sql).not.toContain('missing_since');
   });
 
-  it('qualifies the column, so it can join a query with more than one table', () => {
-    expect(hideRefusedSql('ex')).toContain("ex.admission <> 'refused'");
+  it('asks the place\'s memberships, through the one shared spelling', () => {
+    // The verdict is the membership's since #822, so the fragment is the
+    // place-level EXISTS from db/membership.ts and nothing spelled here.
+    expect(hideRefusedSql('ex')).toBe(placeAdmittedSql('ex'));
+    expect(hideRefusedSql('ex')).toContain('km.experience_id = ex.id');
   });
 
   it('comes bare, since some callers push it into a conditions array', () => {
@@ -122,17 +126,20 @@ describe('lifecycleSelectSql', () => {
 });
 
 describe('hidePendingSql', () => {
-  it('hides an unread row, and says nothing about the other three questions', () => {
-    expect(hidePendingSql()).toBe("e.curation_state <> 'pending'");
-    expect(hidePendingSql('x')).toBe("x.curation_state <> 'pending'");
+  it('hides an unread place, and says nothing about the other three questions', () => {
+    // The gate state is the membership's since #822: a place is unread while
+    // none of its memberships has been passed.
+    expect(hidePendingSql()).toBe(placeVisibleSql());
+    expect(hidePendingSql('x')).toBe(placeVisibleSql('x'));
+    expect(hidePendingSql()).toContain("curation_state <> 'pending'");
     // The gate must not mention existence, admission or missing_since: a
     // predicate that answered two questions could not be relaxed for one of
     // them alone (ADR-0025's Negative consequences).
     expect(hidePendingSql()).not.toMatch(/existence|admission|missing_since/);
   });
 
-  it('qualifies the column, so it can join a query with more than one table', () => {
-    expect(hidePendingSql('ex')).toContain("ex.curation_state <> 'pending'");
+  it('qualifies the place, so it can join a query with more than one table', () => {
+    expect(hidePendingSql('ex')).toContain('km.experience_id = ex.id');
   });
 });
 
@@ -172,7 +179,19 @@ describe('linkedForReaderSql', () => {
     const sql = linkedForReaderSql('x', 'link');
     expect(sql).toContain('link.missing_since IS NULL');
     expect(sql).toContain("link.curation_state <> 'pending'");
-    expect(sql).toContain("x.admission <> 'refused'");
+    expect(sql).toContain(placeOfferedSql('x'));
+  });
+});
+
+describe('experienceOfferedToReaderSql', () => {
+  it('asks both questions of one membership, not each of any', () => {
+    // A place with one membership admitted and another passed satisfies
+    // hideRefusedSql and hidePendingSql on their own and is offered by no
+    // single kind (#755); the writers that record a reader's claim compose
+    // this one, which asks both of the same row.
+    expect(experienceOfferedToReaderSql('x')).toBe(placeOfferedSql('x'));
+    expect(experienceOfferedToReaderSql('x'))
+      .not.toBe(`${hideRefusedSql('x')} AND ${hidePendingSql('x')}`);
   });
 });
 

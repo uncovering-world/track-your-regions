@@ -13,7 +13,7 @@
  */
 
 import { heldFieldAnsweredSql } from '../../experience/heldDecisions.js';
-import { admissionPinnedSql, iconicPinnedSql } from '../../../services/sync/admission.js';
+import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql } from '../../../db/membership.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 import { KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES } from '../../../services/sync/publicArt/classes.js';
 
@@ -99,13 +99,16 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
            -- Not while a curator holds the flag itself: the tag moved ahead of
            -- it by design (#570), and the badge follows the flag. The pointed-at
            -- changeset is asked, not the pointer: any held field sets the
-           -- pointer, and on this database every UNESCO row has one.
+           -- pointer, and on this database every UNESCO row has one. The
+           -- pointer is the membership's (#822), so the changeset is found
+           -- through it.
            AND NOT EXISTS (
              SELECT 1
                FROM experience_sync_changes ch
               CROSS JOIN LATERAL jsonb_array_elements(ch.changed_fields) f
+               JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+                                    AND m.pending_change_sync_log_id = ch.sync_log_id
               WHERE ch.experience_id = e.id
-                AND ch.sync_log_id = e.pending_change_sync_log_id
                 AND (f->>'held')::boolean
                 AND NOT ${heldFieldAnsweredSql('e.id')}
                 AND f->>'field' = 'metadata.inDanger')
@@ -169,14 +172,15 @@ const refusedRowWearingIconic: CatalogueAssertion = {
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
                c.name AS category_name
-          FROM experiences e
-          JOIN experience_categories c ON c.id = e.category_id
-         WHERE e.admission = 'refused'
-           AND e.is_iconic
+          FROM ${MEMBERSHIPS} m
+          JOIN experiences e ON e.id = m.experience_id
+          JOIN experience_categories c ON c.id = m.source_id
+         WHERE m.admission = 'refused'
+           AND m.is_iconic
            -- A flag a curator pinned outranks the rule here exactly as it does
            -- for the writers: the pin is the one thing that keeps the badge on
-           -- a refused row on purpose.
-           AND NOT ${iconicPinnedSql('e')}
+           -- a refused membership on purpose.
+           AND NOT ${iconicPinnedSql('m')}
          ORDER BY e.name`,
   describe: row =>
     `${text(row, 'experience_name')}: turned away from ${text(row, 'category_name')} `
@@ -321,10 +325,12 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
                   FROM jsonb_array_elements_text(e.metadata->'wikidataClasses') c
                  WHERE c = ANY(${REFUSED_OUTRIGHT}) OR c = ANY(${REFUSED_UNLESS_ARTWORK})) AS classes
           FROM experiences e
-         WHERE e.category_id = 3
-           AND e.admission = 'admitted'
+          -- The public-art source's own membership (#822): the classes were
+          -- written by its run and the admission is that source's rule.
+          JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = 3
+         WHERE m.admission = 'admitted'
            AND e.is_manual = FALSE
-           AND NOT ${admissionPinnedSql('e')}
+           AND NOT ${admissionPinnedSql('m')}
            -- A row the run never wrote classes onto is a row the rule never
            -- reached, and the question has no answer yet rather than a clean
            -- one: it is counted by its absence from every run, not here.
@@ -352,13 +358,90 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
 };
 
 /**
+ * A place no kind holds.
+ *
+ * Since #822 every reader-facing read asks the four questions of a place
+ * through its memberships (`db/membership.ts`), so a row of `experiences`
+ * with no row here is hidden from every list, map, count and search — not
+ * refused, not unread, simply never offered — and nothing on any screen says
+ * why. Migration 046 refuses to commit with such a row, and the three writers
+ * that create a place (the sync upsert, a curator's create, the e2e fixture)
+ * write the membership in the same transaction; a row here means a writer
+ * arrived that does not.
+ */
+const placeWithoutMembership: CatalogueAssertion = {
+  id: 'place-without-membership',
+  area: 'objects',
+  title: 'A place that belongs to no kind',
+  kind: 'invariant',
+  meaning:
+    'The row has no membership in any kind, so no list, map, count or search offers it and no '
+    + 'queue asks about it: it is not refused and not unread, it is simply never asked. Every '
+    + 'writer that creates a place writes its membership with it; a row here came in by a path '
+    + 'that did not, and wants one written by hand for the kind its source fills.',
+  sql: `SELECT e.id AS experience_id,
+               e.name AS experience_name,
+               c.name AS category_name
+          FROM experiences e
+          JOIN experience_categories c ON c.id = e.category_id
+         WHERE NOT EXISTS (
+           SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id
+         )
+         ORDER BY e.name`,
+  describe: row =>
+    `${text(row, 'experience_name')}: keyed on ${text(row, 'category_name')} and a member of no `
+    + `kind (experience ${count(row, 'experience_id')})`,
+};
+
+/**
+ * A membership that names a source other than the one its row is keyed on.
+ *
+ * `experiences.category_id` is the arbiter of a row's identity —
+ * `UNIQUE(category_id, external_id)` — until #755 moves a source's id onto the
+ * membership; the membership's `source_id` is the source that brought it.
+ * Today the two say the same thing about every row, and every reader still
+ * groups, colours and scopes by the row's column while the counts read the
+ * membership's (#822). A row where they disagree is one the two halves of the
+ * catalogue would place in different lists, and the readers #819 switches
+ * would then move it in front of a reader without anyone deciding to.
+ */
+const membershipSourceDisagreesWithRow: CatalogueAssertion = {
+  id: 'membership-source-disagrees-with-row',
+  area: 'objects',
+  title: 'A membership brought by a source other than the one its row is keyed on',
+  kind: 'invariant',
+  meaning:
+    'The row is keyed on one source and its membership says another brought it. Until #819 the '
+    + 'lists and pins read the row and the counts read the membership, so such a row is counted '
+    + 'in one kind and shown in another. Either the membership was written for the wrong source '
+    + 'or the row was re-keyed by hand; whichever it is, the two have to be made to agree before '
+    + 'the readers switch.',
+  sql: `SELECT e.id AS experience_id,
+               e.name AS experience_name,
+               row_source.name AS row_source_name,
+               membership_source.name AS membership_source_name
+          FROM ${MEMBERSHIPS} m
+          JOIN experiences e ON e.id = m.experience_id
+          JOIN experience_categories row_source ON row_source.id = e.category_id
+          JOIN experience_categories membership_source ON membership_source.id = m.source_id
+         WHERE m.source_id <> e.category_id
+         ORDER BY e.name`,
+  describe: row =>
+    `${text(row, 'experience_name')}: keyed on ${text(row, 'row_source_name')}, its membership `
+    + `brought by ${text(row, 'membership_source_name')} (experience ${count(row, 'experience_id')})`,
+};
+
+/**
  * The object rules, in the order a person reads them: the fact stored twice,
  * the badge a refusal should have taken, the count of works whose makers
- * nobody has arranged, then the public-art row the rule would refuse.
+ * nobody has arranged, the public-art row the rule would refuse, then the two
+ * facts every reader rests on since the place and its membership came apart.
  */
 export const objectAssertions: CatalogueAssertion[] = [
   dangerFlagAgainstItsTag,
   refusedRowWearingIconic,
   workMakersUnconfirmed,
   publicArtRowTypedABuilding,
+  placeWithoutMembership,
+  membershipSourceDisagreesWithRow,
 ];

@@ -16,6 +16,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { placeAdmittedSql } from '../../db/membership.js';
 import type { ChangeRecord } from './changeRecorder.js';
 
 export type SourceCompleteness = 'authoritative' | 'ranked';
@@ -76,7 +77,7 @@ export async function countActiveExperiences(categoryId: number): Promise<number
        AND missing_since IS NULL
        AND is_manual = FALSE
        AND existence <> 'lost'
-       AND admission <> 'refused'`,
+       AND ${placeAdmittedSql('experiences')}`,
     [categoryId]
   );
   return Number(result.rows[0]?.count ?? 0);
@@ -104,7 +105,7 @@ export async function countSeenAmongActive(
        AND missing_since IS NULL
        AND is_manual = FALSE
        AND existence <> 'lost'
-       AND admission <> 'refused'
+       AND ${placeAdmittedSql('experiences')}
        AND external_id = ANY($2::text[])`,
     [categoryId, seenExternalIds]
   );
@@ -144,7 +145,7 @@ export async function flagMissingExperiences(
       AND missing_since IS NULL
       AND is_manual = FALSE
       AND existence <> 'lost'
-      AND admission <> 'refused'
+      AND ${placeAdmittedSql('experiences')}
       AND external_id <> ALL($2::text[])`;
 
   const result = dryRun

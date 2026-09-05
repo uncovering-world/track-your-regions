@@ -10,12 +10,17 @@
  * | column | question | who answers it |
  * |---|---|---|
  * | `existence` | does it still stand? | the world |
- * | `admission` | does this catalogue accept it? | a category's rule (ADR-0024) |
+ * | the membership's `admission` | does a kind accept it? | the kind's rule (ADR-0024) |
  * | `experience_locations.missing_since` | does its source still offer this point? | the source |
- * | `curation_state` | has anyone looked at it? | a curator (ADR-0025) |
+ * | the membership's `curation_state` | has anyone looked at it? | a curator (ADR-0025) |
  *
- * The first two are set by curators (ADR-0020, narrowed by ADR-0021) and read
- * here. They are not symmetric, because the reasons behind them are not:
+ * Two of the four live on the place's membership in a kind since #822
+ * (ADR-0045 decision 4), and the fragments below ask them of the place
+ * through `db/membership.ts` — one spelling, shared with the sync services.
+ *
+ * `existence` and the verdicts on it are set by curators (ADR-0020, narrowed
+ * by ADR-0021) and read here. They are not symmetric, because the reasons
+ * behind them are not:
  *
  * - `former` — the source stopped listing it, but it is still standing. You can
  *   still go there, so it stays in every list and on the map; the card says so
@@ -37,6 +42,8 @@
  * than reusing one of the first three.
  */
 
+import { placeAdmittedSql, placeOfferedSql, placeVisibleSql } from '../../db/membership.js';
+
 /**
  * Hides `lost` objects. `alias` is the `experiences` alias in the query.
  *
@@ -52,8 +59,8 @@ export function hideLostSql(alias = 'e'): string {
 }
 
 /**
- * Hides a row this category's own rule turned down (ADR-0024). `alias` is the
- * `experiences` alias in the query.
+ * Hides a place no kind's rule accepts (ADR-0024): every membership of it is
+ * refused. `alias` is the `experiences` alias in the query.
  *
  * A separate fragment from `hideLostSql` rather than one combined predicate,
  * because the two hide for unrelated reasons and are asked for separately: the
@@ -75,7 +82,7 @@ export function hideLostSql(alias = 'e'): string {
  * currently claims the building.
  */
 export function hideRefusedSql(alias = 'e'): string {
-  return `${alias}.admission <> 'refused'`;
+  return placeAdmittedSql(alias);
 }
 
 /**
@@ -280,9 +287,12 @@ export function includeLost(query: Record<string, unknown>): boolean {
  * A fragment for the same reason `hideLostSql` is one: it goes into queries
  * that build a WHERE by concatenation, some bare and some already inside a
  * conditions array, so it is returned bare too.
+ *
+ * Asked of the place's memberships since #822: a place is unread while none
+ * of them has been passed.
  */
 export function hidePendingSql(alias = 'e'): string {
-  return `${alias}.curation_state <> 'pending'`;
+  return placeVisibleSql(alias);
 }
 
 /**
@@ -317,9 +327,14 @@ export function publishedContentSql(alias: string): string {
  * That is the sixth time on this branch a predicate in this family was written
  * as a subset of itself. A conjunction spelled in one place cannot be spelled
  * partly.
+ *
+ * One `EXISTS` over the memberships rather than the two fragments above joined
+ * with `AND`, and the difference is the day a place has two memberships
+ * (#755): one admitted and another passed satisfies each fragment on its own
+ * and offers a place no single kind offers. `db/membership.ts` says so.
  */
 export function experienceOfferedToReaderSql(alias = 'e'): string {
-  return `${hideRefusedSql(alias)} AND ${hidePendingSql(alias)}`;
+  return placeOfferedSql(alias);
 }
 
 /**

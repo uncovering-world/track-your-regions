@@ -316,7 +316,7 @@ describe('a picture with nobody credited', () => {
     // held card carries `hideRefusedSql` and `missing_since IS NULL`, so keyed
     // on the pointer the report would say "waiting on a curator" about a change
     // no screen offers to publish (the review of #717, round two).
-    expect(workArm).toContain(collapse(heldWaitingSql('e')));
+    expect(workArm).toContain(collapse(heldWaitingSql('e', 'm')));
   });
 
   it('says when the author is already fetched and waiting on a curator', () => {
@@ -328,8 +328,11 @@ describe('a picture with nobody credited', () => {
     // rows are provenance and are never deleted (#480), while the pointer is
     // cleared as soon as a run proposes nothing — so a flag keyed on the
     // changeset alone would say "waiting" for ever over an empty queue.
-    expect(sql).toContain(collapse(heldWaitingSql('e')));
-    expect(sql).toMatch(/ch\.sync_log_id = e\.pending_change_sync_log_id/);
+    expect(sql).toContain(collapse(heldWaitingSql('e', 'm')));
+    // The pointer is the membership's (#822), reached through the membership
+    // the object arm and the work arm both join.
+    expect(sql).toMatch(/ch\.sync_log_id = m\.pending_change_sync_log_id/);
+    expect(sql).not.toMatch(/e\.pending_change_sync_log_id/);
     expect(assertion.describe({
       holder: 'object', row_id: 300, row_name: 'Aldabra Atoll',
       host: 'commons.wikimedia.org', credit_waiting: true,
