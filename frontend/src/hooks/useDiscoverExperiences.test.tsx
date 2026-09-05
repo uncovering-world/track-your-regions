@@ -44,7 +44,7 @@ vi.mock('../api/experiences', async (importOriginal) => {
     fetchExperienceRegionCounts: countsSpy,
     fetchExperienceCategories: vi.fn().mockResolvedValue([
       { id: 1, name: 'UNESCO World Heritage Sites', is_active: true },
-      { id: 2, name: 'Top Art Museums', is_active: true },
+      { id: 2, name: 'Art Museums', is_active: true },
     ]),
     fetchExperiencesByRegion: mockFetchByRegion,
     fetchExperienceLocations: vi.fn().mockResolvedValue({ locations: [] }),

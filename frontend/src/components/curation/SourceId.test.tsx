@@ -49,7 +49,7 @@ describe('SourceId', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
-    render(<SourceId id="Q1662392" category="Top Art Museums" sourcePage="https://www.peramuseum.org" />);
+    render(<SourceId id="Q1662392" category="Art Museums" sourcePage="https://www.peramuseum.org" />);
 
     const link = screen.getByRole('link', { name: 'Q1662392' });
     expect(link).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q1662392');
@@ -69,7 +69,7 @@ describe('SourceId', () => {
   });
 
   it('keeps an id nothing names as the thing to copy, and links it nowhere', () => {
-    render(<SourceId id="manual-12" category="Top Art Museums" />);
+    render(<SourceId id="manual-12" category="Art Museums" />);
 
     expect(screen.queryByRole('link')).toBeNull();
     // The id itself is the copy control, as it was before the chip could open anything.

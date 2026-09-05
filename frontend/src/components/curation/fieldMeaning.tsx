@@ -559,7 +559,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
     },
   },
 
-  // Top Art Museums, Public Art & Monuments
+  // Art Museums, Public Art & Monuments
   'metadata.wikidataQid': {
     label: 'Wikidata item',
     what: 'The object’s identifier on Wikidata, which is where this source reads it from.',

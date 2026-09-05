@@ -129,15 +129,15 @@ export function getSourceColor(categoryId: number): string {
 }
 
 /**
- * Shorten category display names for compact UI (chips, badges).
+ * Shorten a kind's display name for compact UI (chips, badges).
  *
- * "Art Museums" rather than "Museums": archaeology, natural-history and
- * military museums are a separate category, so the short form has to keep the
- * word that tells them apart or two chips will read the same.
+ * "Art Museums" is already the row's own name since #818 (it read "Top Art
+ * Museums", the works-first rule's name, until then) and is left whole:
+ * archaeology and history museums are kinds of their own, so the short form
+ * has to keep the word that tells them apart or two chips will read the same.
  */
 export function shortSourceName(name: string): string {
   return name
     .replace('UNESCO World Heritage Sites', 'UNESCO')
-    .replace('Top Art Museums', 'Art Museums')
     .replace('Public Art & Monuments', 'Art');
 }

@@ -19,7 +19,7 @@ import { GatedCard } from './WaitingToPublish';
 function contents(...works: NonNullable<ReviewQueueItem['pending_works']>): ReviewQueueItem {
   return {
     id: 6194, external_id: 'Q165631', name: 'Gemäldegalerie Berlin',
-    category_id: 2, category_name: 'Top Art Museums',
+    category_id: 2, category_name: 'Art Museums',
     missing_since: null, source_membership: 'present', existence: 'extant',
     kind: 'contents', proposed: null,
     pending_locations: 0, pending_treasures: works.length,
