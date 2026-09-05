@@ -28,7 +28,12 @@ export interface ExperienceUpsertParams {
   nameLocal: Record<string, string>;
   description: string | null;
   shortDescription: string | null;
-  category: string | null;
+  /**
+   * The type within the kind — `cultural` for a World Heritage site, `monument`
+   * for public art — and `null` for a museum, whose kind has no types (ADR-0045,
+   * #814). The kind is `categoryId`.
+   */
+  type: string | null;
   tags: string[];
   lon: number;
   lat: number;
@@ -97,7 +102,7 @@ const SYNC_OWNED_SLICE = `COALESCE((
 
 /** Columns the diff reads. Declared once; the SQL below is built from them. */
 const SNAPSHOT_COLUMNS = [
-  'name', 'name_local', 'description', 'short_description', 'category', 'tags',
+  'name', 'name_local', 'description', 'short_description', 'type', 'tags',
   'country_codes', 'country_names', 'image_url', 'metadata',
 ] as const;
 
@@ -108,7 +113,7 @@ function snapshotFromRow(row: Record<string, unknown>, prefix: '' | 'old_'): Exp
     nameLocal: (get('name_local') as Record<string, string> | null) ?? null,
     description: (get('description') as string | null) ?? null,
     shortDescription: (get('short_description') as string | null) ?? null,
-    category: (get('category') as string | null) ?? null,
+    type: (get('type') as string | null) ?? null,
     tags: (get('tags') as string[] | null) ?? null,
     lon: Number(get('lon')),
     lat: Number(get('lat')),
@@ -125,7 +130,7 @@ function snapshotFromParams(params: ExperienceUpsertParams): ExperienceSnapshot 
     nameLocal: params.nameLocal,
     description: params.description,
     shortDescription: params.shortDescription,
-    category: params.category,
+    type: params.type,
     tags: params.tags,
     lon: params.lon,
     lat: params.lat,
@@ -265,7 +270,7 @@ export async function upsertExperienceRecord(
     ), ins AS (
       INSERT INTO experiences (
         category_id, external_id, name, name_local, description, short_description,
-        category, tags, location, country_codes, country_names, image_url, metadata,
+        type, tags, location, country_codes, country_names, image_url, metadata,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at, created_at, updated_at,
         curation_state, published_at
       ) VALUES (
@@ -284,7 +289,7 @@ export async function upsertExperienceRecord(
         name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR ${HELD} THEN experiences.name_local ELSE EXCLUDED.name_local END,
         description = CASE WHEN experiences.curated_fields ? 'description' OR ${HELD} THEN experiences.description ELSE EXCLUDED.description END,
         short_description = CASE WHEN experiences.curated_fields ? 'short_description' OR ${HELD} THEN experiences.short_description ELSE EXCLUDED.short_description END,
-        category = CASE WHEN experiences.curated_fields ? 'category' OR ${HELD} THEN experiences.category ELSE EXCLUDED.category END,
+        type = CASE WHEN experiences.curated_fields ? 'type' OR ${HELD} THEN experiences.type ELSE EXCLUDED.type END,
         -- Behind a claim but not behind the gate. Tags are labels the import
         -- derives from facts it also stores by name -- the criteria, the danger
         -- listing, the landmark's type -- and no reader-facing read returns
@@ -416,7 +421,7 @@ export async function upsertExperienceRecord(
       JSON.stringify(params.nameLocal),
       params.description,
       params.shortDescription,
-      params.category,
+      params.type,
       JSON.stringify(params.tags),
       params.lon,
       params.lat,

@@ -23,7 +23,7 @@ import { CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
  * `CURATED_KEY_BY_FIELD` can answer both questions for them without the two
  * ever drifting from what the upsert honours.
  */
-export const ACCEPTABLE_FIELDS = new Set(['name', 'shortDescription', 'description', 'category', 'imageUrl']);
+export const ACCEPTABLE_FIELDS = new Set(['name', 'shortDescription', 'description', 'type', 'imageUrl']);
 
 /** The column an accepted field writes to, or null if it is not acceptable. */
 export function columnFor(field: string): string | null {

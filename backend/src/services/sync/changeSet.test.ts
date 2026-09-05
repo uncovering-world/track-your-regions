@@ -32,7 +32,7 @@ function snapshot(overrides: Partial<ExperienceSnapshot> = {}): ExperienceSnapsh
     nameLocal: { en: 'Serengeti National Park', fr: 'Parc national du Serengeti' },
     description: null,
     shortDescription: 'Vast plains of the Serengeti.',
-    category: 'natural',
+    type: 'natural',
     tags: ['natural', 'unesco'],
     lon: 34.8333,
     lat: -2.3333,

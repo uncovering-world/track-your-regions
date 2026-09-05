@@ -158,8 +158,8 @@ describe('an admitted public-art row typed as a building', () => {
     // which cannot hold the closures the rule reads at run time. COALESCE,
     // because a row the run wrote before the key existed carries none.
     expect(sql).toContain("NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE)");
-    expect(sql).not.toContain("e.category IS DISTINCT FROM");
-    expect(sql).not.toContain("e.category <>");
+    expect(sql).not.toContain("e.type IS DISTINCT FROM");
+    expect(sql).not.toContain("e.type <>");
     for (const qid of [...Object.keys(MONUMENT_CLASSES), FOUNTAIN_ROOT]) expect(sql).not.toContain(`'${qid}'`);
   });
 

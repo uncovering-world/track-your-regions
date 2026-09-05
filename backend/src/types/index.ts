@@ -236,7 +236,8 @@ export const experienceSearchQuerySchema = z.object({
 
 export const experienceListQuerySchema = z.object({
   categoryId: z.coerce.number().int().positive().optional(),
-  category: z.string().max(255).optional(),
+  /** The type within the kind — `cultural`, `monument` … — not the kind, which is `categoryId`. */
+  type: z.string().max(255).optional(),
   country: z.string().max(255).optional(),
   regionId: z.coerce.number().int().positive().optional(),
   search: z.string().max(255).optional(),
@@ -343,7 +344,7 @@ export const editExperienceBodySchema = z.object({
   name: z.string().min(1).max(500).optional(),
   shortDescription: z.string().max(1000).optional(),
   description: z.string().max(10000).optional(),
-  category: z.string().max(100).optional(),
+  type: z.string().max(100).optional(),
   imageUrl: safeImageUrlSchema,
   tags: z.array(z.string().max(100)).max(50).optional(),
   websiteUrl: safeUrlSchema,
@@ -353,7 +354,7 @@ export const editExperienceBodySchema = z.object({
 export const createManualExperienceBodySchema = z.object({
   name: z.string().min(1).max(500),
   shortDescription: z.string().max(1000).optional(),
-  category: z.string().max(100).optional(),
+  type: z.string().max(100).optional(),
   longitude: z.number().min(-180).max(180),
   latitude: z.number().min(-90).max(90),
   imageUrl: safeImageUrlSchema,

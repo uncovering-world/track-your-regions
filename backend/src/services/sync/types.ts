@@ -212,7 +212,8 @@ export interface ProcessedExperience {
   nameLocal: Record<string, string>;
   description: string | null;
   shortDescription: string | null;
-  category: string | null;
+  /** The type within the kind; `null` for a museum (ADR-0045, #814). */
+  type: string | null;
   tags: string[];
   lat: number;
   lon: number;

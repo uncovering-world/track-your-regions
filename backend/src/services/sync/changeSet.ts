@@ -17,7 +17,8 @@ export interface ExperienceSnapshot {
   nameLocal: Record<string, string> | null;
   description: string | null;
   shortDescription: string | null;
-  category: string | null;
+  /** The type within the kind; `null` for a museum (ADR-0045, #814). */
+  type: string | null;
   tags: string[] | null;
   lon: number;
   lat: number;
@@ -196,7 +197,7 @@ export const CURATED_KEY_BY_FIELD: Record<string, string> = {
   nameLocal: 'name_local',
   description: 'description',
   shortDescription: 'short_description',
-  category: 'category',
+  type: 'type',
   tags: 'tags',
   location: 'location',
   countryCodes: 'country_codes',
@@ -560,7 +561,7 @@ function collectDifferences(
 ): RawDiff[] {
   const diffs: RawDiff[] = [];
 
-  const textFields = ['name', 'description', 'shortDescription', 'category', 'imageUrl'] as const;
+  const textFields = ['name', 'description', 'shortDescription', 'type', 'imageUrl'] as const;
   for (const field of textFields) {
     if (!textEquals(before[field], incoming[field])) {
       diffs.push({ field, old: before[field], new: incoming[field], significance: fieldSignificance(field) });

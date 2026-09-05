@@ -117,7 +117,9 @@ export function buildRegionQueries(opts: {
         e.external_id,
         e.name,
         e.short_description,
-        e.category,
+        e.type,
+        -- The kind, by its source row: what a colour is decided by (#814).
+        e.category_id,
         e.country_codes,
         e.country_names,
         e.image_url,
@@ -184,7 +186,9 @@ export function buildRegionQueries(opts: {
         e.external_id,
         e.name,
         e.short_description,
-        e.category,
+        e.type,
+        -- The kind, by its source row: what a colour is decided by (#814).
+        e.category_id,
         e.country_codes,
         e.country_names,
         e.image_url,

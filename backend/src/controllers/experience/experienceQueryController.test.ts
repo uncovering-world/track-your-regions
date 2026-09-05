@@ -25,7 +25,7 @@ const EXPERIENCE_ROW = {
   category_id: 1,
   external_id: 'ext-281',
   name: 'Seowon, Korean Neo-Confucian Academies',
-  category: 'cultural',
+  type: 'cultural',
   category_name: 'UNESCO',
 };
 

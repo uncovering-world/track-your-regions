@@ -49,7 +49,7 @@ const BEFORE_SNAPSHOT: ExperienceSnapshot = {
   nameLocal: { en: 'Old Name' },
   description: 'Old description',
   shortDescription: 'Old short',
-  category: 'museum',
+  type: 'museum',
   tags: ['old'],
   lon: 4, lat: 50,
   countryCodes: ['FR'],
@@ -63,7 +63,7 @@ const CHANGED_SNAPSHOT: ExperienceSnapshot = {
   nameLocal: { en: 'New Name', fr: 'Nouveau' },
   description: 'New description',
   shortDescription: 'New short',
-  category: 'art museum',
+  type: 'art museum',
   tags: ['new', 'art'],
   // Far enough to count as a move rather than source jitter.
   lon: 4.5, lat: 50.5,
@@ -498,7 +498,7 @@ describe('publishing a held proposal', () => {
         { field: 'nameLocal', new: { en: 'N' }, held: true },
         { field: 'description', new: 'D', held: true },
         { field: 'shortDescription', new: 'S', held: true },
-        { field: 'category', new: 'C', held: true },
+        { field: 'type', new: 'C', held: true },
         { field: 'tags', new: ['ancient'], held: true },
         { field: 'location', new: { lon: 1.5, lat: -2.5 }, held: true },
         { field: 'countryCodes', new: ['FR'], held: true },
@@ -521,7 +521,7 @@ describe('publishing a held proposal', () => {
     expect(update.sql).toContain('country_names = ');
     expect(update.sql).toContain('metadata = ');
     // And the five it can, so the writer is a superset rather than an alternative.
-    for (const column of ['name = ', 'short_description = ', 'description = ', 'category = ', 'image_url = ']) {
+    for (const column of ['name = ', 'short_description = ', 'description = ', 'type = ', 'image_url = ']) {
       expect(update.sql).toContain(column);
     }
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -552,7 +552,7 @@ describe('publishing a held proposal', () => {
     // is not in the list because no run proposes it any more (#570); the test
     // below keeps the writer able to apply the rows earlier runs filed.
     expect(names).toEqual(expect.arrayContaining(
-      ['name', 'description', 'shortDescription', 'category',
+      ['name', 'description', 'shortDescription', 'type',
         'location', 'countryCodes', 'countryNames', 'imageUrl']));
     // Metadata arrives one key at a time, never as a catch-all: a key is a fact
     // and a fact is answered on its own. So what has to be writable is each key

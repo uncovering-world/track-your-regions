@@ -341,7 +341,7 @@ const EDIT_FIELD_MAP: Record<string, string> = {
   name: 'name',
   shortDescription: 'short_description',
   description: 'description',
-  category: 'category',
+  type: 'type',
   imageUrl: 'image_url',
   tags: 'tags',
 };
@@ -567,7 +567,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     // removed; and the `old` values in the audit row would name a version that
     // was already gone when the edit was written.
     const locked = await client.query(
-      `SELECT curated_fields, name, short_description, description, category, image_url, tags, metadata
+      `SELECT curated_fields, name, short_description, description, type, image_url, tags, metadata
        FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
       [experienceId],
     );
@@ -702,7 +702,7 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
 interface CreateManualBody {
   name?: unknown;
   shortDescription?: unknown;
-  category?: unknown;
+  type?: unknown;
   longitude?: unknown;
   latitude?: unknown;
   imageUrl?: unknown;
@@ -768,7 +768,7 @@ async function insertManualExperience(
 
   const expResult = await client.query(`
     INSERT INTO experiences (
-      category_id, external_id, name, short_description, category,
+      category_id, external_id, name, short_description, type,
       location, image_url, tags, country_codes, country_names,
       metadata, is_manual, created_by, status, curation_state, published_at
     ) VALUES (
@@ -784,7 +784,7 @@ async function insertManualExperience(
     externalId,
     body.name,
     body.shortDescription || null,
-    body.category || null,
+    body.type || null,
     body.longitude,
     body.latitude,
     body.imageUrl || null,
@@ -823,7 +823,7 @@ async function insertManualExperience(
     VALUES ($1, $2, 'created', $3, $4)
   `, [experienceId, userId, body.regionId, JSON.stringify({
     name: body.name,
-    category: body.category,
+    type: body.type,
     categoryId,
   })]);
 

@@ -117,7 +117,7 @@ async function upsertLandmarkExperience(
     nameLocal: { en: landmark.label },
     description: landmark.description,
     shortDescription: null,
-    category: landmark.type,
+    type: landmark.type,
     tags: ['outdoor', landmark.type],
     lon: landmark.lon,
     lat: landmark.lat,
