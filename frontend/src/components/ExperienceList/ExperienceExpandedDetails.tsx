@@ -44,6 +44,7 @@ import { ArtworksList } from './ArtworksList';
 import { VisitedStatusButton } from './VisitedStatusButton';
 import { computeVisitedStatus } from './utils';
 import { CardLocationList } from './CardLocationList';
+import { experienceColors } from '../../utils/categoryColors';
 
 export interface ExperienceExpandedDetailsProps {
   experience: Experience;
@@ -190,13 +191,9 @@ function ExperienceExpandedDetailsComponent({
 
   const isMultiLocation = totalLocations > 1;
 
-  const categoryColorMap: Record<string, { bg: string; text: string }> = {
-    cultural: { bg: '#EDE9FE', text: '#7C3AED' },
-    natural: { bg: '#D1FAE5', text: '#059669' },
-    mixed: { bg: '#FEF3C7', text: '#D97706' },
-  };
-
-  const categoryStyle = categoryColorMap[experience.category || ''] || { bg: '#E0E7FF', text: '#4F46E5' };
+  // The type chip in the colour every other surface draws this object in —
+  // one rule, `experienceColors`, rather than a third copy of the palette (#814).
+  const typeStyle = experienceColors(experience.category_id, experience.type);
 
   return (
     <Box
@@ -264,13 +261,13 @@ function ExperienceExpandedDetailsComponent({
 
       {/* Category & Country chips */}
       <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-        {experience.category && (
+        {experience.type && (
           <Chip
-            label={experience.category}
+            label={experience.type}
             size="small"
             sx={{
-              bgcolor: categoryStyle.bg,
-              color: categoryStyle.text,
+              bgcolor: typeStyle.bg,
+              color: typeStyle.text,
               fontWeight: 500,
               textTransform: 'capitalize',
             }}

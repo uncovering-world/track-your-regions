@@ -36,6 +36,7 @@ import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../h
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience } from '../api/experiences';
 import { locationLabel } from '../utils/locationLabel';
+import { experienceColor } from '../utils/categoryColors';
 import { frameGeoJson } from '../utils/mapUtils';
 
 interface ExperienceLocation {
@@ -65,7 +66,6 @@ function tryHoverSpecificLocation(
       locationId: loc.id,
       locationName: locationLabel(loc),
       categoryName: exp.category_name ?? null,
-      category: exp.category ?? null,
       imageUrl: exp.image_url,
       imageCredit: exp.image_credit ?? null,
       longitude: loc.longitude,
@@ -172,7 +172,9 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
           locationId: m.locationId,
           name: m.locationName || m.experience.name,
           experienceName: m.experience.name,
-          category: m.experience.category || '',
+          // The pin's colour, decided once for every surface (`experienceColor`):
+          // the kind's, refined by the type where the types are told apart.
+          color: experienceColor(m.experience.category_id, m.experience.type),
           locationCount: m.locationCount,
           folded: m.folded === true,
         },
@@ -296,7 +298,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       locationId: marker.locationId,
       locationName: marker.locationName,
       categoryName: marker.experience.category_name ?? null,
-      category: marker.experience.category ?? null,
       imageUrl: marker.experience.image_url,
       imageCredit: marker.experience.image_credit ?? null,
       longitude: marker.longitude,

@@ -156,7 +156,9 @@ export function rowsFor(proposed: ReadonlyArray<Proposal>, context: ChangeContex
   for (const proposal of proposed) {
     const { field } = proposal;
     if (NOT_A_QUESTION.has(field)) continue;
-    const meaning = meaningOf(field);
+    // The proposed value tells a type's meaning which vocabulary to speak, and the
+    // stored one does where the proposal clears it (#814).
+    const meaning = meaningOf(field, proposal.new, proposal.old);
     const keys = saidWhole(meaning) ? null : changedKeys(proposal.old, proposal.new);
     if (keys) {
       for (const change of keys) {

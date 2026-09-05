@@ -59,6 +59,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 import { PictureWithCredit } from './PictureWithCredit';
 import { verdictOf } from './LifecycleChip';
 import { ACTION_LABELS, formatLogDetails } from './curationLog';
+import { typeOptionsFor } from '../../utils/experienceTypes';
 
 interface CurationDialogProps {
   /** The experience to curate — null means dialog is closed */
@@ -93,7 +94,8 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
   // Edit fields
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
-  const [editCategory, setEditCategory] = useState('');
+  const [editType, setEditType] = useState('');
+  const typeOptions = typeOptionsFor(experience?.category_id);
   const [editImageUrl, setEditImageUrl] = useState('');
   const [editWebsiteUrl, setEditWebsiteUrl] = useState('');
   const [editWikipediaUrl, setEditWikipediaUrl] = useState('');
@@ -117,7 +119,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
     if (experience) {
       setEditName(experience.name);
       setEditDescription(experience.short_description || '');
-      setEditCategory(experience.category || '');
+      setEditType(experience.type || '');
       setEditImageUrl(experience.image_url || '');
       setRejectReason('');
       setHistoryOpen(false);
@@ -223,7 +225,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
     const changes: Record<string, string> = {};
     if (editName !== experience.name) changes.name = editName;
     if (editDescription !== (experience.short_description || '')) changes.shortDescription = editDescription;
-    if (editCategory !== (experience.category || '')) changes.category = editCategory;
+    if (editType !== (experience.type || '')) changes.type = editType;
     if (editImageUrl !== (experience.image_url || '')) changes.imageUrl = editImageUrl;
     const currentWebsite = (detailQuery.data?.metadata?.website as string) || '';
     if (editWebsiteUrl !== currentWebsite) changes.websiteUrl = editWebsiteUrl;
@@ -257,7 +259,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
   const hasChanges =
     editName !== experience.name ||
     editDescription !== (experience.short_description || '') ||
-    editCategory !== (experience.category || '') ||
+    editType !== (experience.type || '') ||
     editImageUrl !== (experience.image_url || '') ||
     editWebsiteUrl !== currentWebsite ||
     editWikipediaUrl !== currentWikipedia;
@@ -311,20 +313,25 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
             multiline
             rows={2}
           />
-          <FormControl fullWidth size="small">
-            <InputLabel>Category</InputLabel>
-            <Select
-              value={editCategory}
-              label="Category"
-              onChange={(e) => setEditCategory(e.target.value)}
-            >
-              <MenuItem value="">None</MenuItem>
-              <MenuItem value="cultural">Cultural</MenuItem>
-              <MenuItem value="natural">Natural</MenuItem>
-              <MenuItem value="mixed">Mixed</MenuItem>
-              <MenuItem value="art">Art</MenuItem>
-            </Select>
-          </FormControl>
+          {/* The kind's own types and nothing else — cultural / natural / mixed for a
+              World Heritage site, monument / sculpture for public art — and no control
+              at all for a museum, which is a kind without types (ADR-0045, #814). The
+              list used to offer every vocabulary plus `art` to every object. */}
+          {typeOptions.length > 0 && (
+            <FormControl fullWidth size="small">
+              <InputLabel>Type</InputLabel>
+              <Select
+                value={editType}
+                label="Type"
+                onChange={(e) => setEditType(e.target.value)}
+              >
+                <MenuItem value="">None</MenuItem>
+                {typeOptions.map(option => (
+                  <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
           <Box>
             <TextField
               label="Image URL"
