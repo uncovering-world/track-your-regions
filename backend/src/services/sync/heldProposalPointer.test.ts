@@ -27,6 +27,11 @@ describe('pointHeldProposalAt', () => {
     expect(sql).toMatch(/SET pending_change_sync_log_id = \$2/);
     expect(sql).toMatch(/curation_state <> 'pending'/);
     expect(sql).toMatch(/requires_curation/);
+    // No lock of its own: the caller's transaction holds the place, taken in
+    // a statement of its own, because a lock folded in here would choose the
+    // rows under the pre-wait snapshot (`db/locks.ts`).
+    expect(sql).toContain('m.experience_id = $1');
+    expect(sql).not.toContain('FOR NO KEY UPDATE');
     expect(params).toEqual([501, 42]);
   });
 

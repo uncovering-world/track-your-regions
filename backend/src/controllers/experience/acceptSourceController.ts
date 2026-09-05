@@ -226,7 +226,7 @@ async function applyProposedFields(
     // are written in one transaction by `editExperience` and mean one thing —
     // "this photograph is mine, and this is who took it". Releasing only
     // `image_url` leaves `metadata.imageCredit` claimed and still naming the
-    // curator's photographer, and the per-key re-apply in `syncUtils` then puts
+    // curator's photographer, and the per-key re-apply in `experienceUpsert.ts` then puts
     // that name back over every later run's — so the card ends up showing the
     // source's photograph credited to somebody who did not take it, permanently,
     // which is the one thing this feature promises never to do.

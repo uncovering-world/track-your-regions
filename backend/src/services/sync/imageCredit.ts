@@ -422,7 +422,7 @@ export function creditToWrite(
   offered: string | null,
 ): { imageCredit?: ImageCredit | null } {
   // A picture the run may not write is, for the credit, no picture at all: the
-  // writer refuses the url (`withShowablePicture`, `syncUtils.ts`), and a
+  // writer refuses the url (`withShowablePicture`, `experienceUpsert.ts`), and a
   // photographer's name beside a frame that will hold nothing is the claim this
   // feature exists never to make. Decided here rather than at the writer because
   // this is the one place that can see the claim below — and a claimed picture

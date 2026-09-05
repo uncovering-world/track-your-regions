@@ -31,16 +31,25 @@ describe('retirePassAfterNewContent', () => {
     await retirePassAfterNewContent(runner, 501);
 
     const [sql, params] = calls[0];
+    // The pass is the membership's since #822 (ADR-0045 decision 4).
+    expect(sql).toContain('UPDATE experience_kind_memberships m');
     expect(sql).toContain("SET curation_state = 'auto'");
     // Scoped to `verified`, so the statement can only ever move a row one way.
-    // A `pending` row is not published and has nothing to decay; an `auto` row
-    // is already there.
-    expect(sql).toContain("e.curation_state = 'verified'");
-    // The gate is read through the experience, because these writers have an
-    // experience id and no category id. Under a gated source the new content was
-    // written `pending` — nothing a reader sees changed, so the pass still holds.
-    expect(sql).toContain('c.id = e.category_id AND c.requires_curation');
+    // A `pending` membership is not published and has nothing to decay; an
+    // `auto` one is already there.
+    expect(sql).toContain("m.curation_state = 'verified'");
+    // The gate is read through the membership's source, because these writers
+    // have an experience id and no category id. Under a gated source the new
+    // content was written `pending` — nothing a reader sees changed, so the
+    // pass still holds.
+    expect(sql).toContain('c.id = m.source_id AND c.requires_curation');
     expect(sql).toContain('NOT EXISTS');
+    // No lock of its own: the caller's transaction holds the place, taken in
+    // a statement of its own, because a lock folded in here would choose the
+    // rows under the pre-wait snapshot and skip the membership a publish had
+    // just passed (`db/locks.ts`).
+    expect(sql).toContain('m.experience_id = $1');
+    expect(sql).not.toContain('FOR NO KEY UPDATE');
     expect(params).toEqual([501]);
   });
 

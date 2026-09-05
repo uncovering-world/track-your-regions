@@ -322,8 +322,6 @@ async function upsertMuseumExperience(
     // (`SYNC_OWNED_METADATA_KEYS`, #571).
     artworkCount: museum.artworks.length,
     totalArtworkSitelinks: totalSitelinks,
-    // The reason this row exists, nameable: the most famous iconic work it holds.
-    admittedFor: museum.admittedFor ?? null,
     // The picture is served from Commons and taken by somebody, usually under a
     // licence that asks for them to be named. What goes here is what
     // this run fetched, or the row's own credit where the picture has not
@@ -352,6 +350,10 @@ async function upsertMuseumExperience(
     countryNames: details.countryLabel ? [details.countryLabel] : [],
     imageUrl,
     metadata,
+    // The reason this membership exists, nameable: the most famous iconic work
+    // the museum holds. On the membership rather than in metadata since #822 —
+    // it is what the kind says about the place, not the place.
+    admittedFor: museum.admittedFor ?? null,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
 
   // Undefined on a preview, which writes no point and so has none to report — as

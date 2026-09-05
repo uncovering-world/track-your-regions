@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   claimKeyFor, computeChangeSet, CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX,
+  SYNC_OWNED_METADATA_KEYS,
   type ExperienceSnapshot,
 } from './changeSet.js';
 
@@ -17,7 +18,7 @@ import {
  * by the statement rather than recomputed here.
  *
  * The rule behind the answer (gated **and** the row is not `pending`) is SQL and
- * is tested as SQL: `syncUtils.upsert.test.ts` pins the expression's text and
+ * is tested as SQL: `experienceUpsert.test.ts` pins the expression's text and
  * that the guards and the report use the same one, and the live scenarios in
  * `.superpowers/sdd/.../task-7-report.md` walk a pending row and a visible one
  * through a real gated run. What is testable here is what the diff does with the
@@ -439,7 +440,6 @@ describe('a metadata key the run computes about its own pass', () => {
     metadata: {
       wikidataQid: 'Q19675',
       website: 'https://www.louvre.fr/zh-hans',
-      admittedFor: { qid: 'Q12418', label: 'Mona Lisa' },
       artworkCount: 122,
       totalArtworkSitelinks,
       ...extra,
@@ -478,27 +478,22 @@ describe('a metadata key the run computes about its own pass', () => {
     // The curator is asked about the website and nothing else. With one entry
     // per key the counters cannot ride along in a payload at all -- they raise
     // no entry, so there is nothing for a publication to wipe them back to.
-    // `admittedFor` goes with them (#570): derived from them, seen by nobody.
     expect(result.heldFields.map(f => f.field)).toEqual(['metadata.website']);
     expect(result.heldFields[0].new).toBe('https://www.louvre.fr/en');
     const named = [...result.heldFields, ...result.changedFields, ...result.curatedConflicts]
       .map(f => f.field);
     expect(named).not.toContain('metadata.artworkCount');
     expect(named).not.toContain('metadata.totalArtworkSitelinks');
-    expect(named).not.toContain('metadata.admittedFor');
   });
 
-  it('asks nobody about the work that did the qualifying', () => {
-    // The admission rule re-runs every pass and files its own card if the museum
-    // stops qualifying; the name of the work that tipped it is not a decision.
-    const result = computeChangeSet(
-      museum(2363),
-      museum(2363, { admittedFor: { qid: 'Q45130', label: 'The Geographer' } }),
-      [], HELD,
-    );
-
-    expect(result.changeType).toBe('unchanged');
-    expect(result.heldFields).toEqual([]);
+  it('never meets the work that did the qualifying, which is the membership\'s', () => {
+    // `admittedFor` used to ride in metadata as a run-owned key (#570). Since
+    // #822 it is written on the place's membership (`admitted_for`) and enters
+    // neither the row's metadata nor this diff — so it is not in the run-owned
+    // list either, and a run that put it back into metadata would be proposing
+    // it to a curator, which is the question this list exists to keep from
+    // being asked.
+    expect(SYNC_OWNED_METADATA_KEYS).not.toContain('admittedFor');
   });
 
   it('applies the same rule to a landmark\'s language-edition count', () => {

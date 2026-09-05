@@ -132,17 +132,15 @@ describe('markRefused', () => {
   it('skips a row whose admission a curator pinned', async () => {
     await markRefused(2, [{ externalId: 'Q6373', reason: 'why' }], false);
 
-    // COALESCE, not a bare `?`: curated_fields is nullable, and NULL ? 'x' is
-    // NULL, which would skip every row nobody has curated — that is, all of them.
-    expect(lastSql()).toContain(
-      "NOT COALESCE(experiences.curated_fields ? 'admission', false)",
-    );
+    // The membership's pin, through the one spelling of it (db/membership.ts):
+    // the writers and the checks that read it cannot drift apart.
+    expect(lastSql()).toContain(`NOT ${admissionPinnedSql('m')}`);
   });
 
   it('never refuses a curator-created row', async () => {
     await markRefused(2, [{ externalId: 'Q6373', reason: 'why' }], false);
 
-    expect(lastSql()).toContain('experiences.is_manual = FALSE');
+    expect(lastSql()).toContain('e.is_manual = FALSE');
   });
 
   it('drops the must-see flag along with the admission', async () => {
@@ -157,7 +155,7 @@ describe('markRefused', () => {
     await markRefused(2, [{ externalId: 'Q6373', reason: 'why' }], false);
 
     // Its own pin, honoured separately from admission's.
-    expect(lastSql()).toContain("COALESCE(experiences.curated_fields ? 'is_iconic', false)");
+    expect(lastSql()).toContain(iconicPinnedSql('m'));
   });
 
   it('writes nothing in a dry run, but reports what it would have written', async () => {
@@ -187,16 +185,14 @@ describe('restoreAdmission', () => {
   it('only reaches rows that are actually refused', async () => {
     await restoreAdmission(2, ['Q19675'], false);
 
-    expect(lastSql()).toContain("experiences.admission = 'refused'");
-    expect(lastSql()).toContain('experiences.external_id = ANY($2::text[])');
+    expect(lastSql()).toContain("m.admission = 'refused'");
+    expect(lastSql()).toContain('e.external_id = ANY($2::text[])');
   });
 
   it('respects the curator pin, so an override is not undone by a run', async () => {
     await restoreAdmission(2, ['Q19675'], false);
 
-    expect(lastSql()).toContain(
-      "NOT COALESCE(experiences.curated_fields ? 'admission', false)",
-    );
+    expect(lastSql()).toContain(`NOT ${admissionPinnedSql('m')}`);
   });
 });
 
@@ -214,14 +210,14 @@ describe('markNotAdmitted', () => {
 
     // Scoped to `admitted`, so a row refused by name earlier in the same run
     // keeps its specific reason instead of this generic one.
-    expect(lastSql()).toContain("experiences.admission = 'admitted'");
-    expect(lastSql()).toContain('experiences.external_id <> ALL($2::text[])');
+    expect(lastSql()).toContain("m.admission = 'admitted'");
+    expect(lastSql()).toContain('e.external_id <> ALL($2::text[])');
   });
 
   it('never sweeps a curator-created row out of the category', async () => {
     await markNotAdmitted(2, ['Q19675'], 'reason', false);
 
-    expect(lastSql()).toContain('experiences.is_manual = FALSE');
+    expect(lastSql()).toContain('e.is_manual = FALSE');
   });
 
   it('records the generic reason it was given', async () => {
@@ -257,9 +253,9 @@ describe('markIconic', () => {
 
     const badged = await markIconic(2, ['Q19675', 'Q160236'], false);
 
-    expect(lastSql()).toContain('UPDATE experiences SET is_iconic = true');
-    expect(lastSql()).toContain('experiences.external_id = ANY($2::text[])');
-    expect(lastSql()).toContain('AND NOT experiences.is_iconic');
+    expect(lastSql()).toContain('UPDATE experience_kind_memberships m SET is_iconic = true');
+    expect(lastSql()).toContain('e.external_id = ANY($2::text[])');
+    expect(lastSql()).toContain('AND NOT m.is_iconic');
     expect(lastParams()).toEqual([2, ['Q19675', 'Q160236']]);
     expect(badged).toEqual([{ id: 6184, externalId: 'Q19675', name: 'Louvre Museum' }]);
   });
@@ -267,7 +263,7 @@ describe('markIconic', () => {
   it('leaves a flag a curator pinned alone, through the same guard as the writes that clear it', async () => {
     await markIconic(2, ['Q19675'], false);
 
-    expect(lastSql()).toContain(`AND NOT ${iconicPinnedSql('experiences')}`);
+    expect(lastSql()).toContain(`AND NOT ${iconicPinnedSql('m')}`);
   });
 
   it('asks admission as it stands after the restore step, and nothing subtler', async () => {
@@ -279,13 +275,13 @@ describe('markIconic', () => {
     // before that step writes no badge at all.
     await markIconic(2, ['Q19675'], false);
 
-    expect(lastSql()).toContain("AND experiences.admission = 'admitted'");
+    expect(lastSql()).toContain("AND m.admission = 'admitted'");
   });
 
   it('honours the pin restoreAdmission honours, through the one spelling of it', async () => {
     await restoreAdmission(2, ['Q55685908'], false);
 
-    expect(lastSql()).toContain(`NOT ${admissionPinnedSql('experiences')}`);
+    expect(lastSql()).toContain(`NOT ${admissionPinnedSql('m')}`);
   });
 });
 

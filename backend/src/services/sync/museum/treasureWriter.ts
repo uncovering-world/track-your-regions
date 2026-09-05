@@ -8,7 +8,9 @@
  * collecting, admitting and writing the venues.
  */
 
-import { pool } from '../../../db/index.js';
+import type { PoolClient } from 'pg';
+import { pool, rollbackQuietly } from '../../../db/index.js';
+import { OBJECT_LOCK } from '../../../db/locks.js';
 import { creditToWrite, type ImageCredit, type StoredCredit } from '../imageCredit.js';
 import { retirePassAfterNewContent } from '../curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from '../heldProposalPointer.js';
@@ -38,7 +40,7 @@ const MUSEUM_CATEGORY_ID = 2;
  * category's, bound as the same parameter the insert reads it from, so the two
  * cannot disagree. Evaluated inside `DO UPDATE` on the row the statement locked
  * and again in its RETURNING, so the record cannot disagree with the write
- * (`heldSql` in syncUtils.ts, and #519 for why the answer has to come back).
+ * (`heldSql` in experienceUpsert.ts, and #519 for why the answer has to come back).
  *
  * `treasures.` is not decoration: inside `ON CONFLICT DO UPDATE` both the table
  * and `EXCLUDED` are in scope, and `EXCLUDED.curation_state` is what the insert's
@@ -455,14 +457,23 @@ export async function upsertMuseumTreasures(
   // curator's pass no longer covers everything on show, and it is the same fact
   // whether one work arrived or twelve. Arrivals only, as with a point: a work
   // given its place back was on show when the pass was made.
-  if (added.length > 0) await retirePassAfterNewContent(pool, experienceId);
-
+  const retirePass = added.length > 0;
   // A held field is a proposal a curator has to be able to find, and the card
   // finds it through the museum's pointer (ADR-0037). Once for the museum, after
   // the works: the pointer names the run, not the work, and twelve held
   // attributions are one card.
-  if (changed.some(entry => entry.fields.some(field => field.held))) {
-    await pointHeldProposalAt(pool, experienceId, run.syncLogId);
+  const pointAtRun = changed.some(entry => entry.fields.some(field => field.held));
+  // Both under the museum's lock, taken first in a statement of its own
+  // (`db/locks.ts`): each chooses the membership rows it writes by their
+  // state, and a statement's snapshot predates the lock it waits for — a lock
+  // folded into the UPDATE itself waits for a publish in flight and then skips
+  // the very membership that publish passed. The rest of this writer stays on
+  // the pool, one statement per transaction.
+  if (retirePass || pointAtRun) {
+    await underMuseumLock(experienceId, async client => {
+      if (retirePass) await retirePassAfterNewContent(client, experienceId);
+      if (pointAtRun) await pointHeldProposalAt(client, experienceId, run.syncLogId);
+    });
   }
 
   // `changed` is expected to be empty most runs and is still computed. Re-asking
@@ -476,4 +487,31 @@ export async function upsertMuseumTreasures(
   // delta and the table from disagreeing: a held withdrawal is absent here
   // because the mark passed it over, and the link is still on show.
   return { added, withdrawn, returned, changed };
+}
+
+/**
+ * One transaction holding the museum's lock for the writes that choose
+ * membership rows by their state — the museum first, as every writer of an
+ * object's rows takes it (`OBJECT_LOCK`, `db/locks.ts`), in a statement of
+ * its own, so what follows sees what a publish that held the lock committed.
+ * The repo's pooled-transaction shape: a ROLLBACK that fails marks the client
+ * unusable, so it is destroyed rather than returned to the pool mid-transaction.
+ */
+async function underMuseumLock(
+  experienceId: number,
+  write: (client: PoolClient) => Promise<void>,
+): Promise<void> {
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);
+    await write(client);
+    await client.query('COMMIT');
+  } catch (error) {
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
+  }
 }

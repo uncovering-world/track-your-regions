@@ -26,7 +26,12 @@
  * - `upsertMuseumTreasures` links works to a venue and then retires that venue's
  *   curator pass, running each of those statements on the pool with no `BEGIN`.
  *   Each is its own transaction, so it holds nothing across them: it can wait
- *   for a lock, never be half of a cycle. The one transaction inside it —
+ *   for a lock, never be half of a cycle. The two of them that write the
+ *   venue's membership — the pass's decay and the held-proposal pointer — are
+ *   the exception, and run in one transaction that takes the venue first,
+ *   under the rule and for the reason the snapshot paragraph below gives: each
+ *   chooses its rows by the membership's state. The one transaction inside it
+ *   before that —
  *   `reconcileLinks` (ADR-0044), which restores and marks the venue's links in
  *   one `BEGIN` — is under the rule for exactly that reason, and takes the object
  *   first.
@@ -54,6 +59,30 @@
  * `experience_locations` needs while its own transaction holds the object. No
  * writer here changes a key column of `experiences`, so nothing gives up anything
  * it had.
+ *
+ * **And the snapshot: the lock in one statement, the read in the next.** In
+ * READ COMMITTED a statement's snapshot is taken when it starts, before it
+ * waits for a row lock, and once the lock is granted only the locked row is
+ * re-read at its latest version (EvalPlanQual); a row of another table the
+ * same statement joins or asks `EXISTS` of — a membership, a point — is still
+ * the snapshot's. Measured on 2026-09-05: a `SELECT … FOR NO KEY UPDATE OF e`
+ * that waited for a publish answered `false` to "has a membership of `e` been
+ * passed?" after that publish had committed; the next statement on the same
+ * connection answered `true`. So a writer that decides anything on a
+ * membership under the object's lock takes the lock in a statement of its own
+ * (`SELECT id FROM experiences WHERE id = $1 FOR NO KEY UPDATE`) and reads in
+ * the next, whose snapshot postdates whatever the lock holder committed: the
+ * object upsert's hold and `before` snapshot, and the curator's publish,
+ * decline and admission verdict. On `main` the same reads were of the locked
+ * row itself and were fresh; moving the state to `experience_kind_memberships`
+ * (#822) is what made the second statement necessary. Folding the lock into
+ * the writing statement's own sub-select is not the same thing: it waits, but
+ * it chooses its rows under the pre-wait snapshot, and a membership a publish
+ * moved into the `WHERE` during the wait is skipped outright — never having
+ * qualified, it is never re-checked. Measured the same day: a decay written
+ * that way updated 0 rows for a membership the publish had just passed; lock
+ * first, then the same UPDATE, updated 1. So the treasure writer's pointer and
+ * decay run in a transaction of their own that takes the museum first.
  *
  * In `db/` rather than beside the lifecycle fragments because the sync services
  * need it too, and a service importing a controller module would be the first

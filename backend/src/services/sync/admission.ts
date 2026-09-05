@@ -1,6 +1,9 @@
 /**
- * Admission — whether a category accepts a row, independent of whether the
- * source still lists it (ADR-0024).
+ * Admission — whether a kind accepts a place, independent of whether the
+ * source still lists it (ADR-0024). Written on the place's membership in the
+ * kind since #822 (ADR-0045 decision 4), and on the membership the run's own
+ * source brought: a run refuses, restores and badges what it brought, and
+ * nothing another source did.
  *
  * The two axes ADR-0020 defined are statements about the world: `former` says
  * the source stopped listing the object, `lost` says it no longer exists.
@@ -14,8 +17,8 @@
  * run did not look everywhere. A refusal is not an observation: it is our own
  * rule, applied to data we hold, naming the object before it says no, and
  * re-running it gives the same answer. A curator who disagrees pins
- * `admission` in `curated_fields`, and every write to `admission` here skips
- * the row.
+ * `admission` in the membership's `curated_fields`, and every write to
+ * `admission` here skips the row.
  *
  * Four operations, and the order they run in matters:
  *
@@ -26,11 +29,11 @@
  *      membership each run. Guarded, because "not in the admitted set" is the
  *      ambiguous kind of statement again: a broken SPARQL day must not blank a
  *      catalogue.
- *   4. `markIconic` — the must-see badge on the rows the run admits, for a
- *      source whose admission rule is the badge. The one write here that is
+ *   4. `markIconic` — the must-see badge on the memberships the run admits, for
+ *      a source whose admission rule is the badge. The one write here that is
  *      about the flag rather than about admission, and so honours the flag's
- *      own pin rather than admission's: a row a curator overrode is badged,
- *      since the curator admitted it and the rule would badge it.
+ *      own pin rather than admission's: a membership a curator overrode is
+ *      badged, since the curator admitted it and the rule would badge it.
  *
  * Steps 2 and 3 are order-independent: restore matches `admission = 'refused'
  * AND external_id = ANY(seen)` and the sweep matches `admission = 'admitted' AND
@@ -50,9 +53,20 @@
  * Palatine` (Q55685908) was placed by one run and refused by the next under a
  * different Wikidata item for the same ground; the refusal names the new id,
  * and matching by external id can never reach the stale row.
+ *
+ * Every statement joins the membership to its place: the run names rows by
+ * the source's own id, which is the place's `external_id` until #755 moves it
+ * onto the membership, and what it returns is the place — the id the
+ * changeset keys on and the name a curator reads.
  */
 
 import { pool } from '../../db/index.js';
+import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql } from '../../db/membership.js';
+
+// The pins are the membership's since #822 and are spelled in db/membership.ts,
+// where every reader of them can reach them; re-exported here so the writers
+// and their guards keep one import.
+export { admissionPinnedSql, iconicPinnedSql };
 
 /** An object the run named and a rule turned down. */
 export interface Refusal {
@@ -111,24 +125,27 @@ export function admissionSweepSkipReason(input: AdmissionSweepInput): string | n
   return null;
 }
 
+/** The membership the run's source brought, joined to its place. */
+const SOURCE_MEMBERSHIPS = `${MEMBERSHIPS} m JOIN experiences e ON e.id = m.experience_id`;
+
 /**
- * How many rows the category currently admits. Read before the run writes, so
+ * How many rows the source currently admits. Read before the run writes, so
  * it is the denominator the sweep guard compares against.
  */
 export async function countAdmitted(categoryId: number): Promise<number> {
   const result = await pool.query(
     `SELECT COUNT(*)::int AS count
-     FROM experiences
-     WHERE category_id = $1
-       AND admission = 'admitted'
-       AND is_manual = FALSE`,
+     FROM ${SOURCE_MEMBERSHIPS}
+     WHERE m.source_id = $1
+       AND m.admission = 'admitted'
+       AND e.is_manual = FALSE`,
     [categoryId]
   );
   return Number(result.rows[0]?.count ?? 0);
 }
 
 /**
- * Which rows the category currently admits, by the id the source knows them
+ * Which rows the source currently admits, by the id the source knows them
  * by. What a rule with hysteresis reads its stay line against: a row already
  * in is kept above a lower line than one entering, and only the table knows
  * who is in. A curator's own row is excluded for the reason `UNPROTECTED`
@@ -136,65 +153,45 @@ export async function countAdmitted(categoryId: number): Promise<number> {
  */
 export async function admittedExternalIds(categoryId: number): Promise<Set<string>> {
   const result = await pool.query(
-    `SELECT external_id
-     FROM experiences
-     WHERE category_id = $1
-       AND admission = 'admitted'
-       AND is_manual = FALSE`,
+    `SELECT e.external_id
+     FROM ${SOURCE_MEMBERSHIPS}
+     WHERE m.source_id = $1
+       AND m.admission = 'admitted'
+       AND e.is_manual = FALSE`,
     [categoryId]
   );
   return new Set(result.rows.map((row: { external_id: string }) => row.external_id));
 }
 
 /**
- * A curator's pin on the admission axis, qualified by `alias` — the answer a
- * confirmation or an override leaves behind, which every write here honours.
- * `COALESCE` for the reason `UNPROTECTED` spells out.
- */
-export function admissionPinnedSql(alias: string): string {
-  return `COALESCE(${alias}.curated_fields ? 'admission', false)`;
-}
-
-/**
- * Rows this mechanism may not touch, qualified by table name so the fragment
- * reads the same inside an `UPDATE … FROM`, where a bare column would be
- * ambiguous.
+ * Rows this mechanism may not touch, over the membership `m` and its place
+ * `e` — the aliases every statement here joins under.
  *
  * Two exclusions, for unrelated reasons:
  *
- * - **A curator's pin.** Written out rather than inlined because the naive form
- *   is wrong in a way that reads as correct: `curated_fields` is nullable, and
- *   `NULL ? 'admission'` is `NULL`, so `NOT (curated_fields ? 'admission')`
- *   silently skips every row nobody has ever curated — which is all of them.
+ * - **A curator's pin.** The answer a confirmation or an override leaves on
+ *   the membership, which every write here honours (`admissionPinnedSql`).
  * - **A curator-created row.** Its `curator-<id>-<ts>` key can never appear in
  *   a source's answer, so measuring it against one would refuse the curator's
  *   own work on every clean run.
  */
-const UNPROTECTED = `experiences.is_manual = FALSE
-      AND NOT ${admissionPinnedSql('experiences')}`;
+const UNPROTECTED = `e.is_manual = FALSE
+      AND NOT ${admissionPinnedSql('m')}`;
+
+const RETURNING = 'e.id, e.external_id, e.name';
 
 function rowsFrom(result: { rows: { id: number; external_id: string; name: string }[] }): AdmissionRow[] {
   return result.rows.map((row) => ({ id: row.id, externalId: row.external_id, name: row.name }));
 }
 
 /**
- * A curator's pin on the must-see flag, qualified by `alias`.
- *
- * `COALESCE` because `curated_fields` is nullable and `NULL ? 'x'` is NULL — the
- * shape every guard on that column has to take. Exported so that a read of the
- * flag can leave alone exactly the row the writers leave alone, rather than
- * spelling the guard a second time.
- */
-export const iconicPinnedSql = (alias: string): string =>
-  `COALESCE(${alias}.curated_fields ? 'is_iconic', false)`;
-
-/**
- * Clearing the must-see flag alongside a refusal.
+ * Clearing the must-see flag alongside a refusal, on the membership `m`.
  *
  * A museum carries `is_iconic` because it holds a work above the threshold, and
- * a category that has turned the row down is no longer making that claim. It is
- * invisible while the row stays hidden — and wrong the moment a curator puts it
- * back, which would restore a highlight for a work the row no longer holds.
+ * a kind that has turned the membership down is no longer making that claim.
+ * It is invisible while the membership stays hidden — and wrong the moment a
+ * curator puts it back, which would restore a highlight for a work the row no
+ * longer holds.
  *
  * The flag has its own curator pin, honoured separately from admission's: a
  * person who marked this must-see goes on saying so, whatever the rule decided.
@@ -208,15 +205,16 @@ export const iconicPinnedSql = (alias: string): string =>
  * the next one.
  */
 export const CLEAR_ICONIC = `is_iconic = CASE
-        WHEN ${iconicPinnedSql('experiences')} THEN experiences.is_iconic
+        WHEN ${iconicPinnedSql('m')} THEN m.is_iconic
         ELSE false END`;
 
 /**
- * Badge the rows this run admits — the fourth writer of the flag, kept beside
- * the three that take it away, and run after `restoreAdmission` on purpose.
+ * Badge the memberships this run admits — the fourth writer of the flag, kept
+ * beside the three that take it away, and run after `restoreAdmission` on
+ * purpose.
  *
  * Every museum works-first admits holds a work above the fame line, so the flag
- * is a property of belonging to the category rather than a field the source
+ * is a property of belonging to the kind rather than a field the source
  * proposes — which is why it is written here and not through the
  * curated_fields-aware upsert, and outside the changeset: nothing sets it by
  * hand yet, but the moment a curation surface does, a run writing `true` over
@@ -247,13 +245,15 @@ export async function markIconic(
   if (admittedExternalIds.length === 0 || dryRun) return [];
 
   const result = await pool.query(
-    `UPDATE experiences SET is_iconic = true
-      WHERE experiences.category_id = $1
-        AND experiences.external_id = ANY($2::text[])
-        AND experiences.admission = 'admitted'
-        AND NOT experiences.is_iconic
-        AND NOT ${iconicPinnedSql('experiences')}
-  RETURNING id, external_id, name`,
+    `UPDATE ${MEMBERSHIPS} m SET is_iconic = true, updated_at = NOW()
+       FROM experiences e
+      WHERE e.id = m.experience_id
+        AND m.source_id = $1
+        AND e.external_id = ANY($2::text[])
+        AND m.admission = 'admitted'
+        AND NOT m.is_iconic
+        AND NOT ${iconicPinnedSql('m')}
+  RETURNING ${RETURNING}`,
     [categoryId, admittedExternalIds],
   );
   return rowsFrom(result);
@@ -263,9 +263,9 @@ export async function markIconic(
  * Refuse the rows this run named and turned down, each with the rule's own
  * reason.
  *
- * The reason lands on the row rather than only in `experience_sync_changes`,
- * because a changeset entry is keyed by the external id the run named and the
- * curator reads it from the row.
+ * The reason lands on the membership rather than only in
+ * `experience_sync_changes`, because a changeset entry is keyed by the external
+ * id the run named and the curator reads it from the row.
  */
 export async function markRefused(
   categoryId: number,
@@ -277,23 +277,24 @@ export async function markRefused(
   const externalIds = refusals.map((r) => r.externalId);
   const reasons = refusals.map((r) => r.reason);
   const named = `(SELECT UNNEST($2::text[]) AS external_id, UNNEST($3::text[]) AS reason) v`;
-  const predicate = `experiences.category_id = $1
-      AND experiences.external_id = v.external_id
+  const predicate = `m.source_id = $1
+      AND e.external_id = v.external_id
       AND ${UNPROTECTED}`;
-  const returning = 'experiences.id, experiences.external_id, experiences.name';
 
   const result = dryRun
     ? await pool.query(
-        `SELECT ${returning} FROM experiences, ${named} WHERE ${predicate}`,
+        `SELECT ${RETURNING} FROM ${SOURCE_MEMBERSHIPS}, ${named} WHERE ${predicate}`,
         [categoryId, externalIds, reasons]
       )
     : await pool.query(
-        `UPDATE experiences
+        `UPDATE ${MEMBERSHIPS} m
             SET admission = 'refused', admission_reason = v.reason,
-                ${CLEAR_ICONIC}
-           FROM ${named}
-          WHERE ${predicate}
-      RETURNING ${returning}`,
+                ${CLEAR_ICONIC},
+                updated_at = NOW()
+           FROM experiences e, ${named}
+          WHERE e.id = m.experience_id
+            AND ${predicate}
+      RETURNING ${RETURNING}`,
         [categoryId, externalIds, reasons]
       );
 
@@ -318,20 +319,23 @@ export async function restoreAdmission(
 ): Promise<AdmissionRow[]> {
   if (admittedExternalIds.length === 0) return [];
 
-  const predicate = `experiences.category_id = $1
-      AND experiences.admission = 'refused'
+  const predicate = `m.source_id = $1
+      AND m.admission = 'refused'
       AND ${UNPROTECTED}
-      AND experiences.external_id = ANY($2::text[])`;
+      AND e.external_id = ANY($2::text[])`;
 
   const result = dryRun
     ? await pool.query(
-        `SELECT id, external_id, name FROM experiences WHERE ${predicate}`,
+        `SELECT ${RETURNING} FROM ${SOURCE_MEMBERSHIPS} WHERE ${predicate}`,
         [categoryId, admittedExternalIds]
       )
     : await pool.query(
-        `UPDATE experiences SET admission = 'admitted', admission_reason = NULL
-          WHERE ${predicate}
-      RETURNING id, external_id, name`,
+        `UPDATE ${MEMBERSHIPS} m
+            SET admission = 'admitted', admission_reason = NULL, updated_at = NOW()
+           FROM experiences e
+          WHERE e.id = m.experience_id
+            AND ${predicate}
+      RETURNING ${RETURNING}`,
         [categoryId, admittedExternalIds]
       );
 
@@ -339,11 +343,11 @@ export async function restoreAdmission(
 }
 
 /**
- * The sweep: refuse every row the category still admits that this run did not.
+ * The sweep: refuse every row the source still admits that this run did not.
  *
- * Scoped to rows currently `admitted`, so a row refused by name earlier in the
- * same run keeps the specific reason its rule gave rather than having it
- * overwritten by this generic one.
+ * Scoped to memberships currently `admitted`, so a row refused by name earlier
+ * in the same run keeps the specific reason its rule gave rather than having
+ * it overwritten by this generic one.
  *
  * Call only when `admissionSweepSkipReason` returns null, and only for a source
  * that recomputes its whole membership. An empty admitted set is refused here
@@ -358,22 +362,25 @@ export async function markNotAdmitted(
 ): Promise<AdmissionRow[]> {
   if (admittedExternalIds.length === 0) return [];
 
-  const predicate = `experiences.category_id = $1
-      AND experiences.admission = 'admitted'
+  const predicate = `m.source_id = $1
+      AND m.admission = 'admitted'
       AND ${UNPROTECTED}
-      AND experiences.external_id <> ALL($2::text[])`;
+      AND e.external_id <> ALL($2::text[])`;
 
   const result = dryRun
     ? await pool.query(
-        `SELECT id, external_id, name FROM experiences WHERE ${predicate}`,
+        `SELECT ${RETURNING} FROM ${SOURCE_MEMBERSHIPS} WHERE ${predicate}`,
         [categoryId, admittedExternalIds]
       )
     : await pool.query(
-        `UPDATE experiences
+        `UPDATE ${MEMBERSHIPS} m
             SET admission = 'refused', admission_reason = $3,
-                ${CLEAR_ICONIC}
-          WHERE ${predicate}
-      RETURNING id, external_id, name`,
+                ${CLEAR_ICONIC},
+                updated_at = NOW()
+           FROM experiences e
+          WHERE e.id = m.experience_id
+            AND ${predicate}
+      RETURNING ${RETURNING}`,
         [categoryId, admittedExternalIds, reason]
       );
 

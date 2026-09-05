@@ -67,7 +67,7 @@ const MARK = /missing_since = NOW\(\)/;
 /** The arm that writes a point the experience did not have. */
 const INSERT = /INSERT INTO experience_locations/;
 /** The statement that retires the venue's pass because it gained a point. */
-const DECAY = /UPDATE experiences e SET curation_state = 'auto'/;
+const DECAY = /UPDATE experience_kind_memberships m SET curation_state = 'auto'/;
 /** The statement that names, on each arrival, the point it replaces. */
 const PAIR = /SET withdrawal_deferred_for_location_id = m\.old_id/;
 /** The arm that takes a held point out of the list without withdrawing it. */
@@ -515,7 +515,7 @@ describe('a new point arrives stamped', () => {
     // transaction as the insert, because the two are one fact about the object.
     const decay = statements.find(s => DECAY.test(s));
     expect(decay).toBeDefined();
-    expect(decay).toMatch(/e\.curation_state = 'verified'/);
+    expect(decay).toMatch(/m\.curation_state = 'verified'/);
     expect(statements.indexOf(decay!)).toBeLessThan(statements.indexOf('COMMIT'));
   });
 
@@ -1453,7 +1453,7 @@ describe('a visible point under a gated source', () => {
     expect(kept).toMatch(/name = CASE WHEN el\.curated_fields \? 'name'\s+OR \(\(SELECT c\.requires_curation[\s\S]*el\.curation_state <> 'pending'\)\s+THEN el\.name ELSE i\.name END/);
     // The guard's own expression answers for the report, on the row the
     // statement locked — the arrangement that keeps the write and the record
-    // from disagreeing about one run (syncUtils.ts, #519).
+    // from disagreeing about one run (experienceUpsert.ts, #519).
     expect(kept).toMatch(/RETURNING[\s\S]*AS was_held/);
     // The coordinate is not behind the hold: a kept row is within ten metres of
     // the source's point, the same place written more precisely (ADR-0027).

@@ -49,7 +49,7 @@ function plain(field: string, before: unknown, after: unknown,
  * `metadata.website` to `metadata`, there is nothing to translate here.
  *
  * `heldFields` is the writer's own answer about the row, not a rule re-applied here
- * — the same arrangement `computeChangeSet` has with `syncUtils`: the hold is
+ * — the same arrangement `computeChangeSet` has with `experienceUpsert.ts`: the hold is
  * decided in SQL against the stored row as the write locked it, and the diff takes
  * the answer as given. The gate holds a contents *row* by writing it invisible
  * (ADR-0025 decision 5) and, since ADR-0037, holds a *field* of a row readers can
