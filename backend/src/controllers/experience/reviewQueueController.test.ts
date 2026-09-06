@@ -204,6 +204,35 @@ describe('getReviewQueue', () => {
     expect(answeredSql).toContain("'curatedFields', curated_fields");
   });
 
+  it('carries a work\'s claims and its other museums on every row that lists one', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // The same rule one level over (#731): a work is corrected from the row the
+    // curator is looking at, so the row carries what is already claimed on it
+    // and how far the correction reaches. The held part's key is its own, not
+    // the point's — both parts are built by one `jsonb_build_object`, and a
+    // shared name would have a work's claims answer under a place's.
+    // The pair, contiguously, and not `'curatedFields', curated_fields` alone:
+    // the location half of the same statement carries that fragment too, so on
+    // its own this assertion would pass with the work's claims deleted.
+    const [contentsSql] = callMatching("'contents' AS kind");
+    expect(contentsSql).toMatch(
+      /'curatedFields', curated_fields,\s*'venueCount', venue_count/,
+    );
+    const [heldSql] = callMatching("'held' AS kind");
+    expect(heldSql).toContain("'workCuratedFields', work.curated_fields");
+    expect(heldSql).toContain("'venueCount', work.venue_count");
+    // And the row's name *now*, beside the record's: the record is the name as
+    // the run saw it and is never rewritten, so a part corrected since would be
+    // headed and seeded with the name it no longer has. One key for both kinds,
+    // since exactly one lateral is non-null.
+    expect(heldSql).toContain("'storedName', COALESCE(loc.name, work.name)");
+    // And ordered by it: a work carries no ordinal, so the name is what orders
+    // the works on a card, and a retitled one must not sit where its old name
+    // sorted while its heading shows the new one.
+    expect(heldSql).toContain("COALESCE(part->>'storedName', part->'item'->>'name')");
+  });
+
   it('drops a conflict once the field is no longer claimed', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
