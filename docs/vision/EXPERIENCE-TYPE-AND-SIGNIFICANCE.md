@@ -86,6 +86,8 @@ The threshold for Iconic is deliberately high — only experiences that are unam
 
 More granularity (national, regional tiers) can be added later if the data supports meaningful distinctions. For now, the binary split avoids the problem of fuzzy boundaries between "national" and "regional" significance.
 
+The badge is one thing; **how a kind gets filled is another, and that has two tiers of its own** ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md)). The *world tier* comes from a global source that ranks the whole world on one signal — the UNESCO list, a work's Wikipedia languages — and is what carries the Iconic badge. The *regional tier* comes from sources native to a region — a ministry's register of museums, a city's own list, a curator who has been there — and completes the kind with what a region holds that a traveller standing there would visit: the iconic art museums *and some other art museums worth your time*. A reader sees both in one list, the world tier's rows badged; a region no regional source covers yet says so rather than showing an empty list as a full one. Which sources qualify for each tier, how they are found and judged, and where what was found is kept are `docs/tech/filling-a-kind.md`.
+
 ### When Iconic is clear
 
 - **Art museums**: Louvre, Met, Hermitage, British Museum — obvious global icons

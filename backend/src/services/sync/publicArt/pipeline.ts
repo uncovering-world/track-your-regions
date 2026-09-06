@@ -49,7 +49,8 @@ import type { WikidataLandmark } from '../types.js';
  * a row enters at 22 Wikipedia-language sitelinks and stays until it falls
  * below 18, so the list does not flap as Wikipedia grows. Belonging to the
  * tier is the Iconic badge (ADR-0045 decision 5); the regional tier, which
- * carries none, is filled from regional sources by rules #799 writes.
+ * carries none, is filled from regional sources by the rules of
+ * docs/tech/filling-a-kind.md (ADR-0048).
  */
 export const ENTER_SITELINKS = 22;
 export const STAY_SITELINKS = 18;

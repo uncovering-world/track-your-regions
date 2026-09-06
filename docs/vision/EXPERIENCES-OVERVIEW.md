@@ -22,7 +22,7 @@ Examples of kinds: World Heritage sites (visited), Art museums (visited), Archae
 
 Some kinds are **location-bound** (museums — you go there), some are **not** (books — read anywhere), some are **mixed** (food — authentic in the region, but you can cook at home). Some are **time-dependent** (festivals, seasonal wildlife). Seasonality is an availability property of the experience, not a separate kind of experience.
 
-A **source** is a list we read to fill a kind — the UNESCO API, a Wikidata query, curator input — and is never what a visitor sees. A kind may be filled from several sources (art museums: the works-first selection and, later, a regional list that asks nothing about famous works) and one source may feed several kinds. A kind appears to readers only once it has a sync of its own and a rule that says what complete means for it.
+A **source** is a list we read to fill a kind — the UNESCO API, a Wikidata query, curator input — and is never what a visitor sees. A kind may be filled from several sources (art museums: the works-first selection and, later, a regional list that asks nothing about famous works) and one source may feed several kinds. A kind appears to readers only once it has a sync of its own and a rule that says what complete means for it — one rule per tier, because a kind is filled in two: a **world tier** from a global source that ranks the world on one signal (badged Iconic), then a **regional tier** from sources native to a region — a register, a city list, a curator — that complete it with what the region holds worth a visit ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md); the rules are `docs/tech/filling-a-kind.md`).
 
 ### Locations
 

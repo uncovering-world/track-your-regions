@@ -155,6 +155,7 @@ docs/
 ├── decisions/        ← Architecture Decision Records (immutable)
 ├── inbox/            ← unsorted docs awaiting categorization
 ├── security/         ← OWASP ASVS security profile, checklist, audit reports
+├── sources/          ← the register of sources looked at for filling a kind (a source is a record before it is code, ADR-0048)
 ├── tech/             ← technical details of implemented features
 │   └── planning/     ← plans for features to build next
 └── vision/           ← non-technical vision, user stories, concepts
@@ -212,6 +213,7 @@ Before working in a specific area, read the relevant docs. Start from the area g
 | **Experience system** | `docs/tech/experiences.md` | Sources, sync, region assignment, API |
 | **Anything that changes the database schema** (a table, a column, a backfill) | `docs/tech/development-guide.md` § Database Migrations | `db/migrations/README.md` — the naming and transaction rules, and how a database gets a ledger |
 | **Anything that writes catalogue rows** | `docs/tech/data-assertions.md` | Admin panel → Catalogue Checks: the invariants over live rows, and the debt it carries |
+| **Anything that adopts a source for a kind** (a new sync, a regional tier, a curator's list) | `docs/tech/filling-a-kind.md` | The two tiers, the scorecard and the terms checks (ADR-0048); `docs/sources/README.md` — the register a source is a record in before it is code |
 | **Anything that changes what the browser loads or draws** (a dependency, a route, a layout, a hot endpoint) | `docs/tech/development-guide.md` § Performance | `docs/tech/performance.md` — the lane, the baseline, the budgets and the rule for moving them |
 | **Security** | `docs/security/SECURITY.md` | `docs/security/asvs-checklist.yaml` — per-requirement status |
 | **Auth flows** | `docs/tech/authentication.md` | JWT, OAuth, tokens, email verification |
