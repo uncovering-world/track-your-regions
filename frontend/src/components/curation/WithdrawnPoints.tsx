@@ -51,6 +51,7 @@ import PlaceIcon from '@mui/icons-material/Place';
 import { useMutation } from '@tanstack/react-query';
 import { setLocationState, type ReviewQueueItem } from '../../api/experiences';
 import { formatDateTime } from '../../utils/dateFormat';
+import { claimLabel } from '../../utils/placeClaims';
 import { placementNotice } from '../../utils/placementNotice';
 import { ItemHeader, messageFor } from './queueCard';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
@@ -201,6 +202,14 @@ function PointVerdict({ item, point, onDone }: {
         Last listed before {formatDateTime(point.missingSince)}.
         {' '}{withdrawalStory(point, item.offered_locations ?? 0)}
       </Typography>
+      {/* A correction already standing on the row, said before the map is opened:
+          "the source now offers this part 340 m away" reads differently over a pin a
+          curator put there than over the source's own. */}
+      {claimLabel(point.curatedFields) && (
+        <Typography variant="caption" color="text.secondary" display="block">
+          {claimLabel(point.curatedFields)} — the source no longer overwrites it.
+        </Typography>
+      )}
 
       {point.visited && (
         <Alert severity="info" sx={{ mt: 1, py: 0 }}>
@@ -449,6 +458,11 @@ function AnsweredVerdict({ item, point, onDone }: {
       <Typography variant="body2" color="text.secondary">
         {answeredLine(point)}
       </Typography>
+      {claimLabel(point.curatedFields) && (
+        <Typography variant="caption" color="text.secondary" display="block">
+          {claimLabel(point.curatedFields)} — the source no longer overwrites it.
+        </Typography>
+      )}
 
       {point.visited && (
         <Alert severity="info" sx={{ mt: 1, py: 0 }}>

@@ -135,6 +135,19 @@ describe('the points a contents card lists', () => {
     expect(onDone).toHaveBeenCalledWith('fixed 6001 of Champagne Hillsides, Houses and Cellars');
   });
 
+  it('says on the row when a curator has already corrected the point', () => {
+    renderCard(points(
+      {
+        id: 6001, name: 'Coteaux de la Marne', externalRef: '1465-003',
+        latitude: 49.0442, longitude: 3.955, curatedFields: ['location'],
+      },
+    ));
+
+    // Without the word, a pin a curator moved reads as the source's — on the very
+    // screen where the next curator decides about it.
+    expect(screen.getByText('— 49.0442, 3.9550 · pin corrected')).toBeInTheDocument();
+  });
+
   it('lists a point without a coordinate as text, since there is nothing to open', () => {
     renderCard(points(
       { id: 6002, name: 'Unplaced component', externalRef: '1465-009', latitude: null, longitude: null },

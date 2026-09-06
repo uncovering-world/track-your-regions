@@ -108,6 +108,18 @@ export interface ExperienceLocation {
   longitude: number;
   latitude: number;
   created_at: string;
+  /**
+   * Which of its fields a curator has claimed — `name`, `location` — so a row can
+   * say it is corrected (migration 027). Optional because an older server sends
+   * the row without it.
+   */
+  curated_fields?: string[];
+  /**
+   * Whether a reader sees the place yet — `pending` means not until it is
+   * published. Sent by the per-object read, which serves a curator the unread
+   * rows; absent on an older server.
+   */
+  curation_state?: string;
   in_region?: boolean; // Whether this location is in the queried region
   region_path?: string | null; // Full region path (e.g. "Europe > France > Paris") for out-of-region display
 }
@@ -477,6 +489,8 @@ export interface HeldPart {
   item: { name: string | null; ref: string | null };
   fields: Array<{ field: string; old: unknown; new: unknown; held?: boolean }>;
   locationId?: number | null;
+  /** The fields a curator has claimed on the stored place, where the server sends them. */
+  curatedFields?: string[] | null;
   latitude?: number | null;
   longitude?: number | null;
   ordinal?: number | null;
@@ -666,6 +680,8 @@ export interface ReviewQueueItem {
     externalRef: string | null;
     latitude: number | null;
     longitude: number | null;
+    /** The fields a curator has claimed on the row, where the server sends them. */
+    curatedFields?: string[];
   }>;
   /**
    * The unread works, most famous first. `contents` items only, capped like the
@@ -750,6 +766,8 @@ export interface ReviewQueueItem {
      * value, and two coordinates rounded to four decimals showed the same numbers twice.
      */
     replacedMetres: number | null;
+    /** The fields a curator has claimed on the row, where the server sends them. */
+    curatedFields?: string[];
   }> | null;
   /**
    * The points this object lost that a curator has *answered*, and which no reader can
@@ -796,6 +814,8 @@ export interface ReviewQueueItem {
     decidedBy: string | null;
     /** Whether anyone had been there. The visit survives either answer (ADR-0022). */
     visited: boolean;
+    /** The fields a curator has claimed on the row, where the server sends them. */
+    curatedFields?: string[];
   }> | null;
   /**
    * How many answered points the object holds in all. `withdrawn-answered` items only.
