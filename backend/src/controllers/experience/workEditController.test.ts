@@ -30,12 +30,31 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
+// Commons is somebody else's server. Mocked so the tests can say *when* it is
+// asked as well as what is done with the answer — the timing is the rule here,
+// not an implementation detail.
+vi.mock('../../services/sync/imageCredit.js', () => ({
+  creditForOneImage: vi.fn(async () => null),
+}));
+
 import { pool } from '../../db/index.js';
+import { creditForOneImage } from '../../services/sync/imageCredit.js';
 import { editWork } from './workEditController.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
+const mockedCredit = creditForOneImage as unknown as ReturnType<typeof vi.fn>;
+
+/** A Commons file, in the one spelling every writer of this column stores. */
+const COMMONS_FILE =
+  'http://commons.wikimedia.org/wiki/Special:FilePath/Borghese%20Gladiator.jpg';
+const CREDIT = {
+  author: 'Agasias of Ephesus',
+  license: 'CC BY 2.0',
+  licenseUrl: 'https://creativecommons.org/licenses/by/2.0',
+  detailsUrl: 'https://commons.wikimedia.org/wiki/File:Borghese_Gladiator.jpg',
+};
 
 function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
@@ -96,6 +115,8 @@ describe('editWork', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedConnect.mockReset();
+    mockedCredit.mockReset();
+    mockedCredit.mockResolvedValue(null);
   });
 
   it('answers 404 for a work that does not hang in this museum', async () => {
@@ -235,6 +256,92 @@ describe('editWork', () => {
     // A key present and null would make this edit answer for the title too.
     expect(Object.keys(details)).not.toContain('name');
     expect(Object.keys(details)).not.toContain('year');
+  });
+
+  it('writes a new picture and the credit for it in the one statement', async () => {
+    foundAndPermitted();
+    mockedCredit.mockResolvedValue(CREDIT);
+    const { client, queries } = makeClient();
+    mockedConnect.mockResolvedValueOnce(client);
+    const res = makeRes();
+
+    await editWork(request({ imageUrl: COMMONS_FILE }) as never, res as never);
+
+    const write = only(queries, 'UPDATE treasures');
+    expect(write.params[7]).toBe(true);
+    expect(write.params[8]).toBe(COMMONS_FILE);
+    // Both in the same UPDATE, so no moment exists in which the row holds one
+    // photograph and another photographer's name.
+    expect(write.sql).toContain('image_url =');
+    expect(write.sql).toContain('metadata =');
+    expect(JSON.parse(String(write.params[9]))).toEqual({ imageCredit: CREDIT });
+    // One claim, not two: `treasureWriter` keeps the row's own metadata whenever
+    // the picture is claimed, so a credit key would be one nothing reads.
+    expect(JSON.parse(String(write.params[6]))).toEqual(['image_url']);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ claimed: ['image_url'], imageCredit: CREDIT }),
+    );
+  });
+
+  it('asks Commons before it opens the transaction', async () => {
+    foundAndPermitted();
+    const { client } = makeClient();
+    mockedConnect.mockResolvedValueOnce(client);
+
+    await editWork(request({ imageUrl: COMMONS_FILE }) as never, makeRes() as never);
+
+    // A lock held across a request to somebody else's server is a lock held for
+    // as long as they feel like taking. `connect` is what opens the transaction,
+    // and the credit has to be in hand before it.
+    expect(mockedCredit).toHaveBeenCalledWith(COMMONS_FILE, expect.any(String));
+    expect(mockedCredit.mock.invocationCallOrder[0])
+      .toBeLessThan(mockedConnect.mock.invocationCallOrder[0]);
+  });
+
+  it('drops the credit with the picture a curator removed', async () => {
+    foundAndPermitted();
+    const { client, queries } = makeClient({ image_url: COMMONS_FILE });
+    mockedConnect.mockResolvedValueOnce(client);
+
+    // '' is how a form says "no picture" — and a stored credit under no
+    // photograph names somebody for something nobody can see.
+    await editWork(request({ imageUrl: '' }) as never, makeRes() as never);
+
+    const write = only(queries, 'UPDATE treasures');
+    expect(write.params[7]).toBe(true);
+    expect(write.params[8]).toBeNull();
+    expect(JSON.parse(String(write.params[9]))).toEqual({ imageCredit: null });
+    expect(mockedCredit).toHaveBeenCalledWith(null, expect.any(String));
+  });
+
+  it('leaves the picture and its credit alone when the request does not name one', async () => {
+    foundAndPermitted();
+    const { client, queries } = makeClient({ image_url: COMMONS_FILE });
+    mockedConnect.mockResolvedValueOnce(client);
+
+    await editWork(request({ year: -100 }) as never, makeRes() as never);
+
+    const write = only(queries, 'UPDATE treasures');
+    expect(write.params[7]).toBe(false);
+    // Not asked at all: an edit that does not touch the picture must not spend a
+    // curator's Save on a request to Commons.
+    expect(mockedCredit).not.toHaveBeenCalled();
+    expect(JSON.parse(String(write.params[6]))).toEqual(['year']);
+  });
+
+  it('records the picture under its column name, and the credit not at all', async () => {
+    foundAndPermitted();
+    mockedCredit.mockResolvedValue(CREDIT);
+    const { client, queries } = makeClient({ image_url: null });
+    mockedConnect.mockResolvedValueOnce(client);
+
+    await editWork(request({ imageUrl: COMMONS_FILE }) as never, makeRes() as never);
+
+    const details = JSON.parse(String(only(queries, 'experience_curation_log').params[3]));
+    expect(details).toEqual({
+      treasureId: TREASURE_ID,
+      image_url: { old: null, new: COMMONS_FILE },
+    });
   });
 
   it('rolls back and answers 404 when the work vanished under the lock', async () => {

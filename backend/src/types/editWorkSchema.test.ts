@@ -57,4 +57,36 @@ describe('editWorkBodySchema', () => {
     expect(parse({ year: null }).success).toBe(true);
     expect(parse({ year: 1503 }).success).toBe(true);
   });
+
+  it('takes every year the catalogue already holds', () => {
+    // The floor is a bound the stored rows had to clear, not a guess about art
+    // history: the museum run had written nine works older than the previous
+    // −4000, and refusing a curator the value the screen is showing them is the
+    // screen broken on nine rows.
+    expect(parse({ year: -38000 }).success).toBe(true);   // Lion man, Museum Ulm
+    expect(parse({ year: -9500 }).success).toBe(true);    // Shigir Idol
+    // Still a typo guard: a year nothing a museum hangs could carry.
+    expect(parse({ year: -400000 }).success).toBe(false);
+    expect(parse({ year: 2300 }).success).toBe(false);
+  });
+
+  it('takes a picture from the hosts a picture may come from, and nowhere else', () => {
+    const commons = 'https://commons.wikimedia.org/wiki/Special:FilePath/Visitation.jpg';
+    expect(parse({ imageUrl: commons }).success).toBe(true);
+    expect(parse({ imageUrl: '/images/works/7.jpg' }).success).toBe(true);
+    // The licence rule before the technical one (ADR-0043): a picture the
+    // catalogue may not show must not reach the column by way of a curator.
+    expect(parse({ imageUrl: 'https://example.com/painting.jpg' }).success).toBe(false);
+    expect(parse({ imageUrl: 'javascript:alert(1)' }).success).toBe(false);
+  });
+
+  it('reads an empty picture as one being taken off, not as nothing to do', () => {
+    const out = parse({ imageUrl: '' });
+    expect(out.success).toBe(true);
+    // Present and empty: the controller turns this into NULL and drops the
+    // credit with it. Absent is what "leave the picture alone" looks like, and
+    // a body that is only that changes nothing and is refused.
+    expect(out.success && out.data.imageUrl).toBe('');
+    expect(parse({}).success).toBe(false);
+  });
 });

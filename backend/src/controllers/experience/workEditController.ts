@@ -1,5 +1,6 @@
 /**
- * A curator's correction to one work: what it is called, who made it, when.
+ * A curator's correction to one work: what it is called, who made it, when, and
+ * which photograph it is shown by.
  *
  * The third answer for a work, and it arrives with the makers becoming a list
  * (#720). Storing every creator the source names removes the churn that was
@@ -23,20 +24,28 @@ import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { offeredLinkSql } from './experienceLifecycle.js';
+import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
+import { WIKIDATA_USER_AGENT } from '../../services/sync/wikidataUtils.js';
 
 /**
- * What a curator may claim on a work — the `treasures.curated_fields`
- * vocabulary, minus the picture.
+ * What a curator may claim on a work — the whole `treasures.curated_fields`
+ * vocabulary.
  *
- * `image_url` is claimable and is deliberately not editable here. A hosted
- * picture carries a credit, and the credit beside a work is `metadata.imageCredit`
- * — fetched from Commons for the file the *source* offered. Letting this endpoint
- * write a URL without also answering for whose photograph it is would print one
- * photographer's name under another's work, which is the one thing that feature
- * promises never to do. A picture correction needs the credit fetch beside it and
- * is its own change.
+ * The picture is one of them, and it is written here only because the credit is
+ * written beside it — ADR-0049, which narrows ADR-0040 decision 6. That one
+ * withheld the picture for this very reason, before the answering was built: a
+ * hosted picture carries a credit (ADR-0043), the credit beside a work is
+ * `metadata.imageCredit`, and a URL replaced without it would print one
+ * photographer's name under another's photograph, which is the one thing that
+ * feature promises never to do. So the two are resolved and written together
+ * below, the way `editExperience` has always done it for an object.
+ *
+ * There is no separate claim on the credit, as there is on an experience. On a
+ * work `image_url` protects both: `treasureWriter`'s upsert keeps the row's own
+ * `metadata` whenever `curated_fields ? 'image_url'`, so a second key would be
+ * one nothing reads and one more thing for `accept-source` to have to release.
  */
-type Claim = 'name' | 'artists' | 'year';
+type Claim = 'name' | 'artists' | 'year' | 'image_url';
 
 /** The claims this edit adds, kept in the order the column already holds. */
 function withClaims(stored: string[], added: Claim[]): string[] {
@@ -50,6 +59,7 @@ interface StoredWork {
   name: string;
   artists: string[];
   year: number | null;
+  image_url: string | null;
   curated_fields: string[];
 }
 
@@ -58,8 +68,13 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
   const treasureId = parseInt(String(req.params.treasureId));
   const userId = req.user!.id;
   const userRole = req.user!.role;
-  const { name, artists, year } = req.body as
-    { name?: string; artists?: string[]; year?: number | null };
+  const { name, artists, year, imageUrl } = req.body as
+    { name?: string; artists?: string[]; year?: number | null; imageUrl?: string };
+  // `''` is how a form says "no picture" — the same reading `editExperience`
+  // gives it (#696). `undefined` still means the edit does not touch the
+  // picture at all, and the two must not collapse: one drops a photograph and
+  // its credit, the other leaves both alone.
+  const picture = imageUrl === undefined ? undefined : (imageUrl || null);
 
   // **The work is judged through the experience the curator came from.**
   //
@@ -69,7 +84,7 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
   // curating, the link is what proves the work is there, and the scope is that
   // museum's. The reach that follows is real and is ADR-0025's, not this
   // endpoint's: a work is passed once, globally, so a correction made from one
-  // museum is what every other museum holding it shows too. Publishing a held
+  // museum is the row every other museum holding it carries too. Publishing a held
   // field already works this way.
   //
   // A link the source has stopped placing here proves nothing (ADR-0044): the
@@ -103,6 +118,18 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
   if (name !== undefined) claims.push('name');
   if (artists !== undefined) claims.push('artists');
   if (year !== undefined) claims.push('year');
+  if (picture !== undefined) claims.push('image_url');
+
+  // Whose photograph the new one is, asked before the transaction opens: it is
+  // a request to somebody else's server, and a lock held across one is a lock
+  // held for as long as Commons feels like taking. `null` for anything that is
+  // not a Commons file, that answers nothing inside five seconds, or for a
+  // picture being removed — and a `null` written is the point rather than a
+  // failure to write: a credit belongs to one photograph, so the row must not
+  // go on naming whoever took the one this edit replaced.
+  const credit: ImageCredit | null = picture === undefined
+    ? null
+    : await creditForOneImage(picture, WIKIDATA_USER_AGENT);
 
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -122,7 +149,7 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
     // takes keys back off a claim set, and one landing between an unlocked read
     // and this write would be undone by the rewrite below.
     const locked = await client.query(
-      'SELECT name, artists, year, curated_fields FROM treasures WHERE id = $1 FOR UPDATE',
+      'SELECT name, artists, year, image_url, curated_fields FROM treasures WHERE id = $1 FOR UPDATE',
       [treasureId],
     );
     const before = locked.rows[0] as StoredWork | undefined;
@@ -141,6 +168,15 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
               -- which of the two the request was.
               artists = CASE WHEN $3::boolean THEN $4::varchar(500)[] ELSE artists END,
               year = CASE WHEN $5::boolean THEN $6::integer ELSE year END,
+              image_url = CASE WHEN $8::boolean THEN $9::varchar(1000) ELSE image_url END,
+              -- The credit moves in the same statement as the photograph it
+              -- belongs to, so no moment exists in which the row holds one
+              -- picture and another photographer's name. Merged rather than
+              -- assigned: the metadata column is the run's too, and this edit
+              -- answers for one key of it.
+              metadata = CASE WHEN $8::boolean
+                              THEN COALESCE(metadata, '{}'::jsonb) || $10::jsonb
+                              ELSE metadata END,
               curated_fields = $7::jsonb,
               -- Stamped by hand, as every writer of this table does: there is no
               -- trigger, and a row whose value changed without its timestamp
@@ -150,7 +186,9 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
       [treasureId, name ?? null,
         artists !== undefined, artists ?? [],
         year !== undefined, year ?? null,
-        JSON.stringify(withClaims(before.curated_fields ?? [], claims))],
+        JSON.stringify(withClaims(before.curated_fields ?? [], claims)),
+        picture !== undefined, picture ?? null,
+        JSON.stringify({ imageCredit: credit })],
     );
 
     await client.query(
@@ -167,6 +205,12 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
           ? {}
           : { artists: { old: before.artists ?? [], new: artists } }),
         ...(year === undefined ? {} : { year: { old: before.year, new: year } }),
+        // Under the column's name, as its three neighbours are: the trail is
+        // read by asking whether it names a column. The credit is not a second
+        // entry — it has no claim of its own here and moved as part of this one.
+        ...(picture === undefined
+          ? {}
+          : { image_url: { old: before.image_url, new: picture } }),
       })],
     );
     await client.query('COMMIT');
@@ -178,6 +222,15 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
   }
 
   // What a later run will no longer touch, so a caller can see what the edit
-  // took ownership of rather than having to read it back.
-  res.json({ success: true, treasureId, claimed: claims });
+  // took ownership of rather than having to read it back — and, where the
+  // picture changed, who was named under it. That one is answered rather than
+  // promised: a Commons file whose credit request timed out is stored with a
+  // `null`, and a screen that assumed a name would show the picture as
+  // credited to nobody without saying that is what happened.
+  res.json({
+    success: true,
+    treasureId,
+    claimed: claims,
+    ...(picture === undefined ? {} : { imageCredit: credit }),
+  });
 }
