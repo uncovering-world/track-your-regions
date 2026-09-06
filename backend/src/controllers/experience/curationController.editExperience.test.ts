@@ -443,3 +443,49 @@ describe('editExperience and an emptied field', () => {
     expect(stored('image_url')).toBeNull();
   });
 });
+
+/**
+ * The column the type rename removed (#824).
+ *
+ * Migration 044 renamed `experiences.category` to `type` (#814), and the
+ * unlocked read that opens the edit kept the old name while the locked
+ * re-read and the UPDATE were renamed with it. Postgres answered
+ * `column "category" does not exist` to every save from the curation dialog,
+ * and this lane never saw it: the pool is a mock, and a mock takes any column
+ * name. What can be pinned here is the statement text — every statement the
+ * edit sends names the column the schema has.
+ */
+describe('editExperience and the column the type rename removed', () => {
+  beforeEach(() => {
+    mockPoolQuery.mockReset();
+    mockClientQuery.mockReset();
+    mockPoolConnect.mockClear();
+  });
+
+  it('reads the object under the column name the schema has', async () => {
+    queueQueries({});
+    const { done } = callEditExperience(ADMIN);
+    await done;
+
+    const [firstSql] = mockPoolQuery.mock.calls[0] as [string, unknown[]];
+    // The select list itself, not the whole statement: a `type` in a WHERE
+    // clause or a comment would satisfy a match over the text.
+    const projection = /SELECT([\s\S]*?)FROM experiences/.exec(firstSql)?.[1];
+    expect(projection, 'expected a SELECT … FROM experiences').toBeDefined();
+    const columns = projection!.split(',').map((c) => c.trim());
+    expect(columns).toContain('type');
+    expect(columns).not.toContain('category');
+  });
+
+  it('names the dropped column in no statement it sends', async () => {
+    queueQueries({});
+    const { done } = callEditExperience(ADMIN);
+    await done;
+
+    const sent = [...mockPoolQuery.mock.calls, ...mockClientQuery.mock.calls]
+      .map(([sql]) => String(sql));
+    expect(sent.length).toBeGreaterThan(1);
+    // `\b` keeps `category_id` — the kind, a column that exists — out of it.
+    for (const sql of sent) expect(sql).not.toMatch(/\bcategory\b/);
+  });
+});

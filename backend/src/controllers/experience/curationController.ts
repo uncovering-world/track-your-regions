@@ -497,7 +497,7 @@ function buildEditAuditDetails(
 /**
  * Edit an experience's fields
  * PATCH /api/experiences/:id/edit
- * Body: { name?, shortDescription?, description?, category?, imageUrl?, tags? }
+ * Body: { name?, shortDescription?, description?, type?, imageUrl?, tags?, websiteUrl?, wikipediaUrl? }
  * An empty string clears the field: the column is stored as NULL, and the
  * clearing is claimed like any other edit (`clearedToNull`).
  *
@@ -518,7 +518,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
   }
 
   const expResult = await pool.query(
-    `SELECT id, category_id, name, short_description, description, category, image_url, tags, metadata, curated_fields
+    `SELECT id, category_id, name, short_description, description, type, image_url, tags, metadata, curated_fields
      FROM experiences WHERE id = $1`,
     [experienceId],
   );
@@ -843,7 +843,7 @@ async function insertManualExperience(
 /**
  * Create a new manual experience
  * POST /api/experiences
- * Body: { name, shortDescription?, category?, longitude, latitude, imageUrl?, tags?, countryCode?, countryName?, regionId, categoryId }
+ * Body: { name, shortDescription?, type?, longitude, latitude, imageUrl?, tags?, countryCode?, countryName?, regionId, categoryId, websiteUrl?, wikipediaUrl? }
  */
 export async function createManualExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user!.id;
