@@ -59,8 +59,12 @@ import { heldPartAnsweredSql } from './heldDecisions.js';
  *
  * The row is found through `partRecord.ts`, the rule publishing resolves the
  * same entry by, so the row the card opens is the row publishing writes. Where
- * no stored row answers — a place the source has since withdrawn — the entry
- * stays, with nothing to open: the proposal is still what the run recorded.
+ * no stored row answers — a place the source has since withdrawn — or where
+ * the rule found rows and could not tell the record's from a sibling (#833,
+ * ADR-0050: `identified` false), the entry stays, with nothing to open: the
+ * proposal is still what the run recorded, and a door onto the sibling would
+ * be worse than none. Publishing tells the two apart in its reason; the card
+ * need not, since neither has a row to show.
  * NULL where no part holds anything, so a card with nothing on this half reads
  * the object's half alone. `ch` is the `experience_sync_changes` alias, `e`
  * the object's.
@@ -105,7 +109,11 @@ export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
                  FROM (VALUES ('locations'), ('treasures')) AS k(kind)
                  CROSS JOIN LATERAL jsonb_array_elements(
                    COALESCE(${changes}.contents -> k.kind -> 'changed', '[]'::jsonb)) AS c
-                 LEFT JOIN LATERAL (${location}) AS loc ON k.kind = 'locations'
+                 -- Identified rows only: a place the rule cannot tell from its
+                 -- sibling (#833) gets no door, exactly like one the source
+                 -- withdrew -- a pin the card opened would be the sibling's.
+                 LEFT JOIN LATERAL (SELECT * FROM (${location}) AS found WHERE found.identified)
+                   AS loc ON k.kind = 'locations'
                  LEFT JOIN LATERAL (${treasure}) AS work ON k.kind = 'treasures'
                 WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(c -> 'fields') AS f
                                WHERE (f->>'held')::boolean

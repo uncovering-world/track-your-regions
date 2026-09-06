@@ -8,9 +8,10 @@
  * attribution, picture and credit — and adds the two things a part needs that
  * the object does not: the row has to be *found*, since the record names a
  * part and never identifies it (`partRecord.ts` is the one rule, shared with
- * the card), and a part the record names that no row answers to any more is
- * reported rather than refused, because 409ing over a place the source has
- * since withdrawn would leave a card no answer can clear.
+ * the card), and a part the record names that no row answers to any more — or
+ * that more than one row answers to and nothing tells apart — is reported rather than
+ * refused, because 409ing over a place the source has since withdrawn would
+ * leave a card no answer can clear.
  *
  * Two phases, and the split is the same as the object's. `planHeldPartWrites`
  * resolves and locks the rows and decides what each write would be — reads
@@ -37,10 +38,17 @@ export interface AppliedPart {
   claimedFieldsSkipped: string[];
 }
 
-/** A part the record names that no offered row answers to. */
+/**
+ * A part the record names that publishing could not write to: no offered row
+ * answers to it (`withdrawn`), or more than one does and nothing tells them
+ * apart (`ambiguous` — `partRecord.ts` says when that is). Said rather than merged,
+ * because the two ask the curator for different things: nothing at all, or a
+ * look at the siblings.
+ */
 export interface PartNotFound {
   kind: ContentKind;
   name: string;
+  reason: 'withdrawn' | 'ambiguous';
 }
 
 /** One statement the plan will run, with the part it is about. */
@@ -120,27 +128,36 @@ function heldEntries(
 }
 
 /**
- * The stored row a record entry names, locked for the write, or null.
+ * The stored row a record entry names, locked for the write, or the reason
+ * there is none to write to.
  *
  * Locked here and not merely read: the value is written by id in the next
  * phase, and a claim landing on the part between the read and the write would
  * otherwise be overwritten — the same window `editLocation` closes by locking
- * the point it edits.
+ * the point it edits. `FOR UPDATE OF el` for a place, because the row comes
+ * through a subquery that reads window functions and a locking clause
+ * reaching it is refused. A place the rule cannot tell from its sibling is
+ * returned by that rule with `identified` false (#833) and is `ambiguous`
+ * here — the row is held for the rest of the transaction, which writes
+ * nothing to it, rather than looked up twice to avoid a lock on a refusal.
  */
 async function lockPart(
   client: PoolClient, experienceId: number, kind: ContentKind, entry: ContentItemChange,
-): Promise<{ id: number; curated_fields: string[] } | null> {
+): Promise<{ id: number; curated_fields: string[] } | PartNotFound['reason']> {
   const found = kind === 'locations'
     ? await client.query(
-      `${recordedLocationSql({ experienceId: '$1', ref: '$2', name: '$3' })} FOR UPDATE`,
+      `${recordedLocationSql({ experienceId: '$1', ref: '$2', name: '$3' })} FOR UPDATE OF el`,
       [experienceId, entry.item.ref, entry.item.name],
     )
     : await client.query(
       `${recordedTreasureSql({ experienceId: '$1', ref: '$2' })} FOR UPDATE`,
       [experienceId, entry.item.ref],
     );
-  const row = found.rows[0] as { id: number; curated_fields: string[] | null } | undefined;
-  return row ? { id: row.id, curated_fields: row.curated_fields ?? [] } : null;
+  const row = found.rows[0] as
+    { id: number; curated_fields: string[] | null; identified?: boolean } | undefined;
+  if (!row) return 'withdrawn';
+  if (kind === 'locations' && row.identified !== true) return 'ambiguous';
+  return { id: row.id, curated_fields: row.curated_fields ?? [] };
 }
 
 /**
@@ -203,6 +220,15 @@ interface PartPlan {
   written?: Array<{ row: HeldRowRef; value: unknown }>;
   notFound?: PartNotFound;
   unwritable?: string[];
+  /**
+   * Rows this call named and could not answer, which stay open. An ambiguous
+   * part's (#833): the outcome line sends the curator back to the card for a
+   * look at the siblings, and a call that counted the part as answered would
+   * clear the pointer and take that card away. A withdrawn part's are not
+   * here — that is the case ADR-0037 clears deliberately, a card no answer
+   * could ever clear.
+   */
+  leftOpen?: HeldRowRef[];
 }
 
 /**
@@ -227,7 +253,14 @@ async function planOnePart(
 
   const answering = { ...entry, fields: selected };
   const row = await lockPart(client, experienceId, kind, answering);
-  if (!row) return { notFound: { kind, name } };
+  if (typeof row === 'string') {
+    return {
+      notFound: { kind, name, reason: row },
+      ...(row === 'ambiguous'
+        ? { leftOpen: selected.map(field => partRow(kind, entry, field.field)) }
+        : {}),
+    };
+  }
 
   // A claim made since the run is an answer someone already gave about whose
   // value this is; publishing answers a different question, so a claimed field
@@ -280,12 +313,13 @@ function heldEntriesByKind(
     heldEntries(contents, kind, answered).map(entry => ({ kind, entry })));
 }
 
-/** Fold one part's plan into the whole: the four arms are independent and all optional. */
+/** Fold one part's plan into the whole: the five arms are independent and all optional. */
 function merge(plan: HeldPartPlan, one: PartPlan): void {
   if (one.unwritable) plan.unwritable.push(...one.unwritable);
   if (one.notFound) plan.notFound.push(one.notFound);
   if (one.write) plan.writes.push(one.write);
   if (one.written) plan.written.push(...one.written);
+  if (one.leftOpen) plan.leftOpen.push(...one.leftOpen);
 }
 
 /**

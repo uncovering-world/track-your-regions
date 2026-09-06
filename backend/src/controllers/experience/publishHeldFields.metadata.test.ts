@@ -100,7 +100,7 @@ describe('the metadata column, which no single entry describes', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: ['metadata.inDanger'], heldLeftOpen: 1,
     }));
-    expect(only(queries, 'UPDATE experiences').sql)
+    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
       .not.toContain('pending_change_sync_log_id = NULL');
   });
 

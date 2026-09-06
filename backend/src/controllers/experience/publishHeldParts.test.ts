@@ -152,7 +152,7 @@ describe('publishing the held fields of an object\'s parts', () => {
       heldLeftOpen: 1,
     }));
     // The attribution is still the open question, so the card stays.
-    expect(only(queries, 'UPDATE experiences').sql)
+    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
       .not.toContain('pending_change_sync_log_id = NULL');
   });
 
@@ -362,9 +362,74 @@ describe('publishing the held fields of an object\'s parts', () => {
     expect(none(queries, 'UPDATE experience_locations SET name')).toBe(true);
     expect(only(queries, 'UPDATE treasures SET artists').params[0]).toBe(3102);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      partsNotFound: [{ kind: 'locations', name: 'Château de Montésgur' }],
+      partsNotFound: [{ kind: 'locations', name: 'Château de Montésgur', reason: 'withdrawn' }],
       appliedParts: [expect.objectContaining({ kind: 'treasures' })],
     }));
     expect(queries.at(-1)?.sql).toBe('COMMIT');
+  });
+
+  // Maloti-Drakensberg Park lists its two halves under one reference,
+  // `985ter-001`: Sehlabathebe National Park (Lesotho) and uKhahlamba
+  // Drakensberg Park (South Africa). The record names a part by reference and
+  // name, so the name decides between them — until a curator renames one from
+  // the held card, which claims `name` on it and leaves no row answering to the
+  // record's name (#833).
+  const UKHAHLAMBA: ProposedPart = {
+    item: { name: 'uKhahlamba Drakensberg Park', ref: '985ter-001' },
+    fields: [{ field: 'name', old: 'uKhahlamba Drakensberg Park', new: 'Ukhahlamba-Drakensberg Park', held: true }],
+  };
+
+  it('finds a place the curator renamed from the card by the claim the rename left, not by the lowest id', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { locations: { changed: [UKHAHLAMBA] } },
+      parts: { location: { id: 7486, name: 'uKhahlamba-Drakensberg Park', curated_fields: ['name'] } },
+    });
+
+    const res = await publish({ expectedSyncLogId: 64 }, client);
+
+    // The one rule the card resolves by: the record's name first, then the
+    // curator's claim, and the lowest id only among rows the name admits. The
+    // mocked lane cannot run the statement, so it pins the terms and their
+    // order; the rule itself was run on the live rows 7485/7486, where the old
+    // ordering handed this record to Sehlabathebe.
+    const lock = only(queries, 'FROM experience_locations el');
+    expect(lock.sql).toContain('FOR UPDATE OF el');
+    expect(lock.params).toEqual([5, '985ter-001', 'uKhahlamba Drakensberg Park']);
+    expect(lock.sql).toMatch(/ORDER BY cand\.named DESC, cand\.renamed DESC, cand\.id/);
+    expect(lock.sql).toContain("el.curated_fields ? 'name' AS renamed");
+    // The stored name is the curator's, so the run's own proposal — a different
+    // spelling — is skipped as claimed rather than written over the correction.
+    expect(none(queries, 'UPDATE experience_locations SET name')).toBe(true);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      appliedParts: [{
+        kind: 'locations', name: 'uKhahlamba Drakensberg Park', fields: [], claimedFieldsSkipped: ['name'],
+      }],
+    }));
+  });
+
+  it('reports a place the rule cannot tell from its sibling, and writes onto neither', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { locations: { changed: [UKHAHLAMBA] } },
+      // Both halves renamed since the run: the rule returns the lower id with
+      // `identified` false rather than pretending the tie was decided.
+      parts: { location: { id: 7485, name: 'Sehlabathebe NP', curated_fields: ['name'], identified: false } },
+    });
+
+    const res = await publish({ expectedSyncLogId: 64 }, client);
+
+    expect(none(queries, 'UPDATE experience_locations SET name')).toBe(true);
+    expect(res.status).not.toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      partsNotFound: [{ kind: 'locations', name: 'uKhahlamba Drakensberg Park', reason: 'ambiguous' }],
+      // Unanswered, so still open: the outcome line sends the curator back to
+      // the card for a look at the siblings, and the card has to be there.
+      heldLeftOpen: 1,
+    }));
+    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
+      .not.toContain('pending_change_sync_log_id = NULL');
   });
 });
