@@ -102,6 +102,22 @@ describe('a held card about a part', () => {
       .toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q782639');
   });
 
+  it('heads and seeds a part with the name the row holds now, not the name the run saw', () => {
+    // The record names the part as it was when the run wrote it and is never
+    // rewritten. A work retitled since — from this very dialog — would otherwise
+    // be headed with the old name and the reopened dialog seeded with it again,
+    // beside a chip saying the title was corrected (#731).
+    const retitled = held();
+    retitled.proposed_parts![0].storedName = 'The Glass of Wine';
+    retitled.proposed_parts![0].workCuratedFields = ['name'];
+    renderCard(retitled);
+
+    expect(screen.getByText('The Glass of Wine')).toBeInTheDocument();
+    expect(screen.getByText('title corrected')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'open' }));
+    expect(screen.getByLabelText('Title')).toHaveValue('The Glass of Wine');
+  });
+
   it('says on the row that a picture and its credit are one answer', async () => {
     const withPicture = held();
     withPicture.proposed_parts![0].fields.push(

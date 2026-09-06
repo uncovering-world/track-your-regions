@@ -36,6 +36,7 @@ import { useAuth } from '../../hooks/useAuth';
 import {
   type Experience,
   type ExperienceLocation,
+  type ExperienceTreasure,
   type VisitedStatus,
 } from '../../api/experiences';
 import { experienceContentsQuery, experienceDetailsQuery } from '../../api/experienceCardQueries';
@@ -62,6 +63,8 @@ export interface ExperienceExpandedDetailsProps {
   onCurate?: () => void;
   /** A curator's way into correcting one of the places listed below. */
   onCorrectPlace?: (location: LocationRowData) => void;
+  /** And into correcting one of the works, which is the same rule one level over (#731). */
+  onCorrectWork?: (work: ExperienceTreasure) => void;
   onUnreject?: () => void;
   onRemoveFromRegion?: () => void;
   /**
@@ -88,6 +91,7 @@ function ExperienceExpandedDetailsComponent({
   onLocationHover,
   onCurate,
   onCorrectPlace,
+  onCorrectWork,
   onUnreject,
   onRemoveFromRegion,
   onHeightChange,
@@ -322,7 +326,12 @@ function ExperienceExpandedDetailsComponent({
 
       {/* Artworks / Contents list */}
       {contentsData && contentsData.treasures.length > 0 && (
-        <ArtworksList contents={contentsData.treasures} total={contentsData.total} experienceId={experience.id} />
+        <ArtworksList
+          contents={contentsData.treasures}
+          total={contentsData.total}
+          experienceId={experience.id}
+          onCorrect={onCorrectWork}
+        />
       )}
 
       {/* Multi-location list */}

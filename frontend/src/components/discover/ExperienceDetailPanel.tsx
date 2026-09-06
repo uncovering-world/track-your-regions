@@ -6,15 +6,11 @@
 import { useState, useMemo } from 'react';
 import {
   Box,
-  ButtonBase,
   Typography,
   IconButton,
   Chip,
   Button,
   Divider,
-  Collapse,
-  TextField,
-  InputAdornment,
   LinearProgress,
   Snackbar,
   Alert,
@@ -23,20 +19,18 @@ import CloseIcon from '@mui/icons-material/Close';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import LanguageIcon from '@mui/icons-material/Language';
 import TuneIcon from '@mui/icons-material/Tune';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import SearchIcon from '@mui/icons-material/Search';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchExperience,
   fetchExperienceLocations,
   fetchExperienceTreasures,
   type Experience,
-  type ExperienceTreasure,
 } from '../../api/experiences';
 import { useAuth } from '../../hooks/useAuth';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
+import { WorkPreviewDialog } from '../shared/WorkPreviewDialog';
+import { workToCorrect, type WorkToCorrect } from '../shared/WorkCorrection';
 import { LocationsSection, type PanelLocation } from './LocationsSection';
 import {
   useVisitedExperiences,
@@ -48,12 +42,9 @@ import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContex
 
 import { experienceColors } from '../../utils/categoryColors';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
-import { ContentTile } from './ContentTile';
+import { ContentsSection } from './ContentsSection';
 import { locationLabel } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
-
-const CONTENTS_COLLAPSE_THRESHOLD = 15;
-const CONTENTS_INITIAL_SHOW = 20;
 
 interface ExperienceDetailPanelProps {
   experience: Experience;
@@ -67,6 +58,9 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
   // The place a curator opened from the list below, held as the place; and what
   // the last correction did, said here because the panel has no other line for it.
   const [correcting, setCorrecting] = useState<PanelLocation | null>(null);
+  // The work a curator opened from the contents grid. Its own state: a museum's
+  // panel shows both lists, and the two dialogs ask different questions.
+  const [correctingWork, setCorrectingWork] = useState<WorkToCorrect | null>(null);
   const [correctionNotice, setCorrectionNotice] = useState<string | null>(null);
 
   // Fetch full details
@@ -349,8 +343,20 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
             viewedIds={viewedIds}
             onMarkViewed={(id) => markViewed({ treasureId: id, experienceId: experience.id })}
             onUnmarkViewed={unmarkViewed}
+            // The same rule one level over (#731): a work is corrected wherever a
+            // curator is looking at one, and this grid is one of the places.
+            onCorrect={isCurator
+              ? (work) => setCorrectingWork(workToCorrect(experience, work))
+              : undefined}
           />
         )}
+        {/* Mounted beside the point's dialog and reporting into the same line:
+            the panel has one place to say what a correction did. */}
+        <WorkPreviewDialog
+          work={correctingWork}
+          onClose={() => setCorrectingWork(null)}
+          onDone={setCorrectionNotice}
+        />
 
         <Divider sx={{ my: 2 }} />
 
@@ -388,146 +394,6 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
           })()}
         </Box>
       </Box>
-    </Box>
-  );
-}
-
-// =============================================================================
-// Contents / Artworks Section (collapsible, paginated, grid layout)
-// =============================================================================
-
-interface ContentsSectionProps {
-  contents: ExperienceTreasure[];
-  totalCount: number;
-  isAuthenticated: boolean;
-  viewedIds: Set<number>;
-  onMarkViewed: (id: number) => void;
-  onUnmarkViewed: (id: number) => void;
-}
-
-/**
- * Exported for its test: what this section promises is that a museum's works can
- * be reached at all, and that is a property of the *closed* state, which no
- * caller of the panel can drive.
- */
-export function ContentsSection({
-  contents,
-  totalCount,
-  isAuthenticated,
-  viewedIds,
-  onMarkViewed,
-  onUnmarkViewed,
-}: ContentsSectionProps) {
-  const shouldCollapse = totalCount > CONTENTS_COLLAPSE_THRESHOLD;
-  const [expanded, setExpanded] = useState(!shouldCollapse);
-  const [showAll, setShowAll] = useState(false);
-  const [searchText, setSearchText] = useState('');
-
-  const viewedCount = contents.filter((c) => viewedIds.has(c.id)).length;
-  const displayContents = useMemo(() => {
-    let filtered = contents;
-    if (searchText) {
-      const lower = searchText.toLowerCase();
-      filtered = filtered.filter((c) =>
-        c.name.toLowerCase().includes(lower) ||
-        // Every maker, not the first: a reader looking for Savitsky in the
-        // Tretyakov must find `Morning in a Pine Forest` (#720).
-        c.artists.some(maker => maker.toLowerCase().includes(lower)),
-      );
-    }
-    if (!showAll && !searchText) {
-      filtered = filtered.slice(0, CONTENTS_INITIAL_SHOW);
-    }
-    return filtered;
-  }, [contents, showAll, searchText]);
-
-  return (
-    <Box sx={{ mb: 2 }}>
-      {/* The header is the only way into this section, and the section is shut by
-          default for anything past `CONTENTS_COLLAPSE_THRESHOLD` — which is most
-          museums. As a `<div onClick>` it was not a tab stop, so the works grid
-          inside could be operated by keyboard in principle and reached by nobody:
-          `Collapse` hides its contents outright while shut, so there was no way in
-          at all. A real control, then, carrying `aria-expanded` so a reader is told
-          whether the thing they are about to open is open. */}
-      <ButtonBase
-        component="div"
-        role="button"
-        aria-expanded={expanded}
-        sx={{
-          display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', mb: 1,
-          width: '100%', textAlign: 'inherit',
-        }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
-          Notable Works ({totalCount})
-        </Typography>
-        {isAuthenticated && viewedCount > 0 && (
-          <Typography variant="caption" color={viewedCount === totalCount ? 'success.main' : 'text.secondary'}>
-            {viewedCount} seen
-          </Typography>
-        )}
-        {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-      </ButtonBase>
-
-      <Collapse in={expanded} timeout="auto">
-        {/* Search for large lists */}
-        {totalCount > CONTENTS_COLLAPSE_THRESHOLD && (
-          <TextField
-            size="small"
-            placeholder="Filter works..."
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            fullWidth
-            sx={{ mb: 1 }}
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" />
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-        )}
-
-        {/* Artwork grid */}
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
-            gap: 1,
-            maxHeight: 400,
-            overflowY: 'auto',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 1,
-            p: 1,
-            bgcolor: 'background.paper',
-          }}
-        >
-          {displayContents.map((content) => (
-            <ContentTile
-              key={content.id}
-              content={content}
-              isViewed={viewedIds.has(content.id)}
-              isAuthenticated={isAuthenticated}
-              onToggleViewed={() => (viewedIds.has(content.id)
-                ? onUnmarkViewed(content.id)
-                : onMarkViewed(content.id))}
-            />
-          ))}
-        </Box>
-
-        {/* Show more button */}
-        {!showAll && !searchText && totalCount > CONTENTS_INITIAL_SHOW && (
-          <Button size="small" variant="text" onClick={() => setShowAll(true)} sx={{ mt: 0.5 }}>
-            Show all {totalCount} works
-          </Button>
-        )}
-      </Collapse>
     </Box>
   );
 }

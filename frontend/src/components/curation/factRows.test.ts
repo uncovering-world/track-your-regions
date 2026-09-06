@@ -134,7 +134,40 @@ describe('partGroups', () => {
     locationId: 11134, latitude: 42.8758, longitude: 1.8323, ordinal: 5,
   };
 
-  it('makes one group per part, headed by the name the curator saw', () => {
+  it('says a part has been corrected in that part\'s own words', () => {
+    // Each kind carries its own claim key — one `jsonb_build_object` builds both,
+    // so a shared name could not answer for two rows — and its own vocabulary: a
+    // place's rule answers `null` to a claimed `artists` and calls a claimed
+    // `name` "name corrected", where a work reads "title corrected". Read with
+    // the place's key and words, a held work's heading carried no chip at all
+    // while the same work read "title corrected" on every other surface (#731).
+    const groups = partGroups(
+      [
+        { ...montsegur, curatedFields: ['location'] },
+        { ...wineGlass, workCuratedFields: ['name', 'artists'] },
+      ],
+      NO_CONTEXT, { offeredLocations: 8 }, () => {},
+    );
+
+    expect(groups[0].subject.claim).toBe('pin corrected');
+    expect(groups[1].subject.claim).toBe('title and makers corrected');
+  });
+
+  it('heads a part with the name the row holds now, not the name the run saw', () => {
+    // The record names the part as it was when the run wrote it and is never
+    // rewritten. A work retitled since — from this card's own dialog — would
+    // otherwise be headed with the old name under a chip saying it was
+    // corrected, and the reopened dialog seeded with it again (#731).
+    const groups = partGroups(
+      [{ ...wineGlass, storedName: 'The Glass of Wine', workCuratedFields: ['name'] }],
+      NO_CONTEXT, { offeredLocations: 8 }, () => {},
+    );
+
+    expect(groups[0].subject.label).toBe('The Glass of Wine');
+    expect(groups[0].subject.claim).toBe('title corrected');
+  });
+
+  it('makes one group per part, headed by the record\'s name where the row was not found', () => {
     const groups = partGroups([montsegur, wineGlass], NO_CONTEXT, { offeredLocations: 8 }, () => {});
 
     expect(groups.map(g => [g.subject.kind, g.subject.label])).toEqual([

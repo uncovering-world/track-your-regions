@@ -148,6 +148,83 @@ describe('the points a contents card lists', () => {
     expect(screen.getByText('— 49.0442, 3.9550 · pin corrected')).toBeInTheDocument();
   });
 
+  it('closes what a curator opened when the card moves to the next object', () => {
+    // `ReviewBench` mounts this card without a key on purpose — the object
+    // preview staying open as a curator works down the queue is behaviour
+    // `ObjectPreview` is written around — so the next waiting row reconciles
+    // into this same instance. Holding the open thing as the thing is not
+    // enough: the dialog pairs it with the *new* card's id and name, so a work
+    // of one museum would be corrected under another museum's id, which is what
+    // proves the caller may correct it at all.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const first = contents(
+      { id: 7101, name: 'Amor Victorious', artists: ['Caravaggio'], artistsCurated: false,
+        year: 1602, imageUrl: null, iconic: true, externalId: 'Q1052156' },
+    );
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <GatedCard group={{ id: first.id, name: first.name, contents: first }} onDone={() => {}} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Correct Amor Victorious' }));
+    // The form itself, not the dialog element: MUI keeps the paper mounted
+    // through its closing transition, so an empty one would still answer to
+    // `role="dialog"` and the assertion below would pass on a stale form.
+    expect(screen.getByLabelText('Title')).toBeInTheDocument();
+
+    // The next card must hold contents of its own, or the section unmounts for
+    // want of rows and the state would go with it — the assertion would then
+    // pass without the guarantee it is about.
+    const next = {
+      ...contents(
+        { id: 7202, name: 'The Three Graces', artists: ['Peter Paul Rubens'],
+          artistsCurated: false, year: 1635, imageUrl: null, iconic: true,
+          externalId: 'Q1138017' },
+      ),
+      id: 6185,
+      name: 'Museo del Prado',
+    };
+    rerender(
+      <QueryClientProvider client={client}>
+        <GatedCard group={{ id: next.id, name: next.name, contents: next }} onDone={() => {}} />
+      </QueryClientProvider>,
+    );
+
+    // The section is still there — the next museum's own work is listed — so
+    // what closed the dialog is the object changing, not the rows going away.
+    expect(screen.getByText('The Three Graces')).toBeTruthy();
+    expect(screen.queryByLabelText('Title')).toBeNull();
+    expect(screen.queryByText('Amor Victorious')).toBeNull();
+  });
+
+  it('rules the points row off from the works row, as every other pair is', () => {
+    // On the card these two are drawn from their own file, entering the card's
+    // divided Stack as one child — so without a divider of their own the
+    // boundary between them would be whitespace where every neighbouring
+    // boundary is a line.
+    const both: ReviewQueueItem = {
+      ...points({ id: 6003, name: 'Coteaux', externalRef: '1465-001', latitude: 49, longitude: 4 }),
+      pending_treasures: 1,
+      pending_works: [
+        { id: 7301, name: 'Dom Pérignon', artists: [], artistsCurated: false,
+          year: null, imageUrl: null, iconic: false, externalId: 'Q1' },
+      ],
+    };
+    const { container } = renderCard(both);
+
+    // Both rows are actually on the card — otherwise there is no boundary to rule.
+    const pointsLabel = screen.getByText('points');
+    const worksLabel = screen.getByText('works');
+    // A rule standing *between* them, which is what a count of dividers would
+    // not tell apart from the card's own — a contents-only card has one row
+    // group, so the card's Stack draws none of its own.
+    const between = [...container.querySelectorAll('hr.MuiDivider-root')].filter(rule => (
+      pointsLabel.compareDocumentPosition(rule) & Node.DOCUMENT_POSITION_FOLLOWING
+      && worksLabel.compareDocumentPosition(rule) & Node.DOCUMENT_POSITION_PRECEDING
+    ));
+    expect(between).toHaveLength(1);
+  });
+
   it('lists a point without a coordinate as text, since there is nothing to open', () => {
     renderCard(points(
       { id: 6002, name: 'Unplaced component', externalRef: '1465-009', latitude: null, longitude: null },

@@ -297,7 +297,17 @@ export function DiscoverPage() {
         }}
       >
         {selectedExperience && (
+          // Keyed on the object, because a panel for a different museum is a
+          // different panel: unkeyed, everything the last one held reconciled
+          // into this one — the works filter (the Prado's list showing only what
+          // matched "Borghese"), whether the works section was open, whether all
+          // of them were shown, and the place or work a curator had opened to
+          // correct, which would then carry one object's row under another
+          // object's name. Nothing here is meant to survive the move, unlike
+          // `GatedCard` on the review page, where the object preview staying
+          // open across cards is deliberate and stated.
           <ExperienceDetailPanel
+            key={selectedExperience.id}
             experience={selectedExperience}
             onClose={() => setSelectedExperienceId(null)}
             onCurate={isCurator ? () => setDetailCurationTarget(selectedExperience) : undefined}
