@@ -56,7 +56,9 @@ export interface ClientOptions {
   contents?: { locations?: { changed: ProposedPart[] }; treasures?: { changed: ProposedPart[] } };
   /**
    * The stored rows the record's parts resolve to, locked for the write. `null`
-   * is a part the record names that no offered row answers to any more.
+   * is a part the record names that no offered row answers to any more; a
+   * place with `identified: false` is one the rule found two rows for and
+   * could not tell apart (#833).
    */
   parts?: { location?: Record<string, unknown> | null; treasure?: Record<string, unknown> | null };
   /**
@@ -123,6 +125,27 @@ function proposalRow(opts: ClientOptions) {
 }
 
 /**
+ * The part rows, resolved and locked by `publishHeldParts.ts`, or null for any
+ * other statement.
+ *
+ * A place comes back `identified` unless the test says otherwise — the rule's
+ * answer for a row the record's name (or the curator's claim on it) picks out
+ * (#833) — but only where the statement actually selects the column: a mock
+ * answering a column production never asked for would keep the tests green
+ * while production read `undefined` and called every place ambiguous.
+ */
+function partStatement(sql: string, opts: ClientOptions): { rows: unknown[] } | null {
+  if (sql.includes('FROM experience_locations el') && sql.includes('FOR UPDATE')) {
+    const identified = sql.includes('pick.identified') ? { identified: true } : {};
+    return { rows: opts.parts?.location ? [{ ...identified, ...opts.parts.location }] : [] };
+  }
+  if (sql.includes('FROM treasures t') && sql.includes('FOR UPDATE')) {
+    return { rows: opts.parts?.treasure ? [opts.parts.treasure] : [] };
+  }
+  return null;
+}
+
+/**
  * What the fake transaction answers each statement with, decided by the
  * statement's text. Fragments must not be prefixes of one another: the first
  * match wins, and two `UPDATE experience_locations` statements run in one
@@ -141,13 +164,8 @@ function answer(sql: string, opts: ClientOptions): { rows: unknown[]; rowCount?:
     // that omits it is describing the case with something to decide.
     return { rows: (opts.answered ?? []).map(row => ({ answer: 'refused', ...row })) };
   }
-  // The part rows, resolved and locked by `publishHeldParts.ts`.
-  if (sql.includes('FROM experience_locations el') && sql.includes('FOR UPDATE')) {
-    return { rows: opts.parts?.location ? [opts.parts.location] : [] };
-  }
-  if (sql.includes('FROM treasures t') && sql.includes('FOR UPDATE')) {
-    return { rows: opts.parts?.treasure ? [opts.parts.treasure] : [] };
-  }
+  const part = partStatement(sql, opts);
+  if (part) return part;
   const locked = lockedStatement(sql, opts);
   if (locked) return locked;
   const counted = Object.entries(opts.rowCounts ?? {}).find(([fragment]) => sql.includes(fragment));

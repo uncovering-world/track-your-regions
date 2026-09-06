@@ -92,7 +92,8 @@ describe('the local names, which no single entry describes', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: ['nameLocal.ko'], heldLeftOpen: 1,
     }));
-    expect(only(queries, 'UPDATE experiences').sql).not.toContain('pending_change_sync_log_id = NULL');
+    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
+      .not.toContain('pending_change_sync_log_id = NULL');
   });
 
   it('drops a language the source stopped publishing', async () => {
