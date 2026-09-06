@@ -44,6 +44,17 @@ interface LocationPickerProps {
   name?: string;
   /** Called when a place is selected from Search or AI, with optional metadata */
   onPlaceSelect?: (place: { wikidataId?: string; displayName?: string }) => void;
+  /**
+   * How close the map opens on an existing value. The default frames a country,
+   * which suits a place just picked from search; a correction opens on the
+   * building, since the question is whether the pin is on the right one.
+   */
+  initialZoom?: number;
+  /**
+   * Where the pin was before this session — drawn faded and fixed, so a curator
+   * moving it can see the move against the source's own position.
+   */
+  origin?: { lat: number; lng: number } | null;
 }
 
 const MODES: { key: Mode; label: string; icon: React.ReactNode }[] = [
@@ -65,7 +76,9 @@ const MAP_STYLE: maplibregl.StyleSpecification = {
   layers: [{ id: 'osm-tiles', type: 'raster', source: 'osm' }],
 };
 
-export function LocationPicker({ value, onChange, name, onPlaceSelect }: LocationPickerProps) {
+export function LocationPicker({
+  value, onChange, name, onPlaceSelect, initialZoom = 6, origin = null,
+}: LocationPickerProps) {
   // Map is the natural default and stays it wherever there is a map. Without
   // WebGL it is the one mode whose input area is empty, so opening on it would
   // put the user in the only place they cannot type an answer.
@@ -167,11 +180,26 @@ export function LocationPicker({ value, onChange, name, onPlaceSelect }: Locatio
       container: mapContainerRef.current,
       style: MAP_STYLE,
       center: value ? [value.lng, value.lat] : [0, 20],
-      zoom: value ? 6 : 1.5,
+      zoom: value ? initialZoom : 1.5,
       attributionControl: false,
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+    // The source's own position, faded and fixed under the draggable pin, so a
+    // move is read against something. Added once: the origin does not change
+    // for the life of the form, and neither does this map.
+    if (origin) {
+      const ghost = document.createElement('div');
+      ghost.style.width = '14px';
+      ghost.style.height = '14px';
+      ghost.style.borderRadius = '50%';
+      ghost.style.backgroundColor = '#6b7280';
+      ghost.style.border = '2px solid white';
+      ghost.style.opacity = '0.55';
+      ghost.style.pointerEvents = 'none';
+      new maplibregl.Marker({ element: ghost }).setLngLat([origin.lng, origin.lat]).addTo(map);
+    }
 
     map.on('click', (e) => {
       onChange({ lat: e.lngLat.lat, lng: e.lngLat.lng });
