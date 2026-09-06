@@ -13,6 +13,12 @@
  * gives the reason: a map is a WebGL context, browsers keep about a dozen per
  * tab, and this page renders up to a page of cards. Until a part has an
  * address of its own (#575), this is where it can be seen.
+ *
+ * A place opened here is also a place a curator is looking at, so the dialog
+ * offers the correction — the third answer to a held coordinate, where "take
+ * the source's" and "keep what is here" are both wrong. Only where the stored
+ * row was found: a record naming a place the source has since withdrawn opens
+ * nothing and corrects nothing.
  */
 
 import { Dialog, DialogContent, DialogTitle, IconButton } from '@mui/material';
@@ -21,19 +27,37 @@ import type { HeldPart } from '../../api/experiences';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { WorkCard } from './WorksPreview';
 
-export function PartPreviewDialog({ part, onClose }: {
+export function PartPreviewDialog({ part, onClose, object, onDone }: {
   /** The part to show, or null for nothing open. */
   part: HeldPart | null;
   onClose: () => void;
+  /** The object the part belongs to — whose caches a correction clears, and whose name the outcome leads with. */
+  object: { id: number; name: string };
+  /** Where a correction's outcome line goes: the card's own reporting. */
+  onDone: (message: string) => void;
 }) {
   if (part?.kind === 'locations' && part.latitude != null && part.longitude != null) {
+    const { latitude, longitude } = part;
     return (
       <PointPreviewDialog
         open
         onClose={onClose}
         name={part.item.name ?? part.item.ref ?? 'an unnamed place'}
-        latitude={part.latitude}
-        longitude={part.longitude}
+        latitude={latitude}
+        longitude={longitude}
+        correction={part.locationId != null
+          ? {
+            place: {
+              locationId: part.locationId,
+              experienceId: object.id,
+              objectName: object.name,
+              name: part.item.name,
+              latitude,
+              longitude,
+            },
+            onDone,
+          }
+          : undefined}
       />
     );
   }

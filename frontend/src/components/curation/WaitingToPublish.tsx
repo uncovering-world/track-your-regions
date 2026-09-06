@@ -22,7 +22,7 @@
 
 import { useState } from 'react';
 import {
-  Box, Typography, Card, CardContent, Button, Link, Stack, Divider,
+  Box, Typography, Card, CardContent, Button, Stack, Divider,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -41,8 +41,13 @@ import { HeldAnswer, type HeldSelection } from './HeldAnswer';
 import { ObjectPreview } from './ObjectPreview';
 import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
+import { ContentsList } from './ContentsList';
+import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { creatorsBrief } from '../../utils/creatorList';
 import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';
+
+/** An unread point as the card lists it — the row a curator can open, and correct. */
+type PendingPoint = NonNullable<ReviewQueueItem['pending_points']>[number];
 
 /** One experience, with whatever a gated run left open about it. */
 export interface GatedGroup {
@@ -105,6 +110,8 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   // Which part is open, held as the part rather than a flag: the card is mounted
   // unkeyed, and a flag would carry one object's open work onto the next.
   const [openPart, setOpenPart] = useState<HeldPart | null>(null);
+  // The unread point a curator opened, held the same way and for the same reason.
+  const [openPoint, setOpenPoint] = useState<PendingPoint | null>(null);
   const proposed = held?.proposed ?? [];
   // The credit beside the danger fields: whose photograph readers see today, for a
   // picture row on a card that proposes a picture and no credit beside it.
@@ -298,6 +305,11 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                   secondary: point.latitude != null && point.longitude != null
                     ? `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`
                     : null,
+                  // A row with a coordinate opens in the point dialog, where it can
+                  // be looked at and corrected; one without has nothing to show.
+                  onOpen: point.latitude != null && point.longitude != null
+                    ? () => setOpenPoint(point)
+                    : undefined,
                 }))}
               />
             </GatedRow>
@@ -362,7 +374,41 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
         </Typography>
 
         {showObject && <ObjectPreview experienceId={group.id} />}
-        <PartPreviewDialog part={openPart} onClose={() => setOpenPart(null)} />
+        <PartPreviewDialog
+          part={openPart}
+          onClose={() => setOpenPart(null)}
+          object={{ id: group.id, name: item.name }}
+          onDone={onDone}
+        />
+        {/* The unread point a curator opened: the same dialog a held part opens, and the
+            correction is offered because this is a place a curator is looking at. The
+            outcome line goes where the card's other answers go. `onDone` is the page's
+            refresh, so the row redraws with the corrected value. */}
+        {openPoint && openPoint.latitude != null && openPoint.longitude != null && (
+          <PointPreviewDialog
+            open
+            onClose={() => setOpenPoint(null)}
+            name={openPoint.name ?? openPoint.externalRef ?? 'Unnamed point'}
+            latitude={openPoint.latitude}
+            longitude={openPoint.longitude}
+            correction={{
+              place: {
+                locationId: openPoint.id,
+                experienceId: group.id,
+                objectName: item.name,
+                name: openPoint.name,
+                latitude: openPoint.latitude,
+                longitude: openPoint.longitude,
+                // An unread point is `pending`: readers see nothing of it, and the
+                // anchor will not move for it, until it is published — the form and
+                // the outcome say so, with publication as the remedy rather than
+                // the withdrawn card's "false alarm".
+                unseen: 'unread',
+              },
+              onDone,
+            }}
+          />
+        )}
       </CardContent>
     </Card>
   );
@@ -406,75 +452,6 @@ function publishBodyFor({ held, contents }: GatedGroup): PublishRequest {
 function runNote({ arrival }: GatedGroup): string {
   if (arrival?.sync_log_id) return `First seen by run ${arrival.sync_log_id}`;
   return 'Arrived under this object';
-}
-
-/**
- * The rows behind a count, and the truth about how many of them there are.
- *
- * A count alone is what #524 is about — "12 new works waiting, counted rather than
- * listed" asks a curator to decide about twelve things they cannot see. A list
- * alone would be worse on the other end: the catalogue's largest serial nomination
- * holds 758 points, and a card is not a place to read 758 of anything.
- *
- * So the server caps the list and keeps the count whole, and this says which is
- * which. A cap that went unsaid would read as "these are all of them", which is
- * exactly the silent truncation that makes a queue untrustworthy.
- */
-function ContentsList({ items, total, shown, noun }: {
-  items: Array<{
-    id: number;
-    primary: string;
-    secondary: string | null;
-    /** Where the name opens, when the row has a page of its own. */
-    href?: string | null;
-    /** The row's article, when one can be resolved for it. */
-    article?: string | null;
-  }>;
-  total: number;
-  shown: number;
-  noun: string;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <Box sx={{ mt: 0.5 }}>
-      <Stack component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }} spacing={0.25}>
-        {items.map(item => (
-          <Typography key={item.id} component="li" variant="caption" color="text.secondary">
-            {/* `rel` on every outbound link, as `ObjectContext` does: these open
-                somebody else's site, in a new tab, because losing the queue to read
-                about one painting would cost the curator their place in it. */}
-            {item.href
-              ? <Link href={item.href} target="_blank" rel="noopener noreferrer" color="inherit">{item.primary}</Link>
-              : item.primary}
-            {item.secondary && <span> — {item.secondary}</span>}
-            {item.article && (
-              <span>
-                {' · '}
-                {/* Named for the row: this list holds up to 25 of these, and a
-                    screen reader's link list of 25 bare "Wikipedia"s says nothing
-                    about which work each opens. The visible text leads the name, so
-                    a voice-control user saying it still reaches the link. */}
-                <Link
-                  href={item.article}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  color="inherit"
-                  aria-label={`Wikipedia article for ${item.primary}`}
-                >
-                  Wikipedia
-                </Link>
-              </span>
-            )}
-          </Typography>
-        ))}
-      </Stack>
-      {shown < total && (
-        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-          {`showing ${shown} of ${total} ${noun}s`}
-        </Typography>
-      )}
-    </Box>
-  );
 }
 
 /** A label and what it is about, per § 4.2: grouped by container, listed by row. */

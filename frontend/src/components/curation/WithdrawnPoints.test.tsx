@@ -15,6 +15,14 @@ vi.mock('../../api/experiences', () => ({
   setLocationState: vi.fn(),
 }));
 
+// The form has its own test; what this file pins is that the map both cards open
+// offers it, and as what — a place readers do not see.
+vi.mock('../shared/PointCorrection', () => ({
+  PointCorrection: ({ place }: { place: { objectName: string; unseen?: string } }) => (
+    <div data-testid="correction">{`correcting a place of ${place.objectName}, unseen=${String(place.unseen)}`}</div>
+  ),
+}));
+
 import {
   WithdrawnCard, AnsweredWithdrawalCard, pointTitle, withdrawalStory, wouldReveal,
 } from './WithdrawnPoints';
@@ -77,6 +85,20 @@ function renderCard(
     </QueryClientProvider>,
   );
 }
+
+describe('the map a withdrawn point opens', () => {
+  it('offers the correction, as a place readers do not see', () => {
+    renderCard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'See where it was' }));
+
+    // One mode: the map opens on the form, no button to press first. `unseen:
+    // 'withdrawn'` is what makes the form and its outcome say that a moved pin is
+    // still shown to nobody until the point is answered "false alarm".
+    expect(screen.getByTestId('correction'))
+      .toHaveTextContent('correcting a place of Bilbao Fine Arts Museum, unseen=withdrawn');
+  });
+});
 
 describe('pointTitle', () => {
   it('falls back to the source reference, because most parts have no name', () => {

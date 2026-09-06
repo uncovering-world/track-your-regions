@@ -21,6 +21,14 @@ vi.mock('../../api/experiences', async importOriginal => ({
   publishExperience: vi.fn(),
 }));
 
+// The form has its own test; what this file pins is that a held place opens on it —
+// and as which place of which object.
+vi.mock('../shared/PointCorrection', () => ({
+  PointCorrection: ({ place }: { place: { locationId: number; objectName: string } }) => (
+    <div data-testid="correction">{`correcting ${place.locationId} of ${place.objectName}`}</div>
+  ),
+}));
+
 const mockedDeclineHeld = declineHeld as unknown as ReturnType<typeof vi.fn>;
 const mockedPublish = publishExperience as unknown as ReturnType<typeof vi.fn>;
 
@@ -193,5 +201,58 @@ describe('a held card about a part', () => {
 
     await waitFor(() => expect(publishAll).toBeDisabled());
     expect(mockedPublish).not.toHaveBeenCalled();
+  });
+});
+
+/** A held card about a place: the source moved one component of a serial site. */
+function heldPlace(locationId: number | null, curatedFields: string[] = []): ReviewQueueItem {
+  return {
+    ...held(),
+    id: 1084, external_id: '1234', name: 'Cathar Castles', category_id: 1,
+    category_name: 'UNESCO World Heritage Sites',
+    proposed_parts: [{
+      kind: 'locations',
+      item: { name: 'Château de Montségur', ref: '1234-001' },
+      fields: [{
+        field: 'location', old: { lon: 1.8322, lat: 42.8756 }, new: { lon: 1.841, lat: 42.88 }, held: true,
+      }],
+      locationId, latitude: 42.8756, longitude: 1.8322, ordinal: 1, curatedFields,
+    }],
+  };
+}
+
+describe('a held card about a place', () => {
+  it('opens the place on the map and offers to correct it', () => {
+    // The third answer to a held coordinate: "take the source's" and "keep what is
+    // here" are the two the card has, and a curator who can see both are wrong has
+    // had nowhere to say so.
+    renderCard(heldPlace(777));
+
+    fireEvent.click(screen.getByRole('button', { name: 'open' }));
+
+    // Opens on the form, as *this* place of *this* object — one mode, no button to
+    // press before the pin is in hand.
+    expect(screen.getByRole('dialog')).toHaveTextContent('Château de Montségur');
+    expect(screen.getByTestId('correction')).toHaveTextContent('correcting 777 of Cathar Castles');
+  });
+
+  it('says on the part\'s heading when a curator already holds its pin', () => {
+    // The run is proposing a coordinate over a pin a curator put there, which is a
+    // different decision from one over the source's own — said where the part is
+    // named, before the row that asks it.
+    renderCard(heldPlace(777, ['location']));
+
+    expect(screen.getByText('pin corrected')).toBeInTheDocument();
+  });
+
+  it('offers no correction where no stored row answers to the record', () => {
+    // A place the source has since withdrawn: the proposal is still what the run
+    // recorded, but there is no row to correct.
+    renderCard(heldPlace(null));
+
+    fireEvent.click(screen.getByRole('button', { name: 'open' }));
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Château de Montségur');
+    expect(screen.queryByTestId('correction')).toBeNull();
   });
 });
