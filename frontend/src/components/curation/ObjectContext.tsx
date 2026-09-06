@@ -22,7 +22,7 @@ import type { ReviewQueueItem } from '../../api/experiences';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
-import { PointPreviewDialog } from './PointPreviewDialog';
+import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 
 /** Four decimals is about 11 m at the equator — finer than this screen can use. */
 function coordinateLabel(lat: number, lon: number): string {

@@ -18,7 +18,7 @@
 import { Dialog, DialogContent, DialogTitle, IconButton } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import type { HeldPart } from '../../api/experiences';
-import { PointPreviewDialog } from './PointPreviewDialog';
+import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { WorkCard } from './WorksPreview';
 
 export function PartPreviewDialog({ part, onClose }: {
