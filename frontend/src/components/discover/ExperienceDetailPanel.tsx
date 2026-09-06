@@ -3,7 +3,7 @@
  * Handles large location/content lists with collapse + search.
  */
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Box,
   ButtonBase,
@@ -12,24 +12,21 @@ import {
   Chip,
   Button,
   Divider,
-  Checkbox,
   Collapse,
   TextField,
   InputAdornment,
   LinearProgress,
-  Tooltip,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import LanguageIcon from '@mui/icons-material/Language';
 import TuneIcon from '@mui/icons-material/Tune';
-import LocationOnIcon from '@mui/icons-material/LocationOn';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SearchIcon from '@mui/icons-material/Search';
-import DoneAllIcon from '@mui/icons-material/DoneAll';
-import RemoveDoneIcon from '@mui/icons-material/RemoveDone';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchExperience,
@@ -39,24 +36,22 @@ import {
   type ExperienceTreasure,
 } from '../../api/experiences';
 import { useAuth } from '../../hooks/useAuth';
+import { PointPreviewDialog } from '../shared/PointPreviewDialog';
+import { LocationsSection, type PanelLocation } from './LocationsSection';
 import {
   useVisitedExperiences,
   useVisitedLocations,
   useExperienceVisitedStatus,
   useViewedTreasures,
 } from '../../hooks/useVisitedExperiences';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
-import { subscribeToHoverTarget, useHoverActions, useHoverSelector } from '../../hooks/useHoverContext';
 
 import { experienceColors } from '../../utils/categoryColors';
-import { EmptyState } from '../shared/EmptyState';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ContentTile } from './ContentTile';
 import { locationLabel } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
 
-const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 const CONTENTS_COLLAPSE_THRESHOLD = 15;
 const CONTENTS_INITIAL_SHOW = 20;
 
@@ -68,7 +63,11 @@ interface ExperienceDetailPanelProps {
 }
 
 export function ExperienceDetailPanel({ experience, onClose, onCurate }: ExperienceDetailPanelProps) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isCurator } = useAuth();
+  // The place a curator opened from the list below, held as the place; and what
+  // the last correction did, said here because the panel has no other line for it.
+  const [correcting, setCorrecting] = useState<PanelLocation | null>(null);
+  const [correctionNotice, setCorrectionNotice] = useState<string | null>(null);
 
   // Fetch full details
   const { data: details } = useQuery({
@@ -129,11 +128,15 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
   const isMultiLocation = totalLocations > 1;
 
   // Build location list: use public locations as base, overlay visited status when authenticated
-  const displayLocations = useMemo(() => {
+  const displayLocations = useMemo((): PanelLocation[] => {
     const publicLocs = locationsData?.locations || [];
+    // The place's claims travel on the public read only; the visited-status read
+    // is about the visit. Joined by id here, so a corrected pin says so on a
+    // signed-in reader's row as on anyone else's.
+    const claimsById = new Map(publicLocs.map(loc => [loc.id, loc.curated_fields]));
     if (locationsWithVisitedStatus.length > 0) {
       // Auth data available — use it (has isVisited field)
-      return locationsWithVisitedStatus;
+      return locationsWithVisitedStatus.map(loc => ({ ...loc, curatedFields: claimsById.get(loc.id) }));
     }
     // Not authenticated or auth data not yet loaded — map public locations
     return publicLocs.map(loc => ({
@@ -143,6 +146,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
       longitude: loc.longitude,
       latitude: loc.latitude,
       isVisited: false,
+      curatedFields: loc.curated_fields,
     }));
   }, [locationsData?.locations, locationsWithVisitedStatus]);
 
@@ -285,8 +289,41 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
             onUnmarkLocation={unmarkLocationVisited}
             onMarkAll={() => markAllLocations({ experienceId: experience.id })}
             onUnmarkAll={() => unmarkAllLocations({ experienceId: experience.id })}
+            // A place is corrected wherever a curator is looking at one (#583); the
+            // single place has no row here and is reached through the object screen.
+            onCorrect={isCurator ? setCorrecting : undefined}
           />
         )}
+        {correcting && (
+          <PointPreviewDialog
+            open
+            onClose={() => setCorrecting(null)}
+            name={locationLabel(correcting)}
+            latitude={correcting.latitude}
+            longitude={correcting.longitude}
+            correction={{
+              place: {
+                locationId: correcting.id,
+                experienceId: experience.id,
+                objectName: experience.name,
+                name: correcting.name,
+                latitude: correcting.latitude,
+                longitude: correcting.longitude,
+              },
+              onDone: setCorrectionNotice,
+            }}
+          />
+        )}
+        <Snackbar
+          open={correctionNotice !== null}
+          autoHideDuration={12000}
+          onClose={() => setCorrectionNotice(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        >
+          <Alert severity="info" onClose={() => setCorrectionNotice(null)} sx={{ maxWidth: 480 }}>
+            {correctionNotice}
+          </Alert>
+        </Snackbar>
 
         {/* Single-location visited button */}
         {isAuthenticated && !isMultiLocation && (
@@ -351,302 +388,6 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
           })()}
         </Box>
       </Box>
-    </Box>
-  );
-}
-
-// =============================================================================
-// Locations Section (collapsible, searchable for large lists)
-// =============================================================================
-
-/** One place the object has, as a row in the section's location list. */
-interface PanelLocation {
-  id: number;
-  name: string | null;
-  ordinal: number | null;
-  longitude: number;
-  latitude: number;
-  isVisited: boolean;
-}
-
-interface LocationsSectionProps {
-  /** Whose places these are — a row hover names the object and the place. */
-  experienceId: number;
-  locations: PanelLocation[];
-  totalCount: number;
-  isAuthenticated: boolean;
-  onMarkLocation: (id: number) => void;
-  onUnmarkLocation: (id: number) => void;
-  onMarkAll: () => void;
-  onUnmarkAll: () => void;
-}
-
-/**
- * Exported for its test, like `ContentsSection`: what it promises is a property
- * of the *closed* state — that a keyboard can open it — and no caller of the
- * panel can drive that.
- */
-export function LocationsSection({
-  experienceId,
-  locations,
-  totalCount,
-  isAuthenticated,
-  onMarkLocation,
-  onUnmarkLocation,
-  onMarkAll,
-  onUnmarkAll,
-}: LocationsSectionProps) {
-  const shouldCollapse = totalCount > LOCATIONS_COLLAPSE_THRESHOLD;
-  const [expanded, setExpanded] = useState(!shouldCollapse);
-  const [searchText, setSearchText] = useState('');
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const { store } = useHoverActions();
-
-  const visitedCount = locations.filter((l) => l.isVisited).length;
-
-  const filteredLocations = useMemo(() => {
-    if (!searchText) return locations;
-    const lower = searchText.toLowerCase();
-    return locations.filter((l) => (l.name || '').toLowerCase().includes(lower));
-  }, [locations, searchText]);
-
-  const virtualizer = useVirtualizer({
-    count: filteredLocations.length,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 40,
-    overscan: 5,
-  });
-
-  // Auto-scroll to hovered location (from map highlight dot hover) — from a
-  // subscription, so a pointer crossing the dots does not re-render this
-  // section per move; the hover used to arrive as page state, which did (#573).
-  // Only a hover from the map: a row hover can only have come from a row
-  // already on the page. Through refs, because the subscription is registered
-  // once and a hover is not the moment to re-register it because the rows or
-  // the fold changed.
-  const filteredRef = useRef(filteredLocations);
-  filteredRef.current = filteredLocations;
-  const expandedRef = useRef(expanded);
-  expandedRef.current = expanded;
-  useEffect(() => subscribeToHoverTarget(store, ({ hoveredLocationId, hoverSource }) => {
-    if (hoverSource !== 'marker' || hoveredLocationId == null) return;
-    const idx = filteredRef.current.findIndex(l => l.id === hoveredLocationId);
-    if (idx >= 0) {
-      if (!expandedRef.current) setExpanded(true);
-      // Smooth stays: these rows are fixed-height estimates with no
-      // `measureElement`, which is the case TanStack supports it for.
-      virtualizer.scrollToIndex(idx, { align: 'center', behavior: 'smooth' });
-    }
-  }), [store, virtualizer]);
-
-  return (
-    <Box sx={{ mb: 2 }}>
-      {/* Same disclosure, and if anything the sharper of the two: each row inside
-          carries a visit checkbox, so a signed-in keyboard reader was locked out of
-          *recording* — on a serial site of more than fifteen places, which is every
-          site whose list is worth opening. Ticking off the places you have stood in
-          is what this product is for, so the header that hides them is not a lesser
-          case than the works grid. */}
-      <ButtonBase
-        component="div"
-        role="button"
-        aria-expanded={expanded}
-        sx={{
-          display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', mb: 1,
-          width: '100%', textAlign: 'inherit',
-        }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <LocationOnIcon fontSize="small" color="action" />
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
-          Locations ({totalCount})
-        </Typography>
-        {isAuthenticated && (
-          <Typography variant="caption" color={visitedCount === totalCount ? 'success.main' : 'text.secondary'}>
-            {visitedCount}/{totalCount} visited
-          </Typography>
-        )}
-        {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-      </ButtonBase>
-
-      <Collapse in={expanded} timeout="auto">
-        {/* Batch actions + search for large lists */}
-        {totalCount > LOCATIONS_COLLAPSE_THRESHOLD && (
-          <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
-            <TextField
-              size="small"
-              placeholder="Filter locations..."
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              sx={{ flex: 1 }}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon fontSize="small" />
-                    </InputAdornment>
-                  ),
-                },
-              }}
-            />
-            {isAuthenticated && (
-              <>
-                <Tooltip title="Mark all visited">
-                  <IconButton size="small" onClick={onMarkAll} color="success">
-                    <DoneAllIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Unmark all">
-                  <IconButton size="small" onClick={onUnmarkAll} color="default">
-                    <RemoveDoneIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </>
-            )}
-          </Box>
-        )}
-
-        {/* Batch actions for smaller lists */}
-        {isAuthenticated && totalCount <= LOCATIONS_COLLAPSE_THRESHOLD && totalCount > 1 && (
-          <Box sx={{ display: 'flex', gap: 0.5, mb: 1 }}>
-            <Button size="small" variant="text" startIcon={<DoneAllIcon />} onClick={onMarkAll}>
-              Mark all
-            </Button>
-            <Button size="small" variant="text" startIcon={<RemoveDoneIcon />} onClick={onUnmarkAll}>
-              Unmark all
-            </Button>
-          </Box>
-        )}
-
-        {/* Virtualized location list */}
-        <Box
-          ref={scrollContainerRef}
-          sx={{
-            maxHeight: 350,
-            overflowY: 'auto',
-            bgcolor: 'background.paper',
-            borderRadius: 1,
-            border: '1px solid',
-            borderColor: 'divider',
-          }}
-        >
-          {filteredLocations.length > 0 ? (
-            <Box
-              sx={{
-                height: `${virtualizer.getTotalSize()}px`,
-                width: '100%',
-                position: 'relative',
-              }}
-            >
-              {virtualizer.getVirtualItems().map((virtualRow) => {
-                const loc = filteredLocations[virtualRow.index];
-                return (
-                  <PanelLocationRow
-                    key={loc.id}
-                    experienceId={experienceId}
-                    loc={loc}
-                    size={virtualRow.size}
-                    start={virtualRow.start}
-                    isAuthenticated={isAuthenticated}
-                    onMarkLocation={onMarkLocation}
-                    onUnmarkLocation={onUnmarkLocation}
-                  />
-                );
-              })}
-            </Box>
-          ) : (
-            <EmptyState message="No locations match your filter" padding={2} />
-          )}
-        </Box>
-      </Collapse>
-    </Box>
-  );
-}
-
-interface PanelLocationRowProps {
-  experienceId: number;
-  loc: PanelLocation;
-  size: number;
-  start: number;
-  isAuthenticated: boolean;
-  onMarkLocation: (id: number) => void;
-  onUnmarkLocation: (id: number) => void;
-}
-
-/**
- * One place in the panel's location list, subscribed to its own "is the map
- * pointing at me" boolean — a dot hover highlights this row and this row alone,
- * where the id as page state re-rendered the whole page per pointer move. Its
- * own hover writes the store, and the ring on the map is drawn from that by
- * `useDiscoverHover`'s subscription, which holds the coordinates. Only a hover
- * from the *map* highlights: the row's own pointer case is the `&:hover` CSS.
- */
-function PanelLocationRow({
-  experienceId,
-  loc,
-  size,
-  start,
-  isAuthenticated,
-  onMarkLocation,
-  onUnmarkLocation,
-}: PanelLocationRowProps) {
-  const { setHoveredFromList } = useHoverActions();
-  const isHovered = useHoverSelector(
-    s => s.hoverSource === 'marker' && s.hoveredLocationId === loc.id);
-  return (
-    <Box
-      onMouseEnter={() => setHoveredFromList(experienceId, loc.id)}
-      onMouseLeave={() => setHoveredFromList(null, null)}
-      sx={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: `${size}px`,
-        transform: `translateY(${start}px)`,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 0.5,
-        px: 1,
-        borderBottom: '1px solid',
-        borderColor: 'divider',
-        '&:hover': { bgcolor: 'action.hover' },
-        cursor: 'default',
-        ...(isHovered && {
-          bgcolor: 'action.selected',
-          borderLeft: '3px solid',
-          borderLeftColor: '#f97316',
-        }),
-      }}
-    >
-      <LocationOnIcon fontSize="small" color={loc.isVisited ? 'success' : 'action'} sx={{ flexShrink: 0 }} />
-      <Typography
-        variant="body2"
-        noWrap
-        sx={{
-          flex: 1,
-          textDecoration: loc.isVisited ? 'line-through' : 'none',
-          color: loc.isVisited ? 'text.secondary' : 'text.primary',
-        }}
-      >
-        {locationLabel(loc)}
-      </Typography>
-      {isAuthenticated && (
-        <Checkbox
-          checked={loc.isVisited}
-          size="small"
-          // Named, because a bare checkbox is announced as "checkbox, not checked"
-          // and nothing else — neither which place it is nor what ticking it says.
-          // A row of thirty of those is a list a screen reader cannot use at all.
-          inputProps={{
-            'aria-label': loc.isVisited
-              ? `${locationLabel(loc)} — mark as not visited`
-              : `${locationLabel(loc)} — mark as visited`,
-          }}
-          onChange={() => loc.isVisited ? onUnmarkLocation(loc.id) : onMarkLocation(loc.id)}
-          sx={{ p: 0.5, '&.Mui-checked': { color: '#22c55e' } }}
-        />
-      )}
     </Box>
   );
 }

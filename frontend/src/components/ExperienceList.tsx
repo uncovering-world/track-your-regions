@@ -25,6 +25,8 @@ import {
   Typography,
   List,
   Button,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import {
   PlaylistAdd as AssignIcon,
@@ -43,7 +45,10 @@ import {
   type Experience,
 } from '../api/experiences';
 import { useNavigation } from '../hooks/useNavigation';
+import { locationLabel } from '../utils/locationLabel';
 import { CurationDialog } from './shared/CurationDialog';
+import { PointPreviewDialog } from './shared/PointPreviewDialog';
+import type { LocationRowData } from './ExperienceList/LocationRow';
 import { AddExperienceDialog } from './shared/AddExperienceDialog';
 import { invalidateExperiences } from '../utils/queryInvalidation';
 import { LoadingSpinner } from './shared/LoadingSpinner';
@@ -105,6 +110,13 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   // Curator state
   const [curationTarget, setCurationTarget] = useState<Experience | null>(null);
+  // The place a curator opened from a card's row, held as the place: the dialog
+  // below is mounted for as long as this list is and reconciles across objects.
+  const [correctionTarget, setCorrectionTarget] = useState<
+    { experience: Experience; location: LocationRowData } | null
+  >(null);
+  // What the last correction did, said here — the list has no other line for it.
+  const [correctionNotice, setCorrectionNotice] = useState<string | null>(null);
   const [rejectedSectionOpen, setRejectedSectionOpen] = useState(false);
   const [addDialogState, setAddDialogState] = useState<{
     open: boolean;
@@ -406,6 +418,13 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   }, [setHoveredFromList]);
 
   const handleCurate = useCallback((exp: Experience) => setCurationTarget(exp), []);
+  // Stable for the same reason as `handleCurate`: it reaches every memoised
+  // place row through the card, and a fresh function here re-renders them all.
+  const handleCorrectPlace = useCallback(
+    (experience: Experience, location: LocationRowData) => setCorrectionTarget({ experience, location }),
+    [],
+  );
+  const closeCorrection = useCallback(() => setCorrectionTarget(null), []);
   // Stable, so the two dialogs below — mounted for as long as this list is,
   // whether or not anyone has opened them — can hold their memo while the list
   // re-renders on every scroll of it.
@@ -523,6 +542,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       onLocationHover={handleLocationHover}
       isRejected={rejected}
       onCurate={hasCuratorScope ? handleCurate : undefined}
+      onCorrectPlace={hasCuratorScope ? handleCorrectPlace : undefined}
       onUnreject={hasCuratorScope && rejected && regionId ? handleUnreject : undefined}
       onRemoveFromRegion={hasCuratorScope && rejected && regionId ? handleRemoveFromRegion : undefined}
       onCardOpened={handleCardOpenedHere}
@@ -604,6 +624,42 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
         regionId={regionId}
         onClose={closeCuration}
       />
+
+      {/* One place of an object, opened from its row on an open card to be looked
+          at and corrected — the same dialog the review page and the object screen
+          open (#583). The region is named so the batch that draws the pin refetches
+          and the marker moves. */}
+      {correctionTarget && (
+        <PointPreviewDialog
+          open
+          onClose={closeCorrection}
+          name={locationLabel(correctionTarget.location)}
+          latitude={correctionTarget.location.latitude}
+          longitude={correctionTarget.location.longitude}
+          correction={{
+            place: {
+              locationId: correctionTarget.location.id,
+              experienceId: correctionTarget.experience.id,
+              objectName: correctionTarget.experience.name,
+              name: correctionTarget.location.name,
+              latitude: correctionTarget.location.latitude,
+              longitude: correctionTarget.location.longitude,
+              regionId,
+            },
+            onDone: setCorrectionNotice,
+          }}
+        />
+      )}
+      <Snackbar
+        open={correctionNotice !== null}
+        autoHideDuration={12000}
+        onClose={() => setCorrectionNotice(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Alert severity="info" onClose={() => setCorrectionNotice(null)} sx={{ maxWidth: 480 }}>
+          {correctionNotice}
+        </Alert>
+      </Snackbar>
 
       {/* Add Experience to Region Dialog */}
       {regionId && (

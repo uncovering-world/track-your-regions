@@ -14,7 +14,8 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ExperienceTreasure } from '../../api/experiences';
 import { HoverProvider } from '../../hooks/useHoverContext';
-import { ContentsSection, LocationsSection } from './ExperienceDetailPanel';
+import { ContentsSection } from './ExperienceDetailPanel';
+import { LocationsSection } from './LocationsSection';
 
 // The places list is virtualised, and jsdom has no layout — so without a height
 // the virtualiser mounts no rows and any assertion about them passes against an
@@ -98,7 +99,13 @@ describe('the way into a museum\'s works', () => {
  * opening.
  */
 describe('the way into a serial site\'s places', () => {
-  function renderLocations(count = 20, visited = new Set<number>()) {
+  function renderLocations(
+    count = 20,
+    visited = new Set<number>(),
+    onCorrect?: (location: { id: number }) => void,
+    /** The one place whose pin a curator has already moved, if any. */
+    claimOn?: number,
+  ) {
     return render(
       <HoverProvider>
       <LocationsSection
@@ -114,6 +121,7 @@ describe('the way into a serial site\'s places', () => {
           isVisited: visited.has(i + 1),
           visitedAt: null,
           notes: null,
+          curatedFields: claimOn === i + 1 ? ['location'] : undefined,
         }))}
         totalCount={count}
         isAuthenticated
@@ -121,6 +129,7 @@ describe('the way into a serial site\'s places', () => {
         onUnmarkLocation={vi.fn()}
         onMarkAll={vi.fn()}
         onUnmarkAll={vi.fn()}
+        onCorrect={onCorrect}
       />
       </HoverProvider>,
     );
@@ -159,5 +168,30 @@ describe('the way into a serial site\'s places', () => {
       .toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /Place 1 — mark as visited/ }))
       .toBeInTheDocument();
+  });
+
+  it('offers a curator the correction on each row, named for the place', () => {
+    // A place is corrected wherever a curator is looking at one (#583). Named,
+    // for the reason the tick box is: thirty bare pencils are one pencil by ear.
+    const onCorrect = vi.fn();
+    renderLocations(3, new Set(), onCorrect);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fix Place 2' }));
+
+    expect(onCorrect).toHaveBeenCalledWith(expect.objectContaining({ id: 2, name: 'Place 2' }));
+  });
+
+  it('offers no correction to a reader', () => {
+    renderLocations(3);
+
+    expect(screen.queryByRole('button', { name: /^Fix / })).toBeNull();
+  });
+
+  it('says beside the name when a curator has moved the pin', () => {
+    // The claim rides on the public read and is joined onto the row; without the
+    // word, a pin somebody put there reads as the source's.
+    renderLocations(3, new Set(), undefined, 2);
+
+    expect(screen.getByText('pin corrected')).toBeInTheDocument();
   });
 });
