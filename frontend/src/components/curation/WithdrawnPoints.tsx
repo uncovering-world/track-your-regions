@@ -53,7 +53,7 @@ import { setLocationState, type ReviewQueueItem } from '../../api/experiences';
 import { formatDateTime } from '../../utils/dateFormat';
 import { placementNotice } from '../../utils/placementNotice';
 import { ItemHeader, messageFor } from './queueCard';
-import { PointPreviewDialog } from './PointPreviewDialog';
+import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { HelpHint } from './HelpHint';
 
 type WithdrawnPoint = NonNullable<ReviewQueueItem['withdrawn_points']>[number];
