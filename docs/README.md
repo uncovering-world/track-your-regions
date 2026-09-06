@@ -8,6 +8,7 @@ docs/
 ├── decisions/             ← Architecture Decision Records (immutable)
 ├── inbox/                 ← unsorted docs awaiting categorization
 ├── security/              ← OWASP ASVS security profile, checklist, audit reports
+├── sources/               ← the register of sources looked at for filling a kind (one record each)
 ├── tech/                  ← technical implementation details
 │   ├── planning/          ← plans for features to build
 │   └── ...                ← docs for implemented features
@@ -26,6 +27,7 @@ docs/
 | [domain-model.md](tech/domain-model.md) | Core entities, aggregates, relationships |
 | [ddd-overview.md](tech/ddd-overview.md) | Domain-Driven Design concepts used in the project |
 | [experiences.md](tech/experiences.md) | Experience sources, sync, region assignment, API |
+| [filling-a-kind.md](tech/filling-a-kind.md) | How a kind is filled in two tiers — what a source of each tier must provide, how a candidate is found, judged (the scorecard, the terms) and kept, the source families' verdicts, the rules tried on the canon (ADR-0048) |
 | [experience-map-ui.md](tech/experience-map-ui.md) | Map Mode + Discover Mode marker layers, hover/selection sync, multi-location behavior |
 | [addresses.md](tech/addresses.md) | The URL grammar — what a link carries, ids vs slugs, push vs replace, silent degradation, where it is implemented |
 | [world-views.md](tech/world-views.md) | Custom regional hierarchies, geometry computation |
@@ -59,6 +61,14 @@ docs/
 | [region-metadata-layers.md](tech/planning/region-metadata-layers.md) | Groupings, disputed territories, changes since visit, historical countries — overview | Planned |
 | [groupings.md](tech/planning/groupings.md) | Groupings/Tags detailed plan — data model, API, UI, seed data, phases | Planned |
 | [ENV-PLAN.md](tech/planning/ENV-PLAN.md) | Database bootstrap and current command workflow | Implemented |
+
+## Sources — the register
+
+| Document | Topic |
+|----------|-------|
+| [sources/README.md](sources/README.md) | The source register: one record per source looked at for filling a kind — its schema, the status vocabulary, what reads it |
+| [sources/museums/](sources/museums/) | Registers and lists that enumerate museums, one record each (Muséofile, Poland's state register, Italy's Luoghi della cultura, Peru's ministry directory, Museumsportal Berlin) |
+| [sources/global/](sources/global/) | Sources that enumerate any kind, read per unit (Wikidata, Wikivoyage, OpenStreetMap) and the commercial ones refused on terms (Google Places, Tripadvisor) |
 
 ## Vision
 

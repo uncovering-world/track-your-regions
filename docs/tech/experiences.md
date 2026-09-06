@@ -24,6 +24,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 |---|---|---|---|
 | **Kind** | What a traveller browses by — a World Heritage site, an art museum, an archaeology museum, a monument. Siblings: each its own list, pin colour and count, each with a sync of its own and its own rule of what complete means — a kind's sources are that sync's inputs (ADR-0045 §1, §2, §3) | `experience_kinds` (#822), and a place's membership in it is a row of `experience_kind_memberships`. Every reader still keys on the source row through `experiences.category_id` until #819 makes each say kind or source | `category`, `category_id`, `category_name`, `categoryId`; the chip beside an object's name on a review card, the Discover pills, the group headers |
 | **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query — an input of the kind's sync, carrying its own gate (§3, §7); the sync and the rule of completeness are the kind's. A kind may have several; one source may feed several kinds | `experience_categories` — one row per source, the row the sync service is registered under, naming the kind it fills (`kind_id`, #822) | `experience_categories`, `category_id` on `experience_sync_logs`, `source_id` on a membership, the curator scope `'category'`, `requires_curation`, `SOURCE_PALETTE` |
+| **Tier** | Which of a kind's two fillings a source belongs to ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md)): the **world tier** — a global source ranks the world on one signal and a line is drawn, the Iconic badge is its (§5) — or the **regional tier** — a source native to its own unit (a country's register, a city's list, a curator) enumerates what the unit holds and the kind's rule cuts within it, no badge. A region's list is both together; the rules, the scorecard and the register of sources looked at are [filling-a-kind.md](filling-a-kind.md) and [`docs/sources/`](../sources/README.md) | Not a column yet: the three live sources are all world tier; the first regional source (#628) records its tier on its `experience_categories` row | — |
 | **Type** | A distinction inside a kind whose members a traveller still browses together — cultural / natural / mixed, monument / sculpture — and none for a museum (§1, #814) | `experiences.type`; the vocabularies in `frontend/src/utils/experienceTypes.ts` | `type`, `?type=`, `TYPE_COLORS`, `typeOptionsFor` |
 | **Treasure type** | What kind of thing a work is, independent of its venue's kind and type | `treasures.treasure_type` | `treasure_type` |
 
@@ -1166,7 +1167,7 @@ museum's sculpture is that museum's work, and a Pietà is St Peter's before it i
 where a work a traveller goes to a church to see will live). This source fills the kind's **world
 tier** — what the world knows, by the same fame line as the museums' — and nothing else; the
 regional tier, the monuments a region holds below the world's line, comes from regional sources
-by the rules #799 writes, and carries no badge.
+by the rules of [filling-a-kind.md](filling-a-kind.md) (ADR-0048; #799), and carries no badge.
 
 **The pipeline is the museum import's, one level over** (#754). Five stages, each a cached
 question (ADR-0030), wired in `publicArt/pipeline.ts`:
@@ -1286,7 +1287,7 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
 the world's own signal, global, not a count and not per region** — ADR-0045 decision 2's "the
 ranking's own rule", and the same rule the museum source applies. The count is a property of the
 data (171 on the dry run of 2026-09-04, against 205 under the cut). A per-region floor
-is the regional tier's question, and belongs to the rules #799 writes.
+is the regional tier's question, and belongs to the rules of [filling-a-kind.md](filling-a-kind.md) (ADR-0048).
 
 **Refusals and the badge.** Every candidate the rule refuses comes back as the run's `filtered`
 (§ Change provenance), which marks the rows the kind holds under those ids `refused` with the
