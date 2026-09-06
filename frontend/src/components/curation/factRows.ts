@@ -22,6 +22,7 @@ import { keyMeaningOf, meaningOf, type ChangeContext, type FieldMeaning, type Pr
 import type { FieldProvenance } from './ProvenanceTrail';
 import type { HeldPart } from '../../api/experiences';
 import { creatorsBrief } from '../../utils/creatorList';
+import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/placeClaims';
 
 export type FactKind = 'new' | 'changed' | 'removed';
@@ -200,7 +201,7 @@ function partDetail(part: HeldPart, offeredLocations: number | undefined): strin
   if (part.treasureId == null) return null;
   const makers = creatorsBrief(part.artists, part.artistsCurated ?? false);
   const who = makers ? `by ${makers}` : null;
-  const when = part.year != null ? String(part.year) : null;
+  const when = yearLabel(part.year);
   return [who, when].filter(Boolean).join(', ') || null;
 }
 

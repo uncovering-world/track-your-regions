@@ -5,6 +5,7 @@ import type { ExperienceTreasure } from '../../api/experiences';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 import { creditLabel, ImageCreditLine } from '../shared/ImageCreditLine';
 import { creatorsBrief } from '../../utils/creatorList';
+import { yearLabel } from '../../utils/yearLabel';
 import { VISITED_GREEN } from '../../utils/categoryColors';
 
 /**
@@ -51,7 +52,10 @@ export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed
     content.name,
     creatorsBrief(content.artists, content.artists_curated)
       ? ` - ${creatorsBrief(content.artists, content.artists_curated)}` : '',
-    content.year ? ` (${content.year})` : '',
+    // Through the shared rule, like every other surface that prints a work's
+    // year: the raw column hovered the Borghese Gladiator as "(-100)" beside a
+    // dialog that reads "100 BC" (#731).
+    yearLabel(content.year) ? ` (${yearLabel(content.year)})` : '',
     // Whose photograph, always — the tile itself only draws the credit where it
     // carries something the row does not, and a reader wondering about a picture
     // should not have to guess which rule kept it off. Silent where there is no
