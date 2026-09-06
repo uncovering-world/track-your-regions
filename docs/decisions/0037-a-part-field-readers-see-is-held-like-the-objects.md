@@ -1,7 +1,7 @@
 # ADR-0037: A field of a part readers can see is held like the object's own
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Accepted — decision 6 narrowed by [ADR-0050](0050-a-renamed-component-is-found-by-its-claim.md)
 
 ---
 

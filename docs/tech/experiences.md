@@ -2480,10 +2480,22 @@ something — `heldFieldExistsSql OR heldPartExistsSql`, the pair `heldWaitingSq
 panel's number and the queue's cards agree row for row. Either half may be NULL on a card about the
 other; the trailing guard drops a row with nothing on both, and is load-bearing now where it used to
 be a floor. The row behind a part is found by one rule the card and publishing share,
-`partRecord.ts`: the reference narrows, the name decides among the nine duplicated references, the
-lowest id breaks a tie, and the one referenceless point is found because the reference is compared
-with `IS NOT DISTINCT FROM`. Offered rows only; a part the source has since withdrawn keeps its
-group on the card with nothing to open.
+`partRecord.ts`: the reference narrows, the name decides among the duplicated references, and
+where no row answers to the record's name any more a row whose `name` a curator has claimed is the
+one — the record names the part as it stood when the run wrote it, and a held row's stored name
+leaves that for one reason only, a correction, which always claims `name`
+([ADR-0050](../decisions/0050-a-renamed-component-is-found-by-its-claim.md), #833; before this term
+the tie fell to the lowest id, and renaming uKhahlamba Drakensberg Park from its card reopened the
+card on Sehlabathebe National Park, the other half of Maloti-Drakensberg Park under `985ter-001`).
+The lowest id breaks a tie only among rows the name admits — the rows that share a name as well as
+a reference; a tie among rows it does not admit is a row nobody can identify, and the
+rule answers with `identified` false: the card gives the part no door, exactly as for a withdrawn
+one, and publishing reports it and leaves it open. A claim carries no date, so the term tells a row
+carrying a curator's name from one that is not, never "renamed since the run": a sibling corrected
+long before the run counts too, and the case lands on `identified` false rather than on the right
+row — the safe answer, with the card standing. The one referenceless point is found because the
+reference is compared with `IS NOT DISTINCT FROM`. Offered rows only; a part the source has since
+withdrawn keeps its group on the card with nothing to open.
 
 The pointer is not proof the gate is what held every field on it. `experienceUpsert.ts`'s
 `proposedAnything` sets the pointer for *any* refused proposal — a curator's own `curated_fields`
@@ -2868,7 +2880,12 @@ a place's `name` and a work's `name`, `artists`, `year`, `image_url` and credit 
 run's own record, a field the part's curator has since claimed is skipped and reported per part, an
 unwritable field refuses the whole call with the pointer standing, and a part the record names that
 no offered row answers to is reported as `partsNotFound` and the rest published — 409ing over a place
-the source has since withdrawn would leave a card no answer can clear. The staleness check covers a
+the source has since withdrawn would leave a card no answer can clear. Each such part carries its
+`reason`: `withdrawn`, or `ambiguous` for a place more than one offered row answers to that nothing
+tells apart (#833) — the outcome line says which, since one asks the curator for nothing and the other for a look
+at the siblings. An ambiguous part's rows stay open and keep the pointer, so the card the outcome line
+sends the curator back to is still there; a withdrawn part's do not, which is the clearing the sentence
+before this one exists for. The staleness check covers a
 proposal held on parts alone, asked of the proposal rather than of the writes. The response carries
 `appliedParts`, the audit row `parts` and `partsNotFound`. A contents publish touches none of it. It answers **409 on a row nobody has passed yet** — an arrival has no held
 fields to publish on their own, and publishing it this way would put an object in front of readers
