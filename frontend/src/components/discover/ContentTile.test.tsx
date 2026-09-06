@@ -102,6 +102,17 @@ describe('a work in the contents grid', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(/Mesha.*840.*Mbzt/);
   });
 
+  it('hovers the year the way a person writes one', async () => {
+    // The Mesha Stele is of about 840 BC. Printed from the column the tooltip
+    // read "(-840)" while the dialog this tile opens read "840 BC" — the same
+    // disagreement `yearLabel` was extracted to end (#731).
+    renderTile({ artists: ['Mesha'], year: -840 });
+
+    fireEvent.mouseOver(screen.getByRole('button', { name: /Mesha Stele/ }));
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('(840 BC)');
+  });
+
   it('keeps saying what the press will do, rather than describing the work', () => {
     // Without `describeChild` MUI writes the tooltip into the child's `aria-label`,
     // and the announcement becomes the description instead of the action.

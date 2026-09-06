@@ -17,6 +17,7 @@ import { toThumbnailUrl } from '../../utils/imageUrl';
 import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { creatorsBrief } from '../../utils/creatorList';
+import { yearLabel } from '../../utils/yearLabel';
 import type { ImageCredit } from '../../api/experiences';
 
 export interface CountedWork {
@@ -45,8 +46,8 @@ export interface CountedWork {
  * "statue · Polykleitos · 450 BC" — what it is, who made it, when.
  *
  * Antiquities are what these lists are mostly made of, so the era is written out on both
- * sides of zero: "statue · 200" beside "statue · 200 BC" reads as a typo rather than as
- * four hundred years apart.
+ * sides of zero — `yearLabel`'s rule, which used to live here and is now shared with
+ * every other surface that shows a work's year (#731).
  */
 function subtitle(work: CountedWork): string {
   const parts: string[] = [];
@@ -55,10 +56,8 @@ function subtitle(work: CountedWork): string {
   // names would push the type and the era off the end of it.
   const makers = creatorsBrief(work.artists, work.artistsCurated);
   if (makers) parts.push(makers);
-  if (typeof work.year === 'number') {
-    if (work.year < 0) parts.push(`${Math.abs(work.year)} BC`);
-    else parts.push(work.year < 1000 ? `AD ${work.year}` : String(work.year));
-  }
+  const when = yearLabel(work.year);
+  if (when) parts.push(when);
   return parts.join(' · ');
 }
 

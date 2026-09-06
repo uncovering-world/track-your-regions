@@ -34,6 +34,7 @@ import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { creators } from '../../utils/creatorList';
 import { typeVocabularyOf } from '../../utils/experienceTypes';
 import { describeMove } from '../../utils/moveDescription';
+import { yearLabel } from '../../utils/yearLabel';
 import { PictureFact } from './PictureFact';
 
 /** One field of a proposal, as the queue carries it. */
@@ -99,10 +100,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const number = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 });
 const whole = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
 
-/** `-1848` → "1848 BC"; large negatives grouped, since `-400000` is a Palaeolithic date. */
-function yearLabel(value: unknown): string {
-  if (typeof value !== 'number') return String(value ?? '');
-  return value < 0 ? `${whole.format(-value)} BC` : String(value);
+/**
+ * A year on a change row, in the one spelling every surface uses.
+ *
+ * Had its own rule until #731 — no `AD` under a thousand, and `Intl` grouping on
+ * large negatives — which put "38,000 BC" in a held work's change row directly
+ * above "38000 BC" on the row that lists it, and "200" above "AD 200". That is
+ * the disagreement `yearLabel` exists to end, so this defers to it and keeps only
+ * what a change row needs: a value that is not a number at all still has to
+ * render as something.
+ */
+function renderYear(value: unknown): string {
+  return (typeof value === 'number' ? yearLabel(value) : null) ?? String(value ?? '');
 }
 
 /**
@@ -547,7 +556,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
     label: 'year',
     what: 'The year the work was made or unveiled, from Wikidata’s “inception”. Negative years are BC.',
     whenItChanges: 'Dates get corrected on Wikidata; a change of a few years is routine, a change of centuries is a different object.',
-    render: yearLabel,
+    render: renderYear,
     describeChange: (before, after) => (
       typeof before === 'number' && typeof after === 'number' && Math.abs(after - before) >= 100
         ? 'Centuries apart — check it is the same object.'
@@ -571,7 +580,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
     label: 'year',
     what: 'The year the work was made, from Wikidata’s “inception”. Negative years are BC.',
     whenItChanges: 'Dates get corrected on Wikidata; a change of a few years is routine, a change of centuries is a different work.',
-    render: yearLabel,
+    render: renderYear,
   },
   image_url: {
     label: 'picture',

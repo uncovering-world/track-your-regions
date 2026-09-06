@@ -398,6 +398,19 @@ export interface ExperienceTreasure {
    * dense row leads with a name only once somebody has made that claim.
    */
   artists_curated: boolean;
+  /**
+   * The columns a curator has claimed on the work (`treasures.curated_fields`),
+   * so a row can say it has been corrected rather than letting a curator's
+   * title read as the source's. `claimLabel` in `utils/workClaims.ts` turns it
+   * into the words a row shows.
+   */
+  curated_fields?: string[];
+  /**
+   * How many museums hang this work. A work is one row shared by all of them
+   * (ADR-0025 decision 2) — *The Great Wave off Kanagawa* is eleven — so the
+   * correction dialog says how far a change reaches before it is saved.
+   */
+  venue_count?: number;
   year: number | null;
   image_url: string | null;
   /**
@@ -486,7 +499,14 @@ export async function rejectExperience(
  */
 export interface HeldPart {
   kind: 'locations' | 'treasures';
+  /** The part as the *record* names it — the name as the run saw it, never rewritten (ADR-0026 decision 4). */
   item: { name: string | null; ref: string | null };
+  /**
+   * The stored row's name now, where the row was found. The record's name is a
+   * snapshot, so a part corrected since — from this card's own dialog — would
+   * otherwise be headed and seeded with the name it no longer has (#731).
+   */
+  storedName?: string | null;
   fields: Array<{ field: string; old: unknown; new: unknown; held?: boolean }>;
   locationId?: number | null;
   /** The fields a curator has claimed on the stored place, where the server sends them. */
@@ -497,6 +517,16 @@ export interface HeldPart {
   treasureId?: number | null;
   artists?: string[] | null;
   artistsCurated?: boolean | null;
+  /**
+   * The fields a curator has claimed on the stored *work*.
+   *
+   * Its own name rather than sharing the place's above: both parts are built by
+   * one `jsonb_build_object`, so one key could not answer for two rows — and a
+   * held work part carries no place, nor the reverse.
+   */
+  workCuratedFields?: string[] | null;
+  /** How many museums hang the work, for the reach the correction dialog states. */
+  venueCount?: number | null;
   year?: number | null;
   imageUrl?: string | null;
   imageCredit?: ImageCredit | null;
@@ -705,6 +735,14 @@ export interface ReviewQueueItem {
      * and a row without a link is the shape it had until then.
      */
     externalId?: string;
+    /** What it is, for the dialog the row opens: "painting", "woodblock print". */
+    treasureType?: string | null;
+    /** Whose photograph the row's picture is, shown wherever that picture is (ADR-0043). */
+    imageCredit?: ImageCredit | null;
+    /** What a curator has already claimed on the work, so the row can say so (#731). */
+    curatedFields?: string[] | null;
+    /** How many museums hang it, for the reach a correction from this row would have. */
+    venueCount?: number | null;
   }>;
   /** Whether anyone has passed the row. `arrival` items only, where it is `pending`. */
   curation_state?: string;
@@ -1004,6 +1042,54 @@ export async function editLocation(
     method: 'PATCH',
     body: JSON.stringify(correction),
   });
+}
+
+/**
+ * A curator's correction to one work: its title, who made it, when, and which
+ * photograph it is shown by.
+ *
+ * The museum is in the path because a work hangs in more than one and carries
+ * no scope of its own — the link to the museum the curator came from is what
+ * proves the work is theirs to correct, and its absence is a 404 rather than a
+ * 403. The reach is the other side of that: a work is passed once, globally
+ * (ADR-0025 decision 2), so a correction made from one museum is what every
+ * museum holding it shows, which is why `venue_count` is on the rows this is
+ * offered from and said before Save rather than reported after.
+ *
+ * `artists` is sent whole, in the order the curator put it in, and an **empty**
+ * list is a value: "the source names somebody and nobody knows who made this"
+ * is an answer, and the endpoint keeps it apart from leaving the field alone.
+ * Sending the list unchanged is also a request — it claims the column, which is
+ * how a curator vouches for an order that was already right.
+ *
+ * `imageUrl` is a Commons file or an `/images/` path we host, and `''` takes
+ * the picture off. The credit is not sent: it belongs to the file, and the
+ * server fetches it from Commons for whatever address this writes, so the two
+ * land in one statement and no row ever holds one photograph under another
+ * photographer's name (ADR-0043).
+ */
+export async function editWork(
+  experienceId: number,
+  treasureId: number,
+  correction: { name?: string; artists?: string[]; year?: number | null; imageUrl?: string },
+): Promise<{
+  success: true;
+  treasureId: number;
+  /** The columns this edit took ownership of, which a later run will no longer touch. */
+  claimed: Array<'name' | 'artists' | 'year' | 'image_url'>;
+  /**
+   * Who was named under the new picture, present only where the picture changed.
+   *
+   * Read rather than assumed: a Commons file whose credit request timed out is
+   * stored with none, and a screen that promised a name would show the picture
+   * as credited to nobody without saying that is what happened.
+   */
+  imageCredit?: ImageCredit | null;
+}> {
+  return authFetchJson(
+    `${API_URL}/api/experiences/${experienceId}/works/${treasureId}/edit`,
+    { method: 'PATCH', body: JSON.stringify(correction) },
+  );
 }
 
 /**
