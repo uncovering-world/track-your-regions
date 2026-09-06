@@ -135,6 +135,54 @@ export const searchQuerySchema = z.object({
 });
 
 // =============================================================================
+// Reusable field schemas
+// =============================================================================
+
+/**
+ * A URL field bounded by whatever holds it, kept to the shapes that field can
+ * legitimately take. Most of these end up inside the `metadata` JSONB, which
+ * has no width, so they keep the generic 2000; `imageUrl` is stored in
+ * `experiences.image_url` and `treasures.image_url`, both `varchar(1000)`, and
+ * takes that width instead.
+ *
+ * The value is judged, then rewritten to the form the parser read, and that is
+ * what gets stored: `validate()` puts the parsed object back on the request, so
+ * no consumer downstream sees a spelling this rule did not read. The width is
+ * measured last, on that stored form, because percent-encoding can make it
+ * longer than what arrived.
+ *
+ * Above the schemas rather than beside the curation ones it was written for:
+ * `editWorkBodySchema` is evaluated where it is declared, and a `const` read
+ * before its own line is a ReferenceError rather than a lint failure.
+ */
+const boundedUrl = (max: number, isStorable: (value: string) => boolean, message: string) =>
+  z.string().trim().optional()
+    .refine((val) => !val || isStorable(val), { message })
+    .transform((val) => (val === undefined ? val : normalizeStorableUrl(val)))
+    .refine((val) => !val || val.length <= max, {
+      message: `URL must be at most ${max} characters once normalised`,
+    });
+
+const safeUrlSchema = boundedUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
+const safeImageUrlSchema = boundedUrl(1000, isDisplayablePictureUrl, DISPLAYABLE_PICTURE_URL_MESSAGE);
+
+/**
+ * The same rule for a url that has to be there: an element of a list, or a
+ * value a route acts on at once. `boundedUrl` reads an absent or empty value
+ * as "leave the field alone" or "clear it", which an element of a list cannot
+ * mean -- a candidate that is nothing is not a candidate.
+ */
+const requiredUrl = (max: number, isStorable: (value: string) => boolean, message: string) =>
+  z.string().trim()
+    .refine(isStorable, { message })
+    .transform(normalizeStorableUrl)
+    .refine((val) => val.length <= max, {
+      message: `URL must be at most ${max} characters once normalised`,
+    });
+
+const requiredSafeUrlSchema = requiredUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
+
+// =============================================================================
 // Reusable param schemas (for path params)
 // =============================================================================
 
@@ -188,7 +236,8 @@ export const workEditParamsSchema = z.object({
 });
 
 /**
- * A curator's correction to one work: what it is called, who made it, when.
+ * A curator's correction to one work: what it is called, who made it, when,
+ * and which photograph it is shown by.
  *
  * `artists` is a list because a work often has more than one maker (#720), and
  * an **empty** list is a value a curator can mean — "the source names someone
@@ -196,16 +245,30 @@ export const workEditParamsSchema = z.object({
  * Twenty is a bound rather than a judgement: the most any stored work names is
  * the Moon Museum's six, and the Fountain of Cybele's seven among monuments.
  *
- * `year` accepts null for the same reason: a date withdrawn is an answer.
- * `image_url` is absent on purpose — see `workEditController`.
+ * `year` accepts null for the same reason: a date withdrawn is an answer. Its
+ * floor is not a guess about art history but a bound the stored rows had to
+ * clear: −4000 refused nine works the museum run had already written, the
+ * oldest being the Lion man of the Hohlenstein Stadel at 38000 BC in Museum
+ * Ulm, with five palaeolithic Venuses, the Swimming Reindeer, the Shigir Idol
+ * and the Ain Sakhri lovers behind it. A curator cannot be refused a value the
+ * catalogue is showing them, so the floor sits far enough below the oldest
+ * worked object a museum displays to stay a typo guard and nothing else.
+ *
+ * `imageUrl` is `safeImageUrlSchema`, the same field `editExperienceBodySchema`
+ * takes: a Commons file or an `/images/` path we host, normalised to the
+ * spelling the drawing side reads. `''` clears the picture. The credit is not
+ * in the body and never could be — it belongs to the file and is fetched from
+ * Commons for it (`workEditController`).
  */
 export const editWorkBodySchema = z.object({
   name: z.string().trim().min(1).max(500).optional(),
   artists: z.array(z.string().trim().min(1).max(500)).max(20).optional(),
-  year: z.number().int().min(-4000).max(2200).nullable().optional(),
+  year: z.number().int().min(-200000).max(2200).nullable().optional(),
+  imageUrl: safeImageUrlSchema,
 }).refine(
-  body => body.name !== undefined || body.artists !== undefined || body.year !== undefined,
-  { message: 'Nothing to change: pass a name, the makers, a year, or any of them' },
+  body => body.name !== undefined || body.artists !== undefined
+    || body.year !== undefined || body.imageUrl !== undefined,
+  { message: 'Nothing to change: pass a name, the makers, a year, a picture, or any of them' },
 ).refine(
   // The importer dedupes by entity and by folded label, so a stored list never
   // names the same person twice; without this an edit could store what no run
@@ -290,45 +353,6 @@ export const unrejectExperienceBodySchema = z.object({
 export const assignExperienceBodySchema = z.object({
   regionId: z.number().int().positive(),
 });
-
-/**
- * A URL field bounded by whatever holds it, kept to the shapes that field can
- * legitimately take. Most of these end up inside the `metadata` JSONB, which
- * has no width, so they keep the generic 2000; `imageUrl` is stored in
- * `experiences.image_url` and takes that column's 1000 instead.
- *
- * The value is judged, then rewritten to the form the parser read, and that is
- * what gets stored: `validate()` puts the parsed object back on the request, so
- * no consumer downstream sees a spelling this rule did not read. The width is
- * measured last, on that stored form, because percent-encoding can make it
- * longer than what arrived.
- */
-const boundedUrl = (max: number, isStorable: (value: string) => boolean, message: string) =>
-  z.string().trim().optional()
-    .refine((val) => !val || isStorable(val), { message })
-    .transform((val) => (val === undefined ? val : normalizeStorableUrl(val)))
-    .refine((val) => !val || val.length <= max, {
-      message: `URL must be at most ${max} characters once normalised`,
-    });
-
-const safeUrlSchema = boundedUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
-const safeImageUrlSchema = boundedUrl(1000, isDisplayablePictureUrl, DISPLAYABLE_PICTURE_URL_MESSAGE);
-
-/**
- * The same rule for a url that has to be there: an element of a list, or a
- * value a route acts on at once. `boundedUrl` reads an absent or empty value
- * as "leave the field alone" or "clear it", which an element of a list cannot
- * mean -- a candidate that is nothing is not a candidate.
- */
-const requiredUrl = (max: number, isStorable: (value: string) => boolean, message: string) =>
-  z.string().trim()
-    .refine(isStorable, { message })
-    .transform(normalizeStorableUrl)
-    .refine((val) => val.length <= max, {
-      message: `URL must be at most ${max} characters once normalised`,
-    });
-
-const requiredSafeUrlSchema = requiredUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
 
 /**
  * A link that may be left unsaid but not emptied: a region's source page
