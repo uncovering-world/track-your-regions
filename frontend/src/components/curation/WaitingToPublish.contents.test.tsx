@@ -9,10 +9,34 @@
  * and that a row an older server sends without one reads as it did before.
  */
 
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/experiences';
+
+// The dialog is the shared surface a place is looked at and corrected in, with its
+// own test; what this file pins is the wiring — which row opens, as which place, and
+// where the outcome line goes.
+vi.mock('../shared/PointPreviewDialog', () => ({
+  PointPreviewDialog: ({ name, correction }: {
+    name: string;
+    correction?: {
+      place: { locationId: number; objectName: string; name: string | null; unseen?: string };
+      onDone: (m: string) => void;
+    };
+  }) => (
+    <div role="dialog">
+      <span>{`opened ${name}`}</span>
+      {correction && <span>{`unseen=${String(correction.place.unseen)}`}</span>}
+      {correction && (
+        <button onClick={() => correction.onDone(`fixed ${correction.place.locationId} of ${correction.place.objectName}`)}>
+          fix
+        </button>
+      )}
+    </div>
+  ),
+}));
+
 import { GatedCard } from './WaitingToPublish';
 
 /** The Gemäldegalerie with unread paintings under it. */
@@ -27,13 +51,25 @@ function contents(...works: NonNullable<ReviewQueueItem['pending_works']>): Revi
   };
 }
 
-function renderCard(item: ReviewQueueItem) {
+function renderCard(item: ReviewQueueItem, onDone: (message?: string) => void = () => {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <GatedCard group={{ id: item.id, name: item.name, contents: item }} onDone={() => {}} />
+      <GatedCard group={{ id: item.id, name: item.name, contents: item }} onDone={onDone} />
     </QueryClientProvider>,
   );
+}
+
+/** Champagne Hillsides with unread components under it — nine on the live database. */
+function points(...rows: NonNullable<ReviewQueueItem['pending_points']>): ReviewQueueItem {
+  return {
+    id: 1345, external_id: '1465', name: 'Champagne Hillsides, Houses and Cellars',
+    category_id: 1, category_name: 'UNESCO World Heritage Sites',
+    missing_since: null, source_membership: 'present', existence: 'extant',
+    kind: 'contents', proposed: null,
+    pending_locations: rows.length, pending_treasures: 0,
+    pending_points: rows, pending_works: [],
+  };
 }
 
 describe('the works a contents card lists', () => {
@@ -75,5 +111,36 @@ describe('the works a contents card lists', () => {
     expect(screen.getByText('The Wine Glass')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'The Wine Glass' })).toBeNull();
     expect(screen.queryByRole('link', { name: /Wikipedia/ })).toBeNull();
+  });
+});
+
+describe('the points a contents card lists', () => {
+  it('opens a point where it can be looked at and corrected, and reports the outcome', () => {
+    const onDone = vi.fn();
+    renderCard(points(
+      { id: 6001, name: 'Coteaux de la Marne', externalRef: '1465-003', latitude: 49.0442, longitude: 3.955 },
+    ), onDone);
+
+    // The name is a button, because it is the only way to the place — a curator
+    // reading "49.0442, 3.9550" cannot tell a pin on the wrong hill from the numbers.
+    fireEvent.click(screen.getByRole('button', { name: 'Coteaux de la Marne' }));
+    expect(screen.getByText('opened Coteaux de la Marne')).toBeInTheDocument();
+    // An unread point is one readers do not see yet, and publishing — not the
+    // withdrawn card's "false alarm" — is what would show it.
+    expect(screen.getByText('unseen=unread')).toBeInTheDocument();
+
+    // The correction is offered as *this* place of *this* object, and its outcome
+    // line goes where the card reports its other answers.
+    fireEvent.click(screen.getByRole('button', { name: 'fix' }));
+    expect(onDone).toHaveBeenCalledWith('fixed 6001 of Champagne Hillsides, Houses and Cellars');
+  });
+
+  it('lists a point without a coordinate as text, since there is nothing to open', () => {
+    renderCard(points(
+      { id: 6002, name: 'Unplaced component', externalRef: '1465-009', latitude: null, longitude: null },
+    ));
+
+    expect(screen.getByText('Unplaced component')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unplaced component' })).toBeNull();
   });
 });

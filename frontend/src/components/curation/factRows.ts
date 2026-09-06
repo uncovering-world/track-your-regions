@@ -22,6 +22,7 @@ import { keyMeaningOf, meaningOf, type ChangeContext, type FieldMeaning, type Pr
 import type { FieldProvenance } from './ProvenanceTrail';
 import type { HeldPart } from '../../api/experiences';
 import { creatorsBrief } from '../../utils/creatorList';
+import { claimLabel } from '../../utils/placeClaims';
 
 export type FactKind = 'new' | 'changed' | 'removed';
 
@@ -63,6 +64,12 @@ export interface FactSubject {
   key?: string;
   /** "place 4 of 7", "by Vermeer" — what tells one part from another. */
   detail?: string | null;
+  /**
+   * "pin corrected" — a claim a curator already holds on the stored part, said
+   * beside its name: a run proposing a coordinate over a pin a curator put there
+   * is a different decision from one over the source's own (#583).
+   */
+  claim?: string | null;
   /**
    * The part as the *record* names it, for an answer about one of its rows (#722).
    *
@@ -234,6 +241,7 @@ export function partGroups(
       // name the row the server will find (#722).
       part: { kind: part.kind, ref: part.item.ref, name: part.item.name },
       detail: partDetail(part, shape.offeredLocations),
+      claim: claimLabel(part.curatedFields),
       ...(openable(part) ? { onOpen: () => onOpen(part) } : {}),
     },
     // In the part's own context: its fields are what a rendering may look beside,

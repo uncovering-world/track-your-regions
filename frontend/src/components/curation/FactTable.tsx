@@ -29,7 +29,7 @@
 
 import { type ReactNode } from 'react';
 import {
-  Box, Link, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
+  Box, Chip, Link, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import { wordDiff, type DiffPart } from '../../utils/wordDiff';
 import type { ChangeContext, FactSide, FieldMeaning } from './fieldMeaning';
@@ -238,6 +238,9 @@ function SubjectRow({ group, columns }: { group: FactGroup; columns: number }) {
           </Typography>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>{subject.label}</Typography>
           {subject.detail && <Typography variant="body2" color="text.secondary">{subject.detail}</Typography>}
+          {/* A claim a curator already holds on the stored part: the run below is
+              proposing over a pin somebody put there, not over the source's own. */}
+          {subject.claim && <Chip label={subject.claim} size="small" color="primary" variant="outlined" />}
           {subject.onOpen && (
             <Link component="button" type="button" variant="body2" onClick={subject.onOpen} underline="hover">
               open

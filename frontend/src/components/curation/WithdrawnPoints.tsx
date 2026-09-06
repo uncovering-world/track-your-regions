@@ -54,6 +54,7 @@ import { formatDateTime } from '../../utils/dateFormat';
 import { placementNotice } from '../../utils/placementNotice';
 import { ItemHeader, messageFor } from './queueCard';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
+import type { PlaceToCorrect } from '../shared/PointCorrection';
 import { HelpHint } from './HelpHint';
 
 type WithdrawnPoint = NonNullable<ReviewQueueItem['withdrawn_points']>[number];
@@ -69,6 +70,33 @@ export function pointTitle(point: { name: string | null; externalRef: string | n
   if (point.name) return point.name;
   if (point.externalRef) return `The part the source calls ${point.externalRef}`;
   return 'An unnamed part';
+}
+
+/**
+ * The correction both cards offer on the map they open: a withdrawn place and an
+ * answered one are still places a curator is looking at. `unseen: 'withdrawn'` on
+ * both, since neither is shown to a reader and only the verdict "false alarm"
+ * brings one back — the form and the outcome say so, rather than letting a moved
+ * pin read as a fix anyone can see. The outcome line goes where the card's verdicts
+ * report.
+ */
+function correctionFor(
+  item: ReviewQueueItem,
+  point: { id: number; name: string | null; latitude: number | null; longitude: number | null },
+  onDone: (message?: string, experienceId?: number) => void,
+): { place: PlaceToCorrect; onDone: (message: string) => void } {
+  return {
+    place: {
+      locationId: point.id,
+      experienceId: item.id,
+      objectName: item.name,
+      name: point.name,
+      latitude: point.latitude as number,
+      longitude: point.longitude as number,
+      unseen: 'withdrawn',
+    },
+    onDone: (message) => onDone(message, item.id),
+  };
 }
 
 /**
@@ -221,6 +249,7 @@ function PointVerdict({ item, point, onDone }: {
           name={pointTitle(point)}
           latitude={point.latitude as number}
           longitude={point.longitude as number}
+          correction={correctionFor(item, point, onDone)}
         />
       )}
 
@@ -444,6 +473,7 @@ function AnsweredVerdict({ item, point, onDone }: {
             name={pointTitle(point)}
             latitude={point.latitude as number}
             longitude={point.longitude as number}
+            correction={correctionFor(item, point, onDone)}
           />
         </>
       )}
