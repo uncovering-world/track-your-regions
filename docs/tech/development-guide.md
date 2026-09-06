@@ -193,6 +193,17 @@ migration:
   its `COMMIT` and leave the rest unwrapped. Write it to be re-runnable: a file
   the ledger did not record is applied again on the next run.
 
+A rename or a drop carries its readers with it, and
+`backend/src/db/statementNamesDeclaredColumns.test.ts` fails on the one it
+missed: every SQL string literal in `backend/src` is held to the columns
+`01-schema.sql` declares — a reference qualified by an alias the literal
+declares, anywhere in it, and a bare name in a select list, a `SET` clause or an
+`INSERT` column list where a single table owns it. What the extractor cannot
+resolve it skips. That is the shape of `columnBounds.test.ts` and
+`tileScopeGuards.test.ts`, a guard over the schema file's text, and the
+executable SQL lane (#522) retires it: there a statement naming a dropped
+column is refused by the database itself.
+
 `db/migrations/README.md` has the rest, including what each existing migration
 does and how to give an older database a ledger.
 
