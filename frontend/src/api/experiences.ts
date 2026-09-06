@@ -1052,9 +1052,11 @@ export async function editLocation(
  * no scope of its own — the link to the museum the curator came from is what
  * proves the work is theirs to correct, and its absence is a 404 rather than a
  * 403. The reach is the other side of that: a work is passed once, globally
- * (ADR-0025 decision 2), so a correction made from one museum is what every
- * museum holding it shows, which is why `venue_count` is on the rows this is
- * offered from and said before Save rather than reported after.
+ * (ADR-0025 decision 2), so the row a correction changes is the row every museum
+ * holding the work carries — which is why `venue_count` is on the rows this is
+ * offered from and said before Save rather than reported after. *Carries*, not
+ * *shows*: the count is of museums the work hangs in and is deliberately not a
+ * claim about who can see it today (`venueCountSql`).
  *
  * `artists` is sent whole, in the order the curator put it in, and an **empty**
  * list is a value: "the source names somebody and nobody knows who made this"
