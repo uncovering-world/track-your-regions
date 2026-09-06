@@ -24,6 +24,7 @@ import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
 import {
   hidePendingSql, hideRefusedSql, lifecycleSelectSql, offeredLinkSql, offeredLocationSql,
+  venueCountSql,
 } from './experienceLifecycle.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
@@ -38,9 +39,12 @@ import { heldPartAnsweredSql } from './heldDecisions.js';
  * held like the object's own, and the card shows it as a group under the
  * part's name. This is what feeds that group: one element per part with a held
  * field, carrying the record's name and reference, the held fields alone, and
- * the stored row behind the record — a coordinate and an ordinal for a place,
- * the maker, the year and the picture with its credit for a work — so the card
- * can open the part and say "place 4 of 8" without a second read.
+ * the stored row behind the record — its name as it stands now, since the
+ * record's is the name as the run saw it and a part corrected since would
+ * otherwise be headed with a name it no longer has; a coordinate and an ordinal
+ * for a place; the maker, the year, the picture with its credit, what a curator
+ * has claimed and how many museums hang it for a work — so the card can open
+ * the part and say "place 4 of 8" without a second read.
  *
  * Held entries only, twice over: a part is listed only where one of its fields
  * is held, and only those fields are carried. A change the run wrote is news
@@ -66,7 +70,12 @@ export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
     experienceId: `${experience}.id`, ref: "c->'item'->>'ref'", name: "c->'item'->>'name'",
   });
   const treasure = recordedTreasureSql({ experienceId: `${experience}.id`, ref: "c->'item'->>'ref'" });
-  return `(SELECT jsonb_agg(part ORDER BY part->>'kind', (part->>'ordinal')::int NULLS LAST, part->'item'->>'name')
+  // Ordered by the name the heading shows. A work carries no ordinal, so the
+  // name is what actually orders the works on a card, and a list a curator
+  // reads as alphabetical must not sit a retitled work where its old name
+  // sorted: the same divergence the `storedName` key closes, one line down.
+  return `(SELECT jsonb_agg(part ORDER BY part->>'kind', (part->>'ordinal')::int NULLS LAST,
+                                          COALESCE(part->>'storedName', part->'item'->>'name'))
              FROM (
                SELECT jsonb_build_object(
                         'kind', k.kind,
@@ -79,7 +88,20 @@ export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
                         'treasureId', work.id, 'artists', work.artists,
                         'artistsCurated', work.artists_curated, 'year', work.year,
                         'imageUrl', work.image_url, 'imageCredit', work.image_credit,
-                        'treasureType', work.treasure_type) AS part
+                        -- The two the correction needs beside the values it is
+                        -- correcting (#731): what a curator already claimed on
+                        -- this work, and how many museums the correction reaches.
+                        'workCuratedFields', work.curated_fields,
+                        'venueCount', work.venue_count,
+                        'treasureType', work.treasure_type,
+                        -- The row's name *now*, beside the record's. The record
+                        -- names the part as the run saw it (ADR-0026 decision 4)
+                        -- and is never rewritten, so a title corrected since --
+                        -- from this very card -- would head the group and seed
+                        -- the dialog with the old name, under a chip saying it
+                        -- was corrected. One key for both kinds: exactly one of
+                        -- the two laterals is non-null.
+                        'storedName', COALESCE(loc.name, work.name)) AS part
                  FROM (VALUES ('locations'), ('treasures')) AS k(kind)
                  CROSS JOIN LATERAL jsonb_array_elements(
                    COALESCE(${changes}.contents -> k.kind -> 'changed', '[]'::jsonb)) AS c
@@ -216,6 +238,14 @@ export async function queryContents(
                'artistsCurated', artists_curated,
                'year', year,
                'imageUrl', image_url,
+               'imageCredit', image_credit,
+               'treasureType', treasure_type,
+               -- What a curator has already claimed on the work, and how many
+               -- museums a correction from this row would reach: the row is one
+               -- of the places the correction is offered from (#731), and the
+               -- dialog it opens shows both.
+               'curatedFields', curated_fields,
+               'venueCount', venue_count,
                'iconic', is_iconic,
                -- The source's own id, so the row can open the work where it came
                -- from and at its article: a curator deciding about twelve unread
@@ -230,6 +260,9 @@ export async function queryContents(
         -- which is why the two are separate columns (ADR-0025).
         SELECT t.id, t.name, t.artists, t.curated_fields ? 'artists' AS artists_curated,
                t.year, t.image_url, t.is_iconic, t.sitelinks_count, t.external_id,
+               t.treasure_type, t.curated_fields,
+               t.metadata->'imageCredit' AS image_credit,
+               ${venueCountSql('t')} AS venue_count,
                row_number() OVER (ORDER BY t.sitelinks_count DESC NULLS LAST, t.id) AS rn
         FROM experience_treasures et
         JOIN treasures t ON t.id = et.treasure_id

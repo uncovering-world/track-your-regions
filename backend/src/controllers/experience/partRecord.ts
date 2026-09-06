@@ -35,6 +35,8 @@
  * skip a marked one.
  */
 
+import { venueCountSql } from './experienceLifecycle.js';
+
 /**
  * The stored point a record entry names, as a query body: `SELECT … FROM
  * experience_locations el WHERE … ORDER BY … LIMIT 1`, without outer
@@ -69,7 +71,8 @@ export function recordedTreasureSql(
 ): string {
   return `SELECT t.id, t.name, t.artists, t.curated_fields ? 'artists' AS artists_curated,
                  t.year, t.image_url, t.treasure_type,
-                 t.curated_fields, t.metadata->'imageCredit' AS image_credit
+                 t.curated_fields, t.metadata->'imageCredit' AS image_credit,
+                 ${venueCountSql('t')} AS venue_count
             FROM treasures t
             JOIN experience_treasures et ON et.treasure_id = t.id
                                         AND et.experience_id = ${experienceId}

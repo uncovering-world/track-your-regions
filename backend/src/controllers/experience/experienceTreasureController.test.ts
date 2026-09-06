@@ -50,6 +50,32 @@ describe('getExperienceTreasures gate', () => {
     expect(sql).toMatch(/t\.curation_state <> 'pending'/);
   });
 
+  it('carries each work\'s claims and every museum it hangs in', async () => {
+    // The correction is offered from this list (#731), and a row has to say
+    // when one stands — otherwise a title a curator fixed reads as the source's.
+    // The count is what the dialog says before Save: a work is one row shared by
+    // every venue showing it (ADR-0025 decision 2), and *The Great Wave off
+    // Kanagawa* is eleven of them.
+    const work = {
+      id: 7705, external_id: 'Q252485', name: 'The Great Wave off Kanagawa',
+      artists: ['Katsushika Hokusai'], artists_curated: false, year: 1830,
+      curated_fields: ['name'], venue_count: 11,
+    };
+    mockedQuery.mockResolvedValueOnce({ rows: [work] });
+    const res = makeRes();
+
+    await getExperienceTreasures({ params: { id: '6187' } } as never, res as never);
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql).toContain('t.curated_fields,');
+    // Only the walls the source still places the work on: a museum the run says
+    // no longer shows it is not a museum the correction reaches anyone through.
+    expect(sql).toMatch(/venues\.treasure_id = t\.id AND venues\.missing_since IS NULL/);
+    expect(res.json.mock.calls[0][0].treasures[0]).toMatchObject({
+      curated_fields: ['name'], venue_count: 11,
+    });
+  });
+
   it('hides a link the source stopped placing here, for a curator as for anyone', async () => {
     // The gate widens for a curator on all three curation predicates; the mark
     // does not. A withdrawn link is not an unread one waiting on a verdict, it

@@ -457,6 +457,42 @@ export function offeredLinkSql(alias = 'et'): string {
 }
 
 /**
+ * How many museums hang this work.
+ *
+ * A work is one row shared by every venue that holds it (ADR-0025 decision 2),
+ * so the row a correction changes is the row all of them carry — *The Great
+ * Wave off Kanagawa* is one row and eleven museums, each holding an impression
+ * of the same print. The screen that corrects a work has to say that before the
+ * curator presses Save, not report it afterwards, which is why the count is
+ * carried on the reads that list works rather than answered by the edit.
+ *
+ * **This counts where the work hangs, not who can see it today**, and the
+ * difference is a decision rather than an omission. Only links the source still
+ * places are counted (ADR-0044): a run that says the work is no longer on that
+ * wall is saying it does not hang there, which is a fact about the world. The
+ * reader-facing predicates the call sites apply beside this one — a refused
+ * museum (ADR-0024), an unread arrival, an unread link or work — are not
+ * applied, because none of them is about the work hanging anywhere: they are
+ * about whether this catalogue is currently showing that museum. A print in a
+ * museum a curator has refused still hangs there, and a correction to the row is
+ * what that museum carries the moment it is shown again.
+ *
+ * So the number is stable under curation and true of the world, which is what
+ * makes it checkable by the person reading it — and the screen says "hangs in
+ * eleven museums… they share one row", never "eleven museums will show it",
+ * since the second would be a claim about visibility that this does not measure.
+ *
+ * One question, one fragment, so the object screen, the map's card and the
+ * review page cannot come to different numbers for the same work.
+ *
+ * `alias` is the `treasures` alias whose row is being counted for.
+ */
+export function venueCountSql(alias = 't'): string {
+  return `(SELECT COUNT(*)::int FROM experience_treasures venues
+            WHERE venues.treasure_id = ${alias}.id AND ${offeredLinkSql('venues')})`;
+}
+
+/**
  * The same question for a work: may a reader claim to have looked at this one,
  * in this experience? `experience_treasures` is the row that says the work is on
  * show here, so it carries its own state beside the container's — a published

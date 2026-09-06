@@ -8,7 +8,7 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import {
   hideRefusedSql, hidePendingSql, linkedForReaderSql, offeredLinkSql, offeredLocationSql,
-  publishedContentSql,
+  publishedContentSql, venueCountSql,
 } from './experienceLifecycle.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -31,9 +31,17 @@ export async function getExperienceTreasures(req: AuthenticatedRequest, res: Res
       t.id, t.external_id, t.name, t.treasure_type, t.artists,
       -- Whether anyone has vouched for the order the makers are stored in. The
       -- stored order is a query planner's, not the source's (ADR-0040), so a row
-      -- leads with a name only where a curator claimed the column. The claim set
-      -- itself stays server-side: this is the one bit of it a reader's row needs.
+      -- leads with a name only where a curator claimed the column.
       t.curated_fields ? 'artists' AS artists_curated, t.year,
+      -- And the whole set beside it, for the curator's half of the same row: a
+      -- title or a year a curator corrected reads as the source's unless the row
+      -- says otherwise, and the correction is offered from this list (#731).
+      -- Read, never derived — the claim is a fact on the row.
+      t.curated_fields,
+      -- Every museum this work hangs in, since a correction made from one is
+      -- the row all of them carry (ADR-0025 decision 2). What it counts is where
+      -- the work hangs rather than who can see it today; venueCountSql says why.
+      ${venueCountSql('t')} AS venue_count,
       t.image_url, t.sitelinks_count, t.is_iconic,
       -- Beside the picture, as it is on the object itself: these files are
       -- served from Wikimedia Commons and a share of them are CC BY or CC BY-SA,
