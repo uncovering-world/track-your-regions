@@ -75,7 +75,7 @@ export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
                                     WHERE (f->>'held')::boolean
                                       AND NOT ${heldPartAnsweredSql(`${experience}.id`, 'k.kind')}),
                         'locationId', loc.id, 'latitude', loc.latitude, 'longitude', loc.longitude,
-                        'ordinal', loc.ordinal,
+                        'ordinal', loc.ordinal, 'curatedFields', loc.curated_fields,
                         'treasureId', work.id, 'artists', work.artists,
                         'artistsCurated', work.artists_curated, 'year', work.year,
                         'imageUrl', work.image_url, 'imageCredit', work.image_credit,
@@ -190,10 +190,11 @@ export async function queryContents(
                'name', name,
                'externalRef', external_ref,
                'latitude', lat,
-               'longitude', lon
+               'longitude', lon,
+               'curatedFields', curated_fields
              ) ORDER BY ordinal) FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
       FROM (
-        SELECT el.id, el.name, el.external_ref, el.ordinal,
+        SELECT el.id, el.name, el.external_ref, el.ordinal, el.curated_fields,
                ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
                row_number() OVER (ORDER BY el.ordinal) AS rn
         -- The shared fragment rather than the predicate spelled out, because
@@ -290,6 +291,9 @@ export async function queryWithdrawn(
              'missingSince', el.missing_since,
              'latitude', ST_Y(el.location),
              'longitude', ST_X(el.location),
+             -- Which of its fields a curator has claimed (migration 027): the card's
+             -- map offers the correction, and the row has to say when one stands.
+             'curatedFields', el.curated_fields,
              -- Whether anyone had been there. It is what makes the verdict matter
              -- rather than tidy-up: the visit survives either answer (ADR-0022), and
              -- the point it is attached to stops being shown.
@@ -522,6 +526,7 @@ export async function queryAnsweredWithdrawals(
                'missingSince', missing_since,
                'latitude', lat,
                'longitude', lon,
+               'curatedFields', curated_fields,
                -- Both axes, because the card offers a way back from each one separately
                -- and the point returns to readers only where both come clear. They are
                -- also what the endpoint's own expected block is built from, so a card
@@ -535,7 +540,7 @@ export async function queryAnsweredWithdrawals(
              ) ORDER BY decided_at DESC NULLS LAST, id)
                FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
       FROM (
-        SELECT el.id, el.name, el.external_ref, el.missing_since,
+        SELECT el.id, el.name, el.external_ref, el.missing_since, el.curated_fields,
                ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
                el.source_membership, el.existence,
                el.state_decided_at AS decided_at, el.state_note AS note,

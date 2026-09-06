@@ -66,6 +66,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
         ST_X(el.location) as longitude,
         ST_Y(el.location) as latitude,
         el.created_at,
+        el.curated_fields,
         EXISTS(
           SELECT 1 FROM experience_location_regions elr
           WHERE elr.location_id = el.id AND elr.region_id IN (SELECT id FROM descendant_regions)
@@ -118,6 +119,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
         ST_X(el.location) as longitude,
         ST_Y(el.location) as latitude,
         el.created_at,
+        el.curated_fields,
         EXISTS(
           SELECT 1 FROM experience_location_regions elr
           WHERE elr.location_id = el.id AND elr.region_id = $1
@@ -177,6 +179,8 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
     created_at: string;
     in_region: boolean;
     region_path: string | null;
+    /** The fields a curator has claimed on the place (migration 027), so a row can say it is corrected. */
+    curated_fields: string[];
   }>> = {};
 
   for (const row of result.rows) {
@@ -195,6 +199,10 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
       created_at: row.created_at,
       in_region: row.in_region,
       region_path: row.region_path,
+      // Selected above and, until #583's review, dropped right here: the batch
+      // rebuilds each row by hand, so a column the SELECT gains is not a column
+      // the response gains. `[]` where a row predates the column's default.
+      curated_fields: row.curated_fields ?? [],
     });
   }
 
@@ -254,6 +262,13 @@ export async function getExperienceLocations(req: AuthenticatedRequest, res: Res
       ST_X(el.location) as longitude,
       ST_Y(el.location) as latitude,
       el.created_at,
+      -- Which of its fields a curator has claimed (migration 027), so a row can
+      -- say it is corrected rather than letting a moved pin read as the source's.
+      el.curated_fields,
+      -- Whether a reader sees the place yet. A curator is served the unread rows
+      -- (the relaxation below), and the screen that corrects one has to say that
+      -- a moved pin is still shown to nobody until it is published (#583).
+      el.curation_state,
       ${regionId ? `EXISTS(
         SELECT 1 FROM experience_location_regions elr
         WHERE elr.location_id = el.id AND elr.region_id = $2

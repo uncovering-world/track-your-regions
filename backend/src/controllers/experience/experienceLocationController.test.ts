@@ -113,6 +113,36 @@ describe('reads that show a point', () => {
     expect(locationRead()).toMatch(/el\.curation_state <> 'pending'/);
   });
 
+  it('carries each place\'s claims, on the object read and on both shapes of the batch', async () => {
+    // A corrected place can be corrected from every row that shows it (#583), and
+    // the row has to say when one stands (migration 027) — the object screen reads
+    // the first, the map's places list reads the batch, and the batch has two
+    // query shapes that must not disagree. Asserted on the *response*, not on the
+    // SQL: the batch rebuilds each row by hand, and its first version selected the
+    // column and dropped it right there, which a match on the query text passed.
+    const place = {
+      id: 9, experience_id: 42, name: 'See', external_ref: '1363-061', ordinal: 0,
+      longitude: '9.4', latitude: '47.5', created_at: 'x', in_region: true, region_path: null,
+      curated_fields: ['location'], curation_state: 'auto',
+    };
+    mockedQuery.mockResolvedValue({ rows: [place], rowCount: 1 });
+
+    let res = makeRes();
+    await getExperienceLocations({ params: { id: '42' }, query: {} } as never, res as never);
+    expect(locationRead()).toMatch(/el\.curated_fields/);
+    // And whether a reader sees it yet, for the screen that corrects an unread one.
+    expect(locationRead()).toMatch(/el\.curation_state/);
+    expect(res.json.mock.calls[0][0].locations[0].curated_fields).toEqual(['location']);
+
+    for (const query of [{}, { includeChildren: 'false' }]) {
+      mockedQuery.mockClear();
+      res = makeRes();
+      await getRegionExperienceLocations({ params: { regionId: '7' }, query } as never, res as never);
+      expect(locationRead()).toMatch(/el\.curated_fields/);
+      expect(res.json.mock.calls[0][0].locationsByExperience[42][0].curated_fields).toEqual(['location']);
+    }
+  });
+
   it('leaves a withdrawn point out of the markers a region asks for', async () => {
     await getRegionExperienceLocations(
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
