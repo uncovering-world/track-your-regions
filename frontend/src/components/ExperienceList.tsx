@@ -43,11 +43,14 @@ import {
   unrejectExperience,
   removeExperienceFromRegion,
   type Experience,
+  type ExperienceTreasure,
 } from '../api/experiences';
 import { useNavigation } from '../hooks/useNavigation';
 import { locationLabel } from '../utils/locationLabel';
 import { CurationDialog } from './shared/CurationDialog';
 import { PointPreviewDialog } from './shared/PointPreviewDialog';
+import { WorkPreviewDialog } from './shared/WorkPreviewDialog';
+import { workToCorrect, type WorkToCorrect } from './shared/WorkCorrection';
 import type { LocationRowData } from './ExperienceList/LocationRow';
 import { AddExperienceDialog } from './shared/AddExperienceDialog';
 import { invalidateExperiences } from '../utils/queryInvalidation';
@@ -115,6 +118,10 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const [correctionTarget, setCorrectionTarget] = useState<
     { experience: Experience; location: LocationRowData } | null
   >(null);
+  // The work a curator opened from the same card, held the same way and for the
+  // same reason. Its own state rather than a union with the place: a card can
+  // show both lists, and the two dialogs are different questions.
+  const [workTarget, setWorkTarget] = useState<WorkToCorrect | null>(null);
   // What the last correction did, said here — the list has no other line for it.
   const [correctionNotice, setCorrectionNotice] = useState<string | null>(null);
   const [rejectedSectionOpen, setRejectedSectionOpen] = useState(false);
@@ -425,6 +432,15 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     [],
   );
   const closeCorrection = useCallback(() => setCorrectionTarget(null), []);
+  // The works half, stable for the same reason: it reaches every work row
+  // through the card, and a fresh function here re-renders them all.
+  const handleCorrectWork = useCallback(
+    (experience: Experience, work: ExperienceTreasure) => setWorkTarget(
+      workToCorrect(experience, work, regionId),
+    ),
+    [regionId],
+  );
+  const closeWorkCorrection = useCallback(() => setWorkTarget(null), []);
   // Stable, so the two dialogs below — mounted for as long as this list is,
   // whether or not anyone has opened them — can hold their memo while the list
   // re-renders on every scroll of it.
@@ -543,6 +559,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       isRejected={rejected}
       onCurate={hasCuratorScope ? handleCurate : undefined}
       onCorrectPlace={hasCuratorScope ? handleCorrectPlace : undefined}
+      onCorrectWork={hasCuratorScope ? handleCorrectWork : undefined}
       onUnreject={hasCuratorScope && rejected && regionId ? handleUnreject : undefined}
       onRemoveFromRegion={hasCuratorScope && rejected && regionId ? handleRemoveFromRegion : undefined}
       onCardOpened={handleCardOpenedHere}
@@ -650,6 +667,15 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
           }}
         />
       )}
+
+      {/* One work of a museum, opened from its row on the same card. The region
+          is not named for a work — a correction moves no pin — but the object is,
+          so the card's contents refetch and the row reads what was just written. */}
+      <WorkPreviewDialog
+        work={workTarget}
+        onClose={closeWorkCorrection}
+        onDone={setCorrectionNotice}
+      />
       <Snackbar
         open={correctionNotice !== null}
         autoHideDuration={12000}

@@ -24,6 +24,7 @@ import type { HeldPart } from '../../api/experiences';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/placeClaims';
+import { claimLabel as workClaimLabel } from '../../utils/workClaims';
 
 export type FactKind = 'new' | 'changed' | 'removed';
 
@@ -216,10 +217,15 @@ function openable(part: HeldPart): boolean {
  * One group per part whose field a gated run held (ADR-0037), under the
  * object's own group.
  *
- * The heading is the name the curator saw — the record's, which is what the
- * part was called *before* the run, so a held rename heads its group with the
- * name readers still see. A part the source gave no name gets its reference,
- * which is what the record has. The detail and the way to open the part come
+ * The heading is the name readers still see — the stored row's, which a held
+ * rename has not touched, so the group is headed by what a reader finds today
+ * and not by what the run wants to call it. Not the record's: the record names
+ * the part as it was when the run wrote it and is never rewritten, so a title a
+ * curator has corrected since — from this card's own dialog — would otherwise
+ * head the group with the name it no longer has, under a chip saying it was
+ * corrected. The record's name is the fallback where the row was not found, and
+ * a part the source gave no name gets its reference, which is what the record
+ * has. The detail and the way to open the part come
  * from the stored row and are absent where there is none: a place the source
  * withdrew after proposing its rename still carries the proposal — it is what
  * the run recorded — and nothing to look at.
@@ -233,7 +239,10 @@ export function partGroups(
   return parts.map((part, index) => ({
     subject: {
       kind: part.kind === 'locations' ? 'place' : 'work',
-      label: part.item.name ?? part.item.ref ?? 'an unnamed part',
+      // The stored row's name first: the record's is the name as the run saw
+      // it, and a part corrected since would otherwise be headed with the name
+      // it no longer has, under a chip saying it was corrected.
+      label: part.storedName ?? part.item.name ?? part.item.ref ?? 'an unnamed part',
       // The reference is the identity the record stores; the position is the
       // fallback for the one referenceless point, which no sibling shares.
       key: `${part.kind}:${part.item.ref ?? '#' + String(index)}`,
@@ -242,7 +251,17 @@ export function partGroups(
       // name the row the server will find (#722).
       part: { kind: part.kind, ref: part.item.ref, name: part.item.name },
       detail: partDetail(part, shape.offeredLocations),
-      claim: claimLabel(part.curatedFields),
+      // Each kind's own claim key *and* its own vocabulary. A work carries
+      // `workCuratedFields` — its own, since one `jsonb_build_object` builds
+      // both kinds of part and a shared name could not answer for two rows —
+      // and reading the place's key here left a held work's heading with no
+      // chip while the same work read "title corrected" on every other surface
+      // (#731). The words differ too: a place's `claimLabel` answers `null` to
+      // a claimed `artists`, and calls a claimed `name` "name corrected" where
+      // a work reads "title corrected".
+      claim: part.kind === 'treasures'
+        ? workClaimLabel(part.workCuratedFields)
+        : claimLabel(part.curatedFields),
       ...(openable(part) ? { onOpen: () => onOpen(part) } : {}),
     },
     // In the part's own context: its fields are what a rendering may look beside,

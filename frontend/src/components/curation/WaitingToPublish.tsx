@@ -22,7 +22,7 @@
 
 import { useState } from 'react';
 import {
-  Box, Typography, Card, CardContent, Button, Stack, Divider,
+  Typography, Card, CardContent, Button, Stack, Divider,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -32,23 +32,15 @@ import {
   type PublishRequest,
   type ReviewQueueItem,
 } from '../../api/experiences';
-import { plural } from '../../utils/plural';
-import { claimLabel } from '../../utils/placeClaims';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
-import { ItemHeader, messageFor } from './queueCard';
+import { GatedRow, ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
 import { partGroups, rowsFor, type FactSubject } from './factRows';
 import { HeldAnswer, type HeldSelection } from './HeldAnswer';
 import { ObjectPreview } from './ObjectPreview';
 import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
-import { ContentsList } from '../shared/ContentsList';
-import { PointPreviewDialog } from '../shared/PointPreviewDialog';
-import { creatorsBrief } from '../../utils/creatorList';
-import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';
-
-/** An unread point as the card lists it — the row a curator can open, and correct. */
-type PendingPoint = NonNullable<ReviewQueueItem['pending_points']>[number];
+import { GatedContents } from './GatedContents';
 
 /** One experience, with whatever a gated run left open about it. */
 export interface GatedGroup {
@@ -111,8 +103,28 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   // Which part is open, held as the part rather than a flag: the card is mounted
   // unkeyed, and a flag would carry one object's open work onto the next.
   const [openPart, setOpenPart] = useState<HeldPart | null>(null);
-  // The unread point a curator opened, held the same way and for the same reason.
-  const [openPoint, setOpenPoint] = useState<PendingPoint | null>(null);
+
+  // **Nothing a curator opened outlives the card it was opened from.**
+  //
+  // `ReviewBench` mounts this component without a key, deliberately — the object
+  // preview staying open as a curator works down the queue is the behaviour
+  // `ObjectPreview` is written around — so moving to the next waiting row
+  // reconciles into *this* instance and every piece of state above survives it.
+  // Holding each open thing as the thing rather than as a flag is not enough on
+  // its own: the dialogs pair what was opened with `group.id` and `item.name`,
+  // which are the *new* card's by then, so a point of one object would be
+  // corrected under another object's name and a work under another museum's id —
+  // and a work's museum is what proves the caller may correct it at all.
+  //
+  // Adjusted during the render that sees the new id rather than in an effect,
+  // which is React's own answer for state that must follow a prop: an effect
+  // would let one paint through with the stale dialog still open.
+  const [openedFor, setOpenedFor] = useState(group.id);
+  if (openedFor !== group.id) {
+    setOpenedFor(group.id);
+    setOpenPart(null);
+  }
+
   const proposed = held?.proposed ?? [];
   // The credit beside the danger fields: whose photograph readers see today, for a
   // picture row on a card that proposes a picture and no credit beside it.
@@ -289,61 +301,19 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
               </Typography>
             </GatedRow>
           )}
-
-          {points > 0 && (
-            <GatedRow label="points">
-              <Typography variant="body2">
-                {plural(points, 'new point')} waiting — readers are shown the rest of this object
-                without them.
-              </Typography>
-              <ContentsList
-                total={points}
-                shown={contents?.pending_points?.length ?? 0}
-                noun="point"
-                items={(contents?.pending_points ?? []).map(point => ({
-                  id: point.id,
-                  primary: point.name ?? point.externalRef ?? 'Unnamed point',
-                  // The coordinate, and the word that says a curator has already
-                  // corrected it — without which a moved pin reads as the source's.
-                  secondary: [
-                    point.latitude != null && point.longitude != null
-                      ? `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`
-                      : null,
-                    claimLabel(point.curatedFields),
-                  ].filter(Boolean).join(' · ') || null,
-                  // A row with a coordinate opens in the point dialog, where it can
-                  // be looked at and corrected; one without has nothing to show.
-                  onOpen: point.latitude != null && point.longitude != null
-                    ? () => setOpenPoint(point)
-                    : undefined,
-                }))}
-              />
-            </GatedRow>
-          )}
-
-          {works > 0 && (
-            <GatedRow label="works">
-              <Typography variant="body2">
-                {plural(works, 'new work')} waiting — the museum itself is on show already.
-              </Typography>
-              <ContentsList
-                total={works}
-                shown={contents?.pending_works?.length ?? 0}
-                noun="work"
-                items={(contents?.pending_works ?? []).map(work => ({
-                  id: work.id,
-                  primary: work.name ?? 'Untitled',
-                  // The same two doors every surface that shows a work to a curator
-                  // opens (`WorkCard`): the name to the item, and the article resolved
-                  // from it. Both answer nothing for a row an older server sends
-                  // without the id, and the row reads as it did until then.
-                  href: wikidataItemUrl(work.externalId),
-                  article: wikipediaArticleUrl(work.externalId),
-                  secondary: [creatorsBrief(work.artists, work.artistsCurated), work.year]
-                    .filter(Boolean).join(', ') || null,
-                }))}
-              />
-            </GatedRow>
+          {(points > 0 || works > 0) && (
+            // Keyed on the object: this card is mounted unkeyed on purpose, so
+            // without it a point or a work a curator opened here would still be
+            // open on the next waiting row, paired with that row's id and name.
+            <GatedContents
+              key={group.id}
+              group={group}
+              item={item}
+              contents={contents}
+              points={points}
+              works={works}
+              onDone={onDone}
+            />
           )}
         </Stack>
 
@@ -386,35 +356,6 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
           object={{ id: group.id, name: item.name }}
           onDone={onDone}
         />
-        {/* The unread point a curator opened: the same dialog a held part opens, and the
-            correction is offered because this is a place a curator is looking at. The
-            outcome line goes where the card's other answers go. `onDone` is the page's
-            refresh, so the row redraws with the corrected value. */}
-        {openPoint && openPoint.latitude != null && openPoint.longitude != null && (
-          <PointPreviewDialog
-            open
-            onClose={() => setOpenPoint(null)}
-            name={openPoint.name ?? openPoint.externalRef ?? 'Unnamed point'}
-            latitude={openPoint.latitude}
-            longitude={openPoint.longitude}
-            correction={{
-              place: {
-                locationId: openPoint.id,
-                experienceId: group.id,
-                objectName: item.name,
-                name: openPoint.name,
-                latitude: openPoint.latitude,
-                longitude: openPoint.longitude,
-                // An unread point is `pending`: readers see nothing of it, and the
-                // anchor will not move for it, until it is published — the form and
-                // the outcome say so, with publication as the remedy rather than
-                // the withdrawn card's "false alarm".
-                unseen: 'unread',
-              },
-              onDone,
-            }}
-          />
-        )}
       </CardContent>
     </Card>
   );
@@ -460,17 +401,6 @@ function runNote({ arrival }: GatedGroup): string {
   return 'Arrived under this object';
 }
 
-/** A label and what it is about, per § 4.2: grouped by container, listed by row. */
-function GatedRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <Stack direction="row" spacing={2} alignItems="flex-start">
-      <Typography variant="caption" color="text.secondary" sx={{ minWidth: 56, pt: 0.25 }}>
-        {label}
-      </Typography>
-      <Box sx={{ flex: 1, minWidth: 0 }}>{children}</Box>
-    </Stack>
-  );
-}
 
 /**
  * What the one button will actually do, said on the button.

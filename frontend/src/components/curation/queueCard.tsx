@@ -14,7 +14,7 @@
  * added, not this sentence to renumber. It imports from here like the rest.
  */
 
-import { Typography, Stack, Chip } from '@mui/material';
+import { Box, Typography, Stack, Chip } from '@mui/material';
 import type { ReviewQueueItem } from '../../api/experiences';
 import { ObjectContext } from './ObjectContext';
 import { SourceId } from './SourceId';
@@ -36,6 +36,27 @@ export function ItemHeader({ item }: { item: ReviewQueueItem }) {
       </Stack>
       <ObjectContext item={item} />
     </>
+  );
+}
+
+/**
+ * One labelled row of a queue card: what is waiting, and what it is called.
+ *
+ * Here rather than in either file that draws one, because the rows of a single
+ * card are drawn from two now — the object's own held fields in
+ * `WaitingToPublish`, its unread contents in `GatedContents` — and they stack in
+ * the same column. The 56px label gutter is what lines them up, so it is one
+ * decision: kept in two copies it would drift the first time a longer label
+ * needed room, and nothing would fail.
+ */
+export function GatedRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Stack direction="row" spacing={2} alignItems="flex-start">
+      <Typography variant="caption" color="text.secondary" sx={{ minWidth: 56, pt: 0.25 }}>
+        {label}
+      </Typography>
+      <Box sx={{ flex: 1, minWidth: 0 }}>{children}</Box>
+    </Stack>
   );
 }
 

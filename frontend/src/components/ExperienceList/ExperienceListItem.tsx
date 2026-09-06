@@ -16,6 +16,7 @@ import {
 import type {
   Experience,
   ExperienceLocation,
+  ExperienceTreasure,
 } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
 import { experienceColor } from '../../utils/categoryColors';
@@ -76,6 +77,8 @@ export interface ExperienceListItemProps {
   onCurate?: (experience: Experience) => void;
   /** A curator's way into correcting one place of this object. */
   onCorrectPlace?: (experience: Experience, location: LocationRowData) => void;
+  /** And one of its works, which is the same rule one level over (#731). */
+  onCorrectWork?: (experience: Experience, work: ExperienceTreasure) => void;
   onUnreject?: (experience: Experience) => void;
   onRemoveFromRegion?: (experience: Experience) => void;
   /**
@@ -129,6 +132,7 @@ function ExperienceListItemComponent({
   onToggleCollapse,
   onCurate,
   onCorrectPlace,
+  onCorrectWork,
   onUnreject,
   onRemoveFromRegion,
   onCardOpened,
@@ -249,6 +253,14 @@ function ExperienceListItemComponent({
       ? (location: LocationRowData) => onCorrectPlace(experience, location)
       : undefined),
     [onCorrectPlace, experience],
+  );
+  // The works half of the same thing: the dialog needs the museum the curator
+  // came from, and only the card knows which object its list belongs to.
+  const handleCorrectWork = useMemo(
+    () => (onCorrectWork
+      ? (work: ExperienceTreasure) => onCorrectWork(experience, work)
+      : undefined),
+    [onCorrectWork, experience],
   );
   const handleUnreject = useMemo(
     () => (onUnreject ? () => onUnreject(experience) : undefined),
@@ -474,6 +486,7 @@ function ExperienceListItemComponent({
           onLocationHover={handleLocationHover}
           onCurate={handleCurate}
           onCorrectPlace={handleCorrectPlace}
+          onCorrectWork={handleCorrectWork}
           onUnreject={handleUnreject}
           onRemoveFromRegion={handleRemoveFromRegion}
           onHeightChange={reportHeightChange}

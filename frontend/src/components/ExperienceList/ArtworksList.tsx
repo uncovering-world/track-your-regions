@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Box, ButtonBase, Typography, Checkbox } from '@mui/material';
+import { Box, ButtonBase, Typography, Checkbox, IconButton, Tooltip } from '@mui/material';
+import EditNoteIcon from '@mui/icons-material/EditNote';
 import { useExperienceContext, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useViewedTreasures } from '../../hooks/useVisitedExperiences';
@@ -7,6 +8,8 @@ import type { ExperienceTreasure } from '../../api/experiences';
 import type { ArtworkPreview } from '../../hooks/useExperienceContext';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { creatorsBrief } from '../../utils/creatorList';
+import { yearLabel } from '../../utils/yearLabel';
+import { claimLabel } from '../../utils/workClaims';
 import { VISITED_GREEN } from '../../utils/categoryColors';
 import { ARTWORKS_INITIAL_LIMIT } from './utils';
 
@@ -19,12 +22,14 @@ import { ARTWORKS_INITIAL_LIMIT } from './utils';
  * photographer credited under nothing — and on some sources a picture failing to
  * load is the common case rather than the edge one (#557).
  */
-function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArtworkPreview }: {
+function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArtworkPreview, onCorrect }: {
   content: ExperienceTreasure;
   isViewed: boolean;
   isAuthenticated: boolean;
   onToggleViewed: (e: React.MouseEvent) => void;
   setArtworkPreview: (preview: ArtworkPreview | null) => void;
+  /** A curator's way into correcting this work; absent for everyone else. */
+  onCorrect?: (work: ExperienceTreasure) => void;
 }) {
   const [failed, setFailed] = useState(false);
   // The normalised URL, not the stored one, decides whether there is a picture:
@@ -46,6 +51,10 @@ function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArt
         borderBottom: '1px solid',
         borderColor: 'divider',
         '&:last-child': { borderBottom: 0 },
+        // The row's own action, shown when the row is: a quiet list of a
+        // museum's holdings is what a reader wants, and a curator meets the
+        // control by reaching the row they were going to correct anyway.
+        '&:hover .work-correct, &:focus-within .work-correct': { opacity: 1 },
       }}
     >
       {isAuthenticated && (
@@ -121,7 +130,11 @@ function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArt
           {content.name}
         </Typography>
         <Typography variant="caption" color="text.secondary" noWrap>
-          {[creatorsBrief(content.artists, content.artists_curated), content.year, content.treasure_type]
+          {[creatorsBrief(content.artists, content.artists_curated),
+            // Not the stored integer: the Borghese Gladiator was carved around
+            // 100 BC, and this row used to print "-100" while the works preview
+            // beside it printed "100 BC" (`yearLabel`).
+            yearLabel(content.year), content.treasure_type]
             .filter(Boolean).join(' · ')}
         </Typography>
         {/* `redundantWith` because the line above already names the makers, and
@@ -133,7 +146,27 @@ function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArt
         {url && !failed && (
           <ImageCreditLine credit={content.image_credit} redundantWith={content.artists} />
         )}
+        {/* The word that says a curator already answered for one of this work's
+            fields — without it a title somebody fixed reads as the source's. */}
+        {claimLabel(content.curated_fields) && (
+          <Typography variant="caption" color="primary" sx={{ display: 'block' }}>
+            {claimLabel(content.curated_fields)}
+          </Typography>
+        )}
       </Box>
+      {onCorrect && (
+        <Tooltip title="Correct this work">
+          <IconButton
+            size="small"
+            className="work-correct"
+            aria-label={`Correct ${content.name}`}
+            onClick={(e) => { e.stopPropagation(); onCorrect(content); }}
+            sx={{ opacity: 0, transition: 'opacity .12s', flexShrink: 0 }}
+          >
+            <EditNoteIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
     </Box>
   );
 }
@@ -142,9 +175,11 @@ interface ArtworksListProps {
   contents: ExperienceTreasure[];
   total: number;
   experienceId: number;
+  /** A curator's way into correcting one of these works (#731); absent for everyone else. */
+  onCorrect?: (work: ExperienceTreasure) => void;
 }
 
-export function ArtworksList({ contents, total, experienceId }: ArtworksListProps) {
+export function ArtworksList({ contents, total, experienceId, onCorrect }: ArtworksListProps) {
   const { setArtworkPreview } = useExperienceContext();
   const { isAuthenticated } = useAuth();
   const { viewedIds, viewedCount, markViewed, unmarkViewed } = useViewedTreasures(experienceId);
@@ -188,6 +223,7 @@ export function ArtworksList({ contents, total, experienceId }: ArtworksListProp
             isAuthenticated={isAuthenticated}
             onToggleViewed={(e) => handleToggleViewed(content.id, e)}
             setArtworkPreview={setArtworkPreview}
+            onCorrect={onCorrect}
           />
         ))}
         {hasMore && !showAll && (

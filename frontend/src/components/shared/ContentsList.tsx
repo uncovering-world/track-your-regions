@@ -33,8 +33,17 @@ export interface ContentsRow {
   href?: string | null;
   /** The row's article, when one can be resolved for it. */
   article?: string | null;
-  /** Opens the row here, when it is a place this page can look at. */
+  /** Opens the row here — the dialog it is looked at and corrected in. */
   onOpen?: () => void;
+  /**
+   * What that door is called where the row already has an outbound one.
+   *
+   * A work's name opens the item it was imported from (#806) and must go on
+   * doing so, so its way in cannot be the name: it is a trailing action beside
+   * the article, named for what it does. A place has no outbound link and keeps
+   * the name as its door.
+   */
+  openLabel?: string;
 }
 
 /** The name, as a link out, a button in, or plain text — whichever the row has. */
@@ -86,6 +95,25 @@ export function ContentsList({ items, total, shown, noun }: {
                   aria-label={`Wikipedia article for ${item.primary}`}
                 >
                   Wikipedia
+                </Link>
+              </span>
+            )}
+            {/* The way in, where the name is already a way out. Named for the row
+                for the reason the article link above gives: a list of 25 bare
+                "Correct"s tells a screen reader nothing about which work. */}
+            {item.href && item.onOpen && (
+              <span>
+                {' · '}
+                <Link
+                  component="button"
+                  type="button"
+                  variant="caption"
+                  color="inherit"
+                  onClick={item.onOpen}
+                  aria-label={`${item.openLabel ?? 'Open'} ${item.primary}`}
+                  sx={{ verticalAlign: 'baseline' }}
+                >
+                  {item.openLabel ?? 'Open'}
                 </Link>
               </span>
             )}

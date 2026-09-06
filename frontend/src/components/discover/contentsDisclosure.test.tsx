@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ExperienceTreasure } from '../../api/experiences';
 import { HoverProvider } from '../../hooks/useHoverContext';
-import { ContentsSection } from './ExperienceDetailPanel';
+import { ContentsSection } from './ContentsSection';
 import { LocationsSection } from './LocationsSection';
 
 // The places list is virtualised, and jsdom has no layout — so without a height

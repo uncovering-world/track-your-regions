@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Box, ButtonBase, Tooltip, Typography } from '@mui/material';
+import { Box, ButtonBase, IconButton, Tooltip, Typography } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import EditNoteIcon from '@mui/icons-material/EditNote';
 import type { ExperienceTreasure } from '../../api/experiences';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 import { creditLabel, ImageCreditLine } from '../shared/ImageCreditLine';
@@ -15,11 +16,13 @@ import { VISITED_GREEN } from '../../utils/categoryColors';
  * each cell a second child, and a tile is a thing rather than a shape the loop
  * happens to make.
  */
-export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed }: {
+export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed, onCorrect }: {
   content: ExperienceTreasure;
   isViewed: boolean;
   isAuthenticated: boolean;
   onToggleViewed: () => void;
+  /** A curator's way into correcting this work (#731); absent for everyone else. */
+  onCorrect?: (work: ExperienceTreasure) => void;
 }) {
   // State rather than `style.display = 'none'` on the image: hiding the element
   // left the tile's own name overlay and the credit below it standing under a
@@ -122,7 +125,34 @@ export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed
   );
 
   return (
-    <Box>
+    <Box sx={{
+      position: 'relative',
+      // The curator's control is shown when the tile is reached, so a reader's
+      // grid stays a grid of pictures. Focus counts as reaching it, or the
+      // button would exist for a pointer alone.
+      '&:hover .work-correct, &:focus-within .work-correct': { opacity: 1 },
+    }}>
+      {/* Top left, because the top right is where a work already says it has been
+          seen — and a claim word does not fit on a 100 px tile, so what a curator
+          has corrected is said inside the dialog this opens. */}
+      {onCorrect && (
+        <Tooltip title="Correct this work">
+          <IconButton
+            size="small"
+            className="work-correct"
+            aria-label={`Correct ${content.name}`}
+            onClick={() => onCorrect(content)}
+            sx={{
+              position: 'absolute', top: 2, left: 2, zIndex: 1, p: 0.25,
+              bgcolor: 'background.paper', boxShadow: 1,
+              opacity: 0, transition: 'opacity .12s',
+              '&:hover': { bgcolor: 'background.paper' },
+            }}
+          >
+            <EditNoteIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
+      )}
       {/* A `ButtonBase` and not a `<Box onClick>` — but only for a reader who can
           actually record anything. Marking a work seen is the tile's whole purpose
           and there is no other affordance for it on this screen, so as a plain
