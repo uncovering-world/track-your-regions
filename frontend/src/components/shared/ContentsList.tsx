@@ -16,6 +16,11 @@
  * and its article, elsewhere; a point opens here, in the one dialog a place is
  * looked at in — and corrected, since a curator reading "49.0442, 3.9550" under
  * "9 new points waiting" cannot tell a pin on the wrong hill from the numbers.
+ *
+ * In `shared/` because the object's own screen lists its places the same way
+ * (`CurationPlaces`): rows behind a count, capped and saying so, each opening the
+ * place. Two lists of places that read differently would be two claims about what
+ * a place is.
  */
 
 import { Box, Link, Stack, Typography } from '@mui/material';

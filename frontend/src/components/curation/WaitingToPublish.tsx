@@ -42,7 +42,7 @@ import { HeldAnswer, type HeldSelection } from './HeldAnswer';
 import { ObjectPreview } from './ObjectPreview';
 import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
-import { ContentsList } from './ContentsList';
+import { ContentsList } from '../shared/ContentsList';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { creatorsBrief } from '../../utils/creatorList';
 import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';

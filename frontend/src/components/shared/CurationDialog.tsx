@@ -2,9 +2,10 @@
  * CurationDialog — Shared dialog for curator actions on an experience.
  *
  * Supports editing (name, description, category, image), rejecting, and
- * unrejecting an experience within a region. Includes a collapsible
- * curation history log. Self-contained mutations that invalidate the
- * relevant query caches on success.
+ * unrejecting an experience within a region, and lists the places the object
+ * is made of with the way to correct each (`CurationPlaces`). Includes a
+ * collapsible curation history log. Self-contained mutations that invalidate
+ * the relevant query caches on success.
  *
  * Used from both Map mode (ExperienceList) and Discover mode
  * (ExperienceCard, ExperienceDetailPanel).
@@ -57,6 +58,7 @@ import { formatRelativeTime } from '../../utils/dateFormat';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LoadingSpinner } from './LoadingSpinner';
 import { PictureWithCredit } from './PictureWithCredit';
+import { CurationPlaces } from './CurationPlaces';
 import { verdictOf } from './LifecycleChip';
 import { ACTION_LABELS, formatLogDetails } from './curationLog';
 import { typeOptionsFor } from '../../utils/experienceTypes';
@@ -303,6 +305,20 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
             fullWidth
             size="small"
             required
+          />
+          {/* Where it is, beside what it is called: a fact of the object, read as a
+              field of this form. For a museum or a monument the one place is the
+              object, and this field is the only row that place has anywhere (#583).
+              Keyed on the object: this dialog is mounted for as long as the list is
+              and reconciles across objects, and a place opened under one object must
+              not stay open under the next — the form would correct the old row and
+              report the new object. */}
+          <CurationPlaces
+            key={experience.id}
+            experienceId={experience.id}
+            experienceName={experience.name}
+            regionId={regionId}
+            countryNames={experience.country_names}
           />
           <TextField
             label="Short Description"
