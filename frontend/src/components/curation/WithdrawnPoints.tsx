@@ -51,7 +51,7 @@ import PlaceIcon from '@mui/icons-material/Place';
 import { useMutation } from '@tanstack/react-query';
 import { setLocationState, type ReviewQueueItem } from '../../api/experiences';
 import { formatDateTime } from '../../utils/dateFormat';
-import { worldViewList } from '../../utils/worldViewList';
+import { placementNotice } from '../../utils/placementNotice';
 import { ItemHeader, messageFor } from './queueCard';
 import { PointPreviewDialog } from './PointPreviewDialog';
 import { HelpHint } from './HelpHint';
@@ -129,24 +129,6 @@ const HELP = 'A run offered the object without this part, so it was marked rathe
   + 'seeing it the moment it was marked, and that does not change when you answer: "dropped" and '
   + '"no longer exists" both leave it hidden, and differ in what we are recording — one is about '
   + 'the source’s list, the other about the world. Only "false alarm" puts it back on the map.';
-
-/**
- * What to tell a curator when the verdict landed and the regions did not.
- *
- * Through `worldViewList`, like every other placement report: an admin fixes this per
- * world view, so the sentence has to name them — and it has to carry their ids, because
- * a curator reporting "Base layer" and an admin searching for a world view id are the
- * two halves of one handover. A list derived here instead would drop them.
- */
-export function placementNotice(
-  item: { name: string },
-  data?: { placementFailed?: true; placementFailedWorldViews?: Array<{ id: number | null; name: string | null }> },
-): string | undefined {
-  if (!data?.placementFailed) return undefined;
-  return `${item.name}: the answer was recorded, but the point could not be re-placed in `
-    + `${worldViewList(data.placementFailedWorldViews)}. Its regions are out of date until an `
-    + 'admin re-runs placement.';
-}
 
 /**
  * One point, one answer.
