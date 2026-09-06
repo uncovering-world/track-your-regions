@@ -28,6 +28,22 @@ vi.mock('../../api/experiences', () => ({
   fetchCurationLog: vi.fn(),
   fetchExperience: vi.fn(),
   setExperienceState: vi.fn(),
+  // The Location field reads this on open; its own test says what it shows. One
+  // place per object here, so the remount test below has a place to open.
+  fetchExperienceLocations: vi.fn(async (experienceId: number) => ({
+    experienceId, experienceName: '', totalLocations: 1,
+    locations: [{
+      id: 100 + experienceId, experience_id: experienceId, name: null, external_ref: null,
+      ordinal: 0, latitude: 34.84, longitude: 67.82, created_at: '2026-08-01T00:00:00Z',
+    }],
+  })),
+}));
+
+// The point dialog has its own test; here it only has to say which place it holds.
+vi.mock('./PointPreviewDialog', () => ({
+  PointPreviewDialog: ({ correction }: { correction?: { place: { locationId: number } } }) => (
+    <div data-testid="point-dialog">{`correcting ${correction?.place.locationId}`}</div>
+  ),
 }));
 
 import { editExperience, fetchExperience, type Experience } from '../../api/experiences';
@@ -65,6 +81,33 @@ function renderDialog(experience: Experience = bamiyan) {
     </QueryClientProvider>,
   );
 }
+
+describe('the Location field across objects', () => {
+  it('closes a place opened under one object when the dialog moves to the next', async () => {
+    // The dialog is mounted for as long as the list is and reconciles across
+    // objects. Without a key on the field, the place opened under Bamiyan stayed
+    // open under the next object — the form would have corrected Bamiyan's row
+    // and reported the other object.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <CurationDialog experience={bamiyan} regionId={5} onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /^Move or rename/ }));
+    expect(screen.getByTestId('point-dialog')).toHaveTextContent('correcting 101');
+
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <CurationDialog experience={{ ...bamiyan, id: 2, name: 'Minaret of Jam' }} regionId={5} onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByTestId('point-dialog')).toBeNull();
+    // And the new object's own place is what the field now offers.
+    expect(await screen.findByRole('button', { name: 'Move or rename Minaret of Jam' })).toBeInTheDocument();
+  });
+});
 
 const clear = (label: string) => fireEvent.change(screen.getByLabelText(label), { target: { value: '' } });
 const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
