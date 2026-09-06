@@ -49,10 +49,30 @@ describe('publishOutcomeFor', () => {
 
   it('says which parts the proposal named that were no longer there to write', () => {
     const line = publishOutcomeFor(item, result({
-      partsNotFound: [{ kind: 'locations', name: 'Château de Montésgur' }],
+      partsNotFound: [{ kind: 'locations', name: 'Château de Montésgur', reason: 'withdrawn' }],
     }));
 
     expect(line).toContain('Château de Montésgur is no longer offered, so nothing was written to it');
+  });
+
+  it('says when a part answers to more than one place, which asks the curator to look rather than to wait', () => {
+    // Maloti-Drakensberg Park's two halves share one reference; with both
+    // carrying a curator's name, no rule can say which the record means
+    // (#833). The sentence names no count: W-Arly-Pendjari lists three rows
+    // under one reference, and the rule only ever says "more than one".
+    // The whole line, as the server's answer shapes it: an ambiguous part stays
+    // open, so the card is still waiting — and an exact match is what keeps a
+    // count from creeping back in after the sentence.
+    const line = publishOutcomeFor(item, result({
+      partsNotFound: [{ kind: 'locations', name: 'uKhahlamba Drakensberg Park', reason: 'ambiguous' }],
+      heldLeftOpen: 1,
+    }));
+
+    expect(line).toBe(
+      'Museo Nacional del Prado: uKhahlamba Drakensberg Park answers to more than one place '
+      + 'and nothing tells them apart, so nothing was written to any of them; '
+      + 'the rest of the card is still waiting.',
+    );
   });
 
   it('says what became visible, counting works from whichever axis moved', () => {

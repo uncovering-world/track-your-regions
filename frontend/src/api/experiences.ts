@@ -1259,10 +1259,15 @@ export interface AppliedPart {
   claimedFieldsSkipped: string[];
 }
 
-/** A part the proposal named that no offered row answers to. */
+/**
+ * A part the proposal named that publishing could not write to: no offered row
+ * answers to it, or more than one does and nothing tells them apart — a component
+ * listed once per country under one reference, each row carrying a curator's name (#833).
+ */
 export interface PartNotFound {
   kind: 'locations' | 'treasures';
   name: string;
+  reason: 'withdrawn' | 'ambiguous';
 }
 
 /** What a publication did, so the page can say it before the refetch. */
@@ -1280,9 +1285,10 @@ export interface PublishResult {
    */
   appliedParts: AppliedPart[];
   /**
-   * Parts the proposal named that no offered row answers to any more — a place
-   * the source withdrew after proposing its rename. Present only when there is
-   * one; nothing was written to them and nothing readers see changed.
+   * Parts the proposal named that nothing could be written to — a place the
+   * source withdrew after proposing its rename, or one that more than one row
+   * answers to and nothing tells apart. Present when at least one part could not be
+   * written to; nothing was written to them and nothing readers see changed.
    */
   partsNotFound?: PartNotFound[];
   fromSyncLogId: number | null;
