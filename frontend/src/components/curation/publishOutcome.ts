@@ -40,7 +40,14 @@ function partOutcomes(data: PublishResult): string[] {
     if (clauses.length > 0) said.push(`${part.name}: ${clauses.join(', ')}`);
   }
   for (const part of data.partsNotFound ?? []) {
-    said.push(`${part.name} is no longer offered, so nothing was written to it`);
+    // Two reasons, two sentences: the first asks nothing of the curator, the
+    // second asks them to look at the siblings — a component listed once per
+    // country under one reference, each carrying a curator's name (#833). No
+    // count in the sentence: the rule says "more than one" and nothing finer,
+    // and W-Arly-Pendjari lists three rows under one reference.
+    said.push(part.reason === 'ambiguous'
+      ? `${part.name} answers to more than one place and nothing tells them apart, so nothing was written to any of them`
+      : `${part.name} is no longer offered, so nothing was written to it`);
   }
   return said;
 }
