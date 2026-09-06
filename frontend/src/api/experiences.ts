@@ -953,6 +953,40 @@ export async function setLocationState(
 }
 
 /**
+ * A curator's correction to one place: what it is called, or where it is.
+ *
+ * The other question about a point, beside the verdict above about its standing.
+ * The coordinate goes as a pair or not at all — the endpoint refuses half a move,
+ * since a latitude against the old longitude names somewhere nobody chose — and
+ * an empty body is refused too, so the caller sends what changed and nothing else.
+ * Each value written claims its column on the place (`curated_fields`), which is
+ * what keeps the correction standing at the next run.
+ */
+export async function editLocation(
+  locationId: number,
+  correction: { name?: string; latitude?: number; longitude?: number },
+): Promise<{
+  success: true;
+  locationId: number;
+  /**
+   * Whether the object's own coordinate moved with the place. True only where the
+   * object holds exactly one visible, published place and this is it — the case in
+   * which the source's locator and the place are one fact. A pending or withdrawn
+   * place moves nothing, whatever the count, so a screen reads this rather than
+   * promising it.
+   */
+  anchorMoved: boolean;
+  /** The move committed; re-placing the object into a world view did not. */
+  placementFailed?: true;
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+}> {
+  return authFetchJson(`${API_URL}/api/experiences/locations/${locationId}/edit`, {
+    method: 'PATCH',
+    body: JSON.stringify(correction),
+  });
+}
+
+/**
  * Answer a refusal: `confirm` keeps it, `override` puts the row back.
  *
  * No `expected` block, unlike `setExperienceState`. Both answers pin
