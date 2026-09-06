@@ -1,6 +1,6 @@
 # ADR-0040: A work names every one of its makers
 
-**Status**: Accepted
+**Status**: Accepted — decision 6 narrowed by [ADR-0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md)
 **Date**: 2026-08-31
 **Issue**: [#720](https://github.com/uncovering-world/track-your-regions/issues/720)
 
