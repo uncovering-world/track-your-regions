@@ -187,6 +187,23 @@ describe('getReviewQueue', () => {
     return [String(found[0]), found[1] as unknown[]];
   }
 
+  it('carries a place\'s claims on every row that lists one', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // Every point the page shows can be corrected from the dialog it opens in
+    // (#583), and a correction claims the field it changed (migration 027). A
+    // row that did not carry the claim would show a pin a curator moved as the
+    // source's — on the very screen where the next curator decides about it.
+    const [contentsSql] = callMatching("'contents' AS kind");
+    expect(contentsSql).toContain("'curatedFields', curated_fields");
+    const [heldSql] = callMatching("'held' AS kind");
+    expect(heldSql).toContain("'curatedFields', loc.curated_fields");
+    const [withdrawnSql] = callMatching("'withdrawn' AS kind");
+    expect(withdrawnSql).toContain("'curatedFields', el.curated_fields");
+    const [answeredSql] = callMatching("'withdrawn-answered' AS kind");
+    expect(answeredSql).toContain("'curatedFields', curated_fields");
+  });
+
   it('drops a conflict once the field is no longer claimed', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
