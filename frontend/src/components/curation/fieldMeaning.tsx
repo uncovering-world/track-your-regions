@@ -33,6 +33,7 @@ import { safeHref } from '../../utils/safeHref';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { creators } from '../../utils/creatorList';
 import { typeVocabularyOf } from '../../utils/experienceTypes';
+import { describeMove } from '../../utils/moveDescription';
 import { PictureFact } from './PictureFact';
 
 /** One field of a proposal, as the queue carries it. */
@@ -298,37 +299,6 @@ export function languageName(code: string): string {
   }
 }
 
-/**
- * Great-circle distance and the compass point it was in, for the sentence under a moved
- * pin. The same arithmetic and radius as the server's `distanceMeters` (`changeSet.ts`),
- * which is what decided the row was a move at all; the 1 km the sentence turns on is the
- * server's own `LOCATION_MAJOR_METERS`, stated here in words rather than imported, since
- * the two packages share no build (#527).
- */
-function moved(before: unknown, after: unknown): { meters: number; heading: string } | null {
-  if (!isRecord(before) || !isRecord(after)) return null;
-  const { lon: lon1, lat: lat1 } = before;
-  const { lon: lon2, lat: lat2 } = after;
-  if ([lon1, lat1, lon2, lat2].some(v => typeof v !== 'number')) return null;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const φ1 = toRad(lat1 as number); const φ2 = toRad(lat2 as number);
-  const dφ = φ2 - φ1; const dλ = toRad((lon2 as number) - (lon1 as number));
-  const a = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
-  const meters = 2 * 6371000 * Math.asin(Math.sqrt(a));
-  const y = Math.sin(dλ) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ);
-  const degrees = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-  const points = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
-  return { meters, heading: points[Math.round(degrees / 45) % 8] };
-}
-
-function distanceLabel(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)} m`;
-  return `${number.format(Math.round(meters / 100) / 10)} km`;
-}
-
-const MAJOR_MOVE_METERS = 1000;
-
 function setDifference(before: unknown, after: unknown): { added: string[]; removed: string[] } {
   const left = new Set(Array.isArray(before) ? before.map(String) : []);
   const right = new Set(Array.isArray(after) ? after.map(String) : []);
@@ -398,12 +368,8 @@ const MEANINGS: Record<string, FieldMeaning> = {
     whenItChanges: 'A move of a few metres is jitter. Kilometres can put the object in a different region or country: check the pin on the map before publishing.',
     render: coordinateLabel,
     event: true,
-    describeChange: (before, after) => {
-      const move = moved(before, after);
-      if (!move) return null;
-      const far = move.meters > MAJOR_MOVE_METERS ? ' — may fall in a different region; check the pin' : '';
-      return `Moved ${distanceLabel(move.meters)} ${move.heading}${far}.`;
-    },
+    // The one rule for a moved pin, shared with the correction dialog (`utils/moveDescription.ts`).
+    describeChange: (before, after) => describeMove(before, after),
   },
   countryCodes: {
     label: 'country codes',
