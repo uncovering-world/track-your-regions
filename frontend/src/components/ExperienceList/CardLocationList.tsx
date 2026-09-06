@@ -56,7 +56,7 @@ function ShowMoreRow({ label, tone, onClick }: {
 }
 
 export interface CardLocationListProps {
-  inRegionLocs: (LocationRowData & { longitude: number; latitude: number })[];
+  inRegionLocs: LocationRowData[];
   outOfRegionLocs: (LocationRowData & { regionPath: string | null })[];
   showCheckbox: boolean;
   isAuthenticated: boolean;
@@ -69,6 +69,8 @@ export interface CardLocationListProps {
    * hears about the card's new height before the browser paints it.
    */
   onHeightChange?: () => void;
+  /** A curator's way into correcting a place, handed to every row unchanged. */
+  onCorrect?: (location: LocationRowData) => void;
 }
 
 export function CardLocationList({
@@ -81,6 +83,7 @@ export function CardLocationList({
   onLocationVisitedToggle,
   registerRef,
   onHeightChange,
+  onCorrect,
 }: CardLocationListProps) {
   const { store: hoverStore } = useHoverActions();
   const [outOfRegionExpanded, setOutOfRegionExpanded] = useState(false);
@@ -180,6 +183,7 @@ export function CardLocationList({
             onHover={onLocationHover}
             onVisitedToggle={onLocationVisitedToggle}
             registerRef={registerRef}
+            onCorrect={onCorrect}
           />
         ))}
         {inRegionLocs.length > IN_REGION_INITIAL && (
@@ -222,6 +226,7 @@ export function CardLocationList({
                 onHover={onLocationHover}
                 onVisitedToggle={onLocationVisitedToggle}
                 registerRef={registerRef}
+                onCorrect={onCorrect}
               />
             ))}
             {outOfRegionLocs.length > OUT_OF_REGION_INITIAL && (

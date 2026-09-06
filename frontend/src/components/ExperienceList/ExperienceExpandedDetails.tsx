@@ -44,6 +44,7 @@ import { ArtworksList } from './ArtworksList';
 import { VisitedStatusButton } from './VisitedStatusButton';
 import { computeVisitedStatus } from './utils';
 import { CardLocationList } from './CardLocationList';
+import type { LocationRowData } from './LocationRow';
 import { experienceColors } from '../../utils/categoryColors';
 
 export interface ExperienceExpandedDetailsProps {
@@ -59,6 +60,8 @@ export interface ExperienceExpandedDetailsProps {
   onLocationVisitedToggle: (locationId: number, isVisited: boolean) => void;
   onLocationHover: (locationId: number | null) => void;
   onCurate?: () => void;
+  /** A curator's way into correcting one of the places listed below. */
+  onCorrectPlace?: (location: LocationRowData) => void;
   onUnreject?: () => void;
   onRemoveFromRegion?: () => void;
   /**
@@ -84,6 +87,7 @@ function ExperienceExpandedDetailsComponent({
   onLocationVisitedToggle,
   onLocationHover,
   onCurate,
+  onCorrectPlace,
   onUnreject,
   onRemoveFromRegion,
   onHeightChange,
@@ -117,6 +121,7 @@ function ExperienceExpandedDetailsComponent({
       ordinal: loc.ordinal,
       longitude: loc.longitude,
       latitude: loc.latitude,
+      curatedFields: loc.curated_fields,
       isVisited: isLocationVisited(loc.id),
       inRegion: loc.in_region !== false,
       regionPath: loc.region_path ?? null,
@@ -332,6 +337,7 @@ function ExperienceExpandedDetailsComponent({
           onLocationVisitedToggle={onLocationVisitedToggle}
           registerRef={registerLocationRef}
           onHeightChange={onHeightChange}
+          onCorrect={onCorrectPlace}
         />
       )}
 

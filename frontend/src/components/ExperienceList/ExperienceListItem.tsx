@@ -27,6 +27,7 @@ import {
 } from './ExperienceListItem.styles';
 import { PlacesCountChip, foldLabel } from './PlacesCountChip';
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
+import type { LocationRowData } from './LocationRow';
 import { isFoldable } from '../experienceMarkers/buildMarkers';
 
 /**
@@ -73,6 +74,8 @@ export interface ExperienceListItemProps {
    */
   onToggleCollapse: (experienceId: number) => void;
   onCurate?: (experience: Experience) => void;
+  /** A curator's way into correcting one place of this object. */
+  onCorrectPlace?: (experience: Experience, location: LocationRowData) => void;
   onUnreject?: (experience: Experience) => void;
   onRemoveFromRegion?: (experience: Experience) => void;
   /**
@@ -125,6 +128,7 @@ function ExperienceListItemComponent({
   isCollapsed,
   onToggleCollapse,
   onCurate,
+  onCorrectPlace,
   onUnreject,
   onRemoveFromRegion,
   onCardOpened,
@@ -236,6 +240,15 @@ function ExperienceListItemComponent({
   const handleCurate = useMemo(
     () => (onCurate ? () => onCurate(experience) : undefined),
     [onCurate, experience],
+  );
+  // Bound once per object for the same reason, and handed down unchanged to
+  // every place row — which is memoised too, and would re-render on a fresh
+  // closure per row exactly the way this card used to.
+  const handleCorrectPlace = useMemo(
+    () => (onCorrectPlace
+      ? (location: LocationRowData) => onCorrectPlace(experience, location)
+      : undefined),
+    [onCorrectPlace, experience],
   );
   const handleUnreject = useMemo(
     () => (onUnreject ? () => onUnreject(experience) : undefined),
@@ -460,6 +473,7 @@ function ExperienceListItemComponent({
           onLocationVisitedToggle={onLocationVisitedToggle}
           onLocationHover={handleLocationHover}
           onCurate={handleCurate}
+          onCorrectPlace={handleCorrectPlace}
           onUnreject={handleUnreject}
           onRemoveFromRegion={handleRemoveFromRegion}
           onHeightChange={reportHeightChange}
