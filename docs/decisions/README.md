@@ -55,9 +55,10 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0042](0042-a-search-answers-about-the-catalogue-and-opens-where-the-reader-is.md) | A search answers about the catalogue, and opens where the reader is | Accepted | 2026-09-01 |
 | [0043](0043-a-picture-we-show-is-one-we-may-show.md) | A picture we show is one we may show | Accepted | 2026-09-01 |
 | [0044](0044-a-work-leaves-a-museum-behind-a-floor-measured-on-works.md) | A work leaves a museum by a mark, behind a floor measured on works | Accepted | 2026-09-02 |
-| [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | A traveller browses by kind of place, and a source is how a kind is filled | Accepted — decision 4 narrowed by [0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md) | 2026-09-03 |
+| [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | A traveller browses by kind of place, and a source is how a kind is filled | Accepted — decision 4 narrowed by [0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md); decisions 2 and 3 narrowed by [0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md) | 2026-09-03 |
 | [0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md) | A place is ours to identify, and two rows become one place by a merge a curator confirms | Accepted | 2026-09-03 |
 | [0047](0047-a-cached-answer-belongs-to-the-source-that-asked.md) | A cached answer belongs to the source that asked | Accepted | 2026-09-04 |
+| [0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md) | A kind is filled in two tiers, each from its own kind of source | Accepted | 2026-09-06 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

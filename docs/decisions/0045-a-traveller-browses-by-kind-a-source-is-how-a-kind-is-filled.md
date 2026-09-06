@@ -4,7 +4,11 @@
 **Status:** Accepted — decision 4 narrowed by
 [ADR-0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md): for a
 serial World Heritage site the locations are the places and the site is the card that gathers
-them, not a place with parts; the rest of decision 4 and every other decision stand
+them, not a place with parts; decisions 2 and 3 narrowed by
+[ADR-0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md): a kind's
+rule of completeness is one per tier — the world tier's is the ranking's own, the regional
+tier's is per unit — and a kind's sources are at least one per tier, each tier preferring its
+own kind of source; the rest of those decisions and every other decision stand
 
 ---
 
