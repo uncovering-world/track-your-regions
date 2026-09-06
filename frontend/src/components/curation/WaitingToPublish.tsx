@@ -33,6 +33,7 @@ import {
   type ReviewQueueItem,
 } from '../../api/experiences';
 import { plural } from '../../utils/plural';
+import { claimLabel } from '../../utils/placeClaims';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
@@ -302,9 +303,14 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                 items={(contents?.pending_points ?? []).map(point => ({
                   id: point.id,
                   primary: point.name ?? point.externalRef ?? 'Unnamed point',
-                  secondary: point.latitude != null && point.longitude != null
-                    ? `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`
-                    : null,
+                  // The coordinate, and the word that says a curator has already
+                  // corrected it — without which a moved pin reads as the source's.
+                  secondary: [
+                    point.latitude != null && point.longitude != null
+                      ? `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`
+                      : null,
+                    claimLabel(point.curatedFields),
+                  ].filter(Boolean).join(' · ') || null,
                   // A row with a coordinate opens in the point dialog, where it can
                   // be looked at and corrected; one without has nothing to show.
                   onOpen: point.latitude != null && point.longitude != null
