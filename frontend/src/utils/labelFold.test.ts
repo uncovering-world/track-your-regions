@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { foldLabel, sameLabel } from './labelFold';
+import { foldLabel, sameLabel, tidyLabel } from './labelFold';
 
 describe('foldLabel', () => {
   it('folds the typesetting a source varies and nothing else', () => {
@@ -34,5 +34,17 @@ describe('foldLabel', () => {
     expect(foldLabel(null)).toBe('');
     expect(foldLabel(undefined)).toBe('');
   });
+});
 
+describe('tidyLabel', () => {
+  it('stores a name as a person would type it, and keeps the spelling', () => {
+    // The two works the catalogue held with runs (#835), and a wrapped-line paste.
+    expect(tidyLabel(' St. John  on Patmos ')).toBe('St. John on Patmos');
+    expect(tidyLabel('Portrait of a Man (Self      Portrait?)')).toBe('Portrait of a Man (Self Portrait?)');
+    expect(tidyLabel('Getbol,\u00a0Korean Tidal Flats')).toBe('Getbol, Korean Tidal Flats');
+    // The store rule, not the fold: case and dashes are the curator's own.
+    expect(tidyLabel('Boma–Badingilo')).toBe('Boma–Badingilo');
+    expect(tidyLabel('Edward SAVAGE')).toBe('Edward SAVAGE');
+    expect(tidyLabel('   ')).toBe('');
+  });
 });
