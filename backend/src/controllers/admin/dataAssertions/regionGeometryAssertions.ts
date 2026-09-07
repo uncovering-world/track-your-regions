@@ -181,8 +181,11 @@ const anchorFarFromItsRegion: CatalogueAssertion = {
  * also mean overlapping siblings rather than a stale parent, which is why the
  * meaning says to look before recomputing. No such pair exists on the dev
  * catalogue today (measured: 0 sibling pairs share a division), so the rows it
- * reports are all #667's — three of them at the last measurement, down from the
- * four it opened with as each continent's union finishes inside the timeout. The stored areas are compared —
+ * reports are all #667's — North America alone at the last measurement, down
+ * from the four it opened with: two left as their unions finished inside the
+ * timeout, and Europe left through migration 048, since a parent whose geometry
+ * was *cleared* rather than left stale carries no area since #763 and answers
+ * to `regionWithoutGeometry` alone. The stored areas are compared —
  * `geom_area_km2` is written by the metadata trigger beside the geometry, so it
  * is stale exactly when the geometry is, which is what this asks about —
  * rather than ST_Area on the fly,
@@ -233,8 +236,11 @@ const parentShortOfItsChildren: CatalogueAssertion = {
  * computed region would not do — `geometryComputeSingle` computes one region on
  * demand, so a curator's first click on the in-flight Wikivoyage import (4 301
  * regions, none computed) would turn this rule into four thousand rows of the
- * wrong question. The Administrative world view sits at 99.9 % and answers
- * Canada, one row of 3 831 (#667).
+ * wrong question. The Administrative world view sits at 99.9 % and answers two
+ * rows of 3 831: Canada, a country whose union never finished inside the
+ * timeout (#667), and Europe, a continent cleared by invalidation and waiting
+ * on #459 — the row `parentShortOfItsChildren` also reported until migration
+ * 048 took its stale area away (#763).
  *
  * A region awaiting recompute still shows here, and should. Any write to
  * `regions.geom` marks the derived ancestors above it stale — the database does

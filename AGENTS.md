@@ -120,7 +120,7 @@ Follow pattern: `syncX()`, `getXSyncStatus()`, `cancelXSync()`. In-memory progre
 
 ### Geometry and Triggers
 
-Two triggers fire on region geometry changes: `update_region_metadata()` (area, archipelago flag) and `update_region_focus_data()` (anchor point, focus box). Hull services in `backend/src/services/hull/` handle dateline-crossing geometries.
+Two triggers fire on region geometry changes: `update_region_metadata()` (area — cleared with the geometry, #763 — and `uses_hull` on INSERT only) and `update_region_focus_data()` (anchor point, focus box). Hull services in `backend/src/services/hull/` handle dateline-crossing geometries.
 
 ### Antimeridian Handling
 

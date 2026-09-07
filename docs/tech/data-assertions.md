@@ -201,9 +201,14 @@ of it (Tasmania at 510 km, Portugal at 509), which a watch tolerates.
 **Parent short of its children** reads from the stored `geom_area_km2` rather
 than `ST_Area` on the fly — the stored area is stale exactly when the geometry
 is, which is the question, and it costs milliseconds where the measurement costs
-a minute. Today it reports #667's class: North America at 18.3 % of its children,
-Europe 41.2 %, Asia 58.2 % — three of the four it opened with, South America
-having been repaired once its union finished inside the timeout. Nine tenths, because a parent's
+a minute. What it reports is #667's class — North America at 18.3 % of its
+children on the dev catalogue, a continent whose stale outline survived while
+the countries under it were recomputed. A parent whose geometry was *cleared*
+rather than left stale is not here: the metadata trigger clears the stored area
+with the geometry (#763), so such a row answers to **region without geometry**
+below and to nothing else. Until migration 048 it answered to both — Europe read
+as `NULL` and 4,095,971 km² at once, 41 % of its children here and absent there.
+Nine tenths, because a parent's
 union legitimately loses slivers and holes its children's outlines carry. A row
 has a second possible cause, and the panel's own sentence says so: summing the
 children double-counts a division two of them hold, nothing enforces a partition
@@ -219,8 +224,11 @@ and it has to measure the world view rather than the existence of one computed
 region: geometry is computed one region at a time on demand, so a curator's
 first click on the in-flight Wikivoyage import (4 301 regions, none computed)
 would otherwise turn this rule into four thousand rows of the wrong question. The
-Administrative world view sits at 99.9 % and answers Canada, one row of its
-3 831. A region awaiting recompute appears here too, and should. Any write to
+Administrative world view sits at 99.9 % and answers two rows of its 3 831:
+Canada, a country whose union never finished inside the timeout (#667), and
+Europe, a continent cleared by invalidation and waiting on #459 — the row that
+used to answer to **parent short of its children** as well, until migration 048.
+A region awaiting recompute appears here too, and should. Any write to
 `regions.geom` nulls the derived ancestors above it — the database does that,
 from `trg_regions_geom_invalidates_parent` ([ADR-0035](../decisions/0035-ancestor-geometry-invalidation-lives-in-the-database.md)),
 since a parent is the union of children one of which has just changed — and
