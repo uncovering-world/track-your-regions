@@ -27,13 +27,16 @@
  * says so: a refusal is written on the membership, which carries no run, so it
  * takes the arrival run's date and falls back to the membership's `updated_at`.
  *
- * **The predicates are the queue's, restated.** Every branch below is the
- * `WHERE` of the statement that draws that kind's card — the same fragments
- * (`hidePendingSql`, `membershipAdmittedSql`, `heldFieldExistsSql`, …), the
- * same claim-key map, the same landed-changeset clause. ADR-0051 names this as
- * the cost of the design: what makes a question open now has two places to
- * land in one endpoint, which is why both live in this directory and why the
- * facet counts read this union rather than re-deriving it.
+ * **The predicates are the queue's, shared.** Every branch below composes the
+ * same `reviewQueuePredicates.ts` function its hydration statement in
+ * `reviewQueueController.ts` / `reviewQueueContents.ts` does — `missingOpenSql`,
+ * `refusedOpenSql`, `arrivalOpenSql`, `heldOpenSql`, `contentsOpenSql`,
+ * `withdrawnPointOpenSql`/`withdrawnContainerOpenSql`, `conflictChangeOpenSql`
+ * — plus the same claim-key formula, `claimKeySql`. ADR-0051 names the cost of
+ * the design as what makes a question open having two places to land in one
+ * endpoint; #805 Task 5 closed the gap that left between them — one function
+ * per predicate, called from both — which is why both live in this directory
+ * and why the facet counts read this union rather than re-deriving it.
  *
  * Measured on the development catalogue (2026-09-07, 1 621 open questions in
  * admin scope) for a page of 25 with its facets, either order, with or without
@@ -49,14 +52,14 @@
  */
 
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS, admissionPinnedSql, membershipAdmittedSql } from '../../db/membership.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
-import {
-  hidePendingSql, hideRefusedSql, offeredLinkSql, offeredLocationSql,
-} from './experienceLifecycle.js';
-import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
+import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
-import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
+import {
+  arrivalOpenSql, claimKeySql, conflictChangeOpenSql, contentsOpenSql, heldOpenSql,
+  missingOpenSql, refusedOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
+} from './reviewQueuePredicates.js';
 
 export type QueueKind = 'conflict' | 'waiting' | 'withdrawn' | 'refused' | 'missing';
 export type WaitingSub = 'arrival' | 'held' | 'contents';
@@ -178,12 +181,7 @@ function conflictKeysSql(scopeFilter: string, claimKey: (field: string) => strin
       FROM experience_sync_changes ch
       JOIN experiences e ON e.id = ch.experience_id
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
-      WHERE l.is_dry_run = FALSE
-        AND ch.changed_fields @> '[{"curatedConflict": true}]'
-        AND (e.last_seen_sync_log_id IS NULL
-             OR ch.sync_log_id >= e.last_seen_sync_log_id
-             OR NOT EXISTS (SELECT 1 FROM experience_sync_logs prev
-                            WHERE prev.id = e.last_seen_sync_log_id AND ${CHANGESET_LANDED_SQL}))
+      WHERE ${conflictChangeOpenSql('e', 'ch', 'l')}
         AND ${scopeFilter}
       ORDER BY e.id, ch.id DESC
     ) q
@@ -204,9 +202,7 @@ function arrivalKeysSql(scopeFilter: string): string {
         FROM experiences e
         JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
         LEFT JOIN experience_sync_logs l ON l.id = e.first_seen_sync_log_id
-        WHERE m.curation_state = 'pending'
-          AND ${membershipAdmittedSql('m')}
-          AND e.missing_since IS NULL
+        WHERE ${arrivalOpenSql('e', 'm')}
           AND ${scopeFilter}`;
 }
 
@@ -224,9 +220,7 @@ function heldKeysSql(scopeFilter: string): string {
         JOIN experience_sync_logs l ON l.id = m.pending_change_sync_log_id
         JOIN experience_sync_changes ch ON ch.experience_id = e.id
                                        AND ch.sync_log_id = m.pending_change_sync_log_id
-        WHERE ${membershipAdmittedSql('m')}
-          AND e.missing_since IS NULL
-          AND (${heldFieldExistsSql('ch')} OR ${heldPartExistsSql('ch')})
+        WHERE ${heldOpenSql('e', 'm', 'ch')}
           AND ${scopeFilter}`;
 }
 
@@ -249,14 +243,7 @@ function contentsKeysSql(scopeFilter: string): string {
                      AND (et.curation_state = 'pending' OR t.curation_state = 'pending'))
                ), 'contents'
         FROM experiences e
-        WHERE ${hidePendingSql()} AND ${hideRefusedSql()} AND e.missing_since IS NULL
-          AND (EXISTS (SELECT 1 FROM experience_locations el
-                        WHERE el.experience_id = e.id AND el.curation_state = 'pending'
-                          AND ${offeredLocationSql('el')})
-            OR EXISTS (SELECT 1 FROM experience_treasures et
-                         JOIN treasures t ON t.id = et.treasure_id
-                        WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
-                          AND (et.curation_state = 'pending' OR t.curation_state = 'pending')))
+        WHERE ${contentsOpenSql('e')}
           AND ${scopeFilter}`;
 }
 
@@ -295,10 +282,8 @@ function waitingKeysSql(scopeFilter: string): string {
 
 /**
  * The points a run stopped offering, one row per container
- * (`reviewQueueContents.ts` § queryWithdrawn). The five predicates on the point
- * are that query's: the run's observation, the two axes that say whether anyone
- * has answered it, the deferral guard, and the gate — a point no reader ever
- * saw raises no question about its departure.
+ * (`reviewQueueContents.ts` § queryWithdrawn). What counts as open for a
+ * point is `withdrawnPointOpenSql`'s reasoning (`reviewQueuePredicates.ts`).
  */
 function withdrawnKeysSql(scopeFilter: string): string {
   return `
@@ -306,23 +291,17 @@ function withdrawnKeysSql(scopeFilter: string): string {
            max(el.missing_since), ARRAY[]::text[]
     FROM experience_locations el
     JOIN experiences e ON e.id = el.experience_id
-    WHERE el.missing_since IS NOT NULL
-      AND el.source_membership = 'present'
-      AND el.existence = 'extant'
-      AND el.withdrawal_deferred_for_location_id IS NULL
-      AND el.curation_state <> 'pending'
-      AND ${hidePendingSql()}
-      AND ${hideRefusedSql()}
-      AND e.missing_since IS NULL
+    WHERE ${withdrawnPointOpenSql('el')}
+      AND ${withdrawnContainerOpenSql('e')}
       AND ${scopeFilter}
     GROUP BY e.id, e.name, e.category_id`;
 }
 
 /**
  * A rule's refusal nobody has answered, and the object a run stopped finding.
- * Both are the controller's `WHERE` unchanged; the refusal's date is the one
- * loose one in the list, and ADR-0051 names it rather than leaving the kind out
- * of the order.
+ * Both draw the same predicates the controller's cards do (`refusedOpenSql`,
+ * `missingOpenSql`); the refusal's date is the one loose one in the list, and
+ * ADR-0051 names it rather than leaving the kind out of the order.
  */
 function refusedKeysSql(scopeFilter: string): string {
   return `
@@ -331,8 +310,7 @@ function refusedKeysSql(scopeFilter: string): string {
     FROM experiences e
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
     LEFT JOIN experience_sync_logs l ON l.id = e.first_seen_sync_log_id
-    WHERE m.admission = 'refused'
-      AND NOT ${admissionPinnedSql('m')}
+    WHERE ${refusedOpenSql('m')}
       AND ${scopeFilter}`;
 }
 
@@ -341,10 +319,7 @@ function missingKeysSql(scopeFilter: string): string {
     SELECT 'missing', ${KIND_RANK.missing}, e.id, e.name, e.category_id, NULL,
            e.missing_since, ARRAY[]::text[]
     FROM experiences e
-    WHERE e.missing_since IS NOT NULL
-      AND e.source_membership = 'present'
-      AND ${hideRefusedSql()}
-      AND ${hidePendingSql()}
+    WHERE ${missingOpenSql('e')}
       AND ${scopeFilter}`;
 }
 
@@ -669,8 +644,7 @@ export async function queryQueueKeys(
        ))`;
   const keyMap = bind(JSON.stringify(CURATED_KEY_BY_FIELD));
   const family = bind(JSON.stringify(CLAIM_KEY_BY_FAMILY));
-  const claimKey = (field: string) => `COALESCE(${keyMap}::jsonb->>(${field}),`
-    + ` ${family}::jsonb->>split_part(${field}, '.', 1), ${field})`;
+  const claimKey = (field: string) => claimKeySql(field, keyMap, family);
   const f = boundFilters(filters, bind);
 
   const sql = `${CURATOR_SCOPED_REGIONS_CTE}

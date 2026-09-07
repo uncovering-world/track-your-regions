@@ -25,12 +25,12 @@ import { pool } from '../../db/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
 import {
-  hidePendingSql, hideRefusedSql, lifecycleSelectSql, offeredLinkSql, offeredLocationSql,
-  venueCountSql,
+  lifecycleSelectSql, offeredLinkSql, offeredLocationSql, venueCountSql,
 } from './experienceLifecycle.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldPartAnsweredSql } from './heldDecisions.js';
+import { contentsOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
 
 /**
  * The held fields of an object's parts, as the held card carries them.
@@ -305,15 +305,15 @@ export async function queryContents(
           AND (et.curation_state = 'pending' OR t.curation_state = 'pending')
       ) t
     ) works
-    WHERE ${hidePendingSql()}            -- an unread experience is an arrival, not this
-      AND ${hideRefusedSql()}
-      AND (points.total > 0 OR works.total > 0)
-      -- Withdrawn rows belong to the 'missing' card, like an arrival and like a
-      -- held proposal: the same row under two headings would ask two questions
-      -- whose answers contradict each other. "May readers see these twelve
-      -- works?" is not answerable while "did this venue disappear?" is open, and
-      -- publishing the works would not put them anywhere a reader looks anyway.
-      AND e.missing_since IS NULL
+    -- contentsOpenSql restates the two lateral joins above as EXISTS, which is
+    -- what makes points.total > 0 OR works.total > 0 and the shared predicate
+    -- answer the same question about the same row (#805). Withdrawn
+    -- rows belong to the 'missing' card, like an arrival and like a held
+    -- proposal: the same row under two headings would ask two questions whose
+    -- answers contradict each other. "May readers see these twelve works?" is
+    -- not answerable while "did this venue disappear?" is open, and publishing
+    -- the works would not put them anywhere a reader looks anyway.
+    WHERE ${contentsOpenSql('e')}
       AND ${scopeFilter} ${categoryFilter}
       AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.id
@@ -327,20 +327,8 @@ export async function queryContents(
 // run. The decision stays per point — `POST /locations/:locationId/state` — which
 // is the shape the gated `contents` card already has.
 //
-// The three predicates on `el` are what make the card answerable exactly once.
-// `missing_since IS NOT NULL` is the run's observation; the two axes are whether
-// anyone has answered it. A verdict deliberately leaves the flag standing, because
-// that flag is what keeps the point off every reader-facing read, so without the
-// axes here an answered point would come back for ever with its own answer
-// recorded on it.
-//
-// `withdrawal_deferred_for_location_id` says a *different* row is waiting to
-// replace this one. Such a withdrawal has not happened yet — the point is still on
-// the map with `missing_since IS NULL` — so it cannot reach this query anyway; the
-// predicate is here for the row that *is* flagged while an arrival still names it,
-// which the writer produces when the source withdraws the replacement in turn. A
-// curator asked "did this go?" about a point their readers can still see has no
-// true answer available.
+// What makes a point's card answerable exactly once: the reasoning is on
+// `withdrawnPointOpenSql` (`reviewQueuePredicates.ts`).
 export async function queryWithdrawn(
   { scopeFilter, categoryFilter, params, ids }: QueueQueryContext,
 ): Promise<QueryResult> {
@@ -451,23 +439,10 @@ export async function queryWithdrawn(
     JOIN experience_categories c ON c.id = e.category_id
     JOIN experience_locations el
       ON el.experience_id = e.id
-     AND el.missing_since IS NOT NULL
-     AND el.source_membership = 'present'
-     AND el.existence = 'extant'
-     AND el.withdrawal_deferred_for_location_id IS NULL
-     -- A point nobody ever saw raises no question about its departure, the same
-     -- reasoning ADR-0025 section 3.6 applies to an unread object: the card asks
-     -- whether a place readers could see has gone, and about an arrival the gate
-     -- never released there is no such fact. Reachable — a gated source can offer a
-     -- point and withdraw it before anyone publishes it, and the mark statement
-     -- treats it like any other stored row.
-     AND el.curation_state <> 'pending'
-    WHERE ${hidePendingSql()}
-      AND ${hideRefusedSql()}
-      -- The object's own disappearance is the missing kind's question, and that one
-      -- comes first: what a component of a vanished site did is not answerable while
-      -- the site itself is unaccounted for.
-      AND e.missing_since IS NULL
+     AND ${withdrawnPointOpenSql('el')}
+    -- The container half's reasoning is on withdrawnContainerOpenSql
+    -- (reviewQueuePredicates.ts).
+    WHERE ${withdrawnContainerOpenSql('e')}
       AND ${scopeFilter} ${categoryFilter}
       AND e.id = ANY($${params.length + 1}::int[])
     GROUP BY e.id, e.external_id, e.name, e.category_id, c.name

@@ -12,12 +12,11 @@
 import { Response } from 'express';
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS, admissionPinnedSql, membershipAdmittedSql } from '../../db/membership.js';
+import { MEMBERSHIPS, admissionPinnedSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
-import { hidePendingSql, hideRefusedSql, lifecycleSelectSql } from './experienceLifecycle.js';
+import { lifecycleSelectSql } from './experienceLifecycle.js';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
-import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import { ACCEPTABLE_FIELDS } from './acceptableFields.js';
 import {
   objectContextSelectSql, countedWorksSelectSql, QUEUE_PAGE_SIZE,
@@ -29,7 +28,9 @@ import {
   QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys,
 } from './reviewQueueKeys.js';
 import type { QueueFilters, QueueKind, WaitingSub } from './reviewQueueKeys.js';
-import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
+import {
+  arrivalOpenSql, claimKeySql, conflictChangeOpenSql, heldOpenSql, missingOpenSql, refusedOpenSql,
+} from './reviewQueuePredicates.js';
 import { heldFieldAnsweredSql } from './heldDecisions.js';
 import { withDangerFields } from './experienceDanger.js';
 
@@ -263,16 +264,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     ids.length === 0 ? [] : (await statement()).rows.map(withDangerFields)
   );
 
-  // A refused row is excluded here even when it also carries `missing_since`.
-  // The same row under two headings would ask two contradictory questions —
-  // "did this disappear?" beside "was refusing it right?" — and only the second
-  // has a true answer.
-  //
-  // A `pending` row is excluded too (ADR-0025 § 3.6): no reader has ever seen
-  // it, so there is no verdict to give about whether it disappeared from in
-  // front of anyone. It stays out of `arrivals` as well, guarded there by
-  // `missing_since IS NULL` — the two predicates are what makes such a row
-  // raise no card in either kind rather than a wrong one in either.
+  // What counts as `missing`, and why refused and unread rows are excluded:
+  // the reasoning is on `missingOpenSql` (`reviewQueuePredicates.ts`).
   const missingIds = idsOf('missing');
   const missing = await hydrate(missingIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
@@ -280,10 +273,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
            'missing' AS kind, NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
-    WHERE e.missing_since IS NOT NULL
-      AND e.source_membership = 'present'
-      AND ${hideRefusedSql()}
-      AND ${hidePendingSql()}
+    WHERE ${missingOpenSql('e')}
       ${categoryFilter}
       AND ${scopeFilter}
       AND e.id = ANY($${params.length + 1}::int[])
@@ -295,12 +285,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // shuffle the queue under a curator working through it. Stable beats fresh
   // here — the page is a list someone is walking down.
   //
-  // An answered row is gone from this query, because both answers pin
-  // `admission` in the membership's `curated_fields`. That pin is also what
-  // stops a later run reversing either answer.
-  //
-  // The verdict, its reason and the pin are the membership's (#822): the card
-  // is about the place, and the refusal is the kind's.
+  // What counts as `refused` and why an answered row leaves it: the reasoning
+  // is on `refusedOpenSql` (`reviewQueuePredicates.ts`).
   //
   // Each of the four membership queues joins the membership the row's own
   // source brought — `m.source_id = e.category_id`, the equality the catalogue
@@ -319,8 +305,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     FROM experiences e
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
     JOIN experience_categories c ON c.id = e.category_id
-    WHERE m.admission = 'refused'
-      AND NOT ${admissionPinnedSql('m')}
+    WHERE ${refusedOpenSql('m')}
       ${categoryFilter}
       AND ${scopeFilter}
       AND e.id = ANY($${params.length + 1}::int[])
@@ -387,11 +372,13 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // where there is no dot, exactly as `field.split('.')[0]` does, so the family
   // is consulted for a bare name too and the map simply answers first; and the
   // family object deliberately does not carry `metadata`, whose claims are per key.
+  // The COALESCE itself is `claimKeySql` (`reviewQueuePredicates.ts`), shared
+  // with `reviewQueueKeys.ts`'s own `claimKey` — only the two placeholder
+  // strings differ, since each statement binds `$keyMap`/`$family` its own way.
   const keyMapIdx = params.length + 1;
   const familyIdx = keyMapIdx + 1;
   const acceptableIdx = familyIdx + 1;
-  const claimKeySql = (field: string) => `COALESCE($${keyMapIdx}::jsonb->>(${field}),`
-    + ` $${familyIdx}::jsonb->>split_part(${field}, '.', 1), ${field})`;
+  const claimKeyFor = (field: string) => claimKeySql(field, `$${keyMapIdx}`, `$${familyIdx}`);
 
   // The curation log is scope-filtered **per row**, not per experience, and the two
   // subqueries below read it — so they carry the same predicate `getCurationLog` does.
@@ -460,7 +447,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                               OR (log.action = 'location_edited'
                                   AND f->>'field' = 'location'
                                   AND (log.details->>'anchorMoved')::boolean))
-                            AND log.details ? ${claimKeySql(`f->>'field'`)}
+                            AND log.details ? ${claimKeyFor(`f->>'field'`)}
                             AND ${logScopeFilter}
                           ORDER BY log.created_at DESC, log.id DESC
                           LIMIT 1),
@@ -489,7 +476,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                             AND ${logScopeFilter}), '[]'::jsonb)))
                FROM jsonb_array_elements(ch.changed_fields) f
                WHERE (f->>'curatedConflict')::boolean
-                 AND e.curated_fields ? ${claimKeySql(`f->>'field'`)}
+                 AND e.curated_fields ? ${claimKeyFor(`f->>'field'`)}
                  -- ...and the curator has not already answered *this* proposal. By
                  -- value, not by field: a refusal says "not that text", and a source
                  -- that comes back with different text is asking a new question, which
@@ -515,31 +502,10 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       JOIN experiences e ON e.id = ch.experience_id
       JOIN experience_categories c ON c.id = e.category_id
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
-      WHERE l.is_dry_run = FALSE
-        AND ch.changed_fields @> '[{"curatedConflict": true}]'
-        -- A run that finds the source agreeing again writes no row at all
-        -- (see worthRecording), so the absence of a newer conflict is not
-        -- evidence the disagreement stands. What such a run does leave is
-        -- last_seen_sync_log_id, and a value newer than this row's means a
-        -- later run saw the object and had nothing to propose.
-        --
-        -- Only once that run has finished and its batch actually landed.
-        -- last_seen is stamped per item inside the loop while the changeset is
-        -- written in one batch after it, so mid-run the newer value exists and
-        -- the rows it would be read against do not — every conflict in the
-        -- category would vanish for the length of the run.
-        --
-        -- A closed log is not by itself proof the batch landed, and status
-        -- cannot answer it either: a run that throws after the item loop
-        -- records its changes and only then marks itself failed. What
-        -- distinguishes the two runs that recorded nothing is the marker each
-        -- leaves — see CHANGESET_LANDED_SQL. Without that the inference would
-        -- silence a standing disagreement for a whole sync cycle.
-        AND (e.last_seen_sync_log_id IS NULL
-             OR ch.sync_log_id >= e.last_seen_sync_log_id
-             OR NOT EXISTS (
-               SELECT 1 FROM experience_sync_logs prev
-               WHERE prev.id = e.last_seen_sync_log_id AND ${CHANGESET_LANDED_SQL}))
+      -- conflictChangeOpenSql (reviewQueuePredicates.ts) is the newest-row,
+      -- landed-run test; its docblock has the reasoning for the staleness
+      -- clause.
+      WHERE ${conflictChangeOpenSql('e', 'ch', 'l')}
         ${categoryFilter}
         AND ${scopeFilter}
         -- Inside the DISTINCT ON rather than outside it, where the LIMIT used to
@@ -554,18 +520,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   `, [...params, JSON.stringify(CURATED_KEY_BY_FIELD), JSON.stringify(CLAIM_KEY_BY_FAMILY),
     JSON.stringify([...ACCEPTABLE_FIELDS]), conflictIds]));
 
-  // arrival: the whole object is the proposal. A row from a gated source that
-  // nobody has passed yet (ADR-0025) — the queue's own version of "created",
-  // for a source that does not get to publish on its own say.
-  //
-  // A refused row is excluded for the same reason `missing` excludes one: it
-  // already has a card of its own (§ 2.3), and one asking "may a reader see
-  // this?" would be asking the second question before the first is settled.
-  //
-  // A row the source has since stopped offering withdraws instead (§ 3.6),
-  // guarded by `missing_since IS NULL` — there is nobody it could be shown to
-  // either way, and `missing` excludes the same row so it raises no card
-  // under that heading either.
+  // What counts as `arrival`: the reasoning is on `arrivalOpenSql`
+  // (`reviewQueuePredicates.ts`).
   //
   // An arrival is a membership arriving (#822): the gate state and the
   // admission are the membership's, the source's observation is the row's.
@@ -578,9 +534,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     FROM experiences e
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
     JOIN experience_categories c ON c.id = e.category_id
-    WHERE m.curation_state = 'pending'
-      AND ${membershipAdmittedSql('m')}
-      AND e.missing_since IS NULL
+    WHERE ${arrivalOpenSql('e', 'm')}
       AND ${scopeFilter} ${categoryFilter}
       AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.first_seen_sync_log_id DESC NULLS LAST, e.id
@@ -606,9 +560,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // reason would have been reclassified as gate-held here, and offered to
   // publishing, which writes all eleven columns.
   //
-  // `e.missing_since IS NULL` for the same reason `arrivals` carries it: a row
-  // the source has stopped offering is `missing`'s question, not this one,
-  // and showing both would ask two things about one row.
+  // What counts as `held`: the reasoning is on `heldOpenSql`
+  // (`reviewQueuePredicates.ts`).
   //
   // `POST /:id/publish` and `POST /:id/decline-held` are what clear this
   // pointer in response to a person — under the same staleness check, whenever
@@ -659,9 +612,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       JOIN experience_sync_changes ch ON ch.experience_id = e.id
                                      AND ch.sync_log_id = m.pending_change_sync_log_id
       WHERE m.pending_change_sync_log_id IS NOT NULL
-        AND ${membershipAdmittedSql('m')}
-        AND e.missing_since IS NULL
-        AND (${heldFieldExistsSql('ch')} OR ${heldPartExistsSql('ch')})
+        AND ${heldOpenSql('e', 'm', 'ch')}
         AND ${scopeFilter} ${categoryFilter}
         AND e.id = ANY($${params.length + 1}::int[])
     ) q WHERE (q.proposed IS NOT NULL OR q.proposed_parts IS NOT NULL)
