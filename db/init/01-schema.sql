@@ -3125,6 +3125,20 @@ COMMENT ON COLUMN experience_held_decisions.part_kind IS 'NULL for the object ow
 COMMENT ON COLUMN experience_held_decisions.answer IS 'published: the value was written by a curator click. refused: the curator said not this, and nothing was written';
 COMMENT ON COLUMN experience_held_decisions.value IS 'The proposed value the answer is about, read from the locked proposal and never from the request';
 
+-- A run's batch a curator has set aside (#805, ADR-0051). Keyed on the run
+-- because that is the unit a batch has: run 98 put 1 255 questions about one
+-- field into the queue at once, and "not now" is said about the run, not 1 255
+-- times. The row does nothing once the run's questions are answered or a later
+-- run replaces its pointer -- the read offers only batches with open rows -- so
+-- nothing expires it and nothing needs to.
+CREATE TABLE IF NOT EXISTS curator_queue_set_aside (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    sync_log_id INTEGER NOT NULL REFERENCES experience_sync_logs(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, sync_log_id)
+);
+COMMENT ON TABLE curator_queue_set_aside IS 'Runs whose open questions this curator has set aside on the review page; the batch is hidden from their default list until its rows are answered';
+
 -- When a user was first shown the "New" chip (issue #480). The chip lives for
 -- max(category window, a week from this timestamp), so only the first
 -- impression matters — a later view must not restart the week. No index beyond
