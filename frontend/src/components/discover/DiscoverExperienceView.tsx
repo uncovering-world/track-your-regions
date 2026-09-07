@@ -37,6 +37,7 @@ import { useDiscoverMap } from './useDiscoverMap';
 import { useDiscoverHover } from './useDiscoverHover';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { experienceColor } from '../../utils/categoryColors';
+import { foldLabel } from '../../utils/labelFold';
 
 /**
  * A set of places as one shape to frame. `LngLatBounds.extend` was the
@@ -234,14 +235,15 @@ export function DiscoverExperienceView({
         .replace('Public Art & Monuments', 'Public Art')
     : '';
 
-  // Client-side search filtering
+  // Client-side search filtering. Both sides folded, so a search finds what
+  // the screen shows whatever the row holds (#835).
   const filteredExperiences = useMemo(() => {
-    if (!search) return experiences;
-    const lower = search.toLowerCase();
+    const needle = foldLabel(search);
+    if (!needle) return experiences;
     return experiences.filter(
       (exp) =>
-        exp.name.toLowerCase().includes(lower) ||
-        exp.country_names?.some((c) => c.toLowerCase().includes(lower)),
+        foldLabel(exp.name).includes(needle) ||
+        exp.country_names?.some((c) => foldLabel(c).includes(needle)),
     );
   }, [experiences, search]);
 
