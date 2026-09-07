@@ -10,6 +10,7 @@
  */
 
 import { Response } from 'express';
+import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS, admissionPinnedSql, membershipAdmittedSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -24,13 +25,74 @@ import {
 import {
   heldPartsSelectSql, queryAnsweredWithdrawals, queryContents, queryWithdrawn,
 } from './reviewQueueContents.js';
+import {
+  QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys,
+} from './reviewQueueKeys.js';
+import type { QueueFilters, QueueKind, WaitingSub } from './reviewQueueKeys.js';
 import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
 import { heldFieldAnsweredSql } from './heldDecisions.js';
 import { withDangerFields } from './experienceDanger.js';
 
+/** The request as `reviewQueueQuerySchema` leaves it, and as a test may not. */
+interface ReviewQueueQuery {
+  q?: string;
+  source?: string;
+  kind?: string;
+  region?: number | 'none';
+  run?: number;
+  aside?: 'show';
+  sort?: 'date' | 'question';
+  cursor?: string;
+  limit?: number;
+  keptOutOffset?: number;
+  answeredWithdrawalsOffset?: number;
+}
+
+/** The words a `kind` chip may carry: the five classes and the three sub-kinds. */
+const KIND_WORDS = new Set<string>([...QUEUE_KINDS, ...WAITING_SUBS]);
+
+/**
+ * The largest `experience_categories.id` there can be: the column is SERIAL, so
+ * a bigger number names no source and, bound into an `int[]`, would be an error
+ * from Postgres rather than a filter that matches nothing.
+ */
+const MAX_SOURCE_ID = 2147483647;
+
+/**
+ * The request's controls as the keys phase reads them.
+ *
+ * A word the vocabulary does not know is dropped rather than refused, and a
+ * `kind` of nothing but unknown words filters nothing: the filter set is the
+ * page's address (ADR-0051 decision 5), and an address that does not parse opens
+ * the list rather than an error (`docs/tech/addresses.md`).
+ *
+ * A source id out of `int4` is dropped by the same rule, and it has to be
+ * dropped *here*: the schema bounds the parameter's length but not the value of
+ * each id in it, and an id that never reaches the SQL is one Postgres is never
+ * asked to fit into an `int[]`.
+ */
+function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
+  const words = (value: string | undefined): string[] => (value ? value.split(',') : []);
+  return {
+    q: query.q,
+    sourceIds: query.source === undefined
+      ? undefined
+      : words(query.source).map(Number).filter(id => id >= 1 && id <= MAX_SOURCE_ID),
+    kinds: words(query.kind).filter((k): k is QueueKind | WaitingSub => KIND_WORDS.has(k)),
+    regionId: query.region,
+    runId: query.run,
+    showAside: query.aside === 'show',
+    sort: query.sort === 'question' ? 'question' : 'date',
+    cursor: query.cursor,
+    limit,
+  };
+}
+
 /**
  * The decisions waiting for a curator, scoped to what they cover.
- * GET /api/experiences/review/queue?categoryId=&limit=&<kind>Offset=
+ * GET /api/experiences/review/queue
+ *   ?q=&source=&kind=&region=&run=&aside=&sort=&cursor=&limit=
+ *   &keptOutOffset=&answeredWithdrawalsOffset=
  *
  * Seven kinds of open question, and two lists that are not questions at all:
  *
@@ -80,39 +142,51 @@ import { withDangerFields } from './experienceDanger.js';
  * are answered, not waiting, and are carried here only because nowhere else can
  * show them — one at the level of an object a rule kept out, one at the level of
  * a point a curator answered and thereby left on no screen (#544).
+ *
+ * **The page is chosen before it is drawn** (ADR-0051 decision 2). The seven
+ * questions are one list: `queryQueueKeys` orders every kind by the date of the
+ * run that asked it, filters it, and takes one page of keys by keyset — so this
+ * handler no longer pages anything, and the seven `<kind>Offset` parameters are
+ * gone with the seven `LIMIT`s. What is left here is drawing the cards: the
+ * page's keys are grouped by kind, and each statement below runs once, for the
+ * ids of its own kind, or not at all. Each keeps the `ORDER BY` it had, and what
+ * that orders is now its own array rather than anything a curator sees: `order`
+ * is the page, in the one order across the kinds, and the arrays are a lookup by
+ * id beside it. `total` and `facets` are counted over the union under the
+ * filter, so the page no longer has to say "the first N of this kind, and there
+ * may be more".
+ * `keptOut` and `answeredWithdrawals` are outside all of that and keep their own
+ * offsets: they are not open questions, carry no date to order the union by, and
+ * are not in it. Two of the filters still reach them, as predicates of their own
+ * on the object's row — the source chip and the search, because a curator
+ * narrowing the queue to one source or looking for one object by name means the
+ * whole page. The region, the run and the set-aside do not: a run is what a
+ * question was asked by and these are answered, and neither list is counted in
+ * the facets that the region chip states.
  */
 export async function getReviewQueue(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user!.id;
   const isAdmin = req.user!.role === 'admin';
-  const { categoryId, limit = QUEUE_PAGE_SIZE } = req.query as {
-    categoryId?: number; limit?: number;
-  };
-  // One offset per kind, because they are one query with one LIMIT each. A shared number
-  // moved all of them at once, so a full page of one kind hid a page 2 that no control
-  // could ask for.
-  const q = req.query as Record<string, number | undefined>;
+  const query = req.query as ReviewQueueQuery;
+  const limit = Number(query.limit ?? QUEUE_PAGE_SIZE);
+  const filters = queueFilters(query, limit);
+  // The two lists that are not open questions keep an offset each, and need one
+  // for the reason every kind used to: the page renders them in blocks of their
+  // own, so a shared number would page one whenever a curator paged the other.
   const offsets = {
-    missing: q.missingOffset ?? 0,
-    refused: q.refusedOffset ?? 0,
-    keptOut: q.keptOutOffset ?? 0,
-    conflicts: q.conflictsOffset ?? 0,
-    arrivals: q.arrivalsOffset ?? 0,
-    held: q.heldOffset ?? 0,
-    contents: q.contentsOffset ?? 0,
-    withdrawn: q.withdrawnOffset ?? 0,
-    answeredWithdrawals: q.answeredWithdrawalsOffset ?? 0,
+    keptOut: query.keptOutOffset ?? 0,
+    answeredWithdrawals: query.answeredWithdrawalsOffset ?? 0,
   };
 
-  // Asked for one more than the page, so "is there another page" is answered by the rows
-  // themselves. A COUNT(*) per kind would be a second source of truth for a number, and
-  // this endpoint deliberately returns no totals — see the note on counts below.
-  const pageSize = Number(limit) + 1;
-  // Every kind carries the object fragment, so every kind goes through the same
-  // danger mapping the reader-facing reads use: `in_danger` as a boolean and the
-  // listing's year as `danger_since`, never the raw "Y 2003".
+  // Those two ask for one row more than the page, so "is there another page" is
+  // answered by the rows themselves rather than by a second count. The seven
+  // questions do not: the keys phase pages them, and counts them — `total` and
+  // the facets are counted under the filter the curator set, which is what lets
+  // the page state a number it has actually counted.
+  const pageSize = limit + 1;
   const paged = <T extends Record<string, unknown>>(rows: T[]) => ({
-    items: rows.slice(0, Number(limit)).map(withDangerFields),
-    hasMore: rows.length > Number(limit),
+    items: rows.slice(0, limit).map(withDangerFields),
+    hasMore: rows.length > limit,
   });
 
   // The rows span categories, so the unrestricted check correlates on each
@@ -125,15 +199,69 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
          WHERE er.experience_id = e.id
        ))`;
 
+  // The source chip, as a predicate on the row's own source. Redundant on the
+  // seven kinds below — their ids come from the keys phase, which applied it
+  // already — and load-bearing on the two lists that are not open questions and
+  // are therefore not in that phase: without it a curator narrowing the queue to
+  // one source would still be shown every other source's kept-out rows.
+  //
   // Only bind what the SQL references. A placeholder that appears in the
   // parameter list but in no expression has no inferable type, and Postgres
   // refuses the whole statement with "could not determine data type".
   const params: unknown[] = [userId];
   let categoryFilter = '';
-  if (categoryId) {
-    params.push(categoryId);
-    categoryFilter = `AND e.category_id = $${params.length}`;
+  if (filters.sourceIds?.length) {
+    params.push(filters.sourceIds);
+    categoryFilter = `AND e.category_id = ANY($${params.length}::int[])`;
   }
+
+  // The search, on the same two lists and for the same reason: a curator looking
+  // for one object by name has to find it wherever it is, and these two are the
+  // only rows on the page the keys phase never sees. The escaping is
+  // `likeParam`'s — the union's own — rather than a second spelling of it, so
+  // `100%` means the same thing in all three statements.
+  //
+  // Bound onto a list of its own rather than onto `params`, by the rule above:
+  // the seven card statements do not carry this predicate, and a parameter they
+  // are sent but do not reference is one Postgres can infer no type for. It
+  // refuses the whole statement then — which the mocked lane cannot see, so the
+  // property is asserted instead ("binds no parameter the SQL does not
+  // reference", with a search among its request shapes).
+  const answeredParams = filters.q === undefined ? params : [...params, likeParam(filters.q)];
+  const nameFilter = filters.q === undefined
+    ? ''
+    : `AND e.name ILIKE $${answeredParams.length} ESCAPE '\\'`;
+
+  const { keys, nextCursor, total, facets } = await queryQueueKeys({ userId, isAdmin, filters });
+
+  /** The ids of one class on this page. */
+  const idsOf = (kind: QueueKind): number[] => keys.filter(k => k.kind === kind).map(k => k.id);
+  /**
+   * ...and of one sub-kind, which only a waiting row carries. The three gated
+   * kinds are one key per object (ADR-0051 decision 2), so an object holding an
+   * unread arrival and unread works is one question — and two cards, which is
+   * what `subs` splits it back into here.
+   */
+  const waitingIds = (sub: WaitingSub): number[] => keys
+    .filter(k => k.kind === 'waiting' && k.subs.includes(sub)).map(k => k.id);
+
+  /**
+   * One kind's cards, asked for only where the page named a row of that kind.
+   *
+   * A statement per empty list would be six round trips buying nothing: a page
+   * of 25 keys is rarely more than two or three kinds. An id whose row the
+   * statement's own `WHERE` rejects is simply absent, and the client skips a key
+   * with no row — the two predicates are the same one restated, so that is a
+   * race with a run, not a disagreement.
+   *
+   * Every kind carries the object fragment, so every kind goes through the same
+   * danger mapping the reader-facing reads use — as do the two answered lists
+   * through `paged` above: `in_danger` as a boolean and the listing's year as
+   * `danger_since`, never the raw "Y 2003".
+   */
+  const hydrate = async (ids: number[], statement: () => Promise<QueryResult>) => (
+    ids.length === 0 ? [] : (await statement()).rows.map(withDangerFields)
+  );
 
   // A refused row is excluded here even when it also carries `missing_since`.
   // The same row under two headings would ask two contradictory questions —
@@ -145,7 +273,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // front of anyone. It stays out of `arrivals` as well, guarded there by
   // `missing_since IS NULL` — the two predicates are what makes such a row
   // raise no card in either kind rather than a wrong one in either.
-  const missing = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+  const missingIds = idsOf('missing');
+  const missing = await hydrate(missingIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
@@ -157,9 +286,9 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       AND ${hidePendingSql()}
       ${categoryFilter}
       AND ${scopeFilter}
+      AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.missing_since DESC, e.id
-    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, pageSize, offsets.missing]);
+  `, [...params, missingIds]));
 
   // Ordered by id rather than by time: admission carries no date of its own,
   // and `updated_at` moves for every unrelated edit, so ordering by it would
@@ -180,7 +309,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // a card is per membership (ADR-0045 decision 7) and the queue is keyed on
   // it rather than on the place. Said in the join so that day cannot show one
   // source's refusal under another's heading, or the same held proposal twice.
-  const refused = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+  const refusedIds = idsOf('refused');
+  const refused = await hydrate(refusedIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            m.admission_reason,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
@@ -193,9 +323,9 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       AND NOT ${admissionPinnedSql('m')}
       ${categoryFilter}
       AND ${scopeFilter}
+      AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.id
-    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, pageSize, offsets.refused]);
+  `, [...params, refusedIds]));
 
   // The rows a curator confirmed, and the only place they can be seen.
   //
@@ -228,10 +358,11 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     WHERE m.admission = 'refused'
       AND ${admissionPinnedSql('m')}
       ${categoryFilter}
+      ${nameFilter}
       AND ${scopeFilter}
     ORDER BY e.state_decided_at DESC NULLS LAST, e.id
-    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, pageSize, offsets.keptOut]);
+    LIMIT $${answeredParams.length + 1} OFFSET $${answeredParams.length + 2}
+  `, [...answeredParams, pageSize, offsets.keptOut]);
 
   // A conflict is worth answering only while it is still the source's current
   // position, so the newest changeset row for the experience wins — and only
@@ -277,7 +408,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     : `(${curatorUnrestrictedScopeExists('e.category_id')}
          OR log.region_id IS NULL
          OR log.region_id IN (SELECT id FROM curator_scoped_regions))`;
-  const conflicts = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+  const conflictIds = idsOf('conflict');
+  const conflicts = await hydrate(conflictIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
       SELECT DISTINCT ON (e.id)
              e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
@@ -410,13 +542,17 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                WHERE prev.id = e.last_seen_sync_log_id AND ${CHANGESET_LANDED_SQL}))
         ${categoryFilter}
         AND ${scopeFilter}
+        -- Inside the DISTINCT ON rather than outside it, where the LIMIT used to
+        -- sit: the pick is per experience, so narrowing to the page's ids first
+        -- leaves the same newest changeset row per id and reads a handful of rows
+        -- instead of every conflict in the catalogue.
+        AND e.id = ANY($${acceptableIdx + 1}::int[])
       ORDER BY e.id, ch.id DESC
     ) q
     WHERE q.proposed IS NOT NULL
     ORDER BY q.id
-    LIMIT $${acceptableIdx + 1} OFFSET $${acceptableIdx + 2}
   `, [...params, JSON.stringify(CURATED_KEY_BY_FIELD), JSON.stringify(CLAIM_KEY_BY_FAMILY),
-    JSON.stringify([...ACCEPTABLE_FIELDS]), pageSize, offsets.conflicts]);
+    JSON.stringify([...ACCEPTABLE_FIELDS]), conflictIds]));
 
   // arrival: the whole object is the proposal. A row from a gated source that
   // nobody has passed yet (ADR-0025) — the queue's own version of "created",
@@ -433,7 +569,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   //
   // An arrival is a membership arriving (#822): the gate state and the
   // admission are the membership's, the source's observation is the row's.
-  const arrivals = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+  const arrivalIds = waitingIds('arrival');
+  const arrivals = await hydrate(arrivalIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            m.curation_state, e.first_seen_sync_log_id AS sync_log_id,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
@@ -445,9 +582,9 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       AND ${membershipAdmittedSql('m')}
       AND e.missing_since IS NULL
       AND ${scopeFilter} ${categoryFilter}
+      AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.first_seen_sync_log_id DESC NULLS LAST, e.id
-    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, pageSize, offsets.arrivals]);
+  `, [...params, arrivalIds]));
 
   // held: an already-visible row whose newest content proposal was kept out
   // by the upsert's own gate (ADR-0025 § "A gated source may not overwrite
@@ -504,7 +641,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // is what keeps a row with nothing on either half from rendering a card with
   // nothing on it, which is worse than no card. Load-bearing now, where it used
   // to be a floor; the neighbouring `conflict` kind's guard has always been.
-  const held = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+  const heldIds = waitingIds('held');
+  const held = await hydrate(heldIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
       SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
@@ -525,55 +663,69 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
         AND e.missing_since IS NULL
         AND (${heldFieldExistsSql('ch')} OR ${heldPartExistsSql('ch')})
         AND ${scopeFilter} ${categoryFilter}
+        AND e.id = ANY($${params.length + 1}::int[])
     ) q WHERE (q.proposed IS NOT NULL OR q.proposed_parts IS NOT NULL)
     ORDER BY q.sync_log_id DESC, q.id
-    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, pageSize, offsets.held]);
+  `, [...params, heldIds]));
 
   // The two kinds that ask about what an object holds rather than about the
   // object, in their own module (`reviewQueueContents.ts`): they read a different
   // table, they carry the only per-row lists the queue returns, and this file had
   // reached the length the development guide says to split at.
-  const queryContext = { scopeFilter, categoryFilter, params, pageSize };
-  const contents = await queryContents({ ...queryContext, offset: offsets.contents });
-  const withdrawn = await queryWithdrawn({ ...queryContext, offset: offsets.withdrawn });
+  const queryContext = { scopeFilter, categoryFilter, params };
+  const contentsIds = waitingIds('contents');
+  const contents = await hydrate(
+    contentsIds, () => queryContents({ ...queryContext, ids: contentsIds }),
+  );
+  const withdrawnIds = idsOf('withdrawn');
+  const withdrawn = await hydrate(
+    withdrawnIds, () => queryWithdrawn({ ...queryContext, ids: withdrawnIds }),
+  );
   // The answered half of the one above, and the only list here that names a curator,
   // which is why it takes the log's scope predicate as well as the object's.
   const answeredWithdrawals = await queryAnsweredWithdrawals({
-    ...queryContext, logScopeFilter, offset: offsets.answeredWithdrawals,
+    ...queryContext,
+    // Its own parameter list, carrying the search: `queryContext.params` is what
+    // the seven card statements are sent, and they do not reference it.
+    params: answeredParams,
+    nameFilter,
+    logScopeFilter,
+    pageSize,
+    offset: offsets.answeredWithdrawals,
   });
 
-  const pages = {
-    missing: paged(missing.rows),
-    refused: paged(refused.rows),
-    keptOut: paged(keptOut.rows),
-    conflicts: paged(conflicts.rows),
-    arrivals: paged(arrivals.rows),
-    held: paged(held.rows),
-    contents: paged(contents.rows),
-    withdrawn: paged(withdrawn.rows),
-    answeredWithdrawals: paged(answeredWithdrawals.rows),
-  };
+  const keptOutPage = paged(keptOut.rows);
+  const answeredPage = paged(answeredWithdrawals.rows);
 
   // The arrays keep their names and their place at the top level — every reader of this
-  // response indexes them by kind. What is new sits beside them: where each kind is and
-  // whether it has another page, which is the pair a control needs to page one kind
-  // without moving the others.
+  // response indexes them by kind. What is new sits beside them: `order` is the page as
+  // the keys phase chose it, which is the list the client actually draws (an array is
+  // then a lookup by id, not an order of its own); `total` and `facets` are counted over
+  // the union under the filter; and `paging` is the one cursor the seven kinds share,
+  // beside the two offsets that are not part of it.
   res.json({
-    missing: pages.missing.items,
-    refused: pages.refused.items,
-    keptOut: pages.keptOut.items,
-    conflicts: pages.conflicts.items,
-    arrivals: pages.arrivals.items,
-    held: pages.held.items,
-    contents: pages.contents.items,
-    withdrawn: pages.withdrawn.items,
-    answeredWithdrawals: pages.answeredWithdrawals.items,
-    limit: Number(limit),
-    paging: Object.fromEntries(
-      Object.entries(pages).map(([kind, page]) => [
-        kind, { offset: offsets[kind as keyof typeof offsets], hasMore: page.hasMore },
-      ]),
-    ),
+    missing,
+    refused,
+    keptOut: keptOutPage.items,
+    conflicts,
+    arrivals,
+    held,
+    contents,
+    withdrawn,
+    answeredWithdrawals: answeredPage.items,
+    limit,
+    order: keys.map(k => ({
+      kind: k.kind, id: k.id, askedAt: k.askedAt, runId: k.runId, subs: k.subs,
+    })),
+    total,
+    facets,
+    paging: {
+      cursor: filters.cursor ?? null,
+      nextCursor,
+      keptOut: { offset: offsets.keptOut, hasMore: keptOutPage.hasMore },
+      answeredWithdrawals: {
+        offset: offsets.answeredWithdrawals, hasMore: answeredPage.hasMore,
+      },
+    },
   });
 }

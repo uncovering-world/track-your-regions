@@ -14,9 +14,11 @@
  * answering one takes the point off every screen there is (#544).
  *
  * Each takes what the handler already computed for every kind — the scope
- * fragments, their parameters, the page size and this kind's own offset — and
- * returns the rows. Nothing here decides who may see what: the scope fragments are
- * built once, in the handler, from `resolveExperienceScope`'s answer.
+ * fragments, their parameters, and the ids of this kind on the page the keys
+ * phase chose — and returns the rows. `answeredWithdrawals` takes a page size and
+ * an offset instead, being the one of the three that is not an open question and
+ * so pages on its own. Nothing here decides who may see what: the scope fragments
+ * are built once, in the handler, from `resolveExperienceScope`'s answer.
  */
 
 import { pool } from '../../db/index.js';
@@ -133,13 +135,20 @@ export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
  */
 export const CONTENTS_ROWS_SHOWN = QUEUE_PAGE_SIZE;
 
-/** What every queue query needs and none of them decides for itself. */
+/**
+ * What every queue query needs and none of them decides for itself.
+ *
+ * `ids` is this kind's share of the page the keys phase chose (ADR-0051
+ * decision 2): the order and the paging are decided there, over every kind at
+ * once, and what is left here is drawing the cards for the rows it named. An id
+ * this query's own `WHERE` rejects is simply absent from the answer — the two
+ * predicates are the same one restated, and the client skips a key with no row.
+ */
 export interface QueueQueryContext {
   scopeFilter: string;
   categoryFilter: string;
   params: unknown[];
-  pageSize: number;
-  offset: number;
+  ids: number[];
 }
 
 /**
@@ -149,13 +158,27 @@ export interface QueueQueryContext {
  * Built in the handler like every other fragment, because it is the same predicate
  * `getCurationLog` and the conflict card use, and three copies of it is how they would
  * come to disagree.
+ *
+ * It keeps `pageSize`/`offset` where the two above took ids: an answered
+ * withdrawal is not an open question, carries no date the union is ordered by,
+ * and so is not in the keys phase at all — this list still pages on its own.
  */
-export interface AnsweredQueryContext extends QueueQueryContext {
+export interface AnsweredQueryContext extends Omit<QueueQueryContext, 'ids'> {
   logScopeFilter: string;
+  /**
+   * The search, as a predicate on the object's own name — `''` when there is
+   * none. The two queries above take their rows from the keys phase, which has
+   * already applied it; this list is outside that phase, so a curator searching
+   * for one object would otherwise be shown every other object's answered
+   * points beside it.
+   */
+  nameFilter: string;
+  pageSize: number;
+  offset: number;
 }
 
 export async function queryContents(
-  { scopeFilter, categoryFilter, params, pageSize, offset }: QueueQueryContext,
+  { scopeFilter, categoryFilter, params, ids }: QueueQueryContext,
 ): Promise<QueryResult> {
   // contents: a visible experience holding unread points or works of its own
   // (ADR-0025 decision 2 — the gate is on the content row, not only on its
@@ -292,9 +315,9 @@ export async function queryContents(
       -- publishing the works would not put them anywhere a reader looks anyway.
       AND e.missing_since IS NULL
       AND ${scopeFilter} ${categoryFilter}
+      AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.id
-    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, pageSize, offset]);
+  `, [...params, ids]);
 }
 
 // A point the source stopped offering, waiting on a verdict (ADR-0026, #541).
@@ -319,7 +342,7 @@ export async function queryContents(
 // curator asked "did this go?" about a point their readers can still see has no
 // true answer available.
 export async function queryWithdrawn(
-  { scopeFilter, categoryFilter, params, pageSize, offset }: QueueQueryContext,
+  { scopeFilter, categoryFilter, params, ids }: QueueQueryContext,
 ): Promise<QueryResult> {
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
@@ -446,10 +469,10 @@ export async function queryWithdrawn(
       -- the site itself is unaccounted for.
       AND e.missing_since IS NULL
       AND ${scopeFilter} ${categoryFilter}
+      AND e.id = ANY($${params.length + 1}::int[])
     GROUP BY e.id, e.external_id, e.name, e.category_id, c.name
     ORDER BY e.id
-    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, pageSize, offset]);
+  `, [...params, ids]);
 }
 
 /**
@@ -539,7 +562,9 @@ const POINT_VERDICT_ACTIONS = [
  * a list without its total is a silent cap.
  */
 export async function queryAnsweredWithdrawals(
-  { scopeFilter, categoryFilter, logScopeFilter, params, pageSize, offset }: AnsweredQueryContext,
+  {
+    scopeFilter, categoryFilter, nameFilter, logScopeFilter, params, pageSize, offset,
+  }: AnsweredQueryContext,
 ): Promise<QueryResult> {
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
@@ -632,7 +657,7 @@ export async function queryAnsweredWithdrawals(
       ) el
     ) answered
     WHERE answered.total > 0
-      AND ${scopeFilter} ${categoryFilter}
+      AND ${scopeFilter} ${categoryFilter} ${nameFilter}
     ORDER BY answered.newest DESC NULLS LAST, e.id
     LIMIT $${params.length + 2} OFFSET $${params.length + 3}
   `, [...params, POINT_VERDICT_ACTIONS, pageSize, offset]);

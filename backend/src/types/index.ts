@@ -523,32 +523,42 @@ export const cacheTtlBodySchema = z.object({
 });
 
 /**
- * The queue's kinds page independently, which is why there is an offset per kind.
+ * The queue is one list, so it takes one cursor and the controls that narrow it
+ * (ADR-0051).
  *
- * One shared offset was the defect: the kinds are separate queries with separate
- * LIMITs, so "next" moved all of them at once and a kind whose page was full had
- * a page 2 no control could ask for. Nothing was unreachable while the largest kind held 19
- * against a limit of 25 — but the first gated round is measured at 139 cards, and at that
- * size the page silently hides work.
+ * The seven `<kind>Offset` parameters are gone with the seven statements that
+ * had a `LIMIT` each: the open questions are ordered and paged across the kinds
+ * at once, and `cursor` is where the reader is in that one order. Keyset rather
+ * than an offset because the list shrinks while it is read — answering a
+ * question removes it, and every later row shifts by one under an offset.
  *
- * Stated as a rule rather than as a tally: `answeredWithdrawals` is the ninth, and the
- * next list added is a line here rather than three sentences to renumber.
+ * `keptOutOffset` and `answeredWithdrawalsOffset` stay. Those two lists are not
+ * open questions, carry no date to order the union by, and keep their own
+ * statement and their own paging.
  *
- * `limit` stays shared: it is a page size, and one number is what a reader means by it.
+ * The filters are the page's address (ADR-0051 decision 5), which is why each is
+ * the string a query parameter actually is: `source=1,3` and `kind=arrival,refused`
+ * are validated in shape here and split by the controller, which drops a word it
+ * does not know rather than answering 400 — an unreadable filter opens the
+ * unfiltered list (`docs/tech/addresses.md`).
  */
 export const reviewQueueQuerySchema = z.object({
-  // Bounded to int4: `experience_categories.id` is SERIAL, and a larger value
-  // would reach Postgres and error there rather than answering 400 here.
-  categoryId: z.coerce.number().int().positive().max(2147483647).optional(),
+  q: z.string().trim().min(1).max(100).optional(),
+  // Length-bounded like `cursor` and `q`: the shape alone admits a digit string
+  // of any length, and the catalogue offers three sources. Each id is bounded to
+  // int4 by the controller, which is where the list is split — the same place a
+  // `kind` word it does not know is dropped.
+  source: z.string().max(200).regex(/^\d+(,\d+)*$/).optional(),
+  kind: z.string().regex(/^[a-z]+(,[a-z]+)*$/).optional(),
+  // Bounded to int4 like every other id here: `regions.id` is SERIAL, and a
+  // larger value would reach Postgres and error there rather than answering 400.
+  region: z.union([z.literal('none'), z.coerce.number().int().positive().max(2147483647)]).optional(),
+  run: z.coerce.number().int().positive().max(2147483647).optional(),
+  aside: z.enum(['show']).optional(),
+  sort: z.enum(['date', 'question']).default('date'),
+  cursor: z.string().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
-  missingOffset: z.coerce.number().int().min(0).default(0),
-  refusedOffset: z.coerce.number().int().min(0).default(0),
   keptOutOffset: z.coerce.number().int().min(0).default(0),
-  conflictsOffset: z.coerce.number().int().min(0).default(0),
-  arrivalsOffset: z.coerce.number().int().min(0).default(0),
-  heldOffset: z.coerce.number().int().min(0).default(0),
-  contentsOffset: z.coerce.number().int().min(0).default(0),
-  withdrawnOffset: z.coerce.number().int().min(0).default(0),
   answeredWithdrawalsOffset: z.coerce.number().int().min(0).default(0),
 });
 
