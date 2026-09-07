@@ -12,6 +12,7 @@ export * from './locationStateController.js';
 export * from './locationEditController.js';
 export * from './workEditController.js';
 export * from './reviewQueueController.js';
+export * from './reviewQueueSetAside.js';
 export * from './acceptSourceController.js';
 export * from './declineSourceController.js';
 export * from './declineHeldController.js';

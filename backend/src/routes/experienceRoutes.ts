@@ -25,6 +25,8 @@ import {
   editExperience,
   getCurationLog,
   getReviewQueue,
+  setRunAside,
+  bringRunBack,
   setExperienceAdmission,
   setExperienceState,
   setLocationState,
@@ -51,6 +53,7 @@ import {
   idParamSchema,
   categoryIdParamSchema,
   reviewQueueQuerySchema,
+  syncLogIdParamSchema,
   experienceAdmissionBodySchema,
   newBadgesSeenBodySchema,
   lifecycleStateBodySchema,
@@ -142,6 +145,12 @@ router.post('/new-badges/seen', authenticatedLimiter, requireAuth, validate(newB
 // stopped listing is delisted, destroyed, or was never gone, and whether a
 // value the source proposed should displace a curator's edit.
 router.get('/review/queue', requireAuth, requireCurator, validate(reviewQueueQuerySchema, 'query'), getReviewQueue);
+// A curator's own "not now" on a run's whole batch (ADR-0051 decision 4), and
+// the way back — `reviewQueueSetAside.ts` has the reasoning, including why
+// neither needs an object-scope check. Three segments, so `set-aside` cannot
+// be read as an id the way `/:id/state` below could otherwise mistake it for.
+router.put('/review/set-aside/:syncLogId', authenticatedLimiter, requireAuth, requireCurator, validate(syncLogIdParamSchema, 'params'), setRunAside);
+router.delete('/review/set-aside/:syncLogId', authenticatedLimiter, requireAuth, requireCurator, validate(syncLogIdParamSchema, 'params'), bringRunBack);
 router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(lifecycleStateBodySchema), setExperienceState);
 // The same question about one point inside the object (ADR-0026, #541). Three
 // segments, so it cannot collide with `/:id/state` above.
