@@ -16,6 +16,7 @@ import { heldFieldAnsweredSql } from '../../experience/heldDecisions.js';
 import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql } from '../../../db/membership.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 import { KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES } from '../../../services/sync/publicArt/classes.js';
+import { tidyLabelSql } from '../../../services/sync/labelFold.js';
 
 import { count, text } from './assertion.js';
 import type { CatalogueAssertion } from './assertion.js';
@@ -431,11 +432,89 @@ const membershipSourceDisagreesWithRow: CatalogueAssertion = {
     + `brought by ${text(row, 'membership_source_name')} (experience ${count(row, 'experience_id')})`,
 };
 
+/** `column <> tidy(column)`: the stored value is not what the writers would store. */
+const untidy = (column: string) => `${column} IS NOT NULL AND ${column} <> ${tidyLabelSql(column)}`;
+
+/**
+ * A name stored with whitespace nobody typed.
+ *
+ * Every source is a label service and a label service passes runs of spaces
+ * through: Wikidata's label for *St. John  on Patmos* carries two, the World
+ * Heritage Centre's component names carried eighteen runs, 98 Arabic local
+ * names one each, and Getbol's English name a no-break space (#835). HTML
+ * collapses all of it, so a reader types what the screen shows and a filter
+ * that compares the raw string finds nothing — and no screen can show why.
+ *
+ * The rule is `tidyLabel`, applied by every writer of a name — the three
+ * importers' writers before their diff, the four curator schemas before their
+ * bounds — and migration 047 brought what was stored to it. This is the rule
+ * asked of the rows, in its SQL spelling (`tidyLabelSql`), so a writer that
+ * a future source reaches around, or a hand-run UPDATE, is named here rather
+ * than found by a reader whose search returns nothing. Asked of every column a
+ * person types into a filter: a place's name, each language of its local
+ * names, a monument's makers, a point's name, a work's title and its makers.
+ *
+ * Not composed from the writers' own code on purpose — the second rule in
+ * `docs/tech/data-assertions.md` § Adding an assertion: an assertion that
+ * exists to catch a writer being wrong must not agree with it by construction.
+ * What it composes is the rule's SQL spelling, pinned to `tidyLabel` itself and
+ * to the migration by `labelFold.test.ts` and `objectAssertions.test.ts`.
+ */
+const nameCarriesWhitespaceNobodyTyped: CatalogueAssertion = {
+  id: 'name-carries-whitespace-nobody-typed',
+  area: 'objects',
+  title: 'A name stored with whitespace a person would not type',
+  kind: 'invariant',
+  meaning:
+    'The stored name carries whitespace at its edges, a run of it inside, or a Unicode space: '
+    + 'the screen collapses it, so a reader typing what they see into a filter finds nothing, '
+    + 'and nothing says why. Every writer tidies a name before storing it, so a row here came '
+    + 'in by a path that did not — a new source, or a hand-run update. The remedy is a run of '
+    + 'the source, which tidies before it writes, or a hand-run tidy: the correction dialogs '
+    + 'compare by this same rule, so they will not send a name that differs only by whitespace.',
+  sql: `SELECT kind, id, name, field
+          FROM (
+            SELECT 'place' AS kind, e.id, e.name, 'name' AS field
+              FROM experiences e
+             WHERE ${untidy('e.name')}
+            UNION ALL
+            SELECT 'place', e.id, e.name, 'name_local.' || kv.key
+              FROM experiences e, jsonb_each(e.name_local) kv
+             WHERE jsonb_typeof(kv.value) = 'string'
+               AND ${untidy("(kv.value #>> '{}')")}
+            UNION ALL
+            SELECT 'place', e.id, e.name, 'metadata.creators'
+              FROM experiences e
+             WHERE jsonb_typeof(e.metadata->'creators') = 'array'
+               AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.metadata->'creators') c
+                            WHERE jsonb_typeof(c.value) = 'string'
+                              AND ${untidy("(c.value #>> '{}')")})
+            UNION ALL
+            SELECT 'point', el.id, el.name, 'name'
+              FROM experience_locations el
+             WHERE ${untidy('el.name')}
+            UNION ALL
+            SELECT 'work', t.id, t.name, 'name'
+              FROM treasures t
+             WHERE ${untidy('t.name')}
+            UNION ALL
+            SELECT 'work', t.id, t.name, 'artists'
+              FROM treasures t
+             WHERE EXISTS (SELECT 1 FROM unnest(t.artists) a
+                            WHERE ${untidy('a')})
+          ) untidy_names
+         ORDER BY kind, name, field`,
+  describe: row =>
+    `${text(row, 'kind')} ${count(row, 'id')}, ${JSON.stringify(text(row, 'name'))}: `
+    + `${text(row, 'field')} is not stored as a person would type it`,
+};
+
 /**
  * The object rules, in the order a person reads them: the fact stored twice,
  * the badge a refusal should have taken, the count of works whose makers
- * nobody has arranged, the public-art row the rule would refuse, then the two
- * facts every reader rests on since the place and its membership came apart.
+ * nobody has arranged, the public-art row the rule would refuse, the two
+ * facts every reader rests on since the place and its membership came apart,
+ * then the name a filter cannot find.
  */
 export const objectAssertions: CatalogueAssertion[] = [
   dangerFlagAgainstItsTag,
@@ -444,4 +523,5 @@ export const objectAssertions: CatalogueAssertion[] = [
   publicArtRowTypedABuilding,
   placeWithoutMembership,
   membershipSourceDisagreesWithRow,
+  nameCarriesWhitespaceNobodyTyped,
 ];

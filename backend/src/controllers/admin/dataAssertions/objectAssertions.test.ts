@@ -10,6 +10,9 @@ import { admissionPinnedSql, iconicPinnedSql } from '../../../db/membership.js';
 import {
   KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, MONUMENT_CLASSES, FOUNTAIN_ROOT,
 } from '../../../services/sync/publicArt/classes.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { SQL_WHITESPACE_ALTERNATION, tidyLabelSql } from '../../../services/sync/labelFold.js';
 import { objectAssertions } from './objectAssertions.js';
 
 const byId = (id: string) => {
@@ -228,5 +231,52 @@ describe('a membership brought by a source other than the one its row is keyed o
       row_source_name: 'UNESCO World Heritage Sites', membership_source_name: 'Public Art & Monuments',
     })).toBe('Statue of Liberty: keyed on UNESCO World Heritage Sites, its membership brought by '
       + 'Public Art & Monuments (experience 382)');
+  });
+});
+
+describe('the name a filter cannot find', () => {
+  const assertion = byId('name-carries-whitespace-nobody-typed');
+  const sql = collapse(assertion.sql);
+
+  it('asks the store rule in its SQL spelling, of every column a person types into a filter', () => {
+    // The rule is `tidyLabel`; `tidyLabelSql` is that rule over a column, and
+    // `labelFold.test.ts` pins the two to each other. Composed rather than
+    // restated, so the check cannot drift from what the writers store.
+    expect(sql).toContain(collapse(`e.name <> ${tidyLabelSql('e.name')}`));
+    // The strings of the local-names map only, as for the makers: a value that
+    // is not a string is not a name, and read as text it would be asked a
+    // question about a value it is not.
+    expect(sql).toContain("jsonb_each(e.name_local) kv WHERE jsonb_typeof(kv.value) = 'string'");
+    expect(sql).toContain(collapse(`(kv.value #>> '{}') <> ${tidyLabelSql("(kv.value #>> '{}')")}`));
+    // The strings of the list only: a non-string element is not a name, and
+    // read as text it would be asked a question about a value it is not.
+    expect(sql).toContain("jsonb_array_elements(e.metadata->'creators') c WHERE jsonb_typeof(c.value) = 'string'");
+    expect(sql).toContain(collapse(`el.name <> ${tidyLabelSql('el.name')}`));
+    expect(sql).toContain(collapse(`t.name <> ${tidyLabelSql('t.name')}`));
+    expect(sql).toContain('unnest(t.artists)');
+    // And not by asking what the writers' code thinks: a check that agreed with
+    // a writer by construction would report clear on every row it got wrong.
+    expect(sql).not.toContain('curated_fields');
+  });
+
+  it('spells the whitespace the way migration 047 does, so the two rewrite the same rows', () => {
+    // The migration cannot import the constant, so it carries the alternation
+    // in full; a code point added to one and not the other is a name one side
+    // tidies and the other reports for ever.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+    const migration = readFileSync(
+      fileURLToPath(new URL(
+        '../../../../../db/migrations/047-a-name-is-stored-as-a-person-would-type-it.sql',
+        import.meta.url,
+      )),
+      'utf8',
+    );
+    expect(migration).toContain(`'${SQL_WHITESPACE_ALTERNATION}+'`);
+    expect(sql).toContain(SQL_WHITESPACE_ALTERNATION);
+  });
+
+  it('says the row the way a person would', () => {
+    expect(assertion.describe({ kind: 'work', id: 3122, name: 'St. John  on Patmos', field: 'name' }))
+      .toBe('work 3122, "St. John  on Patmos": name is not stored as a person would type it');
   });
 });
