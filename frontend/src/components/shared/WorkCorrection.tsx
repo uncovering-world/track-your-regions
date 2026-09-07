@@ -44,6 +44,7 @@ import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { creators, creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { plural } from '../../utils/plural';
+import { tidyLabel } from '../../utils/labelFold';
 import { MakerList, MAX_MAKERS } from './MakerList';
 import { YearField } from './YearField';
 import { PictureWithCredit } from './PictureWithCredit';
@@ -252,28 +253,37 @@ export function WorkCorrection({ work, onDone, onCancel }: {
   // is the one thing the list cannot express.
   const [vouched, setVouched] = useState(false);
 
-  // **Both sides trimmed, or the comparison invents an edit.** What is typed is
-  // trimmed before it is sent, so a stored value carrying outer whitespace would
-  // differ from itself: opening such a work and saving its *year* would send the
-  // title too and claim the column, and the source would stop writing it — a
-  // claim on a field nobody touched, which is the one thing a claim must never
-  // be. No stored row carries whitespace today (measured, 0 of both columns);
-  // nothing forbids one, since the importer writes what the source sends.
-  const trimmedName = name.trim();
-  const storedName = work.name.trim();
+  // **Both sides tidied, or the comparison invents an edit.** The endpoint
+  // stores a title as a person would type it — edges trimmed, a run of spaces
+  // inside collapsed (`tidyLabel`, #835) — so what is typed is tidied before
+  // it is compared and sent, and the stored value is tidied too: a row written
+  // before the rule, or a title pasted off a wrapped line with two spaces over
+  // a stored one with one, would otherwise differ from itself, and opening such
+  // a work to save its *year* would send the title too and claim the column —
+  // the source would stop writing it, a claim on a field nobody touched, which
+  // is the one thing a claim must never be. Two stored works carried a run
+  // before migration 047 (*St. John  on Patmos*), and the importer wrote what
+  // the source sent.
+  const trimmedName = tidyLabel(name);
+  const storedName = tidyLabel(work.name);
   const typedPicture = picture.trim();
   const storedPicture = (work.imageUrl ?? '').trim();
   const { nameCleared, pictureRefused, yearRefused, tooManyMakers } =
     refusals(trimmedName, typedPicture, year, makers);
   const renamed = !nameCleared && trimmedName !== storedName;
-  const makersEdited = !sameOrder(makers, work.artists);
+  // The makers by the same rule as the title: the endpoint tidies every one,
+  // so a maker re-added off a wrapped line with two spaces is the stored maker,
+  // and sending the list would claim `artists` over an edit nobody made — after
+  // which the source stops writing the makers for good (ADR-0040).
+  const tidiedMakers = makers.map(tidyLabel);
+  const makersEdited = !sameOrder(tidiedMakers, work.artists.map(tidyLabel));
   const makersClaimed = makersEdited || vouched;
   const redated = year !== work.year;
   const repictured = typedPicture !== storedPicture;
 
   const correction: Correction = {
     ...(renamed ? { name: trimmedName } : {}),
-    ...(makersClaimed ? { artists: makers } : {}),
+    ...(makersClaimed ? { artists: tidiedMakers } : {}),
     ...(redated ? { year } : {}),
     ...(repictured ? { imageUrl: typedPicture } : {}),
   };
