@@ -1,15 +1,21 @@
 /**
  * Tests for the queue as one list.
  *
- * Two properties, and both are product decisions rather than mechanics: the order a curator
- * meets the questions in, and where the selection lands when the row they just answered
- * disappears. The second is what makes the list answerable without the mouse — a selection
- * that jumps to the top after every answer costs a scroll per card.
+ * The order a curator meets the questions in is the server's own now (ADR-0051) — this
+ * file's own claim shrinks to: walk `data.order`, draw each entry's row from the right
+ * place, skip what the hydration does not answer for rather than throw, and say what each
+ * row is asking. `nextSelection` keeps its own claim: where the selection lands when the
+ * row a curator just answered disappears, which is still worked out here rather than by
+ * the server.
  */
 
-import { describe, it, expect } from 'vitest';
-import { queueRows, nextSelection } from './queueRows';
-import type { ReviewQueue, ReviewQueueItem } from '../../api/experiences';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+  queueRows, nextSelection, rowQuestionWord, KIND_SHORT,
+} from './queueRows';
+import type {
+  HeldPart, QueueOrderEntry, ReviewQueue, ReviewQueueItem,
+} from '../../api/experiences';
 
 function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
   return {
@@ -27,49 +33,62 @@ function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
   } as ReviewQueueItem;
 }
 
+function orderEntry(over: Partial<QueueOrderEntry> = {}): QueueOrderEntry {
+  return {
+    kind: 'missing', id: 1, askedAt: null, runId: null, subs: [], ...over,
+  };
+}
+
+function heldPart(over: Partial<HeldPart> = {}): HeldPart {
+  return {
+    kind: 'treasures', item: { name: null, ref: null }, fields: [], ...over,
+  };
+}
+
 function queue(over: Partial<ReviewQueue> = {}): ReviewQueue {
   return {
     missing: [], refused: [], keptOut: [], conflicts: [],
     arrivals: [], held: [], contents: [], withdrawn: [], answeredWithdrawals: [],
     limit: 25,
+    order: [],
+    total: 0,
+    facets: {
+      kind: [], source: [], region: [], run: [], setAside: { batches: 0 },
+    },
     paging: {} as ReviewQueue['paging'],
     ...over,
   };
 }
 
 describe('queueRows', () => {
-  it('puts somebody waiting before something already settled', () => {
-    // A conflict argues with a curator's own words and an arrival leaves a reader seeing
-    // nothing; a refusal is already settled for the reader and asks only whether we were
-    // right. The list is worked from the top, so this order is the claim about that.
+  it('draws rows in the order the server sent, regardless of the arrays\' own order', () => {
+    // The arrays list `conflicts` before `missing`; `order` says the opposite. Only
+    // `order` may decide what the curator sees first.
     const rows = queueRows(queue({
-      missing: [item({ id: 4, name: 'Dresden' })],
-      refused: [item({ id: 3, name: 'British Museum' })],
       conflicts: [item({ id: 1, name: 'Aksum' })],
-      arrivals: [item({ id: 2, name: 'Museo Soumaya', kind: 'arrival' })],
+      missing: [item({
+        id: 4, name: 'Dresden', kind: 'missing',
+      })],
+      order: [
+        orderEntry({
+          kind: 'missing', id: 4, askedAt: '2026-09-06T10:00:00Z', runId: 90,
+        }),
+        orderEntry({
+          kind: 'conflict', id: 1, askedAt: '2026-09-07T08:00:00Z', runId: 99,
+        }),
+      ],
     }));
 
-    expect(rows.map(r => r.name)).toEqual(['Aksum', 'Museo Soumaya', 'British Museum', 'Dresden']);
-  });
-
-  it('puts a place already taken away above a row that was never shown', () => {
-    // A lost place has *taken* something from a reader — a pin they could see, sometimes
-    // one they had ticked. A refusal never showed the row at all, and a missing object
-    // changes nothing until it is answered. So the order is not "cheapest first".
-    const rows = queueRows(queue({
-      missing: [item({ id: 4, name: 'Dresden' })],
-      refused: [item({ id: 3, name: 'British Museum' })],
-      withdrawn: [item({ id: 5, name: 'Bilbao Fine Arts Museum', kind: 'withdrawn' })],
-    }));
-
-    expect(rows.map(r => r.name)).toEqual(['Bilbao Fine Arts Museum', 'British Museum', 'Dresden']);
-    expect(rows[0].question).toBe('lost places it is made of');
+    expect(rows.map(r => r.kind)).toEqual(['missing', 'conflicts']);
+    expect(rows.map(r => r.name)).toEqual(['Dresden', 'Aksum']);
+    expect(rows[0]).toMatchObject({ askedAt: '2026-09-06T10:00:00Z', runId: 90, subs: [] });
   });
 
   it('gives one object one row, however many gated kinds name it', () => {
     const rows = queueRows(queue({
       held: [item({ id: 7, name: 'Museo del Prado', kind: 'held' })],
       contents: [item({ id: 7, name: 'Museo del Prado', kind: 'contents' })],
+      order: [orderEntry({ kind: 'waiting', id: 7, subs: ['held', 'contents'] })],
     }));
 
     expect(rows).toHaveLength(1);
@@ -79,21 +98,133 @@ describe('queueRows', () => {
 
   it('leaves the answered work out of the list of questions', () => {
     // `keptOut` is answered, and the page keeps it collapsed at the foot where a mis-click
-    // can be undone — it is not work, so it must not sit among the work.
+    // can be undone — it is not a question, so it can never appear in `order` at all.
     const rows = queueRows(queue({ keptOut: [item({ id: 9, kind: 'kept-out' })] }));
 
     expect(rows).toHaveLength(0);
   });
 
   it('keeps a row identifiable across kinds, since one object can raise two questions', () => {
-    // The same museum can be in `conflicts` for a curator's wording and in `waiting` for a
-    // gated change — two questions, two rows, and a key on the id alone would collide.
     const rows = queueRows(queue({
       conflicts: [item({ id: 7, name: 'Museo del Prado' })],
       held: [item({ id: 7, name: 'Museo del Prado', kind: 'held' })],
+      order: [
+        orderEntry({ kind: 'conflict', id: 7 }),
+        orderEntry({ kind: 'waiting', id: 7, subs: ['held'] }),
+      ],
     }));
 
     expect(new Set(rows.map(r => r.key)).size).toBe(2);
+  });
+
+  it('a waiting row grouping an arrival reads "new arrival", with nothing after it', () => {
+    const rows = queueRows(queue({
+      arrivals: [item({ id: 2, name: 'Museo Soumaya', kind: 'arrival' })],
+      order: [orderEntry({ kind: 'waiting', id: 2, subs: ['arrival'] })],
+    }));
+
+    expect(rowQuestionWord(rows[0])).toBe(KIND_SHORT.arrival);
+    expect(rows[0].specific).toBe('');
+  });
+
+  it('humanises a held field\'s name: a mapped key, a local name, and another mapped key', () => {
+    const rows = queueRows(queue({
+      held: [item({
+        id: 7,
+        name: 'Museo del Prado',
+        kind: 'held',
+        proposed: [
+          { field: 'metadata.criteria', old: null, new: 'ii' },
+          { field: 'nameLocal.ko', old: null, new: '프라도' },
+          { field: 'metadata.imageCredit', old: null, new: 'X' },
+        ],
+      })],
+      order: [orderEntry({ kind: 'waiting', id: 7, subs: ['held'] })],
+    }));
+
+    expect(rows[0].specific).toBe('criteria, name (ko), picture credit');
+  });
+
+  it('counts a held group\'s parts as work(s)', () => {
+    const rows = queueRows(queue({
+      held: [item({
+        id: 8,
+        name: 'Museo del Prado',
+        kind: 'held',
+        proposed: [],
+        proposed_parts: [heldPart(), heldPart(), heldPart()],
+      })],
+      order: [orderEntry({ kind: 'waiting', id: 8, subs: ['held'] })],
+    }));
+
+    expect(rows[0].specific).toBe('3 works');
+  });
+
+  it('names the unread contents under a waiting group that has them', () => {
+    const rows = queueRows(queue({
+      contents: [item({
+        id: 10, name: 'Rijksmuseum', kind: 'contents', pending_treasures: 12, pending_locations: 3,
+      })],
+      order: [orderEntry({ kind: 'waiting', id: 10, subs: ['contents'] })],
+    }));
+
+    expect(rows[0].specific).toBe('unread: 12 works, 3 places');
+  });
+
+  it('a refused row carries the rule\'s own reason', () => {
+    const rows = queueRows(queue({
+      refused: [item({
+        id: 3, name: 'British Museum', kind: 'refused', admission_reason: 'inside a place of worship',
+      })],
+      order: [orderEntry({ kind: 'refused', id: 3 })],
+    }));
+
+    expect(rows[0].specific).toBe('inside a place of worship');
+  });
+
+  it('a conflict row names the field the source disagrees on, humanised', () => {
+    const rows = queueRows(queue({
+      conflicts: [item({
+        id: 1, name: 'Aksum', proposed: [{ field: 'shortDescription', old: 'a', new: 'b' }],
+      })],
+      order: [orderEntry({ kind: 'conflict', id: 1 })],
+    }));
+
+    expect(rows[0].specific).toBe('short description');
+  });
+
+  it('a withdrawn row counts its lost places', () => {
+    const rows = queueRows(queue({
+      withdrawn: [item({
+        id: 5,
+        name: 'Bilbao Fine Arts Museum',
+        kind: 'withdrawn',
+        withdrawn_points: [
+          {
+            id: 1, name: null, externalRef: null, missingSince: '2026-09-01', latitude: null, longitude: null, visited: false, replacedMetres: null,
+          },
+        ],
+      })],
+      order: [orderEntry({ kind: 'withdrawn', id: 5 })],
+    }));
+
+    expect(rows[0].specific).toBe('1 place');
+  });
+
+  describe('a key order names that no hydrated row answers to', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('is skipped rather than thrown on, and warned about once', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const rows = queueRows(queue({
+        order: [orderEntry({ kind: 'missing', id: 999 })],
+      }));
+
+      expect(rows).toHaveLength(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('missing:999');
+    });
   });
 });
 
