@@ -109,6 +109,19 @@ describe('WorkCorrection', () => {
     });
   });
 
+  it('does not claim the makers for one re-added with whitespace the endpoint will not store', () => {
+    // Remove the last maker and paste it back off a wrapped line: the endpoint
+    // tidies every maker (#835), so the list it would store is the stored one,
+    // and a claim on `artists` here would stop the source writing makers for a
+    // work nobody edited.
+    show({ ...VISITATION, artists: ['Gianfrancesco Penni', 'Giulio Romano'] });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Giulio Romano' }));
+    fireEvent.change(screen.getByLabelText('Add a maker'), { target: { value: 'Giulio  Romano' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    expect(save()).toBeDisabled();
+  });
+
   it('sends the order a curator put the makers in', async () => {
     show(VISITATION);
     fireEvent.click(screen.getByRole('button', { name: 'Move Raphael up' }));
@@ -148,18 +161,33 @@ describe('WorkCorrection', () => {
   });
 
   it('does not claim a field whose stored value merely carries whitespace', async () => {
-    // What is typed is trimmed before it is sent, so an untrimmed stored value
-    // would differ from itself — and saving the year would send the title and
-    // the picture too, claiming both against the source without an edit.
+    // What is typed is tidied before it is sent, so a stored value carrying
+    // whitespace the rule would remove — at the edges, or a run inside, as
+    // *St. John  on Patmos* did before migration 047 — would differ from itself,
+    // and saving the year would send the title and the picture too, claiming
+    // both against the source without an edit.
     show({
       ...VISITATION,
-      name: '  Visitation  ',
+      name: '  The  Visitation  ',
       imageUrl: ' http://commons.wikimedia.org/wiki/Special:FilePath/Visitation.jpg ',
     });
     fireEvent.change(screen.getByLabelText('Year'), { target: { value: '1518' } });
     fireEvent.click(save());
 
     await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(6185, 2562, { year: 1518 }));
+  });
+
+  it('sends a title as a person would type it, and no title that differs only by whitespace', async () => {
+    // A title pasted off a wrapped line arrives with two spaces; the endpoint
+    // stores one, so the form compares and sends what will be stored (#835).
+    show(VISITATION);
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: '  Visitation  ' } });
+    expect(save()).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: ' The  Visitation ' } });
+    fireEvent.click(save());
+
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(6185, 2562, { name: 'The Visitation' }));
   });
 
   it('draws the picture of an address pasted with whitespace around it', () => {

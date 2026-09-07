@@ -62,6 +62,7 @@ import { CurationPlaces } from './CurationPlaces';
 import { verdictOf } from './LifecycleChip';
 import { ACTION_LABELS, formatLogDetails } from './curationLog';
 import { typeOptionsFor } from '../../utils/experienceTypes';
+import { tidyLabel } from '../../utils/labelFold';
 
 interface CurationDialogProps {
   /** The experience to curate — null means dialog is closed */
@@ -218,6 +219,14 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
 
   if (!experience) return null;
 
+  // The name as the endpoint stores it, on both sides (`tidyLabel`, #835): a
+  // name that differs from the stored one only by whitespace is not a change,
+  // and sending it would claim the column over an edit nobody made. A name
+  // emptied to spaces is an empty name, which the endpoint refuses, so Save
+  // waits on it rather than sending a correction that fails whole.
+  const tidiedName = tidyLabel(editName);
+  const renamed = tidiedName !== tidyLabel(experience.name);
+
   const handleSave = () => {
     // A field travels only when it changed, and an emptied one travels as ''
     // — the API's way of clearing it (#696). Folding it into `undefined` here
@@ -225,7 +234,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
     // it was answered "No fields to update", beside another change it was
     // reported saved.
     const changes: Record<string, string> = {};
-    if (editName !== experience.name) changes.name = editName;
+    if (renamed) changes.name = tidiedName;
     if (editDescription !== (experience.short_description || '')) changes.shortDescription = editDescription;
     if (editType !== (experience.type || '')) changes.type = editType;
     if (editImageUrl !== (experience.image_url || '')) changes.imageUrl = editImageUrl;
@@ -259,7 +268,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
   const currentWikipedia = (detailQuery.data?.metadata?.wikipediaUrl as string) || '';
   const previewCredit = creditForPreview(editImageUrl, experience, detailQuery.data);
   const hasChanges =
-    editName !== experience.name ||
+    renamed ||
     editDescription !== (experience.short_description || '') ||
     editType !== (experience.type || '') ||
     editImageUrl !== (experience.image_url || '') ||
@@ -401,7 +410,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
             variant="contained"
             startIcon={<SaveIcon />}
             onClick={handleSave}
-            disabled={!editName || !hasChanges || isPending}
+            disabled={!tidiedName || !hasChanges || isPending}
           >
             {editMutation.isPending ? 'Saving...' : 'Save Changes'}
           </Button>

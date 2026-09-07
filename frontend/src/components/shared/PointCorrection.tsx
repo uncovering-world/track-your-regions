@@ -34,6 +34,7 @@ import { editLocation } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { placementNotice } from '../../utils/placementNotice';
 import { describeMove, moveLabel } from '../../utils/moveDescription';
+import { tidyLabel } from '../../utils/labelFold';
 import { LocationPicker } from './LocationPicker';
 
 /**
@@ -125,8 +126,11 @@ export function PointCorrection({ place, onDone, onCancel }: {
     { lat: place.latitude, lng: place.longitude },
   );
 
-  const trimmed = name.trim();
-  const renamed = trimmed.length > 0 && trimmed !== (place.name ?? '');
+  // Tidied on both sides, as the endpoint stores a name (`tidyLabel`, #835):
+  // a name that differs from the stored one only by whitespace is the same
+  // name, and sending it would claim the column over an edit nobody made.
+  const trimmed = tidyLabel(name);
+  const renamed = trimmed.length > 0 && trimmed !== tidyLabel(place.name ?? '');
   const moved = coords !== null && (coords.lat !== place.latitude || coords.lng !== place.longitude);
   const correction: Correction = {
     ...(renamed ? { name: trimmed } : {}),

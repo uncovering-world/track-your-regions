@@ -133,6 +133,19 @@ describe('CurationDialog clearing a field', () => {
     await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { imageUrl: '' }));
   });
 
+  it('offers no save while the name is emptied to spaces, even beside another change', async () => {
+    // The endpoint stores a name as a person would type it and refuses an
+    // empty one (#835): sent, the whole correction would fail, the picture
+    // change with it.
+    renderDialog();
+    await screen.findByDisplayValue(PORTAL_PAGE);
+
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: '   ' } });
+    clear('Image URL');
+
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+  });
+
   it('sends the removal beside the other change in the same save', async () => {
     // The silent half: this save used to go out with the name alone and be
     // answered success, the photograph untouched.

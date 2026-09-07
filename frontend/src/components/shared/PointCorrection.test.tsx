@@ -87,6 +87,14 @@ describe('PointCorrection', () => {
     expect(mockedEdit).toHaveBeenCalledWith(6001, { latitude: 49.0442, longitude: 3.97 });
   });
 
+  it('does not send a name that differs from the stored one only by whitespace', () => {
+    // The endpoint stores a name as a person would type it (#835), so a run
+    // of spaces typed into the stored name is the same name and no claim.
+    renderForm(place({ name: 'Coteaux de la Marne' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: ' Coteaux  de la Marne ' } });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
   it('does not send a name that was only cleared', () => {
     renderForm();
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: '   ' } });
