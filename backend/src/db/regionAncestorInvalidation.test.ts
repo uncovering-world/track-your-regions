@@ -130,6 +130,48 @@ describe('036-parent-geometry-invalidation-trigger.sql', () => {
   });
 });
 
+/**
+ * What a cleared geometry leaves behind. The invalidation above writes NULL
+ * into geom, and the metadata trigger that fires on that write used to compute
+ * the area only from a geometry that was there -- so Europe read as NULL and
+ * 4,095,971 km2 at once, and the Catalogue Check reading the stored area saw a
+ * different world from the one reading the geometry (#763).
+ */
+describe('update_region_metadata, when the geometry goes', () => {
+  const metadataFn = functionBody(schema, 'update_region_metadata()', '$$ LANGUAGE plpgsql;');
+  const AREA_FOLLOWS_GEOMETRY = 'IF NEW.geom IS NULL OR ST_IsEmpty(NEW.geom) THEN NEW.geom_area_km2 := NULL; RETURN NEW; END IF;';
+
+  it('clears the stored area with the geometry, and an empty one counts as gone', () => {
+    // geometry_focus() files an empty shape as NULL too; the area agrees.
+    expect(metadataFn).toContain(AREA_FOLLOWS_GEOMETRY);
+  });
+
+  it('still leaves uses_hull alone on an update', () => {
+    // Invalidation nulls a geometry only to have it recomputed, and a curator
+    // may have set the flag by hand: NULL -> shape on UPDATE is not a first time.
+    expect(metadataFn).toContain("IF TG_OP = 'INSERT' THEN NEW.uses_hull := should_use_hull(");
+    expect(metadataFn).not.toContain('NEW.uses_hull := false');
+  });
+
+  it('is what 048-a-region-without-geometry-has-no-area.sql installs, and it repairs the area alone', () => {
+    const repair = collapse(
+      readFileSync(join(repoRoot, 'db', 'migrations', '048-a-region-without-geometry-has-no-area.sql'), 'utf8'),
+    );
+    const migrationFn = functionBody(repair, 'update_region_metadata()', '$$ LANGUAGE plpgsql;');
+    expect(migrationFn).toContain(AREA_FOLLOWS_GEOMETRY);
+    expect(migrationFn).toContain("IF TG_OP = 'INSERT' THEN NEW.uses_hull := should_use_hull(");
+    expect(migrationFn).not.toContain('NEW.uses_hull := false');
+    // The rows it repairs are the ones the old function left behind, and only
+    // those: the predicate is the trigger's, and the UPDATE consumes it rather
+    // than choosing rows of its own.
+    expect(repair).toContain('WHERE (r.geom IS NULL OR ST_IsEmpty(r.geom)) AND r.geom_area_km2 IS NOT NULL;');
+    // Writing the area does not write the geometry, so no geometry trigger
+    // fires and the walk above is not set off by the repair.
+    expect(repair).toContain('UPDATE regions r SET geom_area_km2 = NULL FROM cleared_area c WHERE r.id = c.id;');
+    expect(repair).not.toMatch(/SET geom = /);
+  });
+});
+
 describe('the rule has one implementation, and no way round it', () => {
   it('lets no backend TypeScript null a geometry along a walk of the tree', () => {
     // Behaviour, not a name: reading ancestors is ordinary and sixteen modules
