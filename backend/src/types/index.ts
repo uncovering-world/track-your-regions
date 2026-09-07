@@ -223,6 +223,13 @@ export const treasureIdParamSchema = z.object({
   treasureId: z.coerce.number().int().positive(),
 });
 
+// Bounded to int4 like `reviewQueueQuerySchema`'s own `run`: `experience_sync_logs.id`
+// is SERIAL, and a larger value would reach Postgres and error there rather than
+// answering 400.
+export const syncLogIdParamSchema = z.object({
+  syncLogId: z.coerce.number().int().positive().max(2147483647),
+});
+
 /**
  * A curator's correction to one point: what it is called, or where it is.
  *
