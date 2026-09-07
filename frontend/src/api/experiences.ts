@@ -5,6 +5,7 @@
  */
 
 import { fetchJson, authFetchJson } from './fetchUtils';
+import type { ReviewAddress } from '../utils/appUrl';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -865,6 +866,53 @@ export interface ReviewQueueItem {
   answered_points_total?: number;
 }
 
+/**
+ * One open question, as the keys phase orders it (ADR-0051) — the page the
+ * client actually draws. The seven arrays below are a lookup by id beside it,
+ * not an order of their own. Mirrors the backend's `QueueKey`
+ * (`reviewQueueKeys.ts`) minus `sourceId`, which the controller drops before
+ * building `order`.
+ */
+export interface QueueOrderEntry {
+  kind: 'conflict' | 'waiting' | 'withdrawn' | 'refused' | 'missing';
+  id: number;
+  /** When the run that raised this question completed; `null` for one still in flight. */
+  askedAt: string | null;
+  runId: number | null;
+  /**
+   * The gated sub-kinds a `waiting` row groups (ADR-0025): `held` fires only on
+   * a row that is not `pending`, and neither does `contents` — so an arrival,
+   * which is what `pending` means, is always alone. Measured on the development
+   * catalogue of 2026-09-07: 1 440 `held`, 11 `contents`+`held`, 52 `arrival`,
+   * and no combination with an arrival in it.
+   */
+  subs: Array<'arrival' | 'held' | 'contents'>;
+}
+
+/**
+ * What a chip states it would leave — counted over the union under every
+ * other filter the curator has set. Mirrors the backend's `QueueFacets`
+ * (`reviewQueueKeys.ts`) field for field.
+ */
+export interface QueueFacets {
+  kind: Array<{
+    kind: 'conflict' | 'waiting' | 'withdrawn' | 'refused' | 'missing' | 'arrival' | 'held' | 'contents';
+    count: number;
+  }>;
+  source: Array<{ id: number; name: string; count: number }>;
+  /** `id` null is the unplaced bucket: keys with no region row at all. */
+  region: Array<{ id: number | null; name: string; count: number }>;
+  /**
+   * The runs with open questions, counted before the set-aside exclusion —
+   * `setAside` says whether this curator has already hidden the batch, which
+   * is what a chip needs to name it and bring it back. `completedAt` is
+   * `null` for a run still in flight.
+   */
+  run: Array<{ id: number; sourceId: number; completedAt: string | null; count: number; setAside: boolean }>;
+  /** How many runs this curator has set aside — the unit the chip names. */
+  setAside: { batches: number };
+}
+
 export interface ReviewQueue {
   missing: ReviewQueueItem[];
   /** Rows a rule turned down and nobody has answered yet. Already hidden from readers (ADR-0024). */
@@ -903,40 +951,84 @@ export interface ReviewQueue {
   answeredWithdrawals: ReviewQueueItem[];
   limit: number;
   /**
-   * Where each kind is and whether it has another page.
-   *
-   * `hasMore` is answered by the rows themselves — the server asks for one more than the
-   * page and drops it — so no kind needs a `COUNT(*)`, and this endpoint keeps its
-   * promise of returning no totals.
+   * The page in the one order across all seven kinds (ADR-0051) — what the
+   * client actually draws. The seven arrays above are a lookup by id beside
+   * it, not an order of their own.
    */
-  paging: Record<ReviewQueueKind, { offset: number; hasMore: boolean }>;
+  order: QueueOrderEntry[];
+  /** Counted over the union under the filter the curator set — the keys phase's own count, not a client-side sum of the seven arrays. */
+  total: number;
+  facets: QueueFacets;
+  /**
+   * The one cursor the seven open kinds share, beside the two offsets that
+   * page the two answered lists on their own: `keptOut` and
+   * `answeredWithdrawals` are not open questions, carry no date to order the
+   * union by, and only ever grow, so a `COUNT(*)` would tell a curator
+   * nothing an offset and `hasMore` do not already.
+   */
+  paging: {
+    cursor: string | null;
+    nextCursor: string | null;
+    keptOut: { offset: number; hasMore: boolean };
+    answeredWithdrawals: { offset: number; hasMore: boolean };
+  };
 }
 
-/** The arrays the queue returns, each paged on its own. */
-export type ReviewQueueKind =
-  'missing' | 'refused' | 'keptOut' | 'conflicts' | 'arrivals' | 'held' | 'contents'
-  | 'withdrawn' | 'answeredWithdrawals';
+/**
+ * The two answered lists that still page by their own offset, outside the
+ * cursor order: `keptOut` and `answeredWithdrawals` are not open questions and
+ * only ever grow, so `fetchReviewQueue`'s `keptOutOffset` /
+ * `answeredWithdrawalsOffset` name them by this word.
+ */
+export type ReviewQueueKind = 'keptOut' | 'answeredWithdrawals';
 
 /**
- * What needs a curator's judgement, within their scope.
+ * What needs a curator's judgement, within their scope — a filtered,
+ * ordered, cursor-paged page (ADR-0051). `params` is the review page's
+ * address (`ReviewAddress`) plus the cursor and the two offsets the answered
+ * lists still page by; `row` names the selected card for a deep link and is
+ * not a request parameter, so it is not sent here.
  */
-export async function fetchReviewQueue(params: {
-  categoryId?: number;
+export async function fetchReviewQueue(params: ReviewAddress & {
+  cursor?: string;
   limit?: number;
-  /**
-   * Where each kind is, by kind. One number per kind rather than one shared, because the
-   * queue is one query with one limit per kind: a single offset moved all of them at once, so a
-   * kind whose page was full had a page 2 no control could ask for.
-   */
-  offsets?: Partial<Record<ReviewQueueKind, number>>;
-} = {}): Promise<ReviewQueue> {
+  keptOutOffset?: number;
+  answeredWithdrawalsOffset?: number;
+}): Promise<ReviewQueue> {
   const search = new URLSearchParams();
-  if (params.categoryId) search.set('categoryId', String(params.categoryId));
+  if (params.sort === 'question') search.set('sort', params.sort);
+  if (params.q) search.set('q', params.q);
+  if (params.sourceIds.length > 0) search.set('source', params.sourceIds.join(','));
+  if (params.kinds.length > 0) search.set('kind', params.kinds.join(','));
+  if (params.regionId !== null) search.set('region', String(params.regionId));
+  if (params.runId !== null) search.set('run', String(params.runId));
+  if (params.showAside) search.set('aside', 'show');
+  if (params.cursor) search.set('cursor', params.cursor);
   if (params.limit !== undefined) search.set('limit', String(params.limit));
-  for (const [kind, offset] of Object.entries(params.offsets ?? {})) {
-    if (offset) search.set(`${kind}Offset`, String(offset));
+  if (params.keptOutOffset) search.set('keptOutOffset', String(params.keptOutOffset));
+  if (params.answeredWithdrawalsOffset) {
+    search.set('answeredWithdrawalsOffset', String(params.answeredWithdrawalsOffset));
   }
   return authFetchJson<ReviewQueue>(`${API_URL}/api/experiences/review/queue?${search}`);
+}
+
+/**
+ * A curator's "not now" on a whole run's batch of open questions (ADR-0051
+ * decision 4). `bringRunBack` is the way back. Both echo the run id and the
+ * state the caller asked for — a second click on either is the same 200 as
+ * the first (`reviewQueueSetAside.ts`).
+ */
+export async function setRunAside(syncLogId: number): Promise<{ syncLogId: number; setAside: boolean }> {
+  return authFetchJson(`${API_URL}/api/experiences/review/set-aside/${syncLogId}`, {
+    method: 'PUT',
+  });
+}
+
+/** Undoes `setRunAside`: brings a set-aside run's batch back into view. */
+export async function bringRunBack(syncLogId: number): Promise<{ syncLogId: number; setAside: boolean }> {
+  return authFetchJson(`${API_URL}/api/experiences/review/set-aside/${syncLogId}`, {
+    method: 'DELETE',
+  });
 }
 
 /**
