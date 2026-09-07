@@ -588,22 +588,33 @@ $$ LANGUAGE SQL;
 -- Trigger: Update metadata for regions when geom changes
 -- =============================================================================
 -- uses_hull is auto-detected ONLY on INSERT, preserved on UPDATE
+--
+-- The area goes with the geometry it measures. A geometry write that clears
+-- geom -- ancestor invalidation (ADR-0035), a member edit -- used to leave
+-- geom_area_km2 holding the area of the outline that is no longer there, so
+-- Europe read as NULL and 4,095,971 km2 at once, and a Catalogue Check reading
+-- the area saw a different world from one reading the geometry (#763). An
+-- empty geometry has no area either: geometry_focus() files it as NULL, and
+-- so does this.
 
 CREATE OR REPLACE FUNCTION update_region_metadata()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF NEW.geom IS NOT NULL AND NOT ST_IsEmpty(NEW.geom) THEN
-        -- NOTE: anchor_point is computed by update_region_focus_data() which handles
-        -- antimeridian-crossing and full-globe regions correctly. Do NOT set it here.
-        NEW.geom_area_km2 := ST_Area(NEW.geom::geography) / 1000000;
+    IF NEW.geom IS NULL OR ST_IsEmpty(NEW.geom) THEN
+        NEW.geom_area_km2 := NULL;
+        RETURN NEW;
+    END IF;
 
-        -- Auto-detect uses_hull ONLY on INSERT (new region).
-        -- On UPDATE, always preserve the existing value — invalidateRegionGeometry()
-        -- clears geom to NULL before recompute, so NULL→non-NULL on UPDATE is NOT
-        -- a "first time" scenario. The user may have manually set uses_hull=false.
-        IF TG_OP = 'INSERT' THEN
-            NEW.uses_hull := should_use_hull(NEW.geom, NEW.parent_region_id, NEW.id);
-        END IF;
+    -- NOTE: anchor_point is computed by update_region_focus_data() which handles
+    -- antimeridian-crossing and full-globe regions correctly. Do NOT set it here.
+    NEW.geom_area_km2 := ST_Area(NEW.geom::geography) / 1000000;
+
+    -- Auto-detect uses_hull ONLY on INSERT (new region).
+    -- On UPDATE, always preserve the existing value — invalidateRegionGeometry()
+    -- clears geom to NULL before recompute, so NULL→non-NULL on UPDATE is NOT
+    -- a "first time" scenario. The user may have manually set uses_hull=false.
+    IF TG_OP = 'INSERT' THEN
+        NEW.uses_hull := should_use_hull(NEW.geom, NEW.parent_region_id, NEW.id);
     END IF;
     RETURN NEW;
 END;
