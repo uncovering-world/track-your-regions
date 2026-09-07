@@ -394,6 +394,24 @@ point names about nothing. Re-runnable — a tidy row is its own tidied form. Th
 check `name-carries-whitespace-nobody-typed` reads zero afterwards, and its test pins this
 file's whitespace spelling to the constant the check composes.
 
+`048-a-region-without-geometry-has-no-area.sql` makes a region's stored area go with the
+geometry it measures (#763). `update_region_metadata()` computed `geom_area_km2` only from a
+geometry that was there and did nothing otherwise, so the write that clears a derived parent's
+geometry — ancestor invalidation, ADR-0035 — left the area of the outline that was no longer
+there: Europe of the Administrative world view read as `geom IS NULL` and 4,095,971 km² at once,
+and Catalogue Checks saw two worlds, `parent-short-of-its-children` reporting it at 41 % of its
+children while `region-without-geometry` reported it holding nothing. The file installs the
+trigger function that now clears the area when the geometry is cleared or empty — so a database
+holding data does not wait for the next re-application of `01-schema.sql` while the next
+invalidation writes the same stale row again — and clears the area on every row whose geometry
+is already gone: one row on the development database, Europe, named by the closing report. The
+area alone is written, never the geometry, so no geometry trigger fires and the walk of
+ADR-0035 is not set off; `uses_hull` is left as it is, since the trigger preserves it on every
+UPDATE on purpose. The rows it clears are still #667's, waiting on #459 for their geometry — a
+`NULL` area is the truthful reading of a region with nothing on the map, not a repair of the
+map. Order-independent with `01-schema.sql`, which carries the same function, and re-running it
+finds nothing to clear.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the

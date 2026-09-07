@@ -398,7 +398,7 @@ Coverage-aware simplification for **sibling regions** (same parent). Uses `ST_Co
 |---------|-------|----------|------|
 | `update_simplified_geometries` | `administrative_divisions` | `geom` change | Per-row simplification of 4326 simplified columns. Fallback for individual updates (batch import uses `simplify_coverage_siblings`). |
 | `update_admin_div_geom_3857` | `administrative_divisions` | `geom` or simplified change | Transforms to 3857, computes 3857 simplified columns. |
-| `update_region_metadata` | `regions` | `geom` change | Computes area, detects `uses_hull` on INSERT. |
+| `update_region_metadata` | `regions` | `geom` change | Computes `geom_area_km2`, detects `uses_hull` on INSERT. The area goes with the geometry: a write that clears `geom` — ancestor invalidation, a member edit — or leaves it empty clears the area too, so a region with nothing on the map claims no area (#763; migration 048 repaired the rows the earlier trigger left). `uses_hull` is preserved on every UPDATE, invalidation included. |
 | `update_region_focus_data` | `regions` | `geom` or `hull_geom` change | Stores `anchor_point` and `focus_bbox` from `geometry_focus()`, taking a near-global parent's box from its children instead. See [How a crossing region is told from a global one](#how-a-crossing-region-is-told-from-a-global-one). |
 | `update_division_focus_data` | `administrative_divisions` | `geom` change | Stores `anchor_point` and `focus_bbox` from `geometry_focus()`. No children aggregation. Disabled during the bulk GADM load, which computes the columns in one pass (step 1b). |
 | `trg_regions_geom_3857` | `regions` | `geom`, `hull_geom`, `uses_hull`, or `geom_simplified_low` change | Transforms to 3857, computes all simplified columns (hull-based and real-geom-based), including both cheap rungs. `uses_hull` is there because it *chooses* the input the rungs are made of (rule 19) and is manually editable (rule 17): `updateRegion` writes the flag on its own, and without this arm a region toggled to hull display kept rungs traced from its real outline while the island tile source switched to the hull at once. `geom_simplified_low` is there for `simplify_coverage_regions()`, which writes that column directly — without it `geom_overview` and `geom_simplified_coarse` would keep the pre-coverage shape and serve it at zoom 0-4. |
@@ -538,7 +538,9 @@ were computed. An ancestor is nulled rather than recomputed on the spot —
 recomputing Asia is around a hundred seconds of union, which a curator computing
 one Russian oblast should not wait for — so a continent is absent from the map
 until the next run, and Catalogue Checks reports it in the meantime
-(`region-without-geometry`, `parent-short-of-its-children`).
+(`region-without-geometry` — and that rule alone, since the stored area goes
+with the geometry (#763) and `parent-short-of-its-children` reads the area; a
+parent whose outline was kept *stale* rather than cleared is the other rule's).
 
 Both steps stop at a **hand-drawn boundary** (`is_custom_boundary`, #283), in
 both directions. Such a region's outline is drawn rather than unioned from its

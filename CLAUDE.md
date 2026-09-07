@@ -95,7 +95,7 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 Follow pattern: `syncX()`, `getXSyncStatus()`, `cancelXSync()`. In-memory progress via `runningSyncs` Map. `finally` blocks use captured `thisProgress` reference to avoid timer race conditions.
 
 ### Geometry & Triggers
-Two triggers fire on region geometry changes: `update_region_metadata()` (area, archipelago flag) and `update_region_focus_data()` (anchor_point, focus_bbox). Hull services in `backend/src/services/hull/` handle dateline-crossing geometries.
+Two triggers fire on region geometry changes: `update_region_metadata()` (area — cleared with the geometry, #763 — and `uses_hull` on INSERT only) and `update_region_focus_data()` (anchor_point, focus_bbox). Hull services in `backend/src/services/hull/` handle dateline-crossing geometries.
 
 ### Antimeridian Handling
 `focus_bbox` = [west, south, east, north]; `west > east` means antimeridian crossing. MapLibre's `cameraForBounds()` does NOT handle this — use pre-computed `anchorPoint` as center. Zoom computed via shifted bbox (`east + 360`).
