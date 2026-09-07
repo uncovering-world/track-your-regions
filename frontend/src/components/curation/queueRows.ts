@@ -156,32 +156,3 @@ export function nextSelection(rows: QueueRow[], previousIndex: number): string |
   if (previousIndex < 0) return rows[0].key;
   return rows[Math.min(previousIndex, rows.length - 1)].key;
 }
-
-/** The kinds a row can belong to, in list order — used by the pagers. */
-export const ROW_KINDS: readonly RowKind[] = ['conflicts', 'waiting', 'withdrawn', 'refused', 'missing'];
-
-/** Short enough to sit on a button, in the words the headings use. */
-export const KIND_NAME: Record<RowKind, string> = {
-  conflicts: 'disagreements',
-  waiting: 'waiting to be published',
-  withdrawn: 'lost places',
-  refused: 'refused',
-  missing: 'gone from the source',
-};
-
-/**
- * The seven queue arrays this file draws hydrated rows from — distinct from
- * `ReviewQueueKind` (`../../api/experiences`), which now names only the two answered
- * lists that still page by their own offset (ADR-0051); these seven are no longer paged
- * that way at all, but the name is what `KINDS_BEHIND` still groups a row kind by.
- */
-type QueueArrayKind = 'missing' | 'refused' | 'conflicts' | 'arrivals' | 'held' | 'contents' | 'withdrawn';
-
-/** Which queue arrays a row kind pages. `waiting` is three of them. */
-export const KINDS_BEHIND: Record<RowKind, readonly QueueArrayKind[]> = {
-  conflicts: ['conflicts'],
-  waiting: ['arrivals', 'held', 'contents'],
-  withdrawn: ['withdrawn'],
-  refused: ['refused'],
-  missing: ['missing'],
-};

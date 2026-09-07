@@ -8,8 +8,9 @@
  * nineteen answers' worth of evidence.
  *
  * The rows arrive in one of two complete orders the server's keys phase already chose
- * (ADR-0051 decision 2) — this file only draws a heading at each transition and counts what
- * sits under it; it does not sort. `date` groups by the day a question was asked (a row still
+ * (ADR-0051 decision 2) — this file only draws a heading at each transition, and counts what
+ * sits under it once every page is loaded; it does not sort, and it never guesses at a
+ * group it holds only part of. `date` groups by the day a question was asked (a row still
  * in flight has no day yet, and sits under *Still running* wherever it falls); `question`
  * groups by kind, coloured the way the kind's own chip is. One pager, not the old one per
  * kind, because the list is one keyset-paged union now rather than seven offset ones.
@@ -37,7 +38,16 @@ const KIND_HEADING: Record<RowKind, string> = {
 /** A group's heading a transition in `rows` opens — never computed for a row that continues its predecessor's group. */
 interface Heading {
   label: string;
-  count: number;
+  /**
+   * How many rows sit under it, or `null` while another page is still to come.
+   *
+   * A number beside "Sat 5 Sep" is read as that day's questions, and a page holds 25 of a
+   * backlog that said "1,255 open" two lines above — so the heading claimed a total it had
+   * no way of knowing. It is only ever right once every page is loaded, and until then no
+   * number is the honest answer; the list's own label still says how much of the whole is
+   * on screen.
+   */
+  count: number | null;
   /** The question's own colour in `question` order; unset (neutral) in `date` order. */
   color?: string;
 }
@@ -55,22 +65,25 @@ function groupLabel(row: QueueRow, sort: 'date' | 'question', today: string): st
 
 /**
  * The heading standing in front of each row, `null` where the row continues the one before
- * it. Counts are the *loaded* rows the heading itself opens — the list holds one page, never
- * the whole backlog, so a heading claims only what is actually under it.
+ * it.
  *
- * The run, not every row sharing the key: a question from a run still in flight sits under
- * *Still running* wherever it falls, which splits a day around it, and counting by key
- * would give both halves the day's whole total.
+ * A count only once `whole` — every page loaded — because until then the number would be
+ * this page's share of the group rather than the group, and a reader has no way to tell
+ * the two apart. The run under the heading, not every row sharing its key: a question from
+ * a run still in flight sits under *Still running* wherever it falls, which splits a day
+ * around it, and counting by key would give both halves the day's whole total.
  */
-function headings(rows: QueueRow[], sort: 'date' | 'question', today: string): (Heading | null)[] {
+function headings(
+  rows: QueueRow[], sort: 'date' | 'question', today: string, whole: boolean,
+): (Heading | null)[] {
   const keys = rows.map(row => groupKey(row, sort));
   return rows.map((row, i) => {
     if (i > 0 && keys[i - 1] === keys[i]) return null;
-    let count = 0;
-    while (i + count < rows.length && keys[i + count] === keys[i]) count += 1;
+    let run = 0;
+    while (i + run < rows.length && keys[i + run] === keys[i]) run += 1;
     return {
       label: groupLabel(row, sort, today),
-      count,
+      count: whole ? run : null,
       color: sort === 'question' ? KIND_COLOR[row.kind] : undefined,
     };
   });
@@ -182,7 +195,8 @@ export function ReviewQueueList({
   };
 
   if (rows.length === 0) return null;
-  const rowHeadings = headings(rows, sort, today);
+  // `!hasMore` is "every page is loaded": only then is a group's run of rows the group.
+  const rowHeadings = headings(rows, sort, today, !hasMore);
 
   return (
     <Box
@@ -214,7 +228,9 @@ export function ReviewQueueList({
                   }}
                 >
                   <span>{heading.label}</span>
-                  <Box component="span" sx={COUNT_SX}>{heading.count.toLocaleString('en')}</Box>
+                  {heading.count !== null && (
+                    <Box component="span" sx={COUNT_SX}>{heading.count.toLocaleString('en')}</Box>
+                  )}
                 </ListSubheader>
               )}
               <ListItem disablePadding>

@@ -235,7 +235,11 @@ describe('review address', () => {
 
     it('reads a row of kind:id for a list kind, garbage as absent', () => {
       expect(parseReviewUrl('?row=waiting:11586')).toEqual({ ...EMPTY_REVIEW, row: 'waiting:11586' });
-      expect(parseReviewUrl('?row=conflict:1')).toEqual({ ...EMPTY_REVIEW, row: 'conflict:1' });
+      // The list's own word, not the API's: `row` carries a `QueueRow` key, and the row a
+      // `?kind=conflict` filter leaves is keyed `conflicts:1`. A `row=conflict:1` the page
+      // could never match is worse than none, so it reads as absent.
+      expect(parseReviewUrl('?row=conflicts:1')).toEqual({ ...EMPTY_REVIEW, row: 'conflicts:1' });
+      expect(parseReviewUrl('?row=conflict:1')).toEqual(EMPTY_REVIEW);
       expect(parseReviewUrl('?row=nonsense')).toEqual(EMPTY_REVIEW);
       // `arrival` is a sub-kind of `waiting`, not one of the five list kinds.
       expect(parseReviewUrl('?row=arrival:5')).toEqual(EMPTY_REVIEW);
@@ -333,7 +337,7 @@ describe('review address', () => {
       { ...EMPTY_REVIEW, regionId: 'none' },
       { ...EMPTY_REVIEW, runId: 98 },
       { ...EMPTY_REVIEW, showAside: true },
-      { ...EMPTY_REVIEW, row: 'conflict:1' },
+      { ...EMPTY_REVIEW, row: 'conflicts:1' },
       { ...EMPTY_REVIEW, row: 'waiting:11586' },
       { ...EMPTY_REVIEW, row: 'withdrawn:2' },
       { ...EMPTY_REVIEW, row: 'refused:3' },

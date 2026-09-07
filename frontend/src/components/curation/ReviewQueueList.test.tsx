@@ -110,6 +110,42 @@ describe('ReviewQueueList', () => {
     expect(screen.getByText('Still running')).toBeInTheDocument();
   });
 
+  it('carries no count while a page of the list is still to come', () => {
+    // A number beside "Sat 5 Sep" is read as that day's questions. A first page holds 25
+    // of a backlog the toolbar says is 1,255 open, so a count here would be this page's
+    // share of the day claiming to be the day. No number is the honest answer until every
+    // page is loaded; the list's own label still says how much is on screen.
+    renderList([
+      row({ key: 'a', name: 'A', askedAt: '2026-09-05T10:00:00Z' }),
+      row({ key: 'b', name: 'B', askedAt: '2026-09-05T09:00:00Z' }),
+    ], { hasMore: true });
+
+    const heading = screen.getByText('Sat 5 Sep').closest('li') as HTMLElement;
+    expect(heading.textContent).toBe('Sat 5 Sep');
+  });
+
+  it('counts once every page is loaded, in question order too', () => {
+    renderList([
+      row({ key: 'a', name: 'A', kind: 'conflicts' }),
+      row({ key: 'b', name: 'B', kind: 'refused', specific: 'below the line' }),
+    ], { sort: 'question', hasMore: false });
+
+    expect((screen.getByText('The source disagrees with an edit').closest('li') as HTMLElement)
+      .textContent).toBe('The source disagrees with an edit1');
+    expect((screen.getByText('Our own rule for this list turned these down').closest('li') as HTMLElement)
+      .textContent).toBe('Our own rule for this list turned these down1');
+  });
+
+  it('drops the question-order count too while a page is still to come', () => {
+    renderList([
+      row({ key: 'a', name: 'A', kind: 'conflicts' }),
+      row({ key: 'b', name: 'B', kind: 'refused', specific: 'below the line' }),
+    ], { sort: 'question', hasMore: true });
+
+    expect((screen.getByText('Our own rule for this list turned these down').closest('li') as HTMLElement)
+      .textContent).toBe('Our own rule for this list turned these down');
+  });
+
   it('counts the rows a heading actually opens, not every row that shares its key', () => {
     // A run still in flight sits under *Still running* wherever it falls, which splits
     // the day around it into two headings. Counted by key, both halves would claim the
