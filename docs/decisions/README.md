@@ -61,6 +61,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md) | A kind is filled in two tiers, each from its own kind of source | Accepted | 2026-09-06 |
 | [0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md) | A curator writes a work's picture only with its credit | Accepted | 2026-09-06 |
 | [0050](0050-a-renamed-component-is-found-by-its-claim.md) | A renamed component is found by its claim, and a tie the name does not decide is nobody | Accepted | 2026-09-07 |
+| [0051](0051-the-review-queue-is-one-list-of-dated-questions.md) | The review queue is one list of dated questions, filtered and set aside per curator | Accepted | 2026-09-07 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
