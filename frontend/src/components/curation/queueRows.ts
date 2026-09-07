@@ -1,22 +1,25 @@
 /**
  * The queue as one list of questions, which is how a curator works it.
  *
- * The response arrives as one array per kind because each is its own query; a curator does not
- * think in arrays. They work down a list, and what they need from each entry before opening
- * it is which object it is about and what is being asked — enough to skip one, which is the
- * whole reason a list beats a stack of cards.
- *
- * Pure and separate from the rendering because the ordering is a product decision and the
- * only thing worth testing here. The three gated kinds arrive already grouped by experience
- * (`groupGated`), so one museum holding a label change *and* twelve new paintings is one
- * row, as it is one decision.
+ * The response still arrives as one array per kind because each is its own query, but the
+ * order a curator meets them in is no longer this file's to decide: `data.order` is the
+ * page in the one order the server's keys phase chose — date or class-first, either a
+ * complete order across every kind (ADR-0051 decision 2). This file only walks it, picking
+ * each entry's hydrated row out of the array (or, for `waiting`, out of the grouped gated
+ * kinds — `groupGated` from `WaitingToPublish.tsx`) by kind and id. An entry the keys phase
+ * named but the hydrating `WHERE` then rejected — a row answered between the two reads — is
+ * skipped rather than thrown on, and logged once so a real gap is not silent.
  */
 
-import type { ReviewQueue, ReviewQueueItem, ReviewQueueKind } from '../../api/experiences';
+import type { QueueOrderEntry, ReviewQueue, ReviewQueueItem } from '../../api/experiences';
 import { groupGated, type GatedGroup } from './WaitingToPublish';
+import type { RowKind } from './queueRowTypes';
+import {
+  KIND_COLOR, KIND_SHORT, rowSpecific, rowQuestionWord,
+} from './feed/rowSpecific';
 
-/** Which of the five questions a row asks. `waiting` is the three gated kinds, grouped. */
-export type RowKind = 'missing' | 'refused' | 'conflicts' | 'waiting' | 'withdrawn';
+export type { RowKind } from './queueRowTypes';
+export { KIND_COLOR, KIND_SHORT, rowSpecific, rowQuestionWord };
 
 export interface QueueRow {
   /** Stable across refetches: the same object under the same question keeps its place. */
@@ -27,6 +30,13 @@ export interface QueueRow {
   category: string;
   /** What is being asked, in the words the section heading uses. */
   question: string;
+  /** When the run that raised this question completed; `null` for one still in flight. */
+  askedAt: string | null;
+  runId: number | null;
+  /** The text after the row's question word — `rowSpecific`'s own output, carried on the row so it is computed once. */
+  specific: string;
+  /** The gated sub-kinds a `waiting` row groups (ADR-0025); `[]` for every other kind. */
+  subs: string[];
   item?: ReviewQueueItem;
   group?: GatedGroup;
 }
@@ -39,53 +49,94 @@ const QUESTION: Record<RowKind, string> = {
   withdrawn: 'lost places it is made of',
 };
 
-function rowFor(kind: Exclude<RowKind, 'waiting'>, item: ReviewQueueItem): QueueRow {
+/** The server's word for a question kind, mapped to this file's own — only `conflict` differs. */
+const ROW_KIND: Record<QueueOrderEntry['kind'], RowKind> = {
+  conflict: 'conflicts',
+  waiting: 'waiting',
+  withdrawn: 'withdrawn',
+  refused: 'refused',
+  missing: 'missing',
+};
+
+const warnedKeys = new Set<string>();
+
+/** A key `order` named that no hydrated row answers to — logged once per key, never thrown on. */
+function warnSkipped(entry: QueueOrderEntry): void {
+  const key = `${entry.kind}:${entry.id}`;
+  if (warnedKeys.has(key)) return;
+  warnedKeys.add(key);
+  // A real gap between the keys phase and the hydrating `WHERE` (a row answered between
+  // the two reads) must not read as silence.
+  console.warn(`queueRows: no hydrated row for ${key} — skipped`);
+}
+
+function waitingRow(entry: QueueOrderEntry, group: GatedGroup): QueueRow {
   return {
-    key: `${kind}:${item.id}`,
+    key: `waiting:${entry.id}`,
+    kind: 'waiting',
+    id: entry.id,
+    name: group.name,
+    // The group carries no category of its own — it is three kinds about one object, and
+    // whichever of them is present names the same category.
+    category: (group.arrival ?? group.held ?? group.contents)?.category_name ?? '',
+    question: QUESTION.waiting,
+    askedAt: entry.askedAt,
+    runId: entry.runId,
+    specific: rowSpecific({ kind: 'waiting', group }),
+    subs: entry.subs,
+    group,
+  };
+}
+
+function itemRow(kind: Exclude<RowKind, 'waiting'>, entry: QueueOrderEntry, item: ReviewQueueItem): QueueRow {
+  return {
+    key: `${kind}:${entry.id}`,
     kind,
-    id: item.id,
+    id: entry.id,
     name: item.name,
     category: item.category_name,
     question: QUESTION[kind],
+    askedAt: entry.askedAt,
+    runId: entry.runId,
+    specific: rowSpecific({ kind, item }),
+    subs: entry.subs,
     item,
   };
 }
 
 /**
- * Every open question, in the order a curator meets them.
+ * Every open question, in the order the server's keys phase chose (ADR-0051).
  *
- * Conflicts first, then arrivals, then lost places, then refusals, then the missing —
- * cheapest decision first is the wrong rule here, and this is deliberately not it. A
- * conflict is a curator's own words being argued with, an arrival is a reader seeing nothing
- * at all; both are somebody waiting. A lost place has already *taken* something away — a pin
- * a reader could see, sometimes one they had ticked — which is why it sits above a refusal,
- * where the row was never shown at all and the question is only whether our rule was right.
- * A missing row changes nothing until answered. The list is worked from the top, so the
- * order is the claim about what matters most.
- *
- * `keptOut` and `answeredWithdrawals` are absent on purpose: both are answered work, and
- * the page keeps each collapsed at the foot where a mis-click can be undone.
+ * `keptOut` and `answeredWithdrawals` are absent on purpose, and not merely unread here:
+ * both are answered work, kept collapsed at the page's foot where a mis-click can be
+ * undone, and neither is a kind the keys union ever names — `data.order` cannot mention
+ * them.
  */
 export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
   if (!data) return [];
   const gated = groupGated(data.arrivals ?? [], data.held ?? [], data.contents ?? []);
-  return [
-    ...(data.conflicts ?? []).map(item => rowFor('conflicts', item)),
-    ...gated.map(group => ({
-      key: `waiting:${group.id}`,
-      kind: 'waiting' as const,
-      id: group.id,
-      name: group.name,
-      // The group carries no category of its own — it is three kinds about one object, and
-      // whichever of them is present names the same category.
-      category: (group.arrival ?? group.held ?? group.contents)?.category_name ?? '',
-      question: QUESTION.waiting,
-      group,
-    })),
-    ...(data.withdrawn ?? []).map(item => rowFor('withdrawn', item)),
-    ...(data.refused ?? []).map(item => rowFor('refused', item)),
-    ...(data.missing ?? []).map(item => rowFor('missing', item)),
-  ];
+  const groupsById = new Map(gated.map(group => [group.id, group]));
+  const itemsByKind: Record<Exclude<RowKind, 'waiting'>, Map<number, ReviewQueueItem>> = {
+    conflicts: new Map((data.conflicts ?? []).map(item => [item.id, item])),
+    withdrawn: new Map((data.withdrawn ?? []).map(item => [item.id, item])),
+    refused: new Map((data.refused ?? []).map(item => [item.id, item])),
+    missing: new Map((data.missing ?? []).map(item => [item.id, item])),
+  };
+
+  const rows: QueueRow[] = [];
+  for (const entry of data.order ?? []) {
+    const kind = ROW_KIND[entry.kind];
+    if (kind === 'waiting') {
+      const group = groupsById.get(entry.id);
+      if (!group) { warnSkipped(entry); continue; }
+      rows.push(waitingRow(entry, group));
+      continue;
+    }
+    const item = itemsByKind[kind].get(entry.id);
+    if (!item) { warnSkipped(entry); continue; }
+    rows.push(itemRow(kind, entry, item));
+  }
+  return rows;
 }
 
 /**
@@ -118,8 +169,16 @@ export const KIND_NAME: Record<RowKind, string> = {
   missing: 'gone from the source',
 };
 
+/**
+ * The seven queue arrays this file draws hydrated rows from — distinct from
+ * `ReviewQueueKind` (`../../api/experiences`), which now names only the two answered
+ * lists that still page by their own offset (ADR-0051); these seven are no longer paged
+ * that way at all, but the name is what `KINDS_BEHIND` still groups a row kind by.
+ */
+type QueueArrayKind = 'missing' | 'refused' | 'conflicts' | 'arrivals' | 'held' | 'contents' | 'withdrawn';
+
 /** Which queue arrays a row kind pages. `waiting` is three of them. */
-export const KINDS_BEHIND: Record<RowKind, readonly ReviewQueueKind[]> = {
+export const KINDS_BEHIND: Record<RowKind, readonly QueueArrayKind[]> = {
   conflicts: ['conflicts'],
   waiting: ['arrivals', 'held', 'contents'],
   withdrawn: ['withdrawn'],
