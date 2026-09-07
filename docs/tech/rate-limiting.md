@@ -69,7 +69,7 @@ what goes stale when a route is added to the row below (it has already happened 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions`, `POST /api/admin/sync/categories/:categoryId/fix-images` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId` |
 
 The catalogue checks split across both buckets on the same rule, and the split is
 the point. `GET /api/admin/data-assertions` runs a statement per assertion over
@@ -125,7 +125,8 @@ three of them and the criterion decides per branch, not per endpoint.
 
 The ones that remain — `/:id/state`, `/:id/decline-source`, `/:id/decline-held`,
 `/:id/works/:treasureId/edit`, `/review/queue` — stay exempt, checked rather than
-assumed: each ends at `res.json` with nothing after its `client.release()`. `/:id/decline-source` is the plainest of
+assumed: each ends at `res.json` with nothing after its `client.release()`.
+`/:id/decline-source` is the plainest of
 them: it writes one small row per field and does not touch the experience at all,
 because the value it refuses had already won every run. `/:id/decline-held` (#722)
 is the same shape one gate over and joined the list on the same check rather than
@@ -142,7 +143,14 @@ the commit. Resemblance to a limited route is not the criterion; reaching
 accepting a coordinate started moving a pin; it is in the table above now, for the
 reason given below it. That is the second time a route has left this list by
 growing post-commit work, which is why the list is re-read against the handlers
-rather than carried forward.
+rather than carried forward. `/review/queue` is the case that re-reading catches
+in the other direction: #805 rebuilt it into one keys statement over the union of
+the seven kinds, one hydrating statement per kind the page actually holds, and the
+two answered lists — `keptOut` and `answeredWithdrawals`, which are outside the
+union and run on every request — so it is a different handler under the same path.
+Checked again, and cheaper than the nine statements it replaced (a page of 25 with
+its facets in 296 ms cold and 148 ms warm against about 590 ms, on the development
+catalogue of 2026-09-07), still with nothing after the read.
 
 `POST /api/experiences/locations/:locationId/state` — a curator's verdict on one
 point of an object (ADR-0026) — carries `authenticatedLimiter`, and it is worth
@@ -176,6 +184,21 @@ that moves has to be re-placed after committing, exactly as the correction above
 The other five fields it accepts place nothing, and the endpoint asks the criterion per
 request the way `/state` does; the limiter is on the route either way, because a route
 is what a limiter can be attached to.
+
+`PUT` and `DELETE /api/experiences/review/set-aside/:syncLogId` — a curator's "not
+now" on a whole run's batch of open questions and the way back
+([ADR-0051](../decisions/0051-the-review-queue-is-one-list-of-dated-questions.md)
+decision 4) — are a pair in the table above that is **not** there by the
+post-commit criterion. They are not the only entry in it that is not: the catalogue
+checks' `POST …/accept` is limited on the cost of the statement it re-runs, as the
+paragraph on that split says above. Neither of this pair reaches placement: setting
+a batch aside is one
+insert with `ON CONFLICT DO NOTHING`, bringing it back one delete of the caller's
+own row, and nothing follows the commit in either. They carry
+`authenticatedLimiter` as ordinary authenticated curator actions — a chip that can
+be toggled, one small write per press — which is why the bucket is the
+sixty-a-minute one rather than `expensiveAdminLimiter`'s five, and why sixty is
+far above what answering a queue asks for.
 
 `PUT /api/admin/sync/categories/:categoryId/curation-gate` — the switch that holds
 a source's content for review — stays exempt too, and CodeQL flags it, so the
