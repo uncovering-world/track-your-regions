@@ -295,6 +295,21 @@ describe('queryQueueKeys', () => {
     expect(sql).not.toContain('root_of');
   });
 
+  it('names the world view each offered root belongs to', async () => {
+    await queryQueueKeys(base);
+    const [sql] = lastCall();
+    // Two roots are called Europe (world views 2 and 5), so the name alone
+    // cannot tell a curator which row is which. Both branches of the offer
+    // carry the world view; the unplaced bucket is in none and says null.
+    const roots = between(sql, ', region_roots AS (', ', page_rows AS (');
+    expect(roots.match(/JOIN world_views w ON w\.id = r\.world_view_id/g)).toHaveLength(2);
+    expect(roots.match(/w\.name AS world_view/g)).toHaveLength(2);
+    const region = between(sql, ', facet_region AS (', ', facet_run AS (');
+    expect(region).toContain('rr.world_view');
+    expect(region).toContain("SELECT NULL, 'Unplaced', NULL, count(*)::int");
+    expect(sql).toContain("'worldView', x.world_view");
+  });
+
   it('lists a run the curator set aside, and says so, so the batch has a way back', async () => {
     await queryQueueKeys(base);
     const [sql] = lastCall();

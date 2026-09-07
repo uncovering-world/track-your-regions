@@ -105,8 +105,15 @@ export interface QueueKey {
 export interface QueueFacets {
   kind: Array<{ kind: QueueKind | WaitingSub; count: number }>;
   source: Array<{ id: number; name: string; count: number }>;
-  /** `id` null is the unplaced bucket: keys with no region row at all. */
-  region: Array<{ id: number | null; name: string; count: number }>;
+  /**
+   * `id` null is the unplaced bucket: keys with no region row at all.
+   *
+   * `worldView` is the world view this root is a root of — null on the unplaced
+   * row, which is in none. A name does not identify a root on its own: two of
+   * them are called Europe (world views 2 and 5), so the control needs
+   * something to tell them apart with.
+   */
+  region: Array<{ id: number | null; name: string; worldView: string | null; count: number }>;
   /**
    * The runs with open questions, counted **before** the set-aside exclusion
    * and each saying whether this curator set it aside: a batch that is hidden
@@ -450,15 +457,23 @@ function regionFilter(
  * whatever region this curator is assigned — an assignment is what a
  * region-scoped curator's whole queue is about, so it is offered as a chip
  * even where it is not a root of anything public.
+ *
+ * Each root carries the world view it is a root *of*, because the name alone
+ * does not identify it: the development catalogue offers two roots called
+ * Europe, one in the Administrative world view and one in Wikivoyage Regions,
+ * and a chip listing the bare name would ask a curator to pick between two
+ * identical rows. The control shows the world view only where a name repeats
+ * (Task 10), so this is a fact the chip needs, not a label it must print.
  */
 const REGION_ROOTS_CTE = `
 , region_roots AS (
-    SELECT r.id, r.name FROM regions r
+    SELECT r.id, r.name, w.name AS world_view FROM regions r
     JOIN world_views w ON w.id = r.world_view_id
     WHERE r.parent_region_id IS NULL AND w.is_public
     UNION
-    SELECT r.id, r.name FROM curator_assignments ca
+    SELECT r.id, r.name, w.name AS world_view FROM curator_assignments ca
     JOIN regions r ON r.id = ca.region_id
+    JOIN world_views w ON w.id = r.world_view_id
     WHERE ca.user_id = ${USER_ID} AND ca.scope_type = 'region'
   )`;
 
@@ -497,7 +512,7 @@ function facetsSql(f: Bound): string {
     -- region_subtree itself, so what a curator filters by does not rest on
     -- the propagation having run. Walking here instead cost 330 ms and tipped
     -- the statement past the server's JIT threshold — see the note at the top.
-    SELECT rr.id, rr.name, COALESCE(counted.n, 0) AS count
+    SELECT rr.id, rr.name, rr.world_view, COALESCE(counted.n, 0) AS count
     FROM region_roots rr
     LEFT JOIN (
       SELECT er.region_id AS root_id, count(*)::int AS n
@@ -508,7 +523,7 @@ function facetsSql(f: Bound): string {
       GROUP BY er.region_id
     ) counted ON counted.root_id = rr.id
     UNION ALL
-    SELECT NULL, 'Unplaced', count(*)::int
+    SELECT NULL, 'Unplaced', NULL, count(*)::int
     FROM scoped k
     WHERE ${f.source} AND ${f.kind} AND ${f.run}
       AND NOT EXISTS (SELECT 1 FROM experience_regions er WHERE er.experience_id = k.id)
@@ -550,7 +565,8 @@ SELECT (SELECT json_agg(p ORDER BY ${orderSql(sort, 'p.')}) FROM page_rows p) AS
                                            ORDER BY x.count DESC, x.value), '[]'::json) FROM facet_kind x),
          'source', (SELECT COALESCE(json_agg(json_build_object('id', x.id, 'name', x.name, 'count', x.count)
                                              ORDER BY x.count DESC, x.name), '[]'::json) FROM facet_source x),
-         'region', (SELECT COALESCE(json_agg(json_build_object('id', x.id, 'name', x.name, 'count', x.count)
+         'region', (SELECT COALESCE(json_agg(json_build_object('id', x.id, 'name', x.name,
+                                                              'worldView', x.world_view, 'count', x.count)
                                              ORDER BY x.count DESC, x.name), '[]'::json) FROM facet_region x),
          'run', (SELECT COALESCE(json_agg(json_build_object('id', x.id, 'sourceId', x.source_id,
                                                             'completedAt', x.completed_at,
