@@ -71,8 +71,10 @@ export const KIND_RANK: Record<QueueKind, number> = {
   conflict: 1, waiting: 2, withdrawn: 3, refused: 4, missing: 5,
 };
 
-const QUEUE_KINDS = Object.keys(KIND_RANK) as QueueKind[];
-const WAITING_SUBS: WaitingSub[] = ['arrival', 'held', 'contents'];
+/** The words a `kind` chip may carry, and the only ones. Exported because the
+ *  controller drops anything else out of the request before it gets here. */
+export const QUEUE_KINDS = Object.keys(KIND_RANK) as QueueKind[];
+export const WAITING_SUBS: WaitingSub[] = ['arrival', 'held', 'contents'];
 
 export interface QueueFilters {
   q?: string;
@@ -381,8 +383,14 @@ function cursorSql(sort: 'date' | 'question', at: string, rank: string, id: stri
  * A curator typing `100%` is looking for a name with a per-cent sign in it, not
  * for every name; the backslash is escaped too, or escaping the other two would
  * be undone by a name that ends in one.
+ *
+ * Exported because the search reaches three statements and not one: the union
+ * here, and the two answered lists that are outside it
+ * (`reviewQueueController.ts` § keptOut, `reviewQueueContents.ts` §
+ * queryAnsweredWithdrawals). A second spelling of the escaping is how they
+ * would come to disagree about what `100%` means.
  */
-function likeParam(q: string): string {
+export function likeParam(q: string): string {
   return `%${q.replace(/[\\%_]/g, (c) => '\\'.concat(c))}%`;
 }
 

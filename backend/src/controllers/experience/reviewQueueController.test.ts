@@ -36,10 +36,41 @@ function makeRes() {
 const CURATOR = { id: 7, role: 'curator' as const };
 const ADMIN = { id: 1, role: 'admin' as const };
 
+/**
+ * One key of every class, so every card statement is asked for.
+ *
+ * The handler runs a kind's statement only where the keys phase named a row of
+ * it (ADR-0051 decision 2), so a keys answer of nothing is an endpoint that
+ * sends two statements — and most of the assertions in this file are about the
+ * SQL of the other seven. The ids are the objects this file already names.
+ */
+const EVERY_KIND = [
+  { kind: 'conflict', id: 1239 },   // Berlin Modernism Housing Estates
+  { kind: 'waiting', id: 11586, subs: ['arrival', 'held', 'contents'] },
+  { kind: 'withdrawn', id: 502 },   // Bilbao Fine Arts Museum
+  { kind: 'refused', id: 6205 },    // the British Museum
+  { kind: 'missing', id: 208 },     // Bamiyan Valley
+];
+
+/**
+ * The keys phase answers with that page; every card statement answers with what
+ * `rows` says about it, or with nothing.
+ *
+ * The keys statement is the one that builds `AS page`, which is also how
+ * `callMatching` below tells it apart from the statements it is looking for.
+ */
+function mockQueue(rows: (sql: string) => unknown[] = () => []) {
+  mockedQuery.mockImplementation(async (sql: string) => (
+    String(sql).includes('AS page')
+      ? { rows: [{ page: EVERY_KIND, total: EVERY_KIND.length, facets: {} }] }
+      : { rows: rows(String(sql)) }
+  ));
+}
+
 describe('getReviewQueue', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [] });
+    mockQueue();
   });
 
   it('asks separately for the rows this category refused', async () => {
@@ -75,11 +106,9 @@ describe('getReviewQueue', () => {
 
   it('returns the confirmed refusals under their own key', async () => {
     const res = makeRes();
-    mockedQuery.mockImplementation(async (sql: string) => (
-      String(sql).includes("'kept-out' AS kind")
-        ? { rows: [{ id: 6205, name: 'British Museum', admission_reason: 'not an art museum' }] }
-        : { rows: [] }
-    ));
+    mockQueue(sql => (sql.includes("'kept-out' AS kind")
+      ? [{ id: 6205, name: 'British Museum', admission_reason: 'not an art museum' }]
+      : []));
 
     await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
 
@@ -100,11 +129,11 @@ describe('getReviewQueue', () => {
 
   it('returns the refusals as their own group, with the reason on them', async () => {
     const res = makeRes();
-    mockedQuery.mockImplementation(async (sql: string) => (
-      String(sql).includes("m.admission = 'refused'")
-        ? { rows: [{ id: 6205, name: 'British Museum', admission_reason: 'not an art museum' }] }
-        : { rows: [] }
-    ));
+    // Anchored on the card's own label rather than on `m.admission = 'refused'`,
+    // which the kept-out statement and the keys union both carry as well.
+    mockQueue(sql => (sql.includes("'refused' AS kind")
+      ? [{ id: 6205, name: 'British Museum', admission_reason: 'not an art museum' }]
+      : []));
 
     await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
 
@@ -116,7 +145,7 @@ describe('getReviewQueue', () => {
   it('limits a curator to experiences their scope reaches', async () => {
     await getReviewQueue({ user: CURATOR, query: {} } as never, makeRes() as never);
 
-    const sql = String(mockedQuery.mock.calls[0][0]);
+    const [sql] = callMatching("'missing' AS kind");
     expect(sql).toContain('curator_scoped_regions');
     expect(sql).toContain('experience_regions');
   });
@@ -124,14 +153,14 @@ describe('getReviewQueue', () => {
   it('does not scope an admin, who covers everything', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
-    const sql = String(mockedQuery.mock.calls[0][0]);
+    const [sql] = callMatching("'missing' AS kind");
     expect(sql).not.toContain('JOIN curator_scoped_regions s ON s.id = er.region_id');
   });
 
   it('asks only for rows a run flagged and nobody has judged yet', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
-    const sql = String(mockedQuery.mock.calls[0][0]);
+    const [sql] = callMatching("'missing' AS kind");
     // A row already moved to 'former' has been decided; it is not a question
     expect(sql).toContain('missing_since IS NOT NULL');
     expect(sql).toContain("source_membership = 'present'");
@@ -141,7 +170,12 @@ describe('getReviewQueue', () => {
     // Postgres cannot infer a type for a placeholder that appears in the
     // parameter list but in no expression, and refuses the statement outright.
     // A mocked pool cannot see that, so assert the property that causes it.
-    for (const query of [{}, { categoryId: 2 }]) {
+    // Every request shape that adds a bind, because each moves the numbering of
+    // every statement after it: the source chip binds an id list the seven card
+    // statements do reference, and the search binds a pattern only the two
+    // answered lists do — which is why it is bound onto a list of theirs rather
+    // than onto the shared one. A live probe answered 42P18 when it was not.
+    for (const query of [{}, { source: '2' }, { q: 'colo' }, { q: 'colo', source: '2' }]) {
       mockedQuery.mockClear();
       await getReviewQueue({ user: CURATOR, query } as never, makeRes() as never);
 
@@ -153,16 +187,54 @@ describe('getReviewQueue', () => {
     }
   });
 
+  it('drops a source id no source could have, rather than binding it', async () => {
+    // `experience_categories.id` is SERIAL, so a larger number names no source —
+    // and bound into an `int[]` it is an error from Postgres rather than a
+    // filter that matches nothing. The schema bounds the parameter's length; the
+    // value of each id in it is bounded where the list is split, which is the
+    // same place a `kind` word the vocabulary does not know is dropped.
+    await getReviewQueue(
+      { user: ADMIN, query: { source: '99999999999' } } as never, makeRes() as never,
+    );
+
+    for (const [sql, params] of mockedQuery.mock.calls as Array<[string, unknown[]]>) {
+      expect(String(sql)).not.toContain('99999999999');
+      expect(JSON.stringify(params)).not.toContain('99999999999');
+    }
+  });
+
+  it('narrows the two answered lists by the source chip and by the search', async () => {
+    // Those two are outside the keys phase, so a filter that does not reach them
+    // here does not reach them at all: a curator looking for one object by name
+    // was shown every other object's kept-out row beside it.
+    await getReviewQueue({
+      user: ADMIN, query: { q: '100%', source: '1', region: 6737, run: 98 },
+    } as never, makeRes() as never);
+
+    for (const anchor of ["'kept-out' AS kind", "'withdrawn-answered' AS kind"]) {
+      const [sql, params] = callMatching(anchor);
+      expect(sql).toContain('e.name ILIKE $');
+      expect(sql).toContain("ESCAPE '\\'");
+      // The union's own escaping (`likeParam`), not a second spelling of it: a
+      // curator typing `100%` wants a per-cent sign, not every name there is.
+      expect(params).toContain('%100\\%%');
+      expect(sql).toContain('e.category_id = ANY($');
+      // The region does not reach them, and neither does the run: these rows are
+      // answers rather than questions, and a run is what a question was asked by.
+      expect(sql).not.toContain('region_subtree');
+    }
+  });
+
   it('measures a category curator against each row, whether or not they filtered', async () => {
     // Correlating on any bound parameter would compare every row against the
     // caller's optional filter, so a category curator who did not filter would
-    // lose the scope they hold. Both request shapes, since the filter changes
-    // the numbering: with no categoryId the binds are userId, limit, offset.
-    for (const query of [{}, { categoryId: 2 }]) {
+    // lose the scope they hold. Both request shapes, since the source chip
+    // changes the numbering: unfiltered, the binds are userId and the ids.
+    for (const query of [{}, { source: '2' }]) {
       mockedQuery.mockClear();
       await getReviewQueue({ user: CURATOR, query } as never, makeRes() as never);
 
-      const sql = String(mockedQuery.mock.calls[0][0]);
+      const [sql] = callMatching("'missing' AS kind");
       expect(sql).toContain('ca.category_id = e.category_id');
       expect(sql).not.toMatch(/ca\.category_id = \$\d/);
     }
@@ -180,9 +252,15 @@ describe('getReviewQueue', () => {
    * now, so `.find()` would silently return whichever of the two happens to
    * run first — these tests passed for the wrong reason (call order) until
    * that ambiguity was found in review, not because the anchor was unique.
+   *
+   * The keys statement is skipped outright, and it has to be: it restates every
+   * kind's `WHERE` to page them as one list (ADR-0051), so it contains most of
+   * the anchors below, runs first, and would answer every one of these lookups
+   * with itself. What these tests are about is the card each kind draws.
    */
   function callMatching(fragment: string): [string, unknown[]] {
-    const found = mockedQuery.mock.calls.find(c => String(c[0]).includes(fragment));
+    const found = mockedQuery.mock.calls
+      .find(c => !String(c[0]).includes('AS page') && String(c[0]).includes(fragment));
     if (!found) throw new Error(`no query contained ${fragment}`);
     return [String(found[0]), found[1] as unknown[]];
   }
@@ -243,52 +321,58 @@ describe('getReviewQueue', () => {
     expect(conflictSql).toContain('q.proposed IS NOT NULL');
   });
 
-  it('pages each kind on its own offset', async () => {
-    await getReviewQueue(
-      { user: ADMIN, query: { refusedOffset: 25, conflictsOffset: 50 } } as never,
-      makeRes() as never,
-    );
-
-    // One query with one LIMIT per kind: a shared offset moved all of them at once, so a
-    // kind whose page was full had a page 2 no control could ask for.
-    const [, refusedParams] = callMatching("m.admission = 'refused'\n      AND NOT");
-    const [, conflictParams] = callMatching("'conflict' AS kind");
-    const [, missingParams] = callMatching('missing_since IS NOT NULL');
-    expect(refusedParams.at(-1)).toBe(25);
-    expect(conflictParams.at(-1)).toBe(50);
-    expect(missingParams.at(-1)).toBe(0);
-  });
-
-  it('asks for one row more than the page, so a total is never needed', async () => {
-    const res = makeRes();
-    // Exactly `limit + 1` rows come back: the extra one is the answer to "is there more",
-    // and it must not reach the caller as an item.
+  it('hydrates only the ids the keys page named, per kind', async () => {
     mockedQuery.mockImplementation(async (sql: string) => (
-      String(sql).includes("m.admission = 'refused'\n      AND NOT")
-        ? { rows: Array.from({ length: 4 }, (_, i) => ({ id: i })) }
+      String(sql).includes('AS page')
+        ? {
+          rows: [{
+            page: [
+              { kind: 'refused', id: 6218 },
+              { kind: 'waiting', id: 11586, subs: ['arrival'] },
+            ],
+            total: 2,
+            facets: {},
+          }],
+        }
         : { rows: [] }
     ));
+
+    await getReviewQueue(
+      { user: ADMIN, query: { sort: 'date', limit: 25 } } as never, makeRes() as never,
+    );
+
+    const [refusedSql, refusedParams] = callMatching("'refused' AS kind");
+    expect(refusedSql).toContain('e.id = ANY($');
+    expect(refusedParams).toContainEqual([6218]);
+    const [arrivalsSql, arrivalsParams] = callMatching("'arrival' AS kind");
+    expect(arrivalsParams).toContainEqual([11586]);
+    expect(arrivalsSql).not.toContain('OFFSET');
+    // a kind with no key on the page is not asked for at all
+    expect(mockedQuery.mock.calls.some(([sql]) => String(sql).includes("'missing' AS kind")))
+      .toBe(false);
+  });
+
+  it('asks for one row more than the page on the two lists that still page', async () => {
+    const res = makeRes();
+    // Exactly `limit + 1` rows come back: the extra one is the answer to "is there more",
+    // and it must not reach the caller as an item. `keptOut` and `answeredWithdrawals`
+    // are the only lists that ask it now — they are not open questions, so the keys
+    // phase does not page them and they keep an offset and a page size of their own.
+    mockQueue(sql => (sql.includes("'kept-out' AS kind")
+      ? Array.from({ length: 4 }, (_, i) => ({ id: i }))
+      : []));
 
     await getReviewQueue({ user: ADMIN, query: { limit: 3 } } as never, res as never);
 
     const answered = res.json.mock.calls[0][0];
-    expect(answered.refused).toHaveLength(3);
-    expect(answered.paging.refused).toEqual({ offset: 0, hasMore: true });
-    expect(answered.paging.missing).toEqual({ offset: 0, hasMore: false });
-    // Still one query per kind and not one more: "is there another page" is answered by
-    // the extra row, so no count query joins them. (The contents query counts a *row's*
-    // points and works, and the withdrawal query counts the points it still offers —
-    // different numbers, both about one row, and both stay.)
-    //
-    // Counted off `paging` rather than written as a number, so a kind added is a line
-    // in the handler rather than a tally here to renumber — which is what a `9` would
-    // have become the moment `answeredWithdrawals` landed.
-    expect(mockedQuery.mock.calls).toHaveLength(Object.keys(answered.paging).length);
-    // And every one of them asked for `limit + 1`. The mock answers with four rows whatever
-    // it is asked, so without this the page size could regress to `limit` and the three
-    // items plus `hasMore: true` above would still be produced — by the mock, not the code.
-    for (const call of mockedQuery.mock.calls) {
-      const params = call[1] as unknown[];
+    expect(answered.keptOut).toHaveLength(3);
+    expect(answered.paging.keptOut).toEqual({ offset: 0, hasMore: true });
+    expect(answered.paging.answeredWithdrawals).toEqual({ offset: 0, hasMore: false });
+    // And both asked for `limit + 1`. The mock answers with four rows whatever it is
+    // asked, so without this the page size could regress to `limit` and the three items
+    // plus `hasMore: true` above would still be produced — by the mock, not the code.
+    for (const anchor of ["'kept-out' AS kind", "'withdrawn-answered' AS kind"]) {
+      const [, params] = callMatching(anchor);
       expect(params.at(-2)).toBe(4);
     }
   });
@@ -335,8 +419,11 @@ describe('getReviewQueue', () => {
 
     // 'shortDescription' is claimed as 'short_description', and
     // 'metadata.inDanger' as plain 'metadata' — not a mechanical case change
+    // Counted back from the end: the tail is the key map, the families, the
+    // acceptable fields and the page's ids, one shorter than it was when a
+    // `LIMIT` and an `OFFSET` closed it.
     const [, conflictParams] = callMatching("'conflict' AS kind");
-    const map = JSON.parse(String(conflictParams.at(-5)));
+    const map = JSON.parse(String(conflictParams.at(-4)));
     expect(map.shortDescription).toBe('short_description');
     expect(map['metadata.inDanger']).toBe('metadata');
   });
@@ -350,7 +437,7 @@ describe('getReviewQueue', () => {
     // all fall under is `name_local`, which the upsert honours whole, so without
     // this arm such a conflict would be protected and asked nowhere.
     const [, conflictParams] = callMatching("'conflict' AS kind");
-    const families = JSON.parse(String(conflictParams.at(-4)));
+    const families = JSON.parse(String(conflictParams.at(-3)));
     expect(families.nameLocal).toBe('name_local');
     // And `metadata` is deliberately absent: its claims are per key, so a family
     // rule over it would answer a whole-column question of `metadata.website`.
@@ -904,13 +991,11 @@ describe('getReviewQueue', () => {
     expect(sql).toContain('JOIN curator_scoped_regions s ON s.id = er.region_id');
   });
 
-  it('returns the withdrawal kind under its own response key, with its own pager', async () => {
+  it('returns the withdrawal kind under its own response key, in the page’s order', async () => {
     const res = makeRes();
-    mockedQuery.mockImplementation(async (sql: string) => (
-      String(sql).includes('el.missing_since IS NOT NULL')
-        ? { rows: [{ id: 502, name: 'Bilbao Fine Arts Museum' }] }
-        : { rows: [] }
-    ));
+    mockQueue(sql => (sql.includes("'withdrawn' AS kind")
+      ? [{ id: 502, name: 'Bilbao Fine Arts Museum' }]
+      : []));
 
     await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
 
@@ -918,27 +1003,78 @@ describe('getReviewQueue', () => {
     expect(body.withdrawn).toEqual([
       expect.objectContaining({ id: 502, name: 'Bilbao Fine Arts Museum' }),
     ]);
-    // One query with one LIMIT per kind, so one offset per kind: a shared number
-    // moved all of them at once, and a full page of one kind hid a page 2 no
-    // control could ask for.
-    expect(body.paging.withdrawn).toEqual({ offset: 0, hasMore: false });
+    // The array is a lookup by id now, and `order` is what says where the card
+    // goes: one list across the kinds, ordered by the date of the run that asked
+    // (ADR-0051), so a per-kind pager would have nothing to page.
+    expect(body.order).toContainEqual(expect.objectContaining({ kind: 'withdrawn', id: 502 }));
+    expect(body.paging).not.toHaveProperty('withdrawn');
   });
 
   it('returns the three new kinds under their own response keys', async () => {
     const res = makeRes();
+    mockQueue(sql => (sql.includes("'arrival' AS kind")
+      ? [{ id: 11586, name: 'Memorial to the Murdered Jews of Europe' }]
+      : []));
+
+    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      arrivals: [
+        expect.objectContaining({ id: 11586, name: 'Memorial to the Murdered Jews of Europe' }),
+      ],
+      held: [],
+      contents: [],
+    }));
+  });
+
+  it('splits one waiting key into the cards the object actually holds', async () => {
+    const res = makeRes();
+    // The three gated kinds are one key per object (ADR-0051 decision 2) — an
+    // object holding an unread arrival and unread works is one question in the
+    // list — and `subs` is what says which cards to draw for it. An object
+    // holding only works must not be asked for as an arrival.
     mockedQuery.mockImplementation(async (sql: string) => (
-      String(sql).includes("m.curation_state = 'pending'")
-        ? { rows: [{ id: 42, name: 'A newly-arrived museum' }] }
+      String(sql).includes('AS page')
+        ? {
+          rows: [{
+            page: [{ kind: 'waiting', id: 6205, subs: ['contents'] }], total: 1, facets: {},
+          }],
+        }
         : { rows: [] }
     ));
 
     await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
 
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      arrivals: [expect.objectContaining({ id: 42, name: 'A newly-arrived museum' })],
-      held: [],
-      contents: [],
-    }));
+    const [, contentsParams] = callMatching("'contents' AS kind");
+    expect(contentsParams).toContainEqual([6205]);
+    for (const absent of ["'arrival' AS kind", "'held' AS kind"]) {
+      expect(mockedQuery.mock.calls.some(([sql]) => String(sql).includes(absent))).toBe(false);
+    }
+  });
+
+  it('states the total and the facets the keys phase counted', async () => {
+    const res = makeRes();
+    // The counts are counted under the filter the curator set, over the whole
+    // union rather than over the page — a client holding 25 rows of 1 630 can
+    // count nothing, and "the first N of this kind, and there may be more" is
+    // what the page used to have to say instead.
+    const facets = { kind: [{ kind: 'arrival', count: 52 }], source: [], region: [], run: [], setAside: { batches: 0 } };
+    mockedQuery.mockImplementation(async (sql: string) => (
+      String(sql).includes('AS page')
+        ? { rows: [{ page: [], total: 1630, facets }] }
+        : { rows: [] }
+    ));
+
+    await getReviewQueue({ user: ADMIN, query: { cursor: 'eyJ4IjoxfQ' } } as never, res as never);
+
+    const body = res.json.mock.calls[0][0];
+    expect(body.total).toBe(1630);
+    expect(body.facets).toEqual(facets);
+    // The cursor the reader arrived on and the one that opens the next page: a
+    // list that shrinks while it is read cannot be paged by an offset, so where
+    // the reader is *is* the last key of the page they were handed.
+    expect(body.paging.cursor).toBe('eyJ4IjoxfQ');
+    expect(body.paging.nextCursor).toBeNull();
   });
 
   describe('the withdrawals a curator has already answered', () => {
@@ -1034,11 +1170,9 @@ describe('getReviewQueue', () => {
 
     it('returns them under their own key, with their own pager', async () => {
       const res = makeRes();
-      mockedQuery.mockImplementation(async (sql: string) => (
-        String(sql).includes("'withdrawn-answered' AS kind")
-          ? { rows: [{ id: 1592, name: 'Bilbao Fine Arts Museum' }] }
-          : { rows: [] }
-      ));
+      mockQueue(sql => (sql.includes("'withdrawn-answered' AS kind")
+        ? [{ id: 1592, name: 'Bilbao Fine Arts Museum' }]
+        : []));
 
       await getReviewQueue({ user: ADMIN, query: { answeredWithdrawalsOffset: 25 } } as never, res as never);
 
@@ -1046,9 +1180,10 @@ describe('getReviewQueue', () => {
       expect(body.answeredWithdrawals).toEqual([
         expect.objectContaining({ id: 1592, name: 'Bilbao Fine Arts Museum' }),
       ]);
-      // Its own offset like every other kind, and it needs one for the same
-      // reason `keptOut` does: the page renders this list in a block of its own,
-      // so a shared number would page it whenever a curator paged the work.
+      // Its own offset, and it needs one for the same reason `keptOut` does: the
+      // page renders this list in a block of its own, so a shared number would
+      // page it whenever a curator paged the work. The two of them are the only
+      // lists left with an offset — the questions are paged by one cursor now.
       expect(body.paging.answeredWithdrawals).toEqual({ offset: 25, hasMore: false });
       const [, params] = callMatching("'withdrawn-answered' AS kind");
       expect(params[params.length - 1]).toBe(25);
@@ -1062,7 +1197,7 @@ describe('getReviewQueue', () => {
 describe('the object fragment carries the danger listing', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [] });
+    mockQueue();
   });
 
   it('selects it through the reader-facing fragment on every kind', async () => {
@@ -1087,11 +1222,9 @@ describe('the object fragment carries the danger listing', () => {
     // The raw columns come back only from a statement that selected them, so a
     // fragment that dropped the listing fails here as well as above — the
     // mapping cannot be proved on columns the query never asked for.
-    mockedQuery.mockImplementation(async (sql: string) => (
-      String(sql).includes("'kept-out' AS kind") && String(sql).includes("as danger_list")
-        ? { rows: [{ id: 208, name: 'Bamiyan Valley', in_danger: 'true', danger_list: 'Y 2003' }] }
-        : { rows: [] }
-    ));
+    mockQueue(sql => (sql.includes("'kept-out' AS kind") && sql.includes('as danger_list')
+      ? [{ id: 208, name: 'Bamiyan Valley', in_danger: 'true', danger_list: 'Y 2003' }]
+      : []));
 
     await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
 
