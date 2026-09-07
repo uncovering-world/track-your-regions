@@ -17,6 +17,11 @@ import { pool } from '../../db/index.js';
 import {
   queryQueueKeys, encodeCursor, decodeCursor, KIND_RANK,
 } from './reviewQueueKeys.js';
+import { getReviewQueue } from './reviewQueueController.js';
+import {
+  missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, contentsOpenSql,
+  withdrawnPointOpenSql, withdrawnContainerOpenSql, conflictChangeOpenSql,
+} from './reviewQueuePredicates.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const base = { userId: 7, isAdmin: false, filters: { sort: 'date' as const, limit: 25 } };
@@ -326,5 +331,62 @@ describe('queryQueueKeys', () => {
     for (let i = 1; i <= params.length; i += 1) expect(sql).toContain(`$${i}`);
     const referenced = [...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1]));
     expect(Math.max(...referenced)).toBe(params.length);
+  });
+
+  it('keys and hydration read one predicate per kind', async () => {
+    // The keys side, from queryQueueKeys directly.
+    await queryQueueKeys(base);
+    const [keysSql] = lastCall();
+
+    // The hydration side, from the controller: one id per kind, so every
+    // per-kind statement below actually runs (Task 4's `EVERY_KIND` shape).
+    const page = [
+      { kind: 'conflict', id: 1239 },
+      { kind: 'waiting', id: 11586, subs: ['arrival', 'held', 'contents'] },
+      { kind: 'withdrawn', id: 502 },
+      { kind: 'refused', id: 6205 },
+      { kind: 'missing', id: 208 },
+    ];
+    mockedQuery.mockClear();
+    mockedQuery.mockImplementation(async (sql: string) => (
+      String(sql).includes('AS page')
+        ? { rows: [{ page, total: page.length, facets: {} }] }
+        : { rows: [] }
+    ));
+    await getReviewQueue(
+      { user: { id: 1, role: 'admin' as const }, query: { sort: 'date', limit: 25 } } as never,
+      { json: vi.fn(), status: vi.fn().mockReturnThis() } as never,
+    );
+
+    const hydrationSql = (fragment: string): string => {
+      const call = mockedQuery.mock.calls
+        .find(c => !String(c[0]).includes('AS page') && String(c[0]).includes(fragment));
+      if (!call) throw new Error(`no hydration query contained ${fragment}`);
+      return String(call[0]);
+    };
+
+    expect(keysSql).toContain(missingOpenSql('e'));
+    expect(hydrationSql("'missing' AS kind")).toContain(missingOpenSql('e'));
+
+    expect(keysSql).toContain(refusedOpenSql('m'));
+    expect(hydrationSql("'refused' AS kind")).toContain(refusedOpenSql('m'));
+
+    expect(keysSql).toContain(arrivalOpenSql('e', 'm'));
+    expect(hydrationSql("'arrival' AS kind")).toContain(arrivalOpenSql('e', 'm'));
+
+    expect(keysSql).toContain(heldOpenSql('e', 'm', 'ch'));
+    expect(hydrationSql("'held' AS kind")).toContain(heldOpenSql('e', 'm', 'ch'));
+
+    expect(keysSql).toContain(contentsOpenSql('e'));
+    expect(hydrationSql("'contents' AS kind")).toContain(contentsOpenSql('e'));
+
+    expect(keysSql).toContain(withdrawnPointOpenSql('el'));
+    expect(keysSql).toContain(withdrawnContainerOpenSql('e'));
+    const withdrawnSql = hydrationSql("'withdrawn' AS kind");
+    expect(withdrawnSql).toContain(withdrawnPointOpenSql('el'));
+    expect(withdrawnSql).toContain(withdrawnContainerOpenSql('e'));
+
+    expect(keysSql).toContain(conflictChangeOpenSql('e', 'ch', 'l'));
+    expect(hydrationSql("'conflict' AS kind")).toContain(conflictChangeOpenSql('e', 'ch', 'l'));
   });
 });
