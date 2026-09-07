@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { foldLabel } from '../services/sync/labelFold.js';
+import { foldLabel, tidyLabel } from '../services/sync/labelFold.js';
 import {
   isStorableHttpUrl,
   isDisplayablePictureUrl,
@@ -182,6 +182,19 @@ const requiredUrl = (max: number, isStorable: (value: string) => boolean, messag
 
 const requiredSafeUrlSchema = requiredUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
 
+/**
+ * A name as the catalogue stores one: as a person would type it (#835).
+ *
+ * Tidied before it is judged — the edges trimmed, a run of whitespace inside
+ * collapsed to one space (`tidyLabel`, the rule every importer's writer applies)
+ * — so a title of nothing but spaces is refused as empty rather than stored,
+ * and what `validate()` puts back on the request is what the row will hold. The
+ * width is measured on the tidied form, which is never longer. Case, dashes and
+ * accents are the curator's own and pass untouched.
+ */
+const storedName = (max: number) =>
+  z.string().transform(tidyLabel).pipe(z.string().min(1).max(max));
+
 // =============================================================================
 // Reusable param schemas (for path params)
 // =============================================================================
@@ -218,7 +231,7 @@ export const treasureIdParamSchema = z.object({
  * and on a single-point object that is where the object itself would go.
  */
 export const editLocationBodySchema = z.object({
-  name: z.string().min(1).max(500).optional(),
+  name: storedName(500).optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
 }).refine(
@@ -261,8 +274,8 @@ export const workEditParamsSchema = z.object({
  * Commons for it (`workEditController`).
  */
 export const editWorkBodySchema = z.object({
-  name: z.string().trim().min(1).max(500).optional(),
-  artists: z.array(z.string().trim().min(1).max(500)).max(20).optional(),
+  name: storedName(500).optional(),
+  artists: z.array(storedName(500)).max(20).optional(),
   year: z.number().int().min(-200000).max(2200).nullable().optional(),
   imageUrl: safeImageUrlSchema,
 }).refine(
@@ -365,7 +378,7 @@ export const assignExperienceBodySchema = z.object({
 const optionalSafeUrlSchema = requiredSafeUrlSchema.optional();
 
 export const editExperienceBodySchema = z.object({
-  name: z.string().min(1).max(500).optional(),
+  name: storedName(500).optional(),
   shortDescription: z.string().max(1000).optional(),
   description: z.string().max(10000).optional(),
   type: z.string().max(100).optional(),
@@ -376,7 +389,7 @@ export const editExperienceBodySchema = z.object({
 });
 
 export const createManualExperienceBodySchema = z.object({
-  name: z.string().min(1).max(500),
+  name: storedName(500),
   shortDescription: z.string().max(1000).optional(),
   type: z.string().max(100).optional(),
   longitude: z.number().min(-180).max(180),

@@ -49,9 +49,10 @@ import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, placeVisibleSql } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
-  computeChangeSet, METADATA_CLAIM_PREFIX, SYNC_OWNED_METADATA_KEYS,
+  computeChangeSet, METADATA_CLAIM_PREFIX, METADATA_SET_KEYS, SYNC_OWNED_METADATA_KEYS,
   type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
+import { tidyLabel } from './labelFold.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 
 export interface ExperienceUpsertParams {
@@ -268,6 +269,32 @@ function withShowablePicture(params: ExperienceUpsertParams): ExperienceUpsertPa
 }
 
 /**
+ * The names a run offers, as a person would type them (`tidyLabel`, #835).
+ *
+ * Here rather than in each collector, for the reason the picture rule is: three
+ * sources write a name, every one of them reads it off a label service that
+ * passes runs of whitespace through, and a rule copied into each is a rule one
+ * of them will be missing. The place's own name, every language of its local
+ * names, and the set-valued metadata lists that hold people's names — public
+ * art's `creators` — are the strings a reader types into a filter. Before the
+ * diff as well as the write, so a run compares tidied to tidied and never
+ * reports a rename it only tidied.
+ */
+function withTidyNames(params: ExperienceUpsertParams): ExperienceUpsertParams {
+  const nameLocal = Object.fromEntries(
+    Object.entries(params.nameLocal).map(([language, name]) => [language, tidyLabel(name)]),
+  );
+  const metadata = { ...params.metadata };
+  for (const key of METADATA_SET_KEYS) {
+    const names = metadata[key];
+    if (Array.isArray(names)) {
+      metadata[key] = names.map(name => (typeof name === 'string' ? tidyLabel(name) : name));
+    }
+  }
+  return { ...params, name: tidyLabel(params.name), nameLocal, metadata };
+}
+
+/**
  * Upsert an experience record and its membership with curated_fields-aware
  * conflict handling, returning both the prior and resulting state.
  *
@@ -282,7 +309,7 @@ export async function upsertExperienceRecord(
 ): Promise<UpsertOutcome> {
   // Before the dry-run branch, so a preview says what the run would do rather
   // than what the source proposed.
-  const params = withShowablePicture(rawParams);
+  const params = withShowablePicture(withTidyNames(rawParams));
   if (options.dryRun) return previewUpsert(params);
 
   const client = await pool.connect();

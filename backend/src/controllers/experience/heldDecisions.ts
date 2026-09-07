@@ -45,6 +45,7 @@
 
 import type { PoolClient } from 'pg';
 import type { ContentKind } from '../../services/sync/types.js';
+import { tidyLabel, tidyLabelSql } from '../../services/sync/labelFold.js';
 
 /** The two answers a curator can give one held row. */
 export type HeldAnswer = 'published' | 'refused';
@@ -144,6 +145,16 @@ export function heldPartRefusedSql(
   return heldPartMatchSql(experience, kind, item, entry, 'refused');
 }
 
+/**
+ * The part's name, on both sides, by the store rule (`tidyLabelSql`, #835).
+ *
+ * A decision is keyed by the record's name as the run saw it, and a run before
+ * the writers tidied saw *marmalo  IV* with two spaces where the next run —
+ * reading the row migration 047 tidied — records one. Compared raw, a refused
+ * move of such a point would come back on the card after one run, publishable
+ * by the next "publish all": the contract above broken across exactly one run.
+ * The same rule `recordedLocationSql` identifies the part by.
+ */
 function heldPartMatchSql(
   experience: string, kind: string, item: string, entry: string, verdict?: HeldAnswer,
 ): string {
@@ -153,7 +164,8 @@ function heldPartMatchSql(
        WHERE d.experience_id = ${experience}
          AND d.part_kind = ${kind}
          AND d.part_ref IS NOT DISTINCT FROM (${item}->'item'->>'ref')
-         AND d.part_name IS NOT DISTINCT FROM (${item}->'item'->>'name')
+         AND ${tidyLabelSql('d.part_name')}
+             IS NOT DISTINCT FROM ${tidyLabelSql(`(${item}->'item'->>'name')`)}
          AND d.field = ${entry}->>'field'
          AND d.value = COALESCE(${entry}->'new', 'null'::jsonb)
          ${verdictClause})`;
@@ -184,7 +196,8 @@ function answerOfPartSql(
             WHERE d.experience_id = ${experience}
               AND d.part_kind = ${kind}
               AND d.part_ref IS NOT DISTINCT FROM (${item}->'item'->>'ref')
-              AND d.part_name IS NOT DISTINCT FROM (${item}->'item'->>'name')
+              AND ${tidyLabelSql('d.part_name')}
+                  IS NOT DISTINCT FROM ${tidyLabelSql(`(${item}->'item'->>'name')`)}
               AND d.field = ${entry}->>'field'
               AND d.value = COALESCE(${entry}->'new', 'null'::jsonb))`;
 }
@@ -254,6 +267,23 @@ export async function answeredHeldRows(
  * equality, so an answer about a value nobody proposed would silence nothing
  * while looking like one.
  */
+/** Whether a field's value is a name: the object's, a language of its local names, its makers, a part's. */
+function namesAName(field: string): boolean {
+  return field === 'name' || field === 'artists' || field === 'metadata.creators' || field.startsWith('nameLocal.');
+}
+
+/**
+ * A recorded value as the catalogue stores a name: a string tidied, a list's
+ * strings tidied, anything else as it is. Shared with the claimed field's
+ * refusal (`declineSourceValue`), which is matched by value the same way.
+ */
+export function tidyNameValue(field: string, value: unknown): unknown {
+  if (!namesAName(field)) return value;
+  if (typeof value === 'string') return tidyLabel(value);
+  if (Array.isArray(value)) return value.map(item => (typeof item === 'string' ? tidyLabel(item) : item));
+  return value;
+}
+
 export async function recordHeldAnswers(
   client: PoolClient,
   experienceId: number,
@@ -262,6 +292,12 @@ export async function recordHeldAnswers(
   rows: ReadonlyArray<{ row: HeldRowRef; value: unknown }>,
 ): Promise<void> {
   for (const { row, value } of rows) {
+    // The part's name and a name-carrying value as the catalogue stores a
+    // name (`tidyLabel`, #835): a record filed before the writers tidied names
+    // its part with the run of spaces the run saw, and an answer keyed by that
+    // would not meet the tidied record the next run files. Tidied at the
+    // write, the unique key above is a key on the tidied form, which is what
+    // keeps `answerOfPartSql` a single row.
     await client.query(
       `INSERT INTO experience_held_decisions
               (experience_id, part_kind, part_ref, part_name, field, answer, value, decided_by)
@@ -271,8 +307,8 @@ export async function recordHeldAnswers(
                      value = EXCLUDED.value,
                      decided_by = EXCLUDED.decided_by,
                      decided_at = NOW()`,
-      [experienceId, row.kind, row.ref, row.name, row.field, answer,
-        JSON.stringify(value ?? null), userId],
+      [experienceId, row.kind, row.ref, row.name === null ? null : tidyLabel(row.name), row.field, answer,
+        JSON.stringify(tidyNameValue(row.field, value ?? null)), userId],
     );
   }
 }

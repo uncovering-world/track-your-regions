@@ -104,6 +104,26 @@ describe('the metadata column, which no single entry describes', () => {
       .not.toContain('pending_change_sync_log_id = NULL');
   });
 
+  it('writes a monument\'s makers as a person would type them, however the run recorded them', async () => {
+    grantScope();
+    // A record written before the writers tidied (#835): the makers carry the
+    // runs the run saw, and publishing must not put them back into the list
+    // migration 047 cleaned. Only the strings: anything else keeps its type.
+    const { client, queries } = makeClient({
+      row: {
+        curation_state: 'auto', pending_change_sync_log_id: 53,
+        metadata: { creators: ['Auguste  Bartholdi'] },
+      },
+      proposal: [
+        { field: 'metadata.creators', old: ['Auguste  Bartholdi'], new: [' Auguste  Bartholdi ', 'Gustave  Eiffel', 7], held: true },
+      ],
+    });
+
+    await publish({ heldFields: ['metadata.creators'], expectedSyncLogId: 53 }, client);
+
+    expect(written(queries)).toEqual({ creators: ['Auguste Bartholdi', 'Gustave Eiffel', 7] });
+  });
+
   it('writes a credit the run fetched for the picture the row already shows', async () => {
     grantScope();
     // The ordinary case, and the one a rule about the picture must not break:

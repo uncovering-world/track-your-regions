@@ -95,6 +95,7 @@ import { pool } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from './heldProposalPointer.js';
+import { tidyLabel } from './labelFold.js';
 import type { ContentsDelta } from './types.js';
 // The source's list, before anything is known about the store: how it becomes a
 // CTE, how its values bind, and the duplicates the source itself ships.
@@ -150,7 +151,14 @@ export async function writeExperienceLocations(
   offered: IncomingLocation[],
   run: LocationWriteRun,
 ): Promise<LocationWriteResult> {
-  const incoming = dedupeByIdentity(offered);
+  // A point's name as a person would type it (`tidyLabel`, #835): the World
+  // Heritage Centre's component names carry runs of spaces — *marmalo  IV*,
+  // *Geoagiu  / Drumul Romanilor* — and the writer is where every source's
+  // points pass. Before the pairing and the per-point diff, so a kept row's
+  // name compares tidied to tidied.
+  const incoming = dedupeByIdentity(offered.map(point => (
+    point.name === null ? point : { ...point, name: tidyLabel(point.name) }
+  )));
   const cte = incomingCte(incoming.length);
 
   /**

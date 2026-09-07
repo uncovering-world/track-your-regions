@@ -61,6 +61,7 @@
  */
 
 import { venueCountSql } from './experienceLifecycle.js';
+import { tidyLabelSql } from '../../services/sync/labelFold.js';
 
 /**
  * The stored point a record entry names, as a query body: `SELECT … FROM
@@ -77,6 +78,13 @@ import { venueCountSql } from './experienceLifecycle.js';
  * `experienceId`, `ref` and `name` are SQL expressions — a bound parameter, or
  * a path into the jsonb entry — and never values: nothing here is interpolated
  * from a request.
+ *
+ * The name is compared by the store rule on both sides (`tidyLabelSql`, #835).
+ * A record holds the name as the run saw it (ADR-0026), and a run before the
+ * writers tidied saw *marmalo  IV* with two spaces where the row now holds one
+ * — migration 047 rewrote the rows and left the records alone, so an open
+ * proposal on such a point would otherwise score `named` false for ever, and
+ * where its reference admits siblings go unidentified.
  */
 export function recordedLocationSql(
   { experienceId, ref, name }: { experienceId: string; ref: string; name: string },
@@ -90,7 +98,8 @@ export function recordedLocationSql(
                                  count(*) OVER () AS candidates,
                                  count(*) FILTER (WHERE cand.renamed) OVER () AS renamed_rows
                             FROM (SELECT el.id,
-                                         el.name IS NOT DISTINCT FROM ${name} AS named,
+                                         ${tidyLabelSql('el.name')}
+                                           IS NOT DISTINCT FROM ${tidyLabelSql(name)} AS named,
                                          el.curated_fields ? 'name' AS renamed
                                     FROM experience_locations el
                                    WHERE el.experience_id = ${experienceId}

@@ -148,7 +148,7 @@ function isSyncOwned(key: string): boolean {
  * Folded, as the works comparison is: the same rule, so the two levels cannot
  * disagree about whether two lists name the same people.
  */
-const METADATA_SET_KEYS: ReadonlySet<string> = new Set(['creators']);
+export const METADATA_SET_KEYS: ReadonlySet<string> = new Set(['creators']);
 
 /** Whether a metadata key's two values say the same thing. */
 function sameMetadataValue(key: string, before: unknown, after: unknown): boolean {

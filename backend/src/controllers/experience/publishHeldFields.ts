@@ -17,7 +17,7 @@
  */
 
 import {
-  CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, NAME_LOCAL_CLAIM_PREFIX, claimKeyFor,
+  CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, NAME_LOCAL_CLAIM_PREFIX, claimKeyFor, METADATA_SET_KEYS,
 } from '../../services/sync/changeSet.js';
 import type { ContentsByKind } from '../../services/sync/types.js';
 import {
@@ -26,6 +26,7 @@ import {
 import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelection.js';
 import type { PoolClient } from 'pg';
 import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
+import { tidyLabel } from '../../services/sync/labelFold.js';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
 interface ProposedField {
@@ -144,12 +145,17 @@ function assignmentFor(field: string, value: unknown, bind: (value: unknown) => 
       // re-proposes a Commons picture over it.
       if (typeof value === 'string' && value !== '' && !isDisplayablePictureUrl(value)) return null;
       return `${column} = ${bind(value)}`;
+    case 'name':
+      // As a person would type it (#835): a proposal recorded before the
+      // writers tidied carries the run of spaces the run saw, and publishing
+      // it verbatim would put back what migration 047 took out — and have the
+      // next run file a rename card about nothing.
+      return `${column} = ${bind(typeof value === 'string' ? tidyLabel(value) : null)}`;
     default:
-      // name, description, short_description, type, country_codes,
-      // country_names. No cast: Postgres infers each parameter's type from the
-      // column it is assigned to, which is how the two varchar arrays reach
-      // `VARCHAR(10)[]` and `VARCHAR(255)[]` without this code having to know
-      // their widths.
+      // description, short_description, type, country_codes, country_names.
+      // No cast: Postgres infers each parameter's type from the column it is
+      // assigned to, which is how the two varchar arrays reach `VARCHAR(10)[]`
+      // and `VARCHAR(255)[]` without this code having to know their widths.
       return `${column} = ${bind(value ?? null)}`;
   }
 }
@@ -428,6 +434,17 @@ function nextMetadata(
   for (const key of claimedMetadataKeys(claimed)) {
     if (Object.hasOwn(left, key)) next[key] = left[key];
   }
+  // The set-valued lists that hold people's names -- public art's `creators`
+  // -- as a person would type them (#835), for the reason `nextNameLocal`
+  // tidies: a proposal recorded before the writers tidied must not put a run
+  // of spaces back into a list migration 047 cleaned. Last, so a claimed key
+  // restored above is tidied too, and only the strings of a list.
+  for (const key of METADATA_SET_KEYS) {
+    const names = next[key];
+    if (Array.isArray(names)) {
+      next[key] = names.map(name => (typeof name === 'string' ? tidyLabel(name) : name));
+    }
+  }
   return next;
 }
 
@@ -459,9 +476,16 @@ function nextNameLocal(
 ): Record<string, unknown> | null {
   const entries = published.filter(field => isNameLocalField(field.field));
   if (entries.length === 0) return null;
-  return mergedFromEntries(
+  const merged = mergedFromEntries(
     (stored ?? {}) as Record<string, unknown>, entries, 'nameLocal', NAME_LOCAL_CLAIM_PREFIX,
   );
+  // Each language's name as a person would type it (#835), for the reason
+  // `assignmentFor` tidies the name: the stored map was tidied by migration
+  // 047 and every run tidies before its diff, so a proposal recorded before
+  // that must not put an untidied name back.
+  return Object.fromEntries(Object.entries(merged).map(([language, name]) => (
+    [language, typeof name === 'string' ? tidyLabel(name) : name]
+  )));
 }
 
 /** What writing the held proposal comes to: the SQL, and what it decided. */

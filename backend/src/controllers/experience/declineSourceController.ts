@@ -19,6 +19,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor } from '../../services/sync/changeSet.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
+import { tidyNameValue } from './heldDecisions.js';
 
 /**
  * Refuse the value a sync proposed for a field the curator had claimed.
@@ -162,7 +163,9 @@ async function recordRefusals(
 
     // One row per field, replaced: this is the standing answer, so a curator who refuses
     // twice leaves one record and not a pile. The history of who answered when is the
-    // curation log's, written below in the same transaction.
+    // curation log's, written below in the same transaction. A name-carrying value is
+    // recorded as the catalogue stores a name (`tidyNameValue`, #835): the queue matches
+    // the refusal to the record by value, and every run records the tidied form now.
     for (const p of open) {
       await client.query(`
         INSERT INTO experience_conflict_decisions (experience_id, field, declined, decided_by)
@@ -171,7 +174,7 @@ async function recordRefusals(
         DO UPDATE SET declined = EXCLUDED.declined,
                       decided_by = EXCLUDED.decided_by,
                       decided_at = NOW()
-      `, [experienceId, p.field, JSON.stringify(p.new ?? null), userId]);
+      `, [experienceId, p.field, JSON.stringify(tidyNameValue(p.field, p.new ?? null)), userId]);
     }
 
     await client.query(`

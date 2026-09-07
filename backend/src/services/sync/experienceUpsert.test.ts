@@ -219,6 +219,32 @@ describe('upsertExperienceRecord', () => {
     expect(result.changeSet.changedFields).toEqual([]);
   });
 
+  it('tidies every name before the diff and the write, so a run reports no rename it only tidied', async () => {
+    // What a label service passes through (#835): the stored row is tidy —
+    // migration 047 made it so — and the source goes on offering the runs.
+    const tidy = { en: 'St. John on Patmos', ar: 'يوحنا في بطمس' };
+    given(
+      storedRow({ name: 'St. John on Patmos', name_local: tidy, metadata: { ...PARAMS.metadata, creators: ['Ivan Shishkin'] } }),
+      writtenRow({ name: 'St. John on Patmos' }),
+    );
+
+    const result = await upsertExperienceRecord({
+      ...PARAMS,
+      name: ' St. John  on Patmos ',
+      nameLocal: { en: 'St. John  on Patmos', ar: 'يوحنا\u00a0في بطمس' },
+      metadata: { ...PARAMS.metadata, creators: ['Ivan  Shishkin'] },
+    });
+
+    expect(result.changeSet.changeType).toBe('unchanged');
+    expect(result.nameSnapshot).toBe('St. John on Patmos');
+    const [, params] = upsert();
+    expect(params).toContain('St. John on Patmos');
+    expect(params).toContain(JSON.stringify(tidy));
+    const bound = params.filter((p): p is string => typeof p === 'string');
+    expect(bound.some(p => p.includes('"Ivan Shishkin"'))).toBe(true);
+    expect(bound.filter(p => /\s\s|\u00a0/.test(p))).toEqual([]);
+  });
+
   it('reports the fields that differ from the stored row', async () => {
     given(storedRow({ short_description: 'An older summary.' }));
 

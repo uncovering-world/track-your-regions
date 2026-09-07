@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { tidyLabelSql } from '../../services/sync/labelFold.js';
 
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn() },
@@ -88,7 +89,11 @@ describe('the waiting predicates', () => {
     // and a part's is found by the pair the record names.
     expect(sql).toContain('d.part_kind IS NULL');
     expect(sql).toContain('d.part_ref IS NOT DISTINCT FROM');
-    expect(sql).toContain('d.part_name IS NOT DISTINCT FROM');
+    // By the store rule on both sides (#835): a decision keyed by the untidied
+    // name a run saw before the writers tidied still answers the tidied record.
+    expect(sql.replace(/\s+/g, ' ')).toContain(
+      `${tidyLabelSql('d.part_name')} IS NOT DISTINCT FROM ${tidyLabelSql("(c->'item'->>'name')")}`,
+    );
   });
 
   it('asks both content axes, and only about points the source still offers', () => {

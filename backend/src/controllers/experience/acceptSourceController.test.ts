@@ -160,6 +160,25 @@ describe('acceptSourceValue', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ fromSyncLogId: 9 }));
   });
 
+  it('writes a name as a person would type it, however the run recorded it', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    // A proposal recorded before the writers tidied (#835): accepting it must
+    // not put the run of spaces back into the column migration 047 cleaned.
+    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: ' Renamed  upstream ', curatedConflict: true }] }];
+    const { client, queries } = makeClient(['name'], PROPOSAL);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'));
+    expect(update?.params).toContain('Renamed upstream');
+    expect(update?.params).not.toContain(' Renamed  upstream ');
+  });
+
   it('will not write a proposal the source has since withdrawn', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
     // The withdrawal check is in the SQL, so a withdrawn proposal comes back
@@ -378,12 +397,16 @@ describe('acceptSourceValue', () => {
       // the one referenceless point in the catalogue — whose `samePointSql`
       // branch is exact coordinate equality, so the row released without a
       // coordinate is withdrawn at the next run.
+      //
+      // The record's names carry the run of spaces the run saw; the row holds
+      // the tidied name since migration 047 (#835), and the match is by the
+      // store rule on both sides.
       contents: {
         locations: {
           changed: [{
-            item: { name: 'Camino Francés', ref: null },
+            item: { name: 'Camino  Francés', ref: null },
             fields: [
-              { field: 'name', old: 'Camino Francés', new: 'Routes of Santiago' },
+              { field: 'name', old: 'Camino  Francés', new: 'Routes of  Santiago' },
               { field: 'location', old: { lon: 1, lat: 2 }, new: { lon: 3.5, lat: 42.9 } },
             ],
           }],
@@ -427,6 +450,39 @@ describe('acceptSourceValue', () => {
     expect(queries.some(q => q.sql.includes('ST_MakePoint'))).toBe(false);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ releasedPoints: [41], movedPoints: [] }));
     expect(mockedPlace).not.toHaveBeenCalled();
+  });
+
+  it('does not read an entry with no rename as naming an unnamed point', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    // A referenceless entry for a named point that only moved, beside a
+    // released referenceless row whose name is NULL. "No rename recorded" and
+    // "the name is null" must not meet in the middle: compared through one
+    // null, every such entry would name this row, and its coordinate would be
+    // written onto a point no source ever placed there.
+    const PROPOSAL = [{
+      sync_log_id: 9,
+      changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],
+      contents: {
+        locations: {
+          changed: [{
+            item: { name: 'Camino Francés', ref: null },
+            fields: [{ field: 'location', old: { lon: 1, lat: 2 }, new: { lon: 3.5, lat: 42.9 } }],
+          }],
+        },
+      },
+    }];
+    const unnamed = { id: 56, external_ref: null, name: null };
+    const { client, queries } = makeClient(['location'], PROPOSAL, [unnamed]);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    expect(queries.some(q => q.sql.includes('ST_MakePoint'))).toBe(false);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ movedPoints: [] }));
   });
 
   it('leaves the points alone when the accepted field is not the coordinate', async () => {

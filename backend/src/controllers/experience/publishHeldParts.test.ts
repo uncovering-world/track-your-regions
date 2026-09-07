@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { tidyLabelSql } from '../../services/sync/labelFold.js';
 
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn(), connect: vi.fn() },
@@ -94,6 +95,50 @@ describe('publishing the held fields of an object\'s parts', () => {
     }));
     expect(JSON.parse(String(only(queries, 'INSERT INTO experience_curation_log').params[3])))
       .toMatchObject({ parts: [{ kind: 'locations', name: 'Château de Montésgur', fields: ['name'] }] });
+  });
+
+  it('writes a held place name as a person would type it, however the run recorded it', async () => {
+    grantScope();
+    // A rename recorded before the writers tidied (#835): the record carries
+    // the run of spaces the run saw, the column holds the tidied name since
+    // migration 047, and publishing must not put the run back.
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { locations: { changed: [{
+        item: { name: 'Geoagiu  / Drumul Romanilor', ref: '906-002' },
+        fields: [{ field: 'name', old: 'Geoagiu  / Drumul Romanilor', new: 'Geoagiu  / Drumul  Romanilor (Germisara)', held: true }],
+      }] } },
+      parts: { location: { ...MONTSEGUR_ROW, id: 9972, name: 'Geoagiu / Drumul Romanilor' } },
+    });
+
+    await publish({ expectedSyncLogId: 64 }, client);
+
+    const write = only(queries, 'UPDATE experience_locations SET name');
+    expect(write.params).toEqual([9972, 'Geoagiu / Drumul Romanilor (Germisara)']);
+  });
+
+  it('writes a held work\'s title and makers as a person would type them', async () => {
+    grantScope();
+    // A record written by a backend that did not tidy (#835): the title and
+    // the makers carry the runs the run saw, and publishing must not put them
+    // back into the columns migration 047 cleaned. The year is not a name.
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { treasures: { changed: [{
+        item: { name: 'St. John  on Patmos', ref: 'Q2390197' },
+        fields: [
+          { field: 'name', old: 'St. John  on Patmos', new: ' St. John  on  Patmos (Berlin) ', held: true },
+          { field: 'artists', old: ['Hieronymus Bosch'], new: [' Hieronymus  Bosch ', 'Workshop  of Bosch'], held: true },
+          { field: 'year', old: 1489, new: 1505, held: true },
+        ],
+      }] } },
+      parts: { treasure: { id: 3122, name: 'St. John on Patmos', curated_fields: [] } },
+    });
+
+    await publish({ expectedSyncLogId: 64 }, client);
+
+    const write = only(queries, 'UPDATE treasures SET name');
+    expect(write.params).toEqual([3122, 'St. John on Patmos (Berlin)', ['Hieronymus Bosch', 'Workshop of Bosch'], 1505]);
   });
 
   it('writes a held work\'s attribution and picture with the credit the run fetched for it', async () => {
@@ -399,6 +444,12 @@ describe('publishing the held fields of an object\'s parts', () => {
     expect(lock.params).toEqual([5, '985ter-001', 'uKhahlamba Drakensberg Park']);
     expect(lock.sql).toMatch(/ORDER BY cand\.named DESC, cand\.renamed DESC, cand\.id/);
     expect(lock.sql).toContain("el.curated_fields ? 'name' AS renamed");
+    // And the name term compares by the store rule on both sides: the record
+    // holds the name as the run saw it, which before #835 could carry the run
+    // of spaces migration 047 has since taken out of the row.
+    expect(lock.sql.replace(/\s+/g, ' ')).toContain(
+      `${tidyLabelSql('el.name')} IS NOT DISTINCT FROM ${tidyLabelSql('$3')}`.replace(/\s+/g, ' '),
+    );
     // The stored name is the curator's, so the run's own proposal — a different
     // spelling — is skipped as claimed rather than written over the correction.
     expect(none(queries, 'UPDATE experience_locations SET name')).toBe(true);
