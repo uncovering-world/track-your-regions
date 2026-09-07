@@ -35,6 +35,7 @@ import { subscribeToHoverTarget, useHoverActions, useHoverSelector } from '../..
 import { EmptyState } from '../shared/EmptyState';
 import { locationLabel } from '../../utils/locationLabel';
 import { claimLabel } from '../../utils/placeClaims';
+import { foldLabel } from '../../utils/labelFold';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 
@@ -88,10 +89,12 @@ export function LocationsSection({
 
   const visitedCount = locations.filter((l) => l.isVisited).length;
 
+  // Both sides folded, as the works filter is (#835): a search finds what the
+  // screen shows whatever the row holds, and a dash typed as a hyphen.
   const filteredLocations = useMemo(() => {
-    if (!searchText) return locations;
-    const lower = searchText.toLowerCase();
-    return locations.filter((l) => (l.name || '').toLowerCase().includes(lower));
+    const needle = foldLabel(searchText);
+    if (!needle) return locations;
+    return locations.filter((l) => foldLabel(l.name).includes(needle));
   }, [locations, searchText]);
 
   const virtualizer = useVirtualizer({

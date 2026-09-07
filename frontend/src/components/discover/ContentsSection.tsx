@@ -14,6 +14,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import SearchIcon from '@mui/icons-material/Search';
 import type { ExperienceTreasure } from '../../api/experiences';
+import { foldLabel } from '../../utils/labelFold';
 import { ContentTile } from './ContentTile';
 
 /** Shut by default past this many, which is most museums. */
@@ -51,22 +52,27 @@ export function ContentsSection({
   const [searchText, setSearchText] = useState('');
 
   const viewedCount = contents.filter((c) => viewedIds.has(c.id)).length;
+  // Both sides folded, so a search finds what the screen shows whatever the
+  // row holds: HTML collapses a run of spaces and folds nothing else, and a
+  // reader types the collapsed form (#835). The fold also meets a dash typed
+  // as a hyphen, and a name pasted off a wrapped line. A filter of nothing but
+  // spaces folds to nothing and reads as no filter, here and for "Show all".
+  const needle = foldLabel(searchText);
   const displayContents = useMemo(() => {
     let filtered = contents;
-    if (searchText) {
-      const lower = searchText.toLowerCase();
+    if (needle) {
       filtered = filtered.filter((c) =>
-        c.name.toLowerCase().includes(lower) ||
+        foldLabel(c.name).includes(needle) ||
         // Every maker, not the first: a reader looking for Savitsky in the
         // Tretyakov must find `Morning in a Pine Forest` (#720).
-        c.artists.some(maker => maker.toLowerCase().includes(lower)),
+        c.artists.some(maker => foldLabel(maker).includes(needle)),
       );
     }
-    if (!showAll && !searchText) {
+    if (!showAll && !needle) {
       filtered = filtered.slice(0, CONTENTS_INITIAL_SHOW);
     }
     return filtered;
-  }, [contents, showAll, searchText]);
+  }, [contents, showAll, needle]);
 
   return (
     <Box sx={{ mb: 2 }}>
@@ -150,7 +156,7 @@ export function ContentsSection({
         </Box>
 
         {/* Show more button */}
-        {!showAll && !searchText && totalCount > CONTENTS_INITIAL_SHOW && (
+        {!showAll && !needle && totalCount > CONTENTS_INITIAL_SHOW && (
           <Button size="small" variant="text" onClick={() => setShowAll(true)} sx={{ mt: 0.5 }}>
             Show all {totalCount} works
           </Button>
