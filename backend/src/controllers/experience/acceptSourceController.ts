@@ -14,6 +14,8 @@ import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor, METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
+import { tidyLabel } from '../../services/sync/labelFold.js';
+import { tidyNameValue } from './heldDecisions.js';
 import { columnFor } from './acceptableFields.js';
 import type { ContentItemChange } from '../../services/sync/types.js';
 import { placeAfterRelease } from './publishContents.js';
@@ -217,7 +219,11 @@ async function applyProposedFields(
 
     const writable = open.filter(p => columnFor(p.field) !== null);
     const assignments = writable.map((p, i) => `${columnFor(p.field)} = $${i + 2}`);
-    const values = writable.map(p => p.new);
+    // A name-carrying value as the catalogue stores a name (`tidyNameValue`,
+    // #835): a proposal recorded before the writers tidied carries the run of
+    // spaces the run saw, and accepting it must not put back into `name` what
+    // migration 047 took out.
+    const values = writable.map(p => tidyNameValue(p.field, p.new));
     let remaining = claimed.filter(k => !open.some(p => claimKeyFor(p.field) === k));
 
     // **A picture's credit goes with the picture.**
@@ -350,11 +356,23 @@ async function applyProposedFields(
       // whole path exists for: the catalogue's one referenceless point, whose
       // `samePointSql` branch is exact coordinate equality, so a released row
       // that got no coordinate here is withdrawn at the next run.
+      //
+      // Both by the store rule (#835): the record holds the name as the run
+      // saw it, which before the writers tidied could carry a run of spaces
+      // migration 047 has since taken out of the row.
+      //
+      // "No rename recorded" is not "renamed to nothing": a row's name can be
+      // NULL, and an entry with no `name` field compared through the same
+      // null would match every referenceless entry of the run — the rename
+      // leg is asked only where the record carries one.
+      const stored = row.name === null ? null : tidyLabel(row.name);
+      const recorded = (name: unknown) => (typeof name === 'string' ? tidyLabel(name) : null);
       const entry = offered.find((c) => {
         if (c.item.ref !== null) return c.item.ref === row.external_ref;
         if (row.external_ref !== null) return false;
-        const renamedTo = c.fields.find(f => f.field === 'name')?.new;
-        return c.item.name === row.name || renamedTo === row.name;
+        const renamed = c.fields.find(f => f.field === 'name');
+        return recorded(c.item.name) === stored
+          || (renamed !== undefined && recorded(renamed.new) === stored);
       });
       const point = entry?.fields.find(f => f.field === 'location')?.new as
         { lon: number; lat: number } | undefined;

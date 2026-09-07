@@ -105,6 +105,19 @@ describe('writeExperienceLocations', () => {
     });
   });
 
+  it('binds a point\'s name as a person would type it', async () => {
+    // The World Heritage Centre's component names carry runs — *marmalo  IV*,
+    // *Geoagiu  / Drumul Romanilor* (#835) — and every source's points pass
+    // here, so the statement is bound the tidied name, before the pairing.
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '1', ids: [7] }] });
+
+    await writeExperienceLocations(1, [{ ...A, name: ' marmalo  IV ' }]);
+
+    const bound = mockedQuery.mock.calls[0][1] as unknown[];
+    expect(bound).toContain('marmalo IV');
+    expect(bound).not.toContain(' marmalo  IV ');
+  });
+
   it('deletes no location at all, whether or not the source still offers it', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
     const { client, statements } = fakeClient();

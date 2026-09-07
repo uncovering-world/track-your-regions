@@ -141,6 +141,20 @@ describe('the local names, which no single entry describes', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ heldLeftOpen: 0 }));
   });
 
+  it('writes each language as a person would type it, however the run recorded it', async () => {
+    grantScope();
+    // 98 Arabic local names carried a run of spaces before migration 047
+    // (#835); a proposal recorded then must not put one back on publishing.
+    const { client, queries } = held(
+      { ar: 'منتزه إيغوازو الوطني' },
+      [{ field: 'nameLocal.ar', old: 'منتزه إيغوازو الوطني', new: ' منتزه  إيغوازو  الوطني ', held: true }],
+    );
+
+    await publish({ expectedSyncLogId: 53 }, client);
+
+    expect(written(queries)).toEqual({ ar: 'منتزه إيغوازو الوطني' });
+  });
+
   it('leaves the column alone where the run says nothing about it', async () => {
     grantScope();
     const { client, queries } = held(

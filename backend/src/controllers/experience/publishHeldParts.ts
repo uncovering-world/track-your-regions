@@ -24,7 +24,8 @@
 
 import type { PoolClient } from 'pg';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
-import { heldRowKey, type HeldAnswer, type HeldRowRef } from './heldDecisions.js';
+import { tidyLabel } from '../../services/sync/labelFold.js';
+import { heldRowKey, tidyNameValue, type HeldAnswer, type HeldRowRef } from './heldDecisions.js';
 import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelection.js';
 import type { ContentKind, ContentsByKind, ContentItemChange } from '../../services/sync/types.js';
 
@@ -173,8 +174,15 @@ function writeFor(
   const bind = (value: unknown) => `$${params.push(value)}`;
 
   if (kind === 'locations') {
-    // `name` is the one writable column, so this is one assignment.
-    return { sql: `UPDATE experience_locations SET name = ${bind(writable[0].new ?? null)} WHERE id = $1`, params };
+    // `name` is the one writable column, so this is one assignment. Tidied at
+    // the write (#835): a rename recorded before the writers tidied carries
+    // the run of spaces the run saw, and publishing it verbatim would put back
+    // into the column what migration 047 took out.
+    const name = writable[0].new;
+    return {
+      sql: `UPDATE experience_locations SET name = ${bind(typeof name === 'string' ? tidyLabel(name) : null)} WHERE id = $1`,
+      params,
+    };
   }
 
   const assignments: string[] = [];
@@ -188,7 +196,11 @@ function writeFor(
     } else {
       // name, artists, year, image_url — the column is the field's own name, and
       // Postgres infers each parameter's type from the column it is assigned to.
-      assignments.push(`${field.field} = ${bind(field.new ?? null)}`);
+      // A title and the makers as a person would type them (`tidyNameValue`,
+      // #835), for the reason the point's name above is: a record written by a
+      // backend that did not tidy must not put a run of spaces back into the
+      // columns migration 047 cleaned.
+      assignments.push(`${field.field} = ${bind(tidyNameValue(field.field, field.new ?? null))}`);
     }
   }
   // `treasures` has `updated_at` where the location table does not, and a row

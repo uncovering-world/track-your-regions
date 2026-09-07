@@ -100,6 +100,27 @@ describe('declineSourceValue', () => {
     }));
   });
 
+  it('records a name-carrying value as the catalogue stores a name', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    // The queue matches the refusal to the record by value, and every run
+    // records the tidied form now (#835): a refusal keyed by the run of spaces
+    // the source once sent would silence nothing.
+    const { client, queries } = makeClient(['name'], [{
+      sync_log_id: 9,
+      changed_fields: [{ field: 'name', new: ' Renamed  upstream ', curatedConflict: true }],
+    }]);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await declineSourceValue({
+      user: ADMIN, params: { id: '96' }, body: { fields: ['name'], expectedSyncLogId: 9 },
+    } as never, res as never);
+
+    const insert = queries.find(q => q.sql.includes('experience_conflict_decisions'));
+    expect(insert?.params).toContain(JSON.stringify('Renamed upstream'));
+    expect(insert?.params).not.toContain(JSON.stringify(' Renamed  upstream '));
+  });
+
   it('writes nothing to the row it is about', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
     const { client, queries } = makeClient(['name'], PROPOSAL);

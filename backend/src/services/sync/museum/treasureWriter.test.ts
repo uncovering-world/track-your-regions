@@ -302,6 +302,20 @@ describe('a work arrives marked as unread', () => {
     expect(params).not.toContain('Ivan Shishkin, Konstantin Savitsky');
   });
 
+  it('stores a title and its makers as a person would type them', async () => {
+    // Wikidata's label for Q2390197 carries two spaces (#835); what the row
+    // holds is the name a reader can type into a filter.
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [
+      artwork({ name: 'St. John  on Patmos', artists: [' Hieronymus  Bosch'] }),
+    ]);
+
+    const params = treasureCall()[1] as unknown[];
+    expect(params).toContain('St. John on Patmos');
+    expect(params).toContainEqual(['Hieronymus Bosch']);
+  });
+
   it('reads a link\'s gate through the experience the work is shown in', async () => {
     scriptWorks('new');
 

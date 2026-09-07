@@ -15,7 +15,7 @@ import { creditToWrite, type ImageCredit, type StoredCredit } from '../imageCred
 import { retirePassAfterNewContent } from '../curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from '../heldProposalPointer.js';
 import { workChanges } from '../contentsChangeSet.js';
-import { sameLabelSet } from '../labelFold.js';
+import { sameLabelSet, tidyLabel } from '../labelFold.js';
 import { jsonEquals, type FieldChange } from '../changeSet.js';
 import type {
   ContentItem, ContentItemChange, ContentsDelta, ProcessedContent,
@@ -139,6 +139,18 @@ function creditChange(
 function withShowablePicture(offered: ProcessedContent): ProcessedContent {
   if (!offered.imageUrl || isCommonsPictureUrl(offered.imageUrl)) return offered;
   return { ...offered, imageUrl: null };
+}
+
+/**
+ * A work's title and makers as a person would type them (`tidyLabel`, #835).
+ * Wikidata's labels carry runs — *St. John  on Patmos* (Q2390197), *Portrait
+ * of a Man (Self      Portrait?)* (Q2392901) — and this writer is where every
+ * museum's works pass. Before the diff, so `workChanges` compares tidied to
+ * tidied; the makers' dedupe upstream already folds, so tidying two names it
+ * kept apart cannot make them one.
+ */
+function withTidyNames(offered: ProcessedContent): ProcessedContent {
+  return { ...offered, name: tidyLabel(offered.name), artists: offered.artists.map(tidyLabel) };
 }
 
 /** A work as the run found it, read once for the whole museum before any is written. */
@@ -282,7 +294,7 @@ export async function upsertMuseumTreasures(
     // credit with it rather than naming a photographer beside an empty frame.
     // Every one of the 1324 stored today is a Commons file; this is what keeps
     // it that way when a source starts answering with something else.
-    const artwork = withShowablePicture(offered);
+    const artwork = withShowablePicture(withTidyNames(offered));
 
     // Once per work, and read twice: serialised as the ninth parameter, and
     // compared against the stored credit where the picture is held.
