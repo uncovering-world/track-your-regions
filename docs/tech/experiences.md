@@ -1715,7 +1715,9 @@ kind later decides about the building.
 | DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute |
 | PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `type`, `imageUrl`, `tags`, `websiteUrl`, `wikipediaUrl`). The last two are stored in `metadata.website` / `metadata.wikipediaUrl` via JSONB merge, and an `imageUrl` change writes `metadata.imageCredit` in the same statement — three per-key metadata claims in all. An empty string **clears** a field: the column is stored as `NULL` (`clearedToNull` — what every other writer stores for "nothing", and the catalogue holds no `''` in these columns), a metadata link as `null`, and the clearing is claimed like any other edit so the next run does not write the source's value back (#696) |
 | GET | `/api/experiences/:id/curation-log` | Latest curation actions, filtered to the caller's curator scope (see Curation Guarantees) |
-| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, `conflicts` where the source and a curator disagree, `arrivals` a gated source wrote that nobody has passed, `held` where an already-visible row is holding a newer proposal, `contents` where a visible row holds unread points or works of its own, and `withdrawn` where a point the source stopped offering is waiting on a verdict — plus two lists that are answered rather than waiting and appear on no other surface: `keptOut`, the confirmed refusals, and `answeredWithdrawals`, the points a curator has decided about and which no reader can see as a result. No totals: each array's own length is the count, and `paging` says per kind where it is and whether another page waits behind it. Every kind carries what the object *is* — `image_url`, `latitude`/`longitude`, `website_url` and `wikipedia_url` from `metadata`, `image_credit`, `region_names`, and how much it holds (`offered_locations`, `counted_works_total`) — through one shared fragment, so no card can show less about an object than its neighbour. `conflicts` additionally carry `run_completed_at` and, per proposed field, `claim` (who claimed it and when, read from the newest `edited` log entry under the *column* name) and `decidedBefore` (every earlier answer on that field, newest first — both `accepted_source` and `declined_source`, each entry carrying its `action`, since a refusal rendered as an acceptance is its own opposite). A `conflicts` entry lists the claimed fields that are still *open*: one whose current proposal matches a stored refusal is dropped, and an object with none left leaves the array. `refused` and `keptOut` additionally carry `counted_works` — the venue's famous works from `experience_treasures`, named, most widely known first, capped at twelve. The *array* is those two kinds only, because UNESCO sites hold no works and every other query would carry a join for an empty list; the total beside it is universal, which is what lets the capped array say how many it is not showing, and what a refusal naming one work rather than counting has to reconcile against. A `withdrawn` entry carries `withdrawn_points`, each with its `id` (the verdict is per point), `name`, `externalRef`, `missingSince`, coordinates, `curatedFields` — the fields a curator has claimed on the row, so the card can say a correction stands (#583) — `visited` — which is what makes the verdict matter rather than tidy-up — and `replacedMetres`: how far away the source now offers that same part, or `null` where it offers it nowhere. That last one is the field the card's whole sentence turns on, and the reason it is a distance rather than a flag is measured: the catalogue's first withdrawal has a replacement **1.2 cm** away, a coordinate rewritten at finer precision, which a flag would have called a move. An `answeredWithdrawals` entry carries `answered_points` instead — capped at `CONTENTS_ROWS_SHOWN` with `answered_points_total` beside it, newest answer first, because this is the one per-object list that only *grows*: a point enters when it is answered and leaves only if the verdict is taken back, so an object worked through over months would otherwise arrive as one card of hundreds of rows. Each entry carries the same `id`, `name`, `externalRef`, `missingSince` (nullable here, a run having possibly cleared the flag since), coordinates, `curatedFields` and `visited`, plus what makes it answered — both lifecycle axes, which are what the take-back's `expected` is built from and which decide how many ways back the card offers; `decidedAt` and `note` off the row; and `decidedBy`, read from the curation log under the log's own scope rather than off `state_decided_by`, so a verdict from a region this reader does not cover arrives unnamed rather than naming somebody the log endpoint would have dropped. No `replacedMetres`: that field tells a rewritten coordinate from a component that really moved, which is the question this list is not re-asking. A `contents` entry carries the rows themselves rather than only their counts: `pending_points`, each with `id`, `name`, `externalRef`, coordinates and `curatedFields`, and `pending_works`, each with `id`, `name`, `artists`, `artistsCurated`, `year`, `imageUrl`, `imageCredit`, `treasureType`, `iconic`, `externalId` (the work's Wikidata item, which the row opens the item and its article from), `curatedFields` — the same thing the points carry, in the work's own key, so the row can say a correction stands (#731) — and `venueCount`, how many museums hang the work, which the dialog the row opens states before Save, most widely known first — both capped at `CONTENTS_ROWS_SHOWN` (25, the page size), with the two counts beside them as the totals, so a card that is showing twelve of ninety-three can say so instead of implying twelve is all there is. Params `limit` (default 25), `categoryId`, and one offset per kind — `missingOffset`, `refusedOffset`, `keptOutOffset`, `conflictsOffset`, `arrivalsOffset`, `heldOffset`, `contentsOffset`, `withdrawnOffset`, `answeredWithdrawalsOffset`. One each, because these are one query with one LIMIT each: a shared offset moved all of them at once, so a kind whose page was full had a page 2 that no control could ask for. Scoped like the curation log |
+| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, `conflicts` where the source and a curator disagree, `arrivals` a gated source wrote that nobody has passed, `held` where an already-visible row is holding a newer proposal, `contents` where a visible row holds unread points or works of its own, and `withdrawn` where a point the source stopped offering is waiting on a verdict — plus two lists that are answered rather than waiting and appear on no other surface: `keptOut`, the confirmed refusals, and `answeredWithdrawals`, the points a curator has decided about and which no reader can see as a result. The seven are one list: `order` is the page as the keys phase chose it — one entry per question, `{ kind, id, askedAt, runId, subs }` — and the arrays beside it are a lookup by id rather than an order of their own. `total` is the whole queue under the filter and `facets` carries the counts each chip would leave (`kind`, `source`, `region` with an `Unplaced` bucket and a `worldView` beside each root, `run` with the batches this curator set aside flagged, and `setAside`). Every kind carries what the object *is* — `image_url`, `latitude`/`longitude`, `website_url` and `wikipedia_url` from `metadata`, `image_credit`, `region_names`, and how much it holds (`offered_locations`, `counted_works_total`) — through one shared fragment, so no card can show less about an object than its neighbour. `conflicts` additionally carry `run_completed_at` and, per proposed field, `claim` (who claimed it and when, read from the newest `edited` log entry under the *column* name) and `decidedBefore` (every earlier answer on that field, newest first — both `accepted_source` and `declined_source`, each entry carrying its `action`, since a refusal rendered as an acceptance is its own opposite). A `conflicts` entry lists the claimed fields that are still *open*: one whose current proposal matches a stored refusal is dropped, and an object with none left leaves the array. `refused` and `keptOut` additionally carry `counted_works` — the venue's famous works from `experience_treasures`, named, most widely known first, capped at twelve. The *array* is those two kinds only, because UNESCO sites hold no works and every other query would carry a join for an empty list; the total beside it is universal, which is what lets the capped array say how many it is not showing, and what a refusal naming one work rather than counting has to reconcile against. A `withdrawn` entry carries `withdrawn_points`, each with its `id` (the verdict is per point), `name`, `externalRef`, `missingSince`, coordinates, `curatedFields` — the fields a curator has claimed on the row, so the card can say a correction stands (#583) — `visited` — which is what makes the verdict matter rather than tidy-up — and `replacedMetres`: how far away the source now offers that same part, or `null` where it offers it nowhere. That last one is the field the card's whole sentence turns on, and the reason it is a distance rather than a flag is measured: the catalogue's first withdrawal has a replacement **1.2 cm** away, a coordinate rewritten at finer precision, which a flag would have called a move. An `answeredWithdrawals` entry carries `answered_points` instead — capped at `CONTENTS_ROWS_SHOWN` with `answered_points_total` beside it, newest answer first, because this is the one per-object list that only *grows*: a point enters when it is answered and leaves only if the verdict is taken back, so an object worked through over months would otherwise arrive as one card of hundreds of rows. Each entry carries the same `id`, `name`, `externalRef`, `missingSince` (nullable here, a run having possibly cleared the flag since), coordinates, `curatedFields` and `visited`, plus what makes it answered — both lifecycle axes, which are what the take-back's `expected` is built from and which decide how many ways back the card offers; `decidedAt` and `note` off the row; and `decidedBy`, read from the curation log under the log's own scope rather than off `state_decided_by`, so a verdict from a region this reader does not cover arrives unnamed rather than naming somebody the log endpoint would have dropped. No `replacedMetres`: that field tells a rewritten coordinate from a component that really moved, which is the question this list is not re-asking. A `contents` entry carries the rows themselves rather than only their counts: `pending_points`, each with `id`, `name`, `externalRef`, coordinates and `curatedFields`, and `pending_works`, each with `id`, `name`, `artists`, `artistsCurated`, `year`, `imageUrl`, `imageCredit`, `treasureType`, `iconic`, `externalId` (the work's Wikidata item, which the row opens the item and its article from), `curatedFields` — the same thing the points carry, in the work's own key, so the row can say a correction stands (#731) — and `venueCount`, how many museums hang the work, which the dialog the row opens states before Save, most widely known first — both capped at `CONTENTS_ROWS_SHOWN` (25, the page size), with the two counts beside them as the totals, so a card that is showing twelve of ninety-three can say so instead of implying twelve is all there is. Params `q` (a name, at most 100 characters), `source` (`1,3`), `kind` (`arrival,refused` — the five kinds and the three waiting sub-kinds; a word the vocabulary does not know is dropped rather than refused, because the filter set is an address), `region` (an id, or `none` for the unplaced), `run`, `aside=show`, `sort` (`date` \| `question`), `cursor`, `limit` (default 25, 100 at most), and `keptOutOffset` / `answeredWithdrawalsOffset`. `paging` carries `{ cursor, nextCursor, keptOut, answeredWithdrawals }`: one keyset cursor for the seven kinds, and the two offsets for the two lists that are not open questions ([ADR-0051](../decisions/0051-the-review-queue-is-one-list-of-dated-questions.md)). Scoped like the curation log — `CURATOR_SCOPED_REGIONS_CTE` in every branch of the keys union as well as in every statement that draws a card |
+| PUT | `/api/experiences/review/set-aside/:syncLogId` | No body. Puts a run's whole batch of open questions aside, for this curator alone ([ADR-0051](../decisions/0051-the-review-queue-is-one-list-of-dated-questions.md) decision 4) — one row in `curator_queue_set_aside`, whose `user_id` is taken from the token and never from the request, answering `{ syncLogId, setAside: true }`. `ON CONFLICT DO NOTHING`, so a second press answers what the first one did: the response states the state the caller asked for rather than whether a row moved. A run that does not exist and a **dry** run — which writes no changeset and so raises no question to put aside — are both 404, indistinguishably, rather than a second error shape for a run that was never a batch. Carries `authenticatedLimiter` |
+| DELETE | `/api/experiences/review/set-aside/:syncLogId` | No body. Brings the batch back — `{ syncLogId, setAside: false }` whether or not a row was there, because the caller is asking for a state and not for a deletion: a 404 for a batch already brought back would make the chip a one-shot. Carries `authenticatedLimiter` |
 | POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
 | POST | `/api/experiences/locations/:locationId/state` | The same body, about one point inside the object (ADR-0026). Answers whether a point the source stopped offering is delisted, gone, or was never gone. Three things differ from the object-level verdict. Scope: a point carries none of its own, so the id is resolved to its containing experience server-side and `resolveExperienceScope` is asked about that. `missing_since`: only the false alarm (`present` + `extant`) clears it, because on a location that column is *one of the two terms* a reader-facing read carries (ADR-0026 decision 7), and each verdict is held by a different one — `former` by the flag, which is why clearing it would put back a pin for a place the source no longer lists; `lost` by its own axis, whatever the flag says, which is what makes that verdict outlive a run and also makes it the one answer here that can hide a point readers could see. Leaving the flag standing is what takes an answered row out of the queue without any read learning a filter for the queue's sake. A source that lists the point again takes the delisting back, in one direction only and wherever that point is — every arm of the writer that matches an offered row writes `source_membership = 'present'`, the one that gives a withdrawn point its place back and the one that keeps a point never withdrawn, and the fast path counts a delisted-but-listed row as unmatched so one of them is reached at all (ADR-0026 decision 6). Never the reverse, as the experience upsert has it (ADR-0021); `existence` is untouched, because a listing says nothing about whether the thing still stands. Without that the point would come back visible while recorded as delisted, and its next departure would raise no card at all, since the queue reads the axes as "nobody has answered". The one answer with no transition to name is the false alarm, and it is the *only* one: re-sending a verdict a row already carries answers 409 rather than writing a dismissal into the trail beside a flag nothing dismissed. And the audit row hangs off the *experience*, with the point named in `details.locationId`, so a serial site's seven components cannot record seven indistinguishable verdicts. The response says `offeredToReaders`, rather than leaving a client to infer visibility from two axes — and, where the answer changed what a reader sees and re-placing the point failed, `placementFailed`/`placementFailedWorldViews`, named as the sibling endpoints name them: a verdict is a placement event in either direction, because a withdrawn point holds no `auto` region rows and a `lost` one must hold none, so a curator has to be told when the regions are out of date. Needs migration 024 applied, or the audit insert violates the `action` CHECK and the whole call 500s |
 | PATCH | `/api/experiences/locations/:locationId/edit` | `{ name?, latitude?, longitude? }` — a curator's *correction* to one point, as against the verdict above about its standing. The coordinate arrives as a pair or not at all: half a move is not a place, and on a single-point object it is where the object itself would go. Each value written also writes a claim on that column (`experience_locations.curated_fields`, migration 027), which is what makes the correction survive the next run — every arm of `locationWriter` otherwise writes the source's name and coordinate over whatever is stored. The claim set is re-read under the write lock and *added to*; the one path that takes a key back off a point's claims is `accept-source` on the object's `location`, which releases the coordinate on the point and the object together, since the two are one fact and releasing half of it puts the object's coordinate on the source's pin and its only visible point on the curator's (ADR-0029 § Consequences); and `external_ref` and `ordinal` are never claimable, because the pairing reads both to decide whether a point moved or was replaced. **The object's anchor follows the point where the object holds exactly one point a reader is positioned over — offered, published, and this one**, claimed there too: ADR-0028 positions a reader at the place nearest the object's own coordinate, so with one place the reader already follows the edit while the object's published coordinate stays behind — the disagreement #550 is about, 106 objects and 191 km at its worst. Both the count and the edited row's own membership are inside the statement's own `WHERE` rather than a read before it: a second point arriving in between cannot leave the anchor moved for a reason that stopped being true, and counting the visible points without asking whether *this* is one of them would move the object onto a coordinate no reader is ever sent to — by correcting a withdrawn, `lost` or unread sibling. A gated arrival's only point is `pending`, so correcting it moves nothing until publication, which is the same rule read consistently rather than an omission. Scope is resolved through the containing experience, as the verdict above does. A move re-places the experience into regions after the commit — answering `placementFailed`/`placementFailedWorldViews` where that failed, as the sibling `/state` route does and for the same reason: the remedy is admin-only, so a curator has to be told which world view is out of date rather than that something is. A rename places nothing, since region rows are computed from coordinates. Records `location_edited` naming both sides of what changed and whether the anchor moved — needs migration 028, or the audit insert violates the `action` CHECK and the whole call 500s. **Its screen is one dialog, offered wherever a curator is looking at a place** (#583): `PointPreviewDialog` (`components/shared/`) opens on `PointCorrection` wherever a caller offers a correction — the map already on the place, the source's own position left as a faded pin, the pin draggable, Save asleep until something changed — and the form sends only what changed and reads the outcome off the reply — `anchorMoved` is never promised, since a pending or withdrawn place moves nothing whatever the count. It opens from every row that shows a place: the review page's unread points, held location parts, withdrawn and answered points; `CurationPlaces` on the object screen, which is the only row a single-place object's place has anywhere (1178 of 1671 objects, every museum and monument among them); and a place's row on an open card in Map mode and in Discover. A corrected row says so through `claimLabel` (`utils/placeClaims.ts`) off the `curated_fields` every one of those reads now carries. The take-back is not on this screen: `accept-source` needs a live conflict proposal and is offered where one exists, the conflict card |
@@ -1968,18 +1970,119 @@ language rule; `utils/wikidataLinks.ts` is the one place either address is built
 admin import tree's AI enrichment builds its item link through it too — the QID there is
 the model's own answer, held by the schema to a string and nothing more.
 
-**No counts, and each kind pages on its own.** The response carries no total and no `COUNT(*)`
-over any of its arrays. "Is there another page" is answered by the rows themselves: each
-query asks for `limit + 1` and the extra row is dropped before the array is returned, so the
-answer costs nothing and no kind needs a count. A count belongs with a later rebuild of this
-page that needs one for its own reasons (a notification floor, a backlog figure); adding one
-here would be a second source of truth for a number nothing yet reads.
+**One list of dated questions, chosen before it is drawn**
+([ADR-0051](../decisions/0051-the-review-queue-is-one-list-of-dated-questions.md)). The seven
+kinds were seven statements, each with its own `LIMIT`/`OFFSET` and its own `ORDER BY`; they are
+one list now, read in two phases. `reviewQueueKeys.ts` is the first: a `UNION ALL` of every
+kind's open predicate selecting nothing but a question's key — its kind, the object it is about,
+the run that asked it, the source, and, for the three gated kinds, which of them the object holds
+— ordered and paged across all seven at once. The predicates are not restated there. Each is one
+function in `reviewQueuePredicates.ts` (`missingOpenSql`, `refusedOpenSql`, `arrivalOpenSql`,
+`heldOpenSql`, `contentsOpenSql`, `withdrawnPointOpenSql`/`withdrawnContainerOpenSql`,
+`conflictChangeOpenSql`), composed both by the union and by the statement that draws that kind's
+card, so what makes a question open is spelled once and read twice — the cost ADR-0051 names for
+keeping both, paid down to one module rather than left in two files.
 
-That also made the headings honest. "first 25" used to be inferred from a page being *full*, so
-a kind holding exactly one page always claimed a backlog it did not have; it is now said only
-where `paging.<kind>.hasMore` is true. The three gated kinds share one control on the screen —
-they are shown as one list grouped by experience, so a curator cannot tell which of the three a
-row came from — but they keep three separate offsets, and the control moves whichever have more.
+**Every question is dated by the run that asked it** (ADR-0051 decision 1), through what each
+kind already carries — a pointer to that run, or the stamp the run left. Four have the pointer:
+`held` is the `completed_at` of the run its membership's `pending_change_sync_log_id` names,
+`arrival` that of the run which first saw the row (`first_seen_sync_log_id`), `conflict` that of
+the **newest** changeset row's own `sync_log_id` (the `DISTINCT ON (e.id) … ORDER BY ch.id DESC`
+picks it), and `refused` that of the same arrival run — whoever took the refusal — falling back to
+the membership's `updated_at` only where the row names no arrival run, or names one that never
+completed. The other three read a stamp:
+`withdrawn` takes
+`MAX(el.missing_since)` over the points a run stopped offering, `missing` the object's own
+`missing_since`, and `contents` the newest pending part it holds — `GREATEST` of the pending
+points' and the pending works' `created_at`, so a card holding only works is dated by the works.
+
+`contents` is the one kind with **no** run pointer at all: nothing on an unread point or work
+names the run that brought it, so the question is dated by when that row was written rather than
+by when its run finished. ADR-0051 decision 1 phrases it as the newest pending part's first-seen
+run; the part's own `created_at` is what the code reads, which is that run writing the part
+rather than that run completing. `refused` is the other approximation, and a different shape of
+one: the refusal is written on the membership, which carries no run pointer, so the date is the
+object's **arrival** rather than the refusal. `COALESCE(l.completed_at, m.updated_at)` reaches
+`updated_at` only where the row names no arrival run at all, or names one that never completed — a
+run still in flight, or one that failed. Neither is true of any of the 118 open refusals on the
+development catalogue of 2026-09-07. So a refusal a *later* run took sits at its arrival's place,
+older in a newest-first list than the act that put it there: 96 of the 118 are dated more than a
+day before the membership was last touched, the Warsaw Uprising Monument, the Veiled Christ and
+the Giants of Mont'e Prama among them — all three arriving on 26 July and last touched on
+31 August. What the trade buys is a date that does not move: an unrelated upsert cannot walk a
+refusal up the list. A run pointer on the refusal is what would fix it, and that is a change to
+what a refusal records.
+
+**The filters are predicates over that same union.** A search on the object's name — `ILIKE` on
+`experiences.name`, which carries a trigram index, with the pattern's own wildcards escaped, so a
+curator typing `100%` is looking for a name with a per-cent sign in it rather than for every name;
+the source; the question — the five kinds plus the three sub-kinds `waiting` groups, since
+"waiting to be published" is three different pieces of work; the region, meaning that region and
+everything under it (the subtree is walked), or `none` for
+the objects in no region at all — 28 of them on the development catalogue, which a control that
+could not name them would hide from every curator who touched the chip; the run; and the
+curator's own set-aside. `sort=date` is newest first, `sort=question` class-first — a
+disagreement, then what is waiting, then what has left, then the two verdicts a rule already took
+— newest first inside each class. Both are complete orders over the union, which is what makes a
+page assemblable at all.
+
+**The page is taken by keyset, at the precision the timestamp is stored in.** The cursor is
+opaque (base64url JSON) and carries `(asked_at, rank, id)` as the database wrote them — deliberately
+not the millisecond `toISOString` would round to. 1 255 held keys share run 98's `completed_at` to
+the microsecond, so a rounded cursor asks for rows strictly older than an instant *inside* that
+group and silently drops its tail. `limit + 1` rows are asked for, so "is there another page" is
+still answered by the rows rather than by a second count. A cursor that does not parse, or that
+names a date Postgres would refuse, opens the first page instead of erroring — the leniency
+`docs/tech/addresses.md` asks of every parameter that arrives from an address bar.
+
+**The counts are counted, under the filter** (ADR-0051 decision 3). `total` is the union under
+every filter; each facet is a second aggregate over the same union under every filter *but its
+own*, so a chip states what picking it would leave rather than what is already on screen. Kind,
+source, region and run, plus how much is set aside. The region facet counts through the root row
+placement already writes — `assignAncestors` propagates a point's region to every ancestor and
+step 4 of `regionAssignmentService.ts` denormalises the chain into `experience_regions` — rather
+than by walking the tree, which is a measured choice: walking cost 330 ms and took the statement's
+estimated cost past this server's `jit_above_cost` of 100 000, so PostgreSQL compiled 454
+functions for a query that then ran in 120 ms. The dependency on that propagation is confined to
+the count; the region *filter* walks its own subtree, so what a curator filters by does not rest
+on it. The facet offers the roots of every public world view plus whatever region this curator is
+assigned, each carrying the world view it is a root of, because a name does not identify one —
+the development catalogue has two roots called Europe.
+
+**The page's ids are then hydrated by the statements that already draw the cards.** Each swapped
+its `LIMIT`/`OFFSET` for `AND e.id = ANY($n::int[])` and runs for the ids of its own kind, or not
+at all; each keeps the `ORDER BY` it had, and what that orders is now its own array rather than
+anything a curator sees. `order` — the page's keys as the first phase chose them — is the list the
+client draws, and an array is then a lookup by id. `keptOut` and `answeredWithdrawals` stay
+outside all of it: those rows are answered rather than open, carry no `asked_at` and are not in
+the union, so they keep their own statement and their own offset. **Two of the filters still reach
+them**, as predicates of their own on the object's row: the source chip and the search, because a
+curator narrowing the queue to one source, or looking for one object by name, means the whole
+page. The region, the run and the set-aside do not — a run is what a question was asked *by* and
+these are answers, and neither list is counted in the facets a chip states.
+
+Measured on the development catalogue (2026-09-07, admin scope): 1 621 open questions — 1 451
+held, 118 refused, 52 arrivals, 11 contents, no conflict, and nothing withdrawn or missing. The
+sub-kind counts sum past the total on purpose: a waiting row is one question per object, and 11
+objects hold two of the three gated kinds at once. The keys statement executes in 123 ms at an
+estimated cost of 79 688, and the endpoint answers a page of 25 with its facets in 296 ms cold and
+148 ms warm, against about 590 ms for the nine statements it replaced.
+
+**A curator sets a whole run's batch aside** (ADR-0051 decision 4).
+`curator_queue_set_aside(user_id, sync_log_id, created_at)`, keyed on the pair, written by
+`PUT /api/experiences/review/set-aside/:syncLogId` and removed by the `DELETE` on the same path.
+The unit is the run because the run is the batch: run 98 of 5 September put 1 255 questions about
+one field, `metadata.criteria`, into the queue at once, and "not now" is one decision about the
+run rather than 1 255 of them. The keys phase drops a set-aside run's rows unless `aside=show`,
+and only for the curator who set it aside — the row is theirs, not the queue's, so nobody else's
+list changes and it holds across a reload and across machines. The run facet still lists the
+batch, counted *before* the exclusion and flagged `setAside`, and `facets.setAside` says how many
+batches are hidden — the batch is the unit and the only number the chip needs: a batch nothing
+names has no way back. Nothing expires the row and
+nothing has to — the read offers only runs with open questions, so a run whose questions have been
+answered, or whose held pointer a later run has moved, hides nothing on its own. A dry run is
+refused with 404, the same answer a run that does not exist gets, since it raised no question to
+put aside.
 
 **A conflict can be answered both ways, and only one of them used to exist.** Accepting the
 source writes its value and releases the claim. Standing by the curator's own value was the
@@ -2619,14 +2722,21 @@ same way, though — both read a row's *own* `missing_since` and `pending_change
 independently, so `held` carries its own `missing_since IS NULL` guard rather than relying on
 `arrivals`'s structural argument.
 
-The queue pages (`limit` default 25). The page labels a full first page "first N" rather than
-printing its length as a total, and carries Previous / Show more so the items behind it are
-reachable — otherwise the label would name a backlog the curator could only reach by
-answering everything in front of it.
+The queue pages by cursor (`limit` default 25, 100 at most): one *Show more* at the foot of the
+list asks for the next page at `paging.nextCursor` and appends it, and the two answered lists
+below it keep their own Previous / Show more on their own offsets. The toolbar prints the whole number
+under the filter — `1,621 open` — and the list's own accessible name says how much of it is
+loaded (`25 of 1,621 questions loaded`, the container's `aria-label` rather than text on the
+screen). A day or question heading carries a count only once every page is loaded: a page holds
+25 of a backlog the toolbar has just called 1,621 open, so a number beside "Sat 5 Sep" would be a
+claim the list has no way to make, and the honest answer until then is no number at all.
 
-The page lives at `/review` (`frontend/src/components/curation/ReviewQueue.tsx`), reachable
-from the header for curators. That gate is convenience: every action it offers is checked
-server-side against the caller's scope.
+The page lives at `/review` (`frontend/src/components/curation/ReviewPage.tsx`, with the list in
+`ReviewQueueList.tsx` and the search, order and chips in `curation/feed/`), reachable from the
+header for curators. That gate is convenience: every action it offers is checked server-side
+against the caller's scope. Its whole working set — the order, the search, the four filters and
+the question open on the right — is the page's address (`docs/tech/addresses.md` § The review
+page), so a filtered feed is a link and Back undoes a filter.
 
 **A proposal is a table of facts** (#570). `factRows.ts` turns what the queue carries — `metadata`
 with an object on each side, `location`, `shortDescription` — into rows: one per fact that

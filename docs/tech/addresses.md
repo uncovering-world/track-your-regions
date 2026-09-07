@@ -19,6 +19,8 @@ implemented, and the rules that keep it honest. The decision behind it is
 | `/discover/wv/5/r/7100-malta?cat=1` | Discover, Malta's UNESCO list open, the tree at Malta's parent |
 | `/discover/wv/5/r/7100-malta/e/1234-stonehenge?cat=1` | …that list, with the card open |
 | `/?wv=5`, `/discover?wv=5` | The form links carried before #644 — honoured, then rewritten in place |
+| `/review` | The curator's review feed, nothing narrowed — a page rather than a place; see § The review page |
+| `/review?sort=question&q=cologne&source=1,3&kind=held&region=6737&run=98&aside=show&row=waiting:126` | …that feed's whole working set: the order, the search, the four filters, the set-aside batches shown, and the question open on the right — on the catalogue of 2026-09-07, Cologne Cathedral's held proposal from run 98 |
 
 Two rules decide where a piece of state goes:
 
@@ -102,27 +104,119 @@ card on every mode switch, would lose the card that *would* have opened.
 Every id in an address reaches only reads that are already bounded by
 visibility, so the client learns nothing the API would not have said.
 
+## The review page
+
+`/review` is the curator's review feed, and it is a page rather than a place:
+`review` is in `NOT_A_PLACE`, so `parseAppUrl` answers `null` for it and none of
+the rules above about world views, regions and cards applies to it. What it does
+have is a working set — the order, the search, the four filters, whether
+set-aside batches are shown, and the question open on the right — and that is
+view state a curator set deliberately, so it goes in query parameters by the same
+rule Discover's `?cat=` does: [ADR-0034](../decisions/0034-a-place-has-an-address.md)
+applied, by [ADR-0051](../decisions/0051-the-review-queue-is-one-list-of-dated-questions.md)
+decision 5.
+
+| Parameter | What it names |
+|---|---|
+| `sort=question` | The class-first order. `date` is the default and writes nothing |
+| `q=cologne` | The search, trimmed and capped at 100 characters — the API's own limit for it |
+| `source=1,3` | The sources, by id |
+| `kind=arrival,refused` | The questions: `conflict`, `withdrawn`, `refused`, `missing`, and the three gated kinds: `arrival`, `held`, `contents` |
+| `region=6737`, `region=none` | A region and everything under it, or the objects in no region at all |
+| `run=98` | The run that asked |
+| `aside=show` | Show the batches this curator has set aside, which are otherwise out of the list. Picking a set-aside run in the Run chip turns it on with the filter, in one write: that chip counts its runs before the set-aside rows are dropped, so the batch it offers would otherwise be filtered to a list the page hides |
+| `row=waiting:126` | The question open on the right, by the list's own key |
+
+The address in the table at the top of this page is a real one as of
+2026-09-07: `waiting:126` is Cologne Cathedral, which run 98 asked about by
+proposing its inscription criteria, and `q=cologne` and `kind=held` are two of
+the ways a curator reaches it.
+
+`parseReviewUrl` and `buildReviewUrl` sit in `appUrl.ts` beside
+`parseAppUrl`/`buildAppUrl` — a sibling grammar rather than an extension of it:
+no path segments, and every word is one `GET /api/experiences/review/queue`
+already reads, except `row`, which the API does not need and a deep link does.
+They are in the same module for the same reason the first pair is, with a
+round-trip test of their own.
+
+**`row` carries the list's word, not the API's**, and the two differ in exactly
+one: a conflict row's key is `conflicts:88`, while the filter for that same
+question is `kind=conflict`. They name different things — a row on the page, and
+a kind to filter by — and matching the API's word in `row` would write an address
+the page can never find.
+
+**The second door.** `useReviewAddress` is to this grammar what `useAppAddress`
+is to the other: `{ address, go }`, `go` merging `next` over the current address
+and doing nothing when the result is the address the page is already at. It reads
+that current address through a ref, for the reason `useAppAddress` reads through
+one — `navigate` puts the new URL in the address bar at once while React
+re-renders through a transition, so two writes made in one gesture (setting the
+search text and clearing the selected row) would otherwise both merge onto the
+URL of the render before either, and the second would undo the first. Only a
+navigation from *outside* — Back, a fresh entry, the page loading at a new
+address — overrides what `go` last wrote.
+
+**`next` may also be a function of the current address**, and for the same
+reason: the ref fixes what a patch is merged *onto*, not what it is computed
+*from*. A filter chip toggles one id out of the list the address holds and its
+menu stays open, so a second tick reported before React has re-rendered — the
+location update lands in a transition — computes its array from an address that
+never saw the first, and `source=2` replaces the `source=1` the curator had just
+asked for. A function is resolved against the same current address the result is
+merged onto, so a relative write always builds on the write before it. Absolute
+patches stay the common form; only a change that reads the address to compute
+itself needs the function.
+
+**Push what the curator did, replace what the page corrected**, as everywhere
+else here. A question opened from the list, a filter, a search, the order and
+showing the set-aside batches are pushes. A change that names a different list
+clears `row` with it — the question was chosen out of a list that no longer
+exists — while the order and showing the set-aside batches keep it, because the
+question stays in the list either way. The selection moving on by itself once
+a question is answered is a replace: Back must not have to step through a
+correction the page made for itself. Setting a batch aside writes no address
+at all — it is work put down rather than a view of it, and the filter stays
+where the curator left it.
+
+**Degradation is silent here too.** A value that does not parse — `region=europe`,
+`row=conflict:88`, `kind=nonsense` — reads as absent and the rest of the address
+still applies. The leniency runs on into the endpoint the address is asked with:
+a filter word the server's vocabulary does not know is dropped rather than
+answered 400, and a `cursor` it cannot read opens the first page.
+
+**A `row` resolves only within the pages loaded so far.** One that names no row
+in them is replaced by the first row of the list, and the address bar goes with
+it — whether the question was answered by somebody else or simply sits further
+down a backlog the page has not paged to. A page holds 25 rows, so a link into a
+batch larger than that lands on its own row only when the row is on the first
+page; the list the link named is still the list that opens. Making the server
+open the page a named `row` is *on* is issue #843.
+
 ## Where it lives
 
 | File | What it holds |
 |---|---|
-| `frontend/src/utils/appUrl.ts` | The grammar: `parseAppUrl`, `buildAppUrl`, `legacyRedirect`, `slugify`, `slugsOf`. Parse and build side by side |
-| `frontend/src/utils/appUrl.test.ts` | Its tests, including the **round trip** — state → URL → state for every shape |
+| `frontend/src/utils/appUrl.ts` | The grammar: `parseAppUrl`, `buildAppUrl`, `legacyRedirect`, `slugify`, `slugsOf`. Parse and build side by side — and the review page's sibling pair, `parseReviewUrl`/`buildReviewUrl`, with `isFilteredReview` for the one list of narrowing parameters |
+| `frontend/src/utils/appUrl.test.ts` | Its tests, including the **round trip** — state → URL → state for every shape, both grammars |
 | `frontend/src/hooks/useAppAddress.ts` | The one door: `{ address, go }`. `go` builds, no-ops on the current address, pushes by default and replaces when asked; keeps the slugs already in the address for ids a write leaves alone; performs the legacy redirect |
+| `frontend/src/hooks/useReviewAddress.ts` | The second door, for `/review`: the same `{ address, go }` over the review grammar, with the same ref discipline, pushing what the curator did and replacing what the page corrected |
 | `frontend/src/hooks/useAddressedRegion.ts` | The selected region: the object, the ancestors read that restores and completes it, the follow, the degradation, the canonical rewrite |
 | `frontend/src/hooks/useNavigation.tsx` | The world view: reads it from the address, writes it with `push` / `replace` / `none` per case |
 | `frontend/src/hooks/useExperienceContext.tsx` | Map mode's open card, derived from the address, and the arrival the list focuses |
 | `frontend/src/hooks/useDiscoverExperiences.ts` | Discover's level, category and card, all derived from the shared region and the address |
 | `frontend/src/components/Header.tsx` | Carries the place across Map ↔ Discover |
 
-Nothing else reads `useSearchParams` or calls `navigate` for app state. The two
-exceptions are not app state: `AuthCallbackHandler` (`code`, `error`) and
+Nothing else reads `useSearchParams` or calls `navigate` for app state. The
+review feed's own state goes through the second door above, which reads
+`useLocation` and writes through the same `navigate`; the two remaining
+exceptions are not app state at all: `AuthCallbackHandler` (`code`, `error`) and
 `VerifyEmailPage` (`token`).
 
 **Adding a parameter**: add it to `AppAddress`, to `parseAppUrl` and to
-`buildAppUrl`, and to the round-trip list in the test. The test is what stops a
-parameter being added in one direction only — the failure mode a single module
-exists to prevent.
+`buildAppUrl`, and to the round-trip list in the test — or, for the review feed,
+to `ReviewAddress`, `parseReviewUrl`, `buildReviewUrl` and that pair's own
+round trip. The test is what stops a parameter being added in one direction only
+— the failure mode a single module exists to prevent.
 
 ## What the address enables
 
@@ -157,4 +251,8 @@ exists to prevent.
   object's own `focus_bbox`/`anchor_point`, exactly as a click does.
 - **GADM administrative divisions**, per ADR-0034.
 - **Anything personal** — visited state, user ids. URLs travel through referers,
-  logs and chat.
+  logs and chat. The one exception is `q` on the review page: it is the sole
+  free-text parameter the app writes to an address, but it is a curator's
+  search over the catalogue's object names, on a curator-only page, capped at
+  100 characters and trimmed — view state by this rule, not personal data, since
+  a name a curator types is a name the catalogue already publishes.
