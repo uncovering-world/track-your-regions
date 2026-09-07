@@ -366,6 +366,34 @@ columns exist — and order-independent with `01-schema.sql`, which creates the 
 and no longer touches the moved columns; the backend of the same change reads memberships, so
 run this before starting it against a database that holds a catalogue.
 
+`047-a-name-is-stored-as-a-person-would-type-it.sql` brings every stored name to the
+store rule the writers now apply (`tidyLabel`, #835): edges trimmed, a run of whitespace
+inside collapsed to one plain space, case and dashes untouched. Every source is a label
+service and passes runs through, and until this change every writer stored the label as it
+came — *St. John  on Patmos* with two spaces, eighteen World Heritage component names with a
+run, 98 Arabic local names, a no-break space in Getbol's English name. HTML collapses all of
+it, so a reader who typed what the screen showed found nothing. The file rewrites a place's
+name, every language of its local names, a monument's `metadata.creators`, a point's name,
+and a work's title and makers — 121 rows on the development catalogue, measured in a
+rolled-back run — and touches no claim, hold or provenance: a tidied name is the same name.
+It converts the four stores a name lives in, the shape 040 set: the rows; the change records
+that carry the names (a `changed_fields` entry for `name`, a `nameLocal.<lang>` or
+`metadata.creators`, and the contents entries' `item.name` and `name` / `artists` fields,
+`old` and `new` alike), since every run from now on records the tidied form and a reader
+matches a record to a row and to an answer; the answers to those records
+(`experience_held_decisions`, keyed by the part's name and by the proposed value — two answers
+that become one name under the rule keep the newer — and `experience_conflict_decisions`, a
+claimed field's refusal keyed by the proposed value); and, in code, the writers that record an
+answer or publish a proposal tidy at the write. `experience_curation_log` is left alone, for
+040's reason. The readers still compare a record's name to a row's and to an answer's by the
+rule on both sides, so a record a pre-change backend writes after this file has run is found
+all the same.
+Run it before the first sync after the code change, because the writers tidy before their
+diff: against untidied rows that run would file a rename card for each of the 118 place and
+point names about nothing. Re-runnable — a tidy row is its own tidied form. The catalogue
+check `name-carries-whitespace-nobody-typed` reads zero afterwards, and its test pins this
+file's whitespace spelling to the constant the check composes.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the
