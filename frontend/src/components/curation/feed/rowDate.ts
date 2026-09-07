@@ -49,6 +49,20 @@ export function dayLabel(day: string, today: string): string {
   return `${WEEKDAY_SHORT[date.getDay()]} ${date.getDate()} ${MONTH_SHORT[date.getMonth()]}`;
 }
 
+/**
+ * A run's own stamp, as the run control names it: `5 Sep 14:32` in the curator's zone.
+ * `in progress` for a run that has not finished — its questions are already being asked,
+ * so the run is on the list before it has a completion to print.
+ *
+ * The time is part of it, unlike `dateShort` below: two runs of the same source on one day
+ * are told apart by nothing else.
+ */
+export function runStamp(iso: string | null): string {
+  if (!iso) return 'in progress';
+  const d = new Date(iso);
+  return `${d.getDate()} ${MONTH_SHORT[d.getMonth()]} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 /** A row's own short date: `today` for the current day, else `5 Sep`. `''` for a `null` timestamp — an open question always has one, an answered one this reads may not. */
 export function dateShort(iso: string | null, today: string): string {
   if (!iso) return '';

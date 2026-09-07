@@ -900,8 +900,15 @@ export interface QueueFacets {
     count: number;
   }>;
   source: Array<{ id: number; name: string; count: number }>;
-  /** `id` null is the unplaced bucket: keys with no region row at all. */
-  region: Array<{ id: number | null; name: string; count: number }>;
+  /**
+   * `id` null is the unplaced bucket: keys with no region row at all.
+   *
+   * `worldView` is the world view this root is a root of — null on the unplaced
+   * row, which is in none. Two roots are called Europe (world views 2 and 5),
+   * so a control listing the bare name would offer a curator two identical
+   * rows; the chip prints the world view where a name repeats.
+   */
+  region: Array<{ id: number | null; name: string; worldView: string | null; count: number }>;
   /**
    * The runs with open questions, counted before the set-aside exclusion —
    * `setAside` says whether this curator has already hidden the batch, which

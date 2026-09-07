@@ -14,7 +14,9 @@
 import {
   describe, it, expect, vi,
 } from 'vitest';
-import { dayOf, dayLabel, dateShort } from './rowDate';
+import {
+  dayOf, dayLabel, dateShort, runStamp,
+} from './rowDate';
 
 describe('dayOf', () => {
   it('reads the instant\'s local calendar day, not UTC\'s', () => {
@@ -92,5 +94,22 @@ describe('dateShort', () => {
 
   it('returns "" for a null timestamp', () => {
     expect(dateShort(null, today)).toBe('');
+  });
+});
+
+describe('runStamp', () => {
+  it('says the day, the month and the time of day, in the reader\'s own zone', () => {
+    // Built from local fields, so the expectation holds wherever the suite runs.
+    const iso = new Date(2026, 8, 5, 14, 32).toISOString();
+    expect(runStamp(iso)).toBe('5 Sep 14:32');
+  });
+
+  it('pads a single-digit hour and minute', () => {
+    const iso = new Date(2026, 8, 4, 9, 5).toISOString();
+    expect(runStamp(iso)).toBe('4 Sep 09:05');
+  });
+
+  it('says a run that has not finished is still in progress', () => {
+    expect(runStamp(null)).toBe('in progress');
   });
 });
