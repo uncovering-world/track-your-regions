@@ -39,3 +39,18 @@ export function foldLabel(value: string | null | undefined): string {
 export function sameLabel(a: string | null | undefined, b: string | null | undefined): boolean {
   return foldLabel(a) === foldLabel(b);
 }
+
+/**
+ * A label as a person would type it: the edges trimmed, a run of whitespace
+ * inside it collapsed to one space — the *store* rule the catalogue holds a
+ * name to (`tidyLabel`, `backend/src/services/sync/labelFold.ts`), pinned to
+ * this copy the way `foldLabel` is. Case, dashes and accents stay.
+ *
+ * A form asks it of what a curator typed *and* of what is stored before it
+ * decides whether anything changed: the endpoint tidies whatever arrives, so a
+ * title pasted with two spaces over a stored one with one is the same title,
+ * and sending it would claim the column over an edit nobody made (#835).
+ */
+export function tidyLabel(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
