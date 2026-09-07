@@ -477,7 +477,7 @@ Generic `getSyncStatus(categoryId)` and `cancelSync(categoryId)` replace per-ser
 
 ### Shared modules
 
-Common sync logic lives in eleven shared utility files:
+Common sync logic lives in shared utility files:
 
 - **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by the source's id (`category_id`), and `isCancellable()` — the single rule for whether a cancel would be acted on, which `cancelSync` enforces, the status endpoint reports as `cancellable`, and the admin panel disables its button on rather than re-deriving.
 - **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
@@ -490,6 +490,7 @@ Common sync logic lives in eleven shared utility files:
 - **`missingDetection.ts`** — Whether absence may be acted on (`missingDetectionSkipReason()`) and the flagging itself (`flagMissingExperiences()`)
 - **`syncLogMarkers.ts`** — The entries a run leaves in `error_details` that other code reads as facts (`CHANGESET_LOST_MARKER`, `ORPHANED_RUN_MARKER`, `PLACEMENT_FAILED_MARKER`) and the predicate that reads them (`CHANGESET_LANDED_SQL`). Written by the orchestrator and the startup sweep, read by the review queue and `accept-source` — one definition, because a run's status cannot answer whether its changeset landed
 - **`fixtureSource.ts`** — Development-only source substitution via `SYNC_SOURCE_FIXTURE`; see § Change provenance below
+- **`labelFold.ts`** — The two rules a name is held to, and the one place each is decided. `foldLabel` / `sameLabel` / `sameLabelSet` answer *whether two labels name the same thing* — NFKC, every Unicode dash to the plain one, whitespace collapsed, case folded — for the diffs, the makers' dedupe and the curator schema's repeat check. `tidyLabel` is the **store rule** (#835): what a row holds is the name as a person would type it — edges trimmed, a run of whitespace inside collapsed to one space, case and dashes untouched. Every source is a label service and a label service passes runs through (Wikidata's label for *St. John  on Patmos* carries two spaces; the World Heritage Centre's component names carried eighteen runs), and HTML collapses them on screen, so a reader who typed what they saw found nothing. Applied by every writer of a name **before its diff** — `upsertExperienceRecord` (the place's name, each language of its local names, the set-valued metadata lists such as `metadata.creators`), `writeExperienceLocations` (a point's name) and `upsertMuseumTreasures` (a work's title and makers) — and by the four curator schemas before their bounds (`storedName` in `types/index.ts`), so a run compares tidied to tidied and reports no rename for a label it only tidied. Migration 047 brought the stored rows to it and `name-carries-whitespace-nobody-typed` in Catalogue Checks asks the rule of every row since, in its SQL spelling (`tidyLabelSql`). Both rules have a copy on the drawing side (`frontend/src/utils/labelFold.ts`), pinned from here by `labelFold.test.ts`
 
 ### Change provenance (issue #480, [ADR-0020](../decisions/0020-experience-lifecycle-and-run-changeset.md))
 
@@ -1779,6 +1780,16 @@ Short description, description, tags, and the website and Wikipedia URLs are
 not on this list: the first three are `TEXT`/`JSONB` columns and the last two
 live inside the `metadata` JSONB, so none of them has a width to align with.
 `backend/src/types/columnBounds.test.ts` holds every entry above to its column.
+
+A name — a place's, a point's, a work's title and each of its makers — is
+tidied before it is bounded (`storedName`, the schemas' spelling of
+`tidyLabel`): edges trimmed, a run of whitespace inside collapsed to one space,
+so a title of nothing but spaces is refused as empty rather than stored, the
+width is measured on what the row will hold, and what `validate()` puts back on
+the request is that form. The correction dialogs compare what was typed with
+what is stored by the same rule before deciding whether to send a name, so a
+title pasted with two spaces over a stored one with one claims nothing
+(`backend/src/types/storedName.test.ts`).
 
 ### What a URL field may hold
 

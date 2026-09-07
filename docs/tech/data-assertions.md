@@ -423,6 +423,25 @@ lists, pins and scopes still read it, while the counts read the membership's
 another, and the readers #819 switches would then move it in front of a reader
 without anyone deciding to.
 
+**The name rule** (`name-carries-whitespace-nobody-typed`) asks of every column
+a person types into a filter — a place's name, each language of its local
+names, a monument's makers, a point's name, a work's title and its makers —
+whether the stored value is what the writers would store: the name as a person
+would type it, edges trimmed, a run of whitespace inside collapsed to one
+space (`tidyLabel`, #835). Every source is a label service and passes runs
+through, and HTML collapses them, so a reader who typed what the screen showed
+found nothing and nothing said why. The writers tidy before their diff now and
+migration 047 brought the rows to it — 121 on the development catalogue, the
+two works of the report among them (*St. John  on Patmos*, *Portrait of a Man
+(Self      Portrait?)*), eighteen World Heritage component names, 98 Arabic
+local names and a no-break space in Getbol's — so a row here came in by a path
+that did not tidy: a new source, or a hand-run update. It composes the rule's
+SQL spelling (`tidyLabelSql`) and never the writers' code, by the second rule
+below; the whitespace is spelled as an alternation rather than a bracket
+expression because under `en_US.utf8` a bracket over the Unicode spaces also
+matched the en dash of *MAK – Museum of Applied Arts*, and
+`objectAssertions.test.ts` pins that spelling to the migration's.
+
 **The credit rule** (`picture-with-nobody-credited`) is a licence obligation
 rather than a consistency rule. Most Commons
 files are CC BY or CC BY-SA, which of a page that merely shows a photograph ask
