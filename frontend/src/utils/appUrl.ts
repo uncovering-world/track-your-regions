@@ -19,6 +19,11 @@
  *
  * Parsing and building live here together, with a round-trip test, so a
  * parameter cannot be added in one direction only.
+ *
+ * `parseReviewUrl`/`buildReviewUrl`, further down, are a sibling grammar for
+ * `/review` — a page that is not a place (`review` is in `NOT_A_PLACE`, so
+ * `parseAppUrl` answers null for it) but whose list state is still an address,
+ * per ADR-0051 decision 5.
  */
 
 export type AppMode = 'map' | 'discover';
@@ -174,4 +179,119 @@ export function legacyRedirect(pathname: string, search: string): string | null 
   const address = parseAppUrl(pathname, search);
   if (!address) return null;
   return buildAppUrl(address);
+}
+
+/**
+ * The review page's list state (ADR-0051 decision 5): order, search, the
+ * filter set and the selected row are `/review`'s address, as query
+ * parameters — `review` is in `NOT_A_PLACE`, so `parseAppUrl` answers null for
+ * it, and this pair is a sibling to `parseAppUrl`/`buildAppUrl` rather than an
+ * extension of them: no path segments, only query parameters, in the words
+ * `GET /api/experiences/review/queue` already reads (`q`, `sort`, `source`,
+ * `kind`, `region`, `run`, `aside`, plus `row` for the selected card, which the
+ * API does not need but a deep link and a set-aside both do).
+ */
+export interface ReviewAddress {
+  /** '' when absent. Trimmed and capped at 100 characters — the API's own `q` limit, enforced on both the read and the write. */
+  q: string;
+  /** Default 'date'; written only when 'question'. */
+  sort: 'date' | 'question';
+  /** ?source=1,3 */
+  sourceIds: number[];
+  /** ?kind=arrival,refused — the API's own words, in the order given. */
+  kinds: string[];
+  /** ?region=6737 | none */
+  regionId: number | 'none' | null;
+  /** ?run=98 */
+  runId: number | null;
+  /** ?aside=show */
+  showAside: boolean;
+  /** ?row=waiting:11586 — `${kind}:${id}`, the QueueRow key. */
+  row: string | null;
+}
+
+export const EMPTY_REVIEW: ReviewAddress = {
+  q: '',
+  sort: 'date',
+  sourceIds: [],
+  kinds: [],
+  regionId: null,
+  runId: null,
+  showAside: false,
+  row: null,
+};
+
+const REVIEW_Q_MAX = 100;
+
+/**
+ * The search text as the address holds it: trimmed, and capped at the API's own limit.
+ *
+ * Exported because the toolbar has to ask the same question the parse answers. Its box
+ * reports what was typed and then follows the address back; comparing the two against
+ * *half* of this rule — the trim alone — rewrites the box mid-typing, eating the trailing
+ * space of `Cologne ` or the tail of a pasted 101-character search, and moving the caret
+ * to the end of a controlled input as it goes. One rule in one place, so the trim and the
+ * cap cannot drift apart.
+ */
+export function normaliseReviewQ(raw: string): string {
+  return raw.trim().slice(0, REVIEW_Q_MAX);
+}
+
+/** The API's own words for a question's kind, plus the three sub-kinds `waiting` groups. */
+const REVIEW_KIND_WORDS = new Set(['conflict', 'withdrawn', 'refused', 'missing', 'arrival', 'held', 'contents']);
+
+/** The five list kinds a `row` can name — `waiting` is the grouped gated row. */
+const REVIEW_ROW = /^(conflict|waiting|withdrawn|refused|missing):(\d+)$/;
+
+/** A comma-separated parameter's entries, or `[]` when the parameter is absent. */
+function csv(raw: string | null): string[] {
+  return raw ? raw.split(',') : [];
+}
+
+function readRow(raw: string | null): string | null {
+  if (!raw) return null;
+  const match = REVIEW_ROW.exec(raw);
+  if (!match) return null;
+  const id = Number(match[2]);
+  return Number.isSafeInteger(id) && id > 0 ? raw : null;
+}
+
+/**
+ * Reads the review page's address. Lenient throughout: an unreadable value
+ * reads as absent rather than rejecting the rest of the query.
+ */
+export function parseReviewUrl(search: string): ReviewAddress {
+  const params = new URLSearchParams(search);
+
+  const rawRegion = params.get('region');
+
+  return {
+    q: normaliseReviewQ(params.get('q') ?? ''),
+    sort: params.get('sort') === 'question' ? 'question' : 'date',
+    sourceIds: csv(params.get('source')).map(readId).filter((id): id is number => id !== null),
+    kinds: csv(params.get('kind')).filter(k => REVIEW_KIND_WORDS.has(k)),
+    regionId: rawRegion === 'none' ? 'none' : readId(rawRegion),
+    runId: readId(params.get('run')),
+    showAside: params.get('aside') === 'show',
+    row: readRow(params.get('row')),
+  };
+}
+
+/** Writes the review page's address. `/review` or `/review?…`, keys in a fixed order. */
+export function buildReviewUrl(a: ReviewAddress): string {
+  const parts: string[] = [];
+  if (a.sort === 'question') parts.push('sort=question');
+  // The build applies the same rule as the parse (`normaliseReviewQ`): a
+  // cosmetic difference — a trailing space, a paste over the 100-character
+  // cap — builds the same address the parse would produce anyway, so `go`'s
+  // no-op guard swallows it instead of pushing a dead history entry.
+  const q = normaliseReviewQ(a.q);
+  if (q !== '') parts.push(new URLSearchParams({ q }).toString());
+  if (a.sourceIds.length > 0) parts.push(`source=${a.sourceIds.join(',')}`);
+  if (a.kinds.length > 0) parts.push(`kind=${a.kinds.join(',')}`);
+  if (a.regionId !== null) parts.push(`region=${a.regionId}`);
+  if (a.runId !== null) parts.push(`run=${a.runId}`);
+  if (a.showAside) parts.push('aside=show');
+  if (a.row !== null) parts.push(`row=${a.row}`);
+  return parts.length > 0 ? `/review?${parts.join('&')}` : '/review';
 }
