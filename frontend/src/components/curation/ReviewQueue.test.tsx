@@ -1,22 +1,49 @@
 /**
- * Tests for the curator's review queue.
+ * Tests for the cards a curator answers on the review page.
  *
- * The behaviour worth pinning is what the page promises: three distinct answers
- * to a missing object (two of which change something and one of which does
- * not), and a conflict view that shows both versions before asking anyone to
- * choose.
+ * The behaviour worth pinning here is what each question promises: three distinct answers
+ * to a missing object (two of which change something and one of which does not), a conflict
+ * view that shows both versions before asking anyone to choose, a gated run's one card per
+ * museum — and, after every answer, the line that says what it did, since the refetch takes
+ * the card away with it.
+ *
+ * The page *around* the cards — the address it reads its filters from, the cursor it pages
+ * by, the run it can set aside — is `ReviewPage.test.tsx`'s claim. Both files answer from
+ * the same fixtures (`reviewQueueFixtures`).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
 
 vi.mock('../../utils/queryInvalidation', () => ({
   invalidateExperiences: vi.fn(),
 }));
 
+/**
+ * The queue read, in two halves so that a case can say only what it is about: `mockedFetch`
+ * is what a case sets and what the assertions read, and the module's own `fetchReviewQueue`
+ * passes its answer through `shaped` (`reviewQueueFixtures`), which fills in the parts of
+ * the response no card test is about — the `order` the page draws its rows from, the
+ * filtered `total`, the `facets` and the cursor. Fifty fixtures each restating those four
+ * fields is how they drift; a case that *is* about one of them states it, and `shaped`
+ * keeps what it was given.
+ */
+const { mockedFetch } = vi.hoisted(() => ({ mockedFetch: vi.fn() }));
+
+/**
+ * The toolbar is drawn away for these cases, and it is the cost rather than the coupling
+ * that decides it: nothing here asserts a chip, a count or the order toggle — that is
+ * `ReviewToolbar.test.tsx`'s claim, and the page around the cards is `ReviewPage.test.tsx`'s
+ * — while its four MUI menus and its debounced search box are re-rendered by every one of
+ * the sixty-eight cases below. Rendered, this file took 15.4 s of test time; without it,
+ * 7.4 s — and the flakes it took under load went with the eight seconds.
+ */
+vi.mock('./feed/ReviewToolbar', () => ({ ReviewToolbar: () => null }));
+
 vi.mock('../../api/experiences', () => ({
-  fetchReviewQueue: vi.fn(),
+  fetchReviewQueue: async (params: unknown) => shaped(await mockedFetch(params)),
+  setRunAside: vi.fn(),
+  bringRunBack: vi.fn(),
   setExperienceState: vi.fn(),
   setExperienceAdmission: vi.fn(),
   setLocationState: vi.fn(),
@@ -28,13 +55,15 @@ vi.mock('../../api/experiences', () => ({
 }));
 
 import {
-  fetchReviewQueue, setExperienceState, setExperienceAdmission, setLocationState,
+  setExperienceState, setExperienceAdmission, setLocationState,
   acceptSourceValue, declineSourceValue, declineHeld, publishExperience, fetchExperience,
 } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
-import { ReviewPage } from './ReviewPage';
+import {
+  shaped, renderQueue, openRow,
+  MISSING, REFUSED, KEPT_OUT, CONFLICT, ARRIVAL, HELD, CONTENTS,
+} from './reviewQueueFixtures';
 
-const mockedFetch = fetchReviewQueue as unknown as ReturnType<typeof vi.fn>;
 const mockedState = setExperienceState as unknown as ReturnType<typeof vi.fn>;
 const mockedAccept = acceptSourceValue as unknown as ReturnType<typeof vi.fn>;
 const mockedDecline = declineSourceValue as unknown as ReturnType<typeof vi.fn>;
@@ -58,113 +87,6 @@ const PUBLISHED = {
   treasuresPublished: 0,
   withdrawalsReleased: 0,
 };
-
-const MISSING = {
-  id: 77,
-  external_id: '1234',
-  name: 'Dresden Elbe Valley',
-  category_id: 1,
-  category_name: 'UNESCO World Heritage Sites',
-  missing_since: '2026-08-03T10:00:00Z',
-  source_membership: 'present' as const,
-  existence: 'extant' as const,
-  kind: 'missing' as const,
-  proposed: null,
-};
-
-const REFUSED = {
-  ...MISSING,
-  id: 99,
-  external_id: 'Q6373',
-  name: 'British Museum',
-  category_id: 2,
-  category_name: 'Art Museums',
-  kind: 'refused' as const,
-  missing_since: null,
-  admission_reason: 'not an art museum \u2014 archaeology',
-};
-
-const KEPT_OUT = {
-  ...REFUSED,
-  kind: 'kept-out' as const,
-  state_decided_at: '2026-08-08T09:00:00Z',
-  state_note: 'archaeology, comes back with that import',
-};
-
-const CONFLICT = {
-  ...MISSING,
-  id: 88,
-  name: 'Serengeti National Park',
-  kind: 'conflict' as const,
-  missing_since: null,
-  proposed: [{ field: 'name', old: 'Curator wording', new: 'Renamed upstream', acceptable: true }],
-  sync_log_id: 41,
-};
-
-const ARRIVAL = {
-  ...MISSING,
-  id: 55,
-  external_id: 'Q160236',
-  name: 'Museo Soumaya',
-  category_id: 2,
-  category_name: 'Art Museums',
-  kind: 'arrival' as const,
-  missing_since: null,
-  curation_state: 'pending',
-  // The run that first saw it, not a held pointer — see the test that pins
-  // what the publish body may carry for an arrival.
-  sync_log_id: 61,
-};
-
-const HELD = {
-  ...MISSING,
-  id: 7,
-  external_id: 'Q160112',
-  name: 'Museo del Prado',
-  category_id: 2,
-  category_name: 'Art Museums',
-  kind: 'held' as const,
-  missing_since: null,
-  proposed: [{ field: 'name', old: 'Prado', new: 'Museo Nacional del Prado', held: true }],
-  sync_log_id: 47,
-};
-
-const CONTENTS = {
-  ...HELD,
-  kind: 'contents' as const,
-  proposed: null,
-  sync_log_id: undefined,
-  pending_locations: 1,
-  pending_treasures: 12,
-};
-
-/**
- * The page, not the cards.
- *
- * These assertions are about what a curator can do — answer, be told what happened, reach
- * what is behind a page — and none of them was about the single-column layout the page used
- * to have. The screen is now a list beside a bench, which selects the first question on its
- * own, so a queue holding one of something opens on it exactly as before.
- */
-function renderQueue() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <ReviewPage />
-    </QueryClientProvider>
-  );
-}
-
-/**
- * Open one question, where the queue holds more than one.
- *
- * The page selects the first row on its own, so a queue with a single question needs no
- * click. With several, the bench shows one at a time — which is the change — and a test
- * about a particular card has to say which.
- */
-async function openRow(name: string | RegExp) {
-  fireEvent.click(await screen.findByRole('button', { name }));
-}
 
 describe('ReviewQueue', () => {
   beforeEach(() => {
@@ -190,42 +112,8 @@ describe('ReviewQueue', () => {
       country_names: ['Mexico'], location_count: 1,
     });
     mockedFetch.mockResolvedValue({
-      missing: [MISSING], refused: [], conflicts: [CONFLICT], limit: 25, offset: 0,
+      missing: [MISSING], refused: [], conflicts: [CONFLICT], limit: 25,
     });
-  });
-
-  it('moves to the question that took the answered one’s place, not back to the top', async () => {
-    // The property the whole list/bench split is for, and it was wired wrong while the
-    // function underneath it passed its own tests: `selectedIndex` is recomputed from the
-    // *current* rows, so the moment the answered row leaves it reads -1 — which means
-    // "nothing was selected" and sends the selection to row one.
-    const three = [77, 78, 79].map(id => ({ ...MISSING, id, name: `Site ${id}` }));
-    mockedFetch
-      .mockResolvedValueOnce({ missing: three, conflicts: [], limit: 25 })
-      .mockResolvedValue({ missing: [three[0], three[2]], conflicts: [], limit: 25 });
-    renderQueue();
-
-    await openRow(/Site 78/);
-    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
-
-    // Site 79 took index 1 when 78 left, so it is the question in front of the curator.
-    expect(await screen.findByRole('heading', { name: /Site 79/ })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /Site 77/ })).not.toBeInTheDocument();
-  });
-
-  it('keeps a way back when a kind’s page comes back empty', async () => {
-    // Page the refusals forward, answer what was on page 2, and the rows in front of them
-    // become unreachable: the per-kind pager renders under the last row of its kind, so a
-    // kind with no rows renders no pager at all.
-    mockedFetch.mockResolvedValue({
-      missing: [MISSING], refused: [], conflicts: [], limit: 25,
-      paging: { refused: { offset: 25, hasMore: false }, missing: { offset: 0, hasMore: false } },
-    });
-    renderQueue();
-
-    fireEvent.click(await screen.findByRole('button', { name: /refused — previous/i }));
-
-    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith({ offsets: { refused: 0 } }));
   });
 
   it('offers the three answers a missing object can have', async () => {
@@ -314,7 +202,7 @@ describe('ReviewQueue', () => {
       conflicts: [{ ...CONFLICT, proposed: [
         { field: 'tags', old: ['a'], new: ['b'], acceptable: true, claim: { by: 'Dana', at: '2026-08-04T12:29:32Z' } },
       ] }],
-      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
     renderQueue();
 
@@ -331,7 +219,7 @@ describe('ReviewQueue', () => {
       conflicts: [{ ...CONFLICT, proposed: [
         { field: 'shortDescription', old: null, new: 'A description this row never had', acceptable: true },
       ] }],
-      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
     renderQueue();
 
@@ -350,7 +238,7 @@ describe('ReviewQueue', () => {
         { field: 'name', old: 'Curator wording', new: 'Renamed upstream', acceptable: true },
         { field: 'shortDescription', old: 'Mine', new: 'Theirs', acceptable: true },
       ] }],
-      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
     renderQueue();
 
@@ -374,7 +262,7 @@ describe('ReviewQueue', () => {
           { field: 'shortDescription', old: 'Mine', new: 'Theirs', acceptable: true },
         ],
       }],
-      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
     renderQueue();
 
@@ -396,7 +284,7 @@ describe('ReviewQueue', () => {
         sync_log_id: 41,
         proposed: [{ field: 'location', old: null, new: { lat: 1 }, acceptable: false }],
       }],
-      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
     renderQueue();
 
@@ -413,9 +301,9 @@ describe('ReviewQueue', () => {
       .mockResolvedValueOnce({
         missing: [],
         conflicts: [{ ...CONFLICT, sync_log_id: 41, proposed: [{ field: 'shortDescription', old: 'Mine', new: 'Theirs', acceptable: true }] }],
-        refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+        refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
       })
-      .mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
+      .mockResolvedValue({ missing: [], conflicts: [], limit: 25 });
     renderQueue();
 
     fireEvent.click(await screen.findByRole('button', { name: 'keep this' }));
@@ -441,7 +329,7 @@ describe('ReviewQueue', () => {
           decidedBefore: [{ by: 'admin', at: '2026-07-30T08:00:00Z', applied: 'An earlier upstream name' }],
         }],
       }],
-      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
     renderQueue();
 
@@ -478,7 +366,6 @@ describe('ReviewQueue', () => {
         { field: 'location', old: [1, 2], new: [3, 4], acceptable: false },
       ] }],
       limit: 25,
-      offset: 0,
     });
     renderQueue();
 
@@ -502,7 +389,6 @@ describe('ReviewQueue', () => {
         { field: 'countryCodes', old: ['FR'], new: ['BE'], acceptable: false },
       ] }],
       limit: 25,
-      offset: 0,
     });
     renderQueue();
 
@@ -517,7 +403,6 @@ describe('ReviewQueue', () => {
         { field: 'location', old: [1, 2], new: [3, 4], acceptable: false },
       ] }],
       limit: 25,
-      offset: 0,
     });
     renderQueue();
 
@@ -526,68 +411,12 @@ describe('ReviewQueue', () => {
     await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['name', 'location'], 41));
   });
 
-  it('can reach the items behind a full page, moving only that kind', async () => {
-    mockedFetch.mockResolvedValue({
-      missing: Array.from({ length: 2 }, (_, i) => ({ ...MISSING, id: i + 1 })),
-      conflicts: [CONFLICT],
-      limit: 2,
-      paging: {
-        missing: { offset: 0, hasMore: true },
-        conflicts: { offset: 0, hasMore: false },
-      },
-    });
-    renderQueue();
-
-    // Without this the curator is told more exist and cannot see them until the ones in
-    // front are answered. And the offset it moves is that kind's own: a shared one made
-    // "show more" under one heading page every other section past its own first page.
-    fireEvent.click(await screen.findByRole('button', { name: /show more/i }));
-
-    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith({ offsets: { missing: 2 } }));
-  });
-
-  it('offers no paging when one page holds everything', async () => {
-    mockedFetch.mockResolvedValue({ missing: [MISSING], conflicts: [], limit: 25, offset: 0 });
-    renderQueue();
-
-    await screen.findByRole('button', { name: /former/i });
-    expect(screen.queryByRole('button', { name: /show more/i })).toBeNull();
-  });
-
-  it('does not present a full page as the whole backlog', async () => {
-    mockedFetch.mockResolvedValue({
-      missing: Array.from({ length: 2 }, (_, i) => ({ ...MISSING, id: i + 1 })),
-      conflicts: [],
-      limit: 2,
-      paging: { missing: { offset: 0, hasMore: true } },
-    });
-    renderQueue();
-
-    expect(await screen.findByText(/Gone from the source \(first 2\)/)).toBeInTheDocument();
-  });
-
-  it('says a full page is the whole of it when nothing waits behind', async () => {
-    // The old heading read "first N" off the page being full, so a kind that happened to
-    // hold exactly one page always claimed a backlog it did not have. The server answers
-    // this now, from the row it fetched past the page.
-    mockedFetch.mockResolvedValue({
-      missing: Array.from({ length: 2 }, (_, i) => ({ ...MISSING, id: i + 1 })),
-      conflicts: [],
-      limit: 2,
-      paging: { missing: { offset: 0, hasMore: false } },
-    });
-    renderQueue();
-
-    expect(await screen.findByText(/Gone from the source \(2\)/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /show more/i })).toBeNull();
-  });
-
   it('refreshes after a refusal, so the stale card cannot be clicked again', async () => {
     mockedState.mockRejectedValue(new Error('Already answered: this object is not waiting on that decision'));
     // The second read is what the server now says: someone else answered it
     mockedFetch
-      .mockResolvedValueOnce({ missing: [MISSING], conflicts: [], limit: 25, offset: 0 })
-      .mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
+      .mockResolvedValueOnce({ missing: [MISSING], conflicts: [], limit: 25 })
+      .mockResolvedValue({ missing: [], conflicts: [], limit: 25 });
     renderQueue();
 
     fireEvent.click(await screen.findByRole('button', { name: /former/i }));
@@ -614,8 +443,8 @@ describe('ReviewQueue', () => {
       experienceId: 88, applied: ['name'], released: ['location'], fromSyncLogId: 41,
     });
     mockedFetch
-      .mockResolvedValueOnce({ missing: [], conflicts: [CONFLICT], limit: 25, offset: 0 })
-      .mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
+      .mockResolvedValueOnce({ missing: [], conflicts: [CONFLICT], limit: 25 })
+      .mockResolvedValue({ missing: [], conflicts: [], limit: 25 });
     renderQueue();
 
     fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
@@ -640,8 +469,8 @@ describe('ReviewQueue', () => {
       fromSyncLogId: 41,
     });
     mockedFetch
-      .mockResolvedValueOnce({ missing: [], conflicts: [CONFLICT], limit: 25, offset: 0 })
-      .mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
+      .mockResolvedValueOnce({ missing: [], conflicts: [CONFLICT], limit: 25 })
+      .mockResolvedValue({ missing: [], conflicts: [], limit: 25 });
     renderQueue();
 
     fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
@@ -664,8 +493,8 @@ describe('ReviewQueue', () => {
       fromSyncLogId: 41,
     });
     mockedFetch
-      .mockResolvedValueOnce({ missing: [], conflicts: [CONFLICT], limit: 25, offset: 0 })
-      .mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
+      .mockResolvedValueOnce({ missing: [], conflicts: [CONFLICT], limit: 25 })
+      .mockResolvedValue({ missing: [], conflicts: [], limit: 25 });
     renderQueue();
 
     fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
@@ -680,7 +509,7 @@ describe('ReviewQueue', () => {
   describe('a row this category refused', () => {
     beforeEach(() => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [REFUSED], conflicts: [], limit: 25, offset: 0,
+        missing: [], refused: [REFUSED], conflicts: [], limit: 25,
       });
     });
 
@@ -729,7 +558,7 @@ describe('ReviewQueue', () => {
 
     it('keeps the promise intact when nothing was refused', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [MISSING], refused: [], conflicts: [], limit: 25, offset: 0,
+        missing: [MISSING], refused: [], conflicts: [], limit: 25,
       });
       renderQueue();
 
@@ -740,8 +569,8 @@ describe('ReviewQueue', () => {
     it('can reach refusals behind a full page', async () => {
       const page = Array.from({ length: 25 }, (_, i) => ({ ...REFUSED, id: 200 + i }));
       mockedFetch.mockResolvedValue({
-        missing: [], refused: page, conflicts: [], limit: 25,
-        paging: { refused: { offset: 0, hasMore: true } },
+        missing: [], refused: page, conflicts: [], limit: 25, total: 118,
+        paging: { nextCursor: '2026-09-05T10:00:00Z|3|224' },
       });
       renderQueue();
 
@@ -753,7 +582,7 @@ describe('ReviewQueue', () => {
   describe('a refusal the curator confirmed', () => {
     beforeEach(() => {
       mockedFetch.mockResolvedValue({
-        missing: [MISSING], refused: [], keptOut: [KEPT_OUT], conflicts: [], limit: 25, offset: 0,
+        missing: [MISSING], refused: [], keptOut: [KEPT_OUT], conflicts: [], limit: 25,
       });
     });
 
@@ -796,7 +625,7 @@ describe('ReviewQueue', () => {
 
     it('shows nothing at all when nothing has been kept out', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [MISSING], refused: [], keptOut: [], conflicts: [], limit: 25, offset: 0,
+        missing: [MISSING], refused: [], keptOut: [], conflicts: [], limit: 25,
       });
       renderQueue();
 
@@ -832,7 +661,7 @@ describe('ReviewQueue', () => {
     beforeEach(() => {
       mockedFetch.mockResolvedValue({
         missing: [MISSING], refused: [], keptOut: [], conflicts: [],
-        answeredWithdrawals: [ANSWERED], limit: 25, offset: 0,
+        answeredWithdrawals: [ANSWERED], limit: 25,
       });
     });
 
@@ -876,7 +705,7 @@ describe('ReviewQueue', () => {
       mockedFetch.mockResolvedValue({
         missing: [MISSING], refused: [], keptOut: [], conflicts: [],
         answeredWithdrawals: [{ ...ANSWERED, answered_points_total: 93 }],
-        limit: 25, offset: 0,
+        limit: 25,
       });
       renderQueue();
 
@@ -894,7 +723,7 @@ describe('ReviewQueue', () => {
     it('shows nothing at all when no point carries a verdict', async () => {
       mockedFetch.mockResolvedValue({
         missing: [MISSING], refused: [], keptOut: [], conflicts: [],
-        answeredWithdrawals: [], limit: 25, offset: 0,
+        answeredWithdrawals: [], limit: 25,
       });
       renderQueue();
 
@@ -905,16 +734,20 @@ describe('ReviewQueue', () => {
 
     it('leaves a way back when its own page comes back empty', async () => {
       // The block renders whole or not at all, and its pager renders inside it — so a
-      // page answered down to nothing takes the only control that could go back with it.
+      // page answered down to nothing would take the only control that could go back
+      // with it, stranding the offset until a reload. It is the offset, not the rows,
+      // that decides whether the block is drawn.
       mockedFetch.mockResolvedValue({
         missing: [MISSING], refused: [], keptOut: [], conflicts: [],
-        answeredWithdrawals: [], limit: 25, offset: 0,
+        answeredWithdrawals: [], limit: 25,
         paging: { answeredWithdrawals: { offset: 25, hasMore: false } },
       });
       renderQueue();
 
-      expect(await screen.findByRole(
-        'button', { name: /lost places you have answered — previous/i })).toBeInTheDocument();
+      fireEvent.click(await screen.findByRole(
+        'button', { name: /show the lost places you have answered/i }));
+
+      expect(await screen.findByRole('button', { name: 'Previous' })).toBeEnabled();
     });
   });
 
@@ -923,7 +756,7 @@ describe('ReviewQueue', () => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [],
         held: [HELD], contents: [CONTENTS],
-        limit: 25, offset: 0,
+        limit: 25,
       });
       renderQueue();
 
@@ -933,7 +766,10 @@ describe('ReviewQueue', () => {
       // card. (The name appears twice on the screen: once in the list, once on
       // the card it opens.)
       expect(await screen.findAllByRole('button', { name: /Museo del Prado/ })).toHaveLength(1);
-      expect(screen.getByText(/1 new point/)).toBeInTheDocument();
+      // Awaited, not read on the spot: the page selects the first row by writing it into
+      // the address, and the router re-renders through a transition, so the bench answers
+      // one tick after the list does.
+      expect(await screen.findByText(/1 new point/)).toBeInTheDocument();
       expect(screen.getByText(/12 new works/)).toBeInTheDocument();
     });
 
@@ -955,7 +791,7 @@ describe('ReviewQueue', () => {
             { id: 10, name: 'Study of a head', artists: [], artistsCurated: false, year: null, imageUrl: null, iconic: false },
           ],
         }],
-        limit: 25, offset: 0,
+        limit: 25,
       });
       renderQueue();
 
@@ -977,7 +813,7 @@ describe('ReviewQueue', () => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [],
         held: [HELD], contents: [CONTENTS],
-        limit: 25, offset: 0,
+        limit: 25,
       });
       renderQueue();
 
@@ -992,7 +828,7 @@ describe('ReviewQueue', () => {
 
     it('does not offer it where there is only one half to publish', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], contents: [CONTENTS], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], contents: [CONTENTS], limit: 25,
       });
       renderQueue();
 
@@ -1004,7 +840,7 @@ describe('ReviewQueue', () => {
 
     it('publishes through the one endpoint that can apply a held field', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], held: [HELD], contents: [], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], held: [HELD], contents: [], limit: 25,
       });
       renderQueue();
 
@@ -1024,7 +860,7 @@ describe('ReviewQueue', () => {
       // replacing one readers can see is a different question, and the card says
       // which it is before the rows (#570).
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], contents: [], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], contents: [], limit: 25,
         held: [{
           ...HELD,
           proposed: [
@@ -1048,7 +884,7 @@ describe('ReviewQueue', () => {
       // no table to draw. It must not read as a run proposing nothing over an empty
       // table while its button writes the labels.
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], contents: [], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], contents: [], limit: 25,
         held: [{ ...HELD, proposed: [{ field: 'tags', old: [], new: ['criterion_ii'], held: true }] }],
       });
       renderQueue();
@@ -1061,7 +897,7 @@ describe('ReviewQueue', () => {
 
     it('says nothing of the kind when a value readers see is being replaced', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], held: [HELD], contents: [], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], held: [HELD], contents: [], limit: 25,
       });
       renderQueue();
 
@@ -1072,7 +908,7 @@ describe('ReviewQueue', () => {
 
     it('names no run for an arrival, whose own run id points at nothing held', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25,
       });
       renderQueue();
 
@@ -1086,7 +922,7 @@ describe('ReviewQueue', () => {
 
     it('publishes contents only for a card with no held half, never an object publish', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], contents: [CONTENTS], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], contents: [CONTENTS], limit: 25,
       });
       renderQueue();
 
@@ -1101,7 +937,7 @@ describe('ReviewQueue', () => {
 
     it('still publishes the object when a held change accompanies the contents', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], held: [HELD], contents: [CONTENTS], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], held: [HELD], contents: [CONTENTS], limit: 25,
       });
       renderQueue();
 
@@ -1118,7 +954,7 @@ describe('ReviewQueue', () => {
       // button is the collapse #519 was filed about.
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [{ ...CONFLICT, id: 7, name: 'Museo del Prado' }],
-        held: [HELD], contents: [], limit: 25, offset: 0,
+        held: [HELD], contents: [], limit: 25,
       });
       renderQueue();
 
@@ -1138,7 +974,7 @@ describe('ReviewQueue', () => {
 
     it('does not claim nothing is waiting while a gated object sits below', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25,
       });
       renderQueue();
 
@@ -1147,21 +983,21 @@ describe('ReviewQueue', () => {
     });
 
     it('can reach gated objects behind a full page', async () => {
-      mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [],
-        contents: Array.from({ length: 2 }, (_, i) => ({ ...CONTENTS, id: 300 + i })),
-        limit: 2,
-        paging: { contents: { offset: 0, hasMore: true } },
-      });
+      mockedFetch
+        .mockResolvedValueOnce({
+          contents: Array.from({ length: 2 }, (_, i) => ({ ...CONTENTS, id: 300 + i })),
+          limit: 2,
+          total: 3,
+          paging: { nextCursor: '2026-09-05T10:00:00Z|2|301' },
+        })
+        .mockResolvedValue({ contents: [{ ...CONTENTS, id: 302, name: 'Museo Nacional' }], limit: 2 });
       renderQueue();
 
-      // Each kind is its own query with its own LIMIT, so its second page exists on the
-      // server whether or not any control asks for it.
-      fireEvent.click(await screen.findByRole('button', { name: /show more/i }));
+      // The three gated kinds are one row per object in one union now, so there is one
+      // control and one cursor — but a page of them still ends short of the backlog.
+      fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
 
-      // The three gated kinds share one control because the section groups them by
-      // experience — but not one offset: only the kind that has more moves.
-      await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith({ offsets: { contents: 2 } }));
+      expect(await screen.findByRole('button', { name: /Museo Nacional/ })).toBeInTheDocument();
     });
 
     it('says what the publication released, including the pin that went with it', async () => {
@@ -1171,9 +1007,9 @@ describe('ReviewQueue', () => {
       });
       mockedFetch
         .mockResolvedValueOnce({
-          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25,
         })
-        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25, offset: 0 });
+        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
       fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
@@ -1191,9 +1027,9 @@ describe('ReviewQueue', () => {
       });
       mockedFetch
         .mockResolvedValueOnce({
-          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25,
         })
-        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25, offset: 0 });
+        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
       fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
@@ -1208,9 +1044,9 @@ describe('ReviewQueue', () => {
       });
       mockedFetch
         .mockResolvedValueOnce({
-          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25,
         })
-        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25, offset: 0 });
+        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
       fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
@@ -1232,9 +1068,9 @@ describe('ReviewQueue', () => {
       });
       mockedFetch
         .mockResolvedValueOnce({
-          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25,
         })
-        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25, offset: 0 });
+        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
       fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
@@ -1246,7 +1082,7 @@ describe('ReviewQueue', () => {
 
     it('drops the object\'s own caches, not only this queue', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25,
       });
       renderQueue();
 
@@ -1263,7 +1099,7 @@ describe('ReviewQueue', () => {
 
     it('answers one fact at a time, publishing that row and leaving the rest', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25,
       });
       renderQueue();
 
@@ -1279,7 +1115,7 @@ describe('ReviewQueue', () => {
 
     it('refuses one fact without claiming it', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25,
       });
       renderQueue();
 
@@ -1295,7 +1131,7 @@ describe('ReviewQueue', () => {
 
     it('says what a refusal settled, since the row goes away', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25,
       });
       renderQueue();
 
@@ -1314,7 +1150,7 @@ describe('ReviewQueue', () => {
       mockedPublish.mockRejectedValue(
         new Error('This row is holding a proposal from a different run — reload to see it'));
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25,
       });
       renderQueue();
 
@@ -1328,7 +1164,7 @@ describe('ReviewQueue', () => {
 
     it('follows the card through to the object the gate is hiding', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25,
       });
       renderQueue();
 
@@ -1343,7 +1179,7 @@ describe('ReviewQueue', () => {
 
     it('does not claim a point count the by-id read never carries', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25, offset: 0,
+        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25,
       });
       renderQueue();
 
@@ -1362,7 +1198,7 @@ describe('ReviewQueue', () => {
     it('does not print "undefined" for a held card with no run id on record', async () => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [],
-        held: [{ ...HELD, sync_log_id: undefined }], contents: [], limit: 25, offset: 0,
+        held: [{ ...HELD, sync_log_id: undefined }], contents: [], limit: 25,
       });
       renderQueue();
 
@@ -1381,8 +1217,8 @@ describe('ReviewQueue', () => {
       locationsPublished: 1, treasureLinksPublished: 12, treasuresPublished: 12, withdrawalsReleased: 0,
     });
     mockedFetch
-      .mockResolvedValueOnce({ missing: [], refused: [REFUSED], conflicts: [], limit: 25, offset: 0 })
-      .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25, offset: 0 });
+      .mockResolvedValueOnce({ missing: [], refused: [REFUSED], conflicts: [], limit: 25 })
+      .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
     renderQueue();
 
     fireEvent.click(await screen.findByRole('button', { name: /the rule was wrong/i }));
@@ -1400,19 +1236,5 @@ describe('ReviewQueue', () => {
     // the global 60s `staleTime` lasts. `docs/tech/experiences.md` described
     // this as what every card here does when it was true of one of them.
     expect(mockedInvalidate).toHaveBeenCalledWith(expect.anything(), { experienceId: 99 });
-  });
-
-  it('says plainly when there is nothing to answer', async () => {
-    mockedFetch.mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
-    renderQueue();
-
-    expect(await screen.findByText(/nothing waiting/i)).toBeInTheDocument();
-  });
-
-  it('reports a failed load instead of showing an empty queue', async () => {
-    mockedFetch.mockRejectedValue(new Error('network down'));
-    renderQueue();
-
-    expect(await screen.findByText(/could not load the review queue/i)).toBeInTheDocument();
   });
 });

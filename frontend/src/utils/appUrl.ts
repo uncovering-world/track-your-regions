@@ -221,6 +221,20 @@ export const EMPTY_REVIEW: ReviewAddress = {
   row: null,
 };
 
+/**
+ * Whether anything narrows the list — the five parameters *Clear all* clears.
+ *
+ * Not `sort` and not `aside`: an order shows the same questions in another
+ * arrangement, and showing the set-aside rows adds rather than narrows. Two
+ * surfaces ask this — the toolbar, to offer *Clear all*, and the page, to tell
+ * "nothing matches" from "nothing waiting" — and a second copy of the list of
+ * parameters is what would drift when a sixth filter arrives.
+ */
+export function isFilteredReview(a: ReviewAddress): boolean {
+  return a.q !== '' || a.sourceIds.length > 0 || a.kinds.length > 0
+    || a.regionId !== null || a.runId !== null;
+}
+
 const REVIEW_Q_MAX = 100;
 
 /**
@@ -240,8 +254,16 @@ export function normaliseReviewQ(raw: string): string {
 /** The API's own words for a question's kind, plus the three sub-kinds `waiting` groups. */
 const REVIEW_KIND_WORDS = new Set(['conflict', 'withdrawn', 'refused', 'missing', 'arrival', 'held', 'contents']);
 
-/** The five list kinds a `row` can name — `waiting` is the grouped gated row. */
-const REVIEW_ROW = /^(conflict|waiting|withdrawn|refused|missing):(\d+)$/;
+/**
+ * The five list kinds a `row` can name — `waiting` is the grouped gated row.
+ *
+ * The *list's* words, not the API's, which differ in one: `row` carries a `QueueRow` key
+ * (`queueRows.ts`), and the row a `?kind=conflict` filter leaves is keyed `conflicts:88`.
+ * They are different parameters naming different things — a question kind to filter by, and
+ * a row on the page — and matching the API's word here would produce a `row` the page can
+ * never find.
+ */
+const REVIEW_ROW = /^(conflicts|waiting|withdrawn|refused|missing):(\d+)$/;
 
 /** A comma-separated parameter's entries, or `[]` when the parameter is absent. */
 function csv(raw: string | null): string[] {

@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import type { QueueFacets } from '../../../api/experiences';
-import { normaliseReviewQ, type ReviewAddress } from '../../../utils/appUrl';
+import { isFilteredReview, normaliseReviewQ, type ReviewAddress } from '../../../utils/appUrl';
 import type { ReviewPatch } from '../../../hooks/useReviewAddress';
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 import { FilterChip } from './FilterChip';
@@ -138,8 +138,7 @@ export function ReviewToolbar({
     onChange(hidden ? { runId, showAside: true } : { runId });
   };
 
-  const filtered = address.q !== '' || address.sourceIds.length > 0 || address.kinds.length > 0
-    || address.regionId !== null || address.runId !== null;
+  const filtered = isFilteredReview(address);
 
   return (
     <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
