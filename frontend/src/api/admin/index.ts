@@ -58,6 +58,10 @@ export interface ExperienceCategory {
    * make a claim about the source that nothing checked.
    */
   waiting: WaitingCounts | null;
+  /** Wikipedia languages an item needs to enter this kind; `null` for a source with no line. */
+  enter_sitelinks: number | null;
+  /** Wikipedia languages an item already in this kind must keep, to stay; `null` alongside `enter_sitelinks`. */
+  stay_sitelinks: number | null;
 }
 
 export interface SyncStatus {
@@ -336,6 +340,22 @@ export async function setCurationGate(
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ requiresCuration }),
+  });
+}
+
+/**
+ * Set the sitelinks line a source's own run reads: the Wikipedia-language count an
+ * item needs to enter this kind, and the lower count it must keep to stay once in.
+ * 404 for a source that is not active or does not exist; 409 for a source whose row
+ * carries no line at all — its threshold lives in code, not here.
+ */
+export async function setSourceLine(
+  categoryId: number, line: { enterSitelinks: number; staySitelinks: number },
+): Promise<{ categoryId: number; name: string; enterSitelinks: number; staySitelinks: number }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/line`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(line),
   });
 }
 
