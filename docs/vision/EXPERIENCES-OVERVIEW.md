@@ -40,7 +40,7 @@ Every experience is classified along two orthogonal axes, following the pattern 
 
 **Type** — a closed enum describing *what kind of thing* something is. Type applies at two independent levels:
 
-- **Experience (venue) type** — a distinction *inside* a kind whose members a traveller still browses together, with a closed vocabulary of the kind's own: a World Heritage site is cultural, natural or mixed; a piece of public art is a monument or a sculpture. Used for filtering inside the kind: tap "Natural" in World Heritage to get the natural sites. A kind whose members a traveller would want as separate lists has no types — an art museum and a history museum are two kinds, so a museum carries none
+- **Experience (venue) type** — a distinction *inside* a kind whose members a traveller still browses together, with a closed vocabulary of the kind's own: a World Heritage site is cultural, natural or mixed; a piece of public art is a monument or a sculpture; a place of worship is a cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue. Used for filtering inside the kind: tap "Natural" in World Heritage to get the natural sites. A kind whose members a traveller would want as separate lists has no types — an art museum and a history museum are two kinds, so a museum carries none
 - **Treasure type** — what kind of treasure is inside a venue (artworks, species, etc.). Independent of the venue's kind and type — a cathedral and an art museum can both hold artworks
 
 These are separate enums. A venue's type describes the venue; a treasure's type describes the treasure. See [`EXPERIENCE-TYPE-AND-SIGNIFICANCE.md`](EXPERIENCE-TYPE-AND-SIGNIFICANCE.md) for the full model.
@@ -91,7 +91,7 @@ The system collects broader treasure data than what qualifies as highlights (e.g
 | **Treasure** | An independently trackable thing inside a venue (artwork, species, artifact). Many-to-many with venues |
 | **Venue** | An experience that holds treasures (museum, zoo, national park) |
 | **Highlight** | A treasure on a globally curated top list (e.g., Top 100 Artworks). Badged inside venues, browsable by region |
-| **Type** | Classification at two levels, each a closed vocabulary: venue type inside a kind whose members are browsed together (cultural / natural / mixed; monument / sculpture — none for a museum) and treasure type (artworks, species...). Independent enums |
+| **Type** | Classification at two levels, each a closed vocabulary: venue type inside a kind whose members are browsed together (cultural / natural / mixed; monument / sculpture; cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue — none for a museum) and treasure type (artworks, species...). Independent enums |
 | **Tag** | Cross-cutting property on experiences or treasures enabling curated lists (endemic, Lazarus). Not a type — orthogonal |
 | **Significance** | Binary: Iconic (world-class) or default. For treasures, Iconic = highlight |
 | **Connection state** | User's relationship depth with a region. Visit-based states first; Aware state added with quiz system |
@@ -100,15 +100,16 @@ The system collects broader treasure data than what qualifies as highlights (e.g
 
 ## What's Live Today
 
-Three kinds are implemented, each filled by one source so far and assigned to regions automatically:
+Four kinds are implemented, each filled by one source so far and assigned to regions automatically:
 
 | Kind | Count | Types | Significance | Source today |
 |------|-------|-------|--------------|--------------|
 | World Heritage sites | ~1,250 | cultural, natural, mixed | — | UNESCO API; Wikidata only for the pictures (enrichment, not a second source) |
 | Art Museums | ~100 | *none* — an art museum is a kind, not a type | iconic | Wikidata SPARQL, works-first (ADR-0023) |
 | Public art & monuments | ~170 | sculpture, monument | iconic | Wikidata SPARQL (class trees, a fame line) |
+| Places of worship | ~1,080 (first live run pending; the rows arrive gated) | cathedral, church, chapel, monastery, mosque, temple, shrine, synagogue | iconic | Wikidata SPARQL, two doors (ADR-0052) |
 
-Typing is live where a kind has types (cultural/natural/mixed for World Heritage, monument/sculpture for public art) and absent where it has none: the `art` every museum row used to carry went with #814. Art museums were the first kind to implement the significance model: the sync collects works above a fame threshold, then admits the museums holding them. Public art applies the same line to the objects themselves: an outdoor sculpture or monument at 22 Wikipedia-language sitelinks or more is the world tier and carries the badge, and a rule refuses what Wikidata calls a monument but a traveller would not — a cathedral, a cemetery, a museum, a work inside a church.
+Typing is live where a kind has types (cultural/natural/mixed for World Heritage, monument/sculpture for public art, the eight words for a place of worship) and absent where it has none: the `art` every museum row used to carry went with #814. Art museums were the first kind to implement the significance model: the sync collects works above a fame threshold, then admits the museums holding them. Public art applies the same line to the objects themselves: an outdoor sculpture or monument at 22 Wikipedia-language sitelinks or more is the world tier and carries the badge, and a rule refuses what Wikidata calls a monument but a traveller would not — a cathedral, a cemetery, a museum, a work inside a church. The fourth kind is where those refused cathedrals and their works landed: a place of worship enters for its own fame *or* for the fame of a work it holds, one number cutting the building at the first door and the work at the second — so St Peter's and its *Pietà* arrive together, while the Church of Santo Tomé, at ten sitelinks, arrives because *The Burial of the Count of Orgaz* hangs in it. That line is the first a source states on its own row rather than in code, and an admin moves it from the sync panel; the kind's works — paintings, relics, tombs, one astronomical clock — are its places' treasures (a bell tower is not: nobody enters the church to see it, so the Leaning Tower waits for a kind of its own), and a place holding any says so with a "treasures inside" marker.
 
 **Numbers**: 466 multi-location experiences with 6,519 individual locations (mostly UNESCO serial nominations). The same fame threshold decides both halves of the museum significance model: 326 works clear it, and the 100 museums holding at least one make up the kind — the global highlights list and region-scoped highlight browsing are planned.
 
@@ -122,7 +123,7 @@ Typing is live where a kind has types (cultural/natural/mixed for World Heritage
 
 ## Future Kinds
 
-Beyond the current three, the platform can grow to cover many more dimensions of a region:
+Beyond the current four, the platform can grow to cover many more dimensions of a region:
 
 **Culture & Arts** — Books, Films, Music, Intangible Heritage, Architecture, Specific Artworks, Street Art & Murals
 
@@ -209,7 +210,7 @@ A rough ordering based on dependencies and user value.
 
 | Phase | What | Status |
 |-------|------|--------|
-| **1. Core Experiences** | Three kinds (World Heritage, art museums, public art), sync, region assignment, browsing, tracking, treasure data collection, curation | Done |
+| **1. Core Experiences** | Four kinds (World Heritage, art museums, public art, places of worship), sync, region assignment, browsing, tracking, treasure data collection, curation | Done |
 | **2. Classification** | Type & significance model, automated significance computation, enhanced curation | Partially done |
 | **3. New Kinds** | Archaeology and history museums (#581), books, films, food, festivals, notable people, wildlife, tags (endemic, Lazarus) | Planned |
 | **4. Connection States** | Visit-based states (Stranger → Deep Connection), checklists, decay mechanics, visual map representation | Planned |

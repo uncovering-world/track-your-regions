@@ -8,7 +8,7 @@ The words this document uses are the ones [ADR-0045](../decisions/0045-a-travell
 |---|---|
 | **Kind** | What a traveller browses by — what they would call the thing in front of them: a World Heritage site, an art museum, an archaeology museum, a monument. Each kind is its own list, pin colour and count |
 | **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query. Not something a visitor sees |
-| **Type** | A distinction *inside* a kind whose members a traveller still browses together — cultural, natural or mixed for a World Heritage site; monument or sculpture for public art. A kind whose members a traveller would want as separate lists has no types: they are kinds |
+| **Type** | A distinction *inside* a kind whose members a traveller still browses together — cultural, natural or mixed for a World Heritage site; monument or sculpture for public art; cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue for a place of worship. A kind whose members a traveller would want as separate lists has no types: they are kinds |
 | **Treasure type** | What kind of thing a treasure inside a venue is — an artwork, a species. Independent of the venue's kind and type |
 
 ---
@@ -39,6 +39,7 @@ A type is a distinction *inside* a kind whose members a traveller still browses 
 |---|---|---|
 | World Heritage sites | `cultural`, `natural`, `mixed` | UNESCO's own classification, carried through from the source |
 | Public art & monuments | `monument`, `sculpture` | Which of the source's two lists the object came from |
+| Places of worship | `cathedral`, `monastery`, `mosque`, `synagogue`, `chapel`, `church`, `shrine`, `temple` | Read from Wikidata's class trees in that order, the first one a place's classes reach winning — so Durham, a cathedral and a monastery, is a cathedral, and the Hagia Sophia is a mosque rather than a church. Where the class graph and a guidebook disagree the guidebook wins: a Thai *wat* is a temple, so Wat Pho is a temple though Wikidata files it under monastery. A place none of the eight words fits is stored with no type at all, which is a real answer rather than a gap ([ADR-0052](../decisions/0052-a-place-of-worship-is-admitted-for-itself-or-for-what-it-holds.md) decision 5) |
 | Art museums | *none* | An art museum is a kind, not a type within "Museums" — the literal `art` every museum row once carried said nothing the kind does not (#814) |
 
 ### Kinds of museum
