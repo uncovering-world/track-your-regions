@@ -47,7 +47,7 @@ vi.mock('./linkWithdrawal.js', () => ({
 import { pool, rollbackQuietly } from '../../../db/index.js';
 import { retirePassAfterNewContent } from '../curationDecay.js';
 import { reconcileLinks } from './linkWithdrawal.js';
-import { treasureMetadata, upsertMuseumTreasures as writeTreasures } from './treasureWriter.js';
+import { treasureMetadata, upsertVenueTreasures as writeTreasures } from './treasureWriter.js';
 import type { TreasureCredits, TreasureWriteRun } from './treasureWriter.js';
 import type { ProcessedContent } from '../types.js';
 import type { ImageCredit, StoredCredit } from '../imageCredit.js';
@@ -83,7 +83,7 @@ const NO_CREDITS: TreasureCredits = { fetched: new Map(), stored: new Map() };
  * never point the museum at the run that held it — and, since ADR-0044, would
  * mark links on a run nothing measured.
  */
-const RUN: TreasureWriteRun = { syncLogId: 42, withdrawalSkippedReason: null };
+const RUN: TreasureWriteRun = { syncLogId: 42, withdrawalSkippedReason: null, categoryId: 2 };
 
 const upsertMuseumTreasures = (
   experienceId: number, artworks: ProcessedContent[], credits: TreasureCredits = NO_CREDITS,
@@ -166,6 +166,18 @@ describe('a work arrives marked as unread', () => {
 
     const params = treasureCall()[1] as unknown[];
     expect(params[Number(gate![1]) - 1]).toBe(MUSEUM_CATEGORY_ID);
+  });
+
+  it('binds the source it was told, not a museum constant', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()], NO_CREDITS,
+      { syncLogId: 1, withdrawalSkippedReason: null, categoryId: 4 }, []);
+
+    // The same statement as the test above, told a different source: the
+    // parameter follows the run rather than a constant this module used to hold.
+    const params = treasureCall()[1] as unknown[];
+    expect(params).toContain(4);
   });
 
   it('stamps a work on arrival only, so a pass on a stored work survives the run', async () => {
@@ -817,7 +829,7 @@ describe('a visible work under a gated source', () => {
     scriptHeld(true);
 
     await upsertMuseumTreasures(EXPERIENCE_ID, [offer()], NO_CREDITS,
-      { syncLogId: null, withdrawalSkippedReason: null });
+      { syncLogId: null, withdrawalSkippedReason: null, categoryId: 2 });
 
     expect(sentSql().filter(s => POINTER.test(s))).toEqual([]);
   });
@@ -856,6 +868,7 @@ describe('the links of works a run no longer places here', () => {
     syncLogId: 42,
     withdrawalSkippedReason: 'this run placed 291 of the 1301 works the catalogue offers at the '
       + '100 museums it admits (22.4%), below the 90% floor',
+    categoryId: 2,
   };
 
   it('compares the museum against every work the run offered, by the id the upsert answered', async () => {

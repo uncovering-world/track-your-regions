@@ -23,7 +23,7 @@
  * paragraph was wrong once already — and each is outside for its own reason
  * rather than by oversight:
  *
- * - `upsertMuseumTreasures` links works to a venue and then retires that venue's
+ * - `upsertVenueTreasures` links works to a venue and then retires that venue's
  *   curator pass, running each of those statements on the pool with no `BEGIN`.
  *   Each is its own transaction, so it holds nothing across them: it can wait
  *   for a lock, never be half of a cycle. The two of them that write the
