@@ -233,6 +233,7 @@ export function DiscoverExperienceView({
     ? activeView.categoryName
         .replace('UNESCO World Heritage Sites', 'UNESCO')
         .replace('Public Art & Monuments', 'Public Art')
+        .replace('Places of worship', 'Worship')
     : '';
 
   // Client-side search filtering. Both sides folded, so a search finds what

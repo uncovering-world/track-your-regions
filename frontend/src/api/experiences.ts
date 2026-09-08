@@ -35,8 +35,10 @@ export interface Experience {
   short_description: string | null;
   /**
    * The type within the kind — `cultural` / `natural` / `mixed` on a World Heritage
-   * site, `monument` / `sculpture` on public art — and `null` on a museum, whose
-   * kind has no types (ADR-0045, #814). The kind is the one `category_id`'s source
+   * site, `monument` / `sculpture` on public art, `cathedral` / `church` / `chapel` /
+   * `monastery` / `mosque` / `temple` / `shrine` / `synagogue` on a place of worship —
+   * and `null` on a museum, whose kind has no types (ADR-0045, #814). The kind is the
+   * one `category_id`'s source
    * fills (`experience_categories.kind_id`, #822); `category_id` names the source.
    */
   type: string | null;
@@ -66,6 +68,8 @@ export interface Experience {
   category_name: string;
   category_priority?: number;
   location_count?: number;
+  /** Offered + published treasure links. Drives `TreasuresInsideChip`. */
+  treasure_count?: number;
   created_at?: string;
   // Curator rejection fields (only present when curator has scope)
   is_rejected?: boolean;

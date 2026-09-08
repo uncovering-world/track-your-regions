@@ -3,7 +3,9 @@
  *
  * A type is a distinction inside a kind whose members a traveller still browses
  * together (ADR-0045): a World Heritage site is cultural, natural or mixed; a
- * piece of public art is a monument or a sculpture. A museum has no type — an
+ * piece of public art is a monument or a sculpture; a place of worship is a
+ * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue. A
+ * museum has no type — an
  * art museum and an archaeology museum are two kinds, not two types — and the
  * literal `art` every museum row used to carry said nothing the kind does not
  * (#814). One closed vocabulary per kind, never one shared enum, which is why
@@ -47,16 +49,33 @@ const PUBLIC_ART: TypeVocabulary = {
   whenItChanges: 'Reclassified on Wikidata. The same object either way; nothing readers browse by changes.',
 };
 
+const PLACES_OF_WORSHIP: TypeVocabulary = {
+  options: [
+    { value: 'cathedral', label: 'Cathedral' },
+    { value: 'church', label: 'Church' },
+    { value: 'chapel', label: 'Chapel' },
+    { value: 'monastery', label: 'Monastery' },
+    { value: 'mosque', label: 'Mosque' },
+    { value: 'temple', label: 'Temple' },
+    { value: 'shrine', label: 'Shrine' },
+    { value: 'synagogue', label: 'Synagogue' },
+  ],
+  what: 'What kind of place of worship it is, read from Wikidata’s classes: a cathedral before a church, a monastery that is also a cathedral is a cathedral.',
+  whenItChanges: 'Retyped on Wikidata. The same place either way; the filter chip it answers to changes.',
+};
+
 /**
  * The kinds' vocabularies, by the id each kind's source row is seeded with in
  * `db/init/01-schema.sql` (1 World Heritage, 2 Art Museums, 3 Public Art &
- * Monuments). Until the kind table of ADR-0045 §4 lands, a kind is its source
- * row and the id is what every read carries — a name is renamed (#815). A kind
- * absent here has no types; a museum is absent on purpose.
+ * Monuments, 4 Places of worship). Until the kind table of ADR-0045 §4 lands,
+ * a kind is its source row and the id is what every read carries — a name is
+ * renamed (#815). A kind absent here has no types; a museum is absent on
+ * purpose.
  */
 const VOCABULARY_BY_KIND: Record<number, TypeVocabulary> = {
   1: WORLD_HERITAGE,
   3: PUBLIC_ART,
+  4: PLACES_OF_WORSHIP,
 };
 
 /** The types a curator may set on an object of this kind — none for a museum. */

@@ -19,6 +19,7 @@ import type { MapRef } from 'react-map-gl/maplibre';
 import { useHoverSelector } from '../../hooks/useHoverContext';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 
 /**
  * The card's entrance, defined next to the thing that plays it.
@@ -116,10 +117,15 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
         <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }} noWrap>
           {hoverPreview.locationName || 'Primary location'}
         </Typography>
-        {hoverPreview.categoryName && (
-          <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
-            {hoverPreview.categoryName}
-          </Typography>
+        {(hoverPreview.categoryName || hoverPreview.treasureCount) && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+            {hoverPreview.categoryName && (
+              <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
+                {hoverPreview.categoryName}
+              </Typography>
+            )}
+            <TreasuresInsideChip count={hoverPreview.treasureCount} categoryId={hoverPreview.categoryId} />
+          </Box>
         )}
       </Box>
     </Box>
