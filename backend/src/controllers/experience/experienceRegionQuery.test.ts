@@ -54,3 +54,75 @@ describe('location_count', () => {
     expect(locationCountSql(false)).toMatch(/el\.curation_state <> 'pending'/);
   });
 });
+
+/**
+ * What a reader can look at inside: the offered, published treasures a place
+ * holds (#753). A church admitted for its own fame counts zero; one admitted
+ * for its Pietà counts it.
+ */
+describe('treasure_count', () => {
+  it('counts the treasures a place offers, in a region that includes its children', () => {
+    const { query } = buildRegionQueries({
+      regionId: 7,
+      includeChildren: true,
+      showRejected: false,
+      includeLostRows: false,
+      limit: 20,
+      offset: 0,
+    });
+    expect(query).toContain('(SELECT COUNT(*)::int FROM experience_treasures et');
+    expect(query).toContain('JOIN treasures t ON t.id = et.treasure_id');
+    expect(query).toContain('et.missing_since IS NULL');
+    expect(query).toContain(') as treasure_count');
+  });
+
+  it('counts them the same way when the region does not include its children', () => {
+    const { query } = buildRegionQueries({
+      regionId: 7,
+      includeChildren: false,
+      showRejected: false,
+      includeLostRows: false,
+      limit: 20,
+      offset: 0,
+    });
+    expect(query).toContain('(SELECT COUNT(*)::int FROM experience_treasures et');
+    expect(query).toContain('JOIN treasures t ON t.id = et.treasure_id');
+    expect(query).toContain('et.missing_since IS NULL');
+    expect(query).toContain(') as treasure_count');
+  });
+});
+
+/**
+ * The count statements answer a different question — how many experiences
+ * a region holds, gated by the lifecycle rule alone — and never carry a
+ * per-object column. Both per-object counts belong to the list only; a
+ * future addition beside either one, made to the wrong statement, should
+ * fail here rather than ship an unused column on the aggregate read.
+ */
+describe('the count statements carry no per-object columns', () => {
+  it('has no location_count or treasure_count, with children included', () => {
+    const { countQuery } = buildRegionQueries({
+      regionId: 7,
+      includeChildren: true,
+      showRejected: false,
+      includeLostRows: false,
+      limit: 20,
+      offset: 0,
+    });
+    expect(countQuery).not.toContain('location_count');
+    expect(countQuery).not.toContain('treasure_count');
+  });
+
+  it('has no location_count or treasure_count, without children', () => {
+    const { countQuery } = buildRegionQueries({
+      regionId: 7,
+      includeChildren: false,
+      showRejected: false,
+      includeLostRows: false,
+      limit: 20,
+      offset: 0,
+    });
+    expect(countQuery).not.toContain('location_count');
+    expect(countQuery).not.toContain('treasure_count');
+  });
+});

@@ -14,6 +14,7 @@ import {
   hideRefusedSql,
   hidePendingSql,
   lifecycleSelectSql,
+  offeredLinkSql,
   offeredLocationSql,
   publishedContentSql,
   readerPositionSql,
@@ -144,6 +145,15 @@ export function buildRegionQueries(opts: {
         (SELECT COUNT(*)::int FROM experience_locations el
            WHERE el.experience_id = e.id AND ${offeredLocationSql()}
              AND ${publishedContentSql('el')}) as location_count,
+        -- What a reader can look at inside: the offered, published works of
+        -- the place (ADR-0044's offeredLinkSql, ADR-0025's published state on
+        -- the link and on the work). A church admitted for its own fame counts
+        -- zero; one admitted for its Pietà counts it -- the "treasures inside"
+        -- marker (#753).
+        (SELECT COUNT(*)::int FROM experience_treasures et
+           JOIN treasures t ON t.id = et.treasure_id
+          WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
+            AND ${publishedContentSql('et')} AND ${publishedContentSql('t')}) as treasure_count,
         s.name as category_name,
         s.display_priority as category_priority,
         ${lifecycleSelectSql()},
@@ -213,6 +223,15 @@ export function buildRegionQueries(opts: {
         (SELECT COUNT(*)::int FROM experience_locations el
            WHERE el.experience_id = e.id AND ${offeredLocationSql()}
              AND ${publishedContentSql('el')}) as location_count,
+        -- What a reader can look at inside: the offered, published works of
+        -- the place (ADR-0044's offeredLinkSql, ADR-0025's published state on
+        -- the link and on the work). A church admitted for its own fame counts
+        -- zero; one admitted for its Pietà counts it -- the "treasures inside"
+        -- marker (#753).
+        (SELECT COUNT(*)::int FROM experience_treasures et
+           JOIN treasures t ON t.id = et.treasure_id
+          WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
+            AND ${publishedContentSql('et')} AND ${publishedContentSql('t')}) as treasure_count,
         s.name as category_name,
         s.display_priority as category_priority,
         ${lifecycleSelectSql()},
