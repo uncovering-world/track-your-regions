@@ -248,6 +248,24 @@ Could include:
 
 ---
 
+## Towers & Landmarks
+
+Towers you climb or stand under, and the landmarks that are neither a building you enter nor a work of art in a square. The Leaning Tower of Pisa, the Giralda in Seville, St Mark's and Giotto's campaniles, the Kalyan Minaret in Bukhara, the Minaret of Jam standing alone in a Ghor river valley, Big Ben.
+
+A traveller does not enter Pisa Cathedral to see its bell tower, and nobody calls the Minaret of Jam a place of worship — the tower is its own visit, usually its own ticket and its own queue up a spiral stair. Two kinds already refuse them for saying so: Places of worship refuses a row whose only class is a tower (`a tower, not a place of worship: church tower`), and Public Art & Monuments refuses the same rows as classes of the worship tree. So they are named in two rules and listed in none, which is what this kind would fix.
+
+Could include:
+- Bell towers, campaniles, church towers, steeples and minarets, free-standing or attached
+- Civic and clock towers (Big Ben, the Bell Tower of Xi'an, the Torre della Ghirlandina)
+- What a visit is: climbable or not, the number of steps, whether the view is the point
+- The building it belongs to, where it has one, so a traveller sees the pair
+
+**Overlap with Places of worship:** a tower that is *also* a church is already a place of worship and stays there — the Ivan the Great Bell Tower is a church you walk into. This kind is for the tower that is only a tower.
+
+**Data:** Wikidata (`bell tower`, `campanile`, `church tower`, `minaret`, `steeple`, `clock tower`, with `part of` naming the building), Wikimedia Commons for images.
+
+---
+
 ## Bridges & Engineering Marvels
 
 Notable bridges, tunnels, dams, and other engineering achievements worth visiting.

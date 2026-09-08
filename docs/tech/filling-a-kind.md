@@ -245,7 +245,7 @@ below 8. These lines are the first guess and are revised by the first adoptions 
 involved:
 
 - **API or dump** (Muséofile's CSV; dane.gov.pl's spreadsheet; a SPARQL endpoint): a sync
-  reads it the way the three live sources read theirs, cached per source (ADR-0030,
+  reads it the way the live sources read theirs, cached per source (ADR-0030,
   ADR-0047); the cheapest to build and the only mode that runs unattended.
 - **Scraping** (a portal listing 205 museums over nine pages): needs terms and robots signals
   that permit it, a page shape a parser can hold on to, and a rate inside the site's guidance;
@@ -426,6 +426,13 @@ floor on the group it is the fallback of § 4 and scores 13 for a unit like Tbil
 names the unit it was adopted for. Verdict: world tier — the source it already is; regional
 tier — **the fallback, per unit, with its coverage measured** (§ 4's three conditions).
 
+Read *by class for the whole world*, rather than within a unit, Wikidata is now the world tier of
+three kinds: art museums through the works they hold (ADR-0023), public art and monuments by the
+sculptural and commemorative classes (#754), and places of worship through both at once — the
+building's own fame and the fame of a work inside it, one source at one line (#753, ADR-0052;
+[`wikidata-places-of-worship`](../sources/global/wikidata-places-of-worship.md) is the register's
+first world-tier record).
+
 **Wikivoyage See listings.** CC BY-SA 3.0; a listing carries a name, coordinates and, where an
 editor added it, a `wikidata=` item — 30 of 30 in Florence, 63 of 71 in Berlin/Mitte, 36 of 54
 in Tbilisi, 0 of 43 in Kraków/Old Town, 1 of 29 on the Paris city article, which is split into
@@ -535,13 +542,16 @@ expected to rewrite part of it:
 - **The first curator list**: what the curator screen asks for and how a curator's tier and
   badge are recorded (the badge is #603's).
 - **The first non-museum kind** (public art below the world's line; churches with works, #753):
-  whether the scorecard's criteria are the kind's or the family's.
+  whether the scorecard's criteria are the kind's or the family's. **Answered** by the
+  places-of-worship adoption — the family's, with two criteria read on their world-tier sense;
+  see the log row below.
 
 Changes are logged here:
 
 | Date | What changed | Why |
 |---|---|---|
 | 2026-09-06 | First version (#799) | The rules before the first adoption |
+| 2026-09-08 | First non-museum kind (#753, ADR-0052): the scorecard's criteria held for a world-tier source read on the world-tier reading of Signal and Completeness; the two doors are one source | Places of worship adopted `wikidata-places-of-worship` — the criteria are the family's, not the kind's, and § 6.2's wording, which is the regional tier's, needed reading rather than rewriting: Signal 2 is a signal comparable across the world, Completeness 2 is a stated subset with its rule written. A place admitted for its own fame and one admitted for a work it holds are two admissions of one source at one line, so they are one record, not two |
 
 ## 10. Out of scope
 
