@@ -544,7 +544,9 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
       last_sync_at,
       last_sync_status,
       display_priority,
-      created_at
+      created_at,
+      (api_config->>'enterSitelinks')::int AS enter_sitelinks,
+      (api_config->>'staySitelinks')::int AS stay_sitelinks
     FROM experience_categories
     WHERE is_active = true
     ORDER BY display_priority, id

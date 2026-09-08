@@ -906,6 +906,23 @@ export const curationGateBodySchema = z.object({
 });
 
 /**
+ * A source's fame line: how many sitelinks a row needs to enter the world
+ * tier, and how few it may fall to before the tier lets it go (ADR-0023's
+ * hysteresis, read by `parseSourceLine` in `services/sync/sourceLine.ts`).
+ *
+ * The same bound the run's own reader enforces — integers from 1 to 1000,
+ * `staySitelinks` no higher than `enterSitelinks` — kept identical on purpose:
+ * a body this schema passed but the run's reader refused would let an admin
+ * save a line no sync could ever use.
+ */
+export const sourceLineBodySchema = z.object({
+  enterSitelinks: z.number().int().min(1).max(1000),
+  staySitelinks: z.number().int().min(1).max(1000),
+}).refine(b => b.staySitelinks <= b.enterSitelinks, {
+  message: 'staySitelinks must not exceed enterSitelinks',
+});
+
+/**
  * Which catalogue assertion an admin is accepting the debt of.
  *
  * The id and nothing else: the number is measured on the server when the

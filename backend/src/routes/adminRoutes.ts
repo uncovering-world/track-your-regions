@@ -22,6 +22,7 @@ import {
   cacheTtlBodySchema,
   reorderCategoriesBodySchema,
   curationGateBodySchema,
+  sourceLineBodySchema,
   dataAssertionAcceptBodySchema,
   startRegionAssignmentBodySchema,
   regionAssignmentStatusQuerySchema,
@@ -94,6 +95,7 @@ import {
   getExperienceCounts,
 } from '../controllers/admin/syncController.js';
 import { setCurationGate } from '../controllers/admin/curationGateController.js';
+import { setSourceLine } from '../controllers/admin/sourceLineController.js';
 import { acceptDataAssertion, getDataAssertions } from '../controllers/admin/dataAssertionsController.js';
 import {
   listCurators,
@@ -173,6 +175,19 @@ router.put(
   validate(categoryIdParamSchema, 'params'),
   validate(curationGateBodySchema),
   setCurationGate,
+);
+
+/**
+ * A source's fame line (ADR-0023, ADR-0052): how many sitelinks a row needs to
+ * enter the world tier and how few it may fall to before the tier lets it go.
+ * Admin-only, like everything on this router, and a property of the source
+ * rather than of any object — the same reason the gate switch sits here.
+ */
+router.put(
+  '/sync/categories/:categoryId/line',
+  validate(categoryIdParamSchema, 'params'),
+  validate(sourceLineBodySchema),
+  setSourceLine,
 );
 
 // Start sync for a source
