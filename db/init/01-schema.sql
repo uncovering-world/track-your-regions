@@ -2162,8 +2162,8 @@ CREATE INDEX IF NOT EXISTS idx_regions_world_view_id ON regions(world_view_id);
 -- experience_categories below -- is a list we read to fill a kind: a kind may
 -- have several, and one source may feed several kinds (decision 3). Until #819
 -- every reader still keys on the source row through experiences.category_id,
--- which is why the three kinds are seeded under the ids of the three sources
--- that fill them: a reader keyed on 1, 2 and 3 reads the same colour and order
+-- which is why the kinds are seeded under the ids of the sources that fill
+-- them: a reader keyed on the source id reads the same colour and order
 -- either way, and switching it is a join and not a renumbering.
 CREATE TABLE IF NOT EXISTS experience_kinds (
     id SERIAL PRIMARY KEY,
@@ -2176,12 +2176,18 @@ COMMENT ON TABLE experience_kinds IS 'A kind of place a traveller browses by (AD
 COMMENT ON COLUMN experience_kinds.name IS 'What a traveller calls the thing in front of them -- World Heritage Sites, Art Museums -- never a source''s name for a selection rule (ADR-0045 decision 8).';
 COMMENT ON COLUMN experience_kinds.display_priority IS 'Display order of the kind''s list and pills (lower = shown first).';
 
--- The three kinds the three sources fill, under the sources' own ids (see
+-- The kinds the sources fill, under the sources' own ids (see
 -- above). Explicit ids, so the sequence is moved past them afterwards.
 INSERT INTO experience_kinds (id, name, display_priority) VALUES
     (1, 'World Heritage Sites', 1),
     (2, 'Art Museums', 2),
     (3, 'Public Art & Monuments', 3)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
+
+-- The fourth kind: a cathedral, a mosque, a temple a traveller enters (#753, ADR-0052).
+INSERT INTO experience_kinds (id, name, display_priority) VALUES
+    (4, 'Places of worship', 4)
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
 
@@ -2316,7 +2322,8 @@ COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "
 COMMENT ON COLUMN experiences.type IS
   'The type within the kind, where a kind has types a traveller still browses together '
   '(ADR-0045): ''cultural''/''natural''/''mixed'' for World Heritage, ''monument''/''sculpture'' '
-  'for public art. NULL for a museum: an art museum and an archaeology museum are two kinds, '
+  'for public art, ''cathedral''/''church''/''chapel''/''monastery''/''mosque''/''temple''/''shrine''/''synagogue'' '
+  'for a place of worship. NULL for a museum: an art museum and an archaeology museum are two kinds, '
   'not two types. One vocabulary per kind, not one shared enum (#814).';
 COMMENT ON COLUMN experiences.location IS 'Required point location for the experience';
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
@@ -2796,6 +2803,25 @@ VALUES (
     (SELECT id FROM experience_kinds WHERE name = 'Public Art & Monuments')
 )
 ON CONFLICT (name) DO NOTHING;
+
+-- Its one source: Wikidata, through two doors -- the place's own fame and the
+-- fame of a work it holds. The line is on the row (enterSitelinks /
+-- staySitelinks), read by every run and set from the admin panel; gated on
+-- arrival, since a community-edited source's first rows wait for a person
+-- (ADR-0025).
+INSERT INTO experience_categories (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+VALUES (
+    4,
+    'Places of worship',
+    'Cathedrals, churches, mosques, temples and shrines the world knows, and the works inside them, sourced from Wikidata',
+    'https://query.wikidata.org/sparql',
+    '{"userAgent": "TrackYourRegions/1.0", "enterSitelinks": 22, "staySitelinks": 18}'::jsonb,
+    4,
+    true,
+    (SELECT id FROM experience_kinds WHERE name = 'Places of worship')
+)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_categories_id_seq', GREATEST((SELECT MAX(id) FROM experience_categories), 1));
 
 -- Every source names the kind it fills (ADR-0045 decision 3). Filled by name
 -- for a database whose rows predate the column -- the museum source under

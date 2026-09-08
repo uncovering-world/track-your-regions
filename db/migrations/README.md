@@ -412,6 +412,18 @@ UPDATE on purpose. The rows it clears are still #667's, waiting on #459 for thei
 map. Order-independent with `01-schema.sql`, which carries the same function, and re-running it
 finds nothing to clear.
 
+`050-places-of-worship-kind-and-source.sql` seeds the fourth kind a traveller browses by —
+Places of worship — and the one source that fills it (#753, ADR-0052): cathedrals, churches,
+mosques, temples and shrines the world knows, and the works inside them, read from Wikidata.
+`01-schema.sql`'s seeds carry the same two rows, but a database already holding a catalogue
+does not see them until the file is re-applied, so this file gets there first. Both ids are
+pinned — kind 4 and source 4, each with a `setval` moving its sequence past it — because the
+sync service the source's own task adds hardcodes 4 the way the other three services hardcode
+their ids, and an unpinned insert on a database whose `experience_categories_id_seq` has already
+moved past 4 would seed the row under a number the service never reads. Re-runnable: both
+inserts are guarded by `ON CONFLICT (name)`. Order-independent with `01-schema.sql`, which seeds
+the identical rows.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the
