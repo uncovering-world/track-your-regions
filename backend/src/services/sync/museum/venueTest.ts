@@ -52,7 +52,24 @@ export const SITE_CLASSES: Record<string, string> = {
 
 export type VenueResult = { pass: true } | { pass: false; reason: string };
 
-export function venueVerdict(e: VenueFacts, museumClasses: ReadonlySet<string>): VenueResult {
+/**
+ * What a kind counts as a venue: the classes an entity must carry one of, and
+ * whether a place class (`SITE_CLASSES`) vetoes it. The museum rule vetoes —
+ * a church is not a museum though Wikidata types it one — and a kind whose
+ * venues *are* those places switches the veto off (#753).
+ */
+export interface VenueRule {
+  classes: ReadonlySet<string>;
+  siteVeto: boolean;
+  /** The word in the reason: `not a museum class`. */
+  noun: string;
+}
+
+export function museumRule(classes: ReadonlySet<string>): VenueRule {
+  return { classes, siteVeto: true, noun: 'museum' };
+}
+
+export function venueVerdict(e: VenueFacts, rule: VenueRule): VenueResult {
   const killed = e.classes.filter((c) => KILL_CLASSES[c]);
   if (killed.length) {
     return { pass: false, reason: `kill-list: ${killed.map((c) => KILL_CLASSES[c]).join('; ')}` };
@@ -60,11 +77,11 @@ export function venueVerdict(e: VenueFacts, museumClasses: ReadonlySet<string>):
   if (e.dissolved) {
     return { pass: false, reason: `dissolved ${e.dissolved.slice(0, 10)} (P576)` };
   }
-  if (!e.classes.some((c) => museumClasses.has(c))) {
-    return { pass: false, reason: 'not a museum class' };
+  if (!e.classes.some((c) => rule.classes.has(c))) {
+    return { pass: false, reason: `not a ${rule.noun} class` };
   }
   const site = e.classes.filter((c) => SITE_CLASSES[c]);
-  if (site.length && !e.classes.some((c) => ART_CLASSES[c])) {
+  if (rule.siteVeto && site.length && !e.classes.some((c) => ART_CLASSES[c])) {
     return { pass: false, reason: `site, not a venue: ${site.map((c) => SITE_CLASSES[c]).join('; ')}` };
   }
   // Number.isFinite, not truthiness: a museum on the equator has a coordinate of 0.

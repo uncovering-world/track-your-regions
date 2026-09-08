@@ -17,6 +17,7 @@ import { placeArtwork } from './placement.js';
 import { selectTier1, ICONIC_SITELINKS, type Tier1Result } from './tier1.js';
 import { diffPlacements, type PlacementDiff } from './placementDiff.js';
 import { artVerdict, isSculptural, EDITORIAL_OUT } from './artTest.js';
+import { museumRule } from './venueTest.js';
 import type { Fold } from './venueFolds.js';
 import type { Resolution } from './resolveVenue.js';
 import {
@@ -490,13 +491,14 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
   const pool = await collectPool(run, classes.all);
   const statements = await collectStatements(run, [...pool.keys()]);
 
+  const rule = museumRule(museumClasses);
   const seeds = unique([...statements.values()].flat().map((s) => s.venue));
-  const graph = await loadVenueGraph(run, seeds, museumClasses);
-  const { resolve, resolution } = makeResolver(graph, museumClasses);
+  const graph = await loadVenueGraph(run, seeds, rule);
+  const { resolve, resolution } = makeResolver(graph, rule);
 
   run.phase('Placing works in the venues that hold them...');
   const placed = placeWorks(pool, statements, resolve, graph.ancestors);
-  const folds = foldVenues(placed, graph, museumClasses);
+  const folds = foldVenues(placed, graph, rule);
   const afterFolds = applyFolds(placed, folds);
 
   run.phase('Asking whether each venue is an art museum...');

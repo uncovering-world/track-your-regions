@@ -1,4 +1,4 @@
-import { venueVerdict, type VenueFacts } from './venueTest.js';
+import { venueVerdict, type VenueFacts, type VenueRule } from './venueTest.js';
 
 /**
  * P195 (collection) is ownership and points at whatever holds a work — often a department or a
@@ -28,12 +28,12 @@ function getNextFrontier(
 function getPassingVenues(
   candidates: string[],
   facts: (qid: string) => VenueFacts | undefined,
-  museumClasses: ReadonlySet<string>,
+  rule: VenueRule,
 ): string[] {
   const passing = new Set<string>();
   for (const p of candidates) {
     const f = facts(p);
-    if (f && venueVerdict(f, museumClasses).pass) {
+    if (f && venueVerdict(f, rule).pass) {
       passing.add(p);
     }
   }
@@ -44,23 +44,23 @@ export function resolveVenue(
   start: string,
   facts: (qid: string) => VenueFacts | undefined,
   parents: (qid: string) => string[],
-  museumClasses: ReadonlySet<string>,
+  rule: VenueRule,
   maxHops = 3,
 ): Resolution {
   const own = facts(start);
-  if (own && venueVerdict(own, museumClasses).pass) return { venue: start, hops: 0 };
+  if (own && venueVerdict(own, rule).pass) return { venue: start, hops: 0 };
 
   const seen = new Set<string>([start]);
   let frontier = [start];
   for (let hop = 1; hop <= maxHops; hop++) {
     frontier = getNextFrontier(frontier, seen, parents);
     if (!frontier.length) break;
-    const passing = getPassingVenues(frontier, facts, museumClasses);
+    const passing = getPassingVenues(frontier, facts, rule);
     if (passing.length === 1) return { venue: passing[0], hops: hop };
     if (passing.length > 1) {
       return { unresolved: `two qualifying ancestors at hop ${hop}: ${passing.join(', ')}` };
     }
   }
-  const reason = own ? venueVerdict(own, museumClasses) : { pass: false as const, reason: 'no facts' };
+  const reason = own ? venueVerdict(own, rule) : { pass: false as const, reason: 'no facts' };
   return { unresolved: 'pass' in reason && reason.pass ? 'unreachable' : (reason as { reason: string }).reason };
 }
