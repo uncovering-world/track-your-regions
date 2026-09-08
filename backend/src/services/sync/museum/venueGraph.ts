@@ -12,7 +12,8 @@
  *     relationships and they chain, so a single lookup can name a venue that is itself gone.
  *   - `foldVenues` offers a venue's doors to `computeFolds` only after the venue test and the
  *     editorial exclusions have had their say, and the graph has facts for a door only because
- *     the walk followed `P276` from a museum-class entity. `pipeline.test.ts` holds both cases.
+ *     the walk followed `P276` from an entity the rule's classes match. `pipeline.test.ts` holds
+ *     both cases.
  */
 
 import { resolveVenue, type Resolution } from './resolveVenue.js';
@@ -87,11 +88,12 @@ function makeAncestors(parents: (qid: string) => string[]): (qid: string) => Rea
  * Facts for every entity a work names, and for every entity above those within reach of the
  * `P361` walk — a venue reached at hop 3 has to be judged by the same test as one named outright.
  *
- * A museum-class entity's location (`P276`) is followed too, one hop like a parent, so that the
- * building a collection is housed in has facts when `foldVenues` asks whether it is the door:
- * no work names Palazzo Pitti, so nothing else brings it into the graph (#781). Only from
- * museum-class entities, because only those can be venues with a door, and the location of
- * anything else is a district or a city — which the walk would otherwise fetch by the hundred.
+ * An entity the rule's classes match has its location (`P276`) followed too, one hop like a
+ * parent, so that the building a collection is housed in has facts when `foldVenues` asks
+ * whether it is the door: no work names Palazzo Pitti, so nothing else brings it into the graph
+ * (#781). Only from an entity the rule's classes match, because only those can be venues with a
+ * door, and the location of anything else is a district or a city — which the walk would
+ * otherwise fetch by the hundred.
  */
 export async function loadVenueGraph(
   run: QueryRunner,
@@ -103,8 +105,8 @@ export async function loadVenueGraph(
   const nextOf = (qid: string): string[] => {
     const found = edges.get(qid);
     if (!found) return [];
-    const museum = found.classes.some((c) => rule.classes.has(c));
-    return museum ? [...found.parents, ...found.locations] : found.parents;
+    const matchesRule = found.classes.some((c) => rule.classes.has(c));
+    return matchesRule ? [...found.parents, ...found.locations] : found.parents;
   };
 
   let frontier = unique(seeds);

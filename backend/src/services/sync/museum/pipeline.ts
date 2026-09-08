@@ -6,129 +6,40 @@
  * pipeline collects the works the world knows, decides where each one actually hangs, and then
  * admits the venues holding them — so every row has a reason that can be named.
  *
- * Nothing here decides anything on its own: each rule lives in its own tested module, and this
- * file is the wiring. The two compositions no single module can see — the transitive ancestor
- * walk placement needs, and the fold map that has to be followed to a fixed point — live in
- * `venueGraph.ts` with the reasoning that makes them load-bearing.
+ * The stages every works-first kind shares — the class closure, the banded pool, the venue
+ * statements, the venue graph, placement and folds — live in `worksCollector.ts`, parameterised
+ * by roots, pinned classes and a `VenueRule`. What stays here is the museum's own tail: the art
+ * test that tells a museum from a church Wikidata also calls one, the tier that decides which
+ * admitted venue is worth a visit, and the wiring that composes the two halves.
  */
 
-import { boundedClosure, type ClosureOptions } from '../classClosure.js';
-import { placeArtwork } from './placement.js';
 import { selectTier1, ICONIC_SITELINKS, type Tier1Result } from './tier1.js';
 import { diffPlacements, type PlacementDiff } from './placementDiff.js';
 import { artVerdict, isSculptural, EDITORIAL_OUT } from './artTest.js';
 import { museumRule } from './venueTest.js';
 import type { Fold } from './venueFolds.js';
 import type { Resolution } from './resolveVenue.js';
+import type { VenueGraph } from './venueGraph.js';
 import {
-  loadVenueGraph,
-  makeResolver,
-  foldVenues,
-  applyFolds,
-  type VenueGraph,
-} from './venueGraph.js';
-import {
-  fetchMuseumClasses,
-  fetchBroadPool,
-  fetchClassPool,
-  fetchVenueStatements,
-  type PoolWork,
-  type RawStatement,
-} from './queries.js';
-import {
-  fetchSubclasses,
-  chunk,
-  unique,
-  type QueryRunner,
-  type SparqlFn,
-} from '../wikidataQueries.js';
+  collectWorks,
+  heldBy,
+  toContent,
+  MUSEUM_BROAD_ROOTS,
+  MUSEUM_WHOLE_ROOTS,
+  MUSEUM_PINNED_CLASSES,
+  MUSEUM_PINNED_EDITION_CLASSES,
+  EDITION_ROOT,
+} from './worksCollector.js';
+import { fetchMuseumClasses, type PoolWork, type RawStatement } from './queries.js';
+import type { ClosureOptions } from '../classClosure.js';
+import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
 import type { FilteredEntity } from '../syncOrchestrator.js';
-import type { CollectedMuseum, ProcessedContent } from '../types.js';
+import type { CollectedMuseum } from '../types.js';
 
 const LOG_PREFIX = '[Museum Sync]';
 
-/**
- * The three classes broad enough that no single query can hold them — `painting` alone has half
- * a million instances — so each is asked in fame bands instead. Their labels double as the
- * treasure type a reader sees.
- */
-const BROAD_ROOTS = [
-  { qid: 'Q3305213', type: 'painting' },
-  { qid: 'Q860861', type: 'sculpture' },
-  { qid: 'Q179700', type: 'statue' },
-];
-
-/**
- * Four more roots, narrow enough to take whole.
- *
- * No closure reaches them from the three above — a print is not a kind of painting — so leaving
- * them out removes whole traditions rather than trimming a tail. Without them the catalogue
- * holds **zero** prints, engravings, drawings, mosaics and tapestries, and Japanese printmaking
- * is absent as a class. That is not a boundary anyone drew.
- *
- * Taken whole in one query each batch, because they are narrow enough to scan directly — no
- * bands, and no ownership requirement: losing a work on the way in is worse than deciding later
- * that it has no placeable venue.
- */
-const WHOLE_ROOTS = [
-  { qid: 'Q93184', type: 'drawing' },
-  { qid: 'Q11060274', type: 'print' },
-  { qid: 'Q133067', type: 'mosaic' },
-  { qid: 'Q184296', type: 'tapestry' },
-];
-
-const ARTWORK_ROOTS = [...BROAD_ROOTS, ...WHOLE_ROOTS];
-
-/**
- * Classes no closure can reach, because they are not kinds of work.
- *
- * A painting series and a group of casts are *collections* of works, so they sit outside the
- * subclass tree under any single work — and they are where several of the most famous things
- * in the catalogue live: Monet's Water Lilies, Van Gogh's Sunflowers, Rodin's Thinker. Without
- * the pin all three are missing, checked by name rather than by QID.
- *
- * The panel forms are here as a floor rather than a necessity: most are reachable under
- * painting, and pinning them means no future tightening of the growth rule can drop them
- * silently. Every QID below was verified against Wikidata on 2026-08-07 — label and
- * description both — rather than assumed from a name, because "engraving" names a technique
- * and an object with different entities for each.
- */
-const PINNED_CLASSES: Record<string, string> = {
-  Q15727816: 'painting series',
-  Q28890616: 'group of casts',
-  Q79218: 'triptych',
-  Q1278452: 'polyptych',
-  Q475476: 'diptych',
-  Q15711026: 'altarpiece',
-  Q11801536: 'winged altarpiece',
-  Q28913685: 'woodblock print',
-  Q11835431: 'engraving (the object, not the technique)',
-};
-
-/**
- * The root whose subtree means "this exists in an edition, not as one original".
- *
- * Asked of the tree rather than of a label: the closure records which root each class was
- * reached from, so etching, lithograph, screenprint and woodblock print answer yes without
- * being listed here, and a class labelled "engraving" answers according to which entity it
- * actually is.
- */
-const EDITION_ROOT = 'Q11060274';
-
-/**
- * Pinned classes that are editions, which the tree cannot say because nothing reached them.
- * A cast is to a sculpture what an impression is to a plate.
- */
-const PINNED_EDITION_CLASSES = new Set(['Q28890616', 'Q28913685', 'Q11835431']);
-
-const BROAD_TYPES = new Set([...ARTWORK_ROOTS.map((r) => r.type), 'artwork']);
-
-const CLASS_BATCH = 25;
-const STATEMENT_BATCH = 50;
-/** The width of `treasures.treasure_type`. */
-const TREASURE_TYPE_MAX = 50;
-/** Enough of the diff to read in a log; the whole of it is returned to the caller. */
-const DIFF_LINES = 20;
+/** The noun this kind's phase lines use for what it collects. */
+const MUSEUM_NOUN = { work: 'work of art', works: 'artworks' };
 
 export interface PipelineDeps {
   sparql: SparqlFn;
@@ -151,134 +62,12 @@ export interface PipelineResult {
   diff: PlacementDiff;
 }
 
+/** Enough of the diff to read in a log; the whole of it is returned to the caller. */
+const DIFF_LINES = 20;
+
 // =============================================================================
-// Stages
+// The museum's own tail
 // =============================================================================
-
-interface ArtworkClasses {
-  all: string[];
-  /** Classes whose works exist in editions rather than as a single original. */
-  edition: ReadonlySet<string>;
-}
-
-async function artworkClassesOf(
-  run: QueryRunner,
-  options?: ClosureOptions,
-): Promise<ArtworkClasses> {
-  run.phase('Finding the classes a work of art can be...');
-  const { classes, refused, byRoot } = await boundedClosure(
-    ARTWORK_ROOTS.map((r) => r.qid),
-    async (qids) => {
-      await run.step();
-      return fetchSubclasses(run.sparql, qids);
-    },
-    options,
-  );
-  for (const r of refused) {
-    console.log(
-      `${LOG_PREFIX} Class closure stopped at ${r.root} hop ${r.hop}: ${r.offered} classes offered`,
-    );
-  }
-  const all = [...new Set([...classes, ...Object.keys(PINNED_CLASSES)])];
-  const edition = new Set([...(byRoot[EDITION_ROOT] ?? []), ...PINNED_EDITION_CLASSES]);
-  console.log(`${LOG_PREFIX} Artwork classes: ${all.length} (${edition.size} of them editions)`);
-  return { all, edition };
-}
-
-/**
- * A narrow class names a work better than the root it also instantiates, so it wins the type;
- * everything else fills a gap rather than overwriting an answer.
- */
-function mergeWork(existing: PoolWork, incoming: PoolWork): void {
-  if (BROAD_TYPES.has(existing.type) && !BROAD_TYPES.has(incoming.type)) {
-    existing.type = incoming.type;
-    // The qid travels with the label it explains, or the medium test would be
-    // answered about a class the reader is not being shown.
-    existing.typeQid = incoming.typeQid;
-  }
-  if (!existing.imageUrl) existing.imageUrl = incoming.imageUrl;
-  // A list, and still a gap being filled rather than an answer overwritten: both
-  // answers are the same work's `P170` statements, and a short one can only come
-  // from a truncated pool, which `failIfTruncated` refuses outright.
-  if (existing.creators.length === 0) existing.creators = incoming.creators;
-  if (existing.year === null) existing.year = incoming.year;
-  if (incoming.sitelinks > existing.sitelinks) existing.sitelinks = incoming.sitelinks;
-}
-
-async function collectPool(run: QueryRunner, classes: string[]): Promise<Map<string, PoolWork>> {
-  const pool = new Map<string, PoolWork>();
-  const add = (works: PoolWork[]) => {
-    for (const work of works) {
-      const existing = pool.get(work.qid);
-      if (existing) mergeWork(existing, work);
-      else pool.set(work.qid, { ...work });
-    }
-  };
-
-  // Each broad root paces and reports its own bands: they are minutes apart, not seconds.
-  for (const root of BROAD_ROOTS) {
-    add(await fetchBroadPool(run, root));
-  }
-
-  // Everything the broad fetch did not already cover, the four whole roots included.
-  const narrow = classes.filter((c) => !BROAD_ROOTS.some((r) => r.qid === c));
-  const batches = chunk(narrow, CLASS_BATCH);
-  for (let i = 0; i < batches.length; i++) {
-    run.phase(`Fetching narrow artwork classes ${i + 1}/${batches.length}...`);
-    await run.step();
-    add(await fetchClassPool(run.sparql, batches[i]));
-  }
-
-  console.log(`${LOG_PREFIX} Pool: ${pool.size} works`);
-  return pool;
-}
-
-async function collectStatements(
-  run: QueryRunner,
-  workQids: string[],
-): Promise<Map<string, RawStatement[]>> {
-  const byWork = new Map<string, RawStatement[]>();
-  const batches = chunk(workQids, STATEMENT_BATCH);
-  for (let i = 0; i < batches.length; i++) {
-    run.phase(`Reading venue statements ${i + 1}/${batches.length}...`);
-    await run.step();
-    for (const statement of await fetchVenueStatements(run.sparql, batches[i])) {
-      const held = byWork.get(statement.work) ?? [];
-      held.push(statement);
-      byWork.set(statement.work, held);
-    }
-  }
-  return byWork;
-}
-
-function placeWorks(
-  pool: Map<string, PoolWork>,
-  statements: Map<string, RawStatement[]>,
-  resolve: (qid: string) => string | null,
-  ancestors: (qid: string) => ReadonlySet<string>,
-): Record<string, string[]> {
-  const placements: Record<string, string[]> = {};
-  for (const qid of pool.keys()) {
-    placements[qid] = placeArtwork(statements.get(qid) ?? [], resolve, ancestors);
-  }
-  return placements;
-}
-
-function heldBy(
-  pool: Map<string, PoolWork>,
-  placements: Record<string, string[]>,
-): Map<string, PoolWork[]> {
-  const held = new Map<string, PoolWork[]>();
-  for (const work of pool.values()) {
-    for (const venue of placements[work.qid] ?? []) {
-      const list = held.get(venue) ?? [];
-      list.push(work);
-      held.set(venue, list);
-    }
-  }
-  for (const list of held.values()) list.sort((a, b) => b.sitelinks - a.sitelinks);
-  return held;
-}
 
 /**
  * Venues worth putting the art test to: those holding at least one work above the iconic
@@ -345,23 +134,6 @@ function applyArtTest(
 // =============================================================================
 // What the run hands back
 // =============================================================================
-
-function toContent(work: PoolWork): ProcessedContent {
-  return {
-    externalId: work.qid,
-    name: work.label,
-    // `treasures.treasure_type` is varchar(50) and the type is now a Wikidata class label rather
-    // than one of two literals: "Anthropomorphic wooden cult figurines of Central and Northern
-    // Europe" (Q574422) is 68 characters. An over-long value would make the insert throw, which
-    // the orchestrator would record as the whole museum failing, losing its remaining treasures
-    // with it. A clipped display string is the cheaper failure.
-    treasureType: work.type.slice(0, TREASURE_TYPE_MAX),
-    artists: work.creators,
-    year: work.year,
-    imageUrl: work.imageUrl,
-    sitelinksCount: work.sitelinks,
-  };
-}
 
 function buildItems(
   tier: Tier1Result,
@@ -487,19 +259,18 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
     museumClasses = await fetchMuseumClasses(run.sparql);
   }
 
-  const classes = await artworkClassesOf(run, deps.closure);
-  const pool = await collectPool(run, classes.all);
-  const statements = await collectStatements(run, [...pool.keys()]);
-
-  const rule = museumRule(museumClasses);
-  const seeds = unique([...statements.values()].flat().map((s) => s.venue));
-  const graph = await loadVenueGraph(run, seeds, rule);
-  const { resolve, resolution } = makeResolver(graph, rule);
-
-  run.phase('Placing works in the venues that hold them...');
-  const placed = placeWorks(pool, statements, resolve, graph.ancestors);
-  const folds = foldVenues(placed, graph, rule);
-  const afterFolds = applyFolds(placed, folds);
+  const { pool, statements, graph, editionClasses, resolver, placed, folds, afterFolds } =
+    await collectWorks(run, {
+      broadRoots: MUSEUM_BROAD_ROOTS,
+      wholeRoots: MUSEUM_WHOLE_ROOTS,
+      pinned: MUSEUM_PINNED_CLASSES,
+      pinnedEditionClasses: MUSEUM_PINNED_EDITION_CLASSES,
+      editionRoot: EDITION_ROOT,
+      noun: MUSEUM_NOUN,
+      rule: museumRule(museumClasses),
+      closure: deps.closure,
+      logPrefix: LOG_PREFIX,
+    });
 
   run.phase('Asking whether each venue is an art museum...');
   const { placements: afterArtTest, rejected: notArt } = applyArtTest(pool, afterFolds, graph);
@@ -508,7 +279,7 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
     qid: work.qid,
     sitelinks: work.sitelinks,
     venues: afterArtTest[work.qid] ?? [],
-    multipleMedium: work.typeQid !== null && classes.edition.has(work.typeQid),
+    multipleMedium: work.typeQid !== null && editionClasses.has(work.typeQid),
   })));
 
   // What the run will actually write: a work is only stored as a treasure of a museum this run
@@ -521,7 +292,7 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
 
   const items = buildItems(tier, pool, current, graph);
   const venues = new Set(Object.values(placed).flat());
-  const filtered = [...nameFiltered(pool, statements, resolution, graph, folds, venues), ...notArt];
+  const filtered = [...nameFiltered(pool, statements, resolver.resolution, graph, folds, venues), ...notArt];
   const diff = diffPlacements(deps.previousPlacements, current);
 
   console.log(
