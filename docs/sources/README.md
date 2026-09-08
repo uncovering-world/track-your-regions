@@ -21,15 +21,18 @@ docs/sources/
 ├── museums/                 ← sources that enumerate museums (of any kind)
 │   ├── fr-museofile.md
 │   └── …
-└── global/                  ← sources that enumerate any kind, read per unit
+└── global/                  ← sources native to no unit: read per unit, or read for the world
     ├── wikidata-by-class-per-unit.md
+    ├── wikidata-places-of-worship.md
     └── …
 ```
 
 A directory per *what the source enumerates* — `museums/` for a register of museums, which
 serves the art, archaeology and history kinds alike; `public-art/` when the first monument
-register arrives; `global/` for the sources that answer for any kind and any unit. A file per
-source, named `<country code>-<slug>.md` for a native source and `<slug>.md` for a global one.
+register arrives; `global/` for the sources native to no unit — one that answers for any kind
+read per unit, and one that answers for the whole world at once, which is what a world tier is
+read from. A file per source, named `<country code>-<slug>.md` for a native source and
+`<slug>.md` for a global one.
 
 ## The record
 
