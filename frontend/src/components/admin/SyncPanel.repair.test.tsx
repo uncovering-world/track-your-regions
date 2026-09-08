@@ -44,6 +44,8 @@ const UNESCO: ExperienceCategory = {
   display_priority: 1,
   created_at: '2026-01-01T00:00:00Z',
   waiting: { arrivals: 0, held: 0, contents: 0 },
+  enter_sitelinks: null,
+  stay_sitelinks: null,
   repairsPictures: true,
 };
 
