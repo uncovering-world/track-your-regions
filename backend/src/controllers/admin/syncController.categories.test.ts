@@ -63,6 +63,13 @@ describe('getCategories', () => {
     // The same guard the writer is pinned on: the panel lists active sources, and the
     // switch it offers for an inactive one would answer 404.
     expect(sql).toContain('is_active = true');
+    // And the fame line the source card edits (#753), pinned the same way and for the
+    // same reason: the two numbers are read out of `api_config` under aliases nothing
+    // downstream is typed on, so dropping either one from the SELECT breaks nothing
+    // anywhere else — it renders as two empty fields on the card, which reads as "this
+    // source keeps its line in code" and is a different claim about the source.
+    expect(sql).toContain('enter_sitelinks');
+    expect(sql).toContain('stay_sitelinks');
   });
 
   it('answers three zeros for a source the aggregate returned no row for', async () => {

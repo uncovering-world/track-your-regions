@@ -202,13 +202,24 @@ far above what answering a queue asks for.
 
 `PUT /api/admin/sync/categories/:categoryId/curation-gate` — the switch that holds
 a source's content for review — stays exempt too, and CodeQL flags it, so the
-reason is here rather than only in a dismissal. It is one `UPDATE` of one row in a
-three-row table, and it does no work itself: it changes what *future* runs do. A
+reason is here rather than only in a dismissal. It is one `UPDATE` of one row of
+the source table, and it does no work itself: it changes what *future* runs do. A
 flood of flips costs a flood of single-row updates, which is what the default
 exemption on this router is for. The criterion above is about cost per request,
 not about how much a request decides — and adding a limiter to satisfy an
 analyser, against the rule this section states, would make the rule mean less
 each time it is done.
+
+`PUT /api/admin/sync/categories/:categoryId/line` — a source's fame line (ADR-0052
+decision 6), the pair of sitelink counts a run reads at its start — stays exempt
+beside it, and CodeQL flags it too. It runs one `SELECT` to decide 404 from 409
+(the category must exist and keep a line for this route to move) and one `UPDATE`
+of that same row's `api_config`, and nothing follows the commit: like the gate
+switch, it changes only what a *future* run admits, never a row a reader sees
+today. One admin sets one pair of integers by hand from the source card — the same
+shape as the gate switch, and the same reasoning: admin routes are unlimited by
+design, and the attack surface here is a compromised admin account, not a client
+hammering the endpoint. CodeQL alert #354 is dismissed against this paragraph.
 
 `POST /api/experiences/categories/:categoryId/publish-waiting` carries
 `authenticatedLimiter`, and it is the clearest case of the criterion rather than a
@@ -219,8 +230,8 @@ same limiter" — the sentence used to sit at the end of the paragraph above, wh
 the nearest antecedent was the gate switch, a route that carries none.
 
 CodeQL raises `js/missing-rate-limiting` on every route this section exempts, on
-either router — the curator ones in `experienceRoutes.ts` and the admin gate switch
-in `adminRoutes.ts` — and each such alert is dismissed against this section. The
+either router — the curator ones in `experienceRoutes.ts` and the admin ones in
+`adminRoutes.ts` — and each such alert is dismissed against this section. The
 count is deliberately not written down, because it has already been wrong twice:
 once when a route was added to a row of this table, and once when this sentence
 outlived the route it counted.
