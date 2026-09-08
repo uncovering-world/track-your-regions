@@ -24,9 +24,6 @@ import { ICONIC_SITELINKS, ICONIC_RELEASE } from './tier1.js';
 import { isCommonsPictureUrl } from '../../../types/urlSafety.js';
 import { reconcileLinks } from './linkWithdrawal.js';
 
-/** `Art Museums` — the category a treasure reads its gate from, since it has none of its own. */
-const MUSEUM_CATEGORY_ID = 2;
-
 /**
  * The hold, as one SQL expression over the stored row: a gated source may not
  * overwrite what a reader can already see (ADR-0025 decision 5), and since
@@ -36,11 +33,12 @@ const MUSEUM_CATEGORY_ID = 2;
  * globally (ADR-0025 decision 2), so one verified through another venue is on
  * show there even where this venue's link is still pending, and its attribution
  * is exactly what a reader can already see. A work still `pending` has nothing
- * to protect and keeps being refreshed in place. The gate is the museum
- * category's, bound as the same parameter the insert reads it from, so the two
- * cannot disagree. Evaluated inside `DO UPDATE` on the row the statement locked
- * and again in its RETURNING, so the record cannot disagree with the write
- * (`heldSql` in experienceUpsert.ts, and #519 for why the answer has to come back).
+ * to protect and keeps being refreshed in place. The gate is the run's own
+ * source (`run.categoryId`), bound as the same parameter the insert reads it
+ * from, so the two cannot disagree. Evaluated inside `DO UPDATE` on the row
+ * the statement locked and again in its RETURNING, so the record cannot
+ * disagree with the write (`heldSql` in experienceUpsert.ts, and #519 for why
+ * the answer has to come back).
  *
  * `treasures.` is not decoration: inside `ON CONFLICT DO UPDATE` both the table
  * and `EXCLUDED` are in scope, and `EXCLUDED.curation_state` is what the insert's
@@ -66,6 +64,11 @@ export interface TreasureWriteRun extends WriteRun {
    * default reason would never mark one.
    */
   withdrawalSkippedReason: string | null;
+  /**
+   * The source whose gate the treasure's curation_state reads, and whose
+   * links the withdrawal arm reconciles.
+   */
+  categoryId: number;
 }
 
 /**
@@ -224,7 +227,7 @@ function rewriteOf(
  * Exported for its test as well as for the sync: one of its promises lives in a
  * parameter number, which no caller can observe.
  */
-export async function upsertMuseumTreasures(
+export async function upsertVenueTreasures(
   experienceId: number,
   artworks: ProcessedContent[],
   // Required, with no default: the run's credits live a file away now, and a
@@ -310,7 +313,7 @@ export async function upsertMuseumTreasures(
 
     // Step 1: Upsert into treasures (globally unique by external_id)
     //
-    // `curation_state` is bound to `MUSEUM_CATEGORY_ID` directly rather than
+    // `curation_state` is bound to `run.categoryId` directly rather than
     // reached through an experience: a treasure is globally shared and is not
     // owned by any one of them. It is set on insert only — absent from
     // `DO UPDATE SET` — because a work already stored may already have been
@@ -415,7 +418,7 @@ export async function upsertMuseumTreasures(
         Object.keys(patch).length > 0 ? JSON.stringify(patch) : null,
         ICONIC_SITELINKS,
         ICONIC_RELEASE,
-        MUSEUM_CATEGORY_ID,
+        run.categoryId,
         sameMakers,
       ]
     );

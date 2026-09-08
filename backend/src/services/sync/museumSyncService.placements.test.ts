@@ -25,7 +25,7 @@ describe('readPreviousPlacements', () => {
   it('reads only the links the source still places, and only this category', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await readPreviousPlacements();
+    await readPreviousPlacements(2);
 
     const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
     // A link an earlier run marked is not a placement the catalogue shows:
@@ -43,7 +43,7 @@ describe('readPreviousPlacements', () => {
       { work: 'Q151047', venue: 'Q19675' },
     ] });
 
-    const placements = await readPreviousPlacements();
+    const placements = await readPreviousPlacements(2);
 
     expect(placements).toEqual({
       Q12418: ['Q19675', 'Q1233'],

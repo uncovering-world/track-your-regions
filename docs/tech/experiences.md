@@ -490,7 +490,7 @@ Common sync logic lives in shared utility files:
 - **`missingDetection.ts`** — Whether absence may be acted on (`missingDetectionSkipReason()`) and the flagging itself (`flagMissingExperiences()`)
 - **`syncLogMarkers.ts`** — The entries a run leaves in `error_details` that other code reads as facts (`CHANGESET_LOST_MARKER`, `ORPHANED_RUN_MARKER`, `PLACEMENT_FAILED_MARKER`) and the predicate that reads them (`CHANGESET_LANDED_SQL`). Written by the orchestrator and the startup sweep, read by the review queue and `accept-source` — one definition, because a run's status cannot answer whether its changeset landed
 - **`fixtureSource.ts`** — Development-only source substitution via `SYNC_SOURCE_FIXTURE`; see § Change provenance below
-- **`labelFold.ts`** — The two rules a name is held to, and the one place each is decided. `foldLabel` / `sameLabel` / `sameLabelSet` answer *whether two labels name the same thing* — NFKC, every Unicode dash to the plain one, whitespace collapsed, case folded — for the diffs, the makers' dedupe and the curator schema's repeat check. `tidyLabel` is the **store rule** (#835): what a row holds is the name as a person would type it — edges trimmed, a run of whitespace inside collapsed to one space, case and dashes untouched. Every source is a label service and a label service passes runs through (Wikidata's label for *St. John  on Patmos* carries two spaces; the World Heritage Centre's component names carried eighteen runs), and HTML collapses them on screen, so a reader who typed what they saw found nothing. Applied by every writer of a name **before its diff** — `upsertExperienceRecord` (the place's name, each language of its local names, the set-valued metadata lists such as `metadata.creators`), `writeExperienceLocations` (a point's name) and `upsertMuseumTreasures` (a work's title and makers) — and by the four curator schemas before their bounds (`storedName` in `types/index.ts`), so a run compares tidied to tidied and reports no rename for a label it only tidied. Migration 047 brought the stored rows to it and `name-carries-whitespace-nobody-typed` in Catalogue Checks asks the rule of every row since, in its SQL spelling (`tidyLabelSql`). Both rules have a copy on the drawing side (`frontend/src/utils/labelFold.ts`), pinned from here by `labelFold.test.ts`
+- **`labelFold.ts`** — The two rules a name is held to, and the one place each is decided. `foldLabel` / `sameLabel` / `sameLabelSet` answer *whether two labels name the same thing* — NFKC, every Unicode dash to the plain one, whitespace collapsed, case folded — for the diffs, the makers' dedupe and the curator schema's repeat check. `tidyLabel` is the **store rule** (#835): what a row holds is the name as a person would type it — edges trimmed, a run of whitespace inside collapsed to one space, case and dashes untouched. Every source is a label service and a label service passes runs through (Wikidata's label for *St. John  on Patmos* carries two spaces; the World Heritage Centre's component names carried eighteen runs), and HTML collapses them on screen, so a reader who typed what they saw found nothing. Applied by every writer of a name **before its diff** — `upsertExperienceRecord` (the place's name, each language of its local names, the set-valued metadata lists such as `metadata.creators`), `writeExperienceLocations` (a point's name) and `upsertVenueTreasures` (a work's title and makers) — and by the four curator schemas before their bounds (`storedName` in `types/index.ts`), so a run compares tidied to tidied and reports no rename for a label it only tidied. Migration 047 brought the stored rows to it and `name-carries-whitespace-nobody-typed` in Catalogue Checks asks the rule of every row since, in its SQL spelling (`tidyLabelSql`). Both rules have a copy on the drawing side (`frontend/src/utils/labelFold.ts`), pinned from here by `labelFold.test.ts`
 
 ### Change provenance (issue #480, [ADR-0020](../decisions/0020-experience-lifecycle-and-run-changeset.md))
 
@@ -628,13 +628,13 @@ Items are **named, never identified by id**: the record has to stay legible afte
 is renamed, the same reason each row keeps `name_snapshot`. Both halves are nullable, because most
 UNESCO components carry a reference and no name of their own.
 
-Where the numbers come from: `writeExperienceLocations` and `upsertMuseumTreasures` each already
+Where the numbers come from: `writeExperienceLocations` and `upsertVenueTreasures` each already
 computed their delta and discarded it — the location writer returned ids for region placement, the
-museum writer reduced its `RETURNING treasure_id` to a boolean for retiring a curator's pass. Both
+venue writer reduced its `RETURNING treasure_id` to a boolean for retiring a curator's pass. Both
 now return it. `added`, `withdrawn` and `returned` are read off the statements that perform the
 writes, so what the record says arrived is what arrived. `changed` cannot be and must not be: it is
 the difference between what was stored and what the source offered, which is a comparison no writing
-statement makes — the museum's comes from a snapshot query and the source's list, the location
+statement makes — the venue writer's comes from a snapshot query and the source's list, the location
 writer's from the pairing's carried `old_*` against the incoming values. Where a claim holds, the
 record and the write are *supposed* to disagree, and that disagreement is the whole content of the
 entry.
@@ -2268,7 +2268,7 @@ curator and every admin.
 transaction that locks a row of an existing object's contents takes it on the object first.
 Both halves matter, and both were learned from the same failure. The rule is about
 transactions and about which rows they hold, and what it leaves outside is named rather than
-counted — the count went stale here once already — each for its own reason: `upsertMuseumTreasures` runs each of its per-work statements on the
+counted — the count went stale here once already — each for its own reason: `upsertVenueTreasures` runs each of its per-work statements on the
 pool with no `BEGIN`, so it holds nothing across them and can wait for a lock without ever being
 half of a cycle, and the one transaction inside it — `reconcileLinks`, which restores and marks
 the venue's links (ADR-0044) — is under the rule for exactly that reason and takes the object

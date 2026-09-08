@@ -21,11 +21,7 @@ import type {
   ContentsDelta,
 } from './types.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
-import { isTerminalSyncStatus, runningSyncs } from './types.js';
-import { writeFoundPicture } from './pictureRepair.js';
 import { collectTier1Museums } from './museum/pipeline.js';
-import { fetchEntityDetails, isQid } from './museum/queries.js';
-import type { SparqlFn } from './wikidataQueries.js';
 import {
   delay,
   WaitBudget,
@@ -36,7 +32,7 @@ import {
   wikidataDoor,
   type SparqlBinding,
 } from './wikidataUtils.js';
-import { upsertMuseumTreasures } from './museum/treasureWriter.js';
+import { upsertVenueTreasures } from './museum/treasureWriter.js';
 import { measureWorksCoverage, worksCoverageSkipReason } from './museum/worksCoverage.js';
 import {
   fetchCommonsCredits,
@@ -46,10 +42,10 @@ import {
   type ImageCredit,
   type StoredCredit,
 } from './imageCredit.js';
+import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 // Museums use remote Wikimedia URLs, no local image storage
 
 const MUSEUM_CATEGORY_ID = 2;
-const ENTITY_BATCH = 50;
 
 const LOG_PREFIX = '[Museum Sync]';
 
@@ -121,7 +117,7 @@ function collectingSparql(
  *
  * Exported for its test: which rows it reads is the whole of what the floor and the diff see.
  */
-export async function readPreviousPlacements(): Promise<Record<string, string[]>> {
+export async function readPreviousPlacements(categoryId: number): Promise<Record<string, string[]>> {
   const result = await pool.query(
     `SELECT t.external_id AS work, e.external_id AS venue
        FROM experience_treasures et
@@ -129,7 +125,7 @@ export async function readPreviousPlacements(): Promise<Record<string, string[]>
        JOIN experiences e ON e.id = et.experience_id
       WHERE e.category_id = $1
         AND et.missing_since IS NULL`,
-    [MUSEUM_CATEGORY_ID],
+    [categoryId],
   );
   const placements: Record<string, string[]> = {};
   for (const row of result.rows as { work: string; venue: string }[]) {
@@ -146,7 +142,7 @@ export async function readPreviousPlacements(): Promise<Record<string, string[]>
  *
  * Both in one map deliberately — it is what stops a work and the museum holding
  * it crediting the same file differently — which is why `processMuseum` hands
- * this same map to `upsertMuseumTreasures` for the works it writes.
+ * this same map to `upsertVenueTreasures` for the works it writes.
  *
  * Module state for the same reason the UNESCO run keeps its Wikipedia links that
  * way: the orchestrator hands `processItem` one museum at a time, and asking
@@ -211,7 +207,7 @@ async function fetchMuseumItems(
   filtered: FilteredEntity[];
   withdrawalSkippedReason: string | null;
 }> {
-  const previousPlacements = await readPreviousPlacements();
+  const previousPlacements = await readPreviousPlacements(MUSEUM_CATEGORY_ID);
   imageCredits = new Map();
   storedCredits = await readStoredCredits(MUSEUM_CATEGORY_ID);
   storedTreasureCredits = await readStoredTreasureCredits();
@@ -369,7 +365,7 @@ async function upsertMuseumExperience(
     const written = await upsertSingleLocation(
       experienceId, museum.qid, details.lon!, details.lat!, { syncLogId: context.syncLogId },
     );
-    // Registered here rather than returned: `upsertMuseumTreasures` runs after
+    // Registered here rather than returned: `upsertVenueTreasures` runs after
     // this and can throw, and a returned field would be lost with it while the
     // point had already moved on disk.
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
@@ -397,11 +393,15 @@ async function processMuseum(
   // `fetchMuseumItems`, saw enough of the works to vouch for what left.
   let treasures: ContentsDelta | undefined;
   if (!context.dryRun) {
-    treasures = await upsertMuseumTreasures(
+    treasures = await upsertVenueTreasures(
       experienceId,
       museum.artworks,
       { fetched: imageCredits, stored: storedTreasureCredits },
-      { syncLogId: context.syncLogId, withdrawalSkippedReason: context.withdrawalSkippedReason },
+      {
+        syncLogId: context.syncLogId,
+        withdrawalSkippedReason: context.withdrawalSkippedReason,
+        categoryId: MUSEUM_CATEGORY_ID,
+      },
       placedElsewhereFor(museum.qid),
     );
   }
@@ -474,194 +474,12 @@ export function cancelMuseumSync() {
   return cancelSync(MUSEUM_CATEGORY_ID);
 }
 
-/** Wikimedia image URLs for a set of museum QIDs, batched. */
-async function fetchMuseumImages(
-  qids: string[],
-  progress: SyncProgress,
-): Promise<Map<string, string>> {
-  const images = new Map<string, string>();
-  // The same door as every other query this service sends. It used to be a bare
-  // `sparqlQuery` with none of the three: no cancel check, no reporter, and no
-  // shared budget — so `sparqlQuery` minted a fresh fifteen minutes *per batch*.
-  // At `ENTITY_BATCH = 50` that is hours for a few hundred museums, none of it
-  // interruptible, while `runningSyncs` shows the card as running with a Cancel
-  // button on it. Raising the retry ceiling is what made the arithmetic bite.
-  const door = wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), LOG_PREFIX);
-  // `SparqlFn`'s second parameter is a cache descriptor and the door's is a
-  // retry count, so the two signatures cannot be passed for each other. This
-  // pass describes no question and caches nothing, which is why the descriptor
-  // is dropped rather than forwarded.
-  const sparql: SparqlFn = (query) => door(query);
-  for (let i = 0; i < qids.length; i += ENTITY_BATCH) {
-    if (progress.cancel) throw new Error('Sync cancelled');
-    progress.statusMessage =
-      `Fetching image URLs from Wikidata (${Math.min(i + ENTITY_BATCH, qids.length)}/${qids.length})...`;
-    const details = await fetchEntityDetails(sparql, qids.slice(i, i + ENTITY_BATCH));
-    for (const [qid, row] of details) {
-      if (row.imageUrl) images.set(qid, row.imageUrl);
-    }
-    if (i + ENTITY_BATCH < qids.length) await delay(SPARQL_DELAY_MS);
-  }
-  return images;
-}
-
 /**
- * Fix missing museum images - re-download images for museums that have a
- * Wikidata image URL but no local image file.
+ * The museum instance of the Wikidata picture repair (`wikidataPictureRepair.ts`):
+ * same mechanism as `syncMuseums` reaching for a picture, run by hand from the
+ * admin panel against rows already stored rather than during a sync pass.
  */
-/**
- * Write every picture this action found, and report what happened to each row.
- *
- * Three outcomes rather than two, because they have different causes and only
- * one of them is a problem: `fixed` is a picture written, `failed` is a museum
- * Wikidata offered none for, and `kept` is a row whose picture a curator owns.
- * Folding the last into either of the others would blame the source for a
- * person's decision, or claim a write that never happened.
- */
-async function writeFixedImages(
-  museums: { id: number; external_id: string; name: string }[],
-  images: Map<string, string>,
-  credits: Map<string, ImageCredit>,
-  progress: SyncProgress,
-): Promise<{ fixed: number; failed: number; kept: number }> {
-  let fixed = 0;
-  let failed = 0;
-  let kept = 0;
-
-  for (let i = 0; i < museums.length; i++) {
-    if (progress.cancel) throw new Error('Sync cancelled');
-
-    const museum = museums[i];
-    const imageUrl = images.get(museum.external_id);
-    progress.currentItem = museum.name;
-    progress.statusMessage = `Fixing ${i + 1}/${museums.length}: ${museum.name}`;
-    progress.progress = i + 1;
-
-    if (!imageUrl) {
-      failed++;
-      continue;
-    }
-    // A file Wikidata calls an image and is not one counts as none found: the
-    // writer refuses it, and this row is asked about again next time.
-    const wrote = await writeFoundPicture(museum.id, imageUrl, credits.get(imageUrl));
-    if (wrote === 'written') fixed++;
-    else if (wrote === 'kept') kept++;
-    else failed++;
-  }
-
-  return { fixed, failed, kept };
-}
-
-/**
- * Who took the pictures this action is about to put on cards.
- *
- * Asked before the write loop rather than per row: it is one batch of up to
- * fifty files per request either way, and a card must never appear with a
- * photograph and no name — the standing rule is that anything displaying an
- * experience picture shows the credit with it.
- */
-async function creditsForFixedImages(
-  imageUrls: string[],
-  progress: SyncProgress,
-): Promise<Map<string, ImageCredit>> {
-  progress.statusMessage = 'Asking Commons who took the pictures...';
-  const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
-  return fetchCommonsCredits(imageUrls, {
-    userAgent: WIKIDATA_USER_AGENT,
-    budget,
-    isCancelled: () => progress.cancel,
-    // Nothing else writes the status between the SPARQL pass and the write
-    // loop, so without this a bad day at Commons is a sentence frozen on the
-    // panel for as long as the budget lasts — the hung-looking run this whole
-    // change set exists to stop showing.
-    onWait: (wait) => { progress.statusMessage = waitMessage('Commons', wait, budget); },
-    pause: () => delay(SPARQL_DELAY_MS),
-  });
-}
-
-export async function fixMuseumImages(_triggeredBy: number | null): Promise<void> {
-  // Check if already running
-  const existing = runningSyncs.get(MUSEUM_CATEGORY_ID);
-  if (existing && !isTerminalSyncStatus(existing.status)) {
-    throw new Error('Museum sync already in progress');
-  }
-
-  const progress: SyncProgress = {
-    cancel: false,
-    kind: 'repair',
-    status: 'processing',
-    statusMessage: 'Fixing missing museum images...',
-    progress: 0,
-    total: 0,
-    created: 0,
-    updated: 0,
-    unchanged: 0,
-    missing: 0,
-    curatedConflicts: 0,
-    held: 0,
-    filtered: 0,
-    errors: 0,
-    currentItem: '',
-    logId: null,
-    dryRun: false,
-  };
-  runningSyncs.set(MUSEUM_CATEGORY_ID, progress);
-
-  try {
-    // Find museums missing images or with old local paths
-    const result = await pool.query(`
-      SELECT id, external_id, name, metadata
-      FROM experiences
-      WHERE category_id = $1
-        AND (image_url IS NULL OR image_url = '' OR image_url LIKE '/images/%')
-        AND metadata IS NOT NULL
-    `, [MUSEUM_CATEGORY_ID]);
-
-    const museums = result.rows;
-    progress.total = museums.length;
-    progress.statusMessage = `Found ${museums.length} museums without images`;
-    console.log(`[Museum Sync] Fix images: ${museums.length} museums missing images`);
-
-    if (museums.length === 0) {
-      progress.status = 'complete';
-      progress.statusMessage = 'All museums already have images';
-      return;
-    }
-
-    // Re-fetch image URLs from Wikidata for these museums.
-    //
-    // Filtered to real QIDs: a curator can create a museum by hand, and its key
-    // is `curator-<id>-<ts>`, which interpolates into the VALUES clause as
-    // `wd:curator-5-1754…` and makes Wikidata reject the whole batch — so one
-    // hand-made row would cost every other museum on the page its image.
-    const qids = museums
-      .map((m: { external_id: string }) => m.external_id)
-      .filter(isQid);
-    progress.statusMessage = 'Fetching image URLs from Wikidata...';
-    const images = await fetchMuseumImages(qids, progress);
-
-    const credits = await creditsForFixedImages([...images.values()], progress);
-
-    const { fixed, failed, kept } = await writeFixedImages(museums, images, credits, progress);
-
-    progress.status = 'complete';
-    progress.created = fixed;
-    progress.errors = failed;
-    const curated = kept > 0 ? `, ${kept} left as the curator set them` : '';
-    progress.statusMessage = `Fixed images: ${fixed} updated, ${failed} no image found${curated}`;
-    console.log(`[Museum Sync] Fix images complete: ${fixed} updated, ${failed} no image found${curated}`);
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    progress.status = progress.cancel ? 'cancelled' : 'failed';
-    progress.statusMessage = errorMsg;
-    console.error(`[Museum Sync] Fix images failed:`, errorMsg);
-    throw err;
-  } finally {
-    const thisProgress = progress;
-    setTimeout(() => {
-      if (runningSyncs.get(MUSEUM_CATEGORY_ID) === thisProgress) {
-        runningSyncs.delete(MUSEUM_CATEGORY_ID);
-      }
-    }, 30000);
-  }
-}
+export const fixMuseumImages = makeWikidataPictureRepair(MUSEUM_CATEGORY_ID, LOG_PREFIX, {
+  singular: 'museum',
+  plural: 'museums',
+});

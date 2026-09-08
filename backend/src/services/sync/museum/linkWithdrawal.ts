@@ -184,7 +184,7 @@ export async function reconcileLinks(
     // and this one is under it the moment it holds one link's lock while asking
     // for another: a curator publishing this museum's works holds the object
     // and wants those same link rows. Serialised on the object, neither can be
-    // the far side of a cycle. The rest of `upsertMuseumTreasures` stays
+    // the far side of a cycle. The rest of `upsertVenueTreasures` stays
     // outside the rule for the reason `locks.ts` gives — each of its
     // statements is its own transaction.
     await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);

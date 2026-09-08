@@ -44,7 +44,7 @@ vi.mock('./wikidataUtils.js', () => ({
   wikidataDoor: vi.fn(() => vi.fn()),
 }));
 vi.mock('./museum/treasureWriter.js', () => ({
-  upsertMuseumTreasures: vi.fn().mockResolvedValue({
+  upsertVenueTreasures: vi.fn().mockResolvedValue({
     added: [], withdrawn: [], returned: [], changed: [],
   }),
 }));
@@ -59,14 +59,14 @@ import { pool } from '../../db/index.js';
 import { orchestrateSync, type SyncServiceConfig, type SyncRunContext } from './syncOrchestrator.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { collectTier1Museums } from './museum/pipeline.js';
-import { upsertMuseumTreasures } from './museum/treasureWriter.js';
+import { upsertVenueTreasures } from './museum/treasureWriter.js';
 import { syncMuseums } from './museumSyncService.js';
 import type { CollectedMuseum, SyncProgress } from './types.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedOrchestrate = orchestrateSync as unknown as ReturnType<typeof vi.fn>;
 const mockedCollect = collectTier1Museums as unknown as ReturnType<typeof vi.fn>;
-const mockedWriter = upsertMuseumTreasures as unknown as ReturnType<typeof vi.fn>;
+const mockedWriter = upsertVenueTreasures as unknown as ReturnType<typeof vi.fn>;
 
 const LOUVRE = 'Q19675';
 /** Ten works the catalogue offers at the Louvre, as `readPreviousPlacements` answers. */
@@ -166,7 +166,9 @@ describe('the museum run and its floor', () => {
     // verdict would mark links on a run nothing vouched for.
     expect(mockedWriter).toHaveBeenCalledWith(
       6184, expect.anything(), expect.anything(),
-      { syncLogId: 42, withdrawalSkippedReason: 'this run placed 1 of the 10 works' },
+      {
+        syncLogId: 42, withdrawalSkippedReason: 'this run placed 1 of the 10 works', categoryId: 2,
+      },
       expect.anything(),
     );
   });
