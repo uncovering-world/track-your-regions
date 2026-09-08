@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { placeArtwork, type VenueStatement } from './placement.js';
 import { resolveVenue } from './resolveVenue.js';
-import type { VenueFacts } from './venueTest.js';
+import { museumRule, type VenueFacts } from './venueTest.js';
 
 // Resolution is stubbed: a room and an umbrella resolve to nothing, museums to themselves.
 const RESOLVES: Record<string, string | null> = {
@@ -169,7 +169,7 @@ describe('a work filed under a department and a room (the Louvre, 2026)', () => 
   const facts = (q: string) => world[q];
   const parentsOf = (q: string) => world[q]?.parents ?? [];
   const resolveThroughAncestry = (q: string) => {
-    const answer = resolveVenue(q, facts, parentsOf, ART_MUSEUM);
+    const answer = resolveVenue(q, facts, parentsOf, museumRule(ART_MUSEUM));
     return 'venue' in answer ? answer.venue : null;
   };
   const ancestryOf = (q: string): ReadonlySet<string> => {

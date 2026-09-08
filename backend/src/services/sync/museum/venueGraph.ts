@@ -17,7 +17,7 @@
 
 import { resolveVenue, type Resolution } from './resolveVenue.js';
 import { computeFolds, type Fold, type FoldCandidate } from './venueFolds.js';
-import { venueVerdict, type VenueFacts } from './venueTest.js';
+import { venueVerdict, type VenueFacts, type VenueRule } from './venueTest.js';
 import { EDITORIAL_OUT } from './artTest.js';
 import {
   fetchEntityDetails,
@@ -96,14 +96,14 @@ function makeAncestors(parents: (qid: string) => string[]): (qid: string) => Rea
 export async function loadVenueGraph(
   run: QueryRunner,
   seeds: string[],
-  museumClasses: ReadonlySet<string>,
+  rule: VenueRule,
 ): Promise<VenueGraph> {
   const details = new Map<string, EntityDetails>();
   const edges = new Map<string, EntityEdges>();
   const nextOf = (qid: string): string[] => {
     const found = edges.get(qid);
     if (!found) return [];
-    const museum = found.classes.some((c) => museumClasses.has(c));
+    const museum = found.classes.some((c) => rule.classes.has(c));
     return museum ? [...found.parents, ...found.locations] : found.parents;
   };
 
@@ -143,12 +143,12 @@ export async function loadVenueGraph(
 }
 
 /** The verdict on a QID a work named, memoised — and the venue it stands for, if any. */
-export function makeResolver(graph: VenueGraph, museumClasses: ReadonlySet<string>) {
+export function makeResolver(graph: VenueGraph, rule: VenueRule) {
   const memo = new Map<string, Resolution>();
   const resolution = (qid: string): Resolution => {
     let found = memo.get(qid);
     if (!found) {
-      found = resolveVenue(qid, graph.facts, graph.parents, museumClasses, VENUE_HOPS);
+      found = resolveVenue(qid, graph.facts, graph.parents, rule, VENUE_HOPS);
       memo.set(qid, found);
     }
     return found;
@@ -176,7 +176,7 @@ export function makeResolver(graph: VenueGraph, museumClasses: ReadonlySet<strin
 export function foldVenues(
   placements: Record<string, string[]>,
   graph: VenueGraph,
-  museumClasses: ReadonlySet<string>,
+  rule: VenueRule,
 ): Record<string, Fold> {
   const works = new Map<string, number>();
   for (const venues of Object.values(placements)) {
@@ -196,7 +196,7 @@ export function foldVenues(
   }
   const wouldBeVenue = (qid: string): boolean => {
     const facts = graph.facts(qid);
-    return !!facts && venueVerdict(facts, museumClasses).pass;
+    return !!facts && venueVerdict(facts, rule).pass;
   };
   const doorsOf = (qid: string): FoldCandidate[] =>
     unique([...graph.parents(qid), ...graph.locations(qid)])

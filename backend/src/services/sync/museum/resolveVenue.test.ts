@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveVenue } from './resolveVenue.js';
-import type { VenueFacts } from './venueTest.js';
+import { museumRule, type VenueFacts } from './venueTest.js';
 
 const MUSEUM_CLASSES = new Set(['Q207694']); // art museum
 const world: Record<string, VenueFacts & { parents: string[] }> = {
@@ -28,42 +28,42 @@ const parents = (q: string) => world[q]?.parents ?? [];
 
 describe('resolveVenue', () => {
   it('returns the entity itself when it passes', () => {
-    expect(resolveVenue('Q19675', facts, parents, MUSEUM_CLASSES)).toEqual({ venue: 'Q19675', hops: 0 });
+    expect(resolveVenue('Q19675', facts, parents, museumRule(MUSEUM_CLASSES))).toEqual({ venue: 'Q19675', hops: 0 });
   });
 
   it('walks P361 up to the nearest qualifying ancestor', () => {
-    expect(resolveVenue('Q3044768', facts, parents, MUSEUM_CLASSES)).toEqual({ venue: 'Q19675', hops: 1 });
+    expect(resolveVenue('Q3044768', facts, parents, museumRule(MUSEUM_CLASSES))).toEqual({ venue: 'Q19675', hops: 1 });
   });
 
   it('refuses to choose between two qualifying ancestors at the same hop', () => {
-    const r = resolveVenue('Q683074', facts, parents, MUSEUM_CLASSES);
+    const r = resolveVenue('Q683074', facts, parents, museumRule(MUSEUM_CLASSES));
     expect('unresolved' in r).toBe(true);
     expect((r as { unresolved: string }).unresolved).toContain('two qualifying ancestors');
   });
 
   it('gives up when nothing qualifies', () => {
-    const r = resolveVenue('Q239', facts, parents, MUSEUM_CLASSES);
+    const r = resolveVenue('Q239', facts, parents, museumRule(MUSEUM_CLASSES));
     expect('unresolved' in r).toBe(true);
   });
 
   it('respects maxHops boundary', () => {
     // Q900000 -> Q900001 -> Q900002 (venue)
     // With maxHops=1, it should not reach the venue at hop 2
-    const r = resolveVenue('Q900000', facts, parents, MUSEUM_CLASSES, 1);
+    const r = resolveVenue('Q900000', facts, parents, museumRule(MUSEUM_CLASSES), 1);
     expect('unresolved' in r).toBe(true);
   });
 
   it('finds venue within maxHops boundary', () => {
     // Q900000 -> Q900001 -> Q900002 (venue)
     // With maxHops=2, it should reach the venue at hop 2
-    const r = resolveVenue('Q900000', facts, parents, MUSEUM_CLASSES, 2);
+    const r = resolveVenue('Q900000', facts, parents, museumRule(MUSEUM_CLASSES), 2);
     expect(r).toEqual({ venue: 'Q900002', hops: 2 });
   });
 
   it('chooses nearest ancestor among siblings at different hop distances', () => {
     // Q950000 has two parents: Q950001 (leads to venue at hop 2) and Q950003 (is venue at hop 1)
     // Deep branch listed first to ensure breadth-first (not depth-first) returns the nearest
-    const r = resolveVenue('Q950000', facts, parents, MUSEUM_CLASSES);
+    const r = resolveVenue('Q950000', facts, parents, museumRule(MUSEUM_CLASSES));
     expect(r).toEqual({ venue: 'Q950003', hops: 1 });
   });
 });
