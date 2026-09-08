@@ -1058,7 +1058,7 @@ describe('a trusted source decays a curator pass', () => {
  * rows came to carry a picture the World Heritage Centre's terms do not let this
  * product show — stored because the source called the field an image and nothing
  * asked (ADR-0043, #557). The rule lives with the writer rather than in each
- * collector, because three sources write pictures.
+ * collector, because every source writes pictures.
  */
 describe('a picture a run may not store', () => {
   const UNSHOWABLE = 'https://whc.unesco.org/document/141884';

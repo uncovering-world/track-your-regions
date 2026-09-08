@@ -552,7 +552,7 @@ export const cacheTtlBodySchema = z.object({
 export const reviewQueueQuerySchema = z.object({
   q: z.string().trim().min(1).max(100).optional(),
   // Length-bounded like `cursor` and `q`: the shape alone admits a digit string
-  // of any length, and the catalogue offers three sources. Each id is bounded to
+  // of any length, and the catalogue offers a handful of sources. Each id is bounded to
   // int4 by the controller, which is where the list is split — the same place a
   // `kind` word it does not know is dropped.
   source: z.string().max(200).regex(/^\d+(,\d+)*$/).optional(),

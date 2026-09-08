@@ -105,7 +105,7 @@ describe('measureWorksCoverage', () => {
 
 describe('worksCoverageSkipReason', () => {
   it('allows withdrawal on a run that placed every work again', () => {
-    expect(worksCoverageSkipReason(input())).toBeNull();
+    expect(worksCoverageSkipReason(input(), 'museums')).toBeNull();
   });
 
   it('refuses a run that placed too few of the works the catalogue offers, and says the numbers', () => {
@@ -117,11 +117,23 @@ describe('worksCoverageSkipReason', () => {
       { qid: ORSAY, works: ['Q79906'] },
       { qid: PRADO, works: ['Q1219008'] },
     ] });
-    const reason = worksCoverageSkipReason(short);
+    const reason = worksCoverageSkipReason(short, 'museums');
     expect(reason).toContain('3 of the 10 works');
     expect(reason).toContain('3 museums');
     expect(reason).toContain('30.0%');
     expect(reason).toContain(`${WORKS_COVERAGE_MIN * 100}% floor`);
+  });
+
+  it('calls the venues what the caller calls them', () => {
+    // The same floor guards the places of worship (#753), and the sentence is
+    // shown to a person: "the 3 museums it admits" is a false statement over a
+    // run of cathedrals, and the caller is the only one who knows the word.
+    const short = input({ admitted: [
+      { qid: LOUVRE, works: ['Q12418'] },
+      { qid: ORSAY, works: ['Q79906'] },
+      { qid: PRADO, works: ['Q1219008'] },
+    ] });
+    expect(worksCoverageSkipReason(short, 'places')).toContain('3 places it admits');
   });
 
   it('allows withdrawal at exactly the floor', () => {
@@ -133,14 +145,14 @@ describe('worksCoverageSkipReason', () => {
       { qid: PRADO, works: ['Q1219008', 'Q334138', 'Q2258999'] },
     ] });
     expect(WORKS_COVERAGE_MIN).toBe(0.9);
-    expect(worksCoverageSkipReason(nine)).toBeNull();
+    expect(worksCoverageSkipReason(nine, 'museums')).toBeNull();
   });
 
   it('allows withdrawal when the catalogue offers nothing at the admitted museums', () => {
     // A first run, or a category rebuilt from nothing: there is no link to
     // withdraw, so there is nothing a floor could protect.
-    expect(worksCoverageSkipReason(input({ stored: {} }))).toBeNull();
-    expect(worksCoverageSkipReason(input({ admitted: [] }))).toBeNull();
+    expect(worksCoverageSkipReason(input({ stored: {} }), 'museums')).toBeNull();
+    expect(worksCoverageSkipReason(input({ admitted: [] }), 'museums')).toBeNull();
   });
 
   it('is the same floor missing detection applies to a listing', () => {

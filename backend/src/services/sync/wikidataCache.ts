@@ -127,11 +127,14 @@ export async function setCacheTtl(
  * Which kinds of question each source's collector actually describes — and
  * therefore which caches exist for it at all.
  *
- * The two Wikidata collectors pass descriptors: each is a pipeline of distinct
+ * The Wikidata collectors pass descriptors: each is a pipeline of distinct
  * questions worth keeping apart — the museums' class closure, work pools,
  * venue statements, entity details and edges; the public art's class trees,
  * entity pools, the facts about each candidate (`edges`) and about what holds
- * it (`entities`). The UNESCO run reads that source's own API and asks
+ * it (`entities`). The places of worship ask both sets, because both doors are
+ * theirs: the worship and type trees and a pool of buildings through the
+ * public-art questions, the pool of treasures and the venue graph through the
+ * museum's. The UNESCO run reads that source's own API and asks
  * Wikidata directly, without going through this door, so it keeps nothing,
  * and a panel offering to clear its "class trees" would be inventing a cache
  * to explain.
@@ -145,6 +148,8 @@ export const CACHED_KINDS_BY_CATEGORY: Record<number, CacheKind[]> = {
   2: ['classes', 'pool', 'statements', 'entities', 'edges'],
   // Public Art & Monuments.
   3: ['classes', 'pool', 'edges', 'entities'],
+  // Places of worship.
+  4: ['classes', 'pool', 'statements', 'entities', 'edges'],
 };
 
 /** What a caller says about the question it is asking. */

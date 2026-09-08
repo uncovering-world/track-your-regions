@@ -87,16 +87,21 @@ export function measureWorksCoverage(input: WorksCoverageInput): WorksCoverage {
  * Why this run may not withdraw a work, or null when it may.
  *
  * The sentence names what a person needs to judge it — how many works of how
- * many, at how many museums — because a percentage alone reads the same for a
+ * many, at how many venues — because a percentage alone reads the same for a
  * pool that came back a sixth of its size and for a museum that lost one work
  * of nine.
+ *
+ * `venues` is what the caller's kind calls the places that hold the works —
+ * `museums` for the art museums, `places` for the places of worship — because
+ * the sentence is shown to a person and "the 1083 museums it admits" is a false
+ * statement over a run of cathedrals.
  */
-export function worksCoverageSkipReason(input: WorksCoverageInput): string | null {
+export function worksCoverageSkipReason(input: WorksCoverageInput, venues: string): string | null {
   const { stored, seen, museums } = measureWorksCoverage(input);
   if (stored === 0) return null;
   const coverage = seen / stored;
   if (coverage >= WORKS_COVERAGE_MIN) return null;
   return `this run placed ${seen} of the ${stored} works the catalogue offers at the `
-    + `${museums} museums it admits (${(coverage * 100).toFixed(1)}%), below the `
+    + `${museums} ${venues} it admits (${(coverage * 100).toFixed(1)}%), below the `
     + `${WORKS_COVERAGE_MIN * 100}% floor`;
 }

@@ -852,11 +852,11 @@ describe('a kind and a membership exist in both schema homes', () => {
     + "(1, 'World Heritage Sites', 1), (2, 'Art Museums', 2), (3, 'Public Art & Monuments', 3) "
     + 'ON CONFLICT (name) DO NOTHING;';
 
-  it('both files create the kinds table and seed the three kinds under the sources\' ids', () => {
-    // The ids are the contract: `categoryColors.ts` and the two sync services
-    // key on 1, 2 and 3, and the seed is what keeps a fresh database's kinds
+  it('both files create the kinds table and seed the kinds under the sources\' ids', () => {
+    // The ids are the contract: `categoryColors.ts` and the sync services
+    // key on the source ids, and the seed is what keeps a fresh database's kinds
     // under the same numbers as its sources. Explicit ids need the sequence
-    // moved past them, in both files, or the fourth kind collides with the third.
+    // moved past them, in both files, or the next kind collides with the last seeded.
     for (const sql of [schema, splitMigration]) {
       expect(createTable(sql, 'experience_kinds')).toContain('name VARCHAR(255) NOT NULL UNIQUE');
       expect(sql).toContain(KIND_SEED);
