@@ -121,7 +121,8 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
  *
  * Query params:
  * - sourceId: Filter by source
- * - type: Filter by the type within the kind (cultural, natural, mixed; monument, sculpture)
+ * - type: Filter by the type within the kind (cultural, natural, mixed; monument, sculpture;
+ *   cathedral, church, chapel, monastery, mosque, temple, shrine, synagogue)
  * - regionId: Filter by region
  * - search: Search by name
  * - limit: Max results (default 50, max 5000)
