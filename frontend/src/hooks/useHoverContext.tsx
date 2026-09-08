@@ -30,6 +30,10 @@ export interface HoverPreview {
   locationId: number | null;
   locationName: string | null;
   categoryName: string | null;
+  /** The kind, for `TreasuresInsideChip` — silent for a museum, where every row has works. */
+  categoryId: number;
+  /** Offered + published treasure links, for `TreasuresInsideChip`. */
+  treasureCount?: number;
   imageUrl: string | null;
   /** Whose photograph it is. Carried with the picture, because the card shows one. */
   imageCredit: ImageCredit | null;

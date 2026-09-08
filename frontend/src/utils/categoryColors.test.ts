@@ -10,12 +10,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { TYPE_COLORS, experienceColor, experienceColors, getSourceColor } from './categoryColors';
+import { TYPE_COLORS, experienceColor, experienceColors, getSourceColor, shortSourceName } from './categoryColors';
 
 /** The source rows `db/init/01-schema.sql` seeds. */
 const WORLD_HERITAGE = 1;
 const ART_MUSEUMS = 2;
 const PUBLIC_ART = 3;
+const PLACES_OF_WORSHIP = 4;
 
 describe('experienceColors', () => {
   it('refines a World Heritage site by its type, which is what the map tells apart', () => {
@@ -79,5 +80,17 @@ describe('experienceColors', () => {
       expect(unknown.primary).not.toBe(known.primary);
     }
     expect(experienceColors(undefined, null)).toEqual(unknown);
+  });
+
+  it('gives a place of worship its own colour, whatever its type', () => {
+    expect(experienceColor(PLACES_OF_WORSHIP, 'cathedral')).toBe('#BE185D');
+    expect(experienceColor(PLACES_OF_WORSHIP, null)).toBe('#BE185D');
+    expect(getSourceColor(PLACES_OF_WORSHIP)).toBe('#BE185D');
+  });
+});
+
+describe('shortSourceName', () => {
+  it('shortens the kind name for a chip', () => {
+    expect(shortSourceName('Places of worship')).toBe('Worship');
   });
 });

@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useHoverSelector } from '../../hooks/useHoverContext';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 
 export function DiscoverHoverCard() {
   const hoverPreview = useHoverSelector(s => s.hoverPreview);
@@ -64,10 +65,15 @@ export function DiscoverHoverCard() {
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
           {hoverPreview.experienceName}
         </Typography>
-        {hoverPreview.categoryName && (
-          <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
-            {hoverPreview.categoryName}
-          </Typography>
+        {(hoverPreview.categoryName || hoverPreview.treasureCount) && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+            {hoverPreview.categoryName && (
+              <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
+                {hoverPreview.categoryName}
+              </Typography>
+            )}
+            <TreasuresInsideChip count={hoverPreview.treasureCount} categoryId={hoverPreview.categoryId} />
+          </Box>
         )}
       </Box>
       <style>{`

@@ -32,6 +32,8 @@ const MIXED: CategoryColorSet = { primary: '#F59E0B', bg: '#FEF3C7', text: '#D97
 const ART_MUSEUMS: CategoryColorSet = { primary: '#2563EB', bg: '#DBEAFE', text: '#1D4ED8' };
 /** Public art: the teal the map's fallback always drew it in, now a colour of its own. */
 const PUBLIC_ART: CategoryColorSet = { primary: '#0d9488', bg: '#CCFBF1', text: '#0F766E' };
+/** Places of worship: rose, beside the museums' blue and public art's teal. */
+const PLACES_OF_WORSHIP: CategoryColorSet = { primary: '#BE185D', bg: '#FCE7F3', text: '#9D174D' };
 /** A kind with no palette of its own, and a World Heritage row with no type. */
 const UNKNOWN: CategoryColorSet = { primary: '#6366F1', bg: '#E0E7FF', text: '#4F46E5' };
 
@@ -49,16 +51,18 @@ export const TYPE_COLORS: Record<string, CategoryColorSet> = {
 /**
  * The kinds with a colour of their own, by the id their source row is seeded
  * with in `db/init/01-schema.sql` (1 UNESCO World Heritage Sites, 2 Top Art
- * Museums, 3 Public Art & Monuments). Until the kind table of ADR-0045 §4
- * lands, a kind is its source row, and the id is what a list row carries
- * (`category_id`) — a name is renamed (#815). World Heritage's is the purple
- * of its cultural sites, which is what the kind reads as where no type
- * refines it — a count chip, a row whose type is not stored.
+ * Museums, 3 Public Art & Monuments, 4 Places of worship). Until the kind
+ * table of ADR-0045 §4 lands, a kind is its source row, and the id is what a
+ * list row carries (`category_id`) — a name is renamed (#815). World
+ * Heritage's is the purple of its cultural sites, which is what the kind
+ * reads as where no type refines it — a count chip, a row whose type is not
+ * stored.
  */
 const KIND_COLORS: Record<number, CategoryColorSet> = {
   1: CULTURAL,
   2: ART_MUSEUMS,
   3: PUBLIC_ART,
+  4: PLACES_OF_WORSHIP,
 };
 
 /**
@@ -139,5 +143,6 @@ export function getSourceColor(categoryId: number): string {
 export function shortSourceName(name: string): string {
   return name
     .replace('UNESCO World Heritage Sites', 'UNESCO')
-    .replace('Public Art & Monuments', 'Art');
+    .replace('Public Art & Monuments', 'Art')
+    .replace('Places of worship', 'Worship');
 }

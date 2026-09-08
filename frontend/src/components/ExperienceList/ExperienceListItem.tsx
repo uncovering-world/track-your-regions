@@ -19,6 +19,7 @@ import type {
   ExperienceTreasure,
 } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
+import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 import { experienceColor } from '../../utils/categoryColors';
 import { preloadCardImage } from '../../utils/imagePreload';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
@@ -415,6 +416,7 @@ function ExperienceListItemComponent({
                 {experience.name}
               </TitleText>
               <LifecycleChip state={experience} />
+              <TreasuresInsideChip count={experience.treasure_count} categoryId={experience.category_id} />
               {experience.is_new && (
                 <Chip
                   label="New"

@@ -339,7 +339,8 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
             rows={2}
           />
           {/* The kind's own types and nothing else — cultural / natural / mixed for a
-              World Heritage site, monument / sculpture for public art — and no control
+              World Heritage site, monument / sculpture for public art, cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue
+              for a place of worship — and no control
               at all for a museum, which is a kind without types (ADR-0045, #814). The
               list used to offer every vocabulary plus `art` to every object. */}
           {typeOptions.length > 0 && (
