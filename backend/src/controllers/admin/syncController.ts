@@ -16,6 +16,8 @@ import {
   fixMuseumImages,
   fixUnescoImages,
   syncLandmarks,
+  syncPlacesOfWorship,
+  fixWorshipImages,
   runningSyncs,
   getSyncStatus as getServiceSyncStatus,
   cancelSync as cancelServiceSync,
@@ -31,6 +33,7 @@ import {
 
 const UNESCO_CATEGORY_ID = 1;
 const MUSEUM_CATEGORY_ID = 2;
+const WORSHIP_CATEGORY_ID = 4;
 
 /**
  * Which sources a picture repair can be started for, and what it runs.
@@ -42,6 +45,7 @@ const MUSEUM_CATEGORY_ID = 2;
 const PICTURE_REPAIRS: Record<number, (triggeredBy: number | null) => Promise<void>> = {
   [UNESCO_CATEGORY_ID]: fixUnescoImages,
   [MUSEUM_CATEGORY_ID]: fixMuseumImages,
+  [WORSHIP_CATEGORY_ID]: fixWorshipImages,
 };
 
 /** Registry mapping category IDs to their sync functions */
@@ -52,6 +56,7 @@ const syncRegistry: Record<
   1: syncUnescoSites,
   2: syncMuseums,
   3: syncLandmarks,
+  4: syncPlacesOfWorship,
 };
 
 /**
@@ -596,7 +601,7 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
       ? null
       : waiting.get(source.id) ?? { arrivals: 0, held: 0, contents: 0 },
     // Whether this source keeps anything between runs, which decides whether
-    // "Sync without cache" is a real offer. The two Wikidata collectors
+    // "Sync without cache" is a real offer. The Wikidata collectors
     // describe their questions (ADR-0030 decision 4); the UNESCO run reads
     // its own API and does not, and on it that button would promise to
     // bypass something that does not exist — the same pretence the cache

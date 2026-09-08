@@ -8,4 +8,5 @@ export * from './unescoSyncService.js';
 export { fixUnescoImages } from './unescoImageRepair.js';
 export * from './museumSyncService.js';
 export * from './landmarkSyncService.js';
+export * from './worshipSyncService.js';
 export * from './regionAssignmentService.js';

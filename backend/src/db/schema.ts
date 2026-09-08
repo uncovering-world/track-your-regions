@@ -132,8 +132,8 @@ export const regionMembersRelations = relations(regionMembers, ({ one }) => ({
 
 /**
  * A kind of place a traveller browses by (ADR-0045 decision 1): World Heritage
- * sites, art museums, public art. Seeded under the ids of the sources that fill
- * them, so a reader keyed on 1, 2, 3 reads the same thing either way until #819.
+ * sites, art museums, public art, places of worship. Seeded under the ids of the sources that fill
+ * them, so a reader keyed on the source id reads the same thing either way until #819.
  */
 export const experienceKinds = pgTable('experience_kinds', {
   id: serial('id').primaryKey(),
@@ -181,7 +181,8 @@ export const experiences = pgTable('experiences', {
   shortDescription: varchar('short_description', { length: 2000 }),
   // Classification
   /**
-   * The type within the kind — cultural / natural / mixed, monument / sculpture — and
+   * The type within the kind — cultural / natural / mixed, monument / sculpture,
+   * cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue — and
    * NULL for a museum, which is a kind without types (ADR-0045, #814). The kind is the
    * one `categoryId`'s source fills (`experience_categories.kind_id`, #822); `categoryId`
    * itself names the source.

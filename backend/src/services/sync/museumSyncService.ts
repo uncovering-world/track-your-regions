@@ -115,7 +115,10 @@ function collectingSparql(
  * controllers' `offeredLinkSql`, because no service imports a controller module; it has to track
  * that definition.
  *
- * Exported for its test: which rows it reads is the whole of what the floor and the diff see.
+ * Exported for its test — which rows it reads is the whole of what the floor and the diff see —
+ * and, since #753, for the worship run, which hangs treasures off venues by the same rule and
+ * takes the source as an argument. Asking the question twice in two files is how the floor and
+ * the diff come to disagree about what the last run left.
  */
 export async function readPreviousPlacements(categoryId: number): Promise<Record<string, string[]>> {
   const result = await pool.query(
@@ -249,7 +252,7 @@ async function fetchMuseumItems(
     `${LOG_PREFIX} Works coverage: ${measured.seen} of ${measured.stored} works offered at the `
     + `${measured.museums} admitted museums placed again`,
   );
-  const withdrawalSkippedReason = worksCoverageSkipReason(coverage);
+  const withdrawalSkippedReason = worksCoverageSkipReason(coverage, 'museums');
 
   // Whose photographs these are. Asked after the collection rather than during
   // it: only the admitted venues are worth crediting, which is a handful of

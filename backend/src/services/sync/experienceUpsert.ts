@@ -237,7 +237,7 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
  * terms do not let this product show, stored because the source called the
  * field an image and nothing asked ([ADR-0043](../../../../docs/decisions/0043-a-picture-we-show-is-one-we-may-show.md),
  * #557). Here rather than in each collector, for the same reason the invalidation
- * rule sits with the writer (#679): three sources write pictures, and a check
+ * rule sits with the writer (#679): every source writes pictures, and a check
  * copied into each is a check one of them will be missing.
  *
  * The rule is the run's, `isCommonsPictureUrl`, and not the wider one a curator's
@@ -540,7 +540,7 @@ async function writeUnderLock(
   // been passed (ADR-0025). Resolved here rather than in SQL because the
   // statement cannot tell a content change from a provenance-only pass — its
   // CASE guards fire either way — and resolved inside this function rather than
-  // in the three sync services, which would be three places to forget.
+  // in the sync services, which would be one place per service to forget.
   //
   // Only a **trusted** source's change retires a pass, and the reason is the
   // hold above: under a gated source the changed values were not written, so

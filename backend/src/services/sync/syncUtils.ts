@@ -1,9 +1,9 @@
 /**
  * Shared sync utilities
  *
- * Common database operations used by UNESCO, museum, and landmark sync services.
- * The object upsert — the place, its membership and the hold — lives in
- * `experienceUpsert.ts` and is re-exported here, so the three services keep
+ * Common database operations used by the UNESCO, museum, landmark and worship
+ * sync services. The object upsert — the place, its membership and the hold —
+ * lives in `experienceUpsert.ts` and is re-exported here, so every service keeps
  * one import for what a run writes.
  */
 

@@ -490,7 +490,7 @@ describe('a new point arrives stamped', () => {
     expect(insert).toMatch(/curation_state/);
     // The gate is reached through the experience, because this writer has an
     // experienceId and no categoryId — one subselect rather than a parameter
-    // threaded through three services.
+    // threaded through every sync service.
     expect(insert).toMatch(/FROM experiences[\s\S]*JOIN experience_categories/);
     // Both branches named, so an edit that stamped every row 'auto' (or every
     // row 'pending') fails this test instead of passing on column presence alone.
@@ -680,7 +680,7 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
 
     await writeExperienceLocations(1, [A]);
 
-    // `requires_curation` is false on all three sources today, so an ungated run
+    // `requires_curation` is false on the three sources that predate the gate, so an ungated run
     // has to behave exactly as it did before this existed — not merely reach the
     // same rows, but ask the same questions. The state comes back from the
     // insert's own RETURNING, so this cannot disagree with what was written.
