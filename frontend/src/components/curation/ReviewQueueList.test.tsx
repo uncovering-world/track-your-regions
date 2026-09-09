@@ -32,9 +32,22 @@ function row(over: Partial<QueueRow> = {}): QueueRow {
   };
 }
 
+/** No ticks, and every way of ticking recorded — the selection a list test starts from. */
+export function noSelection(keys: string[] = [], allMatching = false) {
+  return {
+    keys: new Set(keys),
+    allMatching,
+    toggle: vi.fn(),
+    setLoaded: vi.fn(),
+    selectAllMatching: vi.fn(),
+    clear: vi.fn(),
+  };
+}
+
 function renderList(rows: QueueRow[], over: Partial<Parameters<typeof ReviewQueueList>[0]> = {}) {
   const onSelect = vi.fn();
   const onMore = vi.fn();
+  const selection = noSelection();
   const utils = render(
     <ReviewQueueList
       rows={rows}
@@ -47,10 +60,11 @@ function renderList(rows: QueueRow[], over: Partial<Parameters<typeof ReviewQueu
       onMore={onMore}
       total={rows.length}
       stale={false}
+      selection={selection}
       {...over}
     />,
   );
-  return { ...utils, onSelect, onMore };
+  return { ...utils, onSelect, onMore, selection };
 }
 
 /**
@@ -73,6 +87,7 @@ function Controlled({ rows, initial }: { rows: QueueRow[]; initial: string }) {
       onMore={vi.fn()}
       total={rows.length}
       stale={false}
+      selection={noSelection()}
     />
   );
 }
@@ -223,6 +238,7 @@ describe('ReviewQueueList', () => {
         onMore={vi.fn()}
         total={rows.length}
         stale={false}
+        selection={noSelection()}
       />,
     );
 
@@ -250,6 +266,7 @@ describe('ReviewQueueList', () => {
         onMore={vi.fn()}
         total={rows.length}
         stale={false}
+        selection={noSelection()}
       />,
     );
 
@@ -318,6 +335,7 @@ describe('ReviewQueueList', () => {
         onMore={vi.fn()}
         total={rows.length}
         stale={false}
+        selection={noSelection()}
       />,
     );
 
@@ -335,6 +353,7 @@ describe('ReviewQueueList', () => {
         onMore={vi.fn()}
         total={rows.length}
         stale={false}
+        selection={noSelection()}
       />,
     );
 
@@ -369,6 +388,7 @@ describe('ReviewQueueList', () => {
         onMore={vi.fn()}
         total={rows.length}
         stale={false}
+        selection={noSelection()}
       />,
     );
 
@@ -430,6 +450,7 @@ describe('ReviewQueueList', () => {
         onMore={vi.fn()}
         total={rows.length}
         stale={false}
+        selection={noSelection()}
       />,
     );
 

@@ -20,11 +20,15 @@ import {
   Fragment, useEffect, useRef, type KeyboardEvent,
 } from 'react';
 import {
-  Box, Button, List, ListItem, ListItemButton, ListSubheader, Typography,
+  Box, Button, Checkbox, List, ListItem, ListItemButton, ListSubheader, Typography,
 } from '@mui/material';
 import { KIND_COLOR, rowQuestionWord, type QueueRow, type RowKind } from './queueRows';
 import { dayOf, dayLabel, dateShort } from './feed/rowDate';
 import { COUNT_SX } from './feed/FilterChip';
+import type { RowSelection } from './selection/useRowSelection';
+
+/** The selection header's height in pixels: the offset the sticky group headings pin under. */
+const SELECTION_HEADER_HEIGHT = 40;
 
 /** The heading each group of rows sits under, in question order — the question, as the page states it. */
 const KIND_HEADING: Record<RowKind, string> = {
@@ -89,6 +93,13 @@ function headings(
   });
 }
 
+/** What the tri-state header says about the ticks. */
+function tickedLabel(allMatching: boolean, ticked: number, loaded: number, total: number): string {
+  if (allMatching) return `All ${total.toLocaleString('en')} matching selected`;
+  if (ticked > 0) return `${ticked.toLocaleString('en')} of ${loaded.toLocaleString('en')} loaded selected`;
+  return 'Select the loaded questions';
+}
+
 /**
  * The colour a row's own left border and question word draw in — `KIND_COLOR[row.kind]`,
  * except a `waiting` row grouping an arrival, which reads as the arrival's own green so a
@@ -100,11 +111,17 @@ function rowColor(row: QueueRow): string {
 }
 
 export function ReviewQueueList({
-  rows, selected, onSelect, sort, today, hasMore, loadingMore, onMore, total, stale,
+  rows, selected, onSelect, sort, today, hasMore, loadingMore, onMore, total, stale, selection,
 }: {
   rows: QueueRow[];
   selected: string | null;
   onSelect: (key: string) => void;
+  /**
+   * The ticks (#852): which rows are ticked, and the three ways of ticking. The
+   * list draws the box on every row and the tri-state box over the loaded rows,
+   * and binds `x` and `Esc`; what a tick means is the page's, through the bar.
+   */
+  selection: RowSelection;
   /** Which complete order the rows already arrived in — this file only groups, never sorts. */
   sort: 'date' | 'question';
   today: string;
@@ -171,7 +188,25 @@ export function ReviewQueueList({
     if (stale) return;
     // A search box or a future edit field living inside this same scrolling
     // container must keep its own letters — `j` and `k` are ordinary text there.
-    if ((e.target as HTMLElement).closest('input, textarea')) return;
+    // Not the row boxes: clicking one leaves focus on its native input, and
+    // the keys have to work right after the gesture that most invites them.
+    if ((e.target as HTMLElement).closest('input:not([type="checkbox"]), textarea')) return;
+    // The two selection keys (#852): `x` ticks the row the keyboard is on —
+    // the one `j`/`k` last asked for, or the open row — and `Esc` clears every
+    // tick. Neither moves the selection, so neither touches `pending`.
+    if (e.key === 'x') {
+      const key = pending.current ?? selected;
+      if (key !== null) {
+        e.preventDefault();
+        selection.toggle(key);
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      selection.clear();
+      return;
+    }
     let delta = 0;
     if (e.key === 'j' || e.key === 'ArrowDown') delta = 1;
     else if (e.key === 'k' || e.key === 'ArrowUp') delta = -1;
@@ -197,6 +232,12 @@ export function ReviewQueueList({
   if (rows.length === 0) return null;
   // `!hasMore` is "every page is loaded": only then is a group's run of rows the group.
   const rowHeadings = headings(rows, sort, today, !hasMore);
+  const ticked = rows.filter(row => selection.keys.has(row.key)).length;
+  const allLoaded = ticked === rows.length;
+  // Offered only once the whole page is ticked and there is more than the page:
+  // the line names a number the ticks cannot reach, and offering it over a
+  // partial tick would widen a selection the curator was narrowing by hand.
+  const offerAllMatching = allLoaded && total > rows.length && !selection.allMatching;
 
   return (
     <Box
@@ -207,6 +248,35 @@ export function ReviewQueueList({
         borderRight: 1, borderColor: 'divider', height: '100%', overflowY: 'auto',
       }}
     >
+      {/* The tri-state box over the loaded rows (#852): ticked when every loaded
+          row is, indeterminate for some, and the same click clears them all. The
+          line beside it offers the rows the filters match past the loaded pages. */}
+      <Box sx={{
+        display: 'flex', alignItems: 'center', gap: 0.5, px: 1,
+        // A fixed height, because the group headings below pin themselves
+        // just under it: MUI's subheaders are sticky at `top: 0` by default,
+        // and one drawn at the same offset as this bar sits behind it.
+        height: SELECTION_HEADER_HEIGHT, whiteSpace: 'nowrap',
+        borderBottom: 1, borderColor: 'divider',
+        position: 'sticky', top: 0, bgcolor: 'background.paper', zIndex: 2,
+      }}
+      >
+        <Checkbox
+          size="small"
+          checked={allLoaded}
+          indeterminate={ticked > 0 && !allLoaded}
+          onChange={e => selection.setLoaded(e.target.checked)}
+          inputProps={{ 'aria-label': `Select the ${rows.length.toLocaleString('en')} questions loaded` }}
+        />
+        <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
+          {tickedLabel(selection.allMatching, ticked, rows.length, total)}
+        </Typography>
+        {offerAllMatching && (
+          <Button size="small" onClick={selection.selectAllMatching}>
+            Select all {total.toLocaleString('en')} matching
+          </Button>
+        )}
+      </Box>
       <List dense disablePadding>
         {rows.map((row, i) => {
           const heading = rowHeadings[i];
@@ -224,6 +294,8 @@ export function ReviewQueueList({
                     lineHeight: 2,
                     px: 2,
                     display: 'flex',
+                    // Pinned under the selection header, not behind it.
+                    top: SELECTION_HEADER_HEIGHT,
                     color: heading.color ?? 'text.secondary',
                   }}
                 >
@@ -233,7 +305,19 @@ export function ReviewQueueList({
                   )}
                 </ListSubheader>
               )}
-              <ListItem disablePadding>
+              <ListItem disablePadding sx={{ alignItems: 'stretch' }}>
+                {/* A sibling of the row's button, not a child: a control inside a
+                    control is what a screen reader cannot announce. Visible always,
+                    at the size a finger needs; shift-click ticks the range from the
+                    last row clicked. */}
+                <Box sx={{ display: 'flex', alignItems: 'center', pl: 0.5 }}>
+                  <Checkbox
+                    size="small"
+                    checked={selection.keys.has(row.key)}
+                    onClick={e => selection.toggle(row.key, e.shiftKey)}
+                    inputProps={{ 'aria-label': `Select ${row.name}` }}
+                  />
+                </Box>
                 <ListItemButton
                   ref={row.key === selected ? selectedRowRef : undefined}
                   selected={row.key === selected}
@@ -242,6 +326,7 @@ export function ReviewQueueList({
                     // `block` over the button's own flex row, so the two lines stack; the
                     // width comes from `ListItem`'s flex, which the button grows into.
                     display: 'block', py: 1, borderLeft: '3px solid', borderLeftColor: color,
+                    minWidth: 0,
                   }}
                 >
                   <Box sx={{
