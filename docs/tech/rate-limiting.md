@@ -69,7 +69,7 @@ what goes stale when a route is added to the row below (it has already happened 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions`, `POST /api/admin/sync/categories/:categoryId/fix-images` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId`, `POST /api/experiences/review/answer`, `POST /api/experiences/:id/refuse-contents` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId`, `POST /api/experiences/review/answer`, `POST /api/experiences/:id/refuse-contents`, `POST /api/experiences/:id/unrefuse-contents` |
 
 The catalogue checks split across both buckets on the same rule, and the split is
 the point. `GET /api/admin/data-assertions` runs a statement per assertion over
@@ -146,8 +146,9 @@ growing post-commit work, which is why the list is re-read against the handlers
 rather than carried forward. `/review/queue` is the case that re-reading catches
 in the other direction: #805 rebuilt it into one keys statement over the union of
 the seven kinds, one hydrating statement per kind the page actually holds, and the
-two answered lists — `keptOut` and `answeredWithdrawals`, which are outside the
-union and run on every request — so it is a different handler under the same path.
+three answered lists — `keptOut`, `answeredWithdrawals` and `refusedParts`
+(#859), which are outside the union and run on every request — so it is a
+different handler under the same path.
 Checked again, and cheaper than the nine statements it replaced (a page of 25 with
 its facets in 296 ms cold and 148 ms warm against about 590 ms, on the development
 catalogue of 2026-09-07), still with nothing after the read.
@@ -249,7 +250,10 @@ and ending at `res.json` with nothing after its `client.release()`. `POST
 (placement's insert carries `refused_at IS NULL`, ADR-0053) and releases the
 withdrawal it was holding, which takes an old pin off the map (`missing_since`
 on a row readers could see) — so the object is re-placed into every world view
-with geometry after the commit, through the same `placeAfterRelease`.
+with geometry after the commit, through the same `placeAfterRelease`. `POST
+/:id/unrefuse-contents` (#859) is limited for the same branch read backwards: a
+point asked about again counts toward its regions once more, so it re-places the
+object after its commit exactly as its opposite does.
 
 CodeQL raises `js/missing-rate-limiting` on every route this section exempts, on
 either router — the curator ones in `experienceRoutes.ts` and the admin ones in
