@@ -424,6 +424,19 @@ moved past 4 would seed the row under a number the service never reads. Re-runna
 inserts are guarded by `ON CONFLICT (name)`. Order-independent with `01-schema.sql`, which seeds
 the identical rows.
 
+`051-curator-refusal-of-arrival-and-contents.sql` gives a curator a *no* to what a gated
+source proposed (#852, ADR-0053). Two acts join the closed list the curation log's `CHECK`
+admits — `arrival_refused`, a person keeping out an object nobody has passed, and
+`contents_refused`, a person turning down the unread points and works under an object — and
+the two part tables gain `refused_at`, the one column the second act writes. The refusal of
+an arrival needs no column: it is written on the membership the way a rule's refusal is,
+and only its name in the log is new. The refusal of a part is a mark beside the part's
+state rather than a fourth state, because every reader hides a part by the one word
+`pending`, spelled in a dozen statements, and a new word would leak through each; a refused
+part stays `pending` and hidden, and what the mark changes is the question — the queue and
+the publish stop offering it. Re-runnable: `ADD COLUMN IF NOT EXISTS`, and the `CHECK` is
+dropped and re-added to the list `01-schema.sql` declares, so the two are order-independent.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the
