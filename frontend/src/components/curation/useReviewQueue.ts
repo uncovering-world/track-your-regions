@@ -52,6 +52,8 @@ export interface ReviewQueueRead {
   rows: QueueRow[];
   /** The filtered total the server counted, not what this page holds. */
   total: number;
+  /** How many rows one page holds — the server's own `limit`, which a confirmation counts against. */
+  pageSize: number;
   /** Undefined until the first page answers: the chips are there, the counts are not. */
   facets: QueueFacets | undefined;
   keptOut: ReviewQueueItem[];
@@ -117,6 +119,7 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
   return {
     rows,
     total: first?.total ?? 0,
+    pageSize: first?.limit ?? 25,
     facets: first?.facets,
     keptOut: first?.keptOut ?? [],
     answeredWithdrawals: first?.answeredWithdrawals ?? [],

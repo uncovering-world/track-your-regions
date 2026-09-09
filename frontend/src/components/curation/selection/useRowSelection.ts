@@ -46,19 +46,32 @@ export function useRowSelection(
   const anchor = useRef<string | null>(null);
 
   // The list changed: clear, and say so if there was anything to clear. The
-  // ref holds what the previous filter's ticks were, since the effect runs
-  // after the state that would tell it is already this render's.
+  // count is read from a ref rather than inside the updater — an updater
+  // must be pure, and StrictMode runs it twice — and the ref still holds the
+  // previous filter's ticks when this runs: the prune effect below is
+  // declared after it, so it commits later.
+  const ticked = useRef(keys);
+  ticked.current = keys;
+  // The same shape for `allMatching`, and for a reason the prune effect below
+  // depends on: a filter the curator visited in the last minute answers from
+  // the query cache in the same render as the key change, so `rows` and
+  // `filterKey` move in one commit and both effects run. The prune effect's
+  // closure would still hold the render-time `allMatching`, and re-tick the
+  // *new* list right after this effect said the ticks were cleared — unless it
+  // reads the ref this effect clears first.
+  const wholeList = useRef(allMatching);
+  wholeList.current = allMatching;
   const previousFilter = useRef(filterKey);
   useEffect(() => {
     if (previousFilter.current === filterKey) return;
     previousFilter.current = filterKey;
-    setKeys(current => {
-      if (current.size > 0 || allMatching) onCleared(current.size);
-      return new Set();
-    });
+    const count = ticked.current.size;
+    if (count > 0 || wholeList.current) onCleared(count);
+    wholeList.current = false;
+    setKeys(new Set());
     setAllMatching(false);
     anchor.current = null;
-  }, [filterKey, onCleared, allMatching]);
+  }, [filterKey, onCleared]);
 
   // A row that left the list — answered by someone else, or by this batch —
   // leaves the selection with it, so the count never names a row the curator
@@ -70,7 +83,8 @@ export function useRowSelection(
       // An all-matching selection is every row the filters match, so a row
       // *Show more* brings in is ticked the moment it arrives — the batch
       // answers it either way, and a box drawn empty would say otherwise.
-      if (allMatching) {
+      // Read off the ref, never the closure: see the note on `wholeList`.
+      if (wholeList.current) {
         const every = new Set(rows.map(r => r.key));
         return every.size === current.size && [...every].every(key => current.has(key)) ? current : every;
       }

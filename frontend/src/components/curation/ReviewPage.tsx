@@ -19,7 +19,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Box, Button, Stack, Typography } from '@mui/material';
+import {
+  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
+  Stack, Typography,
+} from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   bringRunBack, setRunAside, type ReviewQueueItem, type ReviewQueueKind,
@@ -27,6 +30,7 @@ import {
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { buildReviewUrl, isFilteredReview } from '../../utils/appUrl';
+import { plural } from '../../utils/plural';
 import { useReviewAddress, type ReviewPatch } from '../../hooks/useReviewAddress';
 import { nextSelection, type RowKind } from './queueRows';
 import { useReviewQueue, QUEUE_KEY } from './useReviewQueue';
@@ -37,6 +41,11 @@ import { ReviewBench } from './ReviewBench';
 import { AnsweredSection } from './AnsweredSection';
 import { KeptOutCard } from './ReviewQueue';
 import { AnsweredWithdrawalCard } from './WithdrawnPoints';
+import { useRowSelection } from './selection/useRowSelection';
+import { useAnswerSelection } from './selection/useAnswerSelection';
+import { SelectionBar } from './selection/SelectionBar';
+import { SelectionSummary } from './selection/SelectionSummary';
+import { answerVerb, lostOfferedFor } from './selection/answerWords';
 
 /**
  * What to add to "nothing here has changed what visitors see", which is not always true.
@@ -203,6 +212,25 @@ export function ReviewPage() {
       .finally(() => { queryClient.invalidateQueries({ queryKey: QUEUE_KEY }); });
   };
 
+  /**
+   * The ticks (#852), transient and cleared when the list changes under them —
+   * with a line saying so, since a curator who ticked forty rows and changed a
+   * chip has to know the forty are gone before they press Accept.
+   */
+  const onSelectionCleared = useCallback((count: number) => {
+    setNotice(`The ${plural(count, 'ticked question')} ${count === 1 ? 'was' : 'were'} cleared: `
+      + 'the filters changed, so the list it was ticked on is a different one.');
+  }, []);
+  const selection = useRowSelection(rows, queue.filterKey, onSelectionCleared);
+  const tickedRows = rows.filter(row => selection.keys.has(row.key));
+  const answering = useAnswerSelection({
+    address, rows: tickedRows, selection, total, pageSize: queue.pageSize, facets: queue.facets, setNotice,
+  });
+  const batchOpen = tickedRows.length > 0 || selection.allMatching;
+  // *Lost* is decided against the filters as well as the ticks: an all-matching
+  // selection reaches rows the ticks do not show.
+  const lost = lostOfferedFor(tickedRows, selection.allMatching, address.kinds);
+
   /** One answered list's own pager, under its rows inside the collapsed block. */
   const pagerOver = (kind: ReviewQueueKind) => {
     const { offset, hasMore } = queue.pageOf(kind);
@@ -354,16 +382,90 @@ export function ReviewPage() {
               onMore={queue.more}
               total={total}
               stale={queue.stale}
+              selection={selection}
             />
           </Box>
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
             {/* The selected row, or nothing for the one render before the effect above
                 picks the next one. Falling back to `rows[0]` would flash the top of the
-                list as the answer to a click somewhere else. */}
-            <ReviewBench row={rows[selectedIndex]} onDone={refresh} />
+                list as the answer to a click somewhere else. With more than one row
+                ticked the bench sums the selection instead (#852); one tick, or none,
+                and the card is what it always was. */}
+            {tickedRows.length > 1 || selection.allMatching
+              ? (
+                <SelectionSummary
+                  rows={tickedRows}
+                  allMatching={selection.allMatching}
+                  reach={answering.reach}
+                  facets={queue.facets}
+                  sourceIds={address.sourceIds}
+                  runId={address.runId}
+                  showAside={address.showAside}
+                  lost={lost}
+                  total={total}
+                />
+              )
+              : <ReviewBench row={rows[selectedIndex]} onDone={refresh} />}
           </Box>
         </Stack>
       )}
+
+      <SelectionBar
+        rows={tickedRows}
+        allMatching={selection.allMatching}
+        reach={answering.reach}
+        lost={lost}
+        total={total}
+        progress={answering.progress}
+        onAnswer={answering.answer}
+        onClear={selection.clear}
+      />
+      {/* Room under the columns for the bar, which is page-fixed: without it the
+          last rows of a long list sit behind it. */}
+      {batchOpen && <Box sx={{ height: 96 }} />}
+
+      {/* Asked once: past one page, for all matching, and for the one answer without
+          a take-back (turning down unread contents) — otherwise the count is on the
+          bar and the answer can be undone. Names what it will do per kind, in the
+          cards' words, so "Accept 1,078 proposals" is never the whole of what a curator
+          agrees to. */}
+      <Dialog open={answering.confirming !== null} onClose={answering.cancel}>
+        <DialogTitle>
+          {answerVerb(answering.confirming)}
+          {' '}
+          {selection.allMatching
+            ? `all ${total.toLocaleString('en')} matching these filters?`
+            : `${plural(tickedRows.length, 'proposal')}?`}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+              {answering.confirmLines.map(line => <li key={line}>{line}</li>)}
+            </Box>
+            {answering.confirmNote && (
+              <Box component="p" sx={{ mb: 0 }}>{answering.confirmNote}</Box>
+            )}
+            {selection.allMatching && (
+              <Box component="p" sx={{ mb: 0 }}>
+                The counts above are every question these filters match, not only the rows
+                on screen; the answer goes to all of them, a page at a time, and the bar says
+                how far it has got.
+              </Box>
+            )}
+            <Box component="p" sx={{ mb: 0 }}>
+              Each object is answered on its own and recorded on its own, so the line
+              afterwards names anything that refused. Every answer has a take-back except
+              turning down unread points and works, which cannot be brought back yet.
+            </Box>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={answering.cancel}>Cancel</Button>
+          <Button variant="contained" onClick={answering.confirm}>
+            {answerVerb(answering.confirming)}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Drawn on its offset as well as its rows: a block paged forward and then answered
           down to nothing would otherwise vanish with the only control that could go back,
