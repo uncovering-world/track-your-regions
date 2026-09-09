@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { HoverProvider, useHoverActions } from '../../hooks/useHoverContext';
 import { useDiscoverHover } from './useDiscoverHover';
 

@@ -28,7 +28,7 @@ import TuneIcon from '@mui/icons-material/Tune';
 import { Source, Layer, NavigationControl, type MapRef, useMap } from 'react-map-gl/maplibre';
 import { GuardedMap as Map } from '../../../../shared/GuardedMap';
 import { isWebGLAvailable } from '../../../../../utils/webgl';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { MAP_STYLE } from '../../../../../constants/mapStyles';
 import { CalibrationView } from './CalibrationView';
 import { API_URL, getAccessToken } from '../../../../../api/fetchUtils';

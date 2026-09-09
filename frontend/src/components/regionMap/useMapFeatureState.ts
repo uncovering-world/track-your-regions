@@ -4,10 +4,26 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
-import type { Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl';
+import type {
+  ErrorEvent as MapErrorEvent, Map as MapLibreMap, MapSourceDataEvent,
+} from 'maplibre-gl';
 import { subscribeToRegionHover, useRegionHoverActions } from '../../hooks/useRegionHover';
 
 const REGIONS_SOURCE_LAYER = 'regions';
+
+/**
+ * An error the map reports, and which source it was about.
+ *
+ * MapLibre types the `error` event as `ErrorEvent`, which carries the error and
+ * nothing else, but a source registers itself as an evented *parent* with data
+ * (`Style.addSource`: `setEventedParent(this, () => ({ isSourceLoaded, source,
+ * sourceId }))`), so everything a source fires — an error included — arrives
+ * carrying the id. The field is stated here rather than asserted at the use
+ * site, and stated as optional: an error raised by the map itself rather than
+ * by one of its sources has no id, which is exactly the case the handler below
+ * has to ignore.
+ */
+type SourceErrorEvent = MapErrorEvent & { sourceId?: string };
 
 /**
  * How long the blocking "Loading map..." overlay may stay up before the map is
@@ -236,7 +252,7 @@ export function useMapFeatureState({
     // overlay and nothing more: MapLibre reports one error per failed tile, and
     // unsubscribing from `sourcedata` here would mean a single transient failure
     // pins the notice up for good, even once every tile has since arrived.
-    const handleError = (e: { sourceId?: string }) => {
+    const handleError = (e: SourceErrorEvent) => {
       if (e.sourceId === 'regions-vt') {
         setTilesStalled(true);
         clearTimeout(timer);

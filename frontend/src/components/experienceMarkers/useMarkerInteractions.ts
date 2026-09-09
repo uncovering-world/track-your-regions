@@ -17,7 +17,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import {
   LAYER_MARKERS, LAYER_HIGHLIGHT_POINT, MARKER_LAYERS,
   EMPTY_FC, buildPointHoverData,
@@ -218,7 +218,9 @@ export function useMarkerInteractions({
     // hover, not a departure; anything else clears as before.
     //
     // Only for a leave delivered by a *move*, though. MapLibre's delegated
-    // `mouseleave` has two paths (`_createDelegatedListener`, maplibre-gl 4.7.1):
+    // `mouseleave` has two paths (`_createDelegatedListener`, read in
+    // maplibre-gl 4.7.1 and again in 6.8.0, where the multi-layer form keeps
+    // both delegates and hands each the `originalEvent` it was fired from):
     // a `mousemove` that no longer hits the layer, and a `mouseout` when the
     // pointer leaves the canvas — and the second carries the point it left
     // *from*, which is still over the pin when the thing it left onto is an

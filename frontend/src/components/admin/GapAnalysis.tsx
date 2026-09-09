@@ -14,7 +14,7 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
 } from '@mui/icons-material';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import * as turf from '@turf/turf';
 import { useQuery } from '@tanstack/react-query';

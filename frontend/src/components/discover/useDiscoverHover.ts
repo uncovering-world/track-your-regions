@@ -19,7 +19,7 @@
  */
 
 import { useRef, useEffect, useCallback } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import type { Experience } from '../../api/experiences';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../../hooks/useHoverContext';
