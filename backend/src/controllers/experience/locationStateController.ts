@@ -121,12 +121,9 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
   const locationId = parseInt(String(req.params.locationId));
   const userId = req.user!.id;
   const userRole = req.user!.role;
-  const { membership, existence, note, expected } = req.body as {
-    membership?: Membership; existence?: Existence; note?: string;
-    expected: { membership: Membership; existence: Existence; flagged: boolean };
-  };
+  const body = req.body as LocationStateAnswer;
 
-  if (!membership && !existence) {
+  if (!body.membership && !body.existence) {
     res.status(400).json({ error: 'Nothing to decide: pass membership, existence, or both' });
     return;
   }
@@ -154,6 +151,52 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
     return;
   }
 
+  const outcome = await answerLocationStateUnderLock(
+    locationId, experienceId as number, userId, logRegionId, body,
+  );
+  if (outcome.refusal) {
+    const { status, ...payload } = outcome.refusal;
+    res.status(status).json(payload);
+    return;
+  }
+  res.json(outcome.result);
+}
+
+/** What a curator sends about one point, and the point as they were looking at it. */
+export interface LocationStateAnswer {
+  membership?: Membership;
+  existence?: Existence;
+  note?: string;
+  expected: { membership: Membership; existence: Existence; flagged: boolean };
+}
+
+/** What a verdict on a point reports back. */
+export interface LocationStateResult {
+  locationId: number;
+  experienceId: number;
+  sourceMembership: Membership;
+  existence: Existence;
+  offeredToReaders: boolean;
+  placementFailed?: true;
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+}
+
+/**
+ * The verdict itself, under the object's lock and then the point's, and the
+ * placement that may follow it — the half of `setLocationState` a batch answer
+ * (#852) calls per open point. The handler keeps what is about the request:
+ * the 404, the scope resolved through the containing object, the status code.
+ */
+export async function answerLocationStateUnderLock(
+  locationId: number,
+  experienceId: number,
+  userId: number,
+  logRegionId: number | null,
+  { membership, existence, note, expected }: LocationStateAnswer,
+): Promise<{
+  result?: LocationStateResult;
+  refusal?: { status: number; error: string; [detail: string]: unknown };
+}> {
   const client = await pool.connect();
   let unusable: Error | undefined;
   let nextMembership: Membership;
@@ -163,6 +206,14 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
   let visibilityChanged = false;
   try {
     await client.query('BEGIN');
+
+    // Awaited at every call site, as on the neighbouring writers: a
+    // `return refuse(…)` without it settles the try block while the ROLLBACK
+    // is still in flight, and `finally` releases the client under it.
+    const refuse = async (refusal: { status: number; error: string; [detail: string]: unknown }) => {
+      unusable = await rollbackQuietly(client);
+      return { refusal };
+    };
 
     // **The object first, then the point** — `OBJECT_LOCK`'s rule, which every
     // writer of an object's contents follows, this one included.
@@ -187,29 +238,24 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
     // Guarded rather than cast: the row was found on the pool, and this reads it on
     // another connection a moment later. A row gone in that window leaves no rows
     // here, and the cast would hide it until the first property access threw — a 500
-    // for a question whose true answer is 404. `setExperienceState` guards the same
-    // gap with `?? existing`; there is no earlier snapshot to fall back on here,
-    // because the first read deliberately selects only what scope needs.
+    // for a question whose true answer is 404. `answerStateUnderLock` guards the
+    // same gap the same way: both writers refuse 404 under the lock, and both
+    // pre-lock reads select only what the scope check needs.
     const before = locked.rows[0] as
       { source_membership: string; existence: string; missing_since: Date | null } | undefined;
-    if (!before) {
-      unusable = await rollbackQuietly(client);
-      res.status(404).json({ error: 'Location not found' });
-      return;
-    }
+    if (!before) return await refuse({ status: 404, error: 'Location not found' });
     nextMembership = membership ?? (before.source_membership as Membership);
     nextExistence = existence ?? (before.existence as Existence);
 
     if (before.source_membership !== expected.membership
       || before.existence !== expected.existence
       || (before.missing_since != null) !== expected.flagged) {
-      unusable = await rollbackQuietly(client);
-      res.status(409).json({
+      return await refuse({
+        status: 409,
         error: 'Someone else answered this first — reload to see where it stands',
         sourceMembership: before.source_membership,
         existence: before.existence,
       });
-      return;
     }
 
     // The point becomes visible again only where both axes say it should be: the
@@ -231,13 +277,12 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
       // reachable for every other client of a documented endpoint, which is the
       // audience the correction path exists for.
       if (before.missing_since == null || !clearFlag) {
-        unusable = await rollbackQuietly(client);
-        res.status(409).json({
+        return await refuse({
+          status: 409,
           error: 'Already answered: this point is not waiting on a decision',
           sourceMembership: before.source_membership,
           existence: before.existence,
         });
-        return;
       }
       actions.push('location_missing_dismissed');
     }
@@ -324,7 +369,7 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
         'A verdict on a point of experience %d changed what a reader sees')
     : [];
 
-  res.json({
+  return { result: {
     locationId,
     experienceId,
     sourceMembership: nextMembership,
@@ -338,8 +383,8 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
     // back on the map but missing from a region's list is a state a curator can
     // report, and one nobody can guess from a successful answer.
     ...(placementFailures.length > 0 && {
-      placementFailed: true,
+      placementFailed: true as const,
       placementFailedWorldViews: placementFailures.map(f => ({ id: f.worldViewId, name: f.worldViewName })),
     }),
-  });
+  } };
 }
