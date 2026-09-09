@@ -37,6 +37,8 @@ import {
   declineHeldValue,
   publishExperience,
   publishWaiting,
+  refuseArrival,
+  refuseContents,
   markNewBadgesSeen,
 } from '../controllers/experience/index.js';
 import { requireAuth, requireCurator, optionalAuth } from '../middleware/auth.js';
@@ -55,6 +57,8 @@ import {
   reviewQueueQuerySchema,
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
+  refuseArrivalBodySchema,
+  refuseContentsBodySchema,
   newBadgesSeenBodySchema,
   lifecycleStateBodySchema,
   editLocationBodySchema,
@@ -209,6 +213,18 @@ router.post('/:id/decline-source', validate(idParamSchema, 'params'), requireAut
 // can reach `placeAfterRelease`; refusing cannot, because refusing writes nothing
 // that could move a pin.
 router.post('/:id/decline-held', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(declineHeldBodySchema), declineHeldValue);
+
+// The no that the two gated kinds without one lacked (#852, ADR-0053): keeping
+// out an object nobody has passed, and turning down the unread points and works
+// under one readers already see. The two part on the criterion the line above
+// states. Refusing an arrival writes one membership row inside one transaction,
+// touches nothing a reader sees — the row was hidden already — and schedules
+// nothing after the commit, so it is exempt. Refusing contents is limited, for
+// the branch `/:id/publish` is limited for: a refused point counts toward no
+// region any more and takes off the map any pin it was holding, so the object
+// is re-placed into every world view with geometry after the commit.
+router.post('/:id/refuse-arrival', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(refuseArrivalBodySchema), refuseArrival);
+router.post('/:id/refuse-contents', authenticatedLimiter, validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(refuseContentsBodySchema), refuseContents);
 
 // Release everything one source is holding (ADR-0025 decision 5, and
 // `docs/tech/experiences.md` § "Turning a source's gate on, and letting it go").
