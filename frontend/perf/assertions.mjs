@@ -95,6 +95,76 @@ export function hasFailures(results) {
   return results.some((r) => r.level !== 'warn' && !r.passed);
 }
 
+/**
+ * The pages a budgets file names, each with the requests its representative
+ * run must have made — as `{ url, expects }`, every string already put
+ * through `fill` (the runner's placeholder substitution).
+ *
+ * A `urls` entry is a string, or `{ url, expectRequestMatching }` for a page
+ * that must have asked for something of its own. `expectRequestMatching` at
+ * the top level applies to every page; either takes a string or an array.
+ * The two lists join, so a page's own fragment adds to the shared one rather
+ * than replacing it.
+ *
+ * The page-level form exists for the map: its regions are vector tiles that
+ * a worker parses, and a build in which that worker dies — maplibre-gl 6's
+ * worker URL resolved against the entry chunk, #849 — still paints the raster
+ * basemap, mounts a canvas and reads as a loaded page to every timing here.
+ * Only a tile request answered 2xx says the map asked for its regions, and
+ * only the map view asks: Discover draws no region tiles, so the fragment
+ * sits on the one URL rather than on the file.
+ */
+export function pageExpectations(budgets, fill) {
+  const shared = asList(budgets.expectRequestMatching).map(fill);
+  return (budgets.urls ?? []).map((entry) => {
+    if (typeof entry === 'string') {
+      return { url: fill(entry), expects: shared };
+    }
+    if (!entry || typeof entry !== 'object' || typeof entry.url !== 'string') {
+      throw new Error(`budgets "urls": each entry is a string or { url, expectRequestMatching }, got ${JSON.stringify(entry)}`);
+    }
+    return { url: fill(entry.url), expects: [...shared, ...asList(entry.expectRequestMatching).map(fill)] };
+  });
+}
+
+function asList(value) {
+  if (value === undefined || value === null) return [];
+  const list = Array.isArray(value) ? value : [value];
+  for (const fragment of list) {
+    if (typeof fragment !== 'string' || fragment.length === 0) {
+      throw new Error(`budgets "expectRequestMatching": a fragment is a non-empty string, got ${JSON.stringify(fragment)}`);
+    }
+  }
+  return list;
+}
+
+/**
+ * Whether the run made a request containing the fragment that was answered
+ * 2xx. A request alone proves nothing: the app reads the world view the
+ * address names eagerly and only then learns the visitor cannot see it, so a
+ * 404 for the fragment is exactly the fallback case. The CORS preflight that
+ * precedes every cross-origin read is listed as its own request and answers
+ * 204 whatever the read then answers, so it does not count — verified
+ * against a world view that does not exist, whose root-regions read is a 204
+ * preflight followed by a 404. A tile function's own 204 does count: Martin
+ * answers it for a tile with nothing in it, which is still the map asking.
+ */
+export function gotSuccessfulRequestMatching(lhr, fragment) {
+  const items = lhr.audits?.['network-requests']?.details?.items;
+  return (
+    Array.isArray(items) &&
+    items.some(
+      (item) =>
+        typeof item.url === 'string' &&
+        item.url.includes(fragment) &&
+        item.resourceType !== 'Preflight' &&
+        Number.isFinite(item.statusCode) &&
+        item.statusCode >= 200 &&
+        item.statusCode < 300,
+    )
+  );
+}
+
 function resolveCheck(options) {
   if (Number.isFinite(options.maxNumericValue)) {
     return { name: 'maxNumericValue', operator: '<=', expected: options.maxNumericValue };

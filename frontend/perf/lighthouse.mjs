@@ -25,7 +25,9 @@ import { fileURLToPath } from 'node:url';
 import lighthouse, { desktopConfig } from 'lighthouse';
 import { computeMedianRun, filterToValidRuns } from 'lighthouse/core/lib/median-run.js';
 import { launch } from 'chrome-launcher';
-import { evaluateAssertions, hasFailures, validateAssertions } from './assertions.mjs';
+import {
+  evaluateAssertions, gotSuccessfulRequestMatching, hasFailures, pageExpectations, validateAssertions,
+} from './assertions.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const budgetsPath = path.resolve(process.argv[2] ?? path.join(here, 'lighthouse-budgets.json'));
@@ -43,13 +45,15 @@ const worldView = String(process.env.PERF_WORLD_VIEW ?? budgets.worldView ?? '')
 // .env moves, and use no placeholder.
 const port = String(process.env.FRONTEND_PORT ?? budgets.port ?? '5173');
 const fill = (text) => text.replaceAll('{worldView}', worldView).replaceAll('{port}', port);
-const urls = (budgets.urls ?? []).map(fill);
 // A page can load and still not be the page the budgets were set on: an id
 // the visitor cannot see falls back to the default world view without a
 // word - after one request for it that answers 404. So the representative
-// run must have made a request containing this fragment that was answered
-// 2xx; a request alone proves nothing.
-const expectRequestMatching = budgets.expectRequestMatching ? fill(budgets.expectRequestMatching) : null;
+// run must have made every request the file expects of the page, answered
+// 2xx; a request alone proves nothing. The map view expects one more than
+// the rest - a region tile - since a map whose worker died still paints its
+// basemap and reads as loaded (pageExpectations says why).
+const pages = pageExpectations(budgets, fill);
+const urls = pages.map((page) => page.url);
 const assertions = budgets.assertions;
 // A lane that could not gate must not run, let alone pass: no budgets (the
 // likely cause is a file shaped like a real lighthouserc, whose assertions
@@ -72,7 +76,7 @@ const chrome = await launch({
   chromePath: process.env.CHROME_PATH,
 });
 try {
-  for (const url of urls) {
+  for (const { url, expects } of pages) {
     const runs = [];
     for (let i = 1; i <= runsPerUrl; i += 1) {
       const result = await lighthouse(
@@ -95,9 +99,10 @@ try {
       throw new Error(`No valid Lighthouse run for ${url} - every run errored on a key metric`);
     }
     const median = computeMedianRun(valid);
-    if (expectRequestMatching && !gotSuccessfulRequestMatching(median, expectRequestMatching)) {
+    const missed = expects.find((fragment) => !gotSuccessfulRequestMatching(median, fragment));
+    if (missed !== undefined) {
       throw new Error(
-        `${pathOf(url)} got no successful request for "${expectRequestMatching}" - the page did not load world view ${worldView} (is it public on this database?)`,
+        `${pathOf(url)} got no successful request for "${missed}" - the page did not load world view ${worldView} (is it public on this database?), or the map never asked for its tiles`,
       );
     }
     for (const run of runs) {
@@ -137,32 +142,6 @@ if (hasFailures(assertionResults)) {
   process.exit(1);
 }
 log(`All budgets met (${assertionResults.length} assertions over ${urls.length} pages, ${runsPerUrl} runs each).`);
-
-/**
- * The app reads the world view the address names eagerly and only then
- * learns the visitor cannot see it, so a 404 for the fragment is exactly
- * the fallback case; only a
- * 2xx says the page the budgets were set on is the page that loaded. The
- * CORS preflight that precedes every cross-origin read is listed as its
- * own request and answers 204 whatever the read then answers, so it does
- * not count - verified against a world view that does not exist, whose
- * root-regions read is a 204 preflight followed by a 404.
- */
-function gotSuccessfulRequestMatching(lhr, fragment) {
-  const items = lhr.audits?.['network-requests']?.details?.items;
-  return (
-    Array.isArray(items) &&
-    items.some(
-      (item) =>
-        typeof item.url === 'string' &&
-        item.url.includes(fragment) &&
-        item.resourceType !== 'Preflight' &&
-        Number.isFinite(item.statusCode) &&
-        item.statusCode >= 200 &&
-        item.statusCode < 300,
-    )
-  );
-}
 
 /**
  * The lane measures the production build and nothing else, and the dev
