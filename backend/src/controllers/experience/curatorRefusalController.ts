@@ -22,9 +22,10 @@
  * part keeps `curation_state = 'pending'`, so every reader hides it by the
  * one word it already reads; what the mark changes is the question — the
  * queue and the publish compose `unreadPointSql` / `unreadLinkSql`, which
- * carry `refused_at IS NULL`, and stop offering it. Nothing lists refused
- * parts to a curator yet, so the take-back is a follow-up; the mark is a
- * column, so it is one UPDATE when that screen exists.
+ * carry `refused_at IS NULL`, and stop offering it. The way back is the one
+ * UPDATE the mark being a column always promised, and it lives next door in
+ * `unrefuseContentsController.ts` (#859), read from the review page's
+ * turned-down list.
  *
  * Both writers are `*UnderLock` functions in the shape of their neighbours,
  * called by their single-row route here and per row by the batch answer.
@@ -85,8 +86,16 @@ export async function refuseContents(req: AuthenticatedRequest, res: Response): 
       req.body as { locationIds?: number[]; treasureIds?: number[]; note?: string }));
 }
 
-/** The request half every single-row curator route shares: 404, scope, status code. */
-async function answerThroughScope<T>(
+/**
+ * The request half every single-row curator route shares: 404, scope, status code.
+ *
+ * Exported for the take-back beside it (`unrefuseContentsController.ts`), which is
+ * the same request from the same person about the same object and would otherwise
+ * spell the 404 and the 403 a second time — two spellings of "may this curator
+ * answer for this object" is exactly the drift `resolveExperienceScope` exists to
+ * prevent.
+ */
+export async function answerThroughScope<T>(
   req: AuthenticatedRequest,
   res: Response,
   write: (experienceId: number, userId: number, logRegionId: number | null)

@@ -35,7 +35,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS, membershipAdmittedSql, membershipVisibleSql } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
 import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 
@@ -123,8 +123,7 @@ export function heldWaitingSql(alias = 'e', membership = 'm'): string {
  * of "unread and still asked about" every reader of that question shares.
  */
 export function contentsWaitingSql(alias = 'e', membership = 'm'): string {
-  return `${membershipVisibleSql(membership)}
-    AND ${alias}.missing_since IS NULL AND ${membershipAdmittedSql(membership)}
+  return `${contentsAnswerableSql(alias, membership)}
     AND (
       EXISTS (
         SELECT 1 FROM experience_locations el
@@ -158,6 +157,31 @@ export function contentsWaitingSql(alias = 'e', membership = 'm'): string {
  * it, and the publish is one of them: a whole-object publish must not release
  * what a curator turned down.
  */
+/**
+ * Whose unread contents may be answered at all — the object half of
+ * `contentsWaitingSql`, on its own.
+ *
+ * The same three terms, and they are three questions with three other cards: an
+ * object nobody has passed is its arrival's, one a rule kept out is the refusal
+ * card's, one the source has dropped is `missing`'s. Its contents wait on that
+ * answer, so every act on them composes this rather than spelling it.
+ *
+ * Read by four now: the count above, the refusal that turns contents down, the
+ * take-back that asks about them again (#859) — both under their own lock, the
+ * database evaluating it rather than each restating it in JavaScript — and the
+ * list that draws the take-back's button, which is what keeps a card from
+ * offering an answer the writer refuses. Two spellings of it is how a card comes
+ * to offer one, and how a refusal and its own undoing come to disagree about
+ * which objects they apply to.
+ *
+ * `${membership}.id IS NOT NULL` because the writers reach the membership by
+ * LEFT JOIN, an object with none at all being neither admitted nor refused.
+ */
+export function contentsAnswerableSql(alias = 'e', membership = 'm'): string {
+  return `${membership}.id IS NOT NULL AND ${membershipOfferedSql(membership)}
+    AND ${alias}.missing_since IS NULL`;
+}
+
 export function unreadPointSql(el = 'el'): string {
   return `${el}.curation_state = 'pending' AND ${el}.refused_at IS NULL`;
 }

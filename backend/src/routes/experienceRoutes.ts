@@ -39,6 +39,7 @@ import {
   publishWaiting,
   refuseArrival,
   refuseContents,
+  unrefuseContents,
   answerReviewRows,
   markNewBadgesSeen,
 } from '../controllers/experience/index.js';
@@ -234,6 +235,14 @@ router.post('/:id/decline-held', validate(idParamSchema, 'params'), requireAuth,
 // is re-placed into every world view with geometry after the commit.
 router.post('/:id/refuse-arrival', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(refuseArrivalBodySchema), refuseArrival);
 router.post('/:id/refuse-contents', authenticatedLimiter, validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(refuseContentsBodySchema), refuseContents);
+
+// The way back from the second of those (#859), which ADR-0053 left as its own
+// follow-up. The same body names the same rows — the ids of the points and works,
+// or neither for all of them — so it is validated by the same schema rather than
+// a copy that could drift from it. Limited for the reason its opposite is: a point
+// asked about again counts toward its regions once more, so the object is
+// re-placed after the commit.
+router.post('/:id/unrefuse-contents', authenticatedLimiter, validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(refuseContentsBodySchema), unrefuseContents);
 
 // Release everything one source is holding (ADR-0025 decision 5, and
 // `docs/tech/experiences.md` § "Turning a source's gate on, and letting it go").

@@ -18,6 +18,7 @@ export * from './declineSourceController.js';
 export * from './declineHeldController.js';
 export * from './publishWaitingController.js';
 export * from './curatorRefusalController.js';
+export * from './unrefuseContentsController.js';
 export * from './reviewAnswerController.js';
 export * from './publishController.js';
 export * from './experienceNewBadge.js';
