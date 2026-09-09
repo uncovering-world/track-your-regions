@@ -1,6 +1,9 @@
 {
   "urls": [
-    "http://localhost:{port}/wv/{worldView}",
+    {
+      "url": "http://localhost:{port}/wv/{worldView}",
+      "expectRequestMatching": "/tile_"
+    },
     "http://localhost:{port}/discover/wv/{worldView}"
   ],
   "worldView": 5,

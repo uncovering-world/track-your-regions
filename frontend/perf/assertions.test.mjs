@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateAssertions, hasFailures, validateAssertions } from './assertions.mjs';
+import {
+  evaluateAssertions, gotSuccessfulRequestMatching, hasFailures, pageExpectations, validateAssertions,
+} from './assertions.mjs';
 
 const URL = 'http://frontend:5173/wv/9001';
 
@@ -126,5 +128,72 @@ describe('validateAssertions', () => {
     expect(() => validateAssertions({ 'largest-contentful-paint': ['error', { maxNumericValue: 2000, minScore: 0.9 }] })).toThrow(
       /needs exactly one/,
     );
+  });
+});
+
+describe('pageExpectations', () => {
+  const fill = (text) => text.replaceAll('{worldView}', '9001');
+
+  it('gives every page the shared fragment, and a page its own on top', () => {
+    const pages = pageExpectations(
+      {
+        urls: [
+          { url: 'http://frontend:5173/wv/{worldView}', expectRequestMatching: '/tile_world_view_all_leaf_regions/' },
+          'http://frontend:5173/discover/wv/{worldView}',
+        ],
+        expectRequestMatching: '/api/world-views/{worldView}/',
+      },
+      fill,
+    );
+
+    expect(pages).toEqual([
+      {
+        url: 'http://frontend:5173/wv/9001',
+        expects: ['/api/world-views/9001/', '/tile_world_view_all_leaf_regions/'],
+      },
+      { url: 'http://frontend:5173/discover/wv/9001', expects: ['/api/world-views/9001/'] },
+    ]);
+  });
+
+  it('takes a list of fragments at either level, and none at all', () => {
+    const pages = pageExpectations(
+      { urls: [{ url: 'http://a/', expectRequestMatching: ['/x/', '/y/'] }, 'http://b/'], expectRequestMatching: ['/s/'] },
+      (t) => t,
+    );
+    expect(pages.map((p) => p.expects)).toEqual([['/s/', '/x/', '/y/'], ['/s/']]);
+
+    expect(pageExpectations({ urls: ['http://a/'] }, (t) => t)).toEqual([{ url: 'http://a/', expects: [] }]);
+  });
+
+  it('refuses an entry it cannot read rather than expecting nothing of it', () => {
+    // An entry with no url, or a fragment that is not a string, would be a
+    // page the lane measures with no idea what it should have asked for.
+    expect(() => pageExpectations({ urls: [{ expectRequestMatching: '/x/' }] }, (t) => t)).toThrow(/urls/);
+    expect(() => pageExpectations({ urls: ['http://a/'], expectRequestMatching: [''] }, (t) => t)).toThrow(/fragment/);
+    expect(() => pageExpectations({ urls: [{ url: 'http://a/', expectRequestMatching: 7 }] }, (t) => t)).toThrow(/fragment/);
+  });
+});
+
+describe('gotSuccessfulRequestMatching', () => {
+  const report = (items) => ({ audits: { 'network-requests': { details: { items } } } });
+  const tile = 'http://martin:3000/tile_world_view_all_leaf_regions/1/0/0?world_view_id=9001';
+
+  it('counts a request answered 2xx, an empty tile among them', () => {
+    expect(gotSuccessfulRequestMatching(report([{ url: tile, statusCode: 200 }]), '/tile_world_view_all_leaf_regions/')).toBe(true);
+    // Martin answers 204 for a tile with nothing in it - still the map asking.
+    expect(gotSuccessfulRequestMatching(report([{ url: tile, statusCode: 204 }]), '/tile_world_view_all_leaf_regions/')).toBe(true);
+  });
+
+  it('does not count a preflight, a failed request, or no request at all', () => {
+    // The worker-dead shape of #849: the basemap's PNGs arrive, the API
+    // answers, and no tile function is ever asked for.
+    const noTiles = report([
+      { url: 'https://tile.openstreetmap.org/1/0/0.png', statusCode: 200 },
+      { url: 'http://backend:3001/api/world-views/9001/regions/root', statusCode: 200 },
+    ]);
+    expect(gotSuccessfulRequestMatching(noTiles, '/tile_world_view_all_leaf_regions/')).toBe(false);
+    expect(gotSuccessfulRequestMatching(report([{ url: tile, statusCode: 204, resourceType: 'Preflight' }]), '/tile_')).toBe(false);
+    expect(gotSuccessfulRequestMatching(report([{ url: tile, statusCode: 404 }]), '/tile_')).toBe(false);
+    expect(gotSuccessfulRequestMatching({ audits: {} }, '/tile_')).toBe(false);
   });
 });

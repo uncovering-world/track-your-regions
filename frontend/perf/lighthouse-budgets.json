@@ -1,6 +1,9 @@
 {
   "urls": [
-    "http://frontend:5173/wv/{worldView}",
+    {
+      "url": "http://frontend:5173/wv/{worldView}",
+      "expectRequestMatching": "/tile_"
+    },
     "http://frontend:5173/discover/wv/{worldView}"
   ],
   "worldView": 9001,
