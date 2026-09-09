@@ -1,9 +1,9 @@
 /**
  * `fetchReviewQueue` writes the review page's address (`ReviewAddress`) — plus
- * the cursor and the two offsets the answered lists still page by — into the
+ * the cursor and the three offsets the answered lists still page by — into the
  * exact query words `reviewQueueQuerySchema` reads (ADR-0051): `sort, q,
  * source, kind, region, run, aside, cursor, limit, keptOutOffset,
- * answeredWithdrawalsOffset`. `row` is the address's own field for the
+ * answeredWithdrawalsOffset, refusedPartsOffset`. `row` is the address's own field for the
  * selected card; the API does not read it, so it is never sent.
  *
  * `setRunAside` / `bringRunBack` are the two set-aside calls, a PUT and a
@@ -45,7 +45,9 @@ describe('fetchReviewQueue', () => {
       row: 'waiting:11586',
     };
 
-    await fetchReviewQueue({ ...address, cursor: 'abc', limit: 50, keptOutOffset: 25 });
+    await fetchReviewQueue({
+      ...address, cursor: 'abc', limit: 50, keptOutOffset: 25, refusedPartsOffset: 50,
+    });
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const url = new URL(String(fetchSpy.mock.calls[0][0]));
@@ -56,7 +58,7 @@ describe('fetchReviewQueue', () => {
     // hide that detail.
     expect(url.search).toBe(
       '?sort=question&q=memorial&source=1%2C3&kind=arrival%2Crefused&region=none'
-      + '&run=98&aside=show&cursor=abc&limit=50&keptOutOffset=25',
+      + '&run=98&aside=show&cursor=abc&limit=50&keptOutOffset=25&refusedPartsOffset=50',
     );
     expect(url.search).not.toContain('row');
   });

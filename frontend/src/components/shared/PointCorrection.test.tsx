@@ -123,6 +123,25 @@ describe('PointCorrection', () => {
     renderForm(place({ unseen: 'unread' }));
     expect(screen.getByText(/shows nobody anything — only publishing it shows it/)).toBeInTheDocument();
   });
+
+  it('parts the three ways a turned-down place stays unseen, which take three different steps', () => {
+    // The whole point of a reason is the remedy it names, and these three differ:
+    // asking again then publishing; nothing at all until the source lists it; and
+    // the object's own question first, because the take-back is refused outright
+    // (#859). One sentence for all three would be wrong on two of them.
+    renderForm(place({ unseen: 'refused' }));
+    expect(screen.getByText(
+      /asking about it again and then publishing it shows it/)).toBeInTheDocument();
+
+    renderForm(place({ unseen: 'dropped' }));
+    expect(screen.getByText(
+      /nothing will show it until the source lists it again/)).toBeInTheDocument();
+
+    renderForm(place({ unseen: 'blocked' }));
+    expect(screen.getByText(
+      /answering this place’s own question first, and then asking about the point again/))
+      .toBeInTheDocument();
+  });
 });
 
 describe('correctionOutcome', () => {
@@ -150,6 +169,18 @@ describe('correctionOutcome', () => {
   it('says publishing is what shows an unread place', () => {
     const line = correctionOutcome(place({ unseen: 'unread' }), { name: 'Fort Chabrol' }, reply);
     expect(line).toContain('Readers still do not see this place; only publishing it shows it.');
+  });
+
+  it('does not promise publication for a turned-down place the source has since dropped', () => {
+    // The outcome is printed on every rename, `anchorMoved` being false for one
+    // always — so a sentence naming a step that cannot work is read after every
+    // correction of such a place, not occasionally.
+    const dropped = correctionOutcome(place({ unseen: 'dropped' }), { name: 'North arch' }, reply);
+    expect(dropped).toContain(
+      'Readers still do not see this place; nothing will show it until the source lists it again.');
+
+    const blocked = correctionOutcome(place({ unseen: 'blocked' }), { name: 'North arch' }, reply);
+    expect(blocked).toContain('answering this place’s own question first');
   });
 
   it('carries the placement handover where the regions did not follow', () => {

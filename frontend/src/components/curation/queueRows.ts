@@ -107,10 +107,10 @@ function itemRow(kind: Exclude<RowKind, 'waiting'>, entry: QueueOrderEntry, item
 /**
  * Every open question, in the order the server's keys phase chose (ADR-0051).
  *
- * `keptOut` and `answeredWithdrawals` are absent on purpose, and not merely unread here:
- * both are answered work, kept collapsed at the page's foot where a mis-click can be
- * undone, and neither is a kind the keys union ever names — `data.order` cannot mention
- * them.
+ * `keptOut`, `answeredWithdrawals` and `refusedParts` are absent on purpose, and not merely
+ * unread here: all three are answered work, kept collapsed at the page's foot where a
+ * mis-click can be undone, and none of them is a kind the keys union ever names —
+ * `data.order` cannot mention them.
  */
 export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
   if (!data) return [];

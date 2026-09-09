@@ -43,7 +43,7 @@ describe('answerNoticeFor', () => {
       ],
     }));
     // The second row held a change *and* unread points: both halves are said,
-    // since the contents half is the one with no take-back.
+    // because both happened — the ticks show one kind and the answer reaches two.
     expect(line).toBe('1 arrival kept out, 1 held change refused, unread contents of 2 objects turned down.');
   });
 

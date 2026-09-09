@@ -12,7 +12,7 @@
  * and the selected row** (ADR-0051 decision 5) — the toolbar reports a change, this page
  * writes it into the URL through `useReviewAddress`, and the URL is what the query is
  * asked with, so a filtered feed is a link and Back undoes a filter. **`useReviewQueue`
- * owns the read**: the cursor pages of the one union and the two offsets the answered
+ * owns the read**: the cursor pages of the one union and the three offsets the answered
  * lists still page by. What is left here is the curator's side of it — which question is
  * open, the line that says what the last answer did, and where the two columns sit. The
  * cards answer for themselves, as they always did.
@@ -39,6 +39,7 @@ import { ReviewToolbar } from './feed/ReviewToolbar';
 import { dayOf } from './feed/rowDate';
 import { ReviewBench } from './ReviewBench';
 import { AnsweredSection } from './AnsweredSection';
+import { RefusedPartsCard } from './RefusedPartsCard';
 import { KeptOutCard } from './ReviewQueue';
 import { AnsweredWithdrawalCard } from './WithdrawnPoints';
 import { useRowSelection } from './selection/useRowSelection';
@@ -257,12 +258,13 @@ export function ReviewPage() {
   }
 
   /**
-   * The two lists of answered work, which are not questions and do not join `rows`.
+   * The three lists of answered work, which are not questions and do not join `rows`.
    *
    * Same shape and same reason — a row that is answered appears on no other surface, so
    * this page is the only place a mis-click can be undone — one about an object a rule
-   * refused, one about a point a curator decided about (#544). Written as a list rather
-   * than as two blocks, because everything below treats them alike.
+   * refused, one about a point a curator decided about (#544), one about a point or work
+   * a curator turned down (#859). Written as a list rather than as three blocks, because
+   * everything below treats them alike.
    */
   const answeredLists: Array<{
     kind: ReviewQueueKind;
@@ -273,14 +275,14 @@ export function ReviewPage() {
     /**
      * How many the toggle says the block holds, **in the unit its label names**.
      *
-     * Not `items.length` for both, because the two lists count different things. A
+     * Not `items.length` for all, because the lists count different things. A
      * kept-out row is one object and one kept-out thing, so the rows are the number. An
      * answered withdrawal is one *object* carrying up to a page of answered *places*, and
      * the label says places — so the rows would read "(1)" over a serial nomination
      * holding ninety-three of them, and the number that corrects it would appear only
      * after the click, which is the one thing the count exists to prevent.
      *
-     * Both count this page rather than the whole backlog, as the block's pager implies.
+     * All three count this page rather than the whole backlog, as the block's pager implies.
      */
     count: number;
     card: (item: ReviewQueueItem) => React.ReactNode;
@@ -308,6 +310,25 @@ export function ReviewPage() {
       count: queue.answeredWithdrawals.reduce(
         (n, item) => n + (item.answered_points_total ?? item.answered_points?.length ?? 0), 0),
       card: item => <AnsweredWithdrawalCard key={item.id} item={item} onDone={refresh} />,
+    },
+    {
+      kind: 'refusedParts',
+      label: 'the points and works you have turned down',
+      explanation: 'Answered, so not waiting on you — and here for the reason both blocks '
+        + 'above are: a part you turned down is on no screen at all. Readers never saw it, '
+        + 'and turning it down took it out of every question. Asking about one again puts '
+        + 'the question back and nothing else: it returns to the object’s contents card, '
+        + 'where publishing it is still what shows it — unless the source has stopped '
+        + 'listing the part since, or the object itself has a question of its own, which '
+        + 'its row says. Then the question comes back and nothing else follows.',
+      items: queue.refusedParts,
+      // Parts, not rows, and both kinds of them: the label names points and works,
+      // and one object can hold twelve of each.
+      count: queue.refusedParts.reduce(
+        (n, item) => n
+          + (item.refused_points_total ?? item.refused_points?.length ?? 0)
+          + (item.refused_works_total ?? item.refused_works?.length ?? 0), 0),
+      card: item => <RefusedPartsCard key={item.id} item={item} onDone={refresh} />,
     },
   ];
 
@@ -424,11 +445,10 @@ export function ReviewPage() {
           last rows of a long list sit behind it. */}
       {batchOpen && <Box sx={{ height: 96 }} />}
 
-      {/* Asked once: past one page, for all matching, and for the one answer without
-          a take-back (turning down unread contents) — otherwise the count is on the
-          bar and the answer can be undone. Names what it will do per kind, in the
-          cards' words, so "Accept 1,078 proposals" is never the whole of what a curator
-          agrees to. */}
+      {/* Asked once: past one page and for all matching — otherwise the count is on
+          the bar and every answer can be undone from the foot of this page. Names what
+          it will do per kind, in the cards' words, so "Accept 1,078 proposals" is never
+          the whole of what a curator agrees to. */}
       <Dialog open={answering.confirming !== null} onClose={answering.cancel}>
         <DialogTitle>
           {answerVerb(answering.confirming)}
@@ -454,8 +474,8 @@ export function ReviewPage() {
             )}
             <Box component="p" sx={{ mb: 0 }}>
               Each object is answered on its own and recorded on its own, so the line
-              afterwards names anything that refused. Every answer has a take-back except
-              turning down unread points and works, which cannot be brought back yet.
+              afterwards names anything that refused. Every answer has a take-back, at the
+              foot of this page.
             </Box>
           </DialogContentText>
         </DialogContent>

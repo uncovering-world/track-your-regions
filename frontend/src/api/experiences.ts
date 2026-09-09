@@ -564,7 +564,7 @@ export interface ReviewQueueItem {
   source_membership: 'present' | 'former';
   existence: 'extant' | 'lost';
   kind: 'missing' | 'conflict' | 'refused' | 'kept-out' | 'arrival' | 'held' | 'contents'
-    | 'withdrawn' | 'withdrawn-answered';
+    | 'withdrawn' | 'withdrawn-answered' | 'contents-refused';
   /**
    * What the object is, carried on every kind for the same reason the lifecycle axes
    * are: one fragment feeds every one of the queries, so a card cannot show less about an
@@ -868,6 +868,71 @@ export interface ReviewQueueItem {
    * silent cap, and this list is the one that only ever grows.
    */
   answered_points_total?: number;
+  /**
+   * The points a curator turned down, newest refusal first. `contents-refused`
+   * items only, capped like every other per-row list here.
+   *
+   * `refusedBy` is read from the curation log under the log's own scope, the way
+   * an answered withdrawal's is — `null` where the act belongs to a region this
+   * reader does not cover, and the card says "a curator" then. `note` comes from
+   * the same log row, so a batch refusal that named no reason carries none.
+   */
+  refused_points?: Array<{
+    id: number;
+    name: string | null;
+    externalRef: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    curatedFields?: string[];
+    refusedAt: string | null;
+    refusedBy: string | null;
+    note: string | null;
+    /**
+     * Set where the source has stopped listing the point since it was turned down.
+     * Taking it back then restores the question without restoring the offer, and
+     * the row says so — a refused point raises no withdrawn card of its own,
+     * since that card asks for a state a refused point never has.
+     */
+    missingSince: string | null;
+    /** Whether anyone had been there. A visit survives a refusal (ADR-0022). */
+    visited: boolean;
+  }> | null;
+  /** How many turned-down points the object holds in all, beside a list that is its first `CONTENTS_ROWS_SHOWN`. */
+  refused_points_total?: number;
+  /**
+   * The work links a curator turned down, newest refusal first — the work's own
+   * fields, since that is what a curator recognises, under the treasure id the
+   * take-back takes. `contents-refused` items only.
+   */
+  refused_works?: Array<{
+    id: number;
+    name: string | null;
+    artists: string[];
+    artistsCurated: boolean;
+    year: number | null;
+    externalId?: string;
+    curatedFields?: string[] | null;
+    refusedAt: string | null;
+    refusedBy: string | null;
+    note: string | null;
+    /** The link's own withdrawal, for the reason the points above carry it. */
+    missingSince: string | null;
+  }> | null;
+  /** How many turned-down work links the object holds in all. */
+  refused_works_total?: number;
+  /**
+   * Whether the take-back would be accepted at all. `contents-refused` items only.
+   *
+   * Decided by the writer's own fragment (`contentsAnswerableSql`) rather than by a
+   * second spelling of it on this side: an object nobody has passed, one a rule
+   * kept out, or one the source has dropped refuses the take-back outright, and a
+   * card offering a button that 409s is a dead end with nothing on it to act on.
+   */
+  takeable?: boolean;
+  /** The membership's admission, for the sentence that names the question to answer first. */
+  object_admission?: string | null;
+  /** Its gate state, for the same sentence. Never the verdict — `takeable` is. */
+  object_curation_state?: string | null;
 }
 
 /**
@@ -960,6 +1025,14 @@ export interface ReviewQueue {
    * list a verdict on a point could never be taken back (#544).
    */
   answeredWithdrawals: ReviewQueueItem[];
+  /**
+   * The unread points and works a curator turned down, carried for the reason the
+   * two lists above are: the refusal is a mark nothing else shows (ADR-0053), so
+   * without this list a mis-click on *Turn them down* could be found only in the
+   * curation log and undone nowhere (#859). One entry per object, listing both
+   * kinds inside it, because the take-back is per part.
+   */
+  refusedParts: ReviewQueueItem[];
   limit: number;
   /**
    * The page in the one order across all seven kinds (ADR-0051) — what the
@@ -971,32 +1044,33 @@ export interface ReviewQueue {
   total: number;
   facets: QueueFacets;
   /**
-   * The one cursor the seven open kinds share, beside the two offsets that
-   * page the two answered lists on their own: `keptOut` and
-   * `answeredWithdrawals` are not open questions, carry no date to order the
-   * union by, and only ever grow, so a `COUNT(*)` would tell a curator
-   * nothing an offset and `hasMore` do not already.
+   * The one cursor the seven open kinds share, beside the three offsets that
+   * page the three answered lists on their own: `keptOut`,
+   * `answeredWithdrawals` and `refusedParts` are not open questions, carry no
+   * date to order the union by, and only ever grow, so a `COUNT(*)` would tell
+   * a curator nothing an offset and `hasMore` do not already.
    */
   paging: {
     cursor: string | null;
     nextCursor: string | null;
     keptOut: { offset: number; hasMore: boolean };
     answeredWithdrawals: { offset: number; hasMore: boolean };
+    refusedParts: { offset: number; hasMore: boolean };
   };
 }
 
 /**
- * The two answered lists that still page by their own offset, outside the
- * cursor order: `keptOut` and `answeredWithdrawals` are not open questions and
- * only ever grow, so `fetchReviewQueue`'s `keptOutOffset` /
- * `answeredWithdrawalsOffset` name them by this word.
+ * The three answered lists that still page by their own offset, outside the
+ * cursor order: `keptOut`, `answeredWithdrawals` and `refusedParts` are not
+ * open questions and only ever grow, so `fetchReviewQueue`'s `keptOutOffset` /
+ * `answeredWithdrawalsOffset` / `refusedPartsOffset` name them by this word.
  */
-export type ReviewQueueKind = 'keptOut' | 'answeredWithdrawals';
+export type ReviewQueueKind = 'keptOut' | 'answeredWithdrawals' | 'refusedParts';
 
 /**
  * What needs a curator's judgement, within their scope — a filtered,
  * ordered, cursor-paged page (ADR-0051). `params` is the review page's
- * address (`ReviewAddress`) plus the cursor and the two offsets the answered
+ * address (`ReviewAddress`) plus the cursor and the three offsets the answered
  * lists still page by; `row` names the selected card for a deep link and is
  * not a request parameter, so it is not sent here.
  */
@@ -1005,6 +1079,7 @@ export async function fetchReviewQueue(params: ReviewAddress & {
   limit?: number;
   keptOutOffset?: number;
   answeredWithdrawalsOffset?: number;
+  refusedPartsOffset?: number;
 }): Promise<ReviewQueue> {
   const search = new URLSearchParams();
   if (params.sort === 'question') search.set('sort', params.sort);
@@ -1019,6 +1094,9 @@ export async function fetchReviewQueue(params: ReviewAddress & {
   if (params.keptOutOffset) search.set('keptOutOffset', String(params.keptOutOffset));
   if (params.answeredWithdrawalsOffset) {
     search.set('answeredWithdrawalsOffset', String(params.answeredWithdrawalsOffset));
+  }
+  if (params.refusedPartsOffset) {
+    search.set('refusedPartsOffset', String(params.refusedPartsOffset));
   }
   return authFetchJson<ReviewQueue>(`${API_URL}/api/experiences/review/queue?${search}`);
 }
@@ -1551,6 +1629,33 @@ export async function refuseContents(
   placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
 }> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/refuse-contents`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * The way back from that no (#859): ask about the named turned-down points and
+ * works again, or about all of them.
+ *
+ * Restores the question and nothing a reader sees — the part was hidden before
+ * the refusal and is hidden still. A point counts toward its regions again,
+ * which is why this answers the placement fields the refusal answers.
+ */
+export async function unrefuseContents(
+  experienceId: number,
+  body: { locationIds?: number[]; treasureIds?: number[]; note?: string } = {},
+): Promise<{
+  experienceId: number;
+  locationsRestored: number;
+  treasureLinksRestored: number;
+  /** Exactly which points and works came back, as the statement returned them. */
+  locationIds: number[];
+  treasureIds: number[];
+  placementFailed?: true;
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+}> {
+  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/unrefuse-contents`, {
     method: 'POST',
     body: JSON.stringify(body),
   });

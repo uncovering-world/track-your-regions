@@ -494,7 +494,10 @@ function keptOutOutcomeFor(
   const stale = data?.placementFailed
     ? ` ${name} could not be re-placed into ${worldViewList(data.placementFailedWorldViews)} — tell an admin.`
     : '';
-  return `${parts || 'Nothing'} under ${name} turned down. They stay hidden and are no longer asked about.${tail}${stale}`;
+  // Where they come back from, said in the line that put them there (#859): the
+  // list is collapsed at the foot of this page and nothing else shows them.
+  return `${parts || 'Nothing'} under ${name} turned down. They stay hidden and are no longer `
+    + `asked about — and come back from the turned-down list at the foot of this page.${tail}${stale}`;
 }
 
 /** What doing nothing means here — the answer that needs no call. */
