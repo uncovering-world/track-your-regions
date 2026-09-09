@@ -23,7 +23,7 @@
 
 import { useEffect, useMemo, useRef, useCallback } from 'react';
 import { useMap, Source, Layer } from 'react-map-gl/maplibre';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { buildExperienceMarkers, representablePlaces } from './experienceMarkers/buildMarkers';
 import {
   SOURCE_MARKERS, SOURCE_HIGHLIGHT, SOURCE_HOVER, EMPTY_FC, buildPointHoverData, buildPointsHoverData,

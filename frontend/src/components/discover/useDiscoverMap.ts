@@ -19,7 +19,7 @@
  */
 
 import { useEffect } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { isWebGLAvailable } from '../../utils/webgl';
 import { addDiscoverMapLayers, SOURCE_ID, HOVER_SOURCE_ID } from './discoverMapLayers';
 

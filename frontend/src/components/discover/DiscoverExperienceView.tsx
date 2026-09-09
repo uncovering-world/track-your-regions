@@ -17,7 +17,7 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { Box, Typography, CircularProgress } from '@mui/material';
 import ExploreIcon from '@mui/icons-material/Explore';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import type { Experience } from '../../api/experiences';
 import type { ActiveView } from '../../hooks/useDiscoverExperiences';
 import { useRegionLocations } from '../../hooks/useRegionLocations';

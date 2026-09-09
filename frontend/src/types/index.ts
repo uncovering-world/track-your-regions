@@ -106,10 +106,19 @@ export interface RegionMember {
 // GeoJSON Types
 // =============================================================================
 
-export interface GeoJSONGeometry {
-  type: 'MultiPolygon' | 'Polygon';
-  coordinates: number[][][] | number[][][][];
-}
+/**
+ * What every geometry endpoint answers with: an area on the map, one piece or
+ * several.
+ *
+ * The two `geojson` types rather than a hand-written pair of fields, because
+ * the hand-written one said `type: 'Polygon' | 'MultiPolygon'` beside
+ * `coordinates: number[][][] | number[][][][]` — four combinations for two
+ * shapes, so nothing could tell a `Polygon` carrying a multipolygon's
+ * coordinates from a real one. That was assignable to no library's geometry
+ * type, which is why the map surfaces cast their way past it; the union of the
+ * two real shapes needs no cast anywhere.
+ */
+export type GeoJSONGeometry = GeoJSON.Polygon | GeoJSON.MultiPolygon;
 
 export interface GeoJSONFeature {
   type: 'Feature';

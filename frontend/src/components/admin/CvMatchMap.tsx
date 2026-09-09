@@ -7,7 +7,7 @@
 
 import { useCallback, useState, useRef, useMemo } from 'react';
 import { Box, Typography, Button } from '@mui/material';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import * as turf from '@turf/turf';
 import type { ClusterGeoInfo, SiblingRegionGeometry } from '../../api/admin/worldViewImport';

@@ -16,7 +16,7 @@ import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../../../shared/GuardedMap';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { fetchGeoshape, getChildrenRegionGeometry } from '../../../../api/admin/worldViewImport';
 import { frameGeoJson } from '../../../../utils/mapUtils';
 import { extractImageUrl, toThumbnailUrl } from '../../../../utils/imageUrl';

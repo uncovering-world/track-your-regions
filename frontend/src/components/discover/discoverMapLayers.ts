@@ -8,7 +8,7 @@
  * because they read this component's refs and props.
  */
 
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 
 export const SOURCE_ID = 'experience-markers';
 export const HIGHLIGHT_SOURCE_ID = 'highlight-markers';

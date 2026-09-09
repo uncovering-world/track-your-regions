@@ -25,6 +25,10 @@ import {
   Visibility,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
+// Named rather than inherited: maplibre-gl declared a `maplibregl` UMD global
+// through 4.x, and this file leaned on it for the one type it uses. The 6.x
+// build is ESM only and declares no global, so the namespace is imported.
+import type * as maplibregl from 'maplibre-gl';
 import { NavigationControl, Source, Layer } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import * as turf from '@turf/turf';
