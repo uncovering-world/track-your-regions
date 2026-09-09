@@ -99,6 +99,10 @@ export const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   // it down myself"; and the no to unread contents, which stay hidden.
   arrival_refused: { label: 'Kept out by hand', color: RED },
   contents_refused: { label: 'Turned down', color: AMBER },
+  // And the way back from the second of those (#859), green like the other
+  // take-backs: the mark comes off and the part is asked about again. Named for
+  // what a reader needs to see beside "Turned down" a line above it.
+  contents_unrefused: { label: 'Asked again', color: GREEN },
 };
 
 /**
@@ -373,22 +377,30 @@ function formatAdmission(d: Record<string, unknown>): string | null {
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
-/** The verdicts on a refusal and a person's own two refusals: one formatter door, three shapes. */
-const KEEP_OUT_ACTIONS = new Set([...ADMISSION_ACTIONS, 'arrival_refused', 'contents_refused']);
+/** The verdicts on a refusal, a person's own two refusals, and the way back from one of them: one formatter door, four shapes. */
+const KEEP_OUT_ACTIONS = new Set([
+  ...ADMISSION_ACTIONS, 'arrival_refused', 'contents_refused', 'contents_unrefused',
+]);
 
 function formatKeepOut(action: string, d: Record<string, unknown>): string | null {
   if (action === 'contents_refused') return formatContentsRefused(d);
+  // The same counts read the other way (#859). One formatter rather than two,
+  // because the take-back records the shape the refusal records — with the ids
+  // always named, which the refusal does only when its caller named them.
+  if (action === 'contents_unrefused') return formatContentsRefused(d, 'asked about again');
   if (action === 'arrival_refused') return d.note ? `“${d.note}”` : null;
   return formatAdmission(d);
 }
 
 /** What a no to unread contents reached: the counts the writer recorded, and the note. */
-function formatContentsRefused(d: Record<string, unknown>): string | null {
+function formatContentsRefused(
+  d: Record<string, unknown>, verb = 'turned down',
+): string | null {
   const lines: string[] = [];
   const points = typeof d.locations === 'number' ? d.locations : 0;
   const works = typeof d.treasureLinks === 'number' ? d.treasureLinks : 0;
-  if (points > 0) lines.push(`${plural(points, 'unread point')} turned down`);
-  if (works > 0) lines.push(`${plural(works, 'unread work')} turned down`);
+  if (points > 0) lines.push(`${plural(points, 'unread point')} ${verb}`);
+  if (works > 0) lines.push(`${plural(works, 'unread work')} ${verb}`);
   // The old pins a refused arrival had been holding on the map: this row is
   // the durable record of when they came off it.
   const released = typeof d.withdrawalsReleased === 'number' ? d.withdrawalsReleased : 0;

@@ -61,6 +61,19 @@ const migrationLines = readFileSync(
   'utf8',
 );
 const publishMigrationLines = publishMigrationRaw;
+/**
+ * The migration that adds the turned-down list's indexes, named rather than found.
+ *
+ * `actionMigrationFile` above is deliberately dynamic, but its reasoning is about
+ * the *action list*: every migration widening that list restates it, so the newest
+ * one is the live copy. An index does not move to a later file when the action
+ * list does — so reading these two assertions out of "whatever last widened the
+ * CHECK" would fail on the next unrelated action migration, which creates no
+ * index. Named the way `020` is named below, and for the same reason.
+ */
+const refusedIndexMigration = collapse(readFileSync(
+  join(migrationsDir, '052-curator-takes-back-a-refused-part.sql'), 'utf8',
+));
 const deferralMigrationRaw = readFileSync(
   join(repoRoot, 'db', 'migrations', '020-deferred-withdrawal.sql'),
   'utf8',
@@ -478,6 +491,12 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // "turned it down myself" — and turning down the unread points and works
     // under an object, which stay hidden and stop being asked about.
     'arrival_refused', 'contents_refused',
+    // And the way back from the second of those (#859): a curator asking again
+    // about a point or work they had turned down. Named after `unrejected`
+    // rather than after the `*_restored` verdicts, which belong to a point the
+    // source stopped offering and read as "a reader sees it now" — this one
+    // only puts the question back.
+    'contents_unrefused',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
@@ -510,6 +529,38 @@ describe('the curation log accepts every action a curator endpoint writes', () =
       `ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check ${actionCheck}`,
     );
     expect(publishMigration.indexOf(drop)).toBeLessThan(publishMigration.indexOf(actionCheck));
+  });
+});
+
+/**
+ * How the turned-down list finds its rows, in both schema homes (#859).
+ *
+ * The review page's third answered list asks, per object, whether it holds a part
+ * a curator turned down. Without the pair below that question is a sequential scan
+ * of 7844 points and 1446 links per page of the queue — and it is a question asked
+ * on every read of the page, since the list's count is stated whether or not anyone
+ * opens it. Indexes drift the way columns do and nothing else compares the two files.
+ */
+describe('a turned-down part is indexed in both schema homes', () => {
+  const pointsIndex =
+    'CREATE INDEX IF NOT EXISTS idx_experience_locations_refused '
+    + 'ON experience_locations(experience_id) WHERE refused_at IS NOT NULL;';
+  const worksIndex =
+    'CREATE INDEX IF NOT EXISTS idx_experience_treasures_refused '
+    + 'ON experience_treasures(experience_id) WHERE refused_at IS NOT NULL;';
+
+  it('both files index the refused points the same way, partially', () => {
+    // Partial for the reason every other mark's index is: the column is NULL on
+    // all but a handful of rows, and no read wants the unmarked ones through it.
+    expect(schema).toContain(pointsIndex);
+    expect(refusedIndexMigration).toContain(pointsIndex);
+  });
+
+  it('both files index the refused work links the same way', () => {
+    // The other half of the same list, and it has to arrive with the first:
+    // a card that lists points quickly and works slowly is one slow card.
+    expect(schema).toContain(worksIndex);
+    expect(refusedIndexMigration).toContain(worksIndex);
   });
 });
 
