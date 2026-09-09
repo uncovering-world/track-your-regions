@@ -93,6 +93,12 @@ export const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   declined_held: { label: 'Not this', color: AMBER },
   admission_confirmed: { label: 'Kept out', color: RED },
   admission_overridden: { label: 'Put back', color: GREEN },
+  // A person's no to what a gated source proposed (#852, ADR-0053): the same
+  // act on an arrival as confirming a rule's refusal, one word apart because a
+  // reader scanning a history has to tell "agreed with the rule" from "turned
+  // it down myself"; and the no to unread contents, which stay hidden.
+  arrival_refused: { label: 'Kept out by hand', color: RED },
+  contents_refused: { label: 'Turned down', color: AMBER },
 };
 
 /**
@@ -367,6 +373,30 @@ function formatAdmission(d: Record<string, unknown>): string | null {
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
+/** The verdicts on a refusal and a person's own two refusals: one formatter door, three shapes. */
+const KEEP_OUT_ACTIONS = new Set([...ADMISSION_ACTIONS, 'arrival_refused', 'contents_refused']);
+
+function formatKeepOut(action: string, d: Record<string, unknown>): string | null {
+  if (action === 'contents_refused') return formatContentsRefused(d);
+  if (action === 'arrival_refused') return d.note ? `“${d.note}”` : null;
+  return formatAdmission(d);
+}
+
+/** What a no to unread contents reached: the counts the writer recorded, and the note. */
+function formatContentsRefused(d: Record<string, unknown>): string | null {
+  const lines: string[] = [];
+  const points = typeof d.locations === 'number' ? d.locations : 0;
+  const works = typeof d.treasureLinks === 'number' ? d.treasureLinks : 0;
+  if (points > 0) lines.push(`${plural(points, 'unread point')} turned down`);
+  if (works > 0) lines.push(`${plural(works, 'unread work')} turned down`);
+  // The old pins a refused arrival had been holding on the map: this row is
+  // the durable record of when they came off it.
+  const released = typeof d.withdrawalsReleased === 'number' ? d.withdrawalsReleased : 0;
+  if (released > 0) lines.push(`${plural(released, 'replaced point')} no longer shown`);
+  if (d.note) lines.push(`“${d.note}”`);
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
 /**
  * A correction to one part of an object, as against a verdict about its standing.
  *
@@ -405,7 +435,7 @@ export function formatLogDetails(entry: CurationLogEntry): string | null {
   if (entry.action === 'accepted_source') return formatAcceptedSource(d);
   if (entry.action === 'declined_source') return formatDeclinedSource(d);
   if (entry.action === 'declined_held') return formatDeclinedHeld(d);
-  if (ADMISSION_ACTIONS.has(entry.action)) return formatAdmission(d);
+  if (KEEP_OUT_ACTIONS.has(entry.action)) return formatKeepOut(entry.action, d);
   // `unrejected`, `added_to_region` and `removed_from_region` never reach this line:
   // their writers insert no `details` at all, and the region their act was about is
   // already rendered beside the curator's name from the entry's own `region_name`.
