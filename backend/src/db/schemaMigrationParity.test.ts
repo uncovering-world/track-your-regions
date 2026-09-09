@@ -472,6 +472,12 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // because a trail that said "edited a part" would not say which kind of part
     // — a work is shared by every museum holding it, and a point is not.
     'work_edited',
+    // A person's no to what a gated source proposed (#852, ADR-0053): keeping
+    // out an object nobody has passed — one word apart from confirming a rule's
+    // refusal, because a history has to tell "agreed with the rule" from
+    // "turned it down myself" — and turning down the unread points and works
+    // under an object, which stay hidden and stop being asked about.
+    'arrival_refused', 'contents_refused',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
