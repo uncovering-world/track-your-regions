@@ -622,6 +622,23 @@ export const experienceAdmissionBodySchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
+/** A curator keeping out an arrival (#852, ADR-0053): the note is all there is to send. */
+export const refuseArrivalBodySchema = z.object({
+  note: z.string().max(1000).optional(),
+});
+
+/**
+ * A curator turning down unread contents (#852, ADR-0053): the named points
+ * and works, or all of them when neither list is sent — the same two lists,
+ * the same bounds and the same reading `publishExperienceBodySchema` gives
+ * them, since this answers the same card the other way.
+ */
+export const refuseContentsBodySchema = z.object({
+  locationIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(2000).optional(),
+  treasureIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(2000).optional(),
+  note: z.string().max(1000).optional(),
+});
+
 export const newBadgesSeenBodySchema = z.object({
   // Bounded because a page is bounded: the region read caps at 5000 rows, and
   // an unbounded array here would be an invitation to send something else.

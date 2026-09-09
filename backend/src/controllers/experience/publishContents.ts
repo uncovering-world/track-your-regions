@@ -196,14 +196,16 @@ export async function publishContents(
 }
 
 /**
- * Place the object again, because one of its points stopped being offered.
+ * Place the object again, because one of its points stopped counting.
  *
  * The one publish that genuinely moves geometry — see the note after the COMMIT
  * for why every other one does not. Placement's insert carries the
  * `offeredLocationSql` pair — `el.missing_since IS NULL AND el.existence <> 'lost'`
- * — while its clear is unfiltered, so the released point's
- * `experience_location_regions` rows have to go, and only a re-place can recompute
- * the experience-level union they fed.
+ * — and, since ADR-0053, a third term, `el.refused_at IS NULL`, while its clear
+ * is unfiltered: so a point that stopped being offered, and a point a curator
+ * turned down, each leave `experience_location_regions` rows behind that only a
+ * re-place can drop, and only a re-place can recompute the experience-level
+ * union they fed. A writer that sets any of the three has to call this.
  *
  * Reports failure rather than throwing, the way `recordPlacementFailure`
  * downgrades a run to `partial`: by the time this runs the publication is
@@ -230,14 +232,16 @@ export async function publishContents(
  */
 export async function placeAfterRelease(
   experienceId: number,
-  // What sent it here, in the log's own words. Five callers now, and the default
+  // What sent it here, in the log's own words. Six callers now, and the default
   // line is true of the first two: a publication that released a deferred
   // withdrawal, and an admission that published an arrival's contents and released
   // one — which is why `placeAfterAdmissionRelease` deliberately passes no trigger,
-  // having done both. The other three send their own: a curator's verdict on a
-  // point, a curator's correction to one, and accepting the source's coordinate,
-  // which puts a corrected pin back where the source has it. Nothing is published
-  // on any of those three and no withdrawal is released, so the hardcoded line
+  // having done both. The other four send their own: a curator's verdict on a
+  // point, a curator's correction to one, accepting the source's coordinate,
+  // which puts a corrected pin back where the source has it, and turning down
+  // any point, which stops it counting toward a region and withdraws any pin it
+  // was holding (ADR-0053). Nothing is published on any of those four, so the
+  // hardcoded line
   // would be false in every clause — and a log line naming the wrong cause is worse
   // than a vague one, because it sends whoever reads it to the wrong code. A count
   // is written here rather than "several" because it has to be re-read when a caller
