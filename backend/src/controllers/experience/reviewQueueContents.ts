@@ -27,6 +27,7 @@ import type { QueryResult } from 'pg';
 import {
   lifecycleSelectSql, offeredLinkSql, offeredLocationSql, venueCountSql,
 } from './experienceLifecycle.js';
+import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldPartAnsweredSql } from './heldDecisions.js';
@@ -256,7 +257,7 @@ export async function queryContents(
         -- fragment gained it, so the badge and the card would have disagreed about
         -- an object holding one unread point a curator had declared gone.
         FROM experience_locations el
-        WHERE el.experience_id = e.id AND el.curation_state = 'pending'
+        WHERE el.experience_id = e.id AND ${unreadPointSql('el')}
           AND ${offeredLocationSql('el')}
       ) el
     ) points
@@ -302,7 +303,7 @@ export async function queryContents(
           -- published, so a card counting it would ask a question its own
           -- button cannot answer (ADR-0044).
           AND ${offeredLinkSql('et')}
-          AND (et.curation_state = 'pending' OR t.curation_state = 'pending')
+          AND ${unreadLinkSql('et', 't')}
       ) t
     ) works
     -- contentsOpenSql restates the two lateral joins above as EXISTS, which is

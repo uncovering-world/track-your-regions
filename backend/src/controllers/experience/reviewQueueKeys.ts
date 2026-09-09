@@ -55,6 +55,7 @@ import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
+import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
   arrivalOpenSql, claimKeySql, conflictChangeOpenSql, contentsOpenSql, heldOpenSql,
@@ -242,12 +243,12 @@ function contentsKeysSql(scopeFilter: string): string {
   return `
         SELECT e.id, e.name, e.category_id, NULL, GREATEST(
                  (SELECT max(el.created_at) FROM experience_locations el
-                   WHERE el.experience_id = e.id AND el.curation_state = 'pending'
+                   WHERE el.experience_id = e.id AND ${unreadPointSql('el')}
                      AND ${offeredLocationSql('el')}),
                  (SELECT max(et.created_at) FROM experience_treasures et
                     JOIN treasures t ON t.id = et.treasure_id
                    WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
-                     AND (et.curation_state = 'pending' OR t.curation_state = 'pending'))
+                     AND ${unreadLinkSql('et', 't')})
                ), 'contents'
         FROM experiences e
         WHERE ${contentsOpenSql('e')}

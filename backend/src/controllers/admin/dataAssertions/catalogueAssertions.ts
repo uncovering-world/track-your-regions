@@ -386,7 +386,10 @@ const heldByNoRegion: CatalogueAssertion = {
  * placement writes from every *offered* point, unread ones included, precisely
  * so a region curator's queue is not empty (ADR-0025 decision 5). So an offered
  * point missing from the roll-up is placement not having reached it, whatever a
- * reader may see of it.
+ * reader may see of it. One exception, and it is placement's own too: a point a
+ * curator turned down (ADR-0053) is still offered on the source's terms but
+ * never to be published, so placement gives it no row on purpose — carried here
+ * as `refused_at IS NULL`, or every refusal would read as a failed run.
  *
  * Read as a traveller would: Aldabra Atoll, the Great Barrier Reef, Bikini
  * Atoll, Cordouan Lighthouse standing in the Gironde estuary. What these have
@@ -410,6 +413,7 @@ const offeredPlaceInNoRegion: CatalogueAssertion = {
           FROM experience_locations el
           JOIN experiences e ON e.id = el.experience_id
          WHERE ${offeredLocationSql()}
+           AND el.refused_at IS NULL
            AND NOT EXISTS (SELECT 1 FROM experience_location_regions r
                             WHERE r.location_id = el.id)
          ORDER BY e.name, el.id`,

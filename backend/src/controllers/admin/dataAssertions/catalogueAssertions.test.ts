@@ -262,6 +262,13 @@ describe('a place no region holds', () => {
     expect(sql).not.toMatch(/curation_state/);
   });
 
+  it('leaves out a point a curator turned down, which placement skips on purpose', () => {
+    // ADR-0053: still offered on the source's terms, never to be published, so
+    // placement gives it no row — and without this term every refusal would
+    // read as a failed placement run.
+    expect(sql).toMatch(/el\.refused_at IS NULL/);
+  });
+
   it('looks in the roll-up placement actually writes', () => {
     expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM experience_location_regions r/);
   });
