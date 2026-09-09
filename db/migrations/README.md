@@ -437,6 +437,19 @@ part stays `pending` and hidden, and what the mark changes is the question — t
 the publish stop offering it. Re-runnable: `ADD COLUMN IF NOT EXISTS`, and the `CHECK` is
 dropped and re-added to the list `01-schema.sql` declares, so the two are order-independent.
 
+`052-curator-takes-back-a-refused-part.sql` is the way back from the second of those
+refusals (#859), and closes what ADR-0053 recorded as its own trade-off: *a refused part
+has no screen yet*. One act joins the log's `CHECK` — `contents_unrefused`, named after the
+`rejected` / `unrejected` pair the list already carries rather than after the `*_restored`
+verdicts, which belong to a point the source stopped offering and would read as "a reader
+sees it now". No column: the mark is a column already, so the take-back is one `UPDATE`
+setting it back to NULL. What is new besides the action is the pair of partial indexes the
+list is read through — `idx_experience_locations_refused` and
+`idx_experience_treasures_refused`, both on `experience_id WHERE refused_at IS NOT NULL` —
+because the review page asks per object whether it holds a turned-down part, and asks it on
+every read of the page whether or not anyone opens the list. Re-runnable throughout:
+`CREATE INDEX IF NOT EXISTS`, and the `CHECK` dropped and re-added as 051 does it.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the

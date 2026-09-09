@@ -2667,6 +2667,12 @@ COMMENT ON COLUMN experience_locations.curation_state IS 'A pending point is wri
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS refused_at TIMESTAMPTZ;
 COMMENT ON COLUMN experience_locations.refused_at IS 'When a curator refused this unread point (ADR-0053). The row stays pending and hidden; the queue and the publish stop asking about it, placement stops counting it toward a region, and a withdrawal it was holding is released. NULL = not refused.';
 
+-- The review page's turned-down list asks, per object, whether it holds a
+-- refused point at all (#859). Partial, because the mark is on a handful of rows
+-- and no read ever wants the unmarked ones through this index -- the same shape
+-- and the same reason as idx_experience_locations_undecided below.
+CREATE INDEX IF NOT EXISTS idx_experience_locations_refused ON experience_locations(experience_id) WHERE refused_at IS NOT NULL;
+
 -- What a curator decided about this point, kept from the next run. Every arm of
 -- `locationWriter` writes the source's name and coordinate over whatever is
 -- stored, so before this the answer to "that pin is in the wrong place" lasted
@@ -2949,6 +2955,10 @@ COMMENT ON COLUMN experience_treasures.curation_state IS 'Whether this work has 
 ALTER TABLE experience_treasures ADD COLUMN IF NOT EXISTS refused_at TIMESTAMPTZ;
 COMMENT ON COLUMN experience_treasures.refused_at IS 'When a curator refused this unread link (ADR-0053). Written together with curation_state = pending on the link itself, since a link can be unread on the work''s axis alone and readers hide by that word, never by this mark. The queue and the publish stop asking about it. NULL = not refused.';
 
+-- The turned-down list's other half, asked per object exactly as the points'
+-- index above is (#859).
+CREATE INDEX IF NOT EXISTS idx_experience_treasures_refused ON experience_treasures(experience_id) WHERE refused_at IS NOT NULL;
+
 -- A link the source stops placing here is marked, never deleted -- the same
 -- observation a point carries (ADR-0022), for the same reason: the row is what
 -- a person's viewed record points at. Written only by a run that has seen enough
@@ -3043,7 +3053,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     curator_id INTEGER NOT NULL REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -3063,7 +3073,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused'));
 
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);
