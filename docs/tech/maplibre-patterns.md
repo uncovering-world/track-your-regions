@@ -270,9 +270,25 @@ builds its own raster style inline — so "our tiles are raster" buys nothing.
 When no context can be created, `Map._setupPainter` **throws**:
 
 ```js
-const gl = canvas.getContext('webgl2', attrs) || canvas.getContext('webgl', attrs);
-if (!gl) { throw new Error('Failed to initialize WebGL') }   // maplibre-gl 4.7
+const gl = this._canvas.getContext('webgl2', attrs);
+if (!gl) throw new GPUInitializationError(attrs, creationEvent);   // maplibre-gl 6.8
 ```
+
+### WebGL 2, since maplibre-gl 6
+
+That request is for `webgl2` and nothing else. maplibre-gl 6 dropped WebGL 1
+support outright, where 4.x asked for `webgl2` and settled for `webgl`
+(`… || canvas.getContext('webgl', attrs)`), so a browser that offers only
+WebGL 1 was drawn maps until the 6.x bump and is refused one after it.
+
+`isWebGLAvailable()` follows the library rather than leading it — it probes
+`webgl2` alone, which is what keeps it from answering yes where the constructor
+would still throw, and `webgl.test.ts` asserts both the verdict and that no
+second context is asked for. `MapUnavailable` says the requirement in the same
+words a visitor can act on ("Maps here are drawn with WebGL 2, which this
+browser is not offering") and offers hardware acceleration as what *usually*
+brings it back: for a WebGL-1-only browser no setting will, and a remedy
+promised to someone it cannot help costs the rest of the sentence its credit.
 
 ### The consequence
 
@@ -291,9 +307,10 @@ renders as a temporary one is the expensive kind: the user waits.
 ### The fix pattern
 
 Ask before constructing, never after — there is no "after" to catch.
-`isWebGLAvailable()` (`utils/webgl.ts`) probes the same contexts in the same
-order MapLibre does, so it cannot answer yes where the library would fail, and
-caches, since the answer cannot change without a page reload.
+`isWebGLAvailable()` (`utils/webgl.ts`) probes the same context MapLibre asks
+for — `webgl2`, and only that, since 6.x asks for nothing else — so it cannot
+answer yes where the library would fail, and caches, since the answer cannot
+change without a page reload.
 
 Two shapes, and the choice between them is not stylistic:
 
@@ -345,3 +362,48 @@ A fallback renderer. Issue #477 tracks that, and it is a larger question than it
 looks: the basemaps are already raster, so what would have to change is the
 painting engine, not the data — and `RegionMapVT`'s data-driven paint, LOD
 levels, heatmap shader and `feature-state` hover have no raster equivalent.
+
+## The tile worker is a URL the bundler has to emit
+
+### The problem
+
+maplibre-gl 6 parses vector tiles in a worker it loads as a real URL —
+`new URL('./maplibre-gl-worker.mjs', import.meta.url)` — where 4.x inlined
+the worker's source as a blob. After `vite build`, `import.meta.url` is the
+entry chunk's, so the default resolves to `/assets/maplibre-gl-worker.mjs`, a
+file the build never emits: the library computes the URL inside a function,
+which Vite cannot see through to emit the worker as it would for a literal
+`new Worker(new URL(...))`. The dev server is unaffected — there
+`import.meta.url` is the real module path — so only the production build
+shows it.
+
+### The consequence
+
+The worker dies on its first `import`, and every vector source waits on it for
+good. Raster tiles need no worker, so the map paints the world's coastlines
+and not one region, mounts a canvas, clears the WebGL guard, fires no error
+in the main thread (the failed import is inside the worker), and reads as a
+loaded page to every timing in the performance lane. On the first
+production build of 6.8.0 (#849) the map root made **zero** requests to
+Martin while the dispatcher held 11 messages the worker never answered.
+
+### The fix
+
+`main.tsx` imports the worker through Vite's `?worker&url` — which bundles it
+as an entry of its own, with the `./maplibre-gl-shared.mjs` it imports
+resolved into it — and hands the emitted chunk's URL to `setWorkerUrl()`
+before any map is built (the pool is acquired by the first `Map`
+constructor). A plain `?url` would copy the file alone and leave that
+relative import to 404 inside the worker. The chunk is 486.8 kB raw /
+135.2 kB gzip, one more request on every page that draws a map; the entry
+chunk does not move, since 4.x carried the same code as a string inside it.
+
+### The guard
+
+Nothing in the unit suites can see this (jsdom has neither WebGL nor
+workers), and the smoke lane browses the dev server, where the URL resolves.
+The performance lane loads the production build, so that is where it is
+asserted: the map view's `urls` entry in both budgets files expects a 2xx
+request to a Martin tile function (`/tile_`)
+(`docs/tech/performance.md` § The local run, and `perf/assertions.mjs` §
+`pageExpectations`). A worker that dies again fails that lane by name.
