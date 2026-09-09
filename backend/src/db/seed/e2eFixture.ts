@@ -67,6 +67,27 @@ const ARRIVALS = [
   { id: 9005, name: 'Testland Chapel', lon: 10.25, lat: 50.25 },
 ];
 
+/**
+ * A point under a published place that a curator has already turned down (#859).
+ *
+ * It hangs off the Aqueduct, which readers can see, so it is *contents* rather
+ * than an arrival — and it is seeded already refused for one reason: a refused
+ * part is invisible to the queue, which is the whole point of the mark. The feed
+ * therefore still holds exactly the two arrivals the batch spec ticks, and every
+ * sentence that spec asserts stays true. Taking this one back is what puts a
+ * third question there, which is why that test runs after it.
+ *
+ * No `experience_location_regions` row, deliberately: placement does not hold a
+ * refused point (ADR-0053), so seeding one would be a state the product never
+ * produces.
+ */
+const REFUSED_POINT = {
+  experienceId: 9003,
+  name: 'Testland Aqueduct — north arch',
+  lon: 10.32,
+  lat: 50.32,
+};
+
 /** A square around (10,50) — valid, small, and far from the antimeridian. */
 const REGION_WKT =
   'MULTIPOLYGON(((10 50, 10.5 50, 10.5 50.5, 10 50.5, 10 50)))';
@@ -167,6 +188,32 @@ async function seedPlace(
 }
 
 /**
+ * A second point under an already-published place, unread and already turned down.
+ *
+ * `ordinal` 1 because the place's own point took 0 and the pair is unique;
+ * `curation_state` 'pending' beside `refused_at` because that is exactly what the
+ * refusal writes — the mark never replaces the state (ADR-0053), and a fixture
+ * that wrote one without the other would be a row the product cannot produce.
+ */
+async function seedRefusedPoint(
+  tx: Tx, point: { experienceId: number; name: string; lon: number; lat: number },
+): Promise<void> {
+  await tx.execute(
+    sql`INSERT INTO experience_locations (
+          ${sql.identifier(experienceLocations.experienceId.name)},
+          ${sql.identifier(experienceLocations.name.name)},
+          ${sql.identifier(experienceLocations.ordinal.name)},
+          curation_state,
+          refused_at,
+          location
+        ) VALUES (
+          ${point.experienceId}, ${point.name}, 1, 'pending', NOW(),
+          ST_SetSRID(ST_MakePoint(${point.lon}, ${point.lat}), 4326)
+        )`,
+  );
+}
+
+/**
  * The curator, with a global scope: every question in the feed is theirs to
  * answer. A local account, verified, so the sign-in dialog admits it; the
  * assignment names the curator as its own assigner, since the fixture has no
@@ -236,6 +283,7 @@ export async function seedE2eFixture(): Promise<void> {
 
     for (const exp of EXPERIENCES) await seedPlace(tx, exp, unesco, 'auto');
     for (const exp of ARRIVALS) await seedPlace(tx, exp, worship, 'pending');
+    await seedRefusedPoint(tx, REFUSED_POINT);
     await seedCurator(tx);
 
     // Explicit ids do not advance the sequences; application writes would
