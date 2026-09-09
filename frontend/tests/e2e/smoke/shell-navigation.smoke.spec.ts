@@ -22,14 +22,18 @@ test.describe('Shell Navigation @smoke', () => {
     await expectPath(page, `/wv/${FIXTURE_WORLD_VIEW}`);
 
     await expect(page.getByRole('heading', { name: 'Track Your Regions' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Map' })).toBeVisible();
+    // `exact`: a role name matches by substring, and maplibre-gl 6 labels its
+    // compass "Drag to rotate map, click to reset north" — a second button
+    // named "Map" on every page that shows the control. Discover shows it, so
+    // the click below resolved to two elements and refused (#849).
+    await expect(page.getByRole('button', { name: 'Map', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Discover' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Discover' }).click();
     await expectPath(page, `/discover/wv/${FIXTURE_WORLD_VIEW}`);
     await expect(page.getByText('Select a category in the tree')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Map' }).click();
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
     await expectPath(page, `/wv/${FIXTURE_WORLD_VIEW}`);
     await expect(page.getByText('Select a region')).toBeVisible();
   });
