@@ -1989,6 +1989,9 @@ kind later decides about the building.
 | POST | `/api/experiences/:id/decline-held` | `{ fields?: string[], parts?: [{ kind, ref, name, fields }], expectedSyncLogId }` — the other answer to a held row (#722, [ADR-0038](../decisions/0038-a-held-proposal-is-answered-per-field.md)): the curator says "not this" to what a gated run proposed, without claiming the field. At least one row, named as the queue named it — the object's own field by name, a part by the kind and the reference and name the record carries, since the record names a part and never identifies it (ADR-0026 decision 4). `expectedSyncLogId` is required — unconditionally here, where publishing requires it only once a held selection is named (#722), because every call to this endpoint answers a held card and a held card always names the run whose proposal it shows. It is compared under the write lock against `pending_change_sync_log_id` and refused rather than substituted. Writes nothing to the experience or its parts — the stored value has already won every run since the gate first held this one — and nothing to `curated_fields`, which is the whole difference from the lever it replaces (edit the field, which claims it, then publish, which skips it). What it writes is the answer, into `experience_held_decisions`, storing **the value**: the queue suppresses the row only while the proposal is jsonb-equal to it, so a source that changes its mind is heard. The pointer is cleared only when nothing on the card is left open. Answers 409 on a stale run, on a proposal the pointer no longer names, and on a row nothing is waiting on. Needs migration 039 applied, or the audit insert violates the `action` CHECK and the whole call 500s |
 | POST | `/api/experiences/:id/publish` | `{ contentsOnly?: true, fieldsOnly?: true, locationIds?: number[], treasureIds?: number[], heldFields?: string[], heldParts?: [{ kind, ref, name, fields }], expectedSyncLogId? }` — say that a reader may see this (ADR-0025). An empty body publishes the object: any held content fields, `curation_state = 'verified'`, `published_at` if the row was `pending`, the pointer cleared, and every unread point and work it holds. `contentsOnly: true` or naming either array is a contents publish, leaving the experience's own state alone — `contentsOnly` for every pending content row, naming an array for exactly those rows. `fieldsOnly: true` is the mirror and closes the first half of #524: it applies what the run proposed for the object's own fields and leaves every unread point and work where it is, so a curator doubting one proposed sentence no longer holds back twelve checked paintings by answering it. It is exclusive with all three contents shapes, since a body naming both halves is asking for the object publish it could have asked for by naming nothing. The trail records which of the three this was — `scope`, one of `object`, `contents` or `fields` — because the numbers cannot say: an object publish over a row holding no unread contents writes the same zeros as a fields-only one. All five are explicit rather than inferred, and the `.refine`s make the alternatives among them exclusive — `fieldsOnly` beside a held selection is deliberately *not* refused, since the selection is already the fields half and restating it has one reading rather than two: leaving everything absent used to be read as "the object", full stop, and a card with no ids to send had no other way to ask for its contents alone. `expectedSyncLogId` is the run the caller's card named, compared under the write lock against `pending_change_sync_log_id`, and only when the call will actually write a held field or the caller named a run at all — a pointer whose one held field is already claimed writes nothing and answers success rather than 409 forever. It may not accompany a contents publish, named or bare, and it is **required** whenever `heldFields` or `heldParts` is named: a per-row answer names the run it answers, so a selection sent without one is a 400 rather than a selection applied against whatever the object happens to hold now. `heldFields`/`heldParts` narrow the fields publish the way the id arrays narrow the contents one (#722): those rows are written, the rest stay open, and what stays open is what keeps the pointer — so publishing one of six leaves the card standing with the other five rather than clearing them unanswered. Naming either makes the call a fields publish, so it is exclusive with the contents shapes and refused on a `pending` row; a selection reaching no open row answers 409. A field the curator claims in `curated_fields` is skipped rather than refused; a row its kind refused answers 409, because admission is asked first (ADR-0025 decision 4) and `override` on the refusal is what publishes it; a point the source has withdrawn is never published, matching the `contents` card. Needs migration 019 applied, or the audit insert violates the `action` CHECK and the whole call 500s. See § Publishing for what it writes and why it does not place |
 | POST | `/api/experiences/categories/:categoryId/publish-waiting` | no body — release everything this source is holding: every unread object as an object publish, every visible object holding unread contents as a contents publish. One transaction and one `published` log row per object. Held field proposals are deliberately left for their own cards. Answers `published[]` (each object with `locationsPublished`, `treasureLinksPublished`/`treasuresPublished` — both axes, since a work passed in one venue and unread in another moves the link and not the row — `withdrawalsReleased`, and with `placementFailed`/`placementFailedWorldViews` where re-placing failed), `refused[]`, `outOfScope` and `heldLeftForReview` — `null` where the count itself failed after the publications had committed — all scoped to the caller. Rate-limited (`authenticatedLimiter`) |
+| POST | `/api/experiences/:id/refuse-arrival` | `{ note? }` — a curator's no to an arrival (#852, [ADR-0053](../decisions/0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md)), written the way a rule's refusal is: `admission = 'refused'`, `admission_reason = 'kept out by a curator'`, the admission pin and the badge cleared, on the membership, under the place's lock; `curation_state` stays `pending`, since nobody passed it. The row leaves the queue for the kept-out list and *Put it back* (`/:id/admission` `override`) publishes it as it always has. Open arrivals only — a rule-refused, passed or withdrawn row is 409 with the reason. Log action `arrival_refused`. Exempt from rate limiting on the verified check: nothing after `client.release()` |
+| POST | `/api/experiences/:id/refuse-contents` | `{ locationIds?, treasureIds?, note? }` — a curator's no to the unread points and works under a visible object, the named ones or all of them: `refused_at = NOW()` on exactly the rows the contents card shows (the same two fragments the card, the count and the publish read), on the *link* for a work rather than the work, so it stays askable at every other venue. A refused part keeps `curation_state = 'pending'` — every reader hides it by the word it already reads — and stops being asked about; a later whole-object publish does not release it. A refused point releases the withdrawal it may have been holding — a moved point's old row, kept on the map until the arrival was answered — through the two statements the publish uses, so the old point asks its own `withdrawn` question rather than standing for ever; answered as `withdrawalsReleased`, and any refusal that reached a point re-places the object after the commit as the publish re-places it — placement's insert carries `refused_at IS NULL`, so a refused point counts toward no region any more (`placementFailed` / `placementFailedWorldViews` where that failed). A `pending` object is 409 and sent to its arrival's card; nothing reached is 409 rather than an empty 200. Log action `contents_refused`, with the counts and the named ids. Carries `authenticatedLimiter` for that placement branch |
+| POST | `/api/experiences/review/answer` | `{ rows: [{ kind, id, runId }] (1–100), answer: 'accept' \| 'reject' \| 'lost' }` — one answer to a page of review rows (#852). `kind` is the queue's own word (`conflict`, `waiting`, `withdrawn`, `refused`, `missing`), `runId` the run the curator saw the question asked by, which the held and conflict writers compare with the pointer under the lock. Each row goes to the `*UnderLock` writer its single-row card calls — `reviewAnswerDispatch.ts` is the table of what each answer does per kind, and a `waiting` row's sub-kinds are read from the membership rather than trusted from the client; `lost` is refused on any row but `missing` and `withdrawn` (every open point of the row, each through the point writer). Scope per object; one transaction and one audit row per object; a row that refuses, throws or is out of scope is one line in the report and the rest are answered. Answers `{ answer, answered: [{ kind, id, name, answer, did }], refused: [{ kind, id, name, error }], outOfScope, placementFailed: [{ id, name, worldViews }] }`, where `did` counts what the answer did (`published`, `locations`, `treasureLinks`, `treasures`, `withdrawalsReleased`, `fields` — the parts' rows counted with the object's — `points`, `pointsRefused`). Carries `authenticatedLimiter`: up to a hundred publishes, and a verdict on a withdrawn row re-places the object once per point |
 | POST | `/api/experiences/new-badges/seen` | `{ experienceIds: number[] }` — records that these chips were shown to the caller. Rate-limited (`authenticatedLimiter`), unlike the curator routes beside it: this is an ordinary authenticated action and the only one here a client sends on its own initiative. Only the first impression per experience is kept; a stale id is ignored rather than failing the call, and the response names what was actually recorded |
 
 ### Geocoding (public + admin)
@@ -3000,6 +3003,36 @@ against the caller's scope. Its whole working set — the order, the search, the
 the question open on the right — is the page's address (`docs/tech/addresses.md` § The review
 page), so a filtered feed is a link and Back undoes a filter.
 
+**A row is a proposal with two answers, and a selection is answered at once** (#852,
+[ADR-0053](../decisions/0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md)).
+Every row carries a box (`ReviewQueueList.tsx`; a sibling of the row's button, so the row stays
+one control): a click ticks it, a shift-click ticks the loaded rows between it and the last one
+clicked, `x` ticks the row the keyboard is on, `Esc` clears; a tri-state box over the list ticks
+the loaded rows and, once a whole page is ticked with more matching, offers *Select all N
+matching* — `N` is the endpoint's `total`. The ticks are `curation/selection/useRowSelection.ts`
+and are transient by design — never a parameter (`addresses.md` says why) — surviving *Show
+more*, dropping a row that left the list, and cleared with a notice when `filterKey` changes.
+While anything is ticked a page-fixed bar (`SelectionBar.tsx`) names the selection by kind
+(`answerWords.ts`: a `waiting` row counts by the sub-kinds it holds) and offers *Accept the
+proposed changes* and *Reject the proposed changes*, each expanding to what it does per kind in
+the words that kind's card uses — the table in `answerWords.ts` is the one both the bar, the
+summary, the confirmation and the cards' own new buttons quote — and *Lost* only for a
+selection wholly of `missing` rows or wholly of `withdrawn` rows; the bench shows a summary
+(`SelectionSummary.tsx`) instead of one card while more than one row is ticked. The rows on
+screen go to `POST /review/answer` in chunks of the page maximum (`answerRows.ts`), progress
+between chunks; an all-matching selection is walked through `fetchReviewQueue` under the
+filters, limit 100: the first page after every answer, since answered rows leave the list, and
+past a page holding nothing untried — refused rows are remembered and skipped — by the queue's
+own cursor, until a page with untried rows turns up or the cursor runs out, so a page of
+stubborn rows never ends the walk with matching rows behind it. A batch within one page asks
+nothing, save the one answer without a take-back (turning down unread contents); past it, or
+all matching, `useAnswerSelection.ts` opens a dialog naming what it will do per
+kind. Afterwards `answerNoticeFor` (`answerNotice.ts`) says what happened in the gate notice's
+shape, through the three clauses `utils/noticeClauses.ts` shares with it; a transport failure
+part-way is `AnswerStopped`, carrying what landed, and the line says which rows may already be
+answered. The batch invalidation (`invalidateAfterBatchPublication`) follows, the queue's key
+included.
+
 **A proposal is a table of facts** (#570). `factRows.ts` turns what the queue carries — `metadata`
 with an object on each side, `location`, `shortDescription` — into rows: one per fact that
 moved, each with its meaning from `fieldMeaning.tsx`, its kind (*new*, *changed*, *removed*)
@@ -3524,6 +3557,51 @@ contents under a row that is already visible. It decides nothing a second time �
 already `verified`, `published_at` does not move, the pointer is already null — but it is not a
 no-op at the row level: it writes a second audit row, and `experiences.updated_at = NOW()` moves
 whether or not anything else does, because the assignment list is fixed rather than diffed.
+
+### A curator's no, and one answer to many rows (#852, ADR-0053)
+
+Publishing was the only answer the gate's arrivals and unread contents had; a review row is a
+proposal with two answers, and `curatorRefusalController.ts` gives those two kinds their no.
+**An arrival is refused the way a rule refuses it**: `refuseArrivalUnderLock` writes
+`admission = 'refused'`, `admission_reason = 'kept out by a curator'`
+(`CURATOR_REFUSAL_REASON`), the admission pin and `CLEAR_ICONIC` on the membership, under the
+place's lock, and leaves `curation_state = 'pending'` — nobody passed it, and ADR-0025 decision
+4 asks that both facts be said. The row leaves the queue for the kept-out list, every later run
+honours the pin, and `override` publishes it as it always has. **Unread contents are refused by
+a mark, never a state**: `refuseContentsUnderLock` sets `experience_locations.refused_at` and
+`experience_treasures.refused_at` on exactly the rows the contents card shows, through the two
+fragments the card reads; the part stays `pending` to every reader, and what changes is the
+question — and, for a point, what a region counts: placement's insert carries `refused_at IS
+NULL` too, so a refused point drops out of `experience_location_regions` when the refusal
+re-places the object after its commit (`placeAfterRelease`, the reason the route carries
+`authenticatedLimiter`), and a point that was holding a replaced pin releases that
+withdrawal on the way, as the publish would have. "Unread and still asked about" is spelled once —
+`unreadPointSql` and `unreadLinkSql` in `waitingCounts.ts` — and composed by
+`contentsOpenSql`, the keys union, the contents card, `contentsWaitingSql` and the three
+`publishContents` statements, so a later whole-object publish cannot release what a curator
+turned down. A point is unread while `curation_state = 'pending' AND refused_at IS NULL`; a
+link on either of its two axes, `(et.curation_state = 'pending' OR t.curation_state = 'pending')
+AND et.refused_at IS NULL`, since the link says the work is *here* and the work says it is a
+work, and either unread keeps the question open. The mark sits on the link, not the work: "not
+this work here" is the link's axis, which is why a refused link is also set `pending` — a
+`verified` link with a refusal mark would read as passed to any reader that forgot the mark.
+Nothing lists refused parts to a curator yet; the take-back is a follow-up and one UPDATE.
+
+`POST /review/answer` (`reviewAnswerController.ts`) answers a page of rows with one answer, and
+`reviewAnswerDispatch.ts` is the table of what each answer does per kind — accept an arrival is
+`publishUnderLock({})`, accept a held row `publishUnderLock({ expectedSyncLogId })`, contents
+alone `{ contentsOnly: true }`; reject an arrival is the refusal above, reject a held row
+`refuseUnderLock(null, runId)` then the contents refusal where contents are open; a conflict is
+`acceptSourceUnderLock` / `declineSourceUnderLock` with `'all'`, every open field resolved
+under the lock; a refusal is `answerAdmissionUnderLock` (`override` / `confirm`); `missing` and
+`withdrawn` take the verdict the answer names through `answerStateUnderLock` and
+`answerLocationStateUnderLock`, with the `expected` block an open row means, `withdrawn` once
+per open point. Every arm is the `*UnderLock` function the single-row card calls — the five
+that were Express handlers were split at #852's first commit — so the batch decides nothing of
+its own and re-asks the writer's question under the writer's lock. Measured on the development
+catalogue on 2026-09-09: an accepted arrival's points were placed when written (ADR-0025
+decision 5), so publishing the 1 078 worship arrivals triggers no placement; the cost is the
+publish transaction per object.
 
 ### Overriding a refusal is the other half (ADR-0025 § 4.5)
 

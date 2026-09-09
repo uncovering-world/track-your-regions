@@ -127,6 +127,18 @@ decision 5.
 | `aside=show` | Show the batches this curator has set aside, which are otherwise out of the list. Picking a set-aside run in the Run chip turns it on with the filter, in one write: that chip counts its runs before the set-aside rows are dropped, so the batch it offers would otherwise be filtered to a list the page hides |
 | `row=waiting:126` | The question open on the right, by the list's own key |
 
+**The ticks are not a parameter** (#852). A curator can tick many rows and answer them
+at once, and the ticks are deliberately transient — component state, cleared when a
+filter or the search changes, never written to the address. The filters, the order and
+the open row name a *list* and a *question*, which a link should reopen; a set of ticks
+names work in progress, which a link must not replay onto whoever follows it, and Back
+through forty ticks would be forty steps. They survive *Show more* (the rows stay, the
+ticks stay) and a reorder, and go with a notice when the list they were made against is
+replaced. "All N matching these filters" is the one selection the address *does* describe,
+because it is exactly the filtered list — and it is walked through the queue's own
+filtered read — the first page after every answer, and past a page holding nothing
+untried by the queue's own cursor — rather than sent as keys.
+
 The address in the table at the top of this page is a real one as of
 2026-09-07: `waiting:126` is Cologne Cathedral, which run 98 asked about by
 proposing its inscription criteria, and `q=cologne` and `kind=held` are two of

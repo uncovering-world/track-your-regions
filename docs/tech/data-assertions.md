@@ -156,7 +156,11 @@ in no region. Both are debt today, and reading the rows as a traveller says why
 — Aldabra Atoll, the Great Barrier Reef, Cordouan Lighthouse in the Gironde
 estuary, four of the D-Day beaches. Water. A boundary set built from land
 polygons has nowhere to put them (#470), and a point a few metres outside a
-coastline has the same problem for a different reason (#469).
+coastline has the same problem for a different reason (#469). One kind of offered
+place is left out of the second assertion on purpose: a point a curator turned
+down (ADR-0053) is still offered on the source's terms but never to be
+published, and placement gives it no row for that reason — so the check carries
+`refused_at IS NULL`, or every refusal would read as a placement run that failed.
 
 The five geometry rules exist because defects keep being found by a person
 looking at a map and by nothing else in the repository (#668): three regions

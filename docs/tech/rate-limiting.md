@@ -69,7 +69,7 @@ what goes stale when a route is added to the row below (it has already happened 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions`, `POST /api/admin/sync/categories/:categoryId/fix-images` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId`, `POST /api/experiences/review/answer`, `POST /api/experiences/:id/refuse-contents` |
 
 The catalogue checks split across both buckets on the same rule, and the split is
 the point. `GET /api/admin/data-assertions` runs a statement per assertion over
@@ -228,6 +228,28 @@ cost scales with the source's backlog instead of with the request, and it can
 reach the post-commit placement on any of them. Named in full rather than as "the
 same limiter" — the sentence used to sit at the end of the paragraph above, where
 the nearest antecedent was the gate switch, a route that carries none.
+
+`POST /api/experiences/review/answer` (#852) carries `authenticatedLimiter` on the
+same criterion with the same force: it answers up to a page of review rows — the
+queue's own maximum of 100 — each through the writer its single-row card calls,
+one transaction per object, and five of those writers reach the post-commit
+placement: a publish or an overriding admission verdict can release a deferred
+withdrawal, an accepted source coordinate moves a pin, a verdict on a
+withdrawn row places the object once per point it answers, and a rejected
+row holding an unread point re-places the object, since a turned-down point
+counts toward no region any more.
+Sixty a minute bounds a runaway client at 6 000 objects a minute and is invisible
+to a curator, whose all-matching walk sends one request per hundred rows. The
+two single-row refusals beside it (ADR-0053) part on the same check. `POST
+/:id/refuse-arrival` joins the verified-exempt list: one membership row inside
+one transaction, touching nothing a reader sees — the row was hidden already —
+and ending at `res.json` with nothing after its `client.release()`. `POST
+/:id/refuse-contents` carries `authenticatedLimiter`, for the branch
+`/:id/publish` is limited for: a refused point counts toward no region any more
+(placement's insert carries `refused_at IS NULL`, ADR-0053) and releases the
+withdrawal it was holding, which takes an old pin off the map (`missing_since`
+on a row readers could see) — so the object is re-placed into every world view
+with geometry after the commit, through the same `placeAfterRelease`.
 
 CodeQL raises `js/missing-rate-limiting` on every route this section exempts, on
 either router — the curator ones in `experienceRoutes.ts` and the admin ones in

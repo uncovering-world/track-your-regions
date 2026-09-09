@@ -115,6 +115,7 @@ Reusable UI components live in `frontend/src/components/shared/`, shared utiliti
 - Used from both Map mode (`ExperienceList.tsx`) and Discover mode (`DiscoverExperienceView.tsx`, `DiscoverPage.tsx`)
 - Rejection filtering: `getExperiencesByRegion` excludes rejected items (descendant-aware for `includeChildren`), `getExperienceRegionCounts` excludes from tree counts
 - `requireCurator` middleware checks role; admins have implicit curator powers
+- A review row is a proposal with two answers (#852, ADR-0053): `reviewAnswerDispatch.ts` is the table of what accept and reject do per kind, and every arm calls the `*UnderLock` writer the single-row card calls — a batch never decides with statements of its own. A curator's no to an arrival is written as a rule's refusal is; a no to an unread part is `refused_at`, never a fourth `curation_state` (every reader hides by `<> 'pending'`); "unread and still asked about" is `unreadPointSql` / `unreadLinkSql` in `waitingCounts.ts`, composed by the queue and the publish alike
 
 ### Refactoring Hygiene
 When modifying code, always clean up leftovers from the change:
