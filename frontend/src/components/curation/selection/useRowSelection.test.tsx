@@ -81,6 +81,19 @@ describe('useRowSelection', () => {
     expect(result.current.keys.has('missing:5')).toBe(true);
   });
 
+  it('does not re-tick the new list when a filter change out of all matching lands with its rows', () => {
+    // A filter visited in the last minute answers from the cache in the same
+    // render as the key change, so the rows and the filter move in one commit;
+    // the prune effect must not read the render-time all-matching flag and
+    // tick the new list right after the notice said the ticks were cleared.
+    const { result, rerender, onCleared } = renderSelection();
+    act(() => result.current.selectAllMatching());
+    rerender({ rows: [row('refused:9'), row('refused:10')], filterKey: 'b' });
+    expect(onCleared).toHaveBeenCalledWith(4);
+    expect(result.current.allMatching).toBe(false);
+    expect(result.current.keys.size).toBe(0);
+  });
+
   it('drops a tick whose row left the list, and keeps the rest through Show more', () => {
     const { result, rerender } = renderSelection();
     act(() => result.current.toggle('waiting:1'));
