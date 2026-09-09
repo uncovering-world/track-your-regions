@@ -622,6 +622,24 @@ export const experienceAdmissionBodySchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
+/**
+ * A selection of review rows and one answer for all of them (#852).
+ *
+ * A row is what a click sends: which row — the queue's own kind word and the
+ * object — and the run the curator saw it asked by, which the held and
+ * conflict writers compare with the pointer under the lock. Bounded by the
+ * queue's page maximum: a selection past one page is walked by the client a
+ * page at a time, so progress is reported and the route never takes a filter.
+ */
+export const reviewAnswerBodySchema = z.object({
+  rows: z.array(z.object({
+    kind: z.enum(['conflict', 'waiting', 'withdrawn', 'refused', 'missing']),
+    id: z.number().int().positive().max(2147483647),
+    runId: z.number().int().positive().max(2147483647).nullable().optional(),
+  })).min(1).max(100),
+  answer: z.enum(['accept', 'reject', 'lost']),
+});
+
 /** A curator keeping out an arrival (#852, ADR-0053): the note is all there is to send. */
 export const refuseArrivalBodySchema = z.object({
   note: z.string().max(1000).optional(),
