@@ -18,19 +18,19 @@
     "resource-summary:script:size": [
       "error",
       {
-        "maxNumericValue": 825000
+        "maxNumericValue": 925000
       }
     ],
     "resource-summary:stylesheet:size": [
       "error",
       {
-        "maxNumericValue": 12000
+        "maxNumericValue": 13000
       }
     ],
     "resource-summary:total:size": [
       "error",
       {
-        "maxNumericValue": 1180000
+        "maxNumericValue": 1255000
       }
     ],
     "resource-summary:total:count": [

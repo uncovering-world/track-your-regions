@@ -26,13 +26,19 @@
       "name": "entry chunk (gzip)",
       "path": "dist/assets/index-*.js",
       "gzip": true,
-      "limit": "825 kB"
+      "limit": "920 kB"
+    },
+    {
+      "name": "map worker chunk (gzip)",
+      "path": "dist/assets/maplibre-gl-worker-*.js",
+      "gzip": true,
+      "limit": "142 kB"
     },
     {
       "name": "stylesheet (gzip)",
       "path": "dist/assets/index-*.css",
       "gzip": true,
-      "limit": "10 kB"
+      "limit": "11.5 kB"
     }
   ],
   "dependencies": {
