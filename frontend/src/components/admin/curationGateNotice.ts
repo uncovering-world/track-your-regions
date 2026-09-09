@@ -18,7 +18,7 @@
 
 import { type publishWaiting } from '../../api/admin';
 import { plural } from '../../utils/plural';
-import { worldViewList } from '../../utils/worldViewList';
+import { outOfScopeClause, refusalClauses, stalePlacementClause } from '../../utils/noticeClauses';
 
 type PublishWaitingResult = Awaited<ReturnType<typeof publishWaiting>>;
 
@@ -48,65 +48,16 @@ function openingClause(result: PublishWaitingResult): string {
 }
 
 /**
- * One clause per distinct reason, naming the objects it applies to.
- *
- * The reasons are not interchangeable: the endpoint sends the server's 409 text for a
- * row holding a newer proposal and a generic "failed — open it" for a thrown database
- * error. Naming one of five can therefore explain a deadlock while the other four are
- * stale proposals, and the curator opens the wrong object first. Five names per
- * reason, then a count — safe here because its list is in the same sentence.
+ * Publications that landed with their regions left stale, named rather than counted
+ * — the shared clause, fed the shape this response carries. The same sentence the
+ * single-object card says, through the same helper: a second implementation of it
+ * rendered "world view null" for the shape the server sends when *listing* the world
+ * views is what failed.
  */
-function refusalClauses(refused: PublishWaitingResult['refused']): string[] {
-  const byReason = new Map<string, string[]>();
-  for (const r of refused) byReason.set(r.error, [...(byReason.get(r.error) ?? []), r.name]);
-  return [...byReason].map(([reason, names]) => {
-    const rest = names.length > 5 ? ` and ${names.length - 5} more` : '';
-    const shown = `${names.slice(0, 5).join(', ')}${rest}`;
-    // Quoted and attributed rather than spliced in after a count, because every
-    // message `publishUnderLock` produces is phrased for one row ("This row is
-    // holding a proposal from a different run — reload to see it"). Reading that
-    // after "2 objects refused —" makes it a claim about a row that is not named,
-    // and the colon it used to sit behind followed a sentence that already ended in
-    // an instruction.
-    // Terminated here, because `noticeFor` joins clauses with a single space and the
-    // server's reason carries no full stop of its own — without these the next clause
-    // ran on from "reload to see it 3 objects outside your scope".
-    if (names.length === 1) return `${shown} refused — ${reason}.`;
-    return `${plural(names.length, 'object')} refused — ${shown}. Each: “${reason}”.`;
-  });
-}
-
-/**
- * Publications that landed with their regions left stale, named rather than counted.
- *
- * Rebuilding a world view is an admin's job, so the one useful thing a curator can do
- * is say which object and which world views — a bare count reduces them to
- * "something about regions failed".
- */
-function stalePlacementClause(published: PublishWaitingResult['published']): string[] {
-  const stale = published.filter(o => o.placementFailed);
-  if (stale.length === 0) return [];
-  // The same sentence the single-object card says, through the same helper: a second
-  // implementation of it rendered "world view null" for the shape the server sends
-  // when *listing* the world views is what failed, and dropped the id from the shape
-  // that works — in the one sentence whose purpose is to be handed to an admin.
-  //
-  // `in` rather than brackets: `worldViewList` returns `Name (world view N)` and joins
-  // several with commas, so wrapping it put a comma-separated list inside parentheses
-  // inside a semicolon-separated list — "Prado (GADM (world view 1), Continents (world
-  // view 4)); Rijksmuseum (…)" asks the reader which bracket closes what. The card this
-  // clause matches keeps it to one level.
-  const named = stale.map(o => `${o.name} in ${worldViewList(o.placementFailedWorldViews)}`);
-  // Capped like the refusal clause, and this is the list that needs it more: a
-  // refusal is per-row and racy, so a run landing mid-batch touches a few, while a
-  // placement failure is systemic — one broken world view fails every object the
-  // batch releases, so this clause is the one that can reach 1272 names.
-  const rest = named.length > 5 ? ` and ${named.length - 5} more` : '';
-  return [
-    `${plural(stale.length, 'object')} published but could not be re-placed into `
-    + `${stale.length === 1 ? 'its' : 'their'} regions — ${named.slice(0, 5).join('; ')}${rest}. `
-    + 'Tell an admin.',
-  ];
+function staleClause(published: PublishWaitingResult['published']): string[] {
+  return stalePlacementClause(
+    published.filter(o => o.placementFailed).map(o => ({ name: o.name, worldViews: o.placementFailedWorldViews })),
+  );
 }
 
 /**
@@ -182,13 +133,8 @@ export function noticeFor(result: PublishWaitingResult): string {
     ...withdrawalClause(result.published),
     ...refusalClauses(result.refused),
   ];
-  // Through `plural` like every sibling clause: this is the one sentence whose only
-  // reader is a region-scoped curator, so it is the one that most needs to say *what*
-  // was left alone rather than handing them a bare number between two other counts.
-  if (result.outOfScope > 0) {
-    parts.push(`${plural(result.outOfScope, 'object')} outside your scope, left alone.`);
-  }
-  parts.push(...stalePlacementClause(result.published));
+  parts.push(...outOfScopeClause(result.outOfScope));
+  parts.push(...staleClause(result.published));
   if (result.heldLeftForReview === null) {
     // The count failed after the publications committed, so the reply arrived without
     // it. Points at where the number lives rather than promising one will be there: the
