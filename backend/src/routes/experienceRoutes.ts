@@ -39,6 +39,7 @@ import {
   publishWaiting,
   refuseArrival,
   refuseContents,
+  answerReviewRows,
   markNewBadgesSeen,
 } from '../controllers/experience/index.js';
 import { requireAuth, requireCurator, optionalAuth } from '../middleware/auth.js';
@@ -59,6 +60,7 @@ import {
   experienceAdmissionBodySchema,
   refuseArrivalBodySchema,
   refuseContentsBodySchema,
+  reviewAnswerBodySchema,
   newBadgesSeenBodySchema,
   lifecycleStateBodySchema,
   editLocationBodySchema,
@@ -155,6 +157,13 @@ router.get('/review/queue', requireAuth, requireCurator, validate(reviewQueueQue
 // be read as an id the way `/:id/state` below could otherwise mistake it for.
 router.put('/review/set-aside/:syncLogId', authenticatedLimiter, requireAuth, requireCurator, validate(syncLogIdParamSchema, 'params'), setRunAside);
 router.delete('/review/set-aside/:syncLogId', authenticatedLimiter, requireAuth, requireCurator, validate(syncLogIdParamSchema, 'params'), bringRunBack);
+// A selection of rows, one answer (#852): the batch form of every single-row
+// answer above and below, answering each object through the writer its own
+// card calls, one transaction and one audit row per object. Rate-limited on
+// § 5's criterion with `publish-waiting`'s force — up to a hundred publishes,
+// and a verdict on a withdrawn point re-places the object after its commit,
+// once per point. Two segments under `review/`, so `/:id/…` cannot take it.
+router.post('/review/answer', authenticatedLimiter, requireAuth, requireCurator, validate(reviewAnswerBodySchema), answerReviewRows);
 router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(lifecycleStateBodySchema), setExperienceState);
 // The same question about one point inside the object (ADR-0026, #541). Three
 // segments, so it cannot collide with `/:id/state` above.
