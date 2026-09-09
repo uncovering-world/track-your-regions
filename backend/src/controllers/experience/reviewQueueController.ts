@@ -24,6 +24,7 @@ import {
 import {
   heldPartsSelectSql, queryAnsweredWithdrawals, queryContents, queryWithdrawn,
 } from './reviewQueueContents.js';
+import { queryRefusedParts } from './reviewQueueRefusedParts.js';
 import {
   QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys,
 } from './reviewQueueKeys.js';
@@ -47,6 +48,7 @@ interface ReviewQueueQuery {
   limit?: number;
   keptOutOffset?: number;
   answeredWithdrawalsOffset?: number;
+  refusedPartsOffset?: number;
 }
 
 /** The words a `kind` chip may carry: the five classes and the three sub-kinds. */
@@ -93,9 +95,9 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
  * The decisions waiting for a curator, scoped to what they cover.
  * GET /api/experiences/review/queue
  *   ?q=&source=&kind=&region=&run=&aside=&sort=&cursor=&limit=
- *   &keptOutOffset=&answeredWithdrawalsOffset=
+ *   &keptOutOffset=&answeredWithdrawalsOffset=&refusedPartsOffset=
  *
- * Seven kinds of open question, and two lists that are not questions at all:
+ * Seven kinds of open question, and three lists that are not questions at all:
  *
  * - **gone from the source** — a run stamped `missing_since` and stopped there.
  *   Users still see the object exactly as before; nothing about it changes
@@ -139,10 +141,11 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
  *   is, and it is answered at a different endpoint —
  *   `POST /locations/:locationId/state`.
  *
- * `keptOut` and `answeredWithdrawals` are the exception to all of it: those rows
- * are answered, not waiting, and are carried here only because nowhere else can
- * show them — one at the level of an object a rule kept out, one at the level of
- * a point a curator answered and thereby left on no screen (#544).
+ * `keptOut`, `answeredWithdrawals` and `refusedParts` are the exception to all of
+ * it: those rows are answered, not waiting, and are carried here only because
+ * nowhere else can show them — one at the level of an object a rule kept out, one
+ * at the level of a point a curator answered and thereby left on no screen (#544),
+ * one at the level of a point or work a curator turned down (#859).
  *
  * **The page is chosen before it is drawn** (ADR-0051 decision 2). The seven
  * questions are one list: `queryQueueKeys` orders every kind by the date of the
@@ -156,9 +159,9 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
  * id beside it. `total` and `facets` are counted over the union under the
  * filter, so the page no longer has to say "the first N of this kind, and there
  * may be more".
- * `keptOut` and `answeredWithdrawals` are outside all of that and keep their own
- * offsets: they are not open questions, carry no date to order the union by, and
- * are not in it. Two of the filters still reach them, as predicates of their own
+ * `keptOut`, `answeredWithdrawals` and `refusedParts` are outside all of that and
+ * keep their own offsets: they are not open questions, carry no date to order the
+ * union by, and are not in it. Two of the filters still reach them, as predicates of their own
  * on the object's row — the source chip and the search, because a curator
  * narrowing the queue to one source or looking for one object by name means the
  * whole page. The region, the run and the set-aside do not: a run is what a
@@ -171,15 +174,16 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const query = req.query as ReviewQueueQuery;
   const limit = Number(query.limit ?? QUEUE_PAGE_SIZE);
   const filters = queueFilters(query, limit);
-  // The two lists that are not open questions keep an offset each, and need one
+  // The three lists that are not open questions keep an offset each, and need one
   // for the reason every kind used to: the page renders them in blocks of their
-  // own, so a shared number would page one whenever a curator paged the other.
+  // own, so a shared number would page one whenever a curator paged another.
   const offsets = {
     keptOut: query.keptOutOffset ?? 0,
     answeredWithdrawals: query.answeredWithdrawalsOffset ?? 0,
+    refusedParts: query.refusedPartsOffset ?? 0,
   };
 
-  // Those two ask for one row more than the page, so "is there another page" is
+  // Those three ask for one row more than the page, so "is there another page" is
   // answered by the rows themselves rather than by a second count. The seven
   // questions do not: the keys phase pages them, and counts them — `total` and
   // the facets are counted under the filter the curator set, which is what lets
@@ -202,7 +206,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
 
   // The source chip, as a predicate on the row's own source. Redundant on the
   // seven kinds below — their ids come from the keys phase, which applied it
-  // already — and load-bearing on the two lists that are not open questions and
+  // already — and load-bearing on the three lists that are not open questions and
   // are therefore not in that phase: without it a curator narrowing the queue to
   // one source would still be shown every other source's kept-out rows.
   //
@@ -256,7 +260,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
    * race with a run, not a disagreement.
    *
    * Every kind carries the object fragment, so every kind goes through the same
-   * danger mapping the reader-facing reads use — as do the two answered lists
+   * danger mapping the reader-facing reads use — as do the three answered lists
    * through `paged` above: `in_danger` as a boolean and the listing's year as
    * `danger_since`, never the raw "Y 2003".
    */
@@ -645,15 +649,29 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     offset: offsets.answeredWithdrawals,
   });
 
+  // The parts a curator turned down (#859): the third list that is not an open
+  // question, and the one ADR-0053 left owing. It names a curator too, so it
+  // takes the log's scope predicate and the search on the same terms as the one
+  // above.
+  const refusedParts = await queryRefusedParts({
+    ...queryContext,
+    params: answeredParams,
+    nameFilter,
+    logScopeFilter,
+    pageSize,
+    offset: offsets.refusedParts,
+  });
+
   const keptOutPage = paged(keptOut.rows);
   const answeredPage = paged(answeredWithdrawals.rows);
+  const refusedPartsPage = paged(refusedParts.rows);
 
   // The arrays keep their names and their place at the top level — every reader of this
   // response indexes them by kind. What is new sits beside them: `order` is the page as
   // the keys phase chose it, which is the list the client actually draws (an array is
   // then a lookup by id, not an order of its own); `total` and `facets` are counted over
   // the union under the filter; and `paging` is the one cursor the seven kinds share,
-  // beside the two offsets that are not part of it.
+  // beside the three offsets that are not part of it.
   res.json({
     missing,
     refused,
@@ -664,6 +682,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     contents,
     withdrawn,
     answeredWithdrawals: answeredPage.items,
+    refusedParts: refusedPartsPage.items,
     limit,
     order: keys.map(k => ({
       kind: k.kind, id: k.id, askedAt: k.askedAt, runId: k.runId, subs: k.subs,
@@ -676,6 +695,9 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       keptOut: { offset: offsets.keptOut, hasMore: keptOutPage.hasMore },
       answeredWithdrawals: {
         offset: offsets.answeredWithdrawals, hasMore: answeredPage.hasMore,
+      },
+      refusedParts: {
+        offset: offsets.refusedParts, hasMore: refusedPartsPage.hasMore,
       },
     },
   });

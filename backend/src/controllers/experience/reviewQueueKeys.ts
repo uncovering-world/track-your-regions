@@ -367,10 +367,10 @@ function cursorSql(sort: 'date' | 'question', at: string, rank: string, id: stri
  * for every name; the backslash is escaped too, or escaping the other two would
  * be undone by a name that ends in one.
  *
- * Exported because the search reaches three statements and not one: the union
- * here, and the two answered lists that are outside it
+ * Exported because the search reaches four statements and not one: the union
+ * here, and the three answered lists that are outside it
  * (`reviewQueueController.ts` § keptOut, `reviewQueueContents.ts` §
- * queryAnsweredWithdrawals). A second spelling of the escaping is how they
+ * queryAnsweredWithdrawals, `reviewQueueRefusedParts.ts`). A second spelling of the escaping is how they
  * would come to disagree about what `100%` means.
  */
 export function likeParam(q: string): string {

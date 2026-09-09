@@ -23,8 +23,11 @@ vi.mock('../../db/index.js', () => ({
 import { pool } from '../../db/index.js';
 import { getReviewQueue } from './reviewQueueController.js';
 import { admissionPinnedSql, membershipAdmittedSql } from '../../db/membership.js';
-import { hidePendingSql, hideRefusedSql, offeredLocationSql } from './experienceLifecycle.js';
+import {
+  hidePendingSql, hideRefusedSql, offeredLinkSql, offeredLocationSql,
+} from './experienceLifecycle.js';
 import { CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
+import { contentsAnswerableSql } from './waitingCounts.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -203,7 +206,7 @@ describe('getReviewQueue', () => {
     }
   });
 
-  it('narrows the two answered lists by the source chip and by the search', async () => {
+  it('narrows the three answered lists by the source chip and by the search', async () => {
     // Those two are outside the keys phase, so a filter that does not reach them
     // here does not reach them at all: a curator looking for one object by name
     // was shown every other object's kept-out row beside it.
@@ -352,12 +355,12 @@ describe('getReviewQueue', () => {
       .toBe(false);
   });
 
-  it('asks for one row more than the page on the two lists that still page', async () => {
+  it('asks for one row more than the page on the three lists that still page', async () => {
     const res = makeRes();
     // Exactly `limit + 1` rows come back: the extra one is the answer to "is there more",
-    // and it must not reach the caller as an item. `keptOut` and `answeredWithdrawals`
-    // are the only lists that ask it now — they are not open questions, so the keys
-    // phase does not page them and they keep an offset and a page size of their own.
+    // and it must not reach the caller as an item. `keptOut`, `answeredWithdrawals` and
+    // `refusedParts` are the only lists that ask it — they are not open questions, so the
+    // keys phase does not page them and they keep an offset and a page size of their own.
     mockQueue(sql => (sql.includes("'kept-out' AS kind")
       ? Array.from({ length: 4 }, (_, i) => ({ id: i }))
       : []));
@@ -368,10 +371,13 @@ describe('getReviewQueue', () => {
     expect(answered.keptOut).toHaveLength(3);
     expect(answered.paging.keptOut).toEqual({ offset: 0, hasMore: true });
     expect(answered.paging.answeredWithdrawals).toEqual({ offset: 0, hasMore: false });
-    // And both asked for `limit + 1`. The mock answers with four rows whatever it is
+    expect(answered.paging.refusedParts).toEqual({ offset: 0, hasMore: false });
+    // And all three asked for `limit + 1`. The mock answers with four rows whatever it is
     // asked, so without this the page size could regress to `limit` and the three items
     // plus `hasMore: true` above would still be produced — by the mock, not the code.
-    for (const anchor of ["'kept-out' AS kind", "'withdrawn-answered' AS kind"]) {
+    for (const anchor of [
+      "'kept-out' AS kind", "'withdrawn-answered' AS kind", "'contents-refused' AS kind",
+    ]) {
       const [, params] = callMatching(anchor);
       expect(params.at(-2)).toBe(4);
     }
@@ -1182,10 +1188,123 @@ describe('getReviewQueue', () => {
       ]);
       // Its own offset, and it needs one for the same reason `keptOut` does: the
       // page renders this list in a block of its own, so a shared number would
-      // page it whenever a curator paged the work. The two of them are the only
+      // page it whenever a curator paged the work. The three of them are the only
       // lists left with an offset — the questions are paged by one cursor now.
       expect(body.paging.answeredWithdrawals).toEqual({ offset: 25, hasMore: false });
       const [, params] = callMatching("'withdrawn-answered' AS kind");
+      expect(params[params.length - 1]).toBe(25);
+    });
+  });
+
+  /**
+   * The parts a curator turned down (#859), the third list that is not a question.
+   *
+   * ADR-0053 wrote the refusal of an unread point or work as a mark and recorded
+   * that nothing listed it: a mis-click could be found only in the curation log
+   * and undone nowhere. This is the list that closes it, and it has to behave
+   * like its two neighbours or the page cannot page it.
+   */
+  describe('a point or work the curator turned down', () => {
+    it('asks for every marked row, including one the source has stopped offering', async () => {
+      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+      const [sql] = callMatching("'contents-refused' AS kind");
+      expect(sql).toContain('el.refused_at IS NOT NULL');
+      expect(sql).toContain('et.refused_at IS NOT NULL');
+      // The mark alone. A refused part is always `pending`, and the withdrawn
+      // card asks for `curation_state <> 'pending'` — so a refused part the
+      // source then drops raises no card of its own, and an offered term here
+      // would leave it on no screen at all with its answer unanswerable. The row
+      // carries `missingSince` and says so instead.
+      //
+      // Anchored inside each lateral rather than on the statement, for the reason
+      // the contents case above gives at length: `offeredLinkSql` is legitimately
+      // elsewhere in this text — `objectContextSelectSql`'s `counted_works_total`
+      // composes it — and a `.not.toContain` over the whole thing would be a guard
+      // that can never fail.
+      const points = sql.slice(sql.indexOf('FROM experience_locations el'));
+      expect(points.slice(0, points.indexOf(') el'))).not.toContain(offeredLocationSql('el'));
+      const works = sql.slice(sql.indexOf('FROM experience_treasures et\n        JOIN treasures t'));
+      expect(works.slice(0, works.indexOf(') t'))).not.toContain(offeredLinkSql('et'));
+      expect(sql).toContain("'missingSince', missing_since");
+    });
+
+    it('names who turned it down by the instant the refusal wrote, under the log scope', async () => {
+      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+      const [sql] = callMatching("'contents-refused' AS kind");
+      // The mark and the log row are written in one transaction, and now() is one
+      // value for a whole transaction, so the instant is the join. Matching the ids
+      // the log row carries would name nobody for the batch answer, which writes
+      // its refusals without naming any — and that is the answer a run of a
+      // thousand arrivals is turned down by.
+      expect(sql).toContain('log.created_at = el.refused_at');
+      expect(sql).toContain('log.created_at = et.refused_at');
+      expect(sql).toContain("log.action = ANY($");
+      // Scoped in the select list, never in the WHERE: there it would pick the
+      // newest act this reader may see and compose a sentence no single act
+      // performed.
+      expect(sql).toMatch(/SELECT CASE WHEN [\s\S]*? THEN u\.display_name END/);
+      // The note is scoped the same way, and unlike the answered-withdrawals list
+      // it has to be: that one reads its note from a column on the row, this one
+      // from the act, and an act carries the region it was made in. Unscoped, a
+      // curator of one region would be shown what a curator of another wrote.
+      expect(sql).toMatch(/SELECT CASE WHEN [\s\S]*? THEN log\.details->>'note' END/);
+    });
+
+    it('names the objects holding one before the laterals run', async () => {
+      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+      const [sql] = callMatching("'contents-refused' AS kind");
+      // A CROSS JOIN LATERAL has already run by the time a WHERE term is applied,
+      // so without this gate the statement aggregates nothing once per object on
+      // every read of the page — measured at ~100 ms over 2749 objects against the
+      // 19 ms of the one-lateral list beside it, on a catalogue holding no refused
+      // part at all. MATERIALIZED is what stops the planner folding it back.
+      expect(sql).toContain('refused_part_holders AS MATERIALIZED');
+      expect(sql).toContain('FROM refused_part_holders h');
+      expect(sql).toContain('JOIN experiences e ON e.id = h.id');
+    });
+
+    it('lets the writer decide whether the take-back is offered at all', async () => {
+      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+      const [sql] = callMatching("'contents-refused' AS kind");
+      // The writer's own fragment, not a second spelling of it: a card offering a
+      // button the writer refuses is a dead end with nothing on it to act on, and
+      // two spellings of "may this be asked about again" is how one comes to.
+      expect(sql).toContain(contentsAnswerableSql('e', 'answerable_m'));
+      expect(sql).toContain('AS takeable');
+      // The columns beside it choose the sentence — each cause has its own card.
+      expect(sql).toContain('answerable_m.admission AS object_admission');
+      expect(sql).toContain('answerable_m.curation_state AS object_curation_state');
+    });
+
+    it('caps each kind and says how many there are', async () => {
+      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+      const [sql] = callMatching("'contents-refused' AS kind");
+      // Twice, not once: the row carries two lists and each aggregate caps its own,
+      // so a single `toContain` would stay green with either cap deleted.
+      expect(sql.split(`FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN})`)).toHaveLength(3);
+      expect(sql).toContain('points.total AS refused_points_total');
+      expect(sql).toContain('works.total AS refused_works_total');
+    });
+
+    it('returns them under their own key, with their own pager', async () => {
+      const res = makeRes();
+      mockQueue(sql => (sql.includes("'contents-refused' AS kind")
+        ? [{ id: 6188, name: "Musée d'Orsay" }]
+        : []));
+
+      await getReviewQueue({ user: ADMIN, query: { refusedPartsOffset: 25 } } as never, res as never);
+
+      const body = res.json.mock.calls[0][0];
+      expect(body.refusedParts).toEqual([
+        expect.objectContaining({ id: 6188, name: "Musée d'Orsay" }),
+      ]);
+      expect(body.paging.refusedParts).toEqual({ offset: 25, hasMore: false });
+      const [, params] = callMatching("'contents-refused' AS kind");
       expect(params[params.length - 1]).toBe(25);
     });
   });
