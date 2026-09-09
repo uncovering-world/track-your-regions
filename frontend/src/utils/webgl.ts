@@ -3,14 +3,28 @@
  *
  * MapLibre GL draws every map through WebGL — including the surfaces whose
  * tiles are plain raster PNG, so "our tiles are raster" is not a reprieve. When
- * no context can be created its constructor *throws* `Failed to initialize
- * WebGL` (`maplibre-gl@4.7`, `Map._setupPainter`), and the app has no error
- * boundary, so an unguarded map surface takes the React tree down with it
- * rather than degrading.
+ * no context can be created its constructor *throws* — a `GPUInitializationError`
+ * (`maplibre-gl@6.8`, `Map._setupPainter`) — and the app has no error boundary,
+ * so an unguarded map surface takes the React tree down with it rather than
+ * degrading.
+ *
+ * **WebGL 2, and only WebGL 2.** maplibre-gl 6 dropped WebGL 1 entirely, and its
+ * painter setup is now a single request with no fallback:
+ *
+ * ```js
+ * const gl = this._canvas.getContext('webgl2', attrs);
+ * if (!gl) throw new GPUInitializationError(attrs, creationEvent);
+ * ```
+ *
+ * Through 4.x it asked for `webgl2` and settled for `webgl`, and so did this
+ * probe. A browser that offers only WebGL 1 — the shape a hardware-blocklisted
+ * driver or an old device leaves — was drawn maps then and is refused one now,
+ * so the probe has to refuse it too: answering yes here would put the
+ * constructor's throw back on the screen it was written to keep it off.
  *
  * MapLibre removed the `supported()` helper it had in v2, so the probe is ours.
- * It requests the same contexts in the same order the library does, which is
- * what keeps it from answering yes where the library would still fail.
+ * It requests the same context the library does, which is what keeps it from
+ * answering yes where the library would still fail.
  *
  * ADR-worthy alternative deliberately not taken here: a second, raster
  * renderer. Issue #477 tracks that. Until it exists, callers use this to render
@@ -34,8 +48,7 @@ export function isWebGLAvailable(): boolean {
 function probeWebGL(): boolean {
   try {
     const canvas = document.createElement('canvas');
-    const gl: RenderingContext | null =
-      canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    const gl: RenderingContext | null = canvas.getContext('webgl2');
     if (!gl) return false;
 
     releaseProbeContext(gl);
