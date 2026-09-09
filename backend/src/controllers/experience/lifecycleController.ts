@@ -30,6 +30,25 @@ import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 type Membership = 'present' | 'former';
 type Existence = 'extant' | 'lost';
 
+/** What a curator sends about an object's lifecycle, and the row they were looking at. */
+export interface StateAnswer {
+  membership?: Membership;
+  existence?: Existence;
+  note?: string;
+  expected: { membership: Membership; existence: Existence; flagged: boolean };
+}
+
+/**
+ * Why a writer under the lock could not answer, with the HTTP status the
+ * single-row route sends and the payload it sends with it. A batch (#852)
+ * reads the same shape and reports it per object instead.
+ */
+export interface AnswerRefusal {
+  status: number;
+  error: string;
+  [detail: string]: unknown;
+}
+
 /**
  * Record what a curator decided about an object's lifecycle.
  * POST /api/experiences/:id/state
@@ -49,18 +68,15 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
   const experienceId = parseInt(String(req.params.id));
   const userId = req.user!.id;
   const userRole = req.user!.role;
-  const { membership, existence, note, expected } = req.body as {
-    membership?: Membership; existence?: Existence; note?: string;
-    expected: { membership: Membership; existence: Existence; flagged: boolean };
-  };
+  const body = req.body as StateAnswer;
 
-  if (!membership && !existence) {
+  if (!body.membership && !body.existence) {
     res.status(400).json({ error: 'Nothing to decide: pass membership, existence, or both' });
     return;
   }
 
   const expResult = await pool.query(
-    `SELECT id, category_id, source_membership, existence FROM experiences WHERE id = $1`,
+    `SELECT id, category_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
@@ -77,6 +93,30 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
     return;
   }
 
+  const outcome = await answerStateUnderLock(experienceId, userId, logRegionId, body);
+  if (outcome.refusal) {
+    const { status, ...payload } = outcome.refusal;
+    res.status(status).json(payload);
+    return;
+  }
+  res.json(outcome.result);
+}
+
+/**
+ * The verdict itself, in one transaction under the row lock — the half of
+ * `setExperienceState` that a batch answer (#852) calls for each of its rows,
+ * so one row and a hundred are decided by the same statements. The handler
+ * keeps what is about the request: the 404, the scope, the status code.
+ */
+export async function answerStateUnderLock(
+  experienceId: number,
+  userId: number,
+  logRegionId: number | null,
+  { membership, existence, note, expected }: StateAnswer,
+): Promise<{
+  result?: { experienceId: number; sourceMembership: Membership; existence: Existence };
+  refusal?: AnswerRefusal;
+}> {
   // One client, not pool.query('BEGIN') — see the note in curationController:
   // pg.Pool hands out an arbitrary idle client per call, so a transaction has
   // to be pinned or its statements land on different connections.
@@ -87,6 +127,14 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
   let before: { source_membership: string; existence: string; missing_since?: Date | null };
   try {
     await client.query('BEGIN');
+
+    // Awaited at every call site, as on the neighbouring writers: a
+    // `return refuse(…)` without it settles the try block while the ROLLBACK
+    // is still in flight, and `finally` releases the client under it.
+    const refuse = async (refusal: AnswerRefusal): Promise<{ refusal: AnswerRefusal }> => {
+      unusable = await rollbackQuietly(client);
+      return { refusal };
+    };
 
     // Both columns are written whatever the curator sent, the unsent axis
     // defaulting to what is already there — so the axis nobody decided has to
@@ -102,7 +150,11 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
       `SELECT source_membership, existence, missing_since FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
       [experienceId],
     );
-    before = locked.rows[0] ?? existing;
+    // The existence check ran on the pool, on another connection and earlier
+    // in time. A row deleted in that window leaves nothing to lock, and the
+    // true answer is 404 — `setExperienceAdmission` guards the same gap.
+    if (locked.rows.length === 0) return await refuse({ status: 404, error: 'Experience not found' });
+    before = locked.rows[0];
     nextMembership = membership ?? (before.source_membership as Membership);
     nextExistence = existence ?? (before.existence as Existence);
 
@@ -126,13 +178,12 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
     if (before.source_membership !== expected.membership
       || before.existence !== expected.existence
       || (before.missing_since != null) !== expected.flagged) {
-      unusable = await rollbackQuietly(client);
-      res.status(409).json({
+      return await refuse({
+        status: 409,
         error: 'Someone else answered this first — reload to see where it stands',
         sourceMembership: before.source_membership,
         existence: before.existence,
       });
-      return;
     }
 
     const actions = decidedActions(before, nextMembership, nextExistence);
@@ -143,13 +194,12 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
       // write a second `missing_dismissed` and move `state_decided_by` to
       // whoever clicked last.
       if (before.missing_since == null) {
-        unusable = await rollbackQuietly(client);
-        res.status(409).json({
+        return await refuse({
+          status: 409,
           error: 'Already answered: this object is not waiting on a decision',
           sourceMembership: before.source_membership,
           existence: before.existence,
         });
-        return;
       }
       actions.push('missing_dismissed');
     }
@@ -186,11 +236,13 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
     client.release(unusable);
   }
 
-  res.json({
-    experienceId,
-    sourceMembership: nextMembership,
-    existence: nextExistence,
-  });
+  return {
+    result: {
+      experienceId,
+      sourceMembership: nextMembership,
+      existence: nextExistence,
+    },
+  };
 }
 
 /**
@@ -278,7 +330,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
   const experienceId = parseInt(String(req.params.id));
   const userId = req.user!.id;
   const userRole = req.user!.role;
-  const { decision, note } = req.body as { decision: 'confirm' | 'override'; note?: string };
+  const body = req.body as AdmissionAnswer;
 
   const expResult = await pool.query(
     `SELECT id, category_id FROM experiences WHERE id = $1`,
@@ -297,6 +349,51 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     return;
   }
 
+  const outcome = await answerAdmissionUnderLock(experienceId, userId, logRegionId, body);
+  if (outcome.refusal) {
+    const { status, ...payload } = outcome.refusal;
+    res.status(status).json(payload);
+    return;
+  }
+  res.json(outcome.result);
+}
+
+/** The two answers to a refusal, and the curator's note. */
+export interface AdmissionAnswer {
+  decision: 'confirm' | 'override';
+  note?: string;
+}
+
+/** What answering a refusal reports — `publish`'s own shape, with the verdict in front. */
+export interface AdmissionResult {
+  experienceId: number;
+  admission: 'admitted' | 'refused';
+  published: boolean;
+  curationState: string;
+  appliedFields: string[];
+  claimedFieldsSkipped: string[];
+  appliedParts: AppliedPart[];
+  fromSyncLogId: null;
+  heldLeftOpen: number;
+  locationsPublished: number;
+  treasureLinksPublished: number;
+  treasuresPublished: number;
+  withdrawalsReleased: number;
+  placementFailed?: true;
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+}
+
+/**
+ * The verdict itself, under the row lock, and the placement that may follow
+ * it — the half of `setExperienceAdmission` a batch answer (#852) calls per
+ * row. The handler keeps the 404, the scope and the status code.
+ */
+export async function answerAdmissionUnderLock(
+  experienceId: number,
+  userId: number,
+  logRegionId: number | null,
+  { decision, note }: AdmissionAnswer,
+): Promise<{ result?: AdmissionResult; refusal?: AnswerRefusal }> {
   const admitted = decision === 'override';
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -311,6 +408,11 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
   try {
     await client.query('BEGIN');
 
+    const refuse = async (refusal: AnswerRefusal): Promise<{ refusal: AnswerRefusal }> => {
+      unusable = await rollbackQuietly(client);
+      return { refusal };
+    };
+
     // Locked, for the same reason `setExperienceState` locks: every curator
     // covering any of the row's regions sees this card, and two answers racing
     // would leave the log asserting one verdict beside a column holding the
@@ -323,11 +425,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     const locked = await client.query(
       `SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
     );
-    if (locked.rows.length === 0) {
-      unusable = await rollbackQuietly(client);
-      res.status(404).json({ error: 'Experience not found' });
-      return;
-    }
+    if (locked.rows.length === 0) return await refuse({ status: 404, error: 'Experience not found' });
     // The verdict, its reason, the pin and the gate state are the membership's
     // (#822), read in the statement after the place's lock — the one every
     // writer of the membership takes. Its own statement because a statement's
@@ -359,14 +457,13 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     // it is caught by the same condition.
     const confirmBlocked = !admitted && alreadyAnswered;
     if (membershipId === null || before.admission !== 'refused' || confirmBlocked) {
-      unusable = await rollbackQuietly(client);
-      res.status(409).json({
+      return await refuse({
+        status: 409,
         error: alreadyAnswered
           ? 'Someone else answered this first — reload to see where it stands'
           : 'Already answered: this row is not waiting on a refusal decision',
         admission: before.admission,
       });
-      return;
     }
 
     const curated = [...new Set([...((before.curated_fields as string[]) ?? []), 'admission'])];
@@ -475,7 +572,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
 
   const placementFields = await placeAfterAdmissionRelease(experienceId, withdrawalsReleased);
 
-  res.json({
+  return { result: {
     experienceId,
     admission: admitted ? 'admitted' : 'refused',
     published: publishes,
@@ -503,7 +600,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     treasuresPublished,
     withdrawalsReleased,
     ...placementFields,
-  });
+  } };
 }
 
 /**

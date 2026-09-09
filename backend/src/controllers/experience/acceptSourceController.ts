@@ -63,11 +63,43 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     return;
   }
 
-  const outcome = await applyProposedFields(experienceId, userId, logRegionId, fields, expectedSyncLogId);
+  const outcome = await acceptSourceUnderLock(experienceId, userId, logRegionId, fields, expectedSyncLogId);
   if (outcome.refusal) {
     res.status(409).json(outcome.refusal);
     return;
   }
+  res.json(outcome.result);
+}
+
+/** What accepting the source's values reports back. */
+export interface AcceptSourceResult {
+  experienceId: number;
+  applied: string[];
+  released: string[];
+  releasedPoints: number[];
+  movedPoints: number[];
+  releasedCredit: boolean;
+  placementFailed?: true;
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+  fromSyncLogId: number;
+}
+
+/**
+ * The acceptance under the lock and the placement that may follow it — the
+ * half of `acceptSourceValue` a batch answer (#852) calls per row. `fields` is
+ * the fields the caller names, or `'all'` for every field the proposal still
+ * holds open, which is what a whole-card answer means and what a batch sends:
+ * resolved under the same lock as the proposal, so nothing is spelled twice.
+ */
+export async function acceptSourceUnderLock(
+  experienceId: number,
+  userId: number,
+  logRegionId: number | null,
+  fields: string[] | 'all',
+  expectedSyncLogId: number,
+): Promise<{ result?: AcceptSourceResult; refusal?: { error: string; fromSyncLogId?: number } }> {
+  const outcome = await applyProposedFields(experienceId, userId, logRegionId, fields, expectedSyncLogId);
+  if (outcome.refusal) return { refusal: outcome.refusal };
   const {
     applied, released, releasedPoints, movedPoints, releasedCredit, fromSyncLogId,
   } = outcome;
@@ -80,7 +112,7 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     ? await placeAfterRelease(experienceId, 'A curator accepted the source coordinate for experience %d')
     : [];
 
-  res.json({
+  return { result: {
     experienceId,
     applied,
     // Fields this endpoint cannot write: the claim is gone, so the next run
@@ -97,12 +129,12 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     // gone, and the value itself is in the `edited` row that wrote it.
     releasedCredit,
     ...(placementFailedWorldViews.length > 0 && {
-      placementFailed: true,
+      placementFailed: true as const,
       placementFailedWorldViews: placementFailedWorldViews.map(
         f => ({ id: f.worldViewId, name: f.worldViewName })),
     }),
     fromSyncLogId,
-  });
+  } };
 }
 
 /**
@@ -136,7 +168,7 @@ async function applyProposedFields(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  fields: string[],
+  fields: string[] | 'all',
   expectedSyncLogId: number,
 ): Promise<{
   applied: string[];
@@ -205,7 +237,7 @@ async function applyProposedFields(
     }
 
     const proposed = (proposal.rows[0].changed_fields as Array<{ field: string; new: unknown; curatedConflict?: boolean }>)
-      .filter(f => f.curatedConflict && fields.includes(f.field));
+      .filter(f => f.curatedConflict && (fields === 'all' || fields.includes(f.field)));
     if (proposed.length === 0) {
       return await refuse('The requested fields carry no source proposal');
     }

@@ -66,19 +66,35 @@ export async function declineSourceValue(req: AuthenticatedRequest, res: Respons
     return;
   }
 
-  const outcome = await recordRefusals(
+  const outcome = await declineSourceUnderLock(
     experienceId, userId, logRegionId, fields, expectedSyncLogId,
   );
   if (outcome.refusal) {
     res.status(409).json(outcome.refusal);
     return;
   }
+  res.json(outcome.result);
+}
 
-  res.json({
-    experienceId,
-    declined: outcome.declined,
-    fromSyncLogId: outcome.fromSyncLogId,
-  });
+/**
+ * The refusal under the lock — the half of `declineSourceValue` a batch
+ * answer (#852) calls per row. `fields` is the fields the caller names, or
+ * `'all'` for every field the proposal still holds open against a claim,
+ * resolved under the same lock as the proposal.
+ */
+export async function declineSourceUnderLock(
+  experienceId: number,
+  userId: number,
+  logRegionId: number | null,
+  fields: string[] | 'all',
+  expectedSyncLogId: number,
+): Promise<{
+  result?: { experienceId: number; declined: string[]; fromSyncLogId: number };
+  refusal?: { error: string; fromSyncLogId?: number };
+}> {
+  const outcome = await recordRefusals(experienceId, userId, logRegionId, fields, expectedSyncLogId);
+  if (outcome.refusal) return { refusal: outcome.refusal };
+  return { result: { experienceId, declined: outcome.declined, fromSyncLogId: outcome.fromSyncLogId } };
 }
 
 /**
@@ -98,7 +114,7 @@ async function recordRefusals(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  fields: string[],
+  fields: string[] | 'all',
   expectedSyncLogId: number,
 ): Promise<{
   declined: string[];
@@ -151,7 +167,7 @@ async function recordRefusals(
     }
 
     const proposed = (proposal.rows[0].changed_fields as Array<{ field: string; new: unknown; curatedConflict?: boolean }>)
-      .filter(f => f.curatedConflict && fields.includes(f.field));
+      .filter(f => f.curatedConflict && (fields === 'all' || fields.includes(f.field)));
     if (proposed.length === 0) {
       return await refuse('The requested fields carry no source proposal');
     }

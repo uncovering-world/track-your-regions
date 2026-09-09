@@ -112,6 +112,25 @@ describe('setExperienceState', () => {
     expect(res.status).toHaveBeenCalledWith(404);
   });
 
+  it('404s a row deleted between the existence check and the lock', async () => {
+    // The two reads are on different connections and a moment apart. Before
+    // the verdict lived under its own lock (#852) this fell back to the
+    // pool's snapshot and wrote an UPDATE that matched nothing, answering 200.
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    const client = { query: vi.fn(async () => ({ rows: [] })), release: vi.fn() };
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceState(
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      res as never,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(client.query).not.toHaveBeenCalledWith(expect.stringContaining('UPDATE experiences'), expect.anything());
+  });
+
   it('refuses a curator whose scope does not reach the experience', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });

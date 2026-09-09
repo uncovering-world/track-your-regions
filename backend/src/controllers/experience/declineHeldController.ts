@@ -42,7 +42,7 @@ interface DeclinedPart {
   fields: string[];
 }
 
-interface DeclineResult {
+export interface DeclineResult {
   experienceId: number;
   /** The object's own fields refused now. */
   declinedFields: string[];
@@ -59,7 +59,7 @@ interface DeclineResult {
   heldLeftOpen: number;
 }
 
-interface DeclineRefusal {
+export interface DeclineRefusal {
   status: number;
   error: string;
   /** The pointer as the server holds it, so a stale card can redraw itself. */
@@ -142,12 +142,15 @@ function groupParts(rows: ReadonlyArray<HeldRow>): DeclinedPart[] {
  * stored refusal against what the source is proposing now, by equality, so a
  * refusal of a value nobody proposed would silence nothing while looking like an
  * answer.
+ *
+ * Exported for the batch answer (#852), which refuses whole cards: a `null`
+ * selection is every open row, the shape `resolveHeldSelection` already reads.
  */
-async function refuseUnderLock(
+export async function refuseUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  selection: { fields?: string[]; parts?: SelectedPart[] },
+  selection: { fields?: string[]; parts?: SelectedPart[] } | null,
   expectedSyncLogId: number,
 ): Promise<{ result?: DeclineResult; refusal?: DeclineRefusal }> {
   const client = await pool.connect();
