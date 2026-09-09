@@ -539,9 +539,9 @@ export const cacheTtlBodySchema = z.object({
  * than an offset because the list shrinks while it is read — answering a
  * question removes it, and every later row shifts by one under an offset.
  *
- * `keptOutOffset` and `answeredWithdrawalsOffset` stay. Those two lists are not
- * open questions, carry no date to order the union by, and keep their own
- * statement and their own paging.
+ * `keptOutOffset`, `answeredWithdrawalsOffset` and `refusedPartsOffset` stay.
+ * Those three lists are not open questions, carry no date to order the union by,
+ * and keep their own statement and their own paging.
  *
  * The filters are the page's address (ADR-0051 decision 5), which is why each is
  * the string a query parameter actually is: `source=1,3` and `kind=arrival,refused`
@@ -567,6 +567,7 @@ export const reviewQueueQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   keptOutOffset: z.coerce.number().int().min(0).default(0),
   answeredWithdrawalsOffset: z.coerce.number().int().min(0).default(0),
+  refusedPartsOffset: z.coerce.number().int().min(0).default(0),
 });
 
 /**
