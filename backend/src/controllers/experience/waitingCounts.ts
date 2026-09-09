@@ -119,10 +119,8 @@ export function heldWaitingSql(alias = 'e', membership = 'm'): string {
  * same way, and in the same order, as the queue comment this count has to match
  * row for row.
  *
- * `curation_state = 'pending'` is spelled positively rather than through
- * `publishedContentSql`, which states the reader's side (`<> 'pending'`): this
- * asks the opposite question, and `NOT (…)` around a fragment named for the
- * other direction reads worse than the four words it replaces.
+ * The unread terms are `unreadPointSql` and `unreadLinkSql`, the one spelling
+ * of "unread and still asked about" every reader of that question shares.
  */
 export function contentsWaitingSql(alias = 'e', membership = 'm'): string {
   return `${membershipVisibleSql(membership)}
@@ -131,7 +129,7 @@ export function contentsWaitingSql(alias = 'e', membership = 'm'): string {
       EXISTS (
         SELECT 1 FROM experience_locations el
         WHERE el.experience_id = ${alias}.id
-          AND ${offeredLocationSql('el')} AND el.curation_state = 'pending'
+          AND ${offeredLocationSql('el')} AND ${unreadPointSql('el')}
       )
       OR EXISTS (
         SELECT 1 FROM experience_treasures et
@@ -141,9 +139,46 @@ export function contentsWaitingSql(alias = 'e', membership = 'm'): string {
           -- be published (the publish statement carries the same term), so
           -- counting it would promise work the card cannot offer (ADR-0044).
           AND ${offeredLinkSql('et')}
-          AND (et.curation_state = 'pending' OR t.curation_state = 'pending')
+          AND ${unreadLinkSql('et', 't')}
       )
     )`;
+}
+
+/**
+ * A point nobody has passed and nobody has refused — the one the queue asks
+ * about and the publish reaches (#852, ADR-0053).
+ *
+ * `curation_state = 'pending'` is spelled positively rather than through
+ * `publishedContentSql`, which states the reader's side (`<> 'pending'`): this
+ * asks the opposite question, and `NOT (…)` around a fragment named for the
+ * other direction reads worse than the four words it replaces. The refusal is
+ * a mark beside the state rather than a fourth value of it, so a refused point
+ * is still `pending` to every reader — hidden by the same word — and stops
+ * being a question only here. Six statements compose this rather than spell
+ * it, and the publish is one of them: a whole-object publish must not release
+ * what a curator turned down.
+ */
+export function unreadPointSql(el = 'el'): string {
+  return `${el}.curation_state = 'pending' AND ${el}.refused_at IS NULL`;
+}
+
+/**
+ * A link nobody has passed here and nobody has refused here, on either axis:
+ * the link says the work is *here*, the work says it is a work, and either
+ * being unread is a question (ADR-0025 decision 2). The refusal sits on the
+ * link, because "not this work here" is the link's axis; the work stays
+ * askable at every other venue that holds it.
+ */
+export function unreadLinkSql(et = 'et', t = 't'): string {
+  return `(${et}.curation_state = 'pending' OR ${t}.curation_state = 'pending') AND ${linkNotRefusedSql(et)}`;
+}
+
+/**
+ * The refusal mark on its own, for the two publish statements that gate the
+ * link's and the work's state separately and cannot take the pair above.
+ */
+export function linkNotRefusedSql(et = 'et'): string {
+  return `${et}.refused_at IS NULL`;
 }
 
 /** What one source is holding, in the three kinds the queue asks about. */

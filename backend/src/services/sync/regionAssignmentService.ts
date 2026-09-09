@@ -86,6 +86,9 @@ async function assignDirect(
       -- contribute no region membership either, or a region would count a place
       -- nobody is shown (ADR-0026).
       AND el.missing_since IS NULL AND el.existence <> 'lost'
+      -- And no point a curator turned down (ADR-0053): still pending, never to
+      -- be published, so a region must not count a place nobody will be shown.
+      AND el.refused_at IS NULL
       AND r.geom && el.location
       AND ST_Contains(r.geom, el.location)
       ${categoryId ? 'AND e.category_id = $2' : ''}
@@ -360,6 +363,7 @@ export async function assignRegionsForExperiences(
         AND el.experience_id = ANY($2::int[])
         -- The same fragment again, same reason as above.
         AND el.missing_since IS NULL AND el.existence <> 'lost'
+        AND el.refused_at IS NULL
         AND r.geom && el.location AND ST_Contains(r.geom, el.location)
       ON CONFLICT (location_id, region_id) DO NOTHING
     `, params);

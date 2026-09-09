@@ -670,6 +670,9 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
     // old pin the moment it lands, so holding the withdrawal would leave the
     // same place on the map twice.
     expect(only(statements, PAIR)).toMatch(/el\.curation_state = 'pending'/);
+    // And never a point a curator turned down (ADR-0053): still pending, but
+    // nothing publishes it, so a withdrawal held on it could never be released.
+    expect(only(statements, PAIR)).toMatch(/el\.refused_at IS NULL/);
   });
 
   it('asks nothing about pairing when the run added nothing invisible', async () => {

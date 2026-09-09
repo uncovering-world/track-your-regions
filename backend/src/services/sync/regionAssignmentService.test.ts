@@ -54,6 +54,9 @@ describe('assignRegionsForExperiences', () => {
     // now: a point a curator declared gone must stop voting, and the verdict endpoint
     // calls placement *because* of it.
     expect(containment).toMatch(/el\.missing_since IS NULL AND el\.existence <> 'lost'/);
+    // And the third term (ADR-0053): a point a curator turned down is still
+    // pending and never to be published, so no region may count it.
+    expect(containment).toMatch(/el\.refused_at IS NULL/);
   });
 
   it('still clears the auto rows of a withdrawn point, so it stops voting', async () => {
@@ -90,5 +93,8 @@ describe('assignExperiencesToRegions', () => {
     // Both terms on the full-rebuild path too, for the reason above: the two inserts
     // are separate statements and a revert of either would otherwise stay green.
     expect(containment).toMatch(/el\.missing_since IS NULL AND el\.existence <> 'lost'/);
+    // And the third term (ADR-0053): a point a curator turned down is still
+    // pending and never to be published, so no region may count it.
+    expect(containment).toMatch(/el\.refused_at IS NULL/);
   });
 });

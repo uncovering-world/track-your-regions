@@ -641,8 +641,12 @@ export async function writeExperienceLocations(
                   -- point a reader cannot see yet is worth waiting for. An
                   -- arrival a reader can already see replaces the old pin the
                   -- moment it lands, so holding the withdrawal would put the same
-                  -- place on the map twice.
+                  -- place on the map twice. And only a point a reader will see
+                  -- *at all*: a point a curator turned down (ADR-0053) is still
+                  -- pending, but nothing publishes it and no card offers it, so
+                  -- a withdrawal held on it would never be released.
                   AND el.curation_state = 'pending'
+                  AND el.refused_at IS NULL
               ),
               -- Numbered within the reference and matched by position, because
               -- nine (experience_id, external_ref) pairs are duplicated across

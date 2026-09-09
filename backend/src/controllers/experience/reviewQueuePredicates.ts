@@ -22,7 +22,9 @@ import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
   hidePendingSql, hideRefusedSql, offeredLinkSql, offeredLocationSql,
 } from './experienceLifecycle.js';
-import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
+import {
+  heldFieldExistsSql, heldPartExistsSql, unreadLinkSql, unreadPointSql,
+} from './waitingCounts.js';
 
 /**
  * `missing`: a row the source stopped listing and nobody has judged
@@ -89,12 +91,12 @@ export function heldOpenSql(e = 'e', m = 'm', ch = 'ch'): string {
 export function contentsOpenSql(e = 'e'): string {
   return `${hidePendingSql(e)} AND ${hideRefusedSql(e)} AND ${e}.missing_since IS NULL
     AND (EXISTS (SELECT 1 FROM experience_locations el
-                  WHERE el.experience_id = ${e}.id AND el.curation_state = 'pending'
+                  WHERE el.experience_id = ${e}.id AND ${unreadPointSql('el')}
                     AND ${offeredLocationSql('el')})
       OR EXISTS (SELECT 1 FROM experience_treasures et
                    JOIN treasures t ON t.id = et.treasure_id
                   WHERE et.experience_id = ${e}.id AND ${offeredLinkSql('et')}
-                    AND (et.curation_state = 'pending' OR t.curation_state = 'pending')))`;
+                    AND ${unreadLinkSql('et', 't')}))`;
 }
 
 /**

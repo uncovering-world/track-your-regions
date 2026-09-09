@@ -17,6 +17,7 @@ import {
   assignRegionsForExperiences, worldViewsWithGeometry,
 } from '../../services/sync/regionAssignmentService.js';
 import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
+import { linkNotRefusedSql, unreadPointSql } from './waitingCounts.js';
 
 /**
  * Publish the unread points and works — the named ones, or all of them.
@@ -72,7 +73,7 @@ export async function publishContents(
     // card ever put in front of a curator, recorded as one a curator passed.
     const result = await client.query(
       `UPDATE experience_locations SET curation_state = 'verified'
-        WHERE experience_id = $1 AND curation_state = 'pending'
+        WHERE experience_id = $1 AND ${unreadPointSql('experience_locations')}
           AND ${offeredLocationSql('experience_locations')}
         ${named ? 'AND id = ANY($2::int[])' : ''}`,
       named ? [experienceId, locationIds] : [experienceId],
@@ -165,6 +166,7 @@ export async function publishContents(
     const links = await client.query(
       `UPDATE experience_treasures SET curation_state = 'verified'
         WHERE experience_id = $1 AND curation_state = 'pending'
+          AND ${linkNotRefusedSql('experience_treasures')}
           AND ${offeredLinkSql('experience_treasures')}
         ${named ? 'AND treasure_id = ANY($2::int[])' : ''}`,
       args,
@@ -182,7 +184,7 @@ export async function publishContents(
           AND EXISTS (
             SELECT 1 FROM experience_treasures et
              WHERE et.treasure_id = treasures.id AND et.experience_id = $1
-               AND ${offeredLinkSql('et')}
+               AND ${offeredLinkSql('et')} AND ${linkNotRefusedSql('et')}
                ${named ? 'AND et.treasure_id = ANY($2::int[])' : ''}
           )`,
       args,
