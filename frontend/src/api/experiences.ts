@@ -1520,6 +1520,95 @@ export async function publishExperience(
 }
 
 /**
+ * A curator's no to an arrival (#852, ADR-0053): the object is kept out the way a
+ * rule-refused row is, and *Put it back* in the kept-out list is the way back.
+ */
+export async function refuseArrival(
+  experienceId: number,
+  note?: string,
+): Promise<{ experienceId: number; admission: 'refused'; reason: string }> {
+  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/refuse-arrival`, {
+    method: 'POST',
+    body: JSON.stringify({ note }),
+  });
+}
+
+/**
+ * A curator's no to the unread points and works under a visible object — the named
+ * ones, or all of them (#852, ADR-0053). They stay hidden and stop being asked about.
+ */
+export async function refuseContents(
+  experienceId: number,
+  body: { locationIds?: number[]; treasureIds?: number[]; note?: string } = {},
+): Promise<{
+  experienceId: number;
+  locationsRefused: number;
+  treasureLinksRefused: number;
+  /** Old pins a refused arrival had been holding on the map, now withdrawn and asking their own question. */
+  withdrawalsReleased: number;
+  /** The re-placement any refused point calls for — it counts toward no region now, and any pin it released is gone — where it failed; the publish's own shape. */
+  placementFailed?: true;
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+}> {
+  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/refuse-contents`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** The two answers every review row has, and the third two kinds have (#852). */
+export type ReviewAnswer = 'accept' | 'reject' | 'lost';
+
+/** A row as the batch names it: the server's kind word, the object, the run it was asked by. */
+export interface ReviewAnswerRow {
+  kind: QueueOrderEntry['kind'];
+  id: number;
+  runId: number | null;
+}
+
+/** What one answer did, counted — mirrors the backend's `Did` (`reviewAnswerDispatch.ts`). */
+export interface ReviewAnswerDid {
+  published?: number;
+  locations?: number;
+  treasureLinks?: number;
+  treasures?: number;
+  withdrawalsReleased?: number;
+  fields?: number;
+  points?: number;
+  pointsRefused?: number;
+}
+
+/** The report of one request — mirrors the backend's `ReviewAnswerResult`. */
+export interface ReviewAnswerResult {
+  answer: ReviewAnswer;
+  answered: Array<{
+    kind: QueueOrderEntry['kind']; id: number; name: string; answer: ReviewAnswer; did: ReviewAnswerDid;
+  }>;
+  refused: Array<{ kind: QueueOrderEntry['kind']; id: number; name: string; error: string }>;
+  outOfScope: number;
+  placementFailed: Array<{
+    id: number; name: string; worldViews: Array<{ id: number | null; name: string | null }>;
+  }>;
+}
+
+/** The most rows one request answers — the queue's own page maximum. */
+export const REVIEW_ANSWER_ROWS_MAX = 100;
+
+/**
+ * Answer a page of review rows with one answer (#852). Each object is its own act
+ * on the server, so the report names what refused rather than failing the batch.
+ */
+export async function answerReviewRows(
+  rows: ReviewAnswerRow[],
+  answer: ReviewAnswer,
+): Promise<ReviewAnswerResult> {
+  return authFetchJson(`${API_URL}/api/experiences/review/answer`, {
+    method: 'POST',
+    body: JSON.stringify({ rows, answer }),
+  });
+}
+
+/**
  * Unreject an experience from a region
  */
 export async function unrejectExperience(
