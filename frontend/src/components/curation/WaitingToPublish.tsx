@@ -28,11 +28,16 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   declineHeld,
   publishExperience,
+  refuseArrival,
+  refuseContents,
   type HeldPart,
   type PublishRequest,
   type ReviewQueueItem,
 } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
+import { plural } from '../../utils/plural';
+import { worldViewList } from '../../utils/worldViewList';
+import { ANSWER_WORDS } from './selection/answerWords';
 import { GatedRow, ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
 import { partGroups, rowsFor, type FactSubject } from './factRows';
@@ -202,7 +207,24 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   // no proposal, answers 409, and the value is on the site with no card left to
   // answer. Guarding only the per-row buttons would leave the two that publish the
   // most as the way to lose the answer being given.
-  const answering = publish.isPending || refuse.isPending;
+  // The no the two gated kinds without one lacked (#852, ADR-0053): an arrival
+  // kept out — written the way a rule's refusal is, so the kept-out list is
+  // where it comes back from — and unread contents turned down, which stay
+  // hidden and stop being asked about. Its own mutation for the reason the
+  // held refusal is: refusing an arrival writes the membership and nothing
+  // else; refusing contents marks part rows and, for any refused point,
+  // re-places the object — the point counts toward no region now, and a pin
+  // it was holding on the map is withdrawn — the one act here that changes
+  // what a reader sees.
+  const keepOut = useMutation({
+    mutationFn: async (): Promise<Partial<Awaited<ReturnType<typeof refuseContents>>>> => (
+      arrival ? refuseArrival(group.id).then(() => ({})) : refuseContents(group.id)),
+    onSettled: (data, error) => {
+      invalidateExperiences(queryClient, { experienceId: group.id });
+      onDone(error ? messageFor(item, error) : keptOutOutcomeFor(item.name, arrival !== undefined, data));
+    },
+  });
+  const answering = publish.isPending || refuse.isPending || keepOut.isPending;
 
   return (
     <Card variant="outlined">
@@ -340,6 +362,21 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
               Publish the change only
             </Button>
           )}
+          {/* The second answer (#852): an arrival is kept out; unread contents
+              under a visible object are turned down. A held field says no on its
+              own row, so a card that is held alone offers nothing here. The word
+              is the one the batch bar quotes for this kind, so one row and a
+              batch read alike. */}
+          {(arrival || contents) && (
+            <Button
+              variant="outlined"
+              color="warning"
+              disabled={answering}
+              onClick={() => keepOut.mutate()}
+            >
+              {arrival ? ANSWER_WORDS.arrival.reject : ANSWER_WORDS.contents.reject}
+            </Button>
+          )}
           <Button variant="text" onClick={() => setShowObject(v => !v)}>
             {showObject ? 'Hide the object' : 'Look at the object'}
           </Button>
@@ -423,6 +460,41 @@ function publishLabel(group: GatedGroup): string {
   if (group.held && group.contents) return 'Publish the change and what arrived with it';
   if (group.held) return 'Publish the change';
   return 'Publish what has arrived';
+}
+
+/**
+ * The line after a no: what is now kept out, and where it comes back from. A
+ * kept-out arrival is one object; turned-down contents are counted, since the
+ * card counted them.
+ */
+function keptOutOutcomeFor(
+  name: string,
+  arrival: boolean,
+  data: Partial<Awaited<ReturnType<typeof refuseContents>>> | undefined,
+): string {
+  if (arrival) {
+    return `${name} kept out. It stays hidden, and comes back from the kept-out list at the `
+      + 'foot of this page.';
+  }
+  const points = data?.locationsRefused ?? 0;
+  const works = data?.treasureLinksRefused ?? 0;
+  const parts = [
+    points > 0 ? plural(points, 'unread point') : null,
+    works > 0 ? plural(works, 'unread work') : null,
+  ].filter(Boolean).join(' and ');
+  // A refused point may have been holding the pin it replaced on the map; that
+  // pin is withdrawn now and asks its own question, and only this line says so.
+  const released = data?.withdrawalsReleased ?? 0;
+  const tail = released > 0
+    ? ` ${plural(released, 'replaced point')} no longer shown, now asking under lost places.`
+    : '';
+  // The re-placement a refused point calls for — it counts toward no region
+  // now, and any pin it released is gone — where it failed: named for an
+  // admin, through the same helper every other placement line uses.
+  const stale = data?.placementFailed
+    ? ` ${name} could not be re-placed into ${worldViewList(data.placementFailedWorldViews)} — tell an admin.`
+    : '';
+  return `${parts || 'Nothing'} under ${name} turned down. They stay hidden and are no longer asked about.${tail}${stale}`;
 }
 
 /** What doing nothing means here — the answer that needs no call. */
