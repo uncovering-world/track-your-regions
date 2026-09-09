@@ -7,8 +7,12 @@
  * is loading and nothing will pan. A permanent condition has to read as one, or
  * the user waits for a recovery that cannot arrive.
  *
- * The wording names the cause and the remedy, because this is a browser setting
- * the user can actually change — unlike most failures we surface.
+ * The wording names the cause and the remedy, because this is usually a browser
+ * setting the user can actually change — unlike most failures we surface. Only
+ * usually: since maplibre-gl 6 the requirement is WebGL **2**, so a browser
+ * that offers WebGL 1 and no more lands here too, and no setting will move it.
+ * Hence "usually brings the map back" rather than "brings" — a remedy promised
+ * to someone it cannot help is how the rest of the sentence loses its credit.
  */
 
 import { Box, Typography } from '@mui/material';
@@ -55,8 +59,9 @@ export function MapUnavailable({ detail, compact = false }: MapUnavailableProps)
       </Typography>
 
       <Typography variant="body2" sx={{ color: 'text.secondary', maxWidth: 420 }}>
-        This browser has WebGL turned off, and maps are drawn with it. Turning on
-        hardware acceleration in your browser settings brings the map back.
+        Maps here are drawn with WebGL 2, which this browser is not offering.
+        Turning on hardware acceleration in your browser settings usually brings
+        the map back.
       </Typography>
 
       {detail && (

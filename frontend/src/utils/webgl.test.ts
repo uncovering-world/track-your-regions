@@ -56,13 +56,29 @@ describe('isWebGLAvailable', () => {
     expect(isWebGLAvailable()).toBe(true);
   });
 
-  it('falls back to webgl when webgl2 is unavailable', async () => {
-    // MapLibre asks in this order and settles for either, so answering only on
-    // webgl2 would refuse to draw a map the library could have drawn.
+  it('reports unavailable when the browser offers WebGL 1 and no more', async () => {
+    // The case that changed with maplibre-gl 6: through 4.x the library asked
+    // for `webgl2` and settled for `webgl`, and so did the probe. 6.x requests
+    // `webgl2` alone and throws when it is refused, so a yes here would hand
+    // the constructor a context it cannot use and put the throw back on screen.
     stubGetContext((id) => (id === 'webgl' ? { getExtension: () => null } : null));
     const { isWebGLAvailable } = await freshModule();
 
-    expect(isWebGLAvailable()).toBe(true);
+    expect(isWebGLAvailable()).toBe(false);
+  });
+
+  it('asks for webgl2 and nothing else', async () => {
+    // Asserted on the call rather than only on the verdict: a probe that still
+    // *asked* for `webgl` would allocate a context on a WebGL 1 browser to
+    // throw the answer away, and the test above would pass while it did.
+    const getContext = vi.fn().mockReturnValue(null);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      getContext as unknown as HTMLCanvasElement['getContext'],
+    );
+    const { isWebGLAvailable } = await freshModule();
+
+    expect(isWebGLAvailable()).toBe(false);
+    expect(getContext.mock.calls.map(call => call[0])).toEqual(['webgl2']);
   });
 
   it('releases the probe context instead of holding it for the page', async () => {
