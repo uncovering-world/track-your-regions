@@ -84,9 +84,8 @@ export function useAnswerSelection({
   const reach = selection.allMatching ? matchingKindCounts(facets, address.kinds) : countByKind(rows);
   // Under a gated kind filter the walk also reaches the other gated sub-kind
   // of every row it meets — named in the confirmation, since it cannot be
-  // counted, and weighed for the take-back check as if it were on the list.
+  // counted.
   const alsoReached = selection.allMatching ? gatedKindsAlsoReached(address.kinds) : [];
-  const reachKinds = new Set<AnswerableKind>([...reach.map(r => r.kind), ...alsoReached]);
   const queryClient = useQueryClient();
   const [progress, setProgress] = useState<AnswerProgress | null>(null);
   const [confirming, setConfirming] = useState<ReviewAnswer | null>(null);
@@ -120,14 +119,13 @@ export function useAnswerSelection({
   };
 
   // Without a confirmation for a batch within one page, since the count is on
-  // the bar and every answer but one has a take-back; asked once past that,
-  // for an all-matching selection, whose size the ticks do not show — and for
-  // the one answer without a take-back: turning down unread contents, which
-  // nothing can bring back yet (ADR-0053's own follow-up), and which since the
-  // refusal re-places the object is also the answer that drops region rows.
+  // the bar and every answer has a take-back at the foot of the page; asked once
+  // past that, and for an all-matching selection, whose size the ticks do not
+  // show. Turning down unread contents used to be asked about whatever its size,
+  // being the one answer nothing could bring back — #859 gave it the list and the
+  // take-back its neighbours had, so it is answered like the rest.
   const answer = (which: ReviewAnswer) => {
-    const noTakeBack = which === 'reject' && reachKinds.has('contents');
-    if (selection.allMatching || rows.length > pageSize || noTakeBack) setConfirming(which);
+    if (selection.allMatching || rows.length > pageSize) setConfirming(which);
     else void run(which);
   };
 

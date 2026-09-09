@@ -2,16 +2,18 @@
  * A block of answered work at the foot of the review page: collapsed, out of the way, one
  * click from reach.
  *
- * Its own component because there are two of them and they are the same shape for the
+ * Its own component because there are three of them and they are the same shape for the
  * same reason — a row that is answered appears on no other surface, so the page that
  * answered it is the only place a mis-click can be undone. `keptOut` is that at the level
  * of an object a rule refused; `answeredWithdrawals` is that at the level of a point a
- * curator decided about (#544). A second copy of the divider, the toggle and the count
- * would have drifted, and the drift a reader would notice first is the promise: both say
- * "answered, so not waiting on you", and one of them saying something else is how a
+ * curator decided about (#544); `refusedParts` is that at the level of a point or work a
+ * curator turned down (#859) — the third instance, which is the reasoning below confirmed
+ * rather than tested. A second copy of the divider, the toggle and the count
+ * would have drifted, and the drift a reader would notice first is the promise: all three
+ * say "answered, so not waiting on you", and one of them saying something else is how a
  * curator learns to distrust the sentence.
  *
- * Collapsed by default in both, and that is the product decision this holds: someone
+ * Collapsed by default in all three, and that is the product decision this holds: someone
  * opening the review page is here for what is *not* answered.
  */
 

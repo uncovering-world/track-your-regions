@@ -8,19 +8,20 @@
  * `answeredWithdrawals` are not open questions at all: they carry no date to order that
  * union by, only ever grow, and keep their own statement, their own offset and their own
  * pager — which is why an offset lives in this hook's state while the cursor does not.
+ * `refusedParts` (#859) is the third of them and behaves identically.
  *
- * The counts, the facets and both answered lists are read off the **first** page: each is
+ * The counts, the facets and all three answered lists are read off the **first** page: each is
  * stated once over the whole filtered union, and a later page repeats it unchanged.
  *
  * **Paging an answered list restarts the union at its first page**, and it is a real cost
- * rather than a subtlety: the two offsets sit in the infinite query's key, because they are
+ * rather than a subtlety: the three offsets sit in the infinite query's key, because they are
  * sent with every request and one endpoint answers both models. Change one and React Query
  * has a different query — the pages a curator loaded with *Show more* are dropped and
  * re-read from the cursor's start, while the answered block they were actually paging moves
- * by one. It is tolerable only because the two lists are collapsed sections a curator opens
+ * by one. It is tolerable only because the three lists are collapsed sections a curator opens
  * to look something up rather than the list they work down, and because the reload is a
  * refetch of pages the server would answer identically. The fix is not a smaller query key —
- * the offsets genuinely change what the endpoint returns — but a read of its own for the two
+ * the offsets genuinely change what the endpoint returns — but a read of its own for the three
  * lists that are not open questions, which is filed as a follow-up rather than folded into
  * this change.
  *
@@ -58,6 +59,7 @@ export interface ReviewQueueRead {
   facets: QueueFacets | undefined;
   keptOut: ReviewQueueItem[];
   answeredWithdrawals: ReviewQueueItem[];
+  refusedParts: ReviewQueueItem[];
   /**
    * The filters as one string — the address without the selected row, which names a card
    * rather than asking the server anything. A page watching *this* sees a filter change
@@ -84,13 +86,33 @@ export interface ReviewQueueRead {
 }
 
 export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
-  // One offset per answered list, and only those two — see the docblock.
+  // One offset per answered list, and only those three — see the docblock.
   const [offsets, setOffsets] = useState<Partial<Record<ReviewQueueKind, number>>>({});
   const keptOutOffset = offsets.keptOut ?? 0;
   const answeredWithdrawalsOffset = offsets.answeredWithdrawals ?? 0;
+  const refusedPartsOffset = offsets.refusedParts ?? 0;
 
   const filters = useMemo(() => ({ ...address, row: null }), [address]);
   const filterKey = useMemo(() => JSON.stringify(filters), [filters]);
+
+  // A filter is a different list, in which the offset a curator had paged to means
+  // nothing — the page stays mounted across a filter change, so *Show more* on an
+  // answered block and then a new source chip would ask the new filter at the old
+  // offset and answer with a block that is empty or missing its first page.
+  //
+  // Adjusted during the render rather than in an effect, and the difference is a
+  // request: an effect runs *after* the render that changed the filter, and these
+  // offsets are in the query key below — so that render would start a fetch at the
+  // old offset and only the next one ask for zero. Two requests per filter change,
+  // and with `keepPreviousData` the first one's answer can paint the wrong block
+  // before the second lands. React re-renders before committing this, so the key is
+  // read with the offsets already cleared. (`ReviewPage`'s reset of its selection
+  // index is an effect because a ref is not a query key; this is.)
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  if (lastFilterKey !== filterKey) {
+    setLastFilterKey(filterKey);
+    setOffsets({});
+  }
 
   const {
     data, isLoading, isPlaceholderData, isError, error,
@@ -99,9 +121,9 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
     // `row` is out of the key deliberately: opening a question must not re-read the list
     // it was opened from. The object is hashed by value, so the address re-rendering with
     // an equal one refetches nothing.
-    queryKey: [...QUEUE_KEY, filters, keptOutOffset, answeredWithdrawalsOffset],
+    queryKey: [...QUEUE_KEY, filters, keptOutOffset, answeredWithdrawalsOffset, refusedPartsOffset],
     queryFn: ({ pageParam }) => fetchReviewQueue({
-      ...filters, cursor: pageParam, keptOutOffset, answeredWithdrawalsOffset,
+      ...filters, cursor: pageParam, keptOutOffset, answeredWithdrawalsOffset, refusedPartsOffset,
     }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last: ReviewQueue) => last.paging?.nextCursor ?? undefined,
@@ -123,6 +145,7 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
     facets: first?.facets,
     keptOut: first?.keptOut ?? [],
     answeredWithdrawals: first?.answeredWithdrawals ?? [],
+    refusedParts: first?.refusedParts ?? [],
     filterKey,
     stale: isPlaceholderData,
     isLoading,

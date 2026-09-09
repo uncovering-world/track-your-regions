@@ -44,7 +44,7 @@ import { LocationPicker } from './LocationPicker';
  * one, `pending` under a gated source, only through publication (ADR-0025).
  * Absent means readers see it.
  */
-export type UnseenReason = 'withdrawn' | 'unread';
+export type UnseenReason = 'withdrawn' | 'unread' | 'refused' | 'dropped' | 'blocked';
 
 /** The place a curator is correcting, as the surface that opened it knows it. */
 export interface PlaceToCorrect {
@@ -71,6 +71,22 @@ const PLACE_ZOOM = 15;
 const REMEDY: Record<UnseenReason, string> = {
   withdrawn: 'only answering “false alarm” shows it',
   unread: 'only publishing it shows it',
+  // Two steps rather than one, and both are named because a curator correcting a
+  // pin here has turned it down themselves (#859): the mark comes off first, and
+  // publishing it is still what shows it — the take-back restores the question,
+  // never the answer.
+  refused: 'asking about it again and then publishing it shows it',
+  // And the case where that sequence would be a promise nothing can keep: a part
+  // turned down *and* since dropped by the source. Publishing composes
+  // `offeredLocationSql` beside the unread test, so it never reaches this row —
+  // asking about it again puts the question back and nothing else moves.
+  dropped: 'nothing will show it until the source lists it again',
+  // And where the object itself is the open question — nobody has passed it, a
+  // rule kept it out, or the source has dropped it — the take-back is refused
+  // outright, so naming it as the next step would name the one thing the surface
+  // that opened this has just disabled.
+  blocked: 'answering this place’s own question first, and then asking about the '
+    + 'point again, shows it',
 };
 
 /**

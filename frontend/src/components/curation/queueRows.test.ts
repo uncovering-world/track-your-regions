@@ -49,6 +49,7 @@ function queue(over: Partial<ReviewQueue> = {}): ReviewQueue {
   return {
     missing: [], refused: [], keptOut: [], conflicts: [],
     arrivals: [], held: [], contents: [], withdrawn: [], answeredWithdrawals: [],
+    refusedParts: [],
     limit: 25,
     order: [],
     total: 0,

@@ -119,24 +119,24 @@ describe('answering a selection', () => {
     expect(screen.queryByRole('button', { name: 'Lost' })).toBeNull();
   });
 
-  it('asks first before turning down unread contents, the one answer without a take-back', async () => {
+  it('turns down a page of unread contents without asking, now that it has a take-back', async () => {
+    // It used to ask whatever the size, being the one answer nothing could bring
+    // back. #859 gave it the list and the take-back its neighbours had, so a page
+    // in view is answered like every other page in view.
     mockedFetch.mockResolvedValue({ contents: [CONTENTS], limit: 25 });
     renderQueue();
     await screen.findByRole('checkbox', { name: 'Select Museo del Prado' });
     tick('Museo del Prado');
     fireEvent.click(screen.getByRole('button', { name: 'Reject the proposed changes' }));
 
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog.textContent).toContain('cannot be brought back yet');
-    expect(mockedAnswer).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(mockedAnswer).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('says an all-matching answer under a held filter reaches the unread contents those rows hold', async () => {
     // A held filter lists every row with an open held change, unread points
-    // and works included, and the answer reaches both — which is the one act
-    // without a take-back, so it is named even though it cannot be counted.
+    // and works included, and the answer reaches both — named even though it
+    // cannot be counted, since the ticks show one kind and answer two.
     mockedFetch.mockResolvedValue({
       held: [{ ...ARRIVAL, kind: 'held', curation_state: 'verified', proposed: [], sync_log_id: 61 }],
       limit: 25, total: 412,

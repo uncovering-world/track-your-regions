@@ -52,16 +52,18 @@ vi.mock('../../api/experiences', () => ({
   declineHeld: vi.fn(),
   publishExperience: vi.fn(),
   fetchExperience: vi.fn(),
+  unrefuseContents: vi.fn(),
 }));
 
 import {
   setExperienceState, setExperienceAdmission, setLocationState,
   acceptSourceValue, declineSourceValue, declineHeld, publishExperience, fetchExperience,
+  unrefuseContents,
 } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import {
   shaped, renderQueue, openRow,
-  MISSING, REFUSED, KEPT_OUT, CONFLICT, ARRIVAL, HELD, CONTENTS,
+  MISSING, REFUSED, KEPT_OUT, CONFLICT, ARRIVAL, HELD, CONTENTS, REFUSED_PARTS,
 } from './reviewQueueFixtures';
 
 const mockedState = setExperienceState as unknown as ReturnType<typeof vi.fn>;
@@ -73,6 +75,7 @@ const mockedPublish = publishExperience as unknown as ReturnType<typeof vi.fn>;
 const mockedDeclineHeld = declineHeld as unknown as ReturnType<typeof vi.fn>;
 const mockedExperience = fetchExperience as unknown as ReturnType<typeof vi.fn>;
 const mockedInvalidate = invalidateExperiences as unknown as ReturnType<typeof vi.fn>;
+const mockedUnrefuse = unrefuseContents as unknown as ReturnType<typeof vi.fn>;
 
 /** What `POST /:id/publish` answers when nothing but the row itself moved. */
 const PUBLISHED = {
@@ -746,6 +749,186 @@ describe('ReviewQueue', () => {
 
       fireEvent.click(await screen.findByRole(
         'button', { name: /show the lost places you have answered/i }));
+
+      expect(await screen.findByRole('button', { name: 'Previous' })).toBeEnabled();
+    });
+  });
+
+  /**
+   * The third answered block, and the one that used to be missing (#859).
+   *
+   * Turning down an unread point or work was the only answer on this page with no
+   * way back: readers never saw the part, and the mark took it out of every
+   * question, so a mis-click lived on in the curation log and nowhere else.
+   */
+  describe('a point or work the curator turned down', () => {
+    beforeEach(() => {
+      mockedUnrefuse.mockReset().mockResolvedValue({
+        experienceId: 6188,
+        locationsRestored: 1,
+        treasureLinksRestored: 0,
+        locationIds: [4101],
+        treasureIds: [],
+      });
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], keptOut: [], conflicts: [],
+        refusedParts: [REFUSED_PARTS], limit: 25,
+      });
+    });
+
+    it('stays out of the way until asked for, like the blocks above it', async () => {
+      renderQueue();
+
+      await screen.findByRole('button', { name: /former/i });
+      expect(screen.queryByRole('button', { name: /ask about it again/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /show the points and works you have turned down/i }))
+        .toBeInTheDocument();
+    });
+
+    it('offers the way back, because no other screen shows the part at all', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole(
+        'button', { name: /show the points and works you have turned down/i }));
+
+      expect(await screen.findByText('Pavillon Amont')).toBeInTheDocument();
+      expect(screen.getByText('The Oreads')).toBeInTheDocument();
+      // Who turned it down, and what they wrote — the only record of either.
+      expect(screen.getByText(/by Camille — “the annexe, not the museum”/)).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /ask about it again/i })).toHaveLength(2);
+    });
+
+    it('says "a curator" where the log names nobody this reader may see', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole(
+        'button', { name: /show the points and works you have turned down/i }));
+
+      // The work's refusal carries no name: out of this reader's scope, or answered
+      // in a batch. Somebody still decided, and an empty line would say less.
+      expect(await screen.findByText(/by a curator\.$/)).toBeInTheDocument();
+    });
+
+    it('sends the part’s own id to the take-back, per part and per kind', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole(
+        'button', { name: /show the points and works you have turned down/i }));
+      const buttons = await screen.findAllByRole('button', { name: /ask about it again/i });
+
+      fireEvent.click(buttons[0]);
+      await waitFor(() => expect(mockedUnrefuse).toHaveBeenCalledWith(6188, { locationIds: [4101] }));
+
+      fireEvent.click(buttons[1]);
+      // The work goes by its treasure id and on the link's axis alone: turning it
+      // down said "not this work here", and so does asking again.
+      await waitFor(() => expect(mockedUnrefuse).toHaveBeenCalledWith(6188, { treasureIds: [14341] }));
+    });
+
+    it('counts parts on the toggle, because that is what its label names', async () => {
+      // One row is one object holding turned-down points *and* works. Counting rows
+      // would offer "(1)" over a museum that lost a branch and twelve paintings.
+      renderQueue();
+
+      expect(await screen.findByRole(
+        'button', { name: /show the points and works you have turned down \(5\)/i }))
+        .toBeInTheDocument();
+    });
+
+    it('says what asking again did, and what it did not', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole(
+        'button', { name: /show the points and works you have turned down/i }));
+      fireEvent.click((await screen.findAllByRole('button', { name: /ask about it again/i }))[0]);
+
+      // The question is back, not the answer: a curator who has just clicked this
+      // needs to know publishing is still what shows it.
+      expect(await screen.findByText(
+        /1 point under Musée d'Orsay is asked about again\..*publishing it is what shows it/i))
+        .toBeInTheDocument();
+    });
+
+    it('does not promise what a source-withdrawn part will not do', async () => {
+      // Placement carries `missing_since IS NULL`, and the contents card and the
+      // publish both compose `offeredLocationSql` — so for a part the source has
+      // dropped, "counts toward its regions again" and "publishing shows it" are
+      // both false. The fixture's work is in exactly that state.
+      renderQueue();
+      fireEvent.click(await screen.findByRole(
+        'button', { name: /show the points and works you have turned down/i }));
+
+      expect(await screen.findByText(/The source stopped listing it on/)).toBeInTheDocument();
+      const captions = screen.getAllByText(/Puts the question back on record/);
+      expect(captions.length).toBeGreaterThan(0);
+
+      fireEvent.click((await screen.findAllByRole('button', { name: /ask about it again/i }))[1]);
+      expect(await screen.findByText(
+        /The question is back on record\. The source no longer offers it/)).toBeInTheDocument();
+    });
+
+    it('does not offer the button at all on an object the source has stopped listing', async () => {
+      // The writer refuses outright on such an object, so a button here would 409
+      // with nothing the curator could act on from this card. Its own question is
+      // the one to answer, and the card says so rather than the list hiding the
+      // parts — hidden, they would be back on no screen at all.
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], keptOut: [], conflicts: [],
+        refusedParts: [{
+          ...REFUSED_PARTS, takeable: false, missing_since: '2026-09-09T20:00:00Z',
+        }],
+        limit: 25,
+      });
+      renderQueue();
+      fireEvent.click(await screen.findByRole(
+        'button', { name: /show the points and works you have turned down/i }));
+
+      // One per part, since the block is per object and every part under it is blocked.
+      expect(await screen.findAllByText(/Answer that question first/)).toHaveLength(2);
+      for (const button of screen.getAllByRole('button', { name: /ask about it again/i })) {
+        expect(button).toBeDisabled();
+      }
+      expect(mockedUnrefuse).not.toHaveBeenCalled();
+    });
+
+    it('names the question to answer first, per reason the writer would refuse for', async () => {
+      // Three causes, three cards to send the curator to. The verdict is the
+      // server's `takeable`; only which sentence to print is decided here.
+      for (const [patch, sentence] of [
+        [{ object_curation_state: 'pending' }, /Answer its arrival first/],
+        [{ object_admission: 'refused' }, /Put it back first/],
+      ] as const) {
+        mockedFetch.mockResolvedValue({
+          missing: [MISSING], refused: [], keptOut: [], conflicts: [],
+          refusedParts: [{ ...REFUSED_PARTS, takeable: false, ...patch }],
+          limit: 25,
+        });
+        const { unmount } = renderQueue();
+        fireEvent.click(await screen.findByRole(
+          'button', { name: /show the points and works you have turned down/i }));
+        expect((await screen.findAllByText(sentence)).length).toBeGreaterThan(0);
+        unmount();
+      }
+    });
+
+    it('shows nothing at all when nothing has been turned down', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], keptOut: [], conflicts: [],
+        refusedParts: [], limit: 25,
+      });
+      renderQueue();
+
+      await screen.findByRole('button', { name: /former/i });
+      expect(screen.queryByRole('button', { name: /points and works you have turned down/i }))
+        .not.toBeInTheDocument();
+    });
+
+    it('leaves a way back when its own page comes back empty', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], keptOut: [], conflicts: [],
+        refusedParts: [], limit: 25,
+        paging: { refusedParts: { offset: 25, hasMore: false } },
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole(
+        'button', { name: /show the points and works you have turned down/i }));
 
       expect(await screen.findByRole('button', { name: 'Previous' })).toBeEnabled();
     });

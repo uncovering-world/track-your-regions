@@ -32,6 +32,7 @@ export interface QueuePatch {
   contents?: Row[];
   withdrawn?: Row[];
   answeredWithdrawals?: Row[];
+  refusedParts?: Row[];
   limit?: number;
   total?: number;
   order?: unknown[];
@@ -41,6 +42,7 @@ export interface QueuePatch {
     nextCursor?: string | null;
     keptOut?: { offset: number; hasMore: boolean };
     answeredWithdrawals?: { offset: number; hasMore: boolean };
+    refusedParts?: { offset: number; hasMore: boolean };
   };
 }
 
@@ -107,6 +109,7 @@ export function shaped(over: QueuePatch = {}) {
     contents: [],
     withdrawn: [],
     answeredWithdrawals: [],
+    refusedParts: [],
     limit: 25,
     ...over,
     order,
@@ -117,6 +120,7 @@ export function shaped(over: QueuePatch = {}) {
       nextCursor: null,
       keptOut: { offset: 0, hasMore: false },
       answeredWithdrawals: { offset: 0, hasMore: false },
+      refusedParts: { offset: 0, hasMore: false },
       ...over.paging,
     },
   };
@@ -152,6 +156,61 @@ export const KEPT_OUT = {
   kind: 'kept-out' as const,
   state_decided_at: '2026-08-08T09:00:00Z',
   state_note: 'archaeology, comes back with that import',
+};
+
+/**
+ * An object holding one turned-down point and one turned-down work (#859).
+ *
+ * Both kinds on one row on purpose: a museum can lose a branch and a painting to
+ * the same click, and the card has to label them apart. The counts are larger
+ * than the lists, which is what the cap line is for.
+ */
+export const REFUSED_PARTS = {
+  ...MISSING,
+  id: 6188,
+  external_id: 'Q23402',
+  name: "Musée d'Orsay",
+  category_id: 2,
+  category_name: 'Art Museums',
+  kind: 'contents-refused' as const,
+  missing_since: null,
+  // The server's own verdict on whether the take-back would be accepted; a case
+  // about a blocked object sets it false and says why.
+  takeable: true,
+  object_admission: 'admitted',
+  object_curation_state: 'auto',
+  refused_points_total: 2,
+  refused_points: [{
+    id: 4101,
+    name: 'Pavillon Amont',
+    externalRef: null,
+    latitude: 48.8601,
+    longitude: 2.3265,
+    curatedFields: [],
+    refusedAt: '2026-09-09T12:00:00Z',
+    refusedBy: 'Camille',
+    note: 'the annexe, not the museum',
+    missingSince: null,
+    visited: false,
+  }],
+  refused_works_total: 3,
+  // The work is the branch the points do not cover: turned down, and since then
+  // dropped by the source. Taking it back restores the question and nothing else,
+  // which is the whole reason the offered filter came off the list and the writer
+  // — a part in this state is on no other screen, and its card has to say so.
+  refused_works: [{
+    id: 14341,
+    name: 'The Oreads',
+    artists: ['William-Adolphe Bouguereau'],
+    artistsCurated: false,
+    year: 1902,
+    externalId: 'Q16372213',
+    curatedFields: [],
+    refusedAt: '2026-09-09T12:00:00Z',
+    refusedBy: null,
+    note: null,
+    missingSince: '2026-09-09T18:00:00Z',
+  }],
 };
 
 export const CONFLICT = {
