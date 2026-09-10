@@ -1004,6 +1004,115 @@ CREATE OR REPLACE TRIGGER trg_regions_geom_insert_invalidates_parent
   EXECUTE FUNCTION invalidate_parent_region_geometry();
 
 -- =============================================================================
+-- Table + Trigger: a leaf region's geometry, cut into pieces for placement
+-- =============================================================================
+-- Placement asks which regions hold a point (regionAssignmentService.ts), and
+-- asked of a region's whole geometry, one test reads all of it. A bounding box
+-- narrows that only where the box is small: Russia's parts reach both sides of
+-- the antimeridian, so the boxes of Russia and of Asia -- 7.1 million vertices --
+-- span every longitude, and a point in Paris was tested against both. The first
+-- run of the Places of worship source spent 25 minutes placing its 1078 points
+-- that way (#851).
+--
+-- A row here is one piece of a leaf's geometry, cut by ST_Subdivide to at most
+-- 256 vertices and indexed on its own, so a point meets the one or two small
+-- pieces whose boxes hold it. Leaves only: placement tests the leaves first,
+-- takes every ancestor's row from the tree, and asks the other regions only
+-- about the points no leaf holds (ADR-0054). Cutting a continent as well would
+-- add minutes to every write of its union, for a pass that reaches a few
+-- hundred points.
+--
+-- Kept by the statement that writes the geometry, for ADR-0035's reason: a copy
+-- each writer has to remember is a copy some writer forgets. The pieces exist to
+-- test containment and are never drawn. ADR-0031 turned down storing a
+-- subdivided geometry for tiles, where the cuts would be drawn as borders, and
+-- that stands; Martin publishes no table.
+
+CREATE TABLE IF NOT EXISTS region_geom_pieces (
+    region_id INTEGER NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    geom GEOMETRY(MultiPolygon, 4326) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_region_geom_pieces_geom ON region_geom_pieces USING GIST(geom);
+-- The refresh below and the cascade from regions both find a region's pieces by it.
+CREATE INDEX IF NOT EXISTS idx_region_geom_pieces_region ON region_geom_pieces(region_id);
+
+COMMENT ON TABLE region_geom_pieces IS 'A leaf region''s geometry cut into pieces of at most 256 vertices, for testing which leaf holds a point. Kept by trg_regions_geom_pieces; never drawn (ADR-0054).';
+
+-- Cuts one region's geometry into pieces, if the region is a leaf with a
+-- geometry. The one spelling of the cut: the trigger below and the backfill in
+-- migration 054 both call it.
+--
+-- It reads the row rather than taking a geometry, because by the time a trigger
+-- runs its NEW can be older than the row: trg_update_is_leaf flips a parent's
+-- is_leaf and the invalidation above nulls a parent's geometry, both inside the
+-- statement that fired it. An empty geometry cuts into no pieces.
+CREATE OR REPLACE FUNCTION cut_region_geom_pieces(p_region_id INTEGER) RETURNS INTEGER AS $$
+DECLARE
+  cut INTEGER;
+BEGIN
+  INSERT INTO region_geom_pieces (region_id, geom)
+  SELECT r.id, ST_Multi(piece)
+  FROM regions r
+  CROSS JOIN LATERAL ST_Subdivide(r.geom, 256) AS piece
+  WHERE r.id = p_region_id
+    AND r.is_leaf
+    AND r.geom IS NOT NULL;
+  GET DIAGNOSTICS cut = ROW_COUNT;
+  RETURN cut;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Replaces a region's pieces with the cut of the geometry it holds now, on every
+-- write of that geometry.
+--
+-- On a geometry write only, not when is_leaf changes. A structural edit that
+-- leaves a parent without children -- deleting or moving its last child, pruning
+-- an import tree -- makes it a leaf, and the handler then nulls its geometry for
+-- the next run to recompute: cutting the old outline in between would spend up
+-- to a minute inside the request on pieces the next statement throws away. So
+-- the pieces a region has are always those of its current geometry, and a leaf
+-- may have none, which placement reads as "test the whole geometry": its first
+-- pass joins is_leaf, and its second takes every region that is not a leaf with
+-- pieces.
+--
+-- A cut that fails leaves the region without pieces and says so, rather than
+-- failing the geometry write it rides on: the pieces make placement fast, not
+-- right, and a region without them is still placed into. The delete stays
+-- outside the handled block, so a failed cut cannot leave the previous
+-- geometry's pieces behind.
+CREATE OR REPLACE FUNCTION refresh_region_geom_pieces() RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM region_geom_pieces WHERE region_id = NEW.id;
+  BEGIN
+    PERFORM cut_region_geom_pieces(NEW.id);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'region % keeps no pieces for placement: %', NEW.id, SQLERRM;
+  END;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION refresh_region_geom_pieces() IS 'Trigger function: a write to regions.geom replaces that region''s pieces with the cut of its current geometry, if it is a leaf (ADR-0054).';
+
+-- Two arms on one function, for the reason the invalidation has two: OLD is not
+-- available in an INSERT trigger's WHEN clause. Named under trg_regions_geom, so
+-- the guard that no bulk load switches those off holds for these as well -- a
+-- load without them would leave pieces of geometries that are no longer there,
+-- and a point tested against a stale piece is placed wrongly, not slowly.
+CREATE OR REPLACE TRIGGER trg_regions_geom_pieces
+  AFTER UPDATE OF geom ON regions
+  FOR EACH ROW
+  WHEN (OLD.geom IS DISTINCT FROM NEW.geom)
+  EXECUTE FUNCTION refresh_region_geom_pieces();
+
+CREATE OR REPLACE TRIGGER trg_regions_geom_insert_pieces
+  AFTER INSERT ON regions
+  FOR EACH ROW
+  WHEN (NEW.geom IS NOT NULL)
+  EXECUTE FUNCTION refresh_region_geom_pieces();
+
+-- =============================================================================
 -- Trigger: Update a division's focus_bbox and anchor_point when its geometry changes
 -- =============================================================================
 -- The same measurement regions get, stored once so a read is a column read: a
