@@ -305,7 +305,7 @@ Clicking the map icon on any suggestion or assigned division opens a preview dia
    - Geoshape fetched via backend proxy (`GET /api/admin/wv-import/geoshape/:wikidataId`) on dialog open, with spinner while loading
    - The proxy checks `wikidata_geoshapes` cache first (includes composite geoshapes built from child entities), then falls back to `maps.wikimedia.org`
    - ~4,000 regions have Wikidata geoshapes via `{{mapframe}}`/`{{mapshape}}` Kartographer maps
-   - Backend proxy needed because `maps.wikimedia.org/geoshape` requires `User-Agent` + `Referer` headers
+   - Backend proxy needed because `maps.wikimedia.org/geoshape` requires `User-Agent` + `Referer` headers. The `User-Agent` is built by `userAgent()` (`backend/src/config/userAgent.ts`) like every other outbound call's. The import's own services — the geoshape cache, the point matcher, the geocode matcher — carry the `bot` marker wherever they are called from, while a controller's own single fetch does not, so one admin click on a dialog emits both: the marker describes the traffic, not the click (#864)
 
 3. **Marker points fallback** (no `regionMapUrl`, no `wikidataId` or geoshape unavailable, `markerPoints` present) — widens to `md`, shows two maps side-by-side:
    - **Left map**: orange circle markers from Wikivoyage `{{marker}}`/`{{geo}}` templates, labeled "Marker points (N)", framed through `frameGeoJson` with `maxZoom: 8`, so a single marker still shows where it sits (#672)
