@@ -49,6 +49,8 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@localhost}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      # The contact outbound requests publish; empty means this project's own.
+      USER_AGENT_CONTACT: ${USER_AGENT_CONTACT:-}
       BIND_ADDR: 0.0.0.0
       # Development-only: read a sync source from local JSON instead of the live
       # API. Point it inside /app/data, which is already mounted. Refused when
