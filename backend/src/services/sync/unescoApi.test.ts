@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchUnescoRecords } from './unescoApi.js';
+import { userAgent } from '../../config/userAgent.js';
 import { WaitBudget } from './sourceRetry.js';
 import type { SyncProgress } from './types.js';
 
@@ -88,7 +89,9 @@ describe('fetchUnescoRecords', () => {
     await runWithTimers(fetchUnescoRecords(makeProgress()));
 
     const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
-    expect(init.headers['User-Agent']).toContain('TrackYourRegions');
+    // The header the one place builds, with the bot marker an unattended run
+    // owes Wikimedia and UNESCO alike (#864) — not a literal spelled here.
+    expect(init.headers['User-Agent']).toBe(userAgent({ bot: true }));
   });
 
   it('waits out a 502 instead of ending the run', async () => {

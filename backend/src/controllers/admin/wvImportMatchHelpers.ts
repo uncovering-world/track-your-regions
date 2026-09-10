@@ -11,6 +11,7 @@ import { pool } from '../../db/index.js';
 import { parseMarkers, parseGeoTag } from '../../services/wikivoyageExtract/markerParser.js';
 import { resolveMarkerCoordinates } from '../../services/worldViewImport/pointMatcher.js';
 import { registerWaterReview, storeWaterCrops, type WaterReviewDecision } from './wvImportMatchReview.js';
+import { userAgent } from '../../config/userAgent.js';
 import type { PipelineContext } from './wvImportMatchContext.js';
 
 // =============================================================================
@@ -304,7 +305,7 @@ export async function fetchMarkersForDivisions(
     url.searchParams.set('format', 'json');
 
     const resp = await fetch(url.toString(), {
-      headers: { 'User-Agent': 'TrackYourRegions/1.0' },
+      headers: { 'User-Agent': userAgent() },
       signal: AbortSignal.timeout(15000),
     });
 

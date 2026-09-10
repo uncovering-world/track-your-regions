@@ -11,8 +11,9 @@
 import { pool } from '../../db/index.js';
 import { sparqlQuery, extractQid } from '../sync/wikidataUtils.js';
 import { getOrFetchGeoshape } from './geoshapeCache.js';
+import { userAgent } from '../../config/userAgent.js';
 
-const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions)';
+const USER_AGENT = userAgent({ bot: true });
 
 /**
  * Collect child QIDs via Wikidata SPARQL using P527 (has part) / P361 (part of).

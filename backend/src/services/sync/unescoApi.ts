@@ -36,6 +36,7 @@ import {
   type SourceWait,
 } from './sourceRetry.js';
 import { waitMessage } from './wikidataUtils.js';
+import { userAgent } from '../../config/userAgent.js';
 import type { SyncProgress, UnescoApiRecord } from './types.js';
 
 const LOG_PREFIX = '[UNESCO Sync]';
@@ -44,8 +45,7 @@ const EXPORT_URL =
   'https://data.unesco.org/api/explore/v2.1/catalog/datasets/whc001/exports/json';
 
 /** Sent to Wikimedia and to UNESCO alike: a server we do not own should know who is calling. */
-export const UNESCO_USER_AGENT =
-  'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
+export const UNESCO_USER_AGENT = userAgent({ bot: true });
 
 /**
  * The fields the importer reads, and no others.

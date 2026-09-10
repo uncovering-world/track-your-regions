@@ -7,8 +7,13 @@
 
 import { pool } from '../../db/index.js';
 import type { MatchSuggestion, MatchStatus } from './types.js';
+import { userAgent } from '../../config/userAgent.js';
 
-const NOMINATIM_USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
+// Import machinery: geocoding a region's name as part of matching it, whether
+// the run is unattended or an admin asked for one region. Nominatim's usage
+// policy wants the application named, and this names itself as the bulk
+// matcher it is rather than as whoever started it.
+const NOMINATIM_USER_AGENT = userAgent({ bot: true });
 let lastNominatimRequestTime = 0;
 
 interface GeocodeContext {

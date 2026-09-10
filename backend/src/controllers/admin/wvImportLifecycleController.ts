@@ -15,6 +15,7 @@ import {
   cancelImport,
 } from '../../services/worldViewImport/index.js';
 import { IMPORT_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTypes.js';
+import { userAgent } from '../../config/userAgent.js';
 
 // =============================================================================
 // Geoshape proxy
@@ -55,7 +56,7 @@ export async function getGeoshape(req: AuthenticatedRequest, res: Response): Pro
     const url = `https://maps.wikimedia.org/geoshape?getgeojson=1&ids=${wikidataId}`;
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions)',
+        'User-Agent': userAgent(),
         'Referer': 'https://en.wikivoyage.org/',
       },
     });

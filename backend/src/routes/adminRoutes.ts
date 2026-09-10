@@ -148,6 +148,7 @@ import {
 } from '../controllers/admin/aiController.js';
 import { hierarchyReview } from '../controllers/admin/aiHierarchyReviewController.js';
 import { startBaseLayerImportEndpoint } from '../controllers/admin/baseLayerImportController.js';
+import { userAgent } from '../config/userAgent.js';
 
 const router = Router();
 
@@ -703,7 +704,7 @@ router.get('/image-proxy', validate(imageProxyQuerySchema, 'query'), async (req:
   const { url } = req.query as { url: string };
   try {
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'TrackYourRegions/1.0 (admin image proxy)' },
+      headers: { 'User-Agent': userAgent({ purpose: 'admin image proxy' }) },
       redirect: 'follow',
     });
     if (!response.ok) {

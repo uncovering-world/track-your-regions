@@ -8,8 +8,10 @@
  */
 
 import type { Request, Response } from 'express';
+import { userAgent } from '../config/userAgent.js';
 
-const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
+// No bot marker: both lookups here run while a curator waits on the dialog.
+const USER_AGENT = userAgent();
 const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
 /**
  * How long each of this file's two lookups may take **in total** — every request it

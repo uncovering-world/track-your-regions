@@ -1,8 +1,13 @@
 import { pool } from '../../db/index.js';
 import type { PoolClient } from 'pg';
+import { userAgent } from '../../config/userAgent.js';
 
 const GEOSHAPE_URL = 'https://maps.wikimedia.org/geoshape';
-const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions)';
+// World-view import machinery, and it says so wherever it is called from: an
+// unattended run walking every region, or one shape an admin's dialog asked
+// for. The marker names the traffic rather than who is watching it, which is
+// why a single admin click can emit both markers — see `config/userAgent.ts`.
+const USER_AGENT = userAgent({ bot: true });
 const FETCH_DELAY_MS = 1500;
 
 // Serialising rate limiter shared by both fetch entry points (#346).
