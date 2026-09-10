@@ -42,7 +42,7 @@ import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import type { AnswerRefusal } from './lifecycleController.js';
-import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { contentsAnswerableSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 
 /** The reason a curator's refusal carries, in the words the kept-out list shows. */
 export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
@@ -265,16 +265,22 @@ export async function refuseContentsUnderLock(
       `SELECT missing_since FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
     );
     if (locked.rows.length === 0) return await refuse({ status: 404, error: 'Experience not found' });
+    // The rule itself is the database's, through the fragment every act on an
+    // object's unread contents composes: this refusal, the take-back that undoes
+    // it, the waiting count and the list that draws the take-back's button. Two
+    // spellings is how a refusal and its own undoing come to disagree about which
+    // objects they apply to. The columns beside it are what the message branches
+    // on, not the verdict.
     const read = await client.query(
-      `SELECT m.id AS membership_id, m.admission, m.curation_state
+      `SELECT m.id AS membership_id, m.admission, m.curation_state,
+              (${contentsAnswerableSql()}) AS answerable
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting')}
         WHERE e.id = $1`,
       [experienceId],
     );
     const before = read.rows[0] ?? {};
-    if (before.membership_id == null || before.admission !== 'admitted'
-      || before.curation_state === 'pending' || locked.rows[0].missing_since != null) {
+    if (before.answerable !== true) {
       return await refuse({
         status: 409,
         error: before.curation_state === 'pending'
