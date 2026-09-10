@@ -247,6 +247,49 @@ Effective geometry: `COALESCE(rm.custom_geom, ad.geom)` — centralized in `regi
 
 ---
 
+## `region_geom_pieces` table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `region_id` | INTEGER | The leaf region the piece belongs to. `ON DELETE CASCADE`, so a deleted region or world view takes its pieces with it. |
+| `geom` | MultiPolygon (4326) | One piece of that leaf's `geom`, cut by `ST_Subdivide` to at most 256 vertices. GiST-indexed piece by piece. |
+
+What placement tests a point against (`directPlacementSql` in
+`backend/src/services/sync/regionAssignmentService.ts`,
+[ADR-0054](../decisions/0054-placement-reads-leaves-through-their-pieces.md)). A test against a
+whole geometry reads all of it, and a bounding box narrows nothing where the box spans every
+longitude: Russia's parts reach both sides of the antimeridian, so the boxes of Russia and of Asia
+— 7.1 million vertices — hold every point on Earth, and a point in Paris was read against both. A
+piece of a hundred vertices is found by its own box. `experiences.md` § Region assignment has the
+rule placement follows and what it measured.
+
+- **Leaves only.** Placement takes a non-leaf's rows from the tree, and asks a non-leaf directly
+  only about a point no leaf holds. Cutting continents too would add minutes to every write of
+  their unions for a pass that reaches a few hundred points.
+- **Kept by the database, on every write of `geom`**, through one function,
+  `cut_region_geom_pieces()`, which the trigger and migration 054's backfill both call and which
+  reads the row as it stands rather than a trigger's `NEW`. Not on a change of `is_leaf`: a parent
+  left without children is nulled for recompute by the handler that emptied it, and cutting its old
+  outline first would be up to a minute of work thrown away inside a request. So the pieces a region
+  has are always those of its current geometry, and a leaf may have none — it became a leaf without
+  a geometry write, or its cut failed, which warns instead of failing the write. Placement tests
+  such a leaf whole, so a missing piece costs time and never a row.
+- **Never drawn.** ADR-0031 turned down storing a subdivided geometry for tiles, where the cuts
+  would render as borders, and that stands: no tile function reads this table, and Martin publishes
+  no table. The pieces meet their leaf to floating-point noise along the cuts, not bit for bit:
+  Lazio's 106 pieces leave none of its 17 234 km² uncovered and reach 13 m² past it, and of 20 000
+  random points inside Lazio none fell in no piece and none in two (measured 2026-09-10). A point
+  that falls exactly on a cut is asked of the whole leaf.
+- **Cost.** A write of a leaf's geometry pays for its cut, inside the writing statement and so
+  inside the 300 s bound the compute paths set on it. About 0.3 s for an ordinary leaf (Lazio,
+  13 902 vertices, 106 pieces); 26 s for the Far Eastern Federal District (774 745 vertices, 7 139
+  pieces); 56 s for Scotland, the largest (1 575 052 vertices, 15 404 pieces), whose write took
+  98 s before it. Measured on 2026-09-10 on a loaded machine (load average 4–6). A compute of every
+  leaf of a world view pays it once per leaf — 11.5 minutes for the mirror's 3 594 leaves measured
+  idle, 21½ when migration 054 cut them on a loaded machine, into 456 135 pieces.
+
+---
+
 ## Database functions
 
 ### `validate_multipolygon(geom)`
@@ -402,6 +445,7 @@ Coverage-aware simplification for **sibling regions** (same parent). Uses `ST_Co
 | `update_region_focus_data` | `regions` | `geom` or `hull_geom` change | Stores `anchor_point` and `focus_bbox` from `geometry_focus()`, taking a near-global parent's box from its children instead. See [How a crossing region is told from a global one](#how-a-crossing-region-is-told-from-a-global-one). |
 | `update_division_focus_data` | `administrative_divisions` | `geom` change | Stores `anchor_point` and `focus_bbox` from `geometry_focus()`. No children aggregation. Disabled during the bulk GADM load, which computes the columns in one pass (step 1b). |
 | `trg_regions_geom_3857` | `regions` | `geom`, `hull_geom`, `uses_hull`, or `geom_simplified_low` change | Transforms to 3857, computes all simplified columns (hull-based and real-geom-based), including both cheap rungs. `uses_hull` is there because it *chooses* the input the rungs are made of (rule 19) and is manually editable (rule 17): `updateRegion` writes the flag on its own, and without this arm a region toggled to hull display kept rungs traced from its real outline while the island tile source switched to the hull at once. `geom_simplified_low` is there for `simplify_coverage_regions()`, which writes that column directly — without it `geom_overview` and `geom_simplified_coarse` would keep the pre-coverage shape and serve it at zoom 0-4. |
+| `trg_regions_geom_pieces` / `trg_regions_geom_insert_pieces` | `regions` | `geom` change, or `INSERT` with a geometry | Replaces the region's rows in `region_geom_pieces` with the cut of its current geometry when it is a leaf (`cut_region_geom_pieces()`); a cut that fails leaves none and warns. Not on `is_leaf`, deliberately — see [the table](#region_geom_pieces-table). |
 
 ### How a crossing region is told from a global one
 
