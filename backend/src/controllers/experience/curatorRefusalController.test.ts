@@ -33,7 +33,7 @@ import {
   CURATOR_REFUSAL_REASON, refuseArrival, refuseContents,
 } from './curatorRefusalController.js';
 import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
-import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { contentsAnswerableSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -59,7 +59,16 @@ function makeClient(
     query: vi.fn(async (sql: string, params?: unknown[]) => {
       queries.push({ sql, params: params ?? [] });
       if (sql.includes(OBJECT_LOCK)) return { rows: [{ missing_since: missingSince }], rowCount: 1 };
-      if (sql.includes('AS membership_id')) return { rows: membership ? [membership] : [{}], rowCount: 1 };
+      if (sql.includes('AS membership_id')) {
+        // The database decides the precondition now (`contentsAnswerableSql`), so
+        // the harness answers it the way Postgres would for the membership it is
+        // standing in for, rather than the writer re-deriving it here.
+        const answerable = membership !== null
+          && membership.admission === 'admitted'
+          && membership.curation_state !== 'pending'
+          && missingSince === null;
+        return { rows: [{ ...(membership ?? {}), answerable }], rowCount: 1 };
+      }
       if (sql.trimStart().startsWith('UPDATE')) return { rows: [], rowCount };
       return { rows: [], rowCount: 0 };
     }),
@@ -249,6 +258,20 @@ describe('refuseContents', () => {
     expect(JSON.parse(log?.params?.[3] as string)).toMatchObject({ treasureIds: [88, 89], locations: 0 });
   });
 
+  it('asks the database for the precondition rather than restating it', async () => {
+    // The harness answers `answerable` whatever the statement asks for, so without
+    // this the column could be dropped from the select list and every case here
+    // would still pass — while in production `before.answerable` is `undefined`,
+    // the guard holds for every row, and *every* contents refusal 409s. Verified
+    // by deleting it: 15 of 15 green with the endpoint entirely broken.
+    const client = makeClient(VISIBLE);
+    await refuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
+
+    const read = client.queries.find(q => q.sql.includes('AS membership_id'));
+    expect(read?.sql).toContain(contentsAnswerableSql());
+    expect(read?.sql).toContain('AS answerable');
+  });
+
   it('sends an arrival back to its own card', async () => {
     const client = makeClient(ARRIVAL);
     const res = makeRes();
@@ -277,7 +300,9 @@ describe('refuseContents', () => {
     const client = makeClient(VISIBLE);
     client.query.mockImplementation(async (sql: string) => {
       if (sql.includes(OBJECT_LOCK)) return { rows: [{ missing_since: null }], rowCount: 1 };
-      if (sql.includes('AS membership_id')) return { rows: [VISIBLE], rowCount: 1 };
+      if (sql.includes('AS membership_id')) {
+        return { rows: [{ ...VISIBLE, answerable: true }], rowCount: 1 };
+      }
       if (sql.includes('UPDATE experience_locations')) throw new Error('boom');
       return { rows: [], rowCount: 0 };
     });

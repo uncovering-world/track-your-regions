@@ -144,20 +144,6 @@ export function contentsWaitingSql(alias = 'e', membership = 'm'): string {
 }
 
 /**
- * A point nobody has passed and nobody has refused — the one the queue asks
- * about and the publish reaches (#852, ADR-0053).
- *
- * `curation_state = 'pending'` is spelled positively rather than through
- * `publishedContentSql`, which states the reader's side (`<> 'pending'`): this
- * asks the opposite question, and `NOT (…)` around a fragment named for the
- * other direction reads worse than the four words it replaces. The refusal is
- * a mark beside the state rather than a fourth value of it, so a refused point
- * is still `pending` to every reader — hidden by the same word — and stops
- * being a question only here. Six statements compose this rather than spell
- * it, and the publish is one of them: a whole-object publish must not release
- * what a curator turned down.
- */
-/**
  * Whose unread contents may be answered at all — the object half of
  * `contentsWaitingSql`, on its own.
  *
@@ -182,6 +168,20 @@ export function contentsAnswerableSql(alias = 'e', membership = 'm'): string {
     AND ${alias}.missing_since IS NULL`;
 }
 
+/**
+ * A point nobody has passed and nobody has refused — the one the queue asks
+ * about and the publish reaches (#852, ADR-0053).
+ *
+ * `curation_state = 'pending'` is spelled positively rather than through
+ * `publishedContentSql`, which states the reader's side (`<> 'pending'`): this
+ * asks the opposite question, and `NOT (…)` around a fragment named for the
+ * other direction reads worse than the four words it replaces. The refusal is
+ * a mark beside the state rather than a fourth value of it, so a refused point
+ * is still `pending` to every reader — hidden by the same word — and stops
+ * being a question only here. Six statements compose this rather than spell
+ * it, and the publish is one of them: a whole-object publish must not release
+ * what a curator turned down.
+ */
 export function unreadPointSql(el = 'el'): string {
   return `${el}.curation_state = 'pending' AND ${el}.refused_at IS NULL`;
 }
