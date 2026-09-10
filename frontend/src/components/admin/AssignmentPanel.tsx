@@ -128,14 +128,16 @@ export function AssignmentPanel() {
         Region Assignment
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Assign experiences to regions based on spatial containment. Experiences are assigned to
-        regions that contain their location point, and the assignment is propagated to ancestor regions.
-        A sync already places whatever moved during the run, so this is for the two cases it cannot
-        settle by itself. The ordinary one is that region boundaries themselves changed, and every
-        location has to be tested against them again. The other is that the placement at the end of a
-        run failed — the run then reports itself Partial and says so, and this is what it is asking
-        for. Either way it clears this world view's automatic assignments before rebuilding, so
-        regions look empty while it runs.
+        Assign experiences to regions based on spatial containment. A location is placed in the
+        smallest regions whose outline holds it, and every region above those gets it from the tree;
+        a larger region is tested directly only for a location no smaller region holds — so St
+        Peter's is listed under Vatican City and Europe, not under Italy. A sync already places
+        whatever moved during the run, so this is for the two cases it cannot settle by itself. The
+        ordinary one is that regions changed — their boundaries, or where they sit in the tree — and
+        every location has to be tested against them again. The other is that the placement at the
+        end of a run failed — the run then reports itself Partial and says so, and this is what it is
+        asking for. Either way it clears this world view's automatic assignments before rebuilding,
+        so regions look empty while it runs.
       </Typography>
 
       <Card sx={{ mb: 3 }}>
