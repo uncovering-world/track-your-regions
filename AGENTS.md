@@ -120,7 +120,7 @@ Follow pattern: `syncX()`, `getXSyncStatus()`, `cancelXSync()`. In-memory progre
 
 ### Geometry and Triggers
 
-Two triggers fire on region geometry changes: `update_region_metadata()` (area — cleared with the geometry, #763 — and `uses_hull` on INSERT only) and `update_region_focus_data()` (anchor point, focus box). Hull services in `backend/src/services/hull/` handle dateline-crossing geometries.
+Five trigger functions fire on region geometry changes: `update_region_metadata()` (area — cleared with the geometry, #763 — and `uses_hull` on INSERT only), `update_region_focus_data()` (anchor point, focus box), `update_regions_geom_3857()` (the 3857 column and every simplified rung), `invalidate_parent_region_geometry()` (nulls the derived parent, ADR-0035) and `refresh_region_geom_pieces()` (the leaf's pieces placement reads, ADR-0054 — so a leaf's geometry write also pays for its `ST_Subdivide` cut, about a minute for the largest). Hull services in `backend/src/services/hull/` handle dateline-crossing geometries.
 
 ### Antimeridian Handling
 

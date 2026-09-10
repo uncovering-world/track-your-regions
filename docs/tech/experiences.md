@@ -1661,11 +1661,88 @@ the collector's floor's inside `fetchItems` (ADR-0044), neither of which anythin
 recomputes.
 
 The full rebuild (`assignExperiencesToRegions`, `POST /api/admin/experiences/assign-regions`)
-stays an admin action, for the case that genuinely needs it: **region geometry changed**, so
-every location has to be re-tested against it. That one clears the world view's `auto` rows
+stays an admin action, for the case that genuinely needs it: **a region changed** — its geometry,
+or its place in the tree, neither of which re-places anything on its own (#494) — so every location
+has to be re-tested against it. That one clears the world view's `auto` rows
 first, which is why it is not what a sync uses — the clear and the rebuild are separate
 statements, so while it runs the world view has no assignments and a browsing user sees empty
-regions.
+regions — for about seven seconds on the development catalogue.
+
+**Where a point is placed: the leaves first, every ancestor from the tree, and the other regions
+only for what no leaf holds**
+([ADR-0054](../decisions/0054-placement-reads-leaves-through-their-pieces.md)). Both ways in run
+one statement, `directPlacementSql`, and differ only in which points they name. It tests a point
+against the world view's leaf regions through `region_geom_pieces` — each leaf's geometry cut into
+pieces of at most 256 vertices and indexed one by one ([geometry-columns.md](geometry-columns.md)
+§ `region_geom_pieces` table) — and asks the whole leaf only about a point on the line between two
+of its pieces, where `ST_Contains` on either piece says no. Every ancestor of a leaf that holds the
+point gets its row from the walk that follows, as before. The other regions — the non-leaves, and a
+leaf with no pieces, which is tested whole rather than skipped — are asked only about the points no
+leaf holds, and among what those whole geometries hold a leaf still comes first: a non-leaf gets a
+row only for a point no leaf holds, however the leaf was asked. So a leaf whose pieces are missing —
+a database that has not run migration 054, a cut that failed — costs time and never changes a row.
+
+That last pass is not a formality. A parent's geometry is built from a GADM division a level up,
+and GADM's coastlines do not nest to the metre between levels, so a parent is not exactly the sum
+of its children: eight offered points on the development catalogue lie in a country and in no leaf
+of it, each 20–240 m outside its nearest leaf — Juno Beach, Delos, the Megaliths of Carnac, Tuol
+Sleng, the Hiroshima Peace Memorial from two sources, and two points of the Dorset and East Devon
+Coast. A rule that tested the leaves alone would take them out of their
+countries. The points nothing holds (#469, #471) stay unheld either way.
+
+What the rule does change is the other direction. A non-leaf whose outline covers a point that a
+leaf outside it holds used to get a row for the point, and no longer does. On the development
+catalogue that was nine points. Eight are in the Vatican — St Peter's, the Sistine Chapel, the
+Vatican Museums and five more — and were listed under Italy as well as Vatican City, because Italy's
+union removed the Vatican's 0.44 km² as a small hole; they are listed under Vatican City and Europe
+now. The ninth is the Qhapaq Ñan's Segment Rumichaca on the bridge between Colombia and Ecuador:
+inside the Ecuadorian leaf Carchi and 35 m from the Colombian leaf Nariño, it was in both countries
+and is in Ecuador only. Which country a component of a serial site belongs to is a question about
+the source's data rather than about geometry (#264).
+
+Measured on 2026-09-10 on all 7844 offered points against the rows the whole geometries place — a
+comparison that shares no code with the pieces, and that agreed row for row with main's own statement
+on a sample of 100 worship objects — those nine rows are the only difference. Under both, 176 points
+are in no region and eight are in a country but in no leaf of it. The issue that asked for this
+counted 179 and nine from the rows then stored, and the gap is the rows' age rather than the rule.
+Four of the 179 — Ban Chiang, the Thap Lan forest, the Louvre Abu Dhabi and the rock art at Sivil —
+lie in leaves that gained their geometry after the points were last placed, and the next
+re-placement puts them there. The Chora of Chersonese, 19 m off both the Sevastopol' leaf and
+Ukraine, was held only by Europe's outline, which is cleared for recompute (#667), so it is in no
+region under either rule.
+
+The statement's shape rests on three facts about the planner, measured on the development catalogue
+on 2026-09-10, and a change to it should measure them again:
+
+- **A leaf is looked up by key for each piece that holds a point** (`LATERAL … OFFSET 0`). Joined
+  plainly, the planner hash-joined every leaf of the world view first on a large placement — a
+  second and a half before the first point was tested.
+- **The points no leaf holds are a materialized set of their own.** Written as an anti-join, it
+  lands above the containment test, and every point is tested against the continents before the
+  held ones are dropped.
+- **The other regions are found through their GiST index, as candidates grouped per region, and
+  tested region by region.** A test against a whole region reads its geometry and builds a prepared
+  index over it, which PostGIS keeps for consecutive calls on the same region. Measured on the pass as
+  first written, which scanned every region of the world view against the 184 points no leaf holds,
+  on its own and at a load average near 6: 8 s tested region by region, 3 min 41 s tested point by
+  point — neither is a part of the timings in the table below. Grouping the candidates also means a
+  region no unheld point comes near is never read, which is what a database without pieces relies
+  on: re-placing the whole world view there takes 31 s, where that first shape took 8 min 45 s.
+
+Measured on the development database on 2026-09-10. The machine was shared and loaded — a load
+average near 6 for the "before" column and near 2 for the "after" one — so read the ratios rather
+than the digits:
+
+| What is placed | Before | After |
+|---|---|---|
+| A run's 1078 Places of worship objects: clear, direct step, ancestors, denormalise | 25 min (sync log 105) | 3.4 s, 2.9 s of it the direct step |
+| The whole world view's 7844 points, as the admin's rebuild does it | about 4.8 h at 2.2 s a point (extrapolated) | 7.3 s, 4.9 s of it the direct step |
+| One object inside a leaf (Paris, Banks of the Seine; St Peter's Basilica), direct step | 1.2–1.3 s | under 1 ms |
+| One object with points no leaf holds (Beaches of the D-Day Landings), direct step | 7.8 s | 1.6 s |
+| The whole world view on a database without pieces (054 not run), direct step | — | 31 s |
+
+The previous statement's 2.2 s a point was measured on 100 of the worship objects (3 min 42 s),
+where its rows matched the whole-geometry comparison above one for one.
 
 ### Rejection filtering
 

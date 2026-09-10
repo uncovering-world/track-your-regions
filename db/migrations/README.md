@@ -450,6 +450,28 @@ because the review page asks per object whether it holds a turned-down part, and
 every read of the page whether or not anyone opens the list. Re-runnable throughout:
 `CREATE INDEX IF NOT EXISTS`, and the `CHECK` dropped and re-added as 051 does it.
 
+`054-leaf-pieces-for-placement.sql` adds `region_geom_pieces` — each leaf region's geometry cut by
+`ST_Subdivide` into pieces of at most 256 vertices — with the trigger that keeps it, and cuts every
+leaf that has a geometry (#851, [ADR-0054](../../docs/decisions/0054-placement-reads-leaves-through-their-pieces.md)).
+Placement tested every point against every region of a world view, continents included, and a
+bounding box does not narrow that where the box spans every longitude: Russia's parts reach both
+sides of the antimeridian, so a point in Paris was read against the whole of Asia, and the first run
+of the Places of worship source spent 25 minutes placing its 1078 points. Placement now tests the
+leaves through the pieces. The cut is one function, `cut_region_geom_pieces()`, which the trigger and
+the backfill both call, and the trigger replaces a region's pieces on every write of its geometry —
+only then, not when `is_leaf` changes — so the pieces a region has are always those of its current
+geometry. The backfill holds writes to `regions` while it runs, because a geometry written meanwhile
+would keep a stale cut beside its fresh one, and prints a NOTICE every 250 leaves:
+21½ minutes on a loaded machine for the 3594 leaves of the development database, which it cut
+into 456 135 pieces. **Run it before
+starting the backend of the same change**, which reads the table — against a database without it
+every placement fails, and every run that moved something ends partial. A database that re-applies
+`01-schema.sql` gets the table and the trigger empty and places correctly until this file runs, only
+more slowly — 31 s rather than 5 for the direct step of the development world view, far from the
+hours the previous statement took — so recording it with `db:baseline` instead of running it is the
+one wrong answer, since nothing afterwards says why placement is slower. Re-runnable — the backfill cuts only the leaves
+without pieces — and order-independent with `01-schema.sql`.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the
