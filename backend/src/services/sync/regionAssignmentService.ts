@@ -4,6 +4,10 @@
  * Assigns experiences to regions based on spatial containment.
  * Uses experience_locations for per-location region assignment.
  * Also propagates assignments to ancestor regions in the hierarchy.
+ *
+ * A point is placed in the leaves that hold it, tested through their geometry
+ * cut into pieces, and in the other regions only when no leaf holds it; every
+ * ancestor's row comes from the tree (`directPlacementSql`, ADR-0054).
  */
 
 import { pool } from '../../db/index.js';
@@ -61,39 +65,136 @@ async function clearPreviousAssignments(
   console.log(`[Region Assignment] Cleared ${clearExpResult.rowCount} experience-region auto-assignments`);
 }
 
-/** Step 2: insert direct location→region rows where the location point is contained in the region geometry. */
+/**
+ * Which regions of a world view hold a point — the direct step, written once for
+ * both ways in (#851, ADR-0054).
+ *
+ * **Leaves first, through their pieces.** A leaf's geometry is kept cut into
+ * pieces of at most 256 vertices (`region_geom_pieces`, replaced by a trigger on
+ * every write of `regions.geom`), so a point meets the one or two small pieces
+ * whose boxes hold it. Asked of whole geometries, a point in Paris was tested
+ * against Asia — 7.1 million vertices, in a box spanning every longitude because
+ * Russia's parts reach both sides of the antimeridian — and the first run of the
+ * Places of worship source spent 25 minutes placing 1078 points. A point on the
+ * line between two pieces is inside the leaf and on the boundary of both, where
+ * `ST_Contains` on a piece says no: those points, and only those, are asked of
+ * the whole leaf.
+ *
+ * **Then the other regions, for what no leaf holds.** A parent's geometry is not
+ * exactly the sum of its children: it is built from a GADM division a level up,
+ * and GADM's coastlines do not nest to the metre between levels, so a point a few
+ * dozen metres off a shore can lie in its country and in no leaf of it — Juno
+ * Beach, Delos. Those points are asked of every region that is not a leaf with
+ * pieces: the non-leaves, and a leaf whose pieces are missing, which is asked
+ * whole rather than skipped. A non-leaf gets a row only for a point no leaf holds,
+ * however the leaf was asked: a point a leaf holds takes its ancestors' rows from
+ * the tree in the next step, and a non-leaf whose outline covers it without
+ * standing above that leaf gets none — Italy's union filled the Vatican in as a
+ * small hole, and St Peter's is not in Italy. So a leaf's missing pieces cost time
+ * and never change a row.
+ *
+ * Three facts about the planner the shape rests on, each measured (see
+ * `docs/tech/experiences.md` § Region assignment). The leaf a piece belongs to is
+ * looked up by key for each piece that holds a point (`LATERAL … OFFSET 0`):
+ * joined plainly, a large placement read every leaf of the world view for a hash
+ * join first, a second and a half before any point was tested. The points no
+ * leaf holds are a materialized set of their own, or the anti-join lands above
+ * the containment test and every point is tested against the continents after
+ * all. And the other regions are found through their GiST index, only where an
+ * unheld point's box touches them, with the points grouped per region: the test
+ * then runs region by region, so consecutive tests share one prepared geometry,
+ * and a region no unheld point comes near is never read — with no pieces at all
+ * that is half a minute for the whole world view, where scanning every region
+ * took nine.
+ *
+ * Offered points only, by the three terms of the controllers'
+ * `offeredLocationSql()`, spelled out because a service imports no controller: a
+ * point a source withdrew, a curator declared lost (ADR-0026) or turned down
+ * (ADR-0053) must not hold its object in a region where nobody is shown it. Both
+ * sites say so, so neither reads as an oversight.
+ *
+ * @param pointFilter `AND` and a condition on the point (`el`) or its object
+ *   (`e`) with its value as `$2`, naming which points to place; empty for all.
+ */
+function directPlacementSql(pointFilter: string): string {
+  return `
+    WITH offered AS MATERIALIZED (
+      SELECT el.id, el.location
+      FROM experience_locations el
+      JOIN experiences e ON e.id = el.experience_id
+      WHERE el.missing_since IS NULL AND el.existence <> 'lost'
+        AND el.refused_at IS NULL
+        ${pointFilter}
+    ),
+    leaf_hits AS MATERIALIZED (
+      SELECT DISTINCT o.id AS location_id, p.region_id
+      FROM offered o
+      JOIN region_geom_pieces p
+        ON p.geom && o.location AND ST_Intersects(p.geom, o.location)
+      CROSS JOIN LATERAL (
+        SELECT r.geom
+        FROM regions r
+        WHERE r.id = p.region_id AND r.world_view_id = $1 AND r.is_leaf
+        OFFSET 0
+      ) leaf
+      WHERE CASE WHEN ST_Contains(p.geom, o.location) THEN true
+                 ELSE ST_Contains(leaf.geom, o.location) END
+    ),
+    unheld AS MATERIALIZED (
+      SELECT o.id, o.location
+      FROM offered o
+      WHERE NOT EXISTS (SELECT 1 FROM leaf_hits h WHERE h.location_id = o.id)
+    ),
+    candidates AS MATERIALIZED (
+      SELECT r.id AS region_id, array_agg(u.id) AS location_ids, array_agg(u.location) AS locations
+      FROM unheld u
+      JOIN regions r ON r.geom && u.location
+      WHERE r.world_view_id = $1
+        AND NOT (r.is_leaf AND EXISTS (SELECT 1 FROM region_geom_pieces p WHERE p.region_id = r.id))
+      GROUP BY r.id
+    ),
+    whole_hits AS MATERIALIZED (
+      SELECT x.location_id, r.id AS region_id, r.is_leaf
+      FROM candidates c
+      JOIN regions r ON r.id = c.region_id
+      CROSS JOIN LATERAL (
+        SELECT c.location_ids[i] AS location_id
+        FROM generate_subscripts(c.location_ids, 1) AS i
+        WHERE ST_Contains(r.geom, c.locations[i])
+        OFFSET 0
+      ) x
+    ),
+    rest_hits AS (
+      SELECT w.location_id, w.region_id
+      FROM whole_hits w
+      WHERE w.is_leaf
+         OR NOT EXISTS (SELECT 1 FROM whole_hits l WHERE l.location_id = w.location_id AND l.is_leaf)
+    )
+    INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
+    SELECT location_id, region_id, 'auto' FROM leaf_hits
+    UNION ALL
+    SELECT location_id, region_id, 'auto' FROM rest_hits
+    ON CONFLICT (location_id, region_id) DO NOTHING
+  `;
+}
+
+/** The points of one source's objects, for a rebuild narrowed to that source. */
+const ONE_SOURCE = 'AND e.category_id = $2';
+/** The points of the objects a run or a curator has just moved. */
+const THESE_EXPERIENCES = 'AND el.experience_id = ANY($2::int[])';
+
+/** Step 2: insert direct location→region rows — the leaves that hold each point, and for a point no leaf holds, the other regions that do. */
 async function assignDirect(
   worldViewId: number,
   categoryId: number | undefined,
   progress: AssignmentProgress
 ): Promise<void> {
   progress.statusMessage = 'Computing direct spatial containment for locations...';
-  const params = categoryId ? [worldViewId, categoryId] : [worldViewId];
 
-  // Offered points only — see the note in `assignRegionsForExperiences`. The
-  // predicate is written out rather than taken from `offeredLocationSql()`:
-  // that fragment is a controller module, and no service imports one.
-  const directResult = await pool.query(`
-    INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
-    SELECT DISTINCT el.id, r.id, 'auto'
-    FROM experience_locations el
-    JOIN experiences e ON el.experience_id = e.id
-    CROSS JOIN regions r
-    WHERE r.world_view_id = $1
-      AND r.geom IS NOT NULL
-      -- The controllers' offeredLocationSql fragment, repeated as a literal for the reason
-      -- given there. Both terms: a point a curator declared gone from the world must
-      -- contribute no region membership either, or a region would count a place
-      -- nobody is shown (ADR-0026).
-      AND el.missing_since IS NULL AND el.existence <> 'lost'
-      -- And no point a curator turned down (ADR-0053): still pending, never to
-      -- be published, so a region must not count a place nobody will be shown.
-      AND el.refused_at IS NULL
-      AND r.geom && el.location
-      AND ST_Contains(r.geom, el.location)
-      ${categoryId ? 'AND e.category_id = $2' : ''}
-    ON CONFLICT (location_id, region_id) DO NOTHING
-  `, params);
+  const directResult = await pool.query(
+    directPlacementSql(categoryId ? ONE_SOURCE : ''),
+    categoryId ? [worldViewId, categoryId] : [worldViewId],
+  );
 
   progress.directAssignments = directResult.rowCount || 0;
   console.log(`[Region Assignment] Created ${progress.directAssignments} direct location-region assignments`);
@@ -303,8 +404,8 @@ export async function getExperienceCountsByRegion(
  * region *geometry* changed. After a sync almost nothing has moved, and since
  * `locationWriter` keeps the row of a point that stayed put, the work left is
  * only the experiences whose geometry actually differs. Doing the full rebuild
- * for that would be wrong twice over: it costs a CROSS JOIN over every region
- * and every location, and its clear-then-insert leaves a window in which the
+ * for that would be wrong twice over: it re-tests every point of the world view
+ * for the sake of a few, and its clear-then-insert leaves a window in which the
  * world view has no assignments at all and users see empty regions.
  *
  * Scoped by experience rather than by location on purpose. A point that moved
@@ -343,30 +444,13 @@ export async function assignRegionsForExperiences(
         AND er.assignment_type = 'auto' AND er.experience_id = ANY($2::int[])
     `, params);
 
-    // Offered points only. A point the source withdrew keeps its row and its
-    // coordinate, and placing it would keep the experience in a region on the
-    // strength of somewhere the reader is no longer shown. The clear above is
-    // unfiltered for the same reason, from the other side: a point withdrawn
-    // since the last placement has to lose the rows it left behind.
-    //
-    // Same predicate as `offeredLocationSql()` in the controller layer, spelled
-    // out here on purpose: importing that fragment would be the first
-    // service-imports-controller edge in the codebase, which is a worse trade
-    // than one repeated line. Both sites say so, so neither reads as an
-    // oversight.
-    await client.query(`
-      INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
-      SELECT DISTINCT el.id, r.id, 'auto'
-      FROM experience_locations el
-      CROSS JOIN regions r
-      WHERE r.world_view_id = $1 AND r.geom IS NOT NULL
-        AND el.experience_id = ANY($2::int[])
-        -- The same fragment again, same reason as above.
-        AND el.missing_since IS NULL AND el.existence <> 'lost'
-        AND el.refused_at IS NULL
-        AND r.geom && el.location AND ST_Contains(r.geom, el.location)
-      ON CONFLICT (location_id, region_id) DO NOTHING
-    `, params);
+    // Offered points only, as `directPlacementSql` says. A point the source
+    // withdrew keeps its row and its coordinate, and placing it would keep the
+    // experience in a region on the strength of somewhere the reader is no
+    // longer shown. The clear above is unfiltered for the same reason, from the
+    // other side: a point withdrawn since the last placement has to lose the
+    // rows it left behind.
+    await client.query(directPlacementSql(THESE_EXPERIENCES), params);
 
     await client.query(`
       WITH RECURSIVE ancestors AS (
