@@ -64,6 +64,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0051](0051-the-review-queue-is-one-list-of-dated-questions.md) | The review queue is one list of dated questions, filtered and set aside per curator | Accepted | 2026-09-07 |
 | [0052](0052-a-place-of-worship-is-admitted-for-itself-or-for-what-it-holds.md) | A place of worship is admitted for itself or for what it holds | Accepted | 2026-09-08 |
 | [0053](0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md) | A curator's no is a verdict on an arrival and a mark on a part | Accepted | 2026-09-09 |
+| [0054](0054-a-works-readership-cuts-a-regional-tier-in-its-units-languages-and-fills-none.md) | A work's readership cuts a regional tier in its unit's languages, and fills none | Accepted | 2026-09-10 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
