@@ -1,9 +1,12 @@
+import { isUsableContact } from './userAgent.js';
+
 export interface RawEnv {
   NODE_ENV?: string;
   JWT_SECRET?: string;
   DB_PASSWORD?: string;
   ADMIN_EMAIL?: string;
   FRONTEND_URL?: string;
+  USER_AGENT_CONTACT?: string;
 }
 
 /**
@@ -41,6 +44,25 @@ export function collectEnvIssues(env: RawEnv): EnvIssue[] {
   }
   if (!(env.FRONTEND_URL ?? '').toLowerCase().startsWith('https://')) {
     issues.push({ key: 'FRONTEND_URL', message: 'must use https:// in production', scope: 'production' });
+  }
+  // Only when it says something: the built-in default is a contact that
+  // answers, and an instance that overrides it publishes the new value to
+  // Wikimedia, Nominatim and UNESCO alike. A value none of them could act on
+  // tells them nothing, which is the state their policies allow them to block
+  // for, and one carrying a character no header may hold is worse still — it
+  // makes every outbound `fetch` throw at header construction, far from here
+  // (#864). `isUsableContact` is that rule, asked where the header is built
+  // rather than spelled again here. Blank is not such a value —
+  // `docker-compose.yml` passes every optional variable as `${VAR:-}`, so an
+  // unset one arrives empty and the header falls back to the built-in contact.
+  const contact = (env.USER_AGENT_CONTACT ?? '').trim();
+  if (contact !== '' && !isUsableContact(contact)) {
+    issues.push({
+      key: 'USER_AGENT_CONTACT',
+      message:
+        'must be a contact a stranger can act on and a header may carry: a website, an email address, or a wiki user — printable Latin-1 only',
+      scope: 'always',
+    });
   }
   return issues;
 }

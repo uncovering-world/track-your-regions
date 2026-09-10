@@ -29,6 +29,30 @@ describe('collectEnvIssues', () => {
     const keys = collectEnvIssues({ ...ok, DB_PASSWORD: 'postgres', ADMIN_EMAIL: '', FRONTEND_URL: 'http://app' }).map(i => i.key);
     expect(keys).toEqual(expect.arrayContaining(['DB_PASSWORD', 'ADMIN_EMAIL', 'FRONTEND_URL']));
   });
+  it('says nothing about USER_AGENT_CONTACT when it is unset — the built-in contact answers', () => {
+    expect(collectEnvIssues(ok).map(i => i.key)).not.toContain('USER_AGENT_CONTACT');
+  });
+  it('accepts an overriding contact in any shape the policy names', () => {
+    for (const value of ['https://example.org', 'ops@example.org', 'https://example.org; ops@example.org', '(wikipedia:de; User:DuesenBot)']) {
+      expect(collectEnvIssues({ ...ok, USER_AGENT_CONTACT: value }).map(i => i.key)).not.toContain('USER_AGENT_CONTACT');
+    }
+  });
+  it('reads a blank contact as unset — compose passes every optional variable as an empty string', () => {
+    for (const value of ['', '   ']) {
+      expect(collectEnvIssues({ ...ok, USER_AGENT_CONTACT: value }).map(i => i.key)).not.toContain('USER_AGENT_CONTACT');
+    }
+  });
+  it('flags an overriding contact nobody could act on, a half-written one included', () => {
+    for (const value of ['the maintainers', '@', 'https://']) {
+      expect(collectEnvIssues({ ...ok, USER_AGENT_CONTACT: value }).map(i => i.key)).toContain('USER_AGENT_CONTACT');
+    }
+  });
+  it('flags a contact no header can carry, before it makes every outbound call throw', () => {
+    // Refused at boot rather than at the first sync: undici turns an em dash
+    // into a TypeError at header construction, nowhere near this file.
+    expect(collectEnvIssues({ ...ok, USER_AGENT_CONTACT: 'https://fork.example \u2014 ops@fork.example' }).map(i => i.key))
+      .toContain('USER_AGENT_CONTACT');
+  });
 });
 
 describe('validateEnv', () => {
