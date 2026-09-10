@@ -328,6 +328,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
             experienceName={experience.name}
             regionId={regionId}
             countryNames={experience.country_names}
+            objectMissingSince={experience.missing_since}
           />
           <TextField
             label="Short Description"

@@ -125,6 +125,13 @@ export interface ExperienceLocation {
    * rows; absent on an older server.
    */
   curation_state?: string;
+  /**
+   * Set where a curator turned this unread point down (#859, ADR-0053). The state
+   * cannot say it — a refused point stays `pending` — and the difference matters
+   * on screen: publishing shows an unread point and refuses a turned-down one, so
+   * a screen reading the state alone promises an outcome that will not happen.
+   */
+  refused_at?: string | null;
   in_region?: boolean; // Whether this location is in the queried region
   region_path?: string | null; // Full region path (e.g. "Europe > France > Paris") for out-of-region display
 }

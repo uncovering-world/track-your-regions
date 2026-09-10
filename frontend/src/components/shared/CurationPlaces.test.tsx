@@ -57,11 +57,21 @@ function answer(...locations: ExperienceLocation[]) {
   });
 }
 
-function renderPlaces(regionId: number | null = 4, countryNames: string[] | null = ['United Kingdom']) {
+function renderPlaces(
+  regionId: number | null = 4,
+  countryNames: string[] | null = ['United Kingdom'],
+  objectMissingSince: string | null = null,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <CurationPlaces experienceId={6205} experienceName="British Museum" regionId={regionId} countryNames={countryNames} />
+      <CurationPlaces
+        experienceId={6205}
+        experienceName="British Museum"
+        regionId={regionId}
+        countryNames={countryNames}
+        objectMissingSince={objectMissingSince}
+      />
     </QueryClientProvider>,
   );
 }
@@ -135,6 +145,34 @@ describe('CurationPlaces', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Move or rename British Museum' }));
     // Publishing, not the withdrawn card's "false alarm", is what would show it.
     expect(screen.getByText('unseen=unread')).toBeInTheDocument();
+  });
+
+  it('says a turned-down place is turned down, not unread, and hands that reason to the form', async () => {
+    // The state cannot tell them apart — a refused point stays `pending` (ADR-0053)
+    // — so this screen called it unread and offered publishing, which the publish
+    // refuses (#859). Reverting `unseenReason` to read the state alone must fail
+    // here; without this case it would leave the suite green and the wrong
+    // sentence on screen.
+    answer(place({ curation_state: 'pending', refused_at: '2026-09-09T12:00:00Z' }));
+    renderPlaces();
+
+    expect(await screen.findByText(/Turned down: readers are not sent here/)).toBeInTheDocument();
+    expect(screen.queryByText(/Unread: readers are sent here once it is published/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Move or rename British Museum' }));
+    expect(screen.getByText('unseen=refused')).toBeInTheDocument();
+  });
+
+  it('sends a turned-down place under a withdrawn object to the object’s own question', async () => {
+    // This read hides a refused or unread object and deliberately not a withdrawn
+    // one, so such a place is served here while the review page disables *Ask about
+    // it again* on the same row. Without the object's fact the two screens said
+    // opposite things about the same point.
+    answer(place({ curation_state: 'pending', refused_at: '2026-09-09T12:00:00Z' }));
+    renderPlaces(4, ['United Kingdom'], '2026-09-09T20:00:00Z');
+
+    expect(await screen.findByText(/under an object with a question of its own/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Move or rename British Museum' }));
+    expect(screen.getByText('unseen=blocked')).toBeInTheDocument();
   });
 
   it('says an object whose every place is gone has none readers can be sent to', async () => {

@@ -269,6 +269,12 @@ export async function getExperienceLocations(req: AuthenticatedRequest, res: Res
       -- (the relaxation below), and the screen that corrects one has to say that
       -- a moved pin is still shown to nobody until it is published (#583).
       el.curation_state,
+      -- And whether a curator turned it down, which the state cannot say: a
+      -- refused point stays pending (ADR-0053), so a screen reading the state
+      -- alone calls it unread and offers publishing as the way to show it --
+      -- which the publish refuses, since it composes unreadPointSql and that
+      -- carries the mark. The mark is what tells the two apart (#859).
+      el.refused_at,
       ${regionId ? `EXISTS(
         SELECT 1 FROM experience_location_regions elr
         WHERE elr.location_id = el.id AND elr.region_id = $2
