@@ -4,7 +4,7 @@
  * `parseSourceLine` (`services/sync/sourceLine.ts`) is the run's reader of the
  * same pair; this is the writer, so the two are validators of one shape and the
  * bound worth pinning here is that the merge keeps every other key `api_config`
- * already holds — a source's `userAgent` must survive setting its line.
+ * already holds — a source's other `api_config` keys must survive setting its line.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -37,7 +37,7 @@ describe('setSourceLine', () => {
     mockedQuery
       .mockResolvedValueOnce({ rows: [{ id: 4, has_line: true }] })
       .mockResolvedValueOnce({
-        rows: [{ id: 4, name: 'Places of worship', api_config: { enterSitelinks: 30, staySitelinks: 25, userAgent: 'x' } }],
+        rows: [{ id: 4, name: 'Places of worship', api_config: { enterSitelinks: 30, staySitelinks: 25, pageSize: 100 } }],
       });
 
     await setSourceLine(makeReq('4', { enterSitelinks: 30, staySitelinks: 25 }), makeRes() as never);
@@ -54,7 +54,7 @@ describe('setSourceLine', () => {
     mockedQuery
       .mockResolvedValueOnce({ rows: [{ id: 4, has_line: true }] })
       .mockResolvedValueOnce({
-        rows: [{ id: 4, name: 'Places of worship', api_config: { enterSitelinks: 30, staySitelinks: 25, userAgent: 'x' } }],
+        rows: [{ id: 4, name: 'Places of worship', api_config: { enterSitelinks: 30, staySitelinks: 25, pageSize: 100 } }],
       });
     const res = makeRes();
 

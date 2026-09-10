@@ -8,7 +8,7 @@ import { parseSourceLine } from './sourceLine.js';
 
 describe('parseSourceLine', () => {
   it('reads the pair off api_config', () => {
-    expect(parseSourceLine({ userAgent: 'x', enterSitelinks: 22, staySitelinks: 18 }))
+    expect(parseSourceLine({ pageSize: 100, enterSitelinks: 22, staySitelinks: 18 }))
       .toEqual({ enterSitelinks: 22, staySitelinks: 18 });
   });
 
