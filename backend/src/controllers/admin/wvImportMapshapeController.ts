@@ -11,9 +11,13 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { pool } from '../../db/index.js';
 import { parseMapshapes } from '../../services/wikivoyageExtract/parser.js';
 import { getOrFetchGeoshape, getOrFetchCommonsMapGeoshape } from '../../services/worldViewImport/geoshapeCache.js';
+import { userAgent } from '../../config/userAgent.js';
 
 const WV_API_URL = 'https://en.wikivoyage.org/w/api.php';
-const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions)';
+// This controller's own fetch of one page carries no bot marker. The import
+// services it goes on to call (`geoshapeCache`) do carry one, so a single admin
+// click emits both: the marker describes the traffic, not the click.
+const USER_AGENT = userAgent();
 
 /**
  * Fetch raw wikitext for a Wikivoyage page.

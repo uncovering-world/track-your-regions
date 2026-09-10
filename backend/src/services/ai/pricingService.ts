@@ -8,6 +8,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { userAgent } from '../../config/userAgent.js';
 
 interface ModelPricing {
   model: string;
@@ -174,8 +175,7 @@ const LITELLM_PRICING_URL =
   'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
 
 /** The one outbound call in the codebase that did not say who was making it. */
-const PRICING_USER_AGENT =
-  'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
+const PRICING_USER_AGENT = userAgent({ purpose: 'model pricing update' });
 const PRICING_TIMEOUT_MS = 30000;
 
 interface LiteLLMEntry {

@@ -11,10 +11,11 @@
 import { pool } from '../../db/index.js';
 import { parseMarkers, parseGeoTag } from '../wikivoyageExtract/markerParser.js';
 import type { ParsedMarker } from '../wikivoyageExtract/markerParser.js';
+import { userAgent } from '../../config/userAgent.js';
 
 const WIKIVOYAGE_API = 'https://en.wikivoyage.org/w/api.php';
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
-const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions)';
+const USER_AGENT = userAgent({ bot: true });
 
 export interface ResolvedPoint {
   name: string;

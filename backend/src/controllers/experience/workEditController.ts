@@ -25,7 +25,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { offeredLinkSql } from './experienceLifecycle.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
-import { WIKIDATA_USER_AGENT } from '../../services/sync/wikidataUtils.js';
+import { userAgent } from '../../config/userAgent.js';
 
 /**
  * What a curator may claim on a work — the whole `treasures.curated_fields`
@@ -129,7 +129,8 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
   // go on naming whoever took the one this edit replaced.
   const credit: ImageCredit | null = picture === undefined
     ? null
-    : await creditForOneImage(picture, WIKIDATA_USER_AGENT);
+    // A curator's save, not a run: no bot marker on this one (#864).
+    : await creditForOneImage(picture, userAgent());
 
   const client = await pool.connect();
   let unusable: Error | undefined;

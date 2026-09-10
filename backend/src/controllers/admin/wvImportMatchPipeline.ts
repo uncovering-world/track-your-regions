@@ -49,6 +49,7 @@ if (!G.__cvReady) {
 export type { PipelineContext } from './wvImportMatchContext.js';
 import type { PipelineContext } from './wvImportMatchContext.js';
 import { markStreamBody } from '../../middleware/cacheHeaders.js';
+import { userAgent } from '../../config/userAgent.js';
 
 // =============================================================================
 // colorMatchDivisionsSSE helpers — phase functions
@@ -1035,7 +1036,7 @@ interface SourceMapPipelineParams {
 async function runSourceMapPipeline(p: SourceMapPipelineParams, res: Response): Promise<void> {
   await p.logStep('Fetching source map image...');
   const mapResponse = await fetch(p.regionMapUrl, {
-    headers: { 'User-Agent': 'TrackYourRegions/1.0 (CV border detection)' },
+    headers: { 'User-Agent': userAgent({ purpose: 'CV border detection' }) },
     redirect: 'follow',
   });
   if (!mapResponse.ok) {

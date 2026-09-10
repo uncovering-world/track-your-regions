@@ -8,10 +8,10 @@
 
 import type { ExtractionProgress } from './types.js';
 import { FileCache } from './cache.js';
+import { userAgent } from '../../config/userAgent.js';
 
 const API_URL = 'https://en.wikivoyage.org/w/api.php';
-const USER_AGENT =
-  'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions; region hierarchy extraction)';
+const USER_AGENT = userAgent({ bot: true, purpose: 'region hierarchy extraction' });
 const MIN_REQUEST_INTERVAL_MS = 350;
 const MAX_RETRIES = 5;
 

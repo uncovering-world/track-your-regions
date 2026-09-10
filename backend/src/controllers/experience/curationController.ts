@@ -21,7 +21,7 @@ import {
 } from '../../middleware/auth.js';
 import { METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
-import { WIKIDATA_USER_AGENT } from '../../services/sync/wikidataUtils.js';
+import { userAgent } from '../../config/userAgent.js';
 import {
   isStorableHttpUrl,
   isDisplayablePictureUrl,
@@ -547,7 +547,9 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
   if (imageUpdate) {
     payload.imageCredit = await creditForOneImage(
       typeof imageUpdate.value === 'string' ? imageUpdate.value : null,
-      WIKIDATA_USER_AGENT,
+      // A curator is waiting on this save, so the header carries no bot marker,
+      // unlike the same read inside a run (#864).
+      userAgent(),
     );
   }
 
@@ -877,7 +879,7 @@ export async function createManualExperience(req: AuthenticatedRequest, res: Res
   // long as they feel like taking. Answers null for anything that is not a
   // Commons file or does not come back inside five seconds — a save must not
   // fail, or wait, because a metadata endpoint is slow.
-  const imageCredit = await creditForOneImage(body.imageUrl as string | undefined, WIKIDATA_USER_AGENT);
+  const imageCredit = await creditForOneImage(body.imageUrl as string | undefined, userAgent());
 
   // Pin all five inserts (experience, location, region link, location-region
   // link, curation log) to a single client so they form a real transaction.

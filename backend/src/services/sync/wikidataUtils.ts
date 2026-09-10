@@ -15,6 +15,7 @@ import {
   WaitBudget,
   type SourceWait,
 } from './sourceRetry.js';
+import { userAgent } from '../../config/userAgent.js';
 
 export { WaitBudget } from './sourceRetry.js';
 export type { SourceWait } from './sourceRetry.js';
@@ -24,7 +25,12 @@ export type { SourceWait } from './sourceRetry.js';
 // =============================================================================
 
 export const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
-export const WIKIDATA_USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
+/**
+ * What every run tells Wikidata and Commons it is. Built by `userAgent()` and
+ * named here because the sync services pass it on to the credit and picture
+ * readers as a value; the string itself is decided in one place (#864).
+ */
+export const WIKIDATA_USER_AGENT = userAgent({ bot: true });
 export const SPARQL_DELAY_MS = 1000;
 
 /**

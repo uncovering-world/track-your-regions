@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { pool } from '../db/index.js';
 import type { User, JWTPayload, AuthTokens, PublicUser, UserRole, AuthProvider } from '../types/auth.js';
 import { maybePromoteToAdmin } from './adminBootstrap.js';
+import { userAgent } from '../config/userAgent.js';
 
 // =============================================================================
 // Configuration
@@ -340,7 +341,7 @@ export async function checkBreachedPassword(password: string): Promise<number> {
 
   try {
     const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
-      headers: { 'User-Agent': 'TrackYourRegions/1.0' },
+      headers: { 'User-Agent': userAgent() },
     });
 
     if (!response.ok) return 0; // Fail open — don't block registration if HIBP is down
