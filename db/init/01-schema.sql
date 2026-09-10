@@ -2799,7 +2799,7 @@ VALUES (
     'Art Museums',
     'World''s most notable museums ranked by artwork fame, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
-    '{"userAgent": "TrackYourRegions/1.0"}'::jsonb,
+    '{}'::jsonb,
     2,
     false,
     (SELECT id FROM experience_kinds WHERE name = 'Art Museums')
@@ -2812,7 +2812,7 @@ VALUES (
     'Public Art & Monuments',
     'Notable outdoor sculptures and monuments worldwide, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
-    '{"userAgent": "TrackYourRegions/1.0"}'::jsonb,
+    '{}'::jsonb,
     3,
     false,
     (SELECT id FROM experience_kinds WHERE name = 'Public Art & Monuments')
@@ -2830,7 +2830,7 @@ VALUES (
     'Places of worship',
     'Cathedrals, churches, mosques, temples and shrines the world knows, and the works inside them, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
-    '{"userAgent": "TrackYourRegions/1.0", "enterSitelinks": 22, "staySitelinks": 18}'::jsonb,
+    '{"enterSitelinks": 22, "staySitelinks": 18}'::jsonb,
     4,
     true,
     (SELECT id FROM experience_kinds WHERE name = 'Places of worship')
