@@ -16,7 +16,7 @@ row:
   wikidata_link: itself
   coordinates: most
   languages: [all]
-  signal: "sitelinks ranked within the unit; local-language readership (Wikipedia pageviews) as the within-unit signal"
+  signal: "readership in the unit's official languages, cut within the unit — of the museum's own article (measured per unit 2026-09-04), or through the works it holds, the museum scoring as its best (ADR-0054); sitelinks ranked within the unit as the control"
 terms:
   licence: "CC0 1.0"
   database_right: waived
@@ -29,20 +29,20 @@ access:
   volume: "per unit: Paris 236 museums, Florence 162, Berlin 233, Kraków 116, Lima 30, Tbilisi 32, Estonia 346 by country"
   rate: "the Query Service refuses heavy patterns; keep queries flat, one band at a time"
 scorecard:
-  date: 2026-09-06
+  date: 2026-09-10
   completeness: 1
   identity: 2
   coordinates: 1
   names: 2
-  signal: 1
+  signal: 2
   terms: 2
   access: 2
   cadence: 2
-  total: 13
+  total: 14
   verdict: adoptable
 status: looked-at
-issue: 799
-looked_at: 2026-09-06
+issue: 807
+looked_at: 2026-09-10
 ---
 
 # Wikidata, read per unit
@@ -71,6 +71,21 @@ and a city by coordinates inside its boundary. And completeness is 1 at best —
 what somebody wrote an item for: 30 museums in Lima against 109 on OpenStreetMap.
 
 **Terms.** CC0.
+
+**What was measured for the signal (2026-09-10, #807, ADR-0054).** A work's share of readers in
+the official languages of the country it is held in, over twelve months of Wikimedia's pageview
+dumps, and a museum scored as its best work. Below 22 sitelinks it correlates with the sitelink
+count at +0.19 — the sum over every edition at +0.36, raw views at +0.58 — so it orders a unit's
+museums differently from the world line rather than lower on it. Cut within the country at a
+view floor of 2,000, it keeps 378 to 509 museums outside the catalogue as the cut widens from one
+decade to two. It ranks and does not find: of the eight canon places `filling-a-kind.md` § 7.6
+names, it reaches two, each through a famous local work — the Art Museum of Georgia through the
+Khakhuli triptych, the Niguliste Museum through Notke's *Danse Macabre* — and Wikidata places no
+artwork at all at the Georgian Museum of Fine Arts or at Manggha. That is the reading through a
+museum's works; the reading of the museum's own article, measured per unit on 2026-09-04 (Kumu,
+the Niguliste Museum), is a second signal this record keeps and #807 did not re-measure. A
+country's languages are read from `P37` through `P424` until #809 gives a region its own list;
+Filipino has no `P424`, so the Philippines reads as English.
 
 **What decides it.** Adopted *per unit* as the fallback, with § 4's three conditions measured
 — coverage against the unit's canon, the share of rows with an item (all, here), and a floor

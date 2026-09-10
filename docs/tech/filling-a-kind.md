@@ -422,7 +422,8 @@ signal is sitelinks ranked *inside the unit* (Tbilisi: Museum of Soviet Occupati
 Museum of Georgia 23, Simon Janashia Museum 20, the National Gallery 14 — the order a resident
 would give), or local-language readership (2026-09-04: Kumu 1,889 Estonian views in twelve
 months, the Niguliste Museum 406 with two sitelinks and no English article at all). With a
-floor on the group it is the fallback of § 4 and scores 13 for a unit like Tbilisi; the record
+floor on the group it is the fallback of § 4 and scores 14 for a unit like Tbilisi (13 until #807
+measured its signal); the record
 names the unit it was adopted for. Verdict: world tier — the source it already is; regional
 tier — **the fallback, per unit, with its coverage measured** (§ 4's three conditions).
 
@@ -450,10 +451,114 @@ is the only stable one) and share-alike is the question (§ 5). Verdict: **the y
 finder** for both tiers — what the unit holds that no register lists — and a source of rows
 only once the ODbL question is answered for the catalogue as a whole.
 
-**Wikipedia pageviews** enumerate nothing and are the within-unit signal of the fallback
-(2026-09-04's measurement: order of magnitude apart between the Louvre and Kumu, so a log and a
-percentile within (unit, kind), and "no article" is never zero). #807 measures it on the works
-pool. Verdict: a signal, for the regional tier's cut; not a source.
+**Wikipedia readership, measured on the works pool** (2026-09-10, #807,
+[ADR-0054](../decisions/0054-a-works-readership-cuts-a-regional-tier-in-its-units-languages-and-fills-none.md)).
+Readership enumerates nothing: it is a signal for the regional tier's cut, not a source — and
+the measurement shows why before it shows how.
+
+*What was read.* Every artwork of the museum import's seven roots with a current `P276` or
+`P195` statement: 7,423 works at 4–9 sitelinks, 1,863 at 10–21 and 433 at 22 or more, held at
+3,944 venues, of which the catalogue holds 260 (below four sitelinks the same pattern is
+1,555,160 works). Their 73,332 Wikipedia articles — 70,820 on the 84 editions above 15 million
+views a year — and the 40,128 titles that redirect into those. Twelve months of user views,
+September 2025 to August 2026, from Wikimedia's monthly pageview dumps: the English edition
+totals 81.08 billion there and through the analytics API alike, and 4,256 of 4,260 titles
+measured both ways agree within 5 %.
+
+*The measure.* A work's share in an edition is its views there — the article's year plus every
+redirect's — per million of that edition's own year. An edition counts for a work only above
+three gates: 15 million views a year; 50 views per article a year, which removes Egyptian Arabic
+(42), Waray (32) and Cebuano (19) and nothing else — Urdu (67), Welsh and Belarusian (73) stay;
+and 2,000 views of the work. A sitelink that leads to an article about something else — the
+German *Das Jüngste Gericht (Michelangelo)* redirects to Michelangelo, five Dürer self-portraits
+to one survey — or to nothing is *no article* (142 and 327 pairs), and a work left with no
+article is *unmeasurable*, never last.
+
+*Two readings.* The issue's: the sum of a work's shares over every edition. The regional: its
+share in the official languages (`P37`, through their Wikipedia code `P424`) of the country it is
+held in. What is read is always the works' own articles, never a museum's; a museum scores as
+the best work it holds. The control is the works at the Iconic line, 22 sitelinks or more: 433
+of them, 431 measurable, 336 of them the catalogue's own treasures. The sum puts the Mona Lisa,
+the Statue of Liberty, *The Last Supper*, *The Starry Night*, *Girl with a Pearl Earring*,
+*Guernica*, Christ the Redeemer, *David*, the Rosetta Stone and the *Vitruvian Man* on top
+(median 17.7 per million — the "Iconic median" of the tables below — quartiles 7.7 and 51.9;
+over the catalogue's 335 measured Iconic treasures alone the median is 17.1); the regional
+share's median is 3.5. Of the catalogue's 1,411 treasures, 1,294 are measured and 80 fall below
+the gates; 37, 17 of them Iconic, are outside the pool, because a query over the seven roots does
+not return the classes the imports add by hand — painting series, polyptychs, altarpieces,
+reliquaries — so the Shrine of the Three Kings and Strasbourg's astronomical clock were not read.
+Below the 22 line the sum correlates with the sitelink count at +0.36, raw views at +0.58, the
+regional share at +0.19 — the reading that adds most to the world line.
+
+| Work (held at) | Sitelinks | Sum | Regional | Read most in |
+|---|---|---|---|---|
+| *Abaporu* (MALBA, Buenos Aires) | 9 | 63.2 | 0.9 | Portuguese |
+| *Spoliarium* (National Museum of Fine Arts, Manila) | 12 | 232.1 | 1.4 | English; Tagalog at 230.6 per million |
+| *The Tortoise Trainer* (Pera Museum, Istanbul) | 21 | 78.0 | 73.7 | Turkish |
+| Myazedi inscription (Bagan) | 14 | 389.2 | 389.2 | Burmese |
+| *Kartlis Deda* (Tbilisi) | 31 | 175.6 | 168.4 | Georgian |
+| *Hip, Hip, Hurrah!* (Gothenburg Museum of Art) | 14 | 26.3 | 2.9 | Danish |
+| *Gypsy Girl* mosaic (Gaziantep Museum of Archaeology, per Wikidata) | 4 | 33.4 | 33.4 | Turkish |
+
+The readings split the issue's own examples: *Abaporu* is read by a public elsewhere, which is
+#808's Pilgrimage and not Argentina's tier; the *Spoliarium*'s regional score is low only because
+Filipino (Q33298) has no `P424`, which is #809's to fix. A work's *reader language* is the edition
+with the highest share among those holding a tenth of its views; the highest share alone names
+the smallest edition that carries the article (Wu Chinese, 422 per million on 8,265 views, for
+the Mona Lisa, against English's 24 on 1,980,358). The *Gypsy Girl* row names the museum
+Wikidata's collection statement gives; on the ground the mosaic has been the centrepiece of the
+Zeugma Mosaic Museum since 2011, which makes it a live instance of the stale-location caveat
+under the cut below.
+
+*What it reaches on the canon.* Of the eight places § 7.6 names, two, and both through a famous
+local work:
+
+| Unit | Canon place | Artworks Wikidata places there | Best of them | Reached |
+|---|---|---|---|---|
+| Tbilisi | Art Museum of Georgia | in the pool | the Khakhuli triptych, 6 sitelinks, 44.4 per million in Georgian | yes |
+| Estonia | Niguliste Museum | in the pool, as St Nicholas' Church | Bernt Notke's *Danse Macabre*, 6 sitelinks, 33.6 per million in Estonian | yes |
+| Florence | Museo Stibbert | in the pool | a polyptych, 5 sitelinks, no readers above the gates | no |
+| Paris | musée Zadkine | 909 | 1 sitelink | no |
+| Berlin | Berlinische Galerie | 5,943 | 3 sitelinks | no |
+| Kraków | Manggha | 0 | — | no |
+| Lima | Larco Museum | 1 | 1 sitelink | no |
+| Tbilisi | Georgian Museum of Fine Arts | 0 | — | no |
+
+The museums a regional tier exists for are regional because no single work of theirs is famous,
+so a signal read off works cannot find them (ADR-0054 decision 1). That is the reading of a museum
+through its works. The reading of a museum's own article — Kumu's 1,889 Estonian views and the
+Niguliste Museum's 406, measured per unit on 2026-09-04 and quoted above — is a second within-unit
+signal, not measured on the pool here and not withdrawn by ADR-0054, and it is the one that can
+reach a museum whose fame is the institution.
+
+*The cut.* Museums outside the catalogue, each scoring as its best work (ADR-0023), rooms folded
+into their institution and cities and squares set apart; a museum is kept within a given number
+of decades of its country's best when the country holds eight scored museums, else of its
+continent's, else no cut and a curator's list:
+
+| Reading | View floor | Cut | Europe | Asia | North America | South America | Africa | Oceania | Total |
+|---|---|---|---|---|---|---|---|---|---|
+| sum | 2,000 | global, at the Iconic median | 45 | 5 | 7 | 2 | 0 | 1 | 60 |
+| sum | 2,000 | in-unit, 1 / 1.5 / 2 decades | 103 / 226 / 438 | 12 / 29 / 38 | 24 / 46 / 129 | 7 / 14 / 16 | 0 | 0 | 146 / 315 / 621 |
+| regional | 2,000 | global, at its Iconic median | 81 | 8 | 0 | 4 | 1 | 0 | 94 |
+| regional | 2,000 | in-unit, 1 / 1.5 / 2 decades | 301 / 384 / 417 | 20 / 24 / 31 | 47 | 10 / 14 / 14 | 0 | 0 | 378 / 469 / 509 |
+| regional | 500 / 1,000 / 5,000 | in-unit, 1.5 decades | 562 / 488 / 219 | 36 / 28 / 17 | 77 / 66 / 23 | 16 / 16 / 11 | 0 | 9 / 0 / 0 | 700 / 598 / 270 |
+
+No North American museum clears a global bar on the regional share at any floor, since the
+English edition's own year is 81 billion views; the regional reading's count moves by a third
+across the cut's width where the sum's moves more than fourfold. What the regional in-unit cut
+keeps outside Europe and North America at a floor of 2,000 and 1.5 decades: the Bangkok National
+Museum (*Phra Phuttha Sihing*), the National Museum of Korea, the Kyoto National Museum
+(*Chōjū-jinbutsu-giga*), Leeum and the Ho-Am Art Museum (*Geumgang jeondo*), the Tehran Museum of
+Contemporary Art; the Ipiranga Museum, the Museu Nacional de Belas Artes in Rio, MASP, the Gold
+Museum in Bogotá (the Muisca raft), Lima's National Museum of Archaeology (the Raimondi Stele);
+in Africa, none. The counts rest on an approximation of the import's venue resolution: a Louvre
+room whose chain runs through the Denon Wing and the palace does not fold into the museum, and a
+location statement with no end date still places Botticelli's *Primavera* in the Palazzo Medici
+Riccardi — neither is in the museum column.
+
+Verdict: **a signal, for the regional tier's cut, read in the unit's languages and cut within the
+unit; never a source** (ADR-0054).
 
 ### 7.5 Commercial catalogues and guides
 
@@ -488,7 +593,8 @@ overturned the moment a native source that scores higher is found — which is t
 
 ## 8. The queries behind § 7
 
-Recorded so the numbers can be re-taken. All read on 2026-09-06.
+Recorded so the numbers can be re-taken. Read on 2026-09-06, except the readership measurement at
+the end of this section, read on 2026-09-10.
 
 Wikidata, museums located in a unit (QLever's Wikidata endpoint, `https://qlever.dev/api/wikidata`;
 the Query Service timed out on the same pattern that day):
@@ -525,6 +631,49 @@ listings counted as `{{see … }}` templates across lines, `wikidata=` and `lat=
 Muséofile: `https://www.data.gouv.fr/api/1/datasets/liste-des-musees-de-france/` names the CSV;
 Poland: `https://api.dane.gov.pl/1.4/datasets/4345/resources` names the spreadsheet.
 
+Readership on the works pool (#807, § 7.4; read 2026-09-10). The pool, on QLever. The cast is
+not optional: without `xsd:integer` the comparison matches nothing and the query answers zero
+rows rather than an error — 5,574 paintings at 4–9 sitelinks with it, none without:
+
+```sparql
+PREFIX wd: <http://www.wikidata.org/entity/>  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wikibase: <http://wikiba.se/ontology#>  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+SELECT ?w ?sl WHERE {
+  # the museum import's seven roots
+  VALUES ?root { wd:Q3305213 wd:Q860861 wd:Q179700 wd:Q93184 wd:Q11060274 wd:Q133067 wd:Q184296 }
+  ?w wdt:P31/wdt:P279* ?root ; wikibase:sitelinks ?sl .
+  FILTER(xsd:integer(?sl) >= 4)                          # without the cast: zero rows
+  { ?w wdt:P276 ?v } UNION { ?w wdt:P195 ?v }
+}
+```
+
+This query is the measurement's pool, not the adoption's: it leaves out the classes the imports
+add by hand — `MUSEUM_PINNED_CLASSES` in `backend/src/services/sync/museum/worksCollector.ts`
+(painting series, polyptychs, altarpieces) and the worship import's contents classes (reliquaries,
+astronomical clocks) — which is why 37 of the catalogue's treasures were not read (§ 7.4); a pool
+that feeds a sync adds them. A work's articles add
+`?article schema:about ?w ; schema:name ?title ; schema:isPartOf ?site`, dropping
+`abstract.wikipedia.org`, which is not a readable edition. A venue is read from current
+statements only — `p:P276` and `p:P195` with `FILTER NOT EXISTS { ?st pq:P582 ?ended }`, the
+deprecated rank dropped — and a room folds into its institution through `P361`.
+
+Views come from the monthly user-agent dumps,
+`https://dumps.wikimedia.org/other/pageview_complete/monthly/<YYYY>/<YYYY-MM>/pageviews-<YYYYMM>-user.bz2`
+— twelve files, 61.8 GB — streamed through `bzip2 -dc` and filtered on the edition code and the
+title. A line is `<edition>.wikipedia <title> <page id> <access> <month total> <daily counts>`,
+and one title appears as raw UTF-8, as `%XX` and as `%uXXXX`: the three are one article. The
+per-article REST API answers the same numbers, but Wikimedia allows an anonymous client ten
+requests a minute and three concurrent connections
+(`https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits`), which puts one pass at almost eight
+days.
+
+The redirects into a title: `https://<edition>.wikipedia.org/w/api.php?action=query&prop=redirects&rdlimit=max&titles=<up to 50>`.
+Whether a sitelink's target is about the work:
+`action=query&redirects=1&prop=pageprops&ppprop=wikibase_item`, sent as POST — fifty Malayalam
+titles percent-encode to a 9,477-byte URL, which the wiki refuses with HTTP 414 — one request at
+a time, six seconds apart. An edition's article count: `action=query&meta=siteinfo&siprop=statistics`.
+A country's languages: `wdt:P37` to `wdt:P424` on the Query Service.
+
 ---
 
 ## 9. What revises these rules
@@ -552,12 +701,13 @@ Changes are logged here:
 |---|---|---|
 | 2026-09-06 | First version (#799) | The rules before the first adoption |
 | 2026-09-08 | First non-museum kind (#753, ADR-0052): the scorecard's criteria held for a world-tier source read on the world-tier reading of Signal and Completeness; the two doors are one source | Places of worship adopted `wikidata-places-of-worship` — the criteria are the family's, not the kind's, and § 6.2's wording, which is the regional tier's, needed reading rather than rewriting: Signal 2 is a signal comparable across the world, Completeness 2 is a stated subset with its rule written. A place admitted for its own fame and one admitted for a work it holds are two admissions of one source at one line, so they are one record, not two |
+| 2026-09-10 | The within-unit signal measured through works (#807, ADR-0054): readership is read in the unit's official languages and cut within the unit, a museum scoring as its best work; no global bar on either reading | On the works pool the share in the unit's languages tracks the sitelink count at +0.19 below the 22 line, where the sum over every edition tracks it at +0.36; it reaches two of the eight canon places of § 7.6, both through a famous local work, because a regional museum's works are not individually famous — so it ranks what a source enumerates and finds nothing itself. The reading of a museum's own article is a second signal, left standing |
 
 ## 10. Out of scope
 
-Adopting any source (#628, #581, the public-art regional tier); the list of sources per unit
-(each kind's issue fills the register); thresholds per kind and the exact within-unit signal per
-source (#628's slices, #761); the readership measurement on the works pool (#807); the
-Pilgrimage badge (#808); which languages a region reads (#809); the curator screen for tier and
-badge (#603 for the badge); any code for the register, which arrives with the first sync that
-reads it.
+Adopting any source (#628, #581, and the regional tiers of public art and places of worship,
+#861 and #862); the list of sources per unit (each kind's issue fills the register); thresholds
+per kind, the readership signal's included — measured in § 7.4, set by #628's slices — and #761's
+percentile of sitelinks; the Pilgrimage badge (#808); which languages a region reads (#809); the
+curator screen for tier and badge (#603 for the badge); any code for the register, which arrives
+with the first sync that reads it.

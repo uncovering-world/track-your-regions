@@ -105,8 +105,11 @@ venue's country at 10 sitelinks: Italy 59 works, the Vatican 26, Spain 20, Belgi
 France 5, Greece 5, Sweden 4, Thailand 3, Egypt 2, then single rows. The reason is that Asia's
 great statues have almost no sitelinks *as items* — the Tōdai-ji Daibutsu 7, the Reclining
 Buddha of Wat Pho 1 — because their fame is the temple's, which door one carries (India 49
-places, Japan 41, China 30). A longer class list does not change this; the regional tier
-(ADR-0048 decision 3, by local-language readership — #807's method) is what does.
+places, Japan 41, China 30). A longer class list does not change this; the regional tier does
+(ADR-0048 decision 3) — through a source native to each unit, cut by the readership of a place's
+works in that unit's own languages, which ranks what the source enumerates and finds nothing on
+its own (ADR-0054). Measured on 2026-09-10, that reading puts the Chapel of the Emerald Buddha at
+93 readers per million in Thai and the Golden Buddha of Wat Traimit at 39.8.
 
 **What else is inside a place of worship.** Everything Wikidata places inside a worship venue at
 10 sitelinks or more: 476 items, 153 of them under the art roots. Of the rest, three groups of
