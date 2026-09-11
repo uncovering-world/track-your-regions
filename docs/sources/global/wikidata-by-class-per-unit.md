@@ -16,7 +16,7 @@ row:
   wikidata_link: itself
   coordinates: most
   languages: [all]
-  signal: "sitelinks ranked within the unit; local-language readership (Wikipedia pageviews) as the within-unit signal"
+  signal: "sitelinks ranked within the unit; for art museums, the local fame of the works a museum holds — their readership in the unit's languages against the world tier's works in the same language (ADR-0057, in draft)"
 terms:
   licence: "CC0 1.0"
   database_right: waived
@@ -29,20 +29,20 @@ access:
   volume: "per unit: Paris 236 museums, Florence 162, Berlin 233, Kraków 116, Lima 30, Tbilisi 32, Estonia 346 by country"
   rate: "the Query Service refuses heavy patterns; keep queries flat, one band at a time"
 scorecard:
-  date: 2026-09-06
+  date: 2026-09-11
   completeness: 1
   identity: 2
   coordinates: 1
   names: 2
-  signal: 1
+  signal: 2
   terms: 2
   access: 2
   cadence: 2
-  total: 13
+  total: 14
   verdict: adoptable
 status: looked-at
-issue: 799
-looked_at: 2026-09-06
+issue: 807
+looked_at: 2026-09-11
 ---
 
 # Wikidata, read per unit
@@ -70,10 +70,27 @@ item labelled "Tallinn" (Q4450503) rather than the city's (Q1770); a country is 
 and a city by coordinates inside its boundary. And completeness is 1 at best — Wikidata knows
 what somebody wrote an item for: 30 museums in Lima against 109 on OpenStreetMap.
 
+**What was measured for the signal (September 2025 to August 2026, #807; ADR-0055 to
+ADR-0057, in draft).** Readership was read through the works a museum holds, on the museum
+import's own placement: 9,967 works at 1,005 venues. A work's *local fame* is its views in an
+official language of the country that holds it, over the median views in that language of the
+world tier's works — 48,983 in English, 9,074 in Italian, 366 in Georgian. At 1 or more it finds
+171 candidate art museums outside the world tier, 168 of them in 47 countries once the
+reader-country check has run, each still to pass the curator's gate, and Wikivoyage lists 40 % of
+those in
+its 40 test cities against 28 % of all candidates. It reaches a museum through a famous work —
+the Art Museum of Georgia through the Khakhuli triptych — and not a museum famous as an
+institution: the Frida Kahlo Museum, the National Museum of Fine Arts in Buenos Aires, the
+Burrell Collection. A country's languages are read from `P37` through `P424` until #809 gives a
+region its own list. The readership of a museum's own article, measured per unit on 2026-09-04
+(`docs/tech/filling-a-kind.md` § 7.4), is a different signal and was not measured over the pool.
+
 **Terms.** CC0.
 
 **What decides it.** Adopted *per unit* as the fallback, with § 4's three conditions measured
 — coverage against the unit's canon, the share of rows with an item (all, here), and a floor
-on the group for the within-unit cut — and replaced when a native source arrives. The place
+on the group where the cut ranks a unit's museums against each other, as a percentile of sitelinks
+does; the local fame of art museums needs no floor, since its bar is set per language (ADR-0057,
+in draft) — and replaced when a native source arrives. The place
 that shows it: the Georgian Museum of Fine Arts in Tbilisi, 11 sitelinks, a museum no register
 lists because Georgia's is unpublished.

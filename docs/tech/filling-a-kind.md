@@ -421,9 +421,12 @@ somebody wrote an item for, which in Lima is 30 museums against 109 on OSM. Its 
 signal is sitelinks ranked *inside the unit* (Tbilisi: Museum of Soviet Occupation 27, Art
 Museum of Georgia 23, Simon Janashia Museum 20, the National Gallery 14 — the order a resident
 would give), or local-language readership (2026-09-04: Kumu 1,889 Estonian views in twelve
-months, the Niguliste Museum 406 with two sitelinks and no English article at all). With a
-floor on the group it is the fallback of § 4 and scores 13 for a unit like Tbilisi; the record
-names the unit it was adopted for. Verdict: world tier — the source it already is; regional
+months, the Niguliste Museum 406 with two sitelinks and no English article at all). With a floor
+on the group for either signal it is the fallback of § 4 and scores 14 for a unit like Tbilisi (13
+until #807 measured readership as its signal); the record names the unit it was adopted for. For
+art museums the fallback can also be cut by the *local fame* of the works a museum holds (below),
+whose bar is set per language and needs no floor on the group, because it does not rank the unit's
+museums against each other (ADR-0057, in draft). Verdict: world tier — the source it already is; regional
 tier — **the fallback, per unit, with its coverage measured** (§ 4's three conditions).
 
 Read *by class for the whole world*, rather than within a unit, Wikidata is now the world tier of
@@ -450,10 +453,31 @@ is the only stable one) and share-alike is the question (§ 5). Verdict: **the y
 finder** for both tiers — what the unit holds that no register lists — and a source of rows
 only once the ODbL question is answered for the catalogue as a whole.
 
-**Wikipedia pageviews** enumerate nothing and are the within-unit signal of the fallback
-(2026-09-04's measurement: order of magnitude apart between the Louvre and Kumu, so a log and a
-percentile within (unit, kind), and "no article" is never zero). #807 measures it on the works
-pool. Verdict: a signal, for the regional tier's cut; not a source.
+**Wikipedia readership** enumerates nothing on its own. #807 measured it over September 2025 to
+August 2026 on the museum import's own placement — 9,967 works at 1,005 venues — reading the
+monthly pageview dumps, setting automated traffic aside against each edition's own share of
+phone views, and — where the regional cut below asks who reads a work — treating a country
+Wikimedia's reader-country data does not show as unobserved, never as unread
+([ADR-0055](../decisions/0055-readership-is-read-from-monthly-dumps-and-an-unseen-country-is-unobserved.md),
+in draft). The world-tier door asks no country question at all. It serves art museums in two ways. Read in every language, it is a second door to the
+world tier: a work below 22 sitelinks whose views reach the median of the world tier's works,
+which this year adds 16 museums, from the Musée Fabre in Montpellier with Cabanel's *The Fallen
+Angel* to the Norman Rockwell Museum with *The Problem We All Live With*
+([ADR-0056](../decisions/0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md),
+in draft). Read in a country's own languages as *local fame* — a work's views over the median
+views, in the same language, of the world tier's works — it is the cut of the fallback above
+for a country with no native source: at 1 or more it finds 171 candidate art museums, 168 of
+them in 47 countries once the reader-country check has run, and Wikivoyage's See listings in
+40 test cities name 40 % of them against 28 % of all candidates
+([ADR-0057](../decisions/0057-a-work-famous-in-its-own-language-admits-its-museum-where-no-native-source-is-adopted.md),
+in draft). An admission through either door passes the curator's gate with its flags shown, and
+neither door opens before #868 closes; for Art Museums, whose source publishes unread today, that
+means an admin turns `requires_curation` on before the first run that opens a door, after which
+every arrival of that run waits for a person (decision 5 of each ADR). The bar sets itself per
+edition: 48,983 views in English, 9,074 in Italian, 366 in Georgian. It reaches a museum through a famous work — the Art Museum of Georgia through the
+Khakhuli triptych — and not a museum famous as an institution, such as the Frida Kahlo Museum or
+the National Museum of Fine Arts in Buenos Aires. Verdict: a signal — for the world tier's
+second door and for the fallback's cut — never a source of rows on its own.
 
 ### 7.5 Commercial catalogues and guides
 
@@ -488,7 +512,8 @@ overturned the moment a native source that scores higher is found — which is t
 
 ## 8. The queries behind § 7
 
-Recorded so the numbers can be re-taken. All read on 2026-09-06.
+Recorded so the numbers can be re-taken. Everything above the readership line was read on
+2026-09-06; the readership line records its own dates.
 
 Wikidata, museums located in a unit (QLever's Wikidata endpoint, `https://qlever.dev/api/wikidata`;
 the Query Service timed out on the same pattern that day):
@@ -525,6 +550,29 @@ listings counted as `{{see … }}` templates across lines, `wikidata=` and `lat=
 Muséofile: `https://www.data.gouv.fr/api/1/datasets/liste-des-musees-de-france/` names the CSV;
 Poland: `https://api.dane.gov.pl/1.4/datasets/4345/resources` names the spreadsheet.
 
+**Readership** (#807, read 2026-09-10 and 2026-09-11; ADR-0055). The pool and its placement came
+from the museum import's own stages — `collectWorks`, the art test and `selectTier1` — run
+through a bare SPARQL runner, plus every artwork of 4–9 sitelinks with a location or collection
+statement, read on QLever. Compare sitelinks through `xsd:integer(?sl)`: the uncast comparison
+returns zero rows and no error. Views came from the monthly user dumps,
+`https://dumps.wikimedia.org/other/pageview_complete/monthly/YYYY/YYYY-MM/pageviews-YYYYMM-user.bz2`,
+read as a stream (`curl | bzip2 -dc | filter`, two months at a time, under `set -o pipefail`).
+Check the downloaded size against the server's `Content-Length` before reading it: Wikimedia
+publishes no checksums, and the counts below are a sanity check on top, not the control.
+A line is `<edition>.wikipedia <title> <page id or null> <access method> <month total> <days>`,
+where each day is a letter followed by its count: `A` to `Z` for days 1–26, then `[`, `\`,
+`]`, `^` and `_` for days 27–31. A title appears raw, percent-encoded and as `%uXXXX`, in three
+rows that are decoded and summed. A month under 50 million lines or 80 editions is a stream that
+stopped. Automated traffic is set aside per work and edition: a pair with 5,000 views a year or
+more whose phone share differs from its edition's own yearly share by 2.5 or more in log-odds
+does not count. Redirects came from the Action API (`prop=redirects`, fifty titles a call, sent as POST:
+fifty non-Latin titles in a URL answer HTTP 414). Readers by country came from Wikimedia's
+differentially private daily files under
+`https://analytics.wikimedia.org/published/datasets/country_project_page/`: country, ISO code,
+project, page id, title, Wikidata item and a noisy count, with the release thresholds in its
+`00_README.html`. Visitors are Wikidata's `P1174`; the precision check read the `{{see}}`
+listings of 40 Wikivoyage city articles and up to eight district articles each, as above.
+
 ---
 
 ## 9. What revises these rules
@@ -552,12 +600,12 @@ Changes are logged here:
 |---|---|---|
 | 2026-09-06 | First version (#799) | The rules before the first adoption |
 | 2026-09-08 | First non-museum kind (#753, ADR-0052): the scorecard's criteria held for a world-tier source read on the world-tier reading of Signal and Completeness; the two doors are one source | Places of worship adopted `wikidata-places-of-worship` — the criteria are the family's, not the kind's, and § 6.2's wording, which is the regional tier's, needed reading rather than rewriting: Signal 2 is a signal comparable across the world, Completeness 2 is a stated subset with its rule written. A place admitted for its own fame and one admitted for a work it holds are two admissions of one source at one line, so they are one record, not two |
+| 2026-09-11 | Wikipedia readership measured for art museums (#807; ADR-0055, ADR-0056 and ADR-0057, in draft): § 7.4's readership verdict, § 8's readership line, and the by-class record's signal scored 2 | The within-unit signal § 7.4 named was measured over a year on the import's own placement: read from the monthly dumps, it opens a second world-tier door on views in every language, and as local fame it cuts the fallback of a country with no native source |
 
 ## 10. Out of scope
 
 Adopting any source (#628, #581, the public-art regional tier); the list of sources per unit
 (each kind's issue fills the register); thresholds per kind and the exact within-unit signal per
-source (#628's slices, #761); the readership measurement on the works pool (#807); the
-Pilgrimage badge (#808); which languages a region reads (#809); the curator screen for tier and
+source (#628's slices, #761); the Pilgrimage badge (#808); which languages a region reads (#809); the curator screen for tier and
 badge (#603 for the badge); any code for the register, which arrives with the first sync that
 reads it.
