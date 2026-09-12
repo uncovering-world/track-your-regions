@@ -16,10 +16,10 @@
 import { selectTier1, ICONIC_SITELINKS, type Tier1Result } from './tier1.js';
 import { diffPlacements, type PlacementDiff } from './placementDiff.js';
 import { artVerdict, isSculptural, EDITORIAL_OUT } from './artTest.js';
-import { museumRule } from './venueTest.js';
+import { museumRule, type VenueRule } from './venueTest.js';
 import type { Fold } from './venueFolds.js';
 import type { Resolution } from './resolveVenue.js';
-import type { VenueGraph } from './venueGraph.js';
+import { applyFolds, foldVenues, type VenueGraph } from './venueGraph.js';
 import {
   collectWorks,
   heldBy,
@@ -29,6 +29,7 @@ import {
   MUSEUM_PINNED_CLASSES,
   MUSEUM_PINNED_EDITION_CLASSES,
   EDITION_ROOT,
+  type UnseenWork,
 } from './worksCollector.js';
 import { fetchMuseumClasses, type PoolWork, type RawStatement } from './queries.js';
 import type { ClosureOptions } from '../classClosure.js';
@@ -197,6 +198,8 @@ function nameFiltered(
   for (const work of pool.values()) {
     if (work.sitelinks < ICONIC_SITELINKS) continue;
     for (const statement of statements.get(work.qid) ?? []) {
+      // An unknown value named no venue to resolve.
+      if (statement.venue === null) continue;
       const found = resolution(statement.venue);
       if ('venue' in found || filtered.has(statement.venue)) continue;
       filtered.set(statement.venue, {
@@ -216,6 +219,80 @@ function nameFiltered(
     });
   }
   return [...filtered.values()];
+}
+
+/**
+ * Why a museum that held only works nobody can see is not in the catalogue (#868).
+ *
+ * The Isabella Stewart Gardner Museum was in the world tier for *The Storm on the Sea of
+ * Galilee* and *The Concert*, both stolen in 1990. Placed nowhere, they admit nothing, and the
+ * sweep would refuse the museum as "this run selected nothing that belongs to it" — true, and
+ * useless to the curator reading it. So the tier is asked again over the unseen works alone,
+ * where their statements would have put them, and a venue that only they would have admitted is
+ * refused with their names and the reason each cannot be seen. A venue the run admits anyway is
+ * not reported: it lost a work, not its place.
+ *
+ * The counterfactual is the whole placement as if the unseen works could be seen — the real
+ * placements with the would-be ones laid over them, folded and put to the art test as the real
+ * run's are. Whole, because the art test's painting share is measured on what a venue holds
+ * (`applyArtTest`): a venue with no art class holding six sub-iconic statues and one unseen
+ * iconic painting is not an art museum, and judged on the painting alone it would be. A quarter
+ * the editors excluded, or a natural-history museum, was never going to be admitted and is not
+ * told its works cannot be seen. The folds are computed over that same counterfactual, not
+ * taken from the run: `foldVenues` folds only venues that received a work, and a venue only
+ * unseen works name received none — as if seen, a collection housed in a better-known palace
+ * folds into the palace, and if the palace is admitted the collection lost a work, not its
+ * place. Only the tier is then asked over the unseen works alone.
+ */
+function unseenLosses(
+  pool: Map<string, PoolWork>,
+  unseen: Record<string, UnseenWork>,
+  placed: Record<string, string[]>,
+  rule: VenueRule,
+  editionClasses: ReadonlySet<string>,
+  admitted: ReadonlySet<string>,
+  graph: VenueGraph,
+): FilteredEntity[] {
+  const asIfSeen: Record<string, string[]> = { ...placed };
+  for (const [qid, work] of Object.entries(unseen)) asIfSeen[qid] = work.wouldBe;
+  const folds = foldVenues(asIfSeen, graph, rule);
+  const { placements: afterArtTest } = applyArtTest(pool, applyFolds(asIfSeen, folds), graph);
+  const tier = selectTier1(Object.keys(unseen).map((qid) => {
+    const work = pool.get(qid);
+    return {
+      qid,
+      sitelinks: work?.sitelinks ?? 0,
+      venues: afterArtTest[qid] ?? [],
+      multipleMedium: work?.typeQid != null && editionClasses.has(work.typeQid),
+    };
+  }));
+
+  const losses: FilteredEntity[] = [];
+  for (const [venue, works] of tier.museums) {
+    if (admitted.has(venue)) continue;
+    const named = works
+      .map((qid) => pool.get(qid))
+      .filter((work): work is PoolWork => !!work)
+      .sort((a, b) => b.sitelinks - a.sitelinks)
+      .map((work) => `${work.label} (${unseen[work.qid].reason})`);
+    losses.push({
+      externalId: venue,
+      name: graph.details.get(venue)?.label ?? venue,
+      reason: `its famous works cannot be seen — ${named.join(', ')}`,
+    });
+  }
+  return losses;
+}
+
+function logUnseen(unseen: Record<string, UnseenWork>, nameOf: (qid: string) => string): void {
+  const entries = Object.entries(unseen);
+  for (const [qid, work] of entries.slice(0, DIFF_LINES)) {
+    console.log(
+      `${LOG_PREFIX}   unseen ${nameOf(qid)}: ${work.reason}`
+      + (work.wouldBe.length ? `, statements name ${work.wouldBe.map(nameOf).join(', ')}` : ''),
+    );
+  }
+  if (entries.length > DIFF_LINES) console.log(`${LOG_PREFIX}   … and ${entries.length - DIFF_LINES} more`);
 }
 
 function logDiff(diff: PlacementDiff, nameOf: (qid: string) => string): void {
@@ -259,7 +336,8 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
     museumClasses = await fetchMuseumClasses(run.sparql);
   }
 
-  const { pool, statements, graph, editionClasses, resolver, placed, folds, afterFolds } =
+  const rule = museumRule(museumClasses);
+  const { pool, statements, graph, editionClasses, resolver, placed, unseen, folds, afterFolds } =
     await collectWorks(run, {
       broadRoots: MUSEUM_BROAD_ROOTS,
       wholeRoots: MUSEUM_WHOLE_ROOTS,
@@ -267,7 +345,7 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
       pinnedEditionClasses: MUSEUM_PINNED_EDITION_CLASSES,
       editionRoot: EDITION_ROOT,
       noun: MUSEUM_NOUN,
-      rule: museumRule(museumClasses),
+      rule,
       closure: deps.closure,
       logPrefix: LOG_PREFIX,
     });
@@ -292,14 +370,26 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
 
   const items = buildItems(tier, pool, current, graph);
   const venues = new Set(Object.values(placed).flat());
-  const filtered = [...nameFiltered(pool, statements, resolver.resolution, graph, folds, venues), ...notArt];
+  // A venue named once: the unseen losses come last, so a venue the resolver or the art test
+  // already refused keeps that reason rather than being told its works cannot be seen.
+  const filtered = new Map<string, FilteredEntity>();
+  for (const entry of [
+    ...nameFiltered(pool, statements, resolver.resolution, graph, folds, venues),
+    ...notArt,
+    ...unseenLosses(pool, unseen, placed, rule, editionClasses, admitted, graph),
+  ]) {
+    if (!filtered.has(entry.externalId)) filtered.set(entry.externalId, entry);
+  }
   const diff = diffPlacements(deps.previousPlacements, current);
 
+  const nameOf = (qid: string) => pool.get(qid)?.label ?? graph.details.get(qid)?.label ?? qid;
   console.log(
     `${LOG_PREFIX} Admitted ${items.length} museums; ${Object.keys(folds).length} folds, `
-    + `${tier.homeless.length} iconic works with no venue, ${tier.shared.length} held too widely`,
+    + `${tier.homeless.length} iconic works with no venue, ${tier.shared.length} held too widely, `
+    + `${Object.keys(unseen).length} works nobody can see`,
   );
-  logDiff(diff, (qid) => pool.get(qid)?.label ?? graph.details.get(qid)?.label ?? qid);
+  logUnseen(unseen, nameOf);
+  logDiff(diff, nameOf);
 
-  return { items, fetched: pool.size, filtered, diff };
+  return { items, fetched: pool.size, filtered: [...filtered.values()], diff };
 }
