@@ -24,6 +24,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { collectPlacesOfWorship, type CollectedWorship } from './pipeline.js';
+import { LOST_WORK_ROOT } from '../museum/worksCollector.js';
 import { POOL_MIN_SITELINKS } from '../publicArt/queries.js';
 import type { SourceLine } from '../sourceLine.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
@@ -220,6 +221,8 @@ const WORLD: World = {
     },
   },
   trees: {
+    // The lost tree the shared collector reads (#868): the Statue of Zeus is under it.
+    [LOST_WORK_ROOT]: [LOST_WORK_ROOT, 'Q21745157', LOST_SCULPTURE, 'Q104438958'],
     Q1370598: [
       'Q1370598', CHURCH, MINOR_BASILICA, CHAPEL, CATHEDRAL, CATHOLIC_CATHEDRAL,
       MOSQUE, TEMPLE, GREEK_TEMPLE, CHURCH_TOWER, PAPAL_PALACE,

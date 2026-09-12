@@ -371,29 +371,6 @@ export const WORSHIP_TREASURE_CLASSES: Record<string, string> = {
   Q5275: 'astronomical clock',
 };
 
-/**
- * A work that no longer exists opens no door.
- *
- * The works door admits a place for something a traveller can go and see, and
- * the Statue of Zeus at Olympia (Q46239) — typed both `lost sculpture` and
- * `destroyed artwork` — has not existed since late antiquity. Its temple is
- * still a place to stand in, and it enters on its own fame if it clears the
- * line; what it must not do is enter *for* a wonder nobody can look at.
- *
- * Read off the work's own class rather than a date or a label, and pinned as
- * classes so a curator's verdict can extend the list without a deploy. `lost
- * sculpture` is Public Art & Monuments' too, for the same reason and under the
- * same heading there ("nothing to stand in front of"); the other two are the
- * wider classes it sits under. Labels verified with `wbgetentities` on
- * 2026-09-08, and `lost sculpture` is a subclass of both `sculpture` and `lost
- * artwork`, so the works closure reaches it.
- */
-export const LOST_WORK_CLASSES: Record<string, string> = {
-  Q26883973: 'lost sculpture',
-  Q4140840: 'lost artwork',
-  Q21745157: 'destroyed artwork',
-};
-
 export interface WorshipTrees {
   /** Every class that makes a row a place of worship: the tree, floored and cleaned. */
   worship: ReadonlySet<string>;

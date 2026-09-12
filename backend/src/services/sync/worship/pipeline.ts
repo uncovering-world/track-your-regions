@@ -15,8 +15,10 @@
  * owned by the Vatican Museums and located in the Sistine Chapel, and a
  * traveller who has seen it has been to the Vatican Museums — so the chapel
  * enters on its own fame, with no works of ours, and the fresco stays where the
- * museum import already puts it. A work that no longer exists opens no door at
- * all (`LOST_WORK_CLASSES`).
+ * museum import already puts it. A work nobody can see — lost, destroyed, or of
+ * unknown whereabouts — opens no door at all, and that is the shared collector's
+ * reading (`LOST_WORK_ROOT` and `whereaboutsUnknown`, #868): it arrives here
+ * placed nowhere.
  *
  * The folds are the museum import's as well, narrowed once by this kind:
  * a chapel folds only onto a survivor this kind could admit, so a chapel is
@@ -49,11 +51,7 @@ import {
 import { fetchWorshipTrees, fetchTreasureClasses } from './queries.js';
 import { collectPlacesByFame, type PlaceCandidate } from './places.js';
 import { worshipVerdict } from './worshipTest.js';
-import {
-  LOST_WORK_CLASSES,
-  type WorshipTrees,
-  type WorshipType,
-} from './classes.js';
+import type { WorshipTrees, WorshipType } from './classes.js';
 import type { SourceLine } from '../sourceLine.js';
 import type { ClosureOptions } from '../classClosure.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
@@ -145,7 +143,8 @@ function makeRun(deps: WorshipPipelineDeps): QueryRunner {
  *
  * **A lost work opens nothing.** The Statue of Zeus at Olympia is one of the
  * seven wonders and has not existed for sixteen centuries; its temple stands on
- * its own fame or not at all.
+ * its own fame or not at all. The shared collector already placed it nowhere
+ * (`unseen`), so it never reaches this loop; the count is for the log line.
  */
 function ourWorks(
   works: WorksCollection,
@@ -155,14 +154,13 @@ function ourWorks(
 ): Record<string, string[]> {
   const museums = makeResolver(works.graph, museumRule(museumClasses));
   const ours: Record<string, string[]> = {};
-  let lost = 0;
+  const lost = Object.keys(works.unseen).length;
   let places = 0;
   let museumsWon = 0;
   for (const [qid, venues] of Object.entries(works.afterFolds)) {
     if (!venues.length) continue;
     const work = works.pool.get(qid);
     if (!work) continue;
-    if (work.typeQid && LOST_WORK_CLASSES[work.typeQid]) { lost++; continue; }
     if (isItselfAPlace(qid, work, trees, placeClasses)) { places++; continue; }
     const atAMuseum = placeArtwork(
       works.statements.get(qid) ?? [], museums.resolve, works.graph.ancestors,
@@ -173,7 +171,7 @@ function ourWorks(
   console.log(
     `${LOG_PREFIX} Works placed in a place of worship: ${Object.keys(ours).length}; `
     + `${museumsWon} left to the museum that holds them, ${places} places in their own right, `
-    + `${lost} lost or destroyed`,
+    + `${lost} that nobody can see`,
   );
   return ours;
 }
