@@ -10,19 +10,51 @@
  *     nothing is exactly what a branch corroborates (Ophelia / Tate);
  *   - rank decides only when at least one preferred statement resolves somewhere, because a
  *     preferred value may be a room (Syndics / Gallery of Honour).
+ *
+ * Before any of that, the statements can say that the work is nowhere anyone can name
+ * (`whereaboutsUnknown`, #868): a work whose location is Wikidata's *unknown value* is not hung
+ * at the older venue its other statements still remember. The collector asks that first and
+ * places such a work nowhere; a work that no longer exists at all is the collector's other
+ * question (`LOST_WORK_ROOT` in `worksCollector.ts`), read off its classes rather than its venues.
  */
 export interface VenueStatement {
-  venue: string;
+  /** The entity named, or `null` for an unknown value (`RawStatement.venue` in `queries.ts`). */
+  venue: string | null;
   property: 'P195' | 'P276';
   rank: 'preferred' | 'normal';
 }
 
+/**
+ * Whether the source says nobody can name where the work is.
+ *
+ * A location (`P276`) whose value is unknown, standing at best rank — preferred, or normal with
+ * no preferred location beside it — or a collection (`P195`) whose value is unknown at preferred
+ * rank. Read off the real cases (`wbgetentities`, 2026-09-12): *The Concert* carries a preferred
+ * unknown location since the day of the Gardner theft; *The Storm on the Sea of Galilee* a
+ * preferred unknown collection beside the Gardner at normal rank; *Salvator Mundi* and *The
+ * Tower of Blue Horses* an unknown location at normal rank beside normal named ones, which is
+ * what "standing" means when nothing is preferred. An unknown collection at normal rank alone
+ * says only that the owner is anonymous — *Nude, Green Leaves and Bust* hangs at Tate Modern on
+ * loan — and a preferred named location beside a normal unknown one is Wikidata's own answer
+ * that the named one is current. An ended unknown value (*The Parsonage Garden at Nuenen*,
+ * recovered 2023) never arrives: the query drops every ended statement.
+ */
+export function whereaboutsUnknown(statements: VenueStatement[]): boolean {
+  const locations = statements.filter((s) => s.property === 'P276');
+  const bestLocations = locations.some((s) => s.rank === 'preferred')
+    ? locations.filter((s) => s.rank === 'preferred')
+    : locations;
+  if (bestLocations.some((s) => s.venue === null)) return true;
+  return statements.some((s) => s.property === 'P195' && s.rank === 'preferred' && s.venue === null);
+}
+
 function currentValues(statements: VenueStatement[], property: VenueStatement['property'],
                        resolve: (q: string) => string | null): string[] {
+  // An unknown value is not a venue to resolve or to fall back to.
   const ofProperty = statements.filter((s) => s.property === property);
   const preferred = ofProperty.filter((s) => s.rank === 'preferred');
-  const use = preferred.some((s) => resolve(s.venue)) ? preferred : ofProperty;
-  return use.map((s) => s.venue);
+  const named = (list: VenueStatement[]) => list.map((s) => s.venue).filter((v): v is string => v !== null);
+  return named(preferred).some((v) => resolve(v)) ? named(preferred) : named(ofProperty);
 }
 
 /**
