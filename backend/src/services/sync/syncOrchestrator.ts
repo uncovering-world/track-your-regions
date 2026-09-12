@@ -514,18 +514,35 @@ async function processItemsLoop<T>(
   progress.total = items.length;
   progress.progress = 0;
 
-  for (let i = 0; i < items.length; i++) {
-    if (progress.cancel) throw new Error('Sync cancelled');
-    const item = items[i];
-    progress.currentItem = config.getItemName(item);
-    progress.statusMessage = `Processing ${i + 1}/${items.length}: ${progress.currentItem}`;
-    try {
-      const result = await config.processItem(item, progress, context);
-      recordItemOutcome(config, item, result, progress, changes);
-    } catch (err) {
-      recordItemFailure(config, item, err, progress, errorDetails, changes);
+  try {
+    for (let i = 0; i < items.length; i++) {
+      if (progress.cancel) throw new Error('Sync cancelled');
+      const item = items[i];
+      progress.currentItem = config.getItemName(item);
+      progress.statusMessage = `Processing ${i + 1}/${items.length}: ${progress.currentItem}`;
+      try {
+        const result = await config.processItem(item, progress, context);
+        recordItemOutcome(config, item, result, progress, changes);
+      } catch (err) {
+        recordItemFailure(config, item, err, progress, errorDetails, changes);
+      }
+      progress.progress = i + 1;
     }
-    progress.progress = i + 1;
+    // The primary line, above the bar: `Processing N/N: <name>` would
+    // otherwise stand there through missing detection, the admission sweep,
+    // the changeset and the log close, until the completion line replaces
+    // it. A cancelled run keeps its own words — the throw above skips this.
+    progress.statusMessage = `Processed ${items.length}/${items.length}, tidying up...`;
+  } finally {
+    // The loop is the only thing that has a current object, so it is the
+    // loop that drops it — on both exits, since a cancelled run still enters
+    // the placement phase for what it moved, with the finished item's name
+    // still set (the throw fires before the next item's is assigned). The
+    // panel shows the name whenever it is non-empty, and nothing after this
+    // point handles one object: left set, the last object's name sat under
+    // the bar through the tidying up and the whole placement phase, as if
+    // the run were still on it.
+    progress.currentItem = '';
   }
 }
 
@@ -800,12 +817,13 @@ export async function orchestrateSync<T>(
     throw err;
   } finally {
     // The run is not over, but it is no longer processing items: placement is
-    // its own phase and can take minutes on a first run, where the whole
+    // its own phase, and a window of its own on a first run, where the whole
     // category lands in `movedExperiences` and every world view gets its own
-    // transaction. Naming the phase keeps `isSyncStillRunning` true — the
-    // poller must keep polling — while giving `cancelSync` something to refuse
-    // and the panel something truthful to show. Without it the panel offers a
-    // Cancel that nothing reads, beside a completion message and a full bar.
+    // transaction (seconds since #851, minutes before it). Naming the phase
+    // keeps `isSyncStillRunning` true — the poller must keep polling — while
+    // giving `cancelSync` something to refuse and the panel something truthful
+    // to show. Without it the panel offers a Cancel that nothing reads, beside
+    // a completion message and a full bar.
     enterAssigningPhase(progress, movedExperiences, dryRun, finishedStatus);
 
     // Placed on the way out, not on the success path. A cancel is a button, and
