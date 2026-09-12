@@ -1072,6 +1072,34 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   statement carrying a `pq:P582` end-time qualifier: a venue the two properties agree on wins;
   failing that, a `preferred`-ranked statement that resolves to a venue wins; failing that,
   ownership, then location
+- **A work nobody can see is placed nowhere** (#868): it admits no museum, is linked as no
+  museum's treasure, and its existing link is marked like any other departure (ADR-0044). Two
+  readings, both in the shared collector (`worksCollector.ts`) so Places of worship gets them
+  too. *Whereabouts unknown* (`whereaboutsUnknown`, `placement.ts`): a location (`P276`) whose
+  value is Wikidata's *unknown value*, standing at best rank — preferred, or normal with no
+  preferred location beside it — or a collection (`P195`) whose value is unknown at preferred
+  rank. `fetchVenueStatements` keeps such a statement with `venue: null` rather than dropping the
+  row, which is how the older venue used to stand: *The Concert* has an unknown location at
+  preferred rank since the day of the Gardner theft, *The Storm on the Sea of Galilee* an unknown
+  collection at preferred rank beside the Gardner at normal, *Salvator Mundi* and *The Tower of
+  Blue Horses* an unknown location at normal rank beside normal named ones. An unknown collection
+  at normal rank alone is an anonymous owner and changes nothing (*Nude, Green Leaves and Bust*
+  hangs at Tate Modern on loan), and an ended unknown value never arrives (*The Parsonage Garden
+  at Nuenen*, recovered 2023). *Lost*: a work carrying a class of the `P279*` tree under `lost
+  artwork` (`LOST_WORK_ROOT`, Q4140840 — `destroyed artwork`, `lost sculpture`, `lost painting`
+  on 2026-09-12), read whole by `fetchClassTree` and asked for its works through the same
+  narrow-class question the pool uses, then intersected with the pool — because the closure under
+  `painting` reaches `lost painting` but not `lost artwork`, and *Portrait of a Courtesan*
+  arrives typed `painting`. A theft (`P793`) is deliberately not read: 414 of 425 theft events
+  carry no end time and most of those works were recovered. One exception by name,
+  `REMAINS_ON_SHOW`: the *Colossus of Constantine* is a `destroyed artwork` whose fragments are
+  the Capitoline courtyard, and a marked link has no curator's verdict to bring it back until
+  #749. A museum that only such works would have admitted is refused with their names — "its
+  famous works cannot be seen — The Storm on the Sea of Galilee (whereabouts unknown), The
+  Concert (whereabouts unknown)" is what the Gardner's membership reads — rather than the
+  sweep's generic reason; a museum admitted anyway lost a work, not its place, and is not
+  reported. The run's log names each unseen work with its reason and the venue its statements
+  still remember, up to the same cap the placement diff uses
 - An entity counts as a venue only if it passes a test: a museum-like class under `wdt:P279*` of
   `museum` (Q33506), coordinates of its own (`P625`), not dissolved (`P576`), and not on a
   kill-list of curatorial departments, art/private collections, museum networks and never-built
@@ -1430,8 +1458,11 @@ ADR-0023's, unchanged. Three rules are this door's:
   a place at one door and somebody's treasure at the other. The row's own `P31` set comes from the
   places pool, which carries every class of every entity it named; the works pool carries only the
   class a work was collected under, and the Cavern arrives there as a tomb.
-- **A lost work opens nothing** (`LOST_WORK_CLASSES`). The Statue of Zeus at Olympia is typed
-  `lost sculpture` and `destroyed artwork`; its temple stands on its own fame or not at all.
+- **A work nobody can see opens nothing.** The Statue of Zeus at Olympia is typed `lost
+  sculpture` and `destroyed artwork`; its temple stands on its own fame or not at all. The reading
+  is the shared collector's, the same one the museums use (§ Art Museums, #868): the lost tree
+  under `lost artwork` and a location whose value is unknown both place a work nowhere before
+  this door ever sees it.
 
 A venue a work names must then pass door one's own rule minus the line (`graphVerdict`, asked by
 `admitVenues`), which is what keeps the Temple Mount out of both doors, and chapels fold into the
