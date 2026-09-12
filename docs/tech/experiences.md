@@ -1664,8 +1664,21 @@ of the run — `placeMovedExperiences` in `placement.ts` calls
 the experiences whose locations were inserted, moved or dropped. Because `locationWriter`
 keeps the row of a point that stayed put, an ordinary run reaches this with an empty set and
 does nothing at all. Through it the run stays open on purpose: `progress.status` becomes `'assigning'` rather than
-a terminal value, so `isSyncStillRunning` keeps a poller polling for what can be minutes on a
-source's first run. `cancelSync` refuses it — placement is past the point `progress.cancel` is read, so
+a terminal value, so `isSyncStillRunning` keeps a poller polling for the whole of it — a few
+seconds on a source's first run since placement reads leaves through their pieces (ADR-0054;
+the measurement table below has the figure for the 1078 places of the worship source, whose
+placement took 25 minutes on that run), so the phase reports no progress inside itself and
+does not chunk the statement. What it does say is how much it is placing — `Assigning regions for 1078 moved
+objects...`, from `enterAssigningPhase` — and nothing else. The item loop leaves the run
+with no current object: `processItemsLoop` clears `progress.currentItem` in a `finally`,
+on both of its exits, because the loop is the only thing that has one, the panel shows the
+name whenever it is non-empty, and a cancelled run still enters the placement phase for what
+it moved with the finished item's name set. Its primary line is replaced on the ordinary
+exit too — `Processed 1078/1078, tidying up...` — since `Processing N/N: <name>` would
+otherwise stand above the bar through missing detection, the admission sweep, the changeset
+and the log close, until the completion line is written. Before #850 the last object's name
+stood in both places through all of that and the placement, as if the run were still
+handling it. `cancelSync` refuses it — placement is past the point `progress.cancel` is read, so
 accepting would report a cancellation that never happens. The refusal actually starts a phase
 earlier: `isCancellable` accepts only while there is an item loop left to interrupt, so the
 post-loop window — missing detection, changeset recording, log closure — is refused too. The
