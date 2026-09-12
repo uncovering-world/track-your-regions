@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  orchestrateSync, type SyncServiceConfig, type ProcessItemResult,
+  orchestrateSync, getSyncStatus, type SyncServiceConfig, type ProcessItemResult,
 } from './syncOrchestrator.js';
 import { runningSyncs } from './types.js';
 
@@ -50,6 +50,7 @@ vi.mock('./missingDetection.js', () => ({
 }));
 
 import { updateSyncLog, annotateClosedSyncLog } from './syncUtils.js';
+import { recordSyncChanges } from './changeRecorder.js';
 import { assignRegionsForExperiences, worldViewsWithGeometry } from './regionAssignmentService.js';
 
 const TEST_CATEGORY_ID = 999;
@@ -225,5 +226,92 @@ describe('placing what moved', () => {
     // run reported as still running, which is the failure mode recording the
     // changeset was hardened against for the same reason.
     expect(updateSyncLog).toHaveBeenCalled();
+  });
+
+  it('drops the object name once the last item is processed', async () => {
+    // The panel shows `currentItem` whenever it is non-empty, and the loop is
+    // the only thing that has one. Left set, the last object's name sat under
+    // the bar through missing detection, the changeset, the log closure and
+    // the whole placement phase — twenty minutes on the worship source's first
+    // run (#850) — as if the run were still handling it.
+    let nameAfterLoop: string | undefined;
+    (recordSyncChanges as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      nameAfterLoop = getSyncStatus(TEST_CATEGORY_ID)?.currentItem;
+    });
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async (_i, _p, ctx) => {
+        ctx.onLocationsChanged(11);
+        return { ...processed('created'), experienceId: 11 };
+      }),
+    });
+
+    await orchestrateSync(config, null);
+
+    expect(nameAfterLoop).toBe('');
+  });
+
+  it('drops the object name on a cancelled run too', async () => {
+    // A cancel throws at the top of the next iteration, before that item's
+    // name is assigned — so the finished item's name is what survives, and a
+    // cancelled run still enters the placement phase for what it moved. The
+    // loop owns its invalidation on both exits, or the #850 symptom keeps
+    // the one path whose window is not short.
+    let nameDuringPlacement: string | undefined;
+    (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      nameDuringPlacement = getSyncStatus(TEST_CATEGORY_ID)?.currentItem;
+      return 3;
+    });
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async (_item, progress, ctx) => {
+        ctx.onLocationsChanged(11);
+        progress.cancel = true;
+        return { ...processed('updated'), experienceId: 11 };
+      }),
+    });
+
+    await expect(orchestrateSync(config, null)).rejects.toThrow();
+
+    expect(nameDuringPlacement).toBe('');
+  });
+
+  it('names the tidying up after the last item, not that item', async () => {
+    // The primary line, above the bar. `Processing N/N: <name>` is what the
+    // loop leaves there, and the completion line is written only after
+    // missing detection, the admission sweep, the changeset and the log
+    // close — so the name stayed in the most prominent place on the card
+    // for that whole window, whatever the caption said.
+    let lineAfterLoop: string | undefined;
+    (recordSyncChanges as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      lineAfterLoop = getSyncStatus(TEST_CATEGORY_ID)?.statusMessage;
+    });
+
+    await orchestrateSync(makeConfig(), null);
+
+    expect(lineAfterLoop).toBe('Processed 2/2, tidying up...');
+  });
+
+  it('says how many objects the placement phase is placing', async () => {
+    // "For what moved" named the phase and nothing else. The count is what
+    // tells an admin whether the phase is a blink or a wait.
+    let labelDuringPlacement: string | undefined;
+    (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      labelDuringPlacement = getSyncStatus(TEST_CATEGORY_ID)?.statusMessage;
+      return 3;
+    });
+    const config = makeConfig({
+      processItem: vi.fn()
+        .mockImplementationOnce(async (_i, _p, ctx) => {
+          ctx.onLocationsChanged(11);
+          return { ...processed('created'), experienceId: 11 };
+        })
+        .mockImplementationOnce(async (_i, _p, ctx) => {
+          ctx.onLocationsChanged(12);
+          return { ...processed('created'), experienceId: 12 };
+        }),
+    });
+
+    await orchestrateSync(config, null);
+
+    expect(labelDuringPlacement).toBe('Assigning regions for 2 moved objects...');
   });
 });

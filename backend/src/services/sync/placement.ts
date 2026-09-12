@@ -155,9 +155,10 @@ export async function finishPlacement(
 /**
  * Name the placement phase, when there is a window worth naming.
  *
- * Placement can take minutes on a category's first run — the whole of it lands
- * in the moved set and every world view gets its own transaction — and through it the
- * run is deliberately still open. Left as `processing`, the panel offers a
+ * Placement is a window of its own on a category's first run — the whole of it
+ * lands in the moved set and every world view gets its own transaction; seconds
+ * since #851, minutes before it — and through it the run is deliberately still
+ * open. Left as `processing`, the panel offers a
  * Cancel that nothing reads any more, beside a completion message and a full
  * bar. `isSyncStillRunning` treats `assigning` as running, so the poller
  * carries on; `cancelSync` refuses it, so the button stops promising what it
@@ -176,7 +177,10 @@ export function enterAssigningPhase(
   if (dryRun || moved.size === 0) return;
   progress.status = 'assigning';
   if (finishedStatus !== 'failed') {
-    progress.statusMessage = 'Assigning regions for what moved...';
+    // The count, not "what moved": it is what tells an admin whether the phase
+    // is a blink or a wait (#850).
+    const n = moved.size;
+    progress.statusMessage = `Assigning regions for ${n} moved ${n === 1 ? 'object' : 'objects'}...`;
   }
 }
 
