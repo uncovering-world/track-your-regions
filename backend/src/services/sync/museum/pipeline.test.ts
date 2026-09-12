@@ -223,6 +223,79 @@ describe('collectTier1Museums', () => {
     expect(filtered).not.toContain('Q900022');
   });
 
+  it('refuses a museum whose famous works cannot be seen, and names them (#868)', async () => {
+    const out = await run();
+
+    // The Gardner holds two iconic works, both stolen in 1990: one a lost painting whose
+    // collection is unknown, the other with an unknown location. Neither admits it.
+    expect(out.items.map((i) => i.qid)).not.toContain('Q49135');
+    expect(out.filtered).toContainEqual({
+      externalId: 'Q49135',
+      name: 'Isabella Stewart Gardner Museum',
+      reason: 'its famous works cannot be seen — The Storm on the Sea of Galilee (whereabouts unknown), '
+        + 'The Concert (whereabouts unknown)',
+    });
+    const linked = out.items.flatMap((i) => i.artworks.map((a) => a.externalId));
+    expect(linked).not.toContain('Q2246489');
+    expect(linked).not.toContain('Q1169395');
+  });
+
+  it('does not tell a venue the art test would refuse that its works cannot be seen', async () => {
+    const out = await run();
+
+    // The MuseumsQuartier holds a work of unknown whereabouts and nothing else of ours; it is
+    // an editorial exclusion, so the reason it is out is that one, not the missing work.
+    const quarter = out.filtered.filter((f) => f.externalId === 'Q699943');
+    expect(quarter.map((f) => f.reason).join(' ')).not.toContain('cannot be seen');
+  });
+
+  it('judges the loss on what the venue would hold whole, not on the unseen work alone', async () => {
+    const out = await run();
+
+    // The Hall of Casts carries no art class. With its two statues beside the painting nobody
+    // can see, the painting share says it is not an art museum; judged on the painting alone it
+    // would be one, and would be told its famous works cannot be seen.
+    expect(out.items.map((i) => i.qid)).not.toContain('Q900901');
+    const hall = out.filtered.filter((f) => f.externalId === 'Q900901');
+    expect(hall.map((f) => f.reason).join(' ')).not.toContain('cannot be seen');
+  });
+
+  it('folds the counterfactual as the run would, so a collection in an admitted palace is no loss', async () => {
+    const out = await run();
+
+    // The Collection of Lost Things holds one work nobody can see and stands in the Palace of
+    // Doors, which the run admits. As if seen, the work folds into the palace with the
+    // collection; the palace lost a work, not its place, and the collection — a name the
+    // catalogue never uses — is not refused for it.
+    expect(out.items.map((i) => i.qid)).toContain('Q900023');
+    expect(out.filtered.map((f) => f.externalId)).not.toContain('Q900031');
+  });
+
+  it('links no lost artwork, though the closure typed it a painting', async () => {
+    const out = await run();
+
+    const palazzo = out.items.find((i) => i.qid === 'Q900011');
+    expect(palazzo, 'the Palazzo reached no museum').toBeDefined();
+    expect(palazzo!.artworks.map((a) => a.externalId)).not.toContain('Q2395137');
+    // The Palazzo itself is not reported: it is admitted for the works it still shows.
+    expect(out.filtered.map((f) => f.externalId)).not.toContain('Q900011');
+  });
+
+  it('keeps a destroyed work whose remains are on show, by name', async () => {
+    const out = await run();
+
+    const capitoline = out.items.find((i) => i.qid === 'Q333906');
+    expect(capitoline, 'the Capitoline reached no museum').toBeDefined();
+    expect(capitoline!.artworks.map((a) => a.externalId)).toContain('Q1289781');
+  });
+
+  it('leaves a work whose owner is merely anonymous where it hangs', async () => {
+    const out = await run();
+
+    const capitoline = out.items.find((i) => i.qid === 'Q333906');
+    expect(capitoline!.artworks.map((a) => a.externalId)).toContain('Q152849');
+  });
+
   it('keeps a museum under its own name when the quarter it stands in is an editorial exclusion', async () => {
     const out = await run();
 

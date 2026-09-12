@@ -15,10 +15,13 @@ import type { SparqlBinding } from '../wikidataUtils.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const RANK = 'http://wikiba.se/ontology#';
+/** How the query service spells Wikidata's *unknown value*: a skolem node under genid. */
+const UNKNOWN_VALUE = 'http://www.wikidata.org/.well-known/genid/1d6a3e0f9c2b';
 
-/** Art museum — the only class this fixture treats as a museum. */
+/** Art museum, the class most venues here carry; a bare museum passes the venue test too. */
 const ART_MUSEUM = 'Q207694';
-export const MUSEUM_CLASSES = new Set([ART_MUSEUM]);
+const MUSEUM = 'Q33506';
+export const MUSEUM_CLASSES = new Set([ART_MUSEUM, MUSEUM]);
 
 interface FixtureEntity {
   label: string;
@@ -43,10 +46,20 @@ interface FixtureWork {
   broadRoot?: string;
   artists?: string[];
   year?: number;
+  /** `venue: UNKNOWN` is a statement whose value is Wikidata's *unknown value* (#868). */
   statements: { property: 'P195' | 'P276'; venue: string; rank?: 'preferred' | 'normal' }[];
 }
 
+/** The venue of a statement whose value is unknown. */
+export const UNKNOWN = 'unknown';
+
 export const PAINTING = 'Q3305213';
+const STATUE = 'Q179700';
+/** The lost tree (#868): `lost artwork` and the three classes under it, as Wikidata holds them. */
+export const LOST_ARTWORK = 'Q4140840';
+export const LOST_PAINTING = 'Q104438958';
+const DESTROYED_ARTWORK = 'Q21745157';
+const LOST_TREE = [LOST_ARTWORK, DESTROYED_ARTWORK, 'Q26883973', LOST_PAINTING];
 /** A pinned edition class: a work printed from one block exists in many true impressions. */
 const WOODBLOCK_PRINT = 'Q28913685';
 const FRESCO = 'Q1476300';
@@ -123,6 +136,22 @@ const ENTITIES: Record<string, FixtureEntity> = {
     parents: [], locations: ['Q900023'], sitelinks: 20,
   },
   Q900023: { label: 'Palace of Doors', classes: [ART_MUSEUM], lat: 45.5001, lon: 10.5, parents: [], sitelinks: 60 },
+  // A second collection in the same palace, holding only a work nobody can see: as if seen, it
+  // folds into the palace like the first, so the palace lost a work and the collection is not
+  // reported under a name the catalogue never uses (#868).
+  Q900031: {
+    label: 'Collection of Lost Things', classes: [ART_MUSEUM], lat: 45.50008, lon: 10.5,
+    parents: [], locations: ['Q900023'], sitelinks: 5,
+  },
+
+  // Two real museums for the works nobody can see (#868): the Gardner, whose two famous works
+  // were stolen in 1990, and the Capitoline, where a destroyed colossus's fragments are on show.
+  Q49135: { label: 'Isabella Stewart Gardner Museum', classes: [ART_MUSEUM], lat: 42.3382, lon: -71.0991, parents: [] },
+  Q333906: { label: 'Capitoline Museums', classes: [ART_MUSEUM], lat: 41.8931, lon: 12.4826, parents: [] },
+  // A bare museum with no art class, judged by the painting share of what it holds: two
+  // sub-iconic statues and one iconic painting nobody can see. As if that painting could be
+  // seen, it is still not an art museum, so it is not told its works cannot be seen.
+  Q900901: { label: 'Hall of Casts', classes: [MUSEUM], lat: 52.52, lon: 13.4, parents: [] },
 };
 
 // The venue and work QIDs below (here and in ENTITIES) are illustrative, not a claim about the
@@ -234,11 +263,97 @@ export const WORKS: Record<string, FixtureWork> = {
     label: 'Shroud of Turin', sitelinks: 67, cls: RELIC, clsLabel: 'relic',
     statements: [{ property: 'P276', venue: 'Q1876' }],
   },
+
+  // The works nobody can see (#868), each with the statements Wikidata really holds
+  // (`wbgetentities`, 2026-09-12). Stolen from the Gardner in 1990 and never found: the Storm,
+  // a `lost painting` whose collection is an unknown value at preferred rank beside the museum
+  // at normal rank; the Concert, whose location is an unknown value at preferred rank.
+  Q2246489: {
+    label: 'The Storm on the Sea of Galilee', sitelinks: 32, cls: LOST_PAINTING, clsLabel: 'lost painting',
+    broadRoot: PAINTING, artists: ['Rembrandt'], year: 1633,
+    statements: [
+      { property: 'P195', venue: UNKNOWN, rank: 'preferred' },
+      { property: 'P195', venue: 'Q49135' },
+    ],
+  },
+  Q1169395: {
+    label: 'The Concert', sitelinks: 25, cls: PAINTING, clsLabel: 'painting',
+    broadRoot: PAINTING, artists: ['Johannes Vermeer'],
+    statements: [
+      { property: 'P276', venue: UNKNOWN, rank: 'preferred' },
+      { property: 'P195', venue: 'Q49135' },
+    ],
+  },
+  // A `lost artwork` beside `painting` — a class the closure under painting never reaches, so
+  // the work arrives typed `painting` and only the lost tree's own question names it.
+  Q2395137: {
+    label: 'Portrait of a Courtesan', sitelinks: 10, cls: LOST_ARTWORK, clsLabel: 'lost artwork',
+    broadRoot: PAINTING, statements: [{ property: 'P276', venue: 'Q900011' }],
+  },
+  // A `destroyed artwork` whose fragments are on show: the one name on `REMAINS_ON_SHOW`.
+  Q1289781: {
+    label: 'Colossus of Constantine', sitelinks: 20, cls: DESTROYED_ARTWORK, clsLabel: 'destroyed artwork',
+    broadRoot: STATUE,
+    statements: [{ property: 'P276', venue: 'Q333906' }, { property: 'P195', venue: 'Q333906' }],
+  },
+  // What admits the Capitoline, so the colossus has a museum to be linked to.
+  Q900701: {
+    label: 'Capitoline Wolf', sitelinks: 60, cls: STATUE, clsLabel: 'statue', broadRoot: STATUE,
+    statements: [{ property: 'P276', venue: 'Q333906' }],
+  },
+  // A work of unknown whereabouts whose collection is the quarter the editors excluded: the
+  // quarter was never going to be admitted, so it is not told its works cannot be seen.
+  Q900801: {
+    label: 'Lost Work of the Quarter', sitelinks: 30, cls: PAINTING, clsLabel: 'painting',
+    broadRoot: PAINTING,
+    statements: [
+      { property: 'P276', venue: UNKNOWN, rank: 'preferred' },
+      { property: 'P195', venue: 'Q699943' },
+    ],
+  },
+  // The Hall of Casts' holdings: two statues below the line, and an iconic painting of unknown
+  // whereabouts that alone would read as a painting share of one to nothing.
+  Q900902: {
+    label: 'Cast in the Hall', sitelinks: 15, cls: STATUE, clsLabel: 'statue', broadRoot: STATUE,
+    statements: [{ property: 'P276', venue: 'Q900901' }],
+  },
+  Q900903: {
+    label: 'Second Cast in the Hall', sitelinks: 14, cls: STATUE, clsLabel: 'statue', broadRoot: STATUE,
+    statements: [{ property: 'P276', venue: 'Q900901' }],
+  },
+  Q900904: {
+    label: 'Lost Painting of the Hall', sitelinks: 30, cls: PAINTING, clsLabel: 'painting',
+    broadRoot: PAINTING,
+    statements: [
+      { property: 'P276', venue: UNKNOWN, rank: 'preferred' },
+      { property: 'P195', venue: 'Q900901' },
+    ],
+  },
+  // The only work of the Collection of Lost Things, and nobody can see it.
+  Q900905: {
+    label: 'Lost Work of the Collection', sitelinks: 30, cls: PAINTING, clsLabel: 'painting',
+    broadRoot: PAINTING,
+    statements: [
+      { property: 'P276', venue: UNKNOWN, rank: 'preferred' },
+      { property: 'P195', venue: 'Q900031' },
+    ],
+  },
+  // Owned by an anonymous collector (an unknown value at normal rank) and hanging on loan:
+  // the shape an unknown value must *not* be read as.
+  Q152849: {
+    label: 'Nude, Green Leaves and Bust', sitelinks: 16, cls: PAINTING, clsLabel: 'painting',
+    broadRoot: PAINTING,
+    statements: [{ property: 'P195', venue: UNKNOWN }, { property: 'P276', venue: 'Q333906' }],
+  },
 };
 
-/** Direct `P279` children, so the closure finds `fresco` under `painting` and stops. */
+/**
+ * Direct `P279` children, so the closure finds `fresco` under `painting` and stops. `lost
+ * painting` is under `painting` on the live graph too, which is how the Storm arrived typed
+ * `lost painting` while the import still hung it in the Gardner.
+ */
 const SUBCLASSES: Record<string, string[]> = {
-  [PAINTING]: [FRESCO, LONG_CLASS, UNLABELLED_CLASS],
+  [PAINTING]: [FRESCO, LONG_CLASS, UNLABELLED_CLASS, LOST_PAINTING],
 };
 
 /**
@@ -298,7 +413,7 @@ function statementRows(qids: string[]): SparqlBinding[] {
       rows.push({
         w: uri(qid),
         rel: { value: s.property },
-        venue: uri(s.venue),
+        venue: s.venue === UNKNOWN ? { value: UNKNOWN_VALUE } : uri(s.venue),
         rank: { value: `${RANK}${s.rank === 'preferred' ? 'Preferred' : 'Normal'}Rank` },
       });
     }
@@ -347,6 +462,9 @@ function bandOf(query: string): { min: number; max: number | null } {
 export function makeSparql() {
   return vi.fn(async (query: string): Promise<SparqlBinding[]> => {
     const qids = askedFor(query);
+    // The lost tree, asked whole (#868). No other tree is asked this way here: the museum
+    // classes are injected, and the artwork classes walk hop by hop below.
+    if (query.includes(`wdt:P279* wd:${LOST_ARTWORK}`)) return LOST_TREE.map((c) => ({ c: uri(c) }));
     if (query.includes('?c wdt:P279 ?p')) {
       return qids.flatMap((q) => SUBCLASSES[q] ?? []).map((c) => ({ c: uri(c) }));
     }

@@ -13,7 +13,7 @@
  */
 
 import { boundedClosure, type ClosureOptions } from '../classClosure.js';
-import { placeArtwork } from './placement.js';
+import { placeArtwork, whereaboutsUnknown } from './placement.js';
 import type { VenueRule } from './venueTest.js';
 import type { Fold } from './venueFolds.js';
 import type { Resolution } from './resolveVenue.js';
@@ -33,6 +33,7 @@ import {
 } from './queries.js';
 import {
   fetchSubclasses,
+  fetchClassTree,
   chunk,
   unique,
   type QueryRunner,
@@ -111,6 +112,47 @@ export const EDITION_ROOT = 'Q11060274';
  */
 export const MUSEUM_PINNED_EDITION_CLASSES = new Set(['Q28890616', 'Q28913685', 'Q11835431']);
 
+/**
+ * The root of the classes a work that no longer exists carries: `lost artwork`
+ * (Q4140840), whose `P279*` tree is `destroyed artwork`, `lost sculpture` and
+ * `lost painting` (measured 2026-09-12: four classes, read whole by
+ * `fetchClassTree` and never pinned, so a class Wikidata adds under it counts).
+ *
+ * A work in it admits no venue and is nobody's treasure (#868): the Isabella
+ * Stewart Gardner Museum was in the world tier for *The Storm on the Sea of
+ * Galilee*, stolen in 1990 and never found, and a traveller who went for it
+ * would find an empty frame. Read off the work's own classes rather than off
+ * the class it was collected under, because the closure under `painting`
+ * reaches `lost painting` but not `lost artwork`: *Portrait of a Courtesan* is
+ * a `painting` and a `lost artwork`, and arrives typed `painting`. A theft
+ * (`P793`) is deliberately not read — 414 of 425 theft events carry no end
+ * time, and most of those works were recovered long ago.
+ *
+ * Places of worship reads the same tree through the same stage: the Statue of
+ * Zeus at Olympia opens no door for its temple (ADR-0052 decision 3).
+ */
+export const LOST_WORK_ROOT = 'Q4140840';
+
+/**
+ * Works of the lost tree whose remains are on show, kept by name with the
+ * reason — the shape `EDITORIAL_OUT` uses in the other direction.
+ *
+ * `destroyed artwork` says the original is gone, and of the six works at ten
+ * sitelinks or more typed only that (2026-09-12: *The Stone Breakers*, the
+ * *World Trade Center Tapestry*, Sutherland's *Portrait of Winston Churchill*,
+ * Klimt's University ceiling, *The Floating Piers* and this one) it is right
+ * for five. A standing venue statement does not tell the sixth apart — the
+ * tapestry and Prague's Stalin Monument carry one too — so the exception is a
+ * name. A marked link has no curator's verdict to bring it back until #749,
+ * which is why this list exists rather than a curator's hand.
+ */
+export const REMAINS_ON_SHOW: Record<string, string> = {
+  Q1289781: 'Colossus of Constantine — its head, hand and foot stand in the courtyard of the Capitoline Museums',
+};
+
+/** Why a work of the pool is placed nowhere: its whereabouts, or its class. */
+export const WHEREABOUTS_UNKNOWN = 'whereabouts unknown';
+
 const CLASS_BATCH = 25;
 const STATEMENT_BATCH = 50;
 /** The width of `treasures.treasure_type`. */
@@ -146,10 +188,26 @@ export interface WorksCollection {
   graph: VenueGraph;
   editionClasses: ReadonlySet<string>;
   resolver: { resolve: (qid: string) => string | null; resolution: (qid: string) => Resolution };
-  /** placeArtwork over every work of the pool with the resolver above. */
+  /**
+   * placeArtwork over every work of the pool with the resolver above — except
+   * a work that cannot be seen, which is placed nowhere (`unseen`).
+   */
   placed: Record<string, string[]>;
+  /**
+   * The works placed nowhere because nobody can see them (#868): why, and
+   * where the statements would have put them, so a kind can name what a venue
+   * lost when it is refused for holding nothing else.
+   */
+  unseen: Record<string, UnseenWork>;
   folds: Record<string, Fold>;
   afterFolds: Record<string, string[]>;
+}
+
+export interface UnseenWork {
+  /** `WHEREABOUTS_UNKNOWN`, or the lost-tree class the work carries (`lost painting`). */
+  reason: string;
+  /** Where `placeArtwork` would have put it, read as if it could be seen. */
+  wouldBe: string[];
 }
 
 interface ArtworkClasses {
@@ -257,17 +315,74 @@ async function collectStatements(
   return byWork;
 }
 
+/**
+ * Which works of the pool no longer exist, by the lost-tree class each carries.
+ *
+ * The tree is asked whole (`fetchClassTree`, four classes) and then asked for
+ * its works the way a narrow class is (`fetchClassPool`, one cached question,
+ * 27 rows at the pool's floor on 2026-09-12); what that answer has in common
+ * with the pool is lost. Intersected rather than added: a lost work that is
+ * not otherwise a work of this kind is nobody's business here, and the class
+ * pool's label — `lost painting`, `destroyed artwork` — is the reason a person
+ * reads.
+ */
+async function collectLost(
+  run: QueryRunner,
+  pool: Map<string, PoolWork>,
+  opts: WorksCollectorOptions,
+): Promise<Map<string, string>> {
+  run.phase(`Asking which ${opts.noun.works} no longer exist...`);
+  await run.step();
+  const tree = await fetchClassTree(run.sparql, LOST_WORK_ROOT, 'lost artwork classes');
+  const lost = new Map<string, string>();
+  // A step before each query, as every other stage takes one: the pause and the
+  // cancel check land between the two questions, not only before the first.
+  await run.step();
+  for (const work of await fetchClassPool(run.sparql, [...tree])) {
+    if (pool.has(work.qid)) lost.set(work.qid, work.type);
+  }
+  return lost;
+}
+
+/**
+ * Every work of the pool placed, less the ones nobody can see.
+ *
+ * A work whose whereabouts the source calls unknown, or that carries a class of
+ * the lost tree, is placed nowhere and recorded with its reason and the venues
+ * its statements still remember — the older venue is exactly what the reader
+ * must not be sent to. `REMAINS_ON_SHOW` is the one exception, by name.
+ */
 function placeWorks(
   pool: Map<string, PoolWork>,
   statements: Map<string, RawStatement[]>,
+  lost: ReadonlyMap<string, string>,
   resolve: (qid: string) => string | null,
   ancestors: (qid: string) => ReadonlySet<string>,
-): Record<string, string[]> {
-  const placements: Record<string, string[]> = {};
+): { placed: Record<string, string[]>; unseen: Record<string, UnseenWork> } {
+  const placed: Record<string, string[]> = {};
+  const unseen: Record<string, UnseenWork> = {};
   for (const qid of pool.keys()) {
-    placements[qid] = placeArtwork(statements.get(qid) ?? [], resolve, ancestors);
+    const own = statements.get(qid) ?? [];
+    const venues = placeArtwork(own, resolve, ancestors);
+    const reason = unseenReason(qid, own, lost);
+    if (reason === null) {
+      placed[qid] = venues;
+    } else {
+      placed[qid] = [];
+      unseen[qid] = { reason, wouldBe: venues };
+    }
   }
-  return placements;
+  return { placed, unseen };
+}
+
+function unseenReason(
+  qid: string,
+  statements: RawStatement[],
+  lost: ReadonlyMap<string, string>,
+): string | null {
+  if (REMAINS_ON_SHOW[qid]) return null;
+  if (whereaboutsUnknown(statements)) return WHEREABOUTS_UNKNOWN;
+  return lost.get(qid) ?? null;
 }
 
 export function heldBy(
@@ -308,12 +423,22 @@ export async function collectWorks(run: QueryRunner, opts: WorksCollectorOptions
   const classes = await artworkClassesOf(run, opts);
   const pool = await collectPool(run, classes.all, opts);
   const statements = await collectStatements(run, [...pool.keys()]);
-  const seeds = unique([...statements.values()].flat().map((s) => s.venue));
+  const lost = await collectLost(run, pool, opts);
+  // An unknown value names no venue to load.
+  const seeds = unique(
+    [...statements.values()].flat().map((s) => s.venue).filter((v): v is string => v !== null),
+  );
   const graph = await loadVenueGraph(run, seeds, opts.rule);
   const resolver = makeResolver(graph, opts.rule);
   run.phase('Placing works in the venues that hold them...');
-  const placed = placeWorks(pool, statements, resolver.resolve, graph.ancestors);
+  const { placed, unseen } = placeWorks(pool, statements, lost, resolver.resolve, graph.ancestors);
+  const unseenCount = Object.keys(unseen).length;
+  const lostCount = Object.values(unseen).filter((u) => u.reason !== WHEREABOUTS_UNKNOWN).length;
+  console.log(
+    `${opts.logPrefix} Works nobody can see, placed nowhere: ${unseenCount} `
+    + `(${unseenCount - lostCount} of unknown whereabouts, ${lostCount} lost or destroyed)`,
+  );
   const folds = foldVenues(placed, graph, opts.rule);
-  return { pool, statements, graph, editionClasses: classes.edition, resolver, placed, folds,
+  return { pool, statements, graph, editionClasses: classes.edition, resolver, placed, unseen, folds,
     afterFolds: applyFolds(placed, folds) };
 }
