@@ -9,11 +9,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { fetchClassPool, fetchEntityEdges } from './queries.js';
+import { fetchClassPool, fetchEntityEdges, fetchVenueStatements } from './queries.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
+/** How the query service spells Wikidata's *unknown value*: a skolem node, not an entity. */
+const UNKNOWN = 'http://www.wikidata.org/.well-known/genid/8d8c7b3f4a1e';
+const RANK = 'http://wikiba.se/ontology#';
 
 /** One row of the pool answer, with only the columns a case is about. */
 function row(
@@ -140,5 +143,40 @@ describe('the entity edges', () => {
     expect(sent).toContain('wdt:P276 ?loc');
     const locationBranch = sent.slice(sent.indexOf('wdt:P276 ?loc'));
     expect(locationBranch).toMatch(/FILTER NOT EXISTS \{[^}]*ps:P276 \?loc[^}]*pq:P582/);
+  });
+});
+
+describe('the venue statements', () => {
+  const statement = (
+    work: string, rel: 'P195' | 'P276', venue: string, rank = 'Normal',
+  ): SparqlBinding => ({
+    w: { value: `${ENTITY}${work}` },
+    rel: { value: rel },
+    venue: { value: venue },
+    rank: { value: `${RANK}${rank}Rank` },
+  });
+
+  it('keeps a statement whose value is unknown, as a venue of nobody', async () => {
+    // The Concert: located in the Gardner until 18 March 1990, and since then at an
+    // unknown value, preferred. Dropping the unknown value is how the older venue
+    // came to stand (#868).
+    const read = await fetchVenueStatements(answering([
+      statement('Q1169395', 'P276', UNKNOWN, 'Preferred'),
+      statement('Q1169395', 'P195', `${ENTITY}Q49135`),
+    ]), ['Q1169395']);
+
+    expect(read).toEqual([
+      { work: 'Q1169395', venue: null, property: 'P276', rank: 'preferred' },
+      { work: 'Q1169395', venue: 'Q49135', property: 'P195', rank: 'normal' },
+    ]);
+  });
+
+  it('still drops a deprecated statement, unknown value or not', async () => {
+    const read = await fetchVenueStatements(answering([
+      statement('Q1169395', 'P276', UNKNOWN, 'Deprecated'),
+      statement('Q1169395', 'P276', `${ENTITY}Q49135`, 'Deprecated'),
+    ]), ['Q1169395']);
+
+    expect(read).toEqual([]);
   });
 });

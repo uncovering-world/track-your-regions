@@ -332,10 +332,22 @@ export async function fetchClassPool(
 
 export interface RawStatement {
   work: string;
-  venue: string;
+  /**
+   * The entity the statement names, or `null` for Wikidata's *unknown value* —
+   * a statement that says the work is somewhere nobody can name (#868). The
+   * query service spells it as a skolem node under `.well-known/genid/`, the
+   * shape the blank-node filter on creators drops; here it is kept, because
+   * "location: unknown, preferred since 18 March 1990" is the whole of what
+   * Wikidata has to say about *The Concert*, and dropping it left the Gardner
+   * standing as the older venue.
+   */
+  venue: string | null;
   property: 'P195' | 'P276';
   rank: 'preferred' | 'normal';
 }
+
+/** The query service's spelling of an unknown value: a skolem node, not an entity. */
+const UNKNOWN_VALUE_PREFIX = 'http://www.wikidata.org/.well-known/genid/';
 
 function statementBranch(property: 'P195' | 'P276'): string {
   return `{
@@ -353,7 +365,8 @@ function statementBranch(property: 'P195' | 'P276'): string {
  * and is dropped in the query. A statement ranked deprecated is dropped in the parser: the two
  * ranks placement understands are `preferred` and `normal`, and a deprecated value is one
  * Wikidata itself marks as wrong — carrying it in as `normal` would give a known-wrong venue the
- * same standing as a correct one.
+ * same standing as a correct one. A statement whose value is *unknown* is kept with no venue:
+ * it is a fact about the work (`whereaboutsUnknown` in `placement.ts`), not a venue to resolve.
  */
 export async function fetchVenueStatements(
   sparql: SparqlFn,
@@ -369,15 +382,17 @@ export async function fetchVenueStatements(
   const out: RawStatement[] = [];
   for (const row of rows) {
     const work = extractQid(row.w?.value ?? '');
-    const venue = extractQid(row.venue?.value ?? '');
+    const value = row.venue?.value ?? '';
+    const unknown = value.startsWith(UNKNOWN_VALUE_PREFIX);
+    const venue = extractQid(value);
     const property = row.rel?.value;
     const rank = row.rank?.value ?? '';
-    if (!isQid(work) || !isQid(venue)) continue;
+    if (!isQid(work) || (!unknown && !isQid(venue))) continue;
     if (property !== 'P195' && property !== 'P276') continue;
     if (rank.endsWith('#DeprecatedRank')) continue;
     out.push({
       work,
-      venue,
+      venue: unknown ? null : venue,
       property,
       rank: rank.endsWith('#PreferredRank') ? 'preferred' : 'normal',
     });

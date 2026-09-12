@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { placeArtwork, type VenueStatement } from './placement.js';
+import { placeArtwork, whereaboutsUnknown, type VenueStatement } from './placement.js';
 import { resolveVenue } from './resolveVenue.js';
 import { museumRule, type VenueFacts } from './venueTest.js';
 
@@ -40,6 +40,9 @@ const ancestorsOf = (q: string): ReadonlySet<string> => {
 };
 const s = (venue: string, property: 'P195' | 'P276', rank: 'preferred' | 'normal' = 'normal'): VenueStatement =>
   ({ venue, property, rank });
+/** A statement whose value is Wikidata's *unknown value*. */
+const u = (property: 'P195' | 'P276', rank: 'preferred' | 'normal' = 'normal'): VenueStatement =>
+  ({ venue: null, property, rank });
 
 describe('placeArtwork', () => {
   it('drops a location the owner contradicts (Las Meninas)', () => {
@@ -134,6 +137,52 @@ describe('placeArtwork', () => {
     // change it only alongside a deliberate decision about which side should win.
     expect(placeArtwork([s('nationalGallery', 'P195'), s('tateBritain', 'P276')], resolve, ancestorsOf))
       .toEqual(['nationalGallery']);
+  });
+
+  it('never resolves an unknown value as if it were a venue', () => {
+    // Nude, Green Leaves and Bust: owned by an anonymous collector (P195 unknown, normal) and
+    // hanging at Tate Modern on loan. The unknown owner is not a place to fall back to.
+    expect(placeArtwork([u('P195'), s('tateModern', 'P276')], resolve, ancestorsOf))
+      .toEqual(['tateModern']);
+  });
+});
+
+/**
+ * Whether the source says nobody can name where the work is (#868). Each case is
+ * a real statement set, read with `wbgetentities` on 2026-09-12.
+ */
+describe('whereaboutsUnknown', () => {
+  it('reads a preferred unknown location (The Concert, stolen 1990)', () => {
+    expect(whereaboutsUnknown([u('P276', 'preferred'), s('gardner', 'P195')])).toBe(true);
+  });
+
+  it('reads a preferred unknown collection (The Storm on the Sea of Galilee)', () => {
+    expect(whereaboutsUnknown([u('P195', 'preferred'), s('gardner', 'P195')])).toBe(true);
+  });
+
+  it('reads a normal unknown location beside normal named ones (Salvator Mundi)', () => {
+    // Three locations at normal rank, one of them unknown: no best-ranked statement says
+    // where the painting is, and it has never been shown at the Louvre Abu Dhabi.
+    expect(whereaboutsUnknown([
+      u('P276'), s('louvreAbuDhabi', 'P276'), s('saudiVault', 'P276'), s('louvreAbuDhabi', 'P195', 'preferred'),
+    ])).toBe(true);
+  });
+
+  it('reads a normal unknown location beside one normal named one (The Tower of Blue Horses)', () => {
+    expect(whereaboutsUnknown([u('P276'), s('unknownDepot', 'P276'), s('nationalgalerie', 'P195')])).toBe(true);
+  });
+
+  it('is silent about an unknown collection at normal rank (Nude, Green Leaves and Bust)', () => {
+    expect(whereaboutsUnknown([u('P195'), s('tateModern', 'P276')])).toBe(false);
+  });
+
+  it('lets a preferred named location silence a normal unknown one', () => {
+    expect(whereaboutsUnknown([u('P276'), s('prado', 'P276', 'preferred')])).toBe(false);
+  });
+
+  it('is silent with no unknown value at all', () => {
+    expect(whereaboutsUnknown([s('prado', 'P276'), s('prado', 'P195')])).toBe(false);
+    expect(whereaboutsUnknown([])).toBe(false);
   });
 });
 
