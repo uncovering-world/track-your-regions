@@ -96,6 +96,8 @@ const BRITISH_MUSEUM = 'Q6373';
 const ROSETTA = 'Q48584';
 /** The Hermitage: an antiquities department inside a museum of everything. */
 const HERMITAGE = 'Q132783';
+/** The Bardo, in the catalogue on its own 35 articles and holding no famous find. */
+const BARDO = 'Q1429003';
 /** Ten finds the catalogue offers in London, as `readPreviousPlacements` answers. */
 const STORED = Array.from({ length: 10 }, (_, i) => ({ work: `Q${1000 + i}`, venue: BRITISH_MUSEUM }));
 
@@ -132,6 +134,9 @@ function museum(overrides: Partial<CollectedArchaeologyMuseum> = {}): CollectedA
     natureWhy: 'category: Archaeological museums in London',
     admissionNote: null,
     treasures: [rosetta()],
+    // The Rosetta Stone is one find above the finds' line, which is what the
+    // badge reads (ADR-0045 decision 5).
+    findsAboveLine: 1,
     ...overrides,
   };
 }
@@ -159,6 +164,24 @@ function lineRow(): { rows: { api_config: unknown }[] } {
 async function configOf(): Promise<SyncServiceConfig<CollectedArchaeologyMuseum>> {
   await syncArchaeology(1);
   return mockedOrchestrate.mock.calls[0][0] as SyncServiceConfig<CollectedArchaeologyMuseum>;
+}
+
+/**
+ * The config with the run already past its fetch, which is the only order the
+ * orchestrator ever uses: the source row read, the lines in hand, the
+ * collection answered. A writer test needs it because the finds' line reaches
+ * the treasure writer from there and the run refuses to write without it —
+ * asked of a config that never fetched, each of these would pass or fail by
+ * whatever an earlier test happened to leave in module state.
+ */
+async function afterFetch(
+  items: CollectedArchaeologyMuseum[] = [museum()],
+): Promise<SyncServiceConfig<CollectedArchaeologyMuseum>> {
+  mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+  collected(items);
+  const config = await configOf();
+  await config.fetchItems(progress(), []);
+  return config;
 }
 
 /** A collection that admits `items`, with nothing refused and nothing moved. */
@@ -317,7 +340,7 @@ describe('what the archaeology run writes', () => {
   it('writes the museum with its kind, its tags and the run notes about it', async () => {
     wrote();
 
-    await (await configOf()).processItem(museum(), progress(), writing());
+    await (await afterFetch()).processItem(museum(), progress(), writing());
 
     const params = mockedUpsert.mock.calls[0][0];
     expect(params).toMatchObject({
@@ -353,7 +376,7 @@ describe('what the archaeology run writes', () => {
     const note = 'an antiquities department (category: Egyptological collections in Russia); '
       + 'is the exposition substantially archaeology?';
 
-    await (await configOf()).processItem(museum({
+    await (await afterFetch()).processItem(museum({
       qid: HERMITAGE,
       label: 'State Hermitage Museum',
       nature: 'department',
@@ -370,7 +393,7 @@ describe('what the archaeology run writes', () => {
   it('names the find that admitted a museum below the line', async () => {
     wrote();
 
-    await (await configOf()).processItem(museum({
+    await (await afterFetch()).processItem(museum({
       qid: 'Q636928',
       label: 'Archaeological Museum of Delphi',
       sitelinks: 15,
@@ -383,10 +406,10 @@ describe('what the archaeology run writes', () => {
       .toEqual({ qid: 'Q1230882', label: 'Charioteer of Delphi' });
   });
 
-  it('hands the finds to the shared writer with this source, the run and where each was found', async () => {
+  it('hands the finds to the shared writer with this source, the run, its line and where each was found', async () => {
     wrote();
 
-    await (await configOf()).processItem(museum(), progress(), {
+    await (await afterFetch()).processItem(museum(), progress(), {
       ...writing(), withdrawalSkippedReason: 'this run placed 1 of the 10 works',
     });
 
@@ -394,6 +417,12 @@ describe('what the archaeology run writes', () => {
     // verdict would mark links on a run nothing vouched for (ADR-0044). And the
     // find spot rides on the treasure, which is what lets the card say the
     // Rosetta Stone was found at Fort Julien rather than that it is in London.
+    //
+    // The finds' line travels with them for a reason of its own: the museum's
+    // badge is read at that line, so the find's own flag has to be read at the
+    // same one, or the two badges would disagree about the same find (ADR-0023
+    // decision 2). The art museums' 22/18 is what the writer falls back to, and
+    // this kind's finds are thinner than that (ADR-0058 decision 5).
     expect(mockedWriter).toHaveBeenCalledWith(
       8104,
       [expect.objectContaining({
@@ -401,7 +430,10 @@ describe('what the archaeology run writes', () => {
       })],
       expect.anything(),
       {
-        syncLogId: 62, withdrawalSkippedReason: 'this run placed 1 of the 10 works', sourceId: 5,
+        syncLogId: 62,
+        withdrawalSkippedReason: 'this run placed 1 of the 10 works',
+        sourceId: 5,
+        iconicLine: { enterSitelinks: 18, staySitelinks: 15 },
       },
       expect.anything(),
     );
@@ -455,16 +487,30 @@ describe('what the archaeology run writes', () => {
 });
 
 describe('what the archaeology run tells the orchestrator', () => {
-  it('is a ranked source that recomputes its membership and badges what it admits', async () => {
+  it('is a ranked source that recomputes its membership', async () => {
     const config = await configOf();
 
     expect(config.sourceId).toBe(5);
     expect(config.sourceCompleteness).toBe('ranked');
     expect(config.recomputesMembership).toBe(true);
-    // Both doors are the world tier (ADR-0045 decision 5): a museum clears the
-    // source's own fame line, or holds a find that clears the finds' line.
-    expect(config.badgesAdmitted).toBe(true);
     expect(config.getItemName(museum())).toBe('British Museum');
     expect(config.getItemId(museum())).toBe(BRITISH_MUSEUM);
+  });
+
+  it('badges the museum that holds a famous find, and not the one admitted for what it is', async () => {
+    const badges = (await configOf()).badgesAdmitted;
+    expect(typeof badges).toBe('function');
+    const holdsOne = badges as (item: CollectedArchaeologyMuseum) => boolean;
+
+    // Belonging is not the badge for this kind, as it is for art museums: a
+    // museum enters for what it is and never for a find (ADR-0058 decision 2),
+    // so the badge marks the one that holds a masterpiece (ADR-0045 decision
+    // 5). The British Museum has the Rosetta Stone; the Bardo is in the
+    // catalogue on its own 35 articles, holding nothing above the finds' line,
+    // and stands in the kind in full standing without a badge.
+    expect(holdsOne(museum())).toBe(true);
+    expect(holdsOne(museum({
+      qid: BARDO, label: 'Bardo National Museum', treasures: [], findsAboveLine: 0,
+    }))).toBe(false);
   });
 });

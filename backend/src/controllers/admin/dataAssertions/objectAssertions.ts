@@ -128,11 +128,16 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
 /**
  * A row its source turned away, still badged as a must-see.
  *
- * A museum carries `is_iconic` because it holds a work above the fame line, and
- * every museum in this catalogue was admitted for exactly that (ADR-0023), so
- * the flag has been a synonym of belonging: the run sets it on admission and
- * clears it with a refusal, whether the rule named the row or the sweep reached
- * it (`admission.ts`, `CLEAR_ICONIC`). Nothing reads a museum's own flag yet --
+ * A museum carries `is_iconic` because it holds a work above the fame line: the
+ * run sets it where that is true of the row and clears it with a refusal,
+ * whether the rule named the row or the sweep reached it (`admission.ts`,
+ * `CLEAR_ICONIC`). For the works-first museums it has been a synonym of
+ * belonging, every one of them having been admitted for exactly that
+ * (ADR-0023); an archaeology museum enters for what it *is* as well, and one
+ * admitted that way is in the kind without the badge (ADR-0045 decision 5). The
+ * invariant is the same either way -- a refused row wears no badge -- and this
+ * is why it is that, and not "an admitted row wears one". Nothing reads a
+ * museum's own flag yet --
  * the badge the list draws is a *work's* -- but the Iconic filter (#589) and an
  * export (#591) will read it on its own, with no admission predicate beside it,
  * and the flag as stored is what they would hand a reader. So it is the stored

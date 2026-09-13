@@ -24,8 +24,28 @@ describe('museumNature', () => {
   it('the Uffizi is neither', () => {
     expect(museumNature({ qid: 'Q51252', classes: [ART_MUSEUM], categories: ['Art museums and galleries in Florence'], ...at(43.77, 11.26) }, trees)).toEqual({ nature: 'none' });
   });
-  it('a natural history museum is vetoed whatever it holds', () => {
-    expect(museumNature({ qid: 'Q688704', classes: [NAT_HIST], categories: ['Archaeological museums in Austria'], ...at(48.2, 16.36) }, trees)).toEqual({ veto: 'a natural history museum, not an archaeology museum' });
+  it('Vienna\'s natural history museum is vetoed whatever it holds', () => {
+    // Its real shelf on 2026-09-13: `Natural history museums in Austria`,
+    // `Geology museums in Austria`, `Museums of Dacia` and nothing
+    // archaeological, over `natural history museum` (with `collection` and
+    // `academic publisher` besides, neither of them this kind's). So the Venus
+    // of Willendorf does not make it an archaeology museum (ADR-0058 decision 2).
+    expect(museumNature({ qid: 'Q688704', classes: [NAT_HIST], categories: ['Geology museums in Austria', 'Museums of Dacia', 'Natural history museums in Austria'], ...at(48.2, 16.36) }, trees)).toEqual({ veto: 'a natural history museum, not an archaeology museum' });
+  });
+  it('the Yorkshire Museum is both, and a museum of both is not vetoed', () => {
+    // Q2086562, typed `natural history museum` *and* `archaeological museum`,
+    // its article under `Archaeological museums in England` and `Museums of
+    // ancient Rome in the United Kingdom` beside `Natural history museums in
+    // England` (checked on 2026-09-13). Its draw is Roman York, and the veto is
+    // for a natural history museum with no archaeological signal of its own.
+    expect(museumNature({ qid: 'Q2086562', classes: [NAT_HIST, ARCH_MUSEUM], categories: ['Archaeological museums in England', 'Geology museums in England', 'Museums of ancient Rome in the United Kingdom', 'Natural history museums in England'], ...at(53.96, -1.09) }, trees)).toEqual({ nature: 'archaeological', why: 'category: Archaeological museums in England' });
+  });
+  it('a natural history museum the category alone calls archaeological is not vetoed either', () => {
+    // The class is one signal of the nature and the category is the other, and
+    // either answers the veto: the class misses the canon, so a row Wikipedia
+    // files under `Archaeological museums in …` is a museum of both on that
+    // signal alone.
+    expect(museumNature({ qid: 'Q688704', classes: [NAT_HIST], categories: ['Archaeological museums in Austria'], ...at(48.2, 16.36) }, trees)).toEqual({ nature: 'archaeological', why: 'category: Archaeological museums in Austria' });
   });
   it('an archaeological park is a site, not a museum', () => {
     // The Archaeological Park of Xanten (Q316385), typed `archaeological park`

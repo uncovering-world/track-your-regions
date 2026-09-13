@@ -124,6 +124,24 @@ async function configOf(): Promise<SyncServiceConfig<CollectedPlaceOfWorship>> {
   return mockedOrchestrate.mock.calls[0][0] as SyncServiceConfig<CollectedPlaceOfWorship>;
 }
 
+/**
+ * The config with the run already past its fetch, which is the only order the
+ * orchestrator ever uses: the source row read, the relic line in hand, the
+ * collection answered. A writer test needs it because the relics' line reaches
+ * the treasure writer from there and the run refuses to write without it
+ * (`theRelicLine`) — `archaeologySyncService.test.ts`'s `afterFetch`, for the
+ * same reason.
+ */
+async function afterFetch(
+  places: CollectedPlaceOfWorship[] = [place()],
+): Promise<SyncServiceConfig<CollectedPlaceOfWorship>> {
+  mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+  collected(places);
+  const config = await configOf();
+  await config.fetchItems(progress(), []);
+  return config;
+}
+
 /** A collection that admits `items`, with nothing refused and nothing moved. */
 function collected(items: CollectedPlaceOfWorship[], fetched = 1200): void {
   mockedCollect.mockResolvedValueOnce({
@@ -211,7 +229,7 @@ describe('what the worship run writes', () => {
       dryRun: false, syncLogId: 51, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
     };
 
-    await (await configOf()).processItem(place(), progress(), context);
+    await (await afterFetch()).processItem(place(), progress(), context);
 
     const params = mockedUpsert.mock.calls[0][0];
     expect(params).toMatchObject({
@@ -246,7 +264,7 @@ describe('what the worship run writes', () => {
       dryRun: false, syncLogId: 51, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
     };
 
-    await (await configOf()).processItem(
+    await (await afterFetch()).processItem(
       place({ type: null, admittedFor: undefined, door: 'place' }), progress(), context,
     );
 
@@ -264,19 +282,48 @@ describe('what the worship run writes', () => {
       withdrawalSkippedReason: 'this run placed 1 of the 10 works',
     };
 
-    await (await configOf()).processItem(place(), progress(), context);
+    await (await afterFetch()).processItem(place(), progress(), context);
 
     // The reason and the id travel together: a writer told the id and not the
     // verdict would mark links on a run nothing vouched for (ADR-0044).
+    //
+    // And the line travels with them. The writer's default is the art museums'
+    // 22/18 — a different catalogue's constants that happen to hold the same
+    // numbers this source does today — so without this an admin who moved this
+    // line to 30/25 would move the churches and leave the Shroud of Turin badged
+    // at 22, the disagreement ADR-0023 decision 2 forbids (#883). One pair here,
+    // so `contentsLine` answers with the places' own.
     expect(mockedWriter).toHaveBeenCalledWith(
       7301,
       [expect.objectContaining({ externalId: SHRINE })],
       expect.anything(),
       {
         syncLogId: 51, withdrawalSkippedReason: 'this run placed 1 of the 10 works', sourceId: 4,
+        iconicLine: { enterSitelinks: 22, staySitelinks: 18 },
       },
       expect.anything(),
     );
+  });
+
+  it('badges the relics at the line the admin moved, not at the art constants', async () => {
+    // The bug this closes, asked where it can be seen: a source row at 30/25
+    // reaches the writer as 30/25, and the relic is judged by the same number as
+    // the church around it.
+    wrote();
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ api_config: { enterSitelinks: 30, staySitelinks: 25 } }] })
+      .mockResolvedValueOnce({ rows: [] });
+    collected([place()]);
+    const config = await configOf();
+    await config.fetchItems(progress(), []);
+
+    await config.processItem(place(), progress(), {
+      dryRun: false, syncLogId: 51, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
+    });
+
+    expect(mockedWriter.mock.calls[0][3]).toMatchObject({
+      iconicLine: { enterSitelinks: 30, staySitelinks: 25 },
+    });
   });
 
   it('tells each place which treasures the run places elsewhere, from the proposal it read up front', async () => {
@@ -320,7 +367,7 @@ describe('what the worship run writes', () => {
       dryRun: true, syncLogId: 51, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
     };
 
-    const result = await (await configOf()).processItem(place(), progress(), context);
+    const result = await (await afterFetch()).processItem(place(), progress(), context);
 
     expect(mockedLocation).not.toHaveBeenCalled();
     expect(mockedWriter).not.toHaveBeenCalled();

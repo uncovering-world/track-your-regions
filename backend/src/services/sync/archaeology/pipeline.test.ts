@@ -13,9 +13,11 @@ import {
   answer,
   categoryDoor,
   world,
+  ARCHAEOLOGICAL_MUSEUM,
   ART_MUSEUM,
   MUSEUM,
   NATIONAL_MUSEUM,
+  PALACE,
   type World,
 } from './pipelineFixture.js';
 import type { SourceLine } from '../sourceLine.js';
@@ -121,6 +123,20 @@ describe('collectArchaeologyMuseums', () => {
     expect(out.items.some((i) => i.treasures.some((t) => t.externalId === 'Q24269542'))).toBe(false);
   });
 
+  it('refuses an archaeological park the shelf named, as a site rather than a museum', async () => {
+    // The class gate cannot turn this one away: Wikidata files `archaeological
+    // park` under `archaeological museum` and so under `museum`, so Hadrian's
+    // Villa passes `isMuseumOnWikidata` and reaches the nature rule carrying a
+    // museum class. The park veto is the only thing between it and a museum pin
+    // on an open-air site a traveller walks for an afternoon (#887). Named
+    // rather than dropped, because at 52 articles it is worth the site door's
+    // worklist.
+    const out = await collect(world());
+
+    expect(item(out, 'Q272777')).toBeUndefined();
+    expect(reason(out, 'Q272777')).toBe('an archaeological park: a site, not a museum');
+  });
+
   it('says nothing about a site under the line, whose name would be one of hundreds', async () => {
     // Mactaris is on the same shelf as the Bardo and known in 7 languages. The
     // 27 sites above the place line are a worklist for the site door; the rest
@@ -214,6 +230,86 @@ describe('collectArchaeologyMuseums', () => {
     expect(treasuresOf(out, 'Q636928')).toEqual(['Q1230882']);
   });
 
+  it('carries how many finds above the line each museum holds, for the badge', async () => {
+    const out = await collect(world());
+
+    // The count the verdict was taken on, kept on the item rather than left to
+    // be worked out again from the treasures and the line: it is what says
+    // whether the museum holds a masterpiece, and the badge is the masterpiece
+    // (ADR-0045 decision 5). Not `treasures.length` — a museum arrives with
+    // everything it holds, however famous.
+    expect(item(out, 'Q6373')?.findsAboveLine).toBe(1);
+    expect(item(out, 'Q636928')?.findsAboveLine).toBe(1);
+    // In the catalogue on its own 35 articles, holding nothing the run knows.
+    expect(item(out, 'Q1429003')?.findsAboveLine).toBe(0);
+  });
+
+  it('credits nobody with a find three museums claim, and still lists it on each card', async () => {
+    // The holder cap is one answer, and it has to be the same answer down every
+    // road. `findJudged` asks `selectTier1`, which sends a unique work claimed
+    // by more than two venues to a curator and admits none of them; the Louvre
+    // and the British Museum are here by their class and their category anyway,
+    // so before the cap bound `credited` too they were admitted below the place
+    // line and badged for a find the same run said admits nobody.
+    //
+    // And the card is untouched by it, as the art import's is: pieces of one
+    // hoard split between three museums are a real thing to go and see in each
+    // of the three rooms, and dropping the find from all three would tell a
+    // traveller less than the source knows.
+    const w = world();
+    w.finds.Q48584.statements = [
+      { property: 'P195', venue: 'Q6373' },
+      { property: 'P195', venue: 'Q19675' },
+      { property: 'P195', venue: 'Q1429003' },
+    ];
+
+    const out = await collect(w);
+
+    for (const qid of ['Q6373', 'Q19675', 'Q1429003']) {
+      expect(item(out, qid)?.findsAboveLine).toBe(0);
+      expect(item(out, qid)?.admittedFor).toBeUndefined();
+      expect(treasuresOf(out, qid)).toContain('Q48584');
+    }
+  });
+
+  it('credits both museums with a find the two of them claim', async () => {
+    // The other side of the cap: two venues is the most one visit can settle,
+    // so the Rosetta Stone at the British Museum and the Louvre is a find of
+    // each, and each is badged for it.
+    const w = world();
+    w.finds.Q48584.statements = [
+      { property: 'P195', venue: 'Q6373' },
+      { property: 'P195', venue: 'Q19675' },
+    ];
+
+    const out = await collect(w);
+
+    for (const qid of ['Q6373', 'Q19675']) {
+      expect(item(out, qid)?.findsAboveLine).toBe(1);
+      expect(treasuresOf(out, qid)).toContain('Q48584');
+    }
+  });
+
+  it('keeps an admitted museum whose find slipped into the band, and badges it for nothing', async () => {
+    // The two questions the finds' line is asked, and they are not the same
+    // question. At 16 articles the Charioteer is below the finds' enter line of
+    // 18 and above their stay line of 15: the door forgives the slip, so Delphi
+    // stays in the catalogue and still names the Charioteer as what admitted
+    // it — and the badge does not, because the treasure writer will leave a
+    // find at 16 unbadged, and a museum marked must-see for a work shown
+    // without the mark is the disagreement ADR-0023 decision 2 forbids.
+    const w = world();
+    w.finds.Q1230882.sitelinks = 16;
+
+    const out = await collect(w, { admitted: ['Q636928'] });
+
+    expect(item(out, 'Q636928')).toMatchObject({
+      sitelinks: 15,
+      admittedFor: { qid: 'Q1230882', label: 'Charioteer of Delphi' },
+      findsAboveLine: 0,
+    });
+  });
+
   it('holds the Hermitage for a curator: an antiquities department, not a nature', async () => {
     const out = await collect(world());
 
@@ -260,19 +356,23 @@ describe('collectArchaeologyMuseums', () => {
   it('names no museum the rules never ran on', async () => {
     const out = await collect(world());
 
-    // Only the museums the pool typed archaeological and the holders of a find
-    // above the line are judged, so the long tail produces no refusals at all:
-    // the Uffizi, which a rule refused, and the Pio-Clementino, which folded
-    // into the Vatican Museums — and nothing else.
-    // Pompeii, which a rule refused; the Uffizi, which a rule refused; and the
-    // Pio-Clementino, which folded into the Vatican Museums.
-    expect(out.filtered.map((f) => f.externalId)).toEqual(['Q43332', 'Q51252', 'Q1439912']);
-    // Two museums the class question named; four rows the categories asked
+    // Only the museums the pool typed archaeological, the rows the categories
+    // named and the holders of a find above the line are judged, so the long
+    // tail produces no refusals at all — these four and nothing else. The
+    // Pio-Clementino leads: a museum that folded is reported by where it went,
+    // and those lines come before the rules' own so that a folded museum is
+    // never named twice. The rest follow most famous first as the run judges
+    // them: Pompeii and Hadrian's Villa, which the shelf named and the rule
+    // turned away as sites, and the Uffizi, an art museum with one ancient
+    // statue.
+    expect(out.filtered.map((f) => f.externalId))
+      .toEqual(['Q1439912', 'Q43332', 'Q51252', 'Q272777']);
+    // Two museums the class question named; five rows the categories asked
     // after, of which the Gold Museum's was dropped for want of an article and
     // is counted all the same, because the run fetched it; and six finds:
-    // twelve entities. Pompeii is not among them — the walk named it, but the
+    // thirteen entities. Pompeii is not among them — the walk named it, but the
     // venue graph already had it and no question of this run's went out for it.
-    expect(out.fetched).toBe(12);
+    expect(out.fetched).toBe(13);
   });
 
   it('keeps a fold onto a department held for a curator, and reports what it lost', async () => {
@@ -307,6 +407,351 @@ describe('collectArchaeologyMuseums', () => {
     });
     expect(treasuresOf(out, 'Q182955')).toEqual(['Q465762']);
     expect(item(out, 'Q1439912')).toBeUndefined();
+  });
+
+  /**
+   * The fold that strands a museum's finds on a survivor nobody ever writes.
+   *
+   * The **container** fold is the one that can do it: a door fold takes only a
+   * better-known door (`doorOf` compares sitelinks), but `applyContainerFolds`
+   * follows `P361` within 250 m with no fame test at all, so a famous museum can
+   * fold into an obscure whole. The nature filter does not catch it either — the
+   * survivor is archaeological or a department, which is what that filter asks.
+   *
+   * Both tests keep the fixture's real geography and its real containment: the
+   * Pio-Clementino museum *is* part of the Vatican Museums, 86 m away. What is
+   * arranged is the pair of sitelink counts (the device the Venus of Buret'
+   * already uses) and the Vatican's own find, because a container fold is
+   * between two rows that each hold one. The two differ in one thing only:
+   * whether the survivor is a museum this run writes.
+   */
+  const containerFold = (ownFindSitelinks: number): World => {
+    const w = world();
+    // The collection, raised above the place line: admitted on its own fame,
+    // and `judgeOne` never asks whether the row folded.
+    w.museums.Q1439912.sitelinks = 30;
+    // The whole it is part of, dropped below the line — and holding a find of
+    // its own, without which it is no container-fold candidate at all.
+    w.museums.Q182955.sitelinks = 15;
+    w.finds.Q24269542.sitelinks = ownFindSitelinks;
+    w.finds.Q24269542.statements = [{ property: 'P195', venue: 'Q182955' }];
+    // And the collection's own find is below the finds' enter line of 18. It has
+    // to be: a famous find landing on the survivor admits the survivor for it
+    // (ADR-0058 decision 2), which is the catalogue working rather than the hole
+    // — the stranding needs a survivor nothing carries.
+    w.finds.Q465762.sitelinks = 16;
+    return w;
+  };
+
+  /**
+   * The shape the fold decision is asked to settle: one find claimed by two
+   * museums inside one container and by others elsewhere.
+   *
+   * Real containment throughout — the Pio-Clementino museum and the Gregorian
+   * Egyptian Museum are both `P361` the Vatican Museums (Q526381: `museum`, five
+   * languages, no English article, 13 m away; verified with wbgetentities on
+   * 2026-09-14) — so the container fold takes both. What is arranged is the
+   * Vatican's own count, its one below-line find, and who else claims the
+   * Laocoön. The second museum is added here rather than to the shared fixture
+   * because only these two tests need a second department.
+   */
+  const twoInOneContainer = (alsoClaimedBy: string[]): World => {
+    const w = world();
+    // S: the container, below the place line, with one find of its own below the
+    // finds' enter line — without which it is no container-fold candidate.
+    w.museums.Q182955.sitelinks = 15;
+    w.finds.Q24269542.sitelinks = 16;
+    w.finds.Q24269542.statements = [{ property: 'P195', venue: 'Q182955' }];
+    w.museums.Q526381 = {
+      label: 'Gregorian Egyptian Museum', classes: [MUSEUM], sitelinks: 5,
+      lat: 41.9064, lon: 12.4546, parents: ['Q182955'],
+    };
+    // F, above the finds' enter line, claimed by both departments and by
+    // whoever else the case names.
+    w.finds.Q465762.statements = [
+      { property: 'P195', venue: 'Q1439912' },
+      { property: 'P195', venue: 'Q526381' },
+      ...alsoClaimedBy.map((venue) => ({ property: 'P195' as const, venue })),
+    ];
+    return w;
+  };
+
+  /**
+   * The invariant the fold decision owes the catalogue, whatever the rounds do:
+   * a museum reported as folded names a survivor the run actually writes. A line
+   * pointing at a row the catalogue does not hold sends a curator looking for a
+   * museum that is not there.
+   */
+  const foldLinesNameWrittenMuseums = (out: CollectedArchaeology): void => {
+    const written = new Set(out.items.map((i) => i.label));
+    for (const entry of out.filtered) {
+      const into = /^folded into (.+?) — /.exec(entry.reason)?.[1];
+      if (into !== undefined) expect(written.has(into), entry.reason).toBe(true);
+    }
+  };
+
+  /**
+   * The round a single re-pass misses, and the reason it exists: **the finds'
+   * line is hysteretic too.**
+   *
+   * `judgeOne` measures a find's fame at the finds' *stay* line for a museum the
+   * source already admits and at the *enter* line for one it does not, while the
+   * holder cap is applied to every pool find before any line is read
+   * (`placedFinds`). So a find **in the band** — 16, between the stay line of 15
+   * and the enter line of 18 — carries a museum already in the catalogue and
+   * leaves an unadmitted survivor uncarried. That is the split my wave-6
+   * argument missed, and it is what lets one round's answer change the next's.
+   *
+   * Round 1: both Vatican departments fold into the Vatican, so the Laocoön has
+   * two venues, is inside the cap, and credits the Vatican and the Museo
+   * Nazionale Romano. The Vatican was never admitted, so its threshold is the
+   * enter line and 16 does not carry it: unwritten, and both its folds drop. The
+   * Museo Nazionale Romano *is* admitted, so its threshold is the stay line and
+   * 16 does carry it: written, and the fold of the Baths museum into it stands.
+   * Round 2: the Laocoön now has three venues, is over the cap, credits nobody,
+   * and the Museo Nazionale Romano falls by name. Round 3 drops the Baths
+   * museum's fold in its turn and writes it on its own fame.
+   *
+   * Real throughout except the two fame counts, which are arranged as the
+   * fixture arranges the Venus of Buret': the Pio-Clementino and the Gregorian
+   * Egyptian Museum are really `P361` the Vatican Museums, and the **Museum of
+   * the Baths of Diocletian (Q3330142)** is really `P361` the **Museo Nazionale
+   * Romano (Q1135392)**, 56 m away, both typed `archaeological museum`
+   * (wbgetentities, 2026-09-14). The Baths museum's own `archaeological park`
+   * class is left off its row, and that omission is the fixture's: carrying it,
+   * the real item is not a venue for this kind at all (the site veto of
+   * `SITE_CLASSES`), so no find is placed at it and it could be part of no fold.
+   * What a park on the shelf does has its own test above.
+   */
+  const bandFindAcrossTwoContainers = (): World => {
+    const w = world();
+    // The container nobody admits, with a find of its own in the band.
+    w.museums.Q182955.sitelinks = 15;
+    w.finds.Q24269542.sitelinks = 16;
+    w.finds.Q24269542.statements = [{ property: 'P195', venue: 'Q182955' }];
+    w.museums.Q526381 = {
+      label: 'Gregorian Egyptian Museum', classes: [MUSEUM], sitelinks: 5,
+      lat: 41.9064, lon: 12.4546, parents: ['Q182955'],
+    };
+    // The container the source already admits, and the museum inside it.
+    w.museums.Q1135392 = {
+      label: 'Museo Nazionale Romano', classes: [NATIONAL_MUSEUM, ARCHAEOLOGICAL_MUSEUM, MUSEUM],
+      sitelinks: 15, lat: 41.903426, lon: 12.499018, countryLabel: 'Italy',
+      articleUrl: 'https://en.wikipedia.org/wiki/Museo_Nazionale_Romano',
+    };
+    w.museums.Q3330142 = {
+      label: 'Museum of the Baths of Diocletian',
+      classes: [ARCHAEOLOGICAL_MUSEUM, ART_MUSEUM, MUSEUM], sitelinks: 30,
+      lat: 41.903873, lon: 12.498708, countryLabel: 'Italy', parents: ['Q1135392'],
+    };
+    // A find of the Museo Nazionale Romano's own, without which it is no
+    // container-fold candidate and the Baths museum folds nowhere. Claimed by
+    // three venues, so the holder cap keeps it from crediting anybody: it makes
+    // the museum a fold target without also carrying it over the line, which is
+    // the whole question this shape is asking.
+    w.finds.Q774967.statements = [
+      { property: 'P195', venue: 'Q1135392' },
+      { property: 'P195', venue: 'Q51252' },
+      { property: 'P195', venue: 'Q19675' },
+    ];
+    // The band find, claimed by both Vatican departments and by the Baths museum.
+    w.finds.Q465762.sitelinks = 16;
+    w.finds.Q465762.statements = [
+      { property: 'P195', venue: 'Q1439912' },
+      { property: 'P195', venue: 'Q526381' },
+      { property: 'P195', venue: 'Q3330142' },
+    ];
+    return w;
+  };
+
+  it('gives a row to a venue only a partial fold set makes a holder', async () => {
+    // `candidatesOf` is read once, before the verdict, and every fold set the run
+    // then judges is a *partial* one — the nature narrowing on the first pass, a
+    // strict subset on every round after. That matters because **holding is not
+    // a fact about a museum**: `findHolders` asks `selectTier1`, whose cap is a
+    // predicate over the length of a find's whole venue list, and a kept fold
+    // *merges* two venues into one. So the same find can be over the cap raw and
+    // under it once some folds are applied — and which venues hold it depends on
+    // which folds those are.
+    //
+    // The Laocoön is claimed by three venues. Raw that is three, over the cap,
+    // crediting nobody. With *every* fold applied the Pio-Clementino merges into
+    // the Vatican Museums and the museum in the palace merges into the palace:
+    // two venues, and those two are the holders the old candidate set measured.
+    // But the palace is no museum of this kind, so the nature filter drops that
+    // fold before the first verdict — and the set actually judged is the third
+    // one, where the holders are the Vatican Museums and the *museum inside the
+    // palace*, which neither extreme ever named. Without a row it reached the
+    // verdict as a bare id and the run answered `no row to judge` about a museum
+    // it would have admitted for the find.
+    //
+    // Real: the Pio-Clementino is `P361` the Vatican Museums (86 m), and the
+    // **Museum Palazzo Massimo alle Terme (Q510071)** — `art museum,
+    // archaeological museum`, 4 languages, below the pool's floor so no pool
+    // names it — is `P361` the **Palazzo Massimo alle Terme (Q3890451)**, 31 m
+    // away (wbgetentities, 2026-09-14; coordinates and counts real). The real
+    // museum names a second container 235 m off, the Museo Nazionale Romano;
+    // only the nearer is given, which is the one `nearestOf` picks anyway.
+    // Declared: the palace's row carries `palace, museum` and not the
+    // `archaeological museum` class Wikidata also gives it — that class is there
+    // because the museum is *in* it, and what this shape needs is a container
+    // that houses an archaeology museum without being one, which is what a
+    // historic building is. Arranged: who claims the Laocoön.
+    const w = world();
+    w.museums.Q510071 = {
+      label: 'Museum Palazzo Massimo alle Terme', classes: [ART_MUSEUM, ARCHAEOLOGICAL_MUSEUM],
+      sitelinks: 4, lat: 41.901360, lon: 12.498358, countryLabel: 'Italy',
+      parents: ['Q3890451'],
+    };
+    w.museums.Q3890451 = {
+      label: 'Palazzo Massimo alle Terme', classes: [PALACE, MUSEUM], sitelinks: 12,
+      lat: 41.901537, lon: 12.498062, countryLabel: 'Italy',
+    };
+    // The palace's own find, over the cap: it makes the palace a container-fold
+    // target without carrying it over any line.
+    w.finds.Q774967.statements = [
+      { property: 'P195', venue: 'Q3890451' },
+      { property: 'P195', venue: 'Q51252' },
+      { property: 'P195', venue: 'Q19675' },
+    ];
+    w.finds.Q465762.statements = [
+      { property: 'P195', venue: 'Q1439912' },
+      { property: 'P195', venue: 'Q182955' },
+      { property: 'P195', venue: 'Q510071' },
+    ];
+
+    const out = await collect(w);
+
+    // **What this pins and what it does not.** It pins the outcome — every venue
+    // the verdict reaches has a row, and the museum a partial set makes a holder
+    // is judged and admitted. It is *not* a guard on the widening: the branch
+    // stays unreached with the old candidate set too, because `works.placed` is
+    // not the raw statements but `placeArtwork`'s answer, already put through the
+    // collector's resolver and the `P361` ancestors — so two venues of one
+    // institution are often one venue before a fold is ever computed, and the
+    // three-venue reading the finding assumes does not survive placement here.
+    // The widening is carried on the argument in `candidatesOf`, not on this.
+    expect(out.filtered.filter((f) => f.reason.startsWith('no row to judge'))).toEqual([]);
+    // And the museum inside the palace is judged and admitted for the find the
+    // partial set hands it — 4 articles, carried over the place line by the
+    // Laocoön alone (ADR-0058 decision 2).
+    expect(item(out, 'Q510071')).toMatchObject({
+      sitelinks: 4,
+      admittedFor: { qid: 'Q465762', label: 'Laocoön and His Sons' },
+    });
+    expect(treasuresOf(out, 'Q510071')).toContain('Q465762');
+    foldLinesNameWrittenMuseums(out);
+  });
+
+  it('asks the fold decision again after a round un-admits a museum a band find carried', async () => {
+    const out = await collect(bandFindAcrossTwoContainers(), { admitted: ['Q1135392'] });
+
+    // The invariant, and the thing one round gets wrong: with a single re-pass
+    // the Baths museum is reported as folded into a Museo Nazionale Romano that
+    // the same run has just refused, sending a curator to a museum the
+    // catalogue does not hold.
+    foldLinesNameWrittenMuseums(out);
+    expect(out.filtered.map((f) => f.reason).filter((r) => r.startsWith('folded into')))
+      .toEqual([]);
+    // The fold dropped in the last round, so the museum stands on its own 30
+    // articles and keeps the find it held.
+    expect(item(out, 'Q3330142')).toMatchObject({ sitelinks: 30 });
+    expect(treasuresOf(out, 'Q3330142')).toEqual(['Q465762']);
+    // And the museum the band find had carried has fallen by name.
+    expect(item(out, 'Q1135392')).toBeUndefined();
+    expect(reason(out, 'Q1135392')).toBe(
+      "15 sitelinks: below the world tier's line (22 to enter, 18 to stay)",
+    );
+  });
+
+  it('keeps both folds where the container is carried by the find they hand it', async () => {
+    // The reviewer's counterexample, built: two museums inside one container and
+    // one elsewhere claim the Laocoön. Folded, the find has two venues — the
+    // container and the museum elsewhere — which is inside the holder cap, so it
+    // credits both and the container is admitted *for it* below the place line
+    // (ADR-0058 decision 2). Being written, it keeps its folds, and the round
+    // that would have un-folded them never comes.
+    const out = await collect(twoInOneContainer(['Q196982']));
+
+    expect(item(out, 'Q182955')?.admittedFor).toEqual({
+      qid: 'Q465762', label: 'Laocoön and His Sons',
+    });
+    expect(treasuresOf(out, 'Q182955')).toEqual(['Q465762', 'Q24269542']);
+    expect(item(out, 'Q196982')?.admittedFor?.qid).toBe('Q465762');
+    expect(item(out, 'Q1439912')).toBeUndefined();
+    expect(item(out, 'Q526381')).toBeUndefined();
+    foldLinesNameWrittenMuseums(out);
+  });
+
+  it('drops both folds of one container together, and names no survivor it does not write', async () => {
+    // One claimant more, and the find is over the holder cap the moment the
+    // container collapses the two departments into one venue: three venues, so
+    // it credits nobody, and the container — holding nothing else above the
+    // line, at 15 articles — is written nowhere. Both folds of that one tree go
+    // together, because a tree shares its terminal survivor.
+    const out = await collect(twoInOneContainer(['Q196982', 'Q636928']));
+
+    expect(item(out, 'Q182955')).toBeUndefined();
+    // No fold line survives, so nothing points at the container.
+    expect(out.filtered.map((f) => f.reason).filter((r) => r.startsWith('folded into')))
+      .toEqual([]);
+    foldLinesNameWrittenMuseums(out);
+    // A contested find admits nobody, here as anywhere: the two departments have
+    // it back and neither is carried over the line by it.
+    expect(item(out, 'Q1439912')).toBeUndefined();
+    expect(item(out, 'Q526381')).toBeUndefined();
+  });
+
+  it('gives a museum its finds back where the fold would strand them on a survivor nobody writes', async () => {
+    // The Vatican at 15 articles holding one find at 16 is below the place line
+    // and below the finds' enter line of 18: no pool named it, no category walk
+    // named it, and no find carries it, so no verdict is taken on it at all.
+    // Folded, the Laocoön went to a museum the run does not write — stored for
+    // nobody — and the Pio-Clementino was admitted on its own 30 articles with
+    // an empty case, neither of them named in any refusal.
+    // Seeded with the Laocoön where the stranding would have left it, so the
+    // diff has something to compare against: `diffPlacements` says nothing about
+    // a work the last run placed nowhere, and an assertion against an empty
+    // previous map passes whatever this run decided.
+    const out = await collect(containerFold(16), {
+      previousPlacements: { Q465762: ['Q182955'] },
+    });
+
+    expect(item(out, 'Q1439912')).toMatchObject({ sitelinks: 30 });
+    expect(treasuresOf(out, 'Q1439912')).toEqual(['Q465762']);
+    // And the survivor is written nowhere, so nothing is placed at it.
+    expect(item(out, 'Q182955')).toBeUndefined();
+    // What the run will write: the find moved off the survivor and back onto the
+    // museum that held it.
+    expect(out.diff.moved).toContainEqual({
+      work: 'Q465762', from: ['Q182955'], to: ['Q1439912'],
+    });
+  });
+
+  it('keeps the fold where the survivor is a museum the run does write', async () => {
+    // The mirror, and it must stay: the same containment, the same natures, and
+    // the Vatican carried over the place line by a find of its own at 20 — above
+    // the finds' enter line (ADR-0058 decision 2). Now it is a museum the run
+    // writes, so the collection folds into the name a traveller looks for and
+    // the Laocoön is shown under it.
+    const out = await collect(containerFold(20));
+
+    expect(item(out, 'Q182955')).toMatchObject({
+      sitelinks: 15,
+      admittedFor: { qid: 'Q24269542', label: 'Pompeii Lakshmi' },
+    });
+    // Most famous first, and the folded collection's find is among them: this is
+    // the Cappella Paolina shape, and nothing in the new step may touch it.
+    expect(treasuresOf(out, 'Q182955')).toEqual(['Q24269542', 'Q465762']);
+    // And the collection is not a second row beside it. Above the place line on
+    // its own 30 articles, it would once have stood there holding nothing — two
+    // pins for one visit, one of them empty because its case is next door. A
+    // fold means the survivor is *the* name for both, so this one is reported by
+    // where it went and by nothing else.
+    expect(item(out, 'Q1439912')).toBeUndefined();
+    expect(reason(out, 'Q1439912')).toBe(
+      'folded into Vatican Museums — inside its P361 container, 86 m away',
+    );
   });
 
   it('drops a fold onto a museum this kind does not admit, and judges the collection instead', async () => {
@@ -398,15 +843,15 @@ describe('collectArchaeologyMuseums', () => {
     expect(door.calls).toHaveLength(1);
     expect([...door.calls[0]].sort()).toEqual([
       'Bardo National Museum (Tunis)', 'British Museum', 'Delphi Archaeological Museum',
-      'Hermitage Museum', 'Louvre', 'Makthar (archaeological site)', 'Pompeii', 'Uffizi',
-      'Vatican Museums', 'Zeugma Mosaic Museum',
+      "Hadrian's Villa", 'Hermitage Museum', 'Louvre', 'Makthar (archaeological site)',
+      'Pompeii', 'Uffizi', 'Vatican Museums', 'Zeugma Mosaic Museum',
     ]);
     // The walk is one question for the whole run, and the categories of the
     // museums it named are read with everyone else's: a member is a candidate,
-    // and what the rule reads off it is the article's own list. Six are named
+    // and what the rule reads off it is the article's own list. Seven are named
     // and one of them — the Gold Museum, whose row carries no article — is not
     // asked about, because there is no title to ask under.
-    expect(door.walks).toEqual([7]);
+    expect(door.walks).toEqual([8]);
   });
 
   it('keeps an admitted museum that slipped to the stay band and refuses one below it by name', async () => {
