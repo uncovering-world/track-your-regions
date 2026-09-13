@@ -134,7 +134,12 @@ export async function setCacheTtl(
  * it (`entities`). The places of worship ask both sets, because both doors are
  * theirs: the worship and type trees and a pool of buildings through the
  * public-art questions, the pool of treasures and the venue graph through the
- * museum's. The UNESCO run reads that source's own API and asks
+ * museum's. The archaeology run asks the museum's set outright — its own class
+ * trees, a pool of museums and a pool of finds, the venue statements, the
+ * details and the edges — since its finds are collected with the museum
+ * import's own stages. What English Wikipedia files an article under is asked
+ * of a wiki rather than of Wikidata and goes through no cache at all. The
+ * UNESCO run reads that source's own API and asks
  * Wikidata directly, without going through this door, so it keeps nothing,
  * and a panel offering to clear its "class trees" would be inventing a cache
  * to explain.
@@ -150,6 +155,8 @@ export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
   3: ['classes', 'pool', 'edges', 'entities'],
   // Places of worship.
   4: ['classes', 'pool', 'statements', 'entities', 'edges'],
+  // Archaeology.
+  5: ['classes', 'pool', 'statements', 'entities', 'edges'],
 };
 
 /** What a caller says about the question it is asking. */

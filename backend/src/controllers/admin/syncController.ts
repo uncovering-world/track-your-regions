@@ -18,6 +18,8 @@ import {
   syncLandmarks,
   syncPlacesOfWorship,
   fixWorshipImages,
+  syncArchaeology,
+  fixArchaeologyImages,
   runningSyncs,
   getSyncStatus as getServiceSyncStatus,
   cancelSync as cancelServiceSync,
@@ -34,6 +36,7 @@ import {
 const UNESCO_SOURCE_ID = 1;
 const MUSEUM_SOURCE_ID = 2;
 const WORSHIP_SOURCE_ID = 4;
+const ARCHAEOLOGY_SOURCE_ID = 5;
 
 /**
  * Which sources a picture repair can be started for, and what it runs.
@@ -46,6 +49,7 @@ const PICTURE_REPAIRS: Record<number, (triggeredBy: number | null) => Promise<vo
   [UNESCO_SOURCE_ID]: fixUnescoImages,
   [MUSEUM_SOURCE_ID]: fixMuseumImages,
   [WORSHIP_SOURCE_ID]: fixWorshipImages,
+  [ARCHAEOLOGY_SOURCE_ID]: fixArchaeologyImages,
 };
 
 /** Registry mapping source IDs to their sync functions */
@@ -57,6 +61,7 @@ const syncRegistry: Record<
   2: syncMuseums,
   3: syncLandmarks,
   4: syncPlacesOfWorship,
+  5: syncArchaeology,
 };
 
 /**
