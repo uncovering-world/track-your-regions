@@ -2152,7 +2152,7 @@ kind later decides about the building.
 | GET | `/api/admin/sync/sources/:sourceId/status` |
 | POST | `/api/admin/sync/sources/:sourceId/cancel` |
 | PUT | `/api/admin/sync/sources/:sourceId/curation-gate` |
-| PUT | `/api/admin/sync/sources/:sourceId/line` — `{ enterSitelinks, staySitelinks }`, the world tier's fame line on the source row (ADR-0052). Whole numbers 1 to 1000, stay no higher than enter; the next run reads it. A source whose `api_config` states no line is refused 409 rather than gaining one no run was told to read |
+| PUT | `/api/admin/sync/sources/:sourceId/line` — `{ enterSitelinks, staySitelinks, findEnterSitelinks?, findStaySitelinks? }`, the world tier's fame line on the source row (ADR-0052). Whole numbers 1 to 1000, stay no higher than enter; the next run reads it. A source whose finds are thinner than its places states the second pair too (ADR-0058 decision 5) — both find keys or neither, bounded the same way; only the keys the body carries are written, so a body without them leaves a stored finds line alone. A source whose `api_config` states no line is refused 409 rather than gaining one no run was told to read |
 | GET | `/api/admin/sync/sources/:sourceId/cache` — what this source keeps: per kind, its entries, age, next expiry, size and lifetime (ADR-0030) |
 | DELETE | `/api/admin/sync/sources/:sourceId/cache` — clears one kind (`?kind=`) or all of them; the next run asks the source again |
 | PUT | `/api/admin/sync/sources/:sourceId/cache/:kind/ttl` — `{ hours }`, bounded a minute to a month. Re-stamps what is already kept from each answer's own `fetched_at`, and answers how many were re-dated. A kind the source does not declare is refused 400 rather than written as a policy nothing reads |
