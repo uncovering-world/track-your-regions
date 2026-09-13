@@ -30,6 +30,7 @@ import {
   WORSHIP_ROOT,
   type PublicArtTrees,
 } from './classes.js';
+import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
 import { publicArtVerdict, type ContainerFact } from './publicArtTest.js';
 import {
   fetchBroadPool,
@@ -54,6 +55,15 @@ import type { WikidataLandmark } from '../types.js';
  */
 export const ENTER_SITELINKS = 22;
 export const STAY_SITELINKS = 18;
+
+/**
+ * Those two as the pair every kind's line standing is asked with
+ * (`sourceLine.ts`). This source states its line in code rather than on its row,
+ * so the pair is built here; what is asked of it — in, out, or fallen by name —
+ * and the sentence a fallen row is refused with are the shared ones, written
+ * once for the whole catalogue (#884).
+ */
+const LINE: LinePair = { enterSitelinks: ENTER_SITELINKS, staySitelinks: STAY_SITELINKS };
 
 /**
  * The four classes broad enough to need bands: `monument` and `memorial` in
@@ -286,20 +296,6 @@ function collectionFacts(facts: EntityFacts, containers: Map<string, ContainerFa
 }
 
 /**
- * Where a candidate that passed the rule stands against the fame line: in,
- * out, or — for a row the source admits that has fallen below the stay
- * line — refused by name, with its number. A candidate that was never in and
- * is below the line is simply out: a refusal names a rule, and none ran on it.
- */
-function lineVerdict(
-  entity: PoolEntity, admitted: ReadonlySet<string>,
-): 'in' | 'out' | 'fell' {
-  if (entity.sitelinks >= ENTER_SITELINKS) return 'in';
-  if (!admitted.has(entity.qid)) return 'out';
-  return entity.sitelinks >= STAY_SITELINKS ? 'in' : 'fell';
-}
-
-/**
  * Collect the public art the world knows: the candidates that pass the rule
  * and clear the fame line, and every candidate the rule refused, with the
  * reason it gave.
@@ -339,14 +335,13 @@ export async function collectPublicArt(
     // The verdict refused anything placeless above; this narrows the type,
     // it cannot fire.
     if (entity.lat === null || entity.lon === null) continue;
-    const line = lineVerdict(entity, admitted);
-    if (line === 'out') continue;
-    if (line === 'fell') {
+    const standing = lineStanding(entity.sitelinks, admitted.has(entity.qid), LINE);
+    if (standing === 'out') continue;
+    if (standing === 'fell') {
       filtered.push({
         externalId: entity.qid,
         name: entity.label,
-        reason: `${entity.sitelinks} sitelinks: below the world tier's line `
-          + `(${ENTER_SITELINKS} to enter, ${STAY_SITELINKS} to stay)`,
+        reason: belowLineReason(entity.sitelinks, LINE),
       });
       continue;
     }

@@ -98,6 +98,41 @@ export function parseSourceLine(apiConfig: unknown): SourceLine {
   return { ...main, find: parsePair(config, 'findEnterSitelinks', 'findStaySitelinks') };
 }
 
+/**
+ * Where a row stands against the line it is judged by: in, out, or fallen.
+ *
+ * `fell` and `out` are both below the line and they are not the same answer.
+ * A refusal names a rule that ran on the row, so a row the source already
+ * admits that has slipped is refused **by name, with its number** — a curator
+ * can see which of their list is going and why. A row that was never in and is
+ * below the line had no rule run on it: reporting it would bury the real
+ * refusals under the long tail of everything Wikidata holds, so it is simply
+ * out.
+ *
+ * The rule lives here, beside the numbers it reads, because three kinds ask it
+ * and a kind that spelled it slightly differently would give a curator two
+ * sentences for one fact. It takes a `LinePair` rather than a `SourceLine`, so
+ * a source's second pair (its finds' line, ADR-0058 decision 5) is asked with
+ * the same function as its first.
+ */
+export type LineStanding = 'in' | 'out' | 'fell';
+
+export function lineStanding(
+  sitelinks: number,
+  wasAdmitted: boolean,
+  line: LinePair,
+): LineStanding {
+  if (sitelinks >= line.enterSitelinks) return 'in';
+  if (!wasAdmitted) return 'out';
+  return sitelinks >= line.staySitelinks ? 'in' : 'fell';
+}
+
+/** The sentence a curator reads beside a row that fell: one wording for every kind. */
+export function belowLineReason(sitelinks: number, line: LinePair): string {
+  return `${sitelinks} sitelinks: below the world tier's line `
+    + `(${line.enterSitelinks} to enter, ${line.staySitelinks} to stay)`;
+}
+
 export async function readSourceLine(sourceId: number): Promise<SourceLine> {
   const result = await pool.query(
     'SELECT api_config FROM experience_sources WHERE id = $1',
