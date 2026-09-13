@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { fetchWikipediaCategories, enwikiTitleOf } from './wikipediaCategories.js';
+import { WaitBudget, type SourceWait } from './sourceRetry.js';
 
 const answer = (pages: Record<string, string[]>) => async () => new Response(JSON.stringify({
   query: { pages: Object.fromEntries(Object.entries(pages).map(([title, cats], i) => [
@@ -123,13 +124,24 @@ describe('fetchWikipediaCategories', () => {
     warn.mockRestore();
   });
 
-  it('stops a source that continues without end', async () => {
+  it('stops a source that continues without end, saying which question and after how many asks', async () => {
+    // The cap is this run's and not Wikipedia's, and an admin reading a failed
+    // run has to be able to tell those apart: "continues without end" alone left
+    // them guessing which category, how many asks, and whose limit it was
+    // (#887). It is logged as well as thrown, because the walk next door asks
+    // one question per category and the log is where the one that would not stop
+    // is named among them.
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const fetchImpl = async () => new Response(JSON.stringify({
       continue: { clcontinue: 'always' },
       query: { pages: [{ title: 'Louvre', categories: [{ ns: 14, title: 'Category:Museums in Paris' }] }] },
     }), { status: 200 });
+
     await expect(fetchWikipediaCategories(['Louvre'], { userAgent: 'test', fetchImpl }))
-      .rejects.toThrow(/continues without end/);
+      .rejects.toThrow(/"Louvre" still continues after 10 asks, this run's cap/);
+
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("still continues after 10 asks"));
+    log.mockRestore();
   });
 
   it('gives a page the API does not have an empty list', async () => {
@@ -234,6 +246,63 @@ describe('when Wikipedia is having a bad day', () => {
 
     expect(got.get('Louvre')).toEqual(['Archaeological museums in France']);
     expect(answers).toHaveLength(0);
+  });
+
+  it('says it is waiting, so the panel does not read as a stuck run', async () => {
+    // A 429 with a `Retry-After` is a wait a person is watching, and without
+    // this the run went on showing its last phase line for the whole of it
+    // (#886). The shape is the Wikidata door's, so one run has one vocabulary
+    // for waiting.
+    vi.useFakeTimers();
+    const answers = [
+      new Response('too many requests', { status: 429, headers: { 'retry-after': '0' } }),
+      new Response(JSON.stringify({
+        query: { pages: [{ title: 'Louvre', categories: [] }] },
+      }), { status: 200 }),
+    ];
+    const fetchImpl: typeof fetch = async () => answers.shift() as Response;
+    const waits: SourceWait[] = [];
+
+    await runWithTimers(fetchWikipediaCategories(['Louvre'], {
+      userAgent: 'test', fetchImpl, onWait: (wait) => waits.push(wait),
+    }));
+
+    expect(waits).toHaveLength(1);
+    expect(waits[0].reason).toContain('429');
+  });
+
+  it('spends the run\'s patience rather than minting its own', async () => {
+    // One budget for the whole run, Wikidata's waits and Wikipedia's together:
+    // a budget per call let a run wait far longer in total than the number any
+    // one of them was held to (#886). Read off the object the caller handed in,
+    // because that is the only thing that says the two doors share it.
+    vi.useFakeTimers();
+    const answers = [
+      new Response('too many requests', { status: 429, headers: { 'retry-after': '30' } }),
+      new Response(JSON.stringify({
+        query: { pages: [{ title: 'Louvre', categories: [] }] },
+      }), { status: 200 }),
+    ];
+    const fetchImpl: typeof fetch = async () => answers.shift() as Response;
+    const runBudget = new WaitBudget(900000);
+
+    await runWithTimers(fetchWikipediaCategories(['Louvre'], {
+      userAgent: 'test', fetchImpl, budget: runBudget,
+    }));
+
+    // Thirty seconds of the run's patience gone, not of a budget nobody else
+    // can see.
+    expect(runBudget.remainingMs).toBe(900000 - 30000);
+  });
+
+  it('stops when the run has no patience left, with the reason named', async () => {
+    vi.useFakeTimers();
+    const fetchImpl: typeof fetch = async () =>
+      new Response('too many requests', { status: 429, headers: { 'retry-after': '600' } });
+
+    await expect(runWithTimers(fetchWikipediaCategories(['Louvre'], {
+      userAgent: 'test', fetchImpl, budget: new WaitBudget(1),
+    }))).rejects.toThrow(/could not be read/);
   });
 });
 

@@ -51,6 +51,9 @@ vi.mock('./wikidataUtils.js', () => ({
 vi.mock('./wikipediaCategories.js', () => ({
   fetchWikipediaCategories: vi.fn().mockResolvedValue(new Map()),
 }));
+vi.mock('./wikipediaCategoryMembers.js', () => ({
+  fetchCategoryMembers: vi.fn().mockResolvedValue(new Map()),
+}));
 vi.mock('./museum/treasureWriter.js', () => ({
   upsertVenueTreasures: vi.fn().mockResolvedValue({
     added: [], withdrawn: [], returned: [], changed: [],
@@ -71,6 +74,8 @@ import {
   collectArchaeologyMuseums, type CollectedArchaeologyMuseum,
 } from './archaeology/pipeline.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
+import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
+import { NATURE_CATEGORY } from './archaeology/classes.js';
 import { upsertVenueTreasures } from './museum/treasureWriter.js';
 import { syncArchaeology } from './archaeologySyncService.js';
 import type { ProcessedContent, SyncProgress } from './types.js';
@@ -79,6 +84,7 @@ const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedOrchestrate = orchestrateSync as unknown as ReturnType<typeof vi.fn>;
 const mockedCollect = collectArchaeologyMuseums as unknown as ReturnType<typeof vi.fn>;
 const mockedCategories = fetchWikipediaCategories as unknown as ReturnType<typeof vi.fn>;
+const mockedMembers = fetchCategoryMembers as unknown as ReturnType<typeof vi.fn>;
 const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn>;
 const mockedWriter = upsertVenueTreasures as unknown as ReturnType<typeof vi.fn>;
 const mockedUpsert = upsertExperienceRecord as unknown as ReturnType<typeof vi.fn>;
@@ -189,6 +195,7 @@ beforeEach(() => {
   mockedAdmitted.mockResolvedValue(new Set<string>());
   mockedQuery.mockResolvedValue({ rows: [] });
   mockedCategories.mockResolvedValue(new Map());
+  mockedMembers.mockResolvedValue(new Map());
 });
 
 describe('what the archaeology run fetches', () => {
@@ -230,6 +237,40 @@ describe('what the archaeology run fetches', () => {
       ['British Museum', 'Hermitage Museum'],
       expect.objectContaining({ userAgent: 'test' }),
     );
+  });
+
+  it('walks the archaeological-museum categories through the one door, with the run\'s own agent', async () => {
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+    collected([museum()]);
+
+    await (await configOf()).fetchItems(progress(), []);
+    const deps = mockedCollect.mock.calls[0][0];
+    await deps.categoryMembers();
+
+    // The root of the walk and the rule that says which subcategories it
+    // follows are the kind's own (`archaeology/classes.ts`), so the door that
+    // sends the requests knows nothing about archaeology.
+    expect(mockedMembers).toHaveBeenCalledWith(
+      'Category:Archaeological museums by country',
+      expect.objectContaining({ userAgent: 'test', recurseInto: NATURE_CATEGORY }),
+    );
+  });
+
+  it('lets a category walk it could not finish end the run', async () => {
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+    collected([museum()]);
+    mockedMembers.mockRejectedValueOnce(
+      new Error('[Wikipedia] the pages of "Category:Archaeological museums in Iraq" could not be read'),
+    );
+
+    await (await configOf()).fetchItems(progress(), []);
+    const deps = mockedCollect.mock.calls[0][0];
+
+    // Swallowed, it would be every museum of a country quietly missing from
+    // the candidate set on a run whose log said success — the Bardo, the Museo
+    // del Oro and the National Museum of Iraq are in the catalogue by this
+    // walk alone.
+    await expect(deps.categoryMembers()).rejects.toThrow('could not be read');
   });
 
   it('lets a batch Wikipedia could not answer end the run', async () => {

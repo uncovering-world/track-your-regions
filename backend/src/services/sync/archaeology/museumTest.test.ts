@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { museumNature, museumVerdict } from './museumTest.js';
+import { isMuseumOnWikidata, museumNature, museumVerdict, NOT_A_MUSEUM } from './museumTest.js';
 import { buildArchaeologyTrees } from './classes.js';
 
 const ARCH_MUSEUM = 'Q3329412'; const ART_MUSEUM = 'Q207694'; const NAT_MUSEUM = 'Q17431399';
@@ -45,6 +45,25 @@ describe('museumNature', () => {
     const parkTrees = buildArchaeologyTrees({ museum: [ARCH_MUSEUM], park: [PARK, 'Q11665453'], naturalHistory: [NAT_HIST], artefact: [] });
     expect(museumNature({ qid: 'Q11665453', classes: ['Q11665453'], categories: ['Archaeological museums in Japan'], ...at(31.8, 130.7) }, parkTrees))
       .toEqual({ veto: 'an archaeological park: a site, not a museum' });
+  });
+});
+
+describe('isMuseumOnWikidata', () => {
+  // What a row the category named must carry, whichever road also names it.
+  // Wikipedia's `Archaeological museums in …` hold digs, castles and cities
+  // besides the museums, and nothing else in this rule refuses them.
+  const museumClasses = new Set([ART_MUSEUM, NAT_MUSEUM, ARCH_MUSEUM, 'Q33506']);
+  it('the Bardo, typed bare museum, is one', () => {
+    expect(isMuseumOnWikidata(
+      { qid: 'Q1429003', classes: ['Q33506'], categories: [], ...at(36.81, 10.13) }, museumClasses,
+    )).toBe(true);
+  });
+  it('Pompeii, an archaeological site and an ancient city, is not', () => {
+    expect(isMuseumOnWikidata(
+      { qid: 'Q43332', classes: ['Q839954', 'Q15661340'], categories: [], ...at(40.75, 14.49) },
+      museumClasses,
+    )).toBe(false);
+    expect(NOT_A_MUSEUM).toContain('the site door');
   });
 });
 

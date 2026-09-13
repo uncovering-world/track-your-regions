@@ -248,6 +248,41 @@ export const NOT_A_FIND: Record<string, string> = {
 export const NATURE_CATEGORY = /^Archaeological museums (in|of) /;
 
 /**
+ * Where the same categories are entered rather than tested: the root of the
+ * walk that names candidates (`wikipediaCategoryMembers.ts`).
+ *
+ * Read only of museums a pool already named, the category can refuse and it
+ * cannot admit — and the museums it is right about are precisely the ones no
+ * class names. The Bardo is `museum` at 35 sitelinks, the Museo del Oro
+ * `museum` at 28, the National Museum of Iraq `national museum` at 36, and none
+ * of the three holds a find in the pool the Warka Vase is kept out of by being
+ * typed `container`. So the tree is walked from here and its articles join the
+ * candidates.
+ *
+ * Measured on 2026-09-13: this category holds 60 country subcategories and no
+ * articles of its own; a country nests regional ones one step further (Greece
+ * has 15, `Archaeological museums in Crete` among them) beside siblings that
+ * are another kind's (`Byzantine museums in Greece`, `Archaeological
+ * collections in Greece`). Which of them the walk follows is `NATURE_CATEGORY`
+ * above — the same rule that reads a museum's nature, asked of a category's own
+ * title.
+ *
+ * **What else the editors file here.** The country categories held 776 articles
+ * that day, of which 75 are at or above the place line — and **27 of those 75
+ * carry no museum class on Wikidata at all**: Pompeii (`archaeological site,
+ * ancient city`, 122 sitelinks), Chichén Itzá, Teotihuacan, Masada, Çatalhöyük,
+ * Hierapolis, Sforza Castle, Bodrum Castle, the Cathedral of the Annunciation.
+ * A category is a shelf and not a class, and the dig is shelved beside the
+ * building. So what comes in by this door is asked one thing more —
+ * `isMuseumOnWikidata` in `museumTest.ts` — and what fails it is refused rather
+ * than pinned as a museum: by name at or above the place line, where those 27
+ * are a worklist for the site door (ADR-0058 decision 4), and in silence below
+ * it, where the rest of a country's archaeology would bury a curator's real
+ * refusals.
+ */
+export const NATURE_CATEGORY_ROOT = 'Category:Archaeological museums by country';
+
+/**
  * The categories that name an antiquities *department* rather than a museum.
  *
  * The Hermitage carries `Egyptological collections in Russia` and `Museums of

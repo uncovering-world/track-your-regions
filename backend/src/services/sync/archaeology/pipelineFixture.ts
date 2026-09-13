@@ -15,9 +15,14 @@
  * statements each find carries (the Rosetta Stone is the British Museum's; the
  * Venus de' Medici the Uffizi's; the Charioteer the Delphi museum's; the
  * Laocoön belongs to the Pio-Clementino museum, which is `P361` the Vatican
- * Museums 86 m away and has no English article at all).
+ * Museums 86 m away and has no English article at all). The rows the category
+ * walk alone names — the Bardo, the Zeugma Mosaic Museum, Pompeii and the Gold
+ * Museum — were checked the same day against the Action API as well: all four
+ * articles are filed under `Archaeological museums in <country>`, Wikidata
+ * types the three museums `museum` and nothing more, and Pompeii
+ * `archaeological site, ancient city` and no museum at all.
  *
- * Two things are this fixture's own, and each is a case the rule needs:
+ * Four things are this fixture's own, and each is a case the rule needs:
  *   - the **Venus of Buret'** is raised from 9 sitelinks to 25 and given a
  *     `P195` on the Hermitage. The Mal'ta–Buret' figurines are in the
  *     Hermitage's Paleolithic collection, but the item states no collection and
@@ -26,7 +31,15 @@
  *   - the **Louvre's categories** are its art ones alone. Its article carries
  *     `Archaeological museums in France` too, which would answer the nature
  *     question before its class ever did; left out, the Louvre is what the class
- *     door admits on its own.
+ *     door admits on its own;
+ *   - the **Gold Museum's row** answers without the English sitelink its
+ *     article plainly has, which is the shape of a `wikibase_item` the two
+ *     reads disagree about: the walk finds an article, and the row the by-id
+ *     question answers with carries none;
+ *   - the **Pompeii Lakshmi's `P276`** names Pompeii, where the statuette is
+ *     really in the Naples museum. It stands for a find the source places on
+ *     the dig itself, which is what puts a classless site into the venue graph
+ *     — and being in that graph must not excuse it from the museum-class gate.
  *
  * The **Vatican Museums** carry what their article carries — `Museums of ancient
  * Greece` and `Museums of ancient Rome`, department categories both — and they
@@ -54,6 +67,8 @@ export const NATIONAL_MUSEUM = 'Q17431399'; // national museum
 export const ARCHAEOLOGICAL_MUSEUM = 'Q3329412'; // archaeological museum
 const EGYPTOLOGICAL_MUSEUM = 'Q3330834'; // egyptological museum
 const PALACE = 'Q16560'; // palace
+const ARCHAEOLOGICAL_SITE = 'Q839954'; // archaeological site
+const ANCIENT_CITY = 'Q15661340'; // ancient city
 const SCULPTURE = 'Q860861'; // sculpture
 const STATUE = 'Q179700'; // statue
 const GROUP_OF_SCULPTURES = 'Q2293362'; // group of sculptures
@@ -75,6 +90,18 @@ interface FixtureMuseum {
   articleUrl?: string;
   /** What English Wikipedia's categories say about it, as `deps.categories` answers. */
   categories?: string[];
+  /**
+   * Whether the walk down `Archaeological museums by country` names its
+   * article, as `deps.categoryMembers` answers: true of every museum whose
+   * article is filed under the tree, whatever else already knows it.
+   */
+  inNatureCategories?: boolean;
+  /**
+   * Whether Wikidata answers about it *without* the English sitelink, though
+   * the walk found the article: the row comes back with no `article` binding
+   * and the museum is left unjudged (`readMembers`).
+   */
+  articleGoneFromWikidata?: boolean;
   /** `P361`: what it is part of. */
   parents?: string[];
 }
@@ -122,6 +149,79 @@ const WORLD: World = {
       countryLabel: 'United Kingdom',
       articleUrl: 'https://en.wikipedia.org/wiki/British_Museum',
       categories: ['Archaeological museums in London', 'Art museums and galleries in London'],
+      inNatureCategories: true,
+    },
+    // The canon the class misses *and* no find carries: `museum` on Wikidata
+    // at 35 sitelinks, `Archaeological museums in Tunisia` on its article, and
+    // not one of its mosaics is famous enough to be a find. Nothing but the
+    // walk down the categories brings it into this run at all.
+    Q1429003: {
+      label: 'Bardo National Museum', classes: [MUSEUM], sitelinks: 35,
+      lat: 36.80944, lon: 10.13444, countryLabel: 'Tunisia',
+      articleUrl: 'https://en.wikipedia.org/wiki/Bardo_National_Museum_(Tunis)',
+      categories: [
+        'Archaeological museums in Tunisia', 'Museums of ancient Greece', 'Museums of ancient Rome',
+      ],
+      inNatureCategories: true,
+    },
+    // What else the editors file under those categories: the dig itself.
+    // Pompeii carries `Archaeological museums in Italy` beside its own
+    // `Archaeological sites in Italy`, is known in 122 languages, and Wikidata
+    // types it `archaeological site, ancient city` — no museum class at all.
+    // Admitted, it would be a museum pin on an ancient city; it belongs to the
+    // site door (ADR-0058 decision 4), and until that door exists the run says
+    // so by name. Its `Archaeological parks` category vetoes nothing: the park
+    // veto reads Wikidata's class tree, and no class of Pompeii is in it.
+    Q43332: {
+      label: 'Pompeii', classes: [ARCHAEOLOGICAL_SITE, ANCIENT_CITY], sitelinks: 122,
+      lat: 40.750556, lon: 14.489722, countryLabel: 'Italy',
+      description: 'ancient Roman city near modern Naples, Italy',
+      articleUrl: 'https://en.wikipedia.org/wiki/Pompeii',
+      categories: [
+        'Archaeological museums in Italy', 'Archaeological parks',
+        'Archaeological sites in Italy', 'Museums of ancient Rome in Italy',
+      ],
+      inNatureCategories: true,
+    },
+    // The same shelf, the same kind of row, and nobody has heard of it: the
+    // Tunisia category holds Mactaris beside the Bardo, an archaeological site
+    // known in 7 languages. Above the line a site is worth naming, because the
+    // site door will want the list; down here naming every one of them is the
+    // long tail that buries a curator's real refusals, so it is simply out.
+    Q3485394: {
+      label: 'Mactaris', classes: [ARCHAEOLOGICAL_SITE], sitelinks: 7,
+      lat: 35.8556, lon: 9.20639, countryLabel: 'Tunisia',
+      description: 'archaeological site in Tunisia',
+      articleUrl: 'https://en.wikipedia.org/wiki/Makthar_(archaeological_site)',
+      categories: [
+        'Archaeological museums in Tunisia', 'Phoenician colonies in Tunisia',
+        'Roman towns and cities in Tunisia',
+      ],
+      inNatureCategories: true,
+    },
+    // The third of the canon the class misses, here for the oddity rather than
+    // for the canon: the walk finds its article and Wikidata answers about the
+    // item without the English sitelink (this fixture's own). With no article
+    // there are no categories to read, and its bare `museum` class would have
+    // it refused by name for a fact nobody stated — so it is not judged at all.
+    Q1109031: {
+      label: 'Gold Museum', classes: [MUSEUM], sitelinks: 28,
+      lat: 4.60192, lon: -74.072, countryLabel: 'Colombia',
+      description: 'pre-Columbian archaeology museum in Bogota, Colombia',
+      articleUrl: 'https://en.wikipedia.org/wiki/Gold_Museum,_Bogot%C3%A1',
+      categories: ['Archaeological museums in Colombia'],
+      inNatureCategories: true,
+      articleGoneFromWikidata: true,
+    },
+    // The same shape below the place line: the walk names it, and 20 articles
+    // against a line of 22 leave it out — with no rule to report, since the
+    // source has never admitted it.
+    Q196982: {
+      label: 'Zeugma Mosaic Museum', classes: [MUSEUM], sitelinks: 20,
+      lat: 37.074881, lon: 37.386158, countryLabel: 'Turkey',
+      articleUrl: 'https://en.wikipedia.org/wiki/Zeugma_Mosaic_Museum',
+      categories: ['Archaeological museums in Turkey', 'Art museums and galleries in Turkey'],
+      inNatureCategories: true,
     },
     // An art museum with one ancient statue: the row ADR-0058 decision 2 exists
     // to refuse.
@@ -144,6 +244,7 @@ const WORLD: World = {
       lat: 38.48029, lon: 22.49984, countryLabel: 'Greece',
       articleUrl: 'https://en.wikipedia.org/wiki/Delphi_Archaeological_Museum',
       categories: ['Archaeological museums in Greece'],
+      inNatureCategories: true,
     },
     // An archaeological museum by class with no English article at all, housed
     // in the Vatican Museums 86 m away and known to a tenth as many languages:
@@ -182,6 +283,17 @@ const WORLD: World = {
       broadRoot: STATUE, year: -470, classes: [STATUE],
       discovery: { qid: 'Q75459', label: 'Delphi' },
       statements: [{ property: 'P195', venue: 'Q636928' }, { property: 'P276', venue: 'Q636928' }],
+    },
+    // A real find of Pompeii, standing in the fixture for one the source places
+    // *in situ*: its `P276` names the dig itself (this fixture's own — the
+    // statuette is in Naples), which is how a classless site gets into the
+    // venue graph at all. It is kept as a find by its discovery place, and the
+    // venue rule refuses Pompeii, so it is placed nowhere.
+    Q24269542: {
+      label: 'Pompeii Lakshmi', sitelinks: 19, cls: SCULPTURE, clsLabel: 'sculpture',
+      broadRoot: SCULPTURE, classes: [SCULPTURE],
+      discovery: { qid: 'Q43332', label: 'Pompeii' },
+      statements: [{ property: 'P276', venue: 'Q43332' }],
     },
     Q465762: {
       label: 'Laocoön and His Sons', sitelinks: 47, cls: SCULPTURE, clsLabel: 'sculpture',
@@ -234,7 +346,10 @@ function museumRow(qid: string, museum: FixtureMuseum): SparqlBinding {
   if (museum.imageUrl) row.img = { value: museum.imageUrl };
   if (museum.countryLabel) row.countryLabel = { value: museum.countryLabel };
   if (museum.website) row.site = { value: museum.website };
-  if (museum.articleUrl) row.article = { value: museum.articleUrl };
+  // The walk knows the article; Wikidata's row may not carry the sitelink.
+  if (museum.articleUrl && !museum.articleGoneFromWikidata) {
+    row.article = { value: museum.articleUrl };
+  }
   return row;
 }
 
@@ -351,16 +466,32 @@ export function answer(w: World, sent: string): SparqlBinding[] {
 const titleOf = (articleUrl: string): string =>
   decodeURIComponent(articleUrl.split('/wiki/')[1]).replace(/_/g, ' ');
 
-/** English Wikipedia as this run is handed it: the world's categories, and what was asked. */
+/**
+ * English Wikipedia as this run is handed it: both questions, and what was asked
+ * of each.
+ *
+ * `categories` is what an article the run already holds is filed under;
+ * `categoryMembers` is the walk down the category tree, which answers with the
+ * article titles under it and the Wikidata item each is about — title to QID,
+ * the shape `fetchCategoryMembers` returns.
+ */
 export function categoryDoor(w: World) {
   const byTitle = new Map<string, string[]>();
-  for (const museum of Object.values(w.museums)) {
-    if (museum.articleUrl) byTitle.set(titleOf(museum.articleUrl), museum.categories ?? []);
+  const members = new Map<string, string>();
+  for (const [qid, museum] of Object.entries(w.museums)) {
+    if (!museum.articleUrl) continue;
+    byTitle.set(titleOf(museum.articleUrl), museum.categories ?? []);
+    if (museum.inNatureCategories) members.set(titleOf(museum.articleUrl), qid);
   }
   const calls: string[][] = [];
   const categories = (titles: string[]): Promise<Map<string, string[]>> => {
     calls.push(titles);
     return Promise.resolve(new Map(titles.map((t) => [t, byTitle.get(t) ?? []])));
   };
-  return { categories, calls };
+  const walks: number[] = [];
+  const categoryMembers = (): Promise<Map<string, string>> => {
+    walks.push(members.size);
+    return Promise.resolve(new Map(members));
+  };
+  return { categories, calls, categoryMembers, walks };
 }
