@@ -7,10 +7,14 @@
  * every source before archaeology writes must keep parsing unchanged, and the
  * finds pair must be refused half-stated rather than quietly completed from the
  * places' line.
+ *
+ * And where a row stands against a pair once it is read: the hysteresis every
+ * kind shares, and the one sentence a curator sees when a row they hold has
+ * slipped. Both were spelled per-kind before they lived here.
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseSourceLine } from './sourceLine.js';
+import { belowLineReason, lineStanding, parseSourceLine } from './sourceLine.js';
 
 describe('parseSourceLine', () => {
   it('reads the pair off api_config', () => {
@@ -69,5 +73,34 @@ describe('parseSourceLine', () => {
     expect(() => parseSourceLine({
       enterSitelinks: 22, staySitelinks: 18, findEnterSitelinks: 18, findStaySitelinks: 15.5,
     })).toThrow(/findStaySitelinks/);
+  });
+});
+
+describe('lineStanding', () => {
+  const line = { enterSitelinks: 22, staySitelinks: 18 };
+
+  it('lets a row in at the enter line, admitted or not', () => {
+    expect(lineStanding(22, false, line)).toBe('in');
+    expect(lineStanding(39, true, line)).toBe('in');
+  });
+
+  it('leaves a row the source never held below the line out, unreported', () => {
+    expect(lineStanding(17, false, line)).toBe('out');
+  });
+
+  it('holds an admitted row at the stay line, which is what hysteresis is for', () => {
+    expect(lineStanding(18, true, line)).toBe('in');
+    expect(lineStanding(21, true, line)).toBe('in');
+  });
+
+  it('refuses an admitted row that fell below the stay line', () => {
+    expect(lineStanding(17, true, line)).toBe('fell');
+  });
+});
+
+describe('belowLineReason', () => {
+  it('gives every kind the same sentence, with both numbers in it', () => {
+    expect(belowLineReason(17, { enterSitelinks: 22, staySitelinks: 18 }))
+      .toBe("17 sitelinks: below the world tier's line (22 to enter, 18 to stay)");
   });
 });

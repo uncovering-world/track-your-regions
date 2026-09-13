@@ -22,7 +22,7 @@ import {
 } from '../publicArt/queries.js';
 import { worshipVerdict } from './worshipTest.js';
 import { BROAD_WORSHIP_ROOTS, type WorshipTrees, type WorshipType } from './classes.js';
-import type { SourceLine } from '../sourceLine.js';
+import { belowLineReason, lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncOrchestrator.js';
 
 const CLASS_BATCH = 25;
@@ -120,22 +120,6 @@ async function collectFacts(run: QueryRunner, qids: string[]): Promise<Map<strin
 }
 
 /**
- * Where a candidate that passed the rule stands against the fame line: in, out,
- * or — for a row the source admits that has fallen below the stay line —
- * refused by name, with its number. A candidate that was never in and is below
- * the line is simply out: a refusal names a rule, and none ran on it.
- */
-function lineVerdict(
-  entity: PoolEntity,
-  admitted: ReadonlySet<string>,
-  line: SourceLine,
-): 'in' | 'out' | 'fell' {
-  if (entity.sitelinks >= line.enterSitelinks) return 'in';
-  if (!admitted.has(entity.qid)) return 'out';
-  return entity.sitelinks >= line.staySitelinks ? 'in' : 'fell';
-}
-
-/**
  * The places this run would admit for their own fame, and every candidate the
  * rule refused with the reason it gave.
  *
@@ -169,14 +153,19 @@ export async function collectPlacesByFame(
       filtered.push({ externalId: entity.qid, name: entity.label, reason: verdict.reason });
       continue;
     }
-    const stands = lineVerdict(entity, admitted, line);
+    // Where a candidate that passed the rule stands against the fame line: in,
+    // out, or — for a row the source admits that has fallen below the stay line
+    // — refused by name, with its number. A candidate that was never in and is
+    // below the line is simply out: a refusal names a rule, and none ran on it.
+    // The rule and the sentence are `sourceLine.ts`'s, so every kind gives a
+    // curator the same answer.
+    const stands = lineStanding(entity.sitelinks, admitted.has(entity.qid), line);
     if (stands === 'out') continue;
     if (stands === 'fell') {
       filtered.push({
         externalId: entity.qid,
         name: entity.label,
-        reason: `${entity.sitelinks} sitelinks: below the world tier's line `
-          + `(${line.enterSitelinks} to enter, ${line.staySitelinks} to stay)`,
+        reason: belowLineReason(entity.sitelinks, line),
       });
       continue;
     }

@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { collectPublicArt, ENTER_SITELINKS, STAY_SITELINKS } from './pipeline.js';
+import { belowLineReason } from '../sourceLine.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import type { CacheDescriptor } from '../wikidataCache.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
@@ -140,6 +141,15 @@ describe('collectPublicArt', () => {
       externalId: 'Q4', name: 'Fountain of Cybele',
       reason: `${STAY_SITELINKS - 1} sitelinks: below the world tier's line (${ENTER_SITELINKS} to enter, ${STAY_SITELINKS} to stay)`,
     }]);
+    // And it is the catalogue's one sentence for that verdict, not a copy of it
+    // that happens to read the same (#884): this kind asks `lineStanding` and
+    // `belowLineReason` like every other, its line stated in code rather than on
+    // its row being the only difference.
+    expect(filtered[0].reason).toBe(
+      belowLineReason(STAY_SITELINKS - 1, {
+        enterSitelinks: ENTER_SITELINKS, staySitelinks: STAY_SITELINKS,
+      }),
+    );
   });
 
   it('walks a work up from its room to the building that holds it', async () => {
