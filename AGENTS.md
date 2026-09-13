@@ -87,7 +87,7 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 - `regions`: user-defined groups within a world view, hierarchical via `parent_region_id`; computed geometry, `focus_bbox`, `anchor_point`, `is_leaf`
 - `region_members`: links regions to divisions, supports `custom_geom` for partial coverage
 - `experiences`: UNESCO sites, museums, public art
-- `experience_categories`: UNESCO (`id=1`), Art Museums (`id=2`), Public Art & Monuments (`id=3`); `display_priority` controls ordering (lower first)
+- `experience_sources`: the sources that fill the kinds — UNESCO (`id=1`), Art Museums (`id=2`), Public Art & Monuments (`id=3`), Places of worship (`id=4`); `display_priority` controls ordering (lower first). Named `experience_categories` until migration 055 (#819); a reader-facing row carries its kind off its membership (`experience_kind_memberships.kind_id`)
 - `treasures`: globally unique trackable items (artworks, artifacts); linked to experiences via `experience_treasures` junction table (many-to-many)
 
 ### Backend Structure

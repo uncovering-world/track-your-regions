@@ -194,7 +194,7 @@ minarets that used to fall out below the line unremarked, less the Cappella Paol
 the fold rule no longer makes.
 All four works the ticket named arrive at their venue and are each venue's `admitted_for`.
 
-The source is `experience_categories` row 4, *Places of worship*, filling the kind of the same
+The source is `experience_sources` row 4, *Places of worship*, filling the kind of the same
 name, seeded with `requires_curation = true` — a community-edited source's first arrival waits
 for a curator (ADR-0025) — and with its line on the row (`api_config.enterSitelinks` 22,
 `staySitelinks` 18), read by every run and edited from the admin panel's source card. The first
