@@ -80,7 +80,7 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md) for the full model.
 - **Attributes**:
   - `ID`: Unique identifier
-  - `CategoryID`: The source that brought the place (UNESCO, etc.) — with `ExternalID`, the
+  - `SourceID`: The source that brought the place (UNESCO, etc.) — with `ExternalID`, the
     identity arbiter until #755; what the place *is* to a traveller is its memberships
     (`ExperienceKindMembership`, ADR-0045 decision 4)
   - `ExternalID`: ID from the original data source
@@ -88,7 +88,7 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `NameLocal`: Multilingual names (JSONB)
   - `Description`: Full description
   - `ShortDescription`: Brief description for display
-  - `Type`: The type within the kind, one closed vocabulary per kind — 'cultural' / 'natural' / 'mixed' for a World Heritage site, 'monument' / 'sculpture' for public art, 'cathedral' / 'church' / 'chapel' / 'monastery' / 'mosque' / 'temple' / 'shrine' / 'synagogue' for a place of worship — and NULL for a museum, whose kind has no types (ADR-0045, #814). The kind is the one `CategoryId`'s source fills (`experience_categories.kind_id` → `experience_kinds`, #822), and `CategoryId` names the source; see the glossary in [experiences.md](experiences.md#glossary)
+  - `Type`: The type within the kind, one closed vocabulary per kind — 'cultural' / 'natural' / 'mixed' for a World Heritage site, 'monument' / 'sculpture' for public art, 'cathedral' / 'church' / 'chapel' / 'monastery' / 'mosque' / 'temple' / 'shrine' / 'synagogue' for a place of worship — and NULL for a museum, whose kind has no types (ADR-0045, #814). The kind is the membership's (`ExperienceKindMembership.KindID`, #822; every reader-facing row reads it off the membership its own source brought, #819), and `SourceID` names the source that brought the place; see the glossary in [experiences.md](experiences.md#glossary)
   - `Tags`: Additional classification tags (JSONB)
   - `Location`: Geographic point (PostGIS Point, SRID 4326)
   - `Boundary`: Optional boundary geometry (PostGIS MultiPolygon)
@@ -122,7 +122,7 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
 - **Attributes**:
   - `ExperienceID`: The place
   - `KindID`: The kind
-  - `SourceID`: The source (`ExperienceCategory`) that brought the membership
+  - `SourceID`: The source (`ExperienceSource`) that brought the membership
   - `Admission` / `AdmissionReason`: 'admitted' or 'refused', and the rule's reason
   - `AdmittedFor`: The work that qualified a museum (JSONB `{qid, label}`)
   - `IsIconic`: The must-see badge within the kind
@@ -130,20 +130,21 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `CurationState` / `PublishedAt` / `PendingChangeSyncLogID`: The gate state of the
     arrival, when it was passed, and the run whose proposal is being held
 
-### ExperienceCategory
+### ExperienceSource
 
 - **Description**: A *source*: the sync that fills a kind (UNESCO World Heritage
-  Sites, Art Museums, Public Art & Monuments, Places of worship). Keeps its table name
-  until #819; every
-  reader still keys on it through `Experience.CategoryID`.
+  Sites, Art Museums, Public Art & Monuments, Places of worship). Named
+  `experience_categories` until migration 055 (#819); a reader that means the kind
+  reads the membership's `KindID`, and `Experience.SourceID` names the source that
+  brought the place.
 - **Attributes**:
   - `ID`: Unique identifier
-  - `Name`: Category name (unique)
+  - `Name`: Source name (unique)
   - `KindID`: The kind this source fills (`ExperienceKind`, NOT NULL)
   - `Description`: Human-readable description
   - `APIEndpoint`: External API URL for syncing
   - `APIConfig`: Configuration for sync process (JSONB)
-  - `IsActive`: Whether the category is enabled
+  - `IsActive`: Whether the source is enabled
   - `LastSyncAt`: Timestamp of last sync
   - `LastSyncStatus`: 'success', 'partial', or 'failed'
 
@@ -194,9 +195,9 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
 - **Description**: Scoped permission entry that allows curation.
 - **Attributes**:
   - `UserID`: Curator user ID
-  - `ScopeType`: `global` | `region` | `category`
+  - `ScopeType`: `global` | `region` | `source`
   - `RegionID`: Present when scope is region-scoped
-  - `CategoryID`: Present when scope is category-scoped
+  - `SourceID`: Present when scope is source-scoped
   - `AssignedBy`: Admin who granted scope
 
 ### ExperienceRejection

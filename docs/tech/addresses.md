@@ -16,8 +16,8 @@ implemented, and the rules that keep it honest. The decision behind it is
 | `/discover` | Discover, the default world view |
 | `/discover/wv/5` | Discover, world view 5, the tree at its root |
 | `/discover/wv/5/r/7100-malta` | Discover, the tree standing at Malta |
-| `/discover/wv/5/r/7100-malta?cat=1` | Discover, Malta's UNESCO list open, the tree at Malta's parent |
-| `/discover/wv/5/r/7100-malta/e/1234-stonehenge?cat=1` | …that list, with the card open |
+| `/discover/wv/5/r/7100-malta?kind=1` | Discover, Malta's UNESCO list open, the tree at Malta's parent |
+| `/discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1` | …that list, with the card open |
 | `/?wv=5`, `/discover?wv=5` | The form links carried before #644 — honoured, then rewritten in place |
 | `/review` | The curator's review feed, nothing narrowed — a page rather than a place; see § The review page |
 | `/review?sort=question&q=cologne&source=1,3&kind=held&region=6737&run=98&aside=show&row=waiting:126` | …that feed's whole working set: the order, the search, the four filters, the set-aside batches shown, and the question open on the right — on the catalogue of 2026-09-07, Cologne Cathedral's held proposal from run 98 |
@@ -28,9 +28,9 @@ Two rules decide where a piece of state goes:
   open card. Each names a resource, and a path is what a copied link is expected
   to mean.
 - **View state the visitor set deliberately is a query parameter** — today only
-  Discover's open category, `?cat=`. A filter does not identify a resource.
+  Discover's open kind, `?kind=` (spelled `?cat=` until #819; the old spelling is still read, never written). A filter does not identify a resource.
 
-`r` is *the region in question*. In Discover with a category list open it is the
+`r` is *the region in question*. In Discover with a kind's list open it is the
 region whose list it is, and the tree stands at its parent — which is exactly
 the state a chip click produces, since chips sit on the rows of a level. Without
 a list open, the tree stands at the region itself.
@@ -61,7 +61,7 @@ and nothing rests on it:
 ## History: push what the visitor did, replace what the app corrected
 
 - **`push`** — selecting a region (from the list, the map, search, a breadcrumb),
-  opening or closing a card, opening or closing a Discover category list,
+  opening or closing a card, opening or closing a Discover kind list,
   switching world view from a picker, Map ↔ Discover in the header. Back undoes
   each of them.
 - **`replace`** — the legacy `?wv=` redirect, slug canonicalisation, and every
@@ -82,8 +82,8 @@ what exists, and nothing personal goes in a URL.
 |---|---|
 | A world view that is hidden or gone | The existing world-view reconciliation replaces it; the region and card go with it |
 | A region that 404s, or belongs to another world view | → the world view alone (`/wv/5`) |
-| A card the region's list does not hold — hidden, rejected, elsewhere, of another category | The `e` segment is dropped, once the list has answered |
-| A category nobody knows | `?cat=` is dropped, once the categories have answered |
+| A card the region's list does not hold — hidden, rejected, elsewhere, of another kind | The `e` segment is dropped, once the list has answered |
+| A kind nobody knows | `?kind=` is dropped, once the kinds have answered |
 | A segment that does not parse | Read as absent, and canonicalised away |
 
 "Once the list has answered" is load-bearing in both rows, and it means a
@@ -112,7 +112,7 @@ the rules above about world views, regions and cards applies to it. What it does
 have is a working set — the order, the search, the four filters, whether
 set-aside batches are shown, and the question open on the right — and that is
 view state a curator set deliberately, so it goes in query parameters by the same
-rule Discover's `?cat=` does: [ADR-0034](../decisions/0034-a-place-has-an-address.md)
+rule Discover's `?kind=` does: [ADR-0034](../decisions/0034-a-place-has-an-address.md)
 applied, by [ADR-0051](../decisions/0051-the-review-queue-is-one-list-of-dated-questions.md)
 decision 5.
 
@@ -215,7 +215,7 @@ open the page a named `row` is *on* is issue #843.
 | `frontend/src/hooks/useAddressedRegion.ts` | The selected region: the object, the ancestors read that restores and completes it, the follow, the degradation, the canonical rewrite |
 | `frontend/src/hooks/useNavigation.tsx` | The world view: reads it from the address, writes it with `push` / `replace` / `none` per case |
 | `frontend/src/hooks/useExperienceContext.tsx` | Map mode's open card, derived from the address, and the arrival the list focuses |
-| `frontend/src/hooks/useDiscoverExperiences.ts` | Discover's level, category and card, all derived from the shared region and the address |
+| `frontend/src/hooks/useDiscoverExperiences.ts` | Discover's level, kind and card, all derived from the shared region and the address |
 | `frontend/src/components/Header.tsx` | Carries the place across Map ↔ Discover |
 
 Nothing else reads `useSearchParams` or calls `navigate` for app state. The
@@ -238,7 +238,7 @@ round trip. The test is what stops a parameter being added in one direction only
 - Focus lands in the card a link named, once it opens: `ExperienceList` focuses
   the arriving row, so a keyboard or screen-reader visitor is put in what the
   link named rather than at the top of the page. The group holding that card is
-  the one the region opens on, too — a card inside a collapsed category is not
+  the one the region opens on, too — a card inside a collapsed kind is not
   open, whatever the address says (`initiallyExpandedGroup`, #592).
 - A name typed in the navigation pane is a way *into* the grammar: a search
   result writes the whole address in one `go()` — world view, region, card —

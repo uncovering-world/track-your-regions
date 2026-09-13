@@ -450,6 +450,21 @@ because the review page asks per object whether it holds a turned-down part, and
 every read of the page whether or not anyone opens the list. Re-runnable throughout:
 `CREATE INDEX IF NOT EXISTS`, and the `CHECK` dropped and re-added as 051 does it.
 
+`055-sources-are-named-as-sources.sql` gives the source table and its keys their word (#819;
+ADR-0045 decisions 3 and 8): `experience_categories` becomes `experience_sources` with its sequence
+and constraints, and every `category_id` that pointed at it becomes `source_id` — on `experiences`
+(still `UNIQUE(source_id, external_id)`, the row's identity until #755), `experience_sync_logs`,
+`curator_assignments`, `wikidata_query_cache` and `wikidata_cache_policy`. The curator scope that
+names a source is `'source'` again, the word 001 created it with and `CuratorScopeType` never
+stopped saying (#452): the rows are updated and both CHECK constraints and the partial unique index
+re-created under it. No row moves and nothing else changes value; a reader that means the kind reads
+`experience_kind_memberships.kind_id` from here on. Every rename is guarded on the old name still
+being there, so the file is re-runnable and a database provisioned from 001 ends in the same place.
+**Run it before the next re-application of `01-schema.sql`**, which creates `experience_sources` if
+absent and would otherwise stand an empty second source table beside the full one — the schema file
+refuses to run while `experience_categories` exists and names this file. The entries above keep the
+names their migrations were written with.
+
 `054-leaf-pieces-for-placement.sql` adds `region_geom_pieces` — each leaf region's geometry cut by
 `ST_Subdivide` into pieces of at most 256 vertices — with the trigger that keeps it, and cuts every
 leaf that has a geometry (#851, [ADR-0054](../../docs/decisions/0054-placement-reads-leaves-through-their-pieces.md)).

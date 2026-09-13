@@ -75,7 +75,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | boundaries | A division stored as a leaf while divisions hang beneath it | invariant |
 | boundaries | A division holding a single source polygon while divisions hang beneath it | invariant |
 | objects | A site whose danger tag and whose In Danger badge disagree | invariant |
-| objects | A row its category turned away, still badged as a must-see | invariant |
+| objects | A row its source turned away, still badged as a must-see | invariant |
 | objects | A work names several makers in an order nobody has confirmed | watch |
 | objects | A public-art row admitted with a class the rule refuses | invariant |
 | pictures | A stored picture on a host whose terms do not let us show it | invariant |
@@ -336,7 +336,7 @@ that `035-in-danger-flag.sql` repaired, while flagged with no tag tells a
 traveller a place is in peril on no evidence at all. It reports nothing today;
 the migration left the two agreeing on every row. One window is left out on
 purpose: a row whose held proposal holds the flag itself. Under a gated
-category the run writes `tags` past the gate — labels nothing renders, derived
+source the run writes `tags` past the gate — labels nothing renders, derived
 from facts the row stores by name (#570) — and holds the flag with the rest of
 the row, so a site the Committee has just listed carries the tag ahead of the
 flag until a curator publishes the card, and one just delisted the other way
@@ -347,7 +347,7 @@ changeset `pending_change_sync_log_id` points at whether it holds
 `metadata.inDanger`, not merely whether a pointer is set: any held field sets
 the pointer, and on the dev database every one of the 1272 UNESCO rows carries
 one (the criteria and a credit are held on all of them) while 58 hold the flag
-— a bare pointer test would have switched the check off for the whole category
+— a bare pointer test would have switched the check off for the whole source
 it was written for. Since #722 it asks one thing more: whether that held flag is
 still **unanswered**. A curator who says "not this" to the proposed flag has
 settled it, and no card will ever come round to reconcile the two halves — which
@@ -429,11 +429,12 @@ refused, not unread, simply never asked — and nothing on any screen says why.
 Migration 046 refuses to commit with such a row and the three writers that
 create a place write the membership with it; a row here came in by a path that
 did not. The second rule is about the two halves of the catalogue agreeing:
-`experiences.category_id` stays the row's identity arbiter until #755, and the
-lists, pins and scopes still read it, while the counts read the membership's
-`source_id` — a row where the two disagree is shown in one kind and counted in
-another, and the readers #819 switches would then move it in front of a reader
-without anyone deciding to.
+`experiences.source_id` stays the row's identity arbiter until #755, and every
+reader-facing row reads its kind through that equality — the membership with
+`source_id = e.source_id` is the row's own (`rowKindJoinSql`, #819) — while the
+counts read the memberships. A row where the two disagree has no kind to be
+shown under: it comes back with none, which no group, pin colour or chip can
+draw, while the counts file it under the kind its membership names.
 
 **The name rule** (`name-carries-whitespace-nobody-typed`) asks of every column
 a person types into a filter — a place's name, each language of its local

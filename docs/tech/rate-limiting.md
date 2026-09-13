@@ -31,11 +31,11 @@ Unauthenticated endpoints serving the main UI. Applied to all `optionalAuth` and
 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
-| `publicReadLimiter` | 1 min | 60 | World view/region reads, experience browsing, categories, treasures, geometries |
+| `publicReadLimiter` | 1 min | 60 | World view/region reads, experience browsing, kinds, treasures, geometries |
 
 **Files using this limiter:**
 - `worldViewRoutes.ts` — all `optionalAuth` GET routes (regions, geometries, members, hull params)
-- `experienceRoutes.ts` — `GET /categories`, `GET /region-counts`, `GET /by-region/:id`, `GET /`, `GET /:id`, `GET /:id/locations`, `GET /:id/treasures`
+- `experienceRoutes.ts` — `GET /kinds`, `GET /region-counts`, `GET /by-region/:id`, `GET /`, `GET /:id`, `GET /:id/locations`, `GET /:id/treasures`
 
 ### 4. Authenticated user (generous)
 
@@ -68,8 +68,8 @@ what goes stale when a route is added to the row below (it has already happened 
 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
-| `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions`, `POST /api/admin/sync/categories/:categoryId/fix-images` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId`, `POST /api/experiences/review/answer`, `POST /api/experiences/:id/refuse-contents`, `POST /api/experiences/:id/unrefuse-contents` |
+| `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions`, `POST /api/admin/sync/sources/:sourceId/fix-images` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/sources/:sourceId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId`, `POST /api/experiences/review/answer`, `POST /api/experiences/:id/refuse-contents`, `POST /api/experiences/:id/unrefuse-contents` |
 
 The catalogue checks split across both buckets on the same rule, and the split is
 the point. `GET /api/admin/data-assertions` runs a statement per assertion over
@@ -201,7 +201,7 @@ be toggled, one small write per press — which is why the bucket is the
 sixty-a-minute one rather than `expensiveAdminLimiter`'s five, and why sixty is
 far above what answering a queue asks for.
 
-`PUT /api/admin/sync/categories/:categoryId/curation-gate` — the switch that holds
+`PUT /api/admin/sync/sources/:sourceId/curation-gate` — the switch that holds
 a source's content for review — stays exempt too, and CodeQL flags it, so the
 reason is here rather than only in a dismissal. It is one `UPDATE` of one row of
 the source table, and it does no work itself: it changes what *future* runs do. A
@@ -211,10 +211,10 @@ not about how much a request decides — and adding a limiter to satisfy an
 analyser, against the rule this section states, would make the rule mean less
 each time it is done.
 
-`PUT /api/admin/sync/categories/:categoryId/line` — a source's fame line (ADR-0052
+`PUT /api/admin/sync/sources/:sourceId/line` — a source's fame line (ADR-0052
 decision 6), the pair of sitelink counts a run reads at its start — stays exempt
 beside it, and CodeQL flags it too. It runs one `SELECT` to decide 404 from 409
-(the category must exist and keep a line for this route to move) and one `UPDATE`
+(the source must exist and keep a line for this route to move) and one `UPDATE`
 of that same row's `api_config`, and nothing follows the commit: like the gate
 switch, it changes only what a *future* run admits, never a row a reader sees
 today. One admin sets one pair of integers by hand from the source card — the same
@@ -222,7 +222,7 @@ shape as the gate switch, and the same reasoning: admin routes are unlimited by
 design, and the attack surface here is a compromised admin account, not a client
 hammering the endpoint. CodeQL alert #354 is dismissed against this paragraph.
 
-`POST /api/experiences/categories/:categoryId/publish-waiting` carries
+`POST /api/experiences/sources/:sourceId/publish-waiting` carries
 `authenticatedLimiter`, and it is the clearest case of the criterion rather than a
 borderline one: it runs the publish transaction once per waiting object, so its
 cost scales with the source's backlog instead of with the request, and it can

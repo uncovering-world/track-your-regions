@@ -162,7 +162,7 @@ Kind and significance work together:
 
 ```text
 name: string
-kind: reference                # what a traveller browses by; today the source row (category_id)
+kind: reference                # what a traveller browses by; the membership's kind_id (#819)
 type: enum | null              # from the kind's own vocabulary; null for a kind without types
 significance: enum | null      # iconic | null (default)
 region_id: string              # link to region in geographic model

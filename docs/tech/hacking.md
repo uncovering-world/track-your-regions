@@ -40,7 +40,7 @@ npm run db:mark-golden
 - Experience controllers: `backend/src/controllers/experience/` (query, visit, location, treasure + curation)
 - Sync shared utils: `backend/src/services/sync/wikidataUtils.ts` (SPARQL), `backend/src/services/sync/experienceUpsert.ts` (the object upsert and its membership), `backend/src/services/sync/syncUtils.ts` (single-location write, sync log)
 - Frontend map/navigation shell: `frontend/src/components/MainDisplay.tsx`
-- Frontend shared utils: `frontend/src/utils/` (categoryColors, dateFormat, imageUrl, coordinateParser, mapUtils)
+- Frontend shared utils: `frontend/src/utils/` (kindColors, dateFormat, imageUrl, coordinateParser, mapUtils)
 - Discover UI: `frontend/src/components/discover/*`
 - World View editor: `frontend/src/components/WorldViewEditor/*`
 
@@ -53,14 +53,14 @@ npm run db:mark-golden
 3. Update consuming component hooks/UI.
 4. Run `typecheck` for both packages.
 
-### Add a new experience category
+### Add a new source, and the kind it fills
 
-1. Seed the source in `experience_categories`, naming the kind it fills: `kind_id` is `NOT NULL`, so pick a row of `experience_kinds` or seed a new kind first — migration 046 refuses a source row that names no kind.
+1. Seed the source in `experience_sources`, naming the kind it fills: `kind_id` is `NOT NULL`, so pick a row of `experience_kinds` or seed a new kind first — migration 046 refuses a source row that names no kind.
 2. Implement sync service under `backend/src/services/sync/`. Reuse shared utilities:
    - `wikidataUtils.ts` for SPARQL queries (if Wikidata-sourced)
    - `experienceUpsert.ts` for `upsertExperienceRecord()` (re-exported from `syncUtils.ts`), `syncUtils.ts` for `upsertSingleLocation()`, `createSyncLog()`/`updateSyncLog()`
 3. Wire sync controller/admin route behavior.
-4. Confirm category appears via `/api/experiences/categories`.
+4. Confirm the kind appears via `/api/experiences/kinds`, and the source in the admin panel's Sources tab.
 
 ### Map/UI behavior regressions
 

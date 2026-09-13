@@ -98,7 +98,7 @@ field reads as "not looked at", a `none` as "looked at and not there".
 |---|---|---|
 | `looked-at` | Found and described; the scorecard may be partial and the counts for a unit may be owed | any search (a kind's issue, or the rules' own examples) |
 | `evaluated` | The scorecard is complete on the unit's canon of known places, with the misses named | the kind's issue, before adoption |
-| `adopted` | A sync reads it; the record names the `experience_categories` row written from it and the issue that adopted it | the kind's issue that shipped the sync |
+| `adopted` | A sync reads it; the record names the `experience_sources` row written from it and the issue that adopted it | the kind's issue that shipped the sync |
 | `refused` | A terms veto (the verdict `veto`), or a score below the line once `evaluated`, with the reason in the body | the search that found the veto, or the evaluation |
 | `expired` | Adopted once; no longer readable or no longer licensed; the sync is off | the issue that switched it off |
 

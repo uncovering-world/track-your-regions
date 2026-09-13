@@ -9,7 +9,7 @@ Conventions and patterns for writing code in this project. Follow these to keep 
 Before implementing anything new, **search the codebase for similar patterns**:
 
 - **Backend utilities:** Check `backend/src/services/sync/experienceUpsert.ts` (the object upsert and its membership), `syncUtils.ts` (single-location write, sync log), `wikidataUtils.ts` (SPARQL, QID parsing), `backend/src/db/membership.ts` (the one spelling of "admitted" and "passed" over a place's memberships), and service-level shared code before writing new helpers.
-- **Frontend utilities:** Check `frontend/src/utils/` (categoryColors, dateFormat, imageUrl, coordinateParser, mapUtils) before creating inline helpers.
+- **Frontend utilities:** Check `frontend/src/utils/` (kindColors, dateFormat, imageUrl, coordinateParser, mapUtils) before creating inline helpers.
 - **Frontend hooks:** Check `frontend/src/hooks/` for app-level hooks and component directories for co-located hooks.
 - **Frontend components:** Check `frontend/src/components/shared/` (CurationDialog, AddExperienceDialog, LocationPicker) before building new dialogs or UI patterns.
 
@@ -24,7 +24,7 @@ If similar functionality exists:
 
 Exceptions: files with dense, non-decomposable JSX can exceed the limit if splitting would only add prop-drilling overhead without clarity gain. Use judgment — if a file has distinct responsibilities, it should be split.
 
-`ExperienceList.tsx` used to stand here as that exception, at ~1,300 lines. It is comfortably under 700 now, and what moved out was never JSX depth: the windowed rows (#552), then the category header, the notice lines, the curator's rejected section and every movement of the list itself (#553). Each had a responsibility of its own, and the prop-drilling the exception warns about did not materialise — the pieces take what they render and the handlers they call. The exception stands; that file is no longer an example of it.
+`ExperienceList.tsx` used to stand here as that exception, at ~1,300 lines. It is comfortably under 700 now, and what moved out was never JSX depth: the windowed rows (#552), then the kind header, the notice lines, the curator's rejected section and every movement of the list itself (#553). Each had a responsibility of its own, and the prop-drilling the exception warns about did not materialise — the pieces take what they render and the handlers they call. The exception stands; that file is no longer an example of it.
 
 ### 3. Keep Docs in Sync
 
@@ -117,7 +117,7 @@ services/
 │   ├── experienceUpsert.ts    ← shared: the object upsert, lock-first, place + membership
 │   ├── syncUtils.ts           ← shared: single-location write, sync log
 │   ├── wikidataUtils.ts       ← shared: SPARQL queries, QID parsing
-│   ├── unescoSyncService.ts   ← category-specific sync
+│   ├── unescoSyncService.ts   ← source-specific sync
 │   ├── museumSyncService.ts
 │   ├── landmarkSyncService.ts
 │   ├── imageService.ts
@@ -132,7 +132,7 @@ services/
 **Rules:**
 
 1. **Shared utilities go in shared files.** `experienceUpsert.ts`, `syncUtils.ts` and `wikidataUtils.ts` are reused across all sync services. Don't duplicate their logic.
-2. **New sync category?** Create a new `*SyncService.ts` file that implements `SyncServiceConfig<T>` from `syncOrchestrator.ts`. Reuse shared utilities.
+2. **New source?** Create a new `*SyncService.ts` file that implements `SyncServiceConfig<T>` from `syncOrchestrator.ts`. Reuse shared utilities.
 3. **Co-locate tests.** Test files sit next to source: `syncOrchestrator.test.ts` alongside `syncOrchestrator.ts`.
 
 ### Database Queries
@@ -165,7 +165,7 @@ services/
 
 - **SSE endpoints need `token` in Zod query schema.** `EventSource` can't send headers, so JWT is passed as `?token=...`. The `validate()` middleware strips undeclared fields, so Zod schemas must include `token: z.string().optional()`.
 - **`booleanStringSchema` stays as string.** Zod validates `'true'`/`'false'` but does NOT transform to boolean. Controllers use `=== 'true'` string comparison. Don't add `.transform()`.
-- **`getExperiencesByRegion`** API must include `country_names`, `external_id`, and `category_priority` in SELECT — frontends depend on these.
+- **`getExperiencesByRegion`** API must include `country_names`, `external_id`, and `kind_priority` in SELECT — frontends depend on these.
 
 ## Database Migrations
 
@@ -343,7 +343,7 @@ Shared utilities live in `frontend/src/utils/`, one module per concern:
 | Module | Purpose |
 |--------|---------|
 | `appUrl.ts` | The URL grammar: parse, build, slugs, the legacy `?wv=` redirect. One module, with a round-trip test |
-| `categoryColors.ts` | The colour an object is drawn in (`experienceColors`: its kind's, refined by its type for World Heritage), source palette, shared colour constants |
+| `kindColors.ts` | The colour an object is drawn in (`experienceColors`: its kind's, refined by its type for World Heritage), source palette, shared colour constants |
 | `experienceTypes.ts` | The closed vocabulary of types per kind (`typeOptionsFor`), and which vocabulary a value is from (`typeVocabularyOf`) |
 | `dateFormat.ts` | Date/time formatting helpers |
 | `imageUrl.ts` | Thumbnail URL generation |
@@ -364,7 +364,7 @@ For detailed exports and usage guidance, see [shared-frontend-patterns.md](share
 
 Before writing any inline UI pattern, check `frontend/src/components/shared/` and `frontend/src/utils/`. If a shared solution exists, use it. If you're writing something that 2+ components will need, extract it to shared before duplicating.
 
-For example: use `<LoadingSpinner />` instead of writing another centered `CircularProgress`, or `VISITED_GREEN` from `categoryColors` instead of hardcoding a hex color.
+For example: use `<LoadingSpinner />` instead of writing another centered `CircularProgress`, or `VISITED_GREEN` from `kindColors` instead of hardcoding a hex color.
 
 The full inventory of shared components and utilities — including a "use this, not that" reference table — is in [shared-frontend-patterns.md](shared-frontend-patterns.md). Keep that doc updated when extracting new shared code.
 
