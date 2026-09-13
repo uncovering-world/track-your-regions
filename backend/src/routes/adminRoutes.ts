@@ -12,7 +12,7 @@ import { validate } from '../middleware/errorHandler.js';
 import { authenticatedLimiter, expensiveAdminLimiter } from '../middleware/rateLimiter.js';
 import { z } from 'zod';
 import {
-  categoryIdParamSchema,
+  sourceIdParamSchema,
   logIdParamSchema,
   assignmentIdParamSchema,
   userIdParamSchema,
@@ -20,7 +20,7 @@ import {
   clearCacheQuerySchema,
   cacheKindParamSchema,
   cacheTtlBodySchema,
-  reorderCategoriesBodySchema,
+  reorderSourcesBodySchema,
   curationGateBodySchema,
   sourceLineBodySchema,
   dataAssertionAcceptBodySchema,
@@ -87,8 +87,8 @@ import {
   setWikidataCacheTtl,
   getSyncLogDetails,
   getSyncLogChanges,
-  getCategories,
-  reorderCategories,
+  getSources,
+  reorderSources,
   startRegionAssignment,
   getRegionAssignmentStatus,
   cancelRegionAssignment,
@@ -157,10 +157,10 @@ const router = Router();
 // =============================================================================
 
 // List all experience sources
-router.get('/sync/categories', getCategories);
+router.get('/sync/sources', getSources);
 
 // Reorder experience sources (set display_priority)
-router.put('/sync/categories/reorder', validate(reorderCategoriesBodySchema), reorderCategories);
+router.put('/sync/sources/reorder', validate(reorderSourcesBodySchema), reorderSources);
 
 /**
  * Whether this source holds new and changed content for a curator (ADR-0025).
@@ -172,8 +172,8 @@ router.put('/sync/categories/reorder', validate(reorderCategoriesBodySchema), re
  * needs answering at all is the admin's.
  */
 router.put(
-  '/sync/categories/:categoryId/curation-gate',
-  validate(categoryIdParamSchema, 'params'),
+  '/sync/sources/:sourceId/curation-gate',
+  validate(sourceIdParamSchema, 'params'),
   validate(curationGateBodySchema),
   setCurationGate,
 );
@@ -185,46 +185,46 @@ router.put(
  * rather than of any object — the same reason the gate switch sits here.
  */
 router.put(
-  '/sync/categories/:categoryId/line',
-  validate(categoryIdParamSchema, 'params'),
+  '/sync/sources/:sourceId/line',
+  validate(sourceIdParamSchema, 'params'),
   validate(sourceLineBodySchema),
   setSourceLine,
 );
 
 // Start sync for a source
-router.post('/sync/categories/:categoryId/start', validate(categoryIdParamSchema, 'params'), validate(startSyncBodySchema), startSync);
+router.post('/sync/sources/:sourceId/start', validate(sourceIdParamSchema, 'params'), validate(startSyncBodySchema), startSync);
 
 // Get sync status for a source (poll this endpoint)
-router.get('/sync/categories/:categoryId/status', validate(categoryIdParamSchema, 'params'), getSyncStatus);
+router.get('/sync/sources/:sourceId/status', validate(sourceIdParamSchema, 'params'), getSyncStatus);
 
 // Cancel sync for a source
-router.post('/sync/categories/:categoryId/cancel', validate(categoryIdParamSchema, 'params'), cancelSync);
+router.post('/sync/sources/:sourceId/cancel', validate(sourceIdParamSchema, 'params'), cancelSync);
 
 // Fix missing images for a source
 // Behind the expensive-action limiter like a rematch is: the route reads the
 // source and the run table before it starts, and a repair is a run over every
 // row of a source — CodeQL's js/missing-rate-limiting is the same point.
-router.post('/sync/categories/:categoryId/fix-images', expensiveAdminLimiter, validate(categoryIdParamSchema, 'params'), fixImages);
+router.post('/sync/sources/:sourceId/fix-images', expensiveAdminLimiter, validate(sourceIdParamSchema, 'params'), fixImages);
 
 // What we are keeping from the source, per kind of question, with its age and
 // expiry — and the button that forgets it. Read and delete rather than a
 // mutation of the cache's own rules: an admin's only two questions here are
 // "how old is this" and "ask again".
 router.get(
-  '/sync/categories/:categoryId/cache',
-  validate(categoryIdParamSchema, 'params'),
+  '/sync/sources/:sourceId/cache',
+  validate(sourceIdParamSchema, 'params'),
   getWikidataCache,
 );
 router.delete(
-  '/sync/categories/:categoryId/cache',
-  validate(categoryIdParamSchema, 'params'),
+  '/sync/sources/:sourceId/cache',
+  validate(sourceIdParamSchema, 'params'),
   validate(clearCacheQuerySchema, 'query'),
   clearWikidataCache,
 );
 // Changing a lifetime re-stamps what is already kept, so the panel and the
 // reader cannot disagree about when an answer stops being used.
 router.put(
-  '/sync/categories/:categoryId/cache/:kind/ttl',
+  '/sync/sources/:sourceId/cache/:kind/ttl',
   validate(cacheKindParamSchema, 'params'),
   validate(cacheTtlBodySchema),
   setWikidataCacheTtl,

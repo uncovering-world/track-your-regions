@@ -207,15 +207,15 @@ export function requireCurator(req: AuthenticatedRequest, res: Response, next: N
 // Helper: Check Curator Scope
 // =============================================================================
 /**
- * Checks if a curator has permission for the given region (and optionally category).
- * Admin always has access. Checks global scope, then category scope, then walks
+ * Checks if a curator has permission for the given region (and optionally source).
+ * Admin always has access. Checks global scope, then source scope, then walks
  * up the region hierarchy via recursive CTE.
  */
 export async function checkCuratorScope(
   userId: number,
   userRole: UserRole,
   regionId: number,
-  categoryId?: number,
+  sourceId?: number,
 ): Promise<boolean> {
   // Admin bypass
   if (userRole === 'admin') return true;
@@ -227,13 +227,13 @@ export async function checkCuratorScope(
   );
   if (globalResult.rows.length > 0) return true;
 
-  // Check category scope if categoryId provided
-  if (categoryId) {
-    const categoryResult = await pool.query(
-      `SELECT id FROM curator_assignments WHERE user_id = $1 AND scope_type = 'category' AND category_id = $2 LIMIT 1`,
-      [userId, categoryId],
+  // Check source scope if sourceId provided
+  if (sourceId) {
+    const sourceResult = await pool.query(
+      `SELECT id FROM curator_assignments WHERE user_id = $1 AND scope_type = 'source' AND source_id = $2 LIMIT 1`,
+      [userId, sourceId],
     );
-    if (categoryResult.rows.length > 0) return true;
+    if (sourceResult.rows.length > 0) return true;
   }
 
   // Check region scope: walk up the region hierarchy
@@ -280,8 +280,8 @@ export const CURATOR_SCOPED_REGIONS_CTE = `
 
 /**
  * SQL fragment: is this caller's curator scope unrestricted for an experience
- * of the given category? True for a global assignment, or a category assignment
- * naming that category — the two scope types that reach past any one region, so
+ * of the given source? True for a global assignment, or a source assignment
+ * naming that source — the two scope types that reach past any one region, so
  * a caller holding either sees the experience whole.
  *
  * It matches nothing else `curator_assignments.scope_type` may hold. That is a
@@ -290,22 +290,22 @@ export const CURATOR_SCOPED_REGIONS_CTE = `
  * asserts. Kept here in one piece so the two queries that ask this question
  * cannot drift apart when the scope set changes.
  *
- * Expects `$1` = curator user id. Where the category comes from is the caller's
+ * Expects `$1` = curator user id. Where the source comes from is the caller's
  * choice, and it is not a free-form string: a query about one experience knows
- * the category up front and binds it as `$3`, while a query returning many rows
- * has a different category per row and must correlate on the column instead.
+ * the source up front and binds it as `$3`, while a query returning many rows
+ * has a different source per row and must correlate on the column instead.
  * Passing `$3` there would compare every row against one request parameter, and
- * a category curator who did not happen to filter by their own category would
+ * a source curator who did not happen to filter by their own source would
  * silently lose the scope they hold.
  */
-export function curatorUnrestrictedScopeExists(category: '$3' | 'e.category_id' = '$3'): string {
+export function curatorUnrestrictedScopeExists(source: '$3' | 'e.source_id' = '$3'): string {
   return `
     EXISTS (
       SELECT 1 FROM curator_assignments ca
       WHERE ca.user_id = $1
-        AND (ca.scope_type = 'global' OR (ca.scope_type = 'category' AND ca.category_id = ${category}))
+        AND (ca.scope_type = 'global' OR (ca.scope_type = 'source' AND ca.source_id = ${source}))
     )`;
 }
 
-/** The single-experience form, which binds the category as `$3`. */
+/** The single-experience form, which binds the source as `$3`. */
 export const CURATOR_UNRESTRICTED_SCOPE_EXISTS = curatorUnrestrictedScopeExists();

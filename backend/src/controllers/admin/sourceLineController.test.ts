@@ -22,9 +22,9 @@ function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
 }
 
-function makeReq(categoryId: string, body: { enterSitelinks: number; staySitelinks: number }) {
+function makeReq(sourceId: string, body: { enterSitelinks: number; staySitelinks: number }) {
   return {
-    params: { categoryId },
+    params: { sourceId },
     body,
     user: { id: 1, role: 'admin' as const },
   } as never;
@@ -61,7 +61,7 @@ describe('setSourceLine', () => {
     await setSourceLine(makeReq('4', { enterSitelinks: 30, staySitelinks: 25 }), res as never);
 
     expect(res.json).toHaveBeenCalledWith({
-      categoryId: 4, name: 'Places of worship', enterSitelinks: 30, staySitelinks: 25,
+      sourceId: 4, name: 'Places of worship', enterSitelinks: 30, staySitelinks: 25,
     });
   });
 
@@ -75,7 +75,7 @@ describe('setSourceLine', () => {
     const [sql] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('is_active = true');
     expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Category not found' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'Source not found' });
   });
 
   it('answers 409 for a source with no line of its own', async () => {

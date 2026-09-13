@@ -116,7 +116,7 @@ describe('setExperienceState', () => {
     // The two reads are on different connections and a moment apart. Before
     // the verdict lived under its own lock (#852) this fell back to the
     // pool's snapshot and wrote an UPDATE that matched nothing, answering 200.
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     const client = { query: vi.fn(async () => ({ rows: [] })), release: vi.fn() };
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
@@ -132,7 +132,7 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a curator whose scope does not reach the experience', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
@@ -145,7 +145,7 @@ describe('setExperienceState', () => {
   });
 
   it('clears missing_since on every verdict, including a false alarm', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
@@ -160,7 +160,7 @@ describe('setExperienceState', () => {
   });
 
   it('records both decisions when one call carries both axes', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
@@ -176,7 +176,7 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a decision made about a state that is no longer stored', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     // Another curator answered `former` between this card being drawn and clicked
     const { client, queries } = makeClient({ source_membership: 'former', existence: 'extant' });
     mockedConnect.mockResolvedValue(client);
@@ -194,7 +194,7 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a card whose question a later run withdrew', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     // The source listed the object again, so the upsert cleared the flag and
     // left both axes exactly as the card rendered them
     const { client, queries } = makeClient({ source_membership: 'present', existence: 'extant', missing_since: null });
@@ -216,7 +216,7 @@ describe('setExperienceState', () => {
   });
 
   it('allows a correction made with the current state in view', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'former', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'former', existence: 'extant' }] });
     // No flag: this is a decided row, reached from a view that shows it
     const { client, queries } = makeClient({ source_membership: 'former', existence: 'extant', missing_since: null });
     mockedConnect.mockResolvedValue(client);
@@ -235,7 +235,7 @@ describe('setExperienceState', () => {
   });
 
   it('takes the lock before writing the verdict', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     const { client, queries } = makeClient({ source_membership: 'present', existence: 'extant' });
     mockedConnect.mockResolvedValue(client);
 
@@ -250,7 +250,7 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a verdict another curator already recorded', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     // Both curators had the same flagged card open; the other clicked first
     const { client, queries } = makeClient({ source_membership: 'present', existence: 'lost', missing_since: null });
     mockedConnect.mockResolvedValue(client);
@@ -269,7 +269,7 @@ describe('setExperienceState', () => {
   });
 
   it('still records a false alarm the curator did assert', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     const { client, queries } = makeClient({ source_membership: 'present', existence: 'extant' });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
@@ -287,7 +287,7 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a stale verdict that would undo another curator\'s answer', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     // A answered `former`, which cleared the flag. B's card predates that.
     const { client, queries } = makeClient({ source_membership: 'former', existence: 'extant', missing_since: null });
     mockedConnect.mockResolvedValue(client);
@@ -306,7 +306,7 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a decision on a question that was never open', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     const { client, queries } = makeClient({ missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
@@ -328,7 +328,7 @@ describe('setExperienceState', () => {
   });
 
   it('reaches the same verdict from the other axis', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
@@ -344,7 +344,7 @@ describe('setExperienceState', () => {
   });
 
   it('destroys the client when a refusal path cannot roll back either', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     const { client, queries } = makeClient();
     client.query.mockImplementation(async (sql: string) => {
       queries.push({ sql, params: [] });
@@ -369,7 +369,7 @@ describe('setExperienceState', () => {
   });
 
   it('destroys a client whose rollback also failed, rather than pooling it', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     const { client, queries } = makeClient();
     client.query.mockImplementation(async (sql: string) => {
       queries.push({ sql, params: [] });
@@ -394,7 +394,7 @@ describe('setExperienceState', () => {
   });
 
   it('rolls back rather than leaving a decision half-written', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
     const { client, queries } = makeClient();
     client.query.mockImplementation(async (sql: string) => {
       queries.push({ sql, params: [] });
@@ -431,9 +431,9 @@ describe('setExperienceAdmission', () => {
   });
 
   /** The row lookup and the scope check both run on the pool before the lock. */
-  function poolAnswers(categoryId = 2) {
+  function poolAnswers(sourceId = 2) {
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ id: 5, category_id: categoryId }] })
+      .mockResolvedValueOnce({ rows: [{ id: 5, source_id: sourceId }] })
       .mockResolvedValueOnce({ rows: [{ unrestricted: true, scoped_region_id: null }] });
   }
 
@@ -547,7 +547,7 @@ describe('setExperienceAdmission', () => {
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
       makeRes() as never);
 
-    // The refused set is the list the archaeology category gets built from, so
+    // The refused set is the list the archaeology kind gets built from, so
     // the rule's objection has to survive being agreed with.
     const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
     expect(update.params[2]).toBe('not an art museum');
@@ -869,7 +869,7 @@ describe('setExperienceAdmission', () => {
 
   it('403s a curator whose scope does not reach the row', async () => {
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ id: 5, category_id: 2 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 5, source_id: 2 }] })
       .mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 

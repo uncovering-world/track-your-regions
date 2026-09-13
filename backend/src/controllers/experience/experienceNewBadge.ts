@@ -3,16 +3,16 @@
  *
  * Not "recently created" — that is what the client-side heuristic this replaced
  * measured, and it answers a different question. `created_at` is when the row
- * entered this database, which for a category loaded in bulk is one instant for
+ * entered this database, which for a source loaded in bulk is one instant for
  * thousands of objects that entered the *source* years apart.
  *
  * It keys off **becoming visible**:
  *
  *     is_new = the row has been published, AND ( that publication is still inside
- *              the category's window OR this reader first saw the chip less than
+ *              the source's window OR this reader first saw the chip less than
  *              a week ago )
  *
- * The two clauses are a maximum, not a choice: the category window is the floor —
+ * The two clauses are a maximum, not a choice: the source window is the floor —
  * everyone gets at least that long — and a reader who arrives near the end of it
  * keeps the chip a week from *their* first sighting rather than losing it the next
  * day. Anonymous readers get the first clause only, since there is nobody to
@@ -21,7 +21,7 @@
  * **Why becoming visible and not arriving in a run (#529).** Under a gated source
  * the two are not the same moment. An arrival is invisible until a curator passes
  * it, so a chip anchored to the run that found it fails in the ordinary case
- * rather than an exotic one: a museum arrives on Monday, the category runs again
+ * rather than an exotic one: a museum arrives on Monday, the source runs again
  * on Wednesday, the curator answers on Thursday — and by then the run that found
  * it is no longer the latest, so the chip never appears for anyone. Even with no
  * intervening run, the window was being spent while nobody could see the row.
@@ -32,22 +32,22 @@
  *
  * - the `EXISTS … change_type = 'created'` proof of a sighting existed only
  *   because migration 009 backfilled `first_seen_sync_log_id` to the newest run
- *   of each category, so the column alone credited 1547 of 1547 rows to a run
+ *   of each source, so the column alone credited 1547 of 1547 rows to a run
  *   that never inserted them. `published_at` is never backfilled — migration 018
  *   left 1603 of 1604 rows NULL on purpose — so a publication needs no proof.
  * - the latest-completed-run bound existed to stop chips accumulating. The
- *   category window already bounds them, and under piecemeal approval "the newest
+ *   source window already bounds them, and under piecemeal approval "the newest
  *   batch" has stopped being a unit: a curator answers eighteen arrivals over a
  *   week, and no run divides them.
  *
  * **Two consequences, stated rather than discovered later.** Chips no longer clear
- * when a category next runs — they last their full window per row, so a weekly
+ * when a source next runs — they last their full window per row, so a weekly
  * source shows roughly four windows' worth at once instead of one batch. And
  * everything published before the gate existed wears no chip at all, because
  * `published_at` is NULL for it; the column starts meaning something from the
  * first publication forward.
  *
- * Nothing re-inserts a whole category any more — force sync is gone (66960d8d) —
+ * Nothing re-inserts a whole source any more — force sync is gone (66960d8d) —
  * so no single act can chip a whole source, which is the property the removed
  * bound was protecting.
  */
@@ -79,7 +79,7 @@ export const NEW_BADGE_PERSONAL_DAYS = 7;
  *
  * Two correlated subqueries rather than joins, and after #529 that is a choice
  * about readability rather than about row counts: neither could multiply anything —
- * `experience_categories` is reached by primary key and `user_new_badge_views` is
+ * `experience_sources` is reached by primary key and `user_new_badge_views` is
  * unique on `(user_id, experience_id)`. The paragraph that used to be here
  * justified the shape by the latest-run subquery this predicate no longer has,
  * which would have sent the next reader looking for a join risk that is gone.
@@ -99,7 +99,7 @@ export function isNewSql(alias = 'e', userIdParam: NewBadgeReaderParam = 'NULL')
     AND (
       EXISTS (
         SELECT 1 FROM ${MEMBERSHIPS} km
-        JOIN experience_categories c ON c.id = km.source_id
+        JOIN experience_sources c ON c.id = km.source_id
         WHERE km.experience_id = ${alias}.id
           AND km.published_at > NOW() - (c.new_badge_days || ' days')::interval
       )

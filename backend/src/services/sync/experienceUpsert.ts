@@ -27,7 +27,7 @@
  * conflict the membership keeps its state — publishing is a curator's act —
  * and takes only the run's own bookkeeping and the pointer rule: a held
  * membership keeps the pointer it has, one no longer held loses it. The
- * identity arbiter `UNIQUE(category_id, external_id)` means the place a run
+ * identity arbiter `UNIQUE(source_id, external_id)` means the place a run
  * conflicts with is one its own source created, so the membership it meets
  * is its own; a second source of one kind meeting the first's membership is
  * #628's design, not this statement's.
@@ -56,7 +56,7 @@ import { tidyLabel } from './labelFold.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 
 export interface ExperienceUpsertParams {
-  categoryId: number;
+  sourceId: number;
   externalId: string;
   name: string;
   nameLocal: Record<string, string>;
@@ -65,7 +65,7 @@ export interface ExperienceUpsertParams {
   /**
    * The type within the kind — `cultural` for a World Heritage site, `monument`
    * for public art — and `null` for a museum, whose kind has no types (ADR-0045,
-   * #814). The kind is the one `categoryId`'s source fills.
+   * #814). The kind is the one `sourceId`'s source fills.
    */
   type: string | null;
   tags: string[];
@@ -106,7 +106,7 @@ export interface UpsertOutcome {
  * differently; the rule itself exists exactly once.
  */
 const heldSql = (gate: string, alias: string) => `(${gate} AND ${placeVisibleSql(alias)})`;
-const GATE = '(SELECT requires_curation FROM experience_categories WHERE id = $1)';
+const GATE = '(SELECT requires_curation FROM experience_sources WHERE id = $1)';
 /** The form of the read under the lock, off the row the statement before it locked. */
 const LOCKED_HELD = heldSql(GATE, 'e');
 /** The preview's form: one SELECT, no lock. */
@@ -187,8 +187,8 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
             ${SNAPSHOT_COLUMNS.join(', ')},
             ST_X(location) AS lon, ST_Y(location) AS lat
      FROM experiences
-     WHERE category_id = $1 AND external_id = $2`,
-    [params.categoryId, params.externalId]
+     WHERE source_id = $1 AND external_id = $2`,
+    [params.sourceId, params.externalId]
   );
 
   const incoming = snapshotFromParams(params);
@@ -263,7 +263,7 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
 function withShowablePicture(params: ExperienceUpsertParams): ExperienceUpsertParams {
   if (!params.imageUrl || isCommonsPictureUrl(params.imageUrl)) return params;
   console.warn(
-    `[Sync] Refused a picture for ${params.categoryId}/${params.externalId}: ${params.imageUrl}`,
+    `[Sync] Refused a picture for ${params.sourceId}/${params.externalId}: ${params.imageUrl}`,
   );
   return { ...params, imageUrl: null };
 }
@@ -338,8 +338,8 @@ async function writeUnderLock(
   // takes on the same row. A place the run has not created yet locks nothing
   // and holds nothing: the insert writes every column.
   const locked = await client.query(
-    `SELECT id FROM experiences WHERE category_id = $1 AND external_id = $2 ${OBJECT_LOCK}`,
-    [params.categoryId, params.externalId],
+    `SELECT id FROM experiences WHERE source_id = $1 AND external_id = $2 ${OBJECT_LOCK}`,
+    [params.sourceId, params.externalId],
   );
   // The row as it stands under that lock, and the hold decided on the same
   // snapshot. A second statement rather than columns of the locking one: a
@@ -354,19 +354,19 @@ async function writeUnderLock(
             ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
             ${LOCKED_HELD} AS was_held
        FROM experiences e
-      WHERE e.category_id = $1 AND e.external_id = $2`,
-    [params.categoryId, params.externalId],
+      WHERE e.source_id = $1 AND e.external_id = $2`,
+    [params.sourceId, params.externalId],
   )).rows[0] ?? null;
   const held = Boolean(stored?.was_held);
 
   const result = await client.query(
     `WITH gate AS (
-      SELECT requires_curation FROM experience_categories WHERE id = $1
+      SELECT requires_curation FROM experience_sources WHERE id = $1
     ), hold AS (
       SELECT $17::boolean AS held
     ), ins AS (
       INSERT INTO experiences (
-        category_id, external_id, name, name_local, description, short_description,
+        source_id, external_id, name, name_local, description, short_description,
         type, tags, location, country_codes, country_names, image_url, metadata,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at, created_at, updated_at
       ) VALUES (
@@ -374,7 +374,7 @@ async function writeUnderLock(
         ST_SetSRID(ST_MakePoint($9, $10), 4326),
         $11, $12, $13, $14, $15, $15, NOW(), NOW(), NOW()
       )
-      ON CONFLICT (category_id, external_id) DO UPDATE SET
+      ON CONFLICT (source_id, external_id) DO UPDATE SET
         name = CASE WHEN experiences.curated_fields ? 'name' OR ${HELD} THEN experiences.name ELSE EXCLUDED.name END,
         name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR ${HELD} THEN experiences.name_local ELSE EXCLUDED.name_local END,
         description = CASE WHEN experiences.curated_fields ? 'description' OR ${HELD} THEN experiences.description ELSE EXCLUDED.description END,
@@ -491,7 +491,7 @@ async function writeUnderLock(
         experience_id, kind_id, source_id, admitted_for, curation_state, published_at
       )
       SELECT ins.id,
-             (SELECT kind_id FROM experience_categories WHERE id = $1),
+             (SELECT kind_id FROM experience_sources WHERE id = $1),
              $1,
              $18::jsonb,
              CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
@@ -508,7 +508,7 @@ async function writeUnderLock(
     SELECT ins.*, membership.pending_change_sync_log_id
     FROM ins, membership`,
     [
-      params.categoryId,
+      params.sourceId,
       params.externalId,
       params.name,
       JSON.stringify(params.nameLocal),
@@ -584,10 +584,10 @@ async function writeUnderLock(
         WHERE m.experience_id = $1 AND m.source_id = $2
           AND m.curation_state = 'verified'
           AND NOT EXISTS (
-            SELECT 1 FROM experience_categories
+            SELECT 1 FROM experience_sources
              WHERE id = $2 AND requires_curation
           )`,
-      [row.id, params.categoryId],
+      [row.id, params.sourceId],
     );
   }
 
@@ -619,10 +619,10 @@ async function writeUnderLock(
         WHERE m.experience_id = $1 AND m.source_id = $2
           AND m.curation_state <> 'pending'
           AND EXISTS (
-            SELECT 1 FROM experience_categories
+            SELECT 1 FROM experience_sources
              WHERE id = $2 AND requires_curation
           )`,
-      [row.id, params.categoryId],
+      [row.id, params.sourceId],
     );
   }
 

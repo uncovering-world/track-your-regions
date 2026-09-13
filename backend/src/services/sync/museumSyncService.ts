@@ -45,7 +45,7 @@ import {
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 // Museums use remote Wikimedia URLs, no local image storage
 
-const MUSEUM_CATEGORY_ID = 2;
+const MUSEUM_SOURCE_ID = 2;
 
 const LOG_PREFIX = '[Museum Sync]';
 
@@ -88,7 +88,7 @@ function collectingSparql(
   progress: SyncProgress, refreshCache: boolean,
 ): (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]> {
   return withCache(pacedSparql(progress), {
-    categoryId: MUSEUM_CATEGORY_ID,
+    sourceId: MUSEUM_SOURCE_ID,
     enabled: !refreshCache,
     onHit: (descriptor, rows) => {
       progress.statusMessage = `${descriptor.label}: ${rows} rows, from cache`;
@@ -120,15 +120,15 @@ function collectingSparql(
  * takes the source as an argument. Asking the question twice in two files is how the floor and
  * the diff come to disagree about what the last run left.
  */
-export async function readPreviousPlacements(categoryId: number): Promise<Record<string, string[]>> {
+export async function readPreviousPlacements(sourceId: number): Promise<Record<string, string[]>> {
   const result = await pool.query(
     `SELECT t.external_id AS work, e.external_id AS venue
        FROM experience_treasures et
        JOIN treasures t ON t.id = et.treasure_id
        JOIN experiences e ON e.id = et.experience_id
-      WHERE e.category_id = $1
+      WHERE e.source_id = $1
         AND et.missing_since IS NULL`,
-    [categoryId],
+    [sourceId],
   );
   const placements: Record<string, string[]> = {};
   for (const row of result.rows as { work: string; venue: string }[]) {
@@ -210,9 +210,9 @@ async function fetchMuseumItems(
   filtered: FilteredEntity[];
   withdrawalSkippedReason: string | null;
 }> {
-  const previousPlacements = await readPreviousPlacements(MUSEUM_CATEGORY_ID);
+  const previousPlacements = await readPreviousPlacements(MUSEUM_SOURCE_ID);
   imageCredits = new Map();
-  storedCredits = await readStoredCredits(MUSEUM_CATEGORY_ID);
+  storedCredits = await readStoredCredits(MUSEUM_SOURCE_ID);
   storedTreasureCredits = await readStoredTreasureCredits();
 
   const { items, fetched, filtered } = await collectTier1Museums({
@@ -332,7 +332,7 @@ async function upsertMuseumExperience(
   const imageUrl = details.imageUrl || null;
 
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
-    categoryId: MUSEUM_CATEGORY_ID,
+    sourceId: MUSEUM_SOURCE_ID,
     externalId: museum.qid,
     name: details.museumLabel,
     nameLocal: { en: details.museumLabel },
@@ -361,7 +361,7 @@ async function upsertMuseumExperience(
 
   if (!context.dryRun) {
     // The must-see flag is not written here. Every museum admitted here holds a work above the
-    // iconic threshold, so the flag is a property of belonging to this category rather than a
+    // iconic threshold, so the flag is a property of belonging to this source rather than a
     // field the source proposes — and it is written where belonging is settled, after the run's
     // restore step (`markIconic`, admission.ts), so a cancelled run never badges a row it did
     // not re-admit (#760).
@@ -403,7 +403,7 @@ async function processMuseum(
       {
         syncLogId: context.syncLogId,
         withdrawalSkippedReason: context.withdrawalSkippedReason,
-        categoryId: MUSEUM_CATEGORY_ID,
+        sourceId: MUSEUM_SOURCE_ID,
       },
       placedElsewhereFor(museum.qid),
     );
@@ -436,7 +436,7 @@ export function syncMuseums(
   options: { dryRun?: boolean; refreshCache?: boolean } = {},
 ): Promise<void> {
   return orchestrateSync<CollectedMuseum>({
-    categoryId: MUSEUM_CATEGORY_ID,
+    sourceId: MUSEUM_SOURCE_ID,
     logPrefix: LOG_PREFIX,
     // The list length is a property of the data — the museums holding an iconic work — but it
     // is still a fame ranking: a museum absent from a run lost the work that admitted it, which
@@ -444,7 +444,7 @@ export function syncMuseums(
     sourceCompleteness: 'ranked',
     // It does, however, say that the museum is not one of ours. Every run
     // recomputes the whole membership from the whole pool rather than fetching a
-    // published list, so absence from the admitted set is this category's own
+    // published list, so absence from the admitted set is this source's own
     // decision and belongs on the admission axis (ADR-0024) — which is a
     // different question from whether the place still exists, and is why both
     // lines stand together.
@@ -455,7 +455,7 @@ export function syncMuseums(
     badgesAdmitted: true,
     // The one place the run's options reach the collection: everything else the
     // orchestrator threads for us, but the cache is a property of *this* run
-    // rather than of the category.
+    // rather than of the source.
     fetchItems: (progress) => fetchMuseumItems(progress, options.refreshCache === true),
     processItem: processMuseum,
     getItemName: (m) => m.details?.museumLabel || m.label,
@@ -467,14 +467,14 @@ export function syncMuseums(
  * Get current museum sync status
  */
 export function getMuseumSyncStatus() {
-  return getSyncStatus(MUSEUM_CATEGORY_ID);
+  return getSyncStatus(MUSEUM_SOURCE_ID);
 }
 
 /**
  * Cancel running museum sync
  */
 export function cancelMuseumSync() {
-  return cancelSync(MUSEUM_CATEGORY_ID);
+  return cancelSync(MUSEUM_SOURCE_ID);
 }
 
 /**
@@ -482,7 +482,7 @@ export function cancelMuseumSync() {
  * same mechanism as `syncMuseums` reaching for a picture, run by hand from the
  * admin panel against rows already stored rather than during a sync pass.
  */
-export const fixMuseumImages = makeWikidataPictureRepair(MUSEUM_CATEGORY_ID, LOG_PREFIX, {
+export const fixMuseumImages = makeWikidataPictureRepair(MUSEUM_SOURCE_ID, LOG_PREFIX, {
   singular: 'museum',
   plural: 'museums',
 });

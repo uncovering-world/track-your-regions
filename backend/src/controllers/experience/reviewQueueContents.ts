@@ -22,6 +22,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { rowKindJoinSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
 import {
@@ -147,7 +148,7 @@ export const CONTENTS_ROWS_SHOWN = QUEUE_PAGE_SIZE;
  */
 export interface QueueQueryContext {
   scopeFilter: string;
-  categoryFilter: string;
+  sourceFilter: string;
   params: unknown[];
   ids: number[];
 }
@@ -179,7 +180,7 @@ export interface AnsweredQueryContext extends Omit<QueueQueryContext, 'ids'> {
 }
 
 export async function queryContents(
-  { scopeFilter, categoryFilter, params, ids }: QueueQueryContext,
+  { scopeFilter, sourceFilter, params, ids }: QueueQueryContext,
 ): Promise<QueryResult> {
   // contents: a visible experience holding unread points or works of its own
   // (ADR-0025 decision 2 — the gate is on the content row, not only on its
@@ -227,7 +228,7 @@ export async function queryContents(
   // works" over a list of 25 of 93 points is telling the truth twice rather than
   // once, and a list without its total is a silent cap.
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'contents' AS kind,
            points.total AS pending_locations,
@@ -236,7 +237,7 @@ export async function queryContents(
            works.items AS pending_works,
            NULL::jsonb AS proposed
     FROM experiences e
-    JOIN experience_categories c ON c.id = e.category_id
+    ${rowKindJoinSql('e', 'mk', 'kd')}
     CROSS JOIN LATERAL (
       SELECT COUNT(*)::int AS total,
              COALESCE(jsonb_agg(jsonb_build_object(
@@ -315,7 +316,7 @@ export async function queryContents(
     -- not answerable while "did this venue disappear?" is open, and publishing
     -- the works would not put them anywhere a reader looks anyway.
     WHERE ${contentsOpenSql('e')}
-      AND ${scopeFilter} ${categoryFilter}
+      AND ${scopeFilter} ${sourceFilter}
       AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.id
   `, [...params, ids]);
@@ -331,10 +332,10 @@ export async function queryContents(
 // What makes a point's card answerable exactly once: the reasoning is on
 // `withdrawnPointOpenSql` (`reviewQueuePredicates.ts`).
 export async function queryWithdrawn(
-  { scopeFilter, categoryFilter, params, ids }: QueueQueryContext,
+  { scopeFilter, sourceFilter, params, ids }: QueueQueryContext,
 ): Promise<QueryResult> {
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'withdrawn' AS kind,
            jsonb_agg(jsonb_build_object(
@@ -437,16 +438,16 @@ export async function queryWithdrawn(
            ) ORDER BY el.missing_since DESC, el.id) AS withdrawn_points,
            NULL::jsonb AS proposed
     FROM experiences e
-    JOIN experience_categories c ON c.id = e.category_id
+    ${rowKindJoinSql('e', 'mk', 'kd')}
     JOIN experience_locations el
       ON el.experience_id = e.id
      AND ${withdrawnPointOpenSql('el')}
     -- The container half's reasoning is on withdrawnContainerOpenSql
     -- (reviewQueuePredicates.ts).
     WHERE ${withdrawnContainerOpenSql('e')}
-      AND ${scopeFilter} ${categoryFilter}
+      AND ${scopeFilter} ${sourceFilter}
       AND e.id = ANY($${params.length + 1}::int[])
-    GROUP BY e.id, e.external_id, e.name, e.category_id, c.name
+    GROUP BY e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name
     ORDER BY e.id
   `, [...params, ids]);
 }
@@ -539,18 +540,18 @@ const POINT_VERDICT_ACTIONS = [
  */
 export async function queryAnsweredWithdrawals(
   {
-    scopeFilter, categoryFilter, nameFilter, logScopeFilter, params, pageSize, offset,
+    scopeFilter, sourceFilter, nameFilter, logScopeFilter, params, pageSize, offset,
   }: AnsweredQueryContext,
 ): Promise<QueryResult> {
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'withdrawn-answered' AS kind,
            answered.total AS answered_points_total,
            answered.items AS answered_points,
            NULL::jsonb AS proposed
     FROM experiences e
-    JOIN experience_categories c ON c.id = e.category_id
+    ${rowKindJoinSql('e', 'mk', 'kd')}
     -- A lateral rather than a join and a GROUP BY, for the cap: the rows have to be
     -- numbered before they are aggregated, or the list cannot be cut without cutting
     -- the count with it. queryContents above has the same shape for the same reason.
@@ -633,7 +634,7 @@ export async function queryAnsweredWithdrawals(
       ) el
     ) answered
     WHERE answered.total > 0
-      AND ${scopeFilter} ${categoryFilter} ${nameFilter}
+      AND ${scopeFilter} ${sourceFilter} ${nameFilter}
     ORDER BY answered.newest DESC NULLS LAST, e.id
     LIMIT $${params.length + 2} OFFSET $${params.length + 3}
   `, [...params, POINT_VERDICT_ACTIONS, pageSize, offset]);

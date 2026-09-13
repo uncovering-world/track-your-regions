@@ -91,7 +91,7 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
   // museum's list no longer shows the work, so its scope no longer reaches it,
   // and whichever museum still holds the work is where the edit belongs.
   const found = await pool.query(
-    `SELECT e.category_id
+    `SELECT e.source_id
        FROM experience_treasures et
        JOIN experiences e ON e.id = et.experience_id
       WHERE et.experience_id = $1 AND et.treasure_id = $2
@@ -102,10 +102,10 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
     res.status(404).json({ error: 'Work not found in this experience' });
     return;
   }
-  const categoryId = found.rows[0].category_id as number;
+  const sourceId = found.rows[0].source_id as number;
 
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, categoryId,
+    userId, userRole, experienceId, sourceId,
   );
   if (!permitted) {
     res.status(403).json({ error: 'You do not have curator permissions for this experience' });

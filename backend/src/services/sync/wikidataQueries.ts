@@ -67,7 +67,7 @@ export function values(qids: string[]): string {
 /**
  * A truncated *pool* query stops the run.
  *
- * The pool decides which rows a category admits (ADR-0024), so a pool cut off
+ * The pool decides which rows a source admits (ADR-0024), so a pool cut off
  * at its LIMIT withdraws real rows and reports success — the one failure the
  * admission axis exists to prevent, and the reason ADR-0030 makes a *failed*
  * band fatal. A *truncated* band is the same short pool arrived at more quietly,
@@ -82,7 +82,7 @@ export function failIfTruncated(rows: SparqlBinding[], limit: number, label: str
   if (rows.length < limit) return;
   throw new Error(
     `${label} returned exactly its LIMIT of ${limit} rows. The pool decides which rows `
-    + 'this category admits, so a short one would withdraw rows and call the run a success. '
+    + 'this source admits, so a short one would withdraw rows and call the run a success. '
     + 'Split this band, or raise its limit.',
   );
 }

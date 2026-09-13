@@ -64,7 +64,7 @@ const CURATOR = { id: 7, role: 'curator' as const };
 /** The Louvre and the Borghese Gladiator: the correction this endpoint exists for. */
 const EXPERIENCE_ID = 6212;
 const TREASURE_ID = 2443;
-const MUSEUM_CATEGORY_ID = 2;
+const MUSEUM_SOURCE_ID = 2;
 
 function makeClient(stored: Record<string, unknown> = {}) {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
@@ -93,7 +93,7 @@ function makeClient(stored: Record<string, unknown> = {}) {
 
 /** The link exists and the caller's scope covers the museum. */
 function foundAndPermitted() {
-  mockedQuery.mockResolvedValueOnce({ rows: [{ category_id: MUSEUM_CATEGORY_ID }] });
+  mockedQuery.mockResolvedValueOnce({ rows: [{ source_id: MUSEUM_SOURCE_ID }] });
   mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: true, scoped_region_id: null }] });
 }
 
@@ -136,7 +136,7 @@ describe('editWork', () => {
   });
 
   it('refuses a curator whose scope does not reach the museum', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ category_id: MUSEUM_CATEGORY_ID }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ source_id: MUSEUM_SOURCE_ID }] });
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 

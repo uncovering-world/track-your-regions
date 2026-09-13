@@ -13,16 +13,16 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
  * Hold a source's new and changed content for review, or stop holding it.
- * PUT /api/admin/sync/categories/:categoryId/curation-gate
+ * PUT /api/admin/sync/sources/:sourceId/curation-gate
  *
  * The only writer of `requires_curation` in the application (ADR-0025). Until
  * this existed the column could be read by four services and set by nobody, so
  * gating a source meant hand-written SQL against production.
  *
  * **Switching it on is not retroactive, and this statement is why:** it touches
- * `experience_categories` and nothing else. Rows the source already published
+ * `experience_sources` and nothing else. Rows the source already published
  * stay `auto` and stay visible — a setting that removed 1272 objects from the
- * product on one click would be a different feature. One category can therefore
+ * product on one click would be a different feature. One source can therefore
  * hold `auto` rows from before the switch beside `pending` ones from after it,
  * which is intended and which the panel's copy says out loud.
  *
@@ -38,40 +38,40 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
  * the gate exists to prevent; a switch that quietly leaves a run free to apply what
  * it was holding is a different promise, and this one only makes the first.
  *
- * Admin-only, and mounted beside the other category writes rather than on the
+ * Admin-only, and mounted beside the other source writes rather than on the
  * experiences router: this is a property of the source, not of any object.
  */
 export async function setCurationGate(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const categoryId = parseInt(String(req.params.categoryId));
+  const sourceId = parseInt(String(req.params.sourceId));
   const { requiresCuration } = req.body as { requiresCuration: boolean };
 
   // `is_active` in the guard, not only the id: the panel lists active sources,
   // so a request naming an inactive one is either stale or hand-made, and
   // silently gating a source nobody can run is worse than a 404.
   const result = await pool.query(
-    `UPDATE experience_categories
+    `UPDATE experience_sources
         SET requires_curation = $1
       WHERE id = $2 AND is_active = true
       RETURNING id, name, requires_curation`,
-    [requiresCuration, categoryId],
+    [requiresCuration, sourceId],
   );
 
   if (result.rows.length === 0) {
-    res.status(404).json({ error: 'Category not found' });
+    res.status(404).json({ error: 'Source not found' });
     return;
   }
 
-  const category = result.rows[0];
-  // There is no per-category audit table and inventing one is out of scope, but a
+  const source = result.rows[0];
+  // There is no per-source audit table and inventing one is out of scope, but a
   // gate flip that leaves no trace anywhere is not acceptable either: this is the
   // switch that decides whether a whole source reaches readers unreviewed.
   console.log(
-    `[curation-gate] ${category.name} (${category.id}) -> ${category.requires_curation ? 'held for review' : 'published on arrival'} by user ${req.user?.id}`,
+    `[curation-gate] ${source.name} (${source.id}) -> ${source.requires_curation ? 'held for review' : 'published on arrival'} by user ${req.user?.id}`,
   );
 
   res.json({
-    categoryId: category.id,
-    name: category.name,
-    requiresCuration: category.requires_curation,
+    sourceId: source.id,
+    name: source.name,
+    requiresCuration: source.requires_curation,
   });
 }

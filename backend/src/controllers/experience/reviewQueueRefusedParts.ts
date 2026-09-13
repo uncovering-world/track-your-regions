@@ -34,7 +34,7 @@ import type { QueryResult } from 'pg';
 import { lifecycleSelectSql } from './experienceLifecycle.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
-import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipToAnswerSql, rowKindJoinSql } from '../../db/membership.js';
 import { type AnsweredQueryContext, CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
 
 /**
@@ -49,7 +49,7 @@ const PART_REFUSAL_ACTIONS = ['contents_refused'];
 
 export async function queryRefusedParts(
   {
-    scopeFilter, categoryFilter, nameFilter, logScopeFilter, params, pageSize, offset,
+    scopeFilter, sourceFilter, nameFilter, logScopeFilter, params, pageSize, offset,
   }: AnsweredQueryContext,
 ): Promise<QueryResult> {
   // Who turned the part down and what they wrote, read off the log row the
@@ -103,7 +103,7 @@ export async function queryRefusedParts(
         FROM experience_treasures et
        WHERE et.refused_at IS NOT NULL
     )
-    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'contents-refused' AS kind,
            -- Whether the take-back will be accepted at all, decided by the
@@ -120,7 +120,7 @@ export async function queryRefusedParts(
            NULL::jsonb AS proposed
     FROM refused_part_holders h
     JOIN experiences e ON e.id = h.id
-    JOIN experience_categories c ON c.id = e.category_id
+    ${rowKindJoinSql('e', 'mk', 'kd')}
     -- The membership the take-back answers through, joined the way the writer
     -- reads it, so the two ask about the same row.
     LEFT JOIN ${MEMBERSHIPS} answerable_m
@@ -207,7 +207,7 @@ export async function queryRefusedParts(
       ) t
     ) works
     WHERE (points.total > 0 OR works.total > 0)
-      AND ${scopeFilter} ${categoryFilter} ${nameFilter}
+      AND ${scopeFilter} ${sourceFilter} ${nameFilter}
     -- Newest of either kind, so an object whose works were turned down last week
     -- and whose point was turned down a minute ago is where the eye goes first.
     ORDER BY GREATEST(

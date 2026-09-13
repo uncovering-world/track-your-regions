@@ -181,10 +181,10 @@ export function decodeCursor(s: string): Cursor | null {
 function conflictKeysSql(scopeFilter: string, claimKey: (field: string) => string): string {
   return `
     SELECT 'conflict'::text AS kind, ${KIND_RANK.conflict} AS rank, q.id, q.name,
-           q.category_id AS source_id, q.sync_log_id AS run_id, q.completed_at AS asked_at,
+           q.source_id AS source_id, q.sync_log_id AS run_id, q.completed_at AS asked_at,
            ARRAY[]::text[] AS subs
     FROM (
-      SELECT DISTINCT ON (e.id) e.id, e.name, e.category_id, e.curated_fields,
+      SELECT DISTINCT ON (e.id) e.id, e.name, e.source_id, e.curated_fields,
              ch.changed_fields, ch.sync_log_id, l.completed_at
       FROM experience_sync_changes ch
       JOIN experiences e ON e.id = ch.experience_id
@@ -205,10 +205,10 @@ function conflictKeysSql(scopeFilter: string, claimKey: (field: string) => strin
 /** An arrival: a membership from a gated source nobody has passed (ADR-0025). */
 function arrivalKeysSql(scopeFilter: string): string {
   return `
-        SELECT e.id, e.name, e.category_id, e.first_seen_sync_log_id AS run_id,
+        SELECT e.id, e.name, e.source_id, e.first_seen_sync_log_id AS run_id,
                l.completed_at AS asked_at, 'arrival'::text AS sub
         FROM experiences e
-        JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
+        JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
         LEFT JOIN experience_sync_logs l ON l.id = e.first_seen_sync_log_id
         WHERE ${arrivalOpenSql('e', 'm')}
           AND ${scopeFilter}`;
@@ -221,10 +221,10 @@ function arrivalKeysSql(scopeFilter: string): string {
  */
 function heldKeysSql(scopeFilter: string): string {
   return `
-        SELECT e.id, e.name, e.category_id, m.pending_change_sync_log_id,
+        SELECT e.id, e.name, e.source_id, m.pending_change_sync_log_id,
                l.completed_at, 'held'
         FROM experiences e
-        JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
+        JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
         JOIN experience_sync_logs l ON l.id = m.pending_change_sync_log_id
         JOIN experience_sync_changes ch ON ch.experience_id = e.id
                                        AND ch.sync_log_id = m.pending_change_sync_log_id
@@ -241,7 +241,7 @@ function heldKeysSql(scopeFilter: string): string {
  */
 function contentsKeysSql(scopeFilter: string): string {
   return `
-        SELECT e.id, e.name, e.category_id, NULL, GREATEST(
+        SELECT e.id, e.name, e.source_id, NULL, GREATEST(
                  (SELECT max(el.created_at) FROM experience_locations el
                    WHERE el.experience_id = e.id AND ${unreadPointSql('el')}
                      AND ${offeredLocationSql('el')}),
@@ -264,7 +264,7 @@ function contentsKeysSql(scopeFilter: string): string {
  */
 function waitingKeysSql(scopeFilter: string): string {
   return `
-    SELECT 'waiting', ${KIND_RANK.waiting}, g.id, g.name, g.category_id,
+    SELECT 'waiting', ${KIND_RANK.waiting}, g.id, g.name, g.source_id,
            g.run_id, g.asked_at, g.subs
     FROM (
       -- The newest sub-kind's run, preferring one that names a run at all:
@@ -273,7 +273,7 @@ function waitingKeysSql(scopeFilter: string): string {
       -- no run, dropping it out of the run chip that its held half belongs to.
       -- DISTINCT because two changeset rows under one run would otherwise put
       -- 'held' in the list twice, and the sub-kinds are a set.
-      SELECT id, name, category_id,
+      SELECT id, name, source_id,
              (array_agg(run_id ORDER BY (run_id IS NULL), asked_at DESC NULLS LAST))[1] AS run_id,
              max(asked_at) AS asked_at,
              array_agg(DISTINCT sub) AS subs
@@ -284,7 +284,7 @@ function waitingKeysSql(scopeFilter: string): string {
         UNION ALL
         ${contentsKeysSql(scopeFilter)}
       ) gated
-      GROUP BY id, name, category_id
+      GROUP BY id, name, source_id
     ) g`;
 }
 
@@ -295,14 +295,14 @@ function waitingKeysSql(scopeFilter: string): string {
  */
 function withdrawnKeysSql(scopeFilter: string): string {
   return `
-    SELECT 'withdrawn', ${KIND_RANK.withdrawn}, e.id, e.name, e.category_id, NULL,
+    SELECT 'withdrawn', ${KIND_RANK.withdrawn}, e.id, e.name, e.source_id, NULL,
            max(el.missing_since), ARRAY[]::text[]
     FROM experience_locations el
     JOIN experiences e ON e.id = el.experience_id
     WHERE ${withdrawnPointOpenSql('el')}
       AND ${withdrawnContainerOpenSql('e')}
       AND ${scopeFilter}
-    GROUP BY e.id, e.name, e.category_id`;
+    GROUP BY e.id, e.name, e.source_id`;
 }
 
 /**
@@ -313,10 +313,10 @@ function withdrawnKeysSql(scopeFilter: string): string {
  */
 function refusedKeysSql(scopeFilter: string): string {
   return `
-    SELECT 'refused', ${KIND_RANK.refused}, e.id, e.name, e.category_id,
+    SELECT 'refused', ${KIND_RANK.refused}, e.id, e.name, e.source_id,
            e.first_seen_sync_log_id, COALESCE(l.completed_at, m.updated_at), ARRAY[]::text[]
     FROM experiences e
-    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
     LEFT JOIN experience_sync_logs l ON l.id = e.first_seen_sync_log_id
     WHERE ${refusedOpenSql('m')}
       AND ${scopeFilter}`;
@@ -324,7 +324,7 @@ function refusedKeysSql(scopeFilter: string): string {
 
 function missingKeysSql(scopeFilter: string): string {
   return `
-    SELECT 'missing', ${KIND_RANK.missing}, e.id, e.name, e.category_id, NULL,
+    SELECT 'missing', ${KIND_RANK.missing}, e.id, e.name, e.source_id, NULL,
            e.missing_since, ARRAY[]::text[]
     FROM experiences e
     WHERE ${missingOpenSql('e')}
@@ -495,7 +495,7 @@ function facetsSql(f: Bound): string {
     -- of the menu that a curator picked it in — leaving a filter they can see
     -- the effect of and cannot untick. Dimmed at 0 instead.
     SELECT cat.id, cat.name, COALESCE(counted.n, 0) AS count
-    FROM experience_categories cat
+    FROM experience_sources cat
     LEFT JOIN (
       SELECT k.source_id, count(*)::int AS n
       FROM scoped k
@@ -535,14 +535,14 @@ function facetsSql(f: Bound): string {
     -- way back. The flag is read from the table for the same reason — scoped
     -- has already dropped those rows, so anything computed from it would say
     -- false about every run in the default view.
-    SELECT k.run_id AS id, l.category_id AS source_id, l.completed_at,
+    SELECT k.run_id AS id, l.source_id AS source_id, l.completed_at,
            count(*)::int AS count,
            EXISTS (SELECT 1 FROM curator_queue_set_aside sa
                     WHERE sa.user_id = ${USER_ID} AND sa.sync_log_id = k.run_id) AS set_aside
     FROM searched k
     JOIN experience_sync_logs l ON l.id = k.run_id
     WHERE ${f.source} AND ${f.kind} AND ${f.region}
-    GROUP BY k.run_id, l.category_id, l.completed_at
+    GROUP BY k.run_id, l.source_id, l.completed_at
   )
 , aside_counts AS (
     -- Batches, and only batches: the unit a curator set aside is the run
@@ -651,10 +651,10 @@ export async function queryQueueKeys(
   };
 
   // The same scope the seven statements carry, correlated on each row's own
-  // category rather than on a request filter: the union spans sources.
+  // source rather than on a request filter: the union spans sources.
   const scopeFilter = isAdmin
     ? 'TRUE'
-    : `(${curatorUnrestrictedScopeExists('e.category_id')} OR EXISTS (
+    : `(${curatorUnrestrictedScopeExists('e.source_id')} OR EXISTS (
          SELECT 1 FROM experience_regions er
          JOIN curator_scoped_regions s ON s.id = er.region_id
          WHERE er.experience_id = e.id

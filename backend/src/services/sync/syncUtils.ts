@@ -9,7 +9,7 @@
 
 import { eq } from 'drizzle-orm';
 import { pool, db } from '../../db/index.js';
-import { experienceSyncLogs, experienceCategories } from '../../db/schema.js';
+import { experienceSyncLogs, experienceSources } from '../../db/schema.js';
 import {
   writeExperienceLocations, type LocationWriteResult, type LocationWriteRun,
 } from './locationWriter.js';
@@ -52,15 +52,15 @@ export async function upsertSingleLocation(
  * Create a new sync log entry with status 'running'.
  */
 export async function createSyncLog(
-  categoryId: number,
+  sourceId: number,
   triggeredBy: number | null,
   isDryRun: boolean = false,
 ): Promise<number> {
   const result = await pool.query(
-    `INSERT INTO experience_sync_logs (category_id, triggered_by, status, is_dry_run)
+    `INSERT INTO experience_sync_logs (source_id, triggered_by, status, is_dry_run)
      VALUES ($1, $2, 'running', $3)
      RETURNING id`,
-    [categoryId, triggeredBy, isDryRun]
+    [sourceId, triggeredBy, isDryRun]
   );
   return result.rows[0].id;
 }
@@ -87,12 +87,12 @@ export interface SyncLogStats {
 /**
  * Update a sync log entry with final status and stats.
  *
- * Also updates the experience_categories table with last sync info — except
+ * Also updates the experience_sources table with last sync info — except
  * after a dry run, which synced nothing. Claiming otherwise there would make
- * the category's own record of its last sync a lie.
+ * the source's own record of its last sync a lie.
  */
 export async function updateSyncLog(
-  categoryId: number,
+  sourceId: number,
   logId: number,
   status: string,
   stats: SyncLogStats,
@@ -126,12 +126,12 @@ export async function updateSyncLog(
   if (result.rows[0]?.is_dry_run) return;
 
   await pool.query(
-    `UPDATE experience_categories SET
+    `UPDATE experience_sources SET
       last_sync_at = NOW(),
       last_sync_status = $2,
       last_sync_error = $3
      WHERE id = $1`,
-    [categoryId, status, status === 'failed' ? 'See sync log for details' : null]
+    [sourceId, status, status === 'failed' ? 'See sync log for details' : null]
   );
 }
 
@@ -149,11 +149,11 @@ export async function updateSyncLog(
  * caller has any way to recompute.
  *
  * Touches only `status` and `error_details`, and mirrors the status onto the
- * category the same way `updateSyncLog` does, since that is what both admin
+ * source the same way `updateSyncLog` does, since that is what both admin
  * surfaces read.
  */
 export async function annotateClosedSyncLog(
-  categoryId: number,
+  sourceId: number,
   logId: number,
   status: string,
   errorDetails: unknown[],
@@ -162,7 +162,7 @@ export async function annotateClosedSyncLog(
   // no PostGIS in them, which is where the raw `pool` is reserved for.
   //
   // One transaction, because the two rows are one statement of fact: the log
-  // marked and the category not would leave the admin surfaces disagreeing
+  // marked and the source not would leave the admin surfaces disagreeing
   // about the run they both read.
   await db.transaction(async (tx) => {
     const [log] = await tx
@@ -177,11 +177,11 @@ export async function annotateClosedSyncLog(
     // downgrade would leave a stale message from an earlier failed run standing
     // next to this run's new status.
     await tx
-      .update(experienceCategories)
+      .update(experienceSources)
       .set({
         lastSyncStatus: status,
         lastSyncError: status === 'failed' ? 'See sync log for details' : null,
       })
-      .where(eq(experienceCategories.id, categoryId));
+      .where(eq(experienceSources.id, sourceId));
   });
 }

@@ -4,7 +4,7 @@
  * pulled out of `museumSyncService.ts` so a second kind whose rows also carry
  * a Wikidata QID can run its own repair through the same mechanism rather than
  * sharing the museum's. `makeWikidataPictureRepair` closes over what makes one
- * source's repair different from another's: which category's rows to look at,
+ * source's repair different from another's: which source's rows to look at,
  * and the line its log messages carry.
  */
 
@@ -130,8 +130,8 @@ async function creditsForFixedImages(
 
 /**
  * Build the repair for one source: fix missing images — re-fetch a Wikidata
- * picture for every row of `categoryId` that has none, or still carries an old
- * local path. `categoryId` picks the rows and doubles as the `runningSyncs`
+ * picture for every row of `sourceId` that has none, or still carries an old
+ * local path. `sourceId` picks the rows and doubles as the `runningSyncs`
  * key it refuses a second start under; `logPrefix` names the source in the
  * lines it logs and in the message of the "already running" refusal, the way
  * `syncOrchestrator.ts` names a sync; `noun` names what a row *is* in those
@@ -139,11 +139,11 @@ async function creditsForFixedImages(
  * reads "places" rather than borrowing the other source's word.
  */
 export function makeWikidataPictureRepair(
-  categoryId: number, logPrefix: string, noun: { singular: string; plural: string },
+  sourceId: number, logPrefix: string, noun: { singular: string; plural: string },
 ): (triggeredBy: number | null) => Promise<void> {
   return async function fixImages(_triggeredBy: number | null): Promise<void> {
     // Check if already running
-    const existing = runningSyncs.get(categoryId);
+    const existing = runningSyncs.get(sourceId);
     if (existing && !isTerminalSyncStatus(existing.status)) {
       throw new Error(`${logPrefix} sync already in progress`);
     }
@@ -167,17 +167,17 @@ export function makeWikidataPictureRepair(
       logId: null,
       dryRun: false,
     };
-    runningSyncs.set(categoryId, progress);
+    runningSyncs.set(sourceId, progress);
 
     try {
       // Find rows missing an image or with an old local path
       const result = await pool.query(`
         SELECT id, external_id, name, metadata
         FROM experiences
-        WHERE category_id = $1
+        WHERE source_id = $1
           AND (image_url IS NULL OR image_url = '' OR image_url LIKE '/images/%')
           AND metadata IS NOT NULL
-      `, [categoryId]);
+      `, [sourceId]);
 
       const rows = result.rows;
       progress.total = rows.length;
@@ -223,8 +223,8 @@ export function makeWikidataPictureRepair(
     } finally {
       const thisProgress = progress;
       setTimeout(() => {
-        if (runningSyncs.get(categoryId) === thisProgress) {
-          runningSyncs.delete(categoryId);
+        if (runningSyncs.get(sourceId) === thisProgress) {
+          runningSyncs.delete(sourceId);
         }
       }, 30000);
     }

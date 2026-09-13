@@ -12,7 +12,7 @@ import { resolveMainPoint, buildUnescoTags, isInDanger, transformRecord } from '
 import type { UnescoApiRecord, ParsedLocation } from './types.js';
 
 function record(overrides: Partial<UnescoApiRecord> = {}): UnescoApiRecord {
-  return { id_no: '136', name_en: 'Garamba National Park', category: 'Natural', ...overrides };
+  return { id_no: '136', name_en: 'Garamba National Park', source: 'Natural', ...overrides };
 }
 
 function component(overrides: Partial<ParsedLocation> = {}): ParsedLocation {

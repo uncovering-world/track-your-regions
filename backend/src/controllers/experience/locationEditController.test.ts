@@ -45,7 +45,7 @@ function makeRes() {
 
 const CURATOR = { id: 7, role: 'curator' as const };
 /** A real museum and its only point: the shape the anchor rule is about. */
-const POINT = { experience_id: 6212, category_id: 2 };
+const POINT = { experience_id: 6212, source_id: 2 };
 
 function makeClient(stored: Record<string, unknown> = {}) {
   const queries: Array<{ sql: string; params: unknown[] }> = [];

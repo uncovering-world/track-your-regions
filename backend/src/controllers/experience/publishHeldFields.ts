@@ -34,7 +34,7 @@ interface ProposedField {
   old?: unknown;
   new?: unknown;
   curatedConflict?: boolean;
-  /** The category's gate kept this write out, and publishing is its answer. */
+  /** The source's gate kept this write out, and publishing is its answer. */
   held?: boolean;
 }
 

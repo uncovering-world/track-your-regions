@@ -215,7 +215,7 @@ describe('what the worship run writes', () => {
 
     const params = mockedUpsert.mock.calls[0][0];
     expect(params).toMatchObject({
-      categoryId: 4,
+      sourceId: 4,
       externalId: COLOGNE,
       name: 'Cologne Cathedral',
       // A reader browses the kind and filters by the word (ADR-0045): the type
@@ -273,7 +273,7 @@ describe('what the worship run writes', () => {
       [expect.objectContaining({ externalId: SHRINE })],
       expect.anything(),
       {
-        syncLogId: 51, withdrawalSkippedReason: 'this run placed 1 of the 10 works', categoryId: 4,
+        syncLogId: 51, withdrawalSkippedReason: 'this run placed 1 of the 10 works', sourceId: 4,
       },
       expect.anything(),
     );
@@ -335,7 +335,7 @@ describe('what the worship run tells the orchestrator', () => {
   it('is a ranked source that recomputes its membership and badges what it admits', async () => {
     const config = await configOf();
 
-    expect(config.categoryId).toBe(4);
+    expect(config.sourceId).toBe(4);
     expect(config.sourceCompleteness).toBe('ranked');
     expect(config.recomputesMembership).toBe(true);
     // Both doors are the world tier (ADR-0045 decision 5): a place clears the

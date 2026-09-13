@@ -78,7 +78,7 @@ export function hideLostSql(alias = 'e'): string {
  * Museum of Berlin" survived into a list of top art museums.
  *
  * Visits are untouched, as under ADR-0022. Someone who stood in the British
- * Museum stood in it, and that record cannot depend on which of our categories
+ * Museum stood in it, and that record cannot depend on which of our kinds
  * currently claims the building.
  */
 export function hideRefusedSql(alias = 'e'): string {

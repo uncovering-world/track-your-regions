@@ -157,7 +157,7 @@ function parsePool(rows: SparqlBinding[], options: { placeless?: boolean } = {})
  *
  * The runner rather than the bare door, because a band is a unit of work a
  * person can be told about and can interrupt. A band that fails after its
- * retries fails the run: the pool decides which rows the category admits
+ * retries fails the run: the pool decides which rows the source admits
  * (ADR-0024), so a quietly short pool would refuse real monuments and report
  * success. What the bands buy is that each question is small enough to
  * answer, and that a retry starts from the cached bands rather than nothing.
@@ -184,7 +184,7 @@ export async function fetchBroadPool(
 
 /**
  * The same facts the pool carries, for entities asked for by id: the rows the
- * category admits that no class question named this run, so the rule can
+ * source admits that no class question named this run, so the rule can
  * refuse them with a reason of their own — "14 sitelinks: below the line",
  * "no public-art class", "no coordinates of its own" — rather than leave
  * them to the sweep. No sitelink floor, no class and no coordinate required,

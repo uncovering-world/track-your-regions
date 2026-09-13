@@ -4,16 +4,16 @@
  * Two promises on this path live in a parameter number and a `RETURNING` clause,
  * and neither announces itself when it breaks. A treasure is globally shared, so
  * its `curation_state` cannot be reached through an experience and reads the gate
- * from the museum category, bound positionally as the last of twelve parameters
+ * from the museum source, bound positionally as the last of twelve parameters
  * whose other members are mostly numbers — swap it with a sitelink threshold and
  * the statement still runs, still type-checks, and stamps by whether `140`
- * happens to be a gated category id. And the link's `ON CONFLICT DO NOTHING ...
+ * happens to be a gated source id. And the link's `ON CONFLICT DO NOTHING ...
  * RETURNING treasure_id` is the only thing telling "the museum gained a work"
  * from "the run listed one it already had", which is what decides whether a
  * curator's pass over the whole museum is retired.
  *
  * The stamps themselves were proved against a real database in the commit that
- * added them: a gated category writing `pending`, a trusted one writing `auto`,
+ * added them: a gated source writing `pending`, a trusted one writing `auto`,
  * and a stored work keeping the state a curator gave it. What a live run cannot
  * tell apart from luck is which value the gate was reading, and whether a link
  * that was already there counted as an arrival — which is what these pin.
@@ -83,7 +83,7 @@ const NO_CREDITS: TreasureCredits = { fetched: new Map(), stored: new Map() };
  * never point the museum at the run that held it — and, since ADR-0044, would
  * mark links on a run nothing measured.
  */
-const RUN: TreasureWriteRun = { syncLogId: 42, withdrawalSkippedReason: null, categoryId: 2 };
+const RUN: TreasureWriteRun = { syncLogId: 42, withdrawalSkippedReason: null, sourceId: 2 };
 
 const upsertMuseumTreasures = (
   experienceId: number, artworks: ProcessedContent[], credits: TreasureCredits = NO_CREDITS,
@@ -91,8 +91,8 @@ const upsertMuseumTreasures = (
 ) => writeTreasures(experienceId, artworks, credits, run, placedElsewhere);
 const mockedRetire = retirePassAfterNewContent as unknown as ReturnType<typeof vi.fn>;
 
-/** `Art Museums` — the category a treasure's gate is read from. */
-const MUSEUM_CATEGORY_ID = 2;
+/** `Art Museums` — the source a treasure's gate is read from. */
+const MUSEUM_SOURCE_ID = 2;
 const EXPERIENCE_ID = 77;
 
 function artwork(overrides: Partial<ProcessedContent> = {}): ProcessedContent {
@@ -152,7 +152,7 @@ describe('a work arrives marked as unread', () => {
     mockedRetire.mockReset();
   });
 
-  it('reads the gate from the museum category, whatever number that parameter takes', async () => {
+  it('reads the gate from the museum source, whatever number that parameter takes', async () => {
     scriptWorks('new');
 
     await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
@@ -161,18 +161,18 @@ describe('a work arrives marked as unread', () => {
     // is not the promise, the value reaching it is. Renumber the list and this
     // still passes; bind the gate to `ICONIC_RELEASE` and it fails.
     const sql = String(treasureCall()[0]);
-    const gate = /requires_curation FROM experience_categories WHERE id = \$(\d+)\)/.exec(sql);
+    const gate = /requires_curation FROM experience_sources WHERE id = \$(\d+)\)/.exec(sql);
     expect(gate, 'the treasure insert no longer reads the gate at all').not.toBeNull();
 
     const params = treasureCall()[1] as unknown[];
-    expect(params[Number(gate![1]) - 1]).toBe(MUSEUM_CATEGORY_ID);
+    expect(params[Number(gate![1]) - 1]).toBe(MUSEUM_SOURCE_ID);
   });
 
   it('binds the source it was told, not a museum constant', async () => {
     scriptWorks('new');
 
     await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()], NO_CREDITS,
-      { syncLogId: 1, withdrawalSkippedReason: null, categoryId: 4 }, []);
+      { syncLogId: 1, withdrawalSkippedReason: null, sourceId: 4 }, []);
 
     // The same statement as the test above, told a different source: the
     // parameter follows the run rather than a constant this module used to hold.
@@ -334,9 +334,9 @@ describe('a work arrives marked as unread', () => {
     await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
 
     // Unlike the treasure, a link belongs to one museum, so it can reach the
-    // category the way every other content row does.
+    // source the way every other content row does.
     const sql = String(linkCall()[0]);
-    expect(sql).toMatch(/FROM experiences e JOIN experience_categories c ON c\.id = e\.category_id/);
+    expect(sql).toMatch(/FROM experiences e JOIN experience_sources c ON c\.id = e\.source_id/);
     expect(sql).toMatch(/WHERE e\.id = \$1/);
     expect(linkCall()[1]).toEqual([EXPERIENCE_ID, 900]);
   });
@@ -623,7 +623,7 @@ describe('what a run stores about a work photograph', () => {
     });
 
     // Resolved through the statement rather than asserted as `$9`, for the same
-    // reason the category gate is: the position is not the promise.
+    // reason the source gate is: the position is not the promise.
     const sql = String(treasureCall()[0]);
     const columns = /INSERT INTO treasures \(([\s\S]*?)\) VALUES/.exec(sql);
     const index = columns![1].split(',').map(c => c.trim()).indexOf('metadata');
@@ -673,7 +673,7 @@ describe('what a run stores about a work photograph', () => {
  * ADR-0037 that covers a work's fields as it has always covered the museum's
  * own. Measured before this existed: run 64 rewrote the attribution of The Wine
  * Glass (Gemäldegalerie) from Johannes Vermeer to an obscure namesake, live,
- * under a gated category, with nobody asked (#717). The row's own state decides
+ * under a gated source, with nobody asked (#717). The row's own state decides
  * visibility — a work verified through one venue is on show there even where
  * another venue's link is still pending.
  */
@@ -719,7 +719,7 @@ describe('a visible work under a gated source', () => {
     const onUpdate = sql.slice(sql.indexOf('DO UPDATE SET'));
     // The gate, bound as the same parameter the insert reads it from, and the
     // row's own state — never the link's, and never EXCLUDED's.
-    const gate = "OR ((SELECT requires_curation FROM experience_categories WHERE id = $12)";
+    const gate = "OR ((SELECT requires_curation FROM experience_sources WHERE id = $12)";
     for (const column of ['name', 'year', 'image_url']) {
       expect(onUpdate, column).toContain(`${column} = CASE WHEN treasures.curated_fields ? '${column}' ${gate}`);
     }
@@ -829,7 +829,7 @@ describe('a visible work under a gated source', () => {
     scriptHeld(true);
 
     await upsertMuseumTreasures(EXPERIENCE_ID, [offer()], NO_CREDITS,
-      { syncLogId: null, withdrawalSkippedReason: null, categoryId: 2 });
+      { syncLogId: null, withdrawalSkippedReason: null, sourceId: 2 });
 
     expect(sentSql().filter(s => POINTER.test(s))).toEqual([]);
   });
@@ -868,7 +868,7 @@ describe('the links of works a run no longer places here', () => {
     syncLogId: 42,
     withdrawalSkippedReason: 'this run placed 291 of the 1301 works the catalogue offers at the '
       + '100 museums it admits (22.4%), below the 90% floor',
-    categoryId: 2,
+    sourceId: 2,
   };
 
   it('compares the museum against every work the run offered, by the id the upsert answered', async () => {

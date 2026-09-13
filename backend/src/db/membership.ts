@@ -134,3 +134,45 @@ export function admissionPinnedSql(alias = 'm'): string {
 export function iconicPinnedSql(alias = 'm'): string {
   return `${alias}.curated_fields ? 'is_iconic'`;
 }
+
+/**
+ * The kind a row is shown under — its group, its pin colour, the chip beside
+ * its name — read from the membership the row's own source brought (#819).
+ *
+ * `experiences.source_id` names the source that brought the place, and that
+ * source fills one kind (`experience_sources.kind_id`), so the membership
+ * with `source_id = e.source_id` is the row's own: exactly one per place, the
+ * equality the catalogue check `membership-source-disagrees-with-row` holds.
+ * A place in two kinds (#755) has a card in each list by ADR-0045 decision 4,
+ * and which membership a region's list shows it under — or whether it shows
+ * both — is that merge's design; until then the join is one row per place and
+ * reads exactly as `e.source_id` did, since the kinds carry their sources'
+ * ids.
+ *
+ * A LEFT JOIN, deliberately. The kind is a column the row is shown with, not
+ * a predicate that decides whether it is shown: the four questions that
+ * decide that are asked of the place (`placeOfferedSql` and its parts), and
+ * a count, a page of keys and the rows under them must agree. An inner join
+ * here would drop a row whose membership names another source — the state
+ * the catalogue check reports — from the list but not from its count, and
+ * from the review queue's cards but not from its keys and facets. Such a row
+ * comes back with a null kind instead, and the check names it.
+ *
+ * `experience` is the `experiences` alias; `membership` and `kind` the
+ * aliases the two joined tables take, so a query that already joins the
+ * membership as `m` can name another and a CTE called `m` can stay called
+ * `m`.
+ */
+export function rowKindJoinSql(experience = 'e', membership = 'm', kind = 'k'): string {
+  return `LEFT JOIN ${MEMBERSHIPS} ${membership} ON ${membership}.experience_id = ${experience}.id AND ${membership}.source_id = ${experience}.source_id
+      LEFT JOIN ${KINDS} ${kind} ON ${kind}.id = ${membership}.kind_id`;
+}
+
+/**
+ * The three columns a reader-facing row carries for its kind: `kind_id`,
+ * `kind_name` and `kind_priority` (the kind's display order — what the list
+ * groups and orders by). Over the aliases `rowKindJoinSql` introduced.
+ */
+export function rowKindSelectSql(membership = 'm', kind = 'k'): string {
+  return `${membership}.kind_id, ${kind}.name AS kind_name, ${kind}.display_priority AS kind_priority`;
+}

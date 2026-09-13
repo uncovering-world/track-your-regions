@@ -108,12 +108,12 @@ describe('declineHeldValue', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedConnect.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [{ id: 1138, category_id: 1 }] });
+    mockedQuery.mockResolvedValue({ rows: [{ id: 1138, source_id: 1 }] });
   });
 
   it('refuses a curator whose scope does not reach the experience', async () => {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 1138, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 1138, source_id: 1 }] });
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const { client } = makeClient({ proposal: GETBOL });
     mockedConnect.mockResolvedValue(client);

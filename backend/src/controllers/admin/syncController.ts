@@ -1,7 +1,7 @@
 /**
  * Admin Sync Controller
  *
- * Handles sync operations for experience categories (UNESCO, etc.)
+ * Handles sync operations for experience sources (UNESCO, etc.)
  */
 
 import { Request, Response } from 'express';
@@ -9,7 +9,7 @@ import { isTerminalSyncStatus } from '../../services/sync/types.js';
 import { isCancellable } from '../../services/sync/syncOrchestrator.js';
 import { CHANGESET_LOST_MARKER } from '../../services/sync/syncLogMarkers.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { waitingCountsByCategory } from '../experience/waitingCounts.js';
+import { waitingCountsBySource } from '../experience/waitingCounts.js';
 import {
   syncUnescoSites,
   syncMuseums,
@@ -28,12 +28,12 @@ import {
 } from '../../services/sync/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import {
-  cacheSummary, clearCache, setCacheTtl, CACHED_KINDS_BY_CATEGORY, type CacheKind,
+  cacheSummary, clearCache, setCacheTtl, CACHED_KINDS_BY_SOURCE, type CacheKind,
 } from '../../services/sync/wikidataCache.js';
 
-const UNESCO_CATEGORY_ID = 1;
-const MUSEUM_CATEGORY_ID = 2;
-const WORSHIP_CATEGORY_ID = 4;
+const UNESCO_SOURCE_ID = 1;
+const MUSEUM_SOURCE_ID = 2;
+const WORSHIP_SOURCE_ID = 4;
 
 /**
  * Which sources a picture repair can be started for, and what it runs.
@@ -43,12 +43,12 @@ const WORSHIP_CATEGORY_ID = 4;
  * button offered where the route says 400 is a button that does nothing.
  */
 const PICTURE_REPAIRS: Record<number, (triggeredBy: number | null) => Promise<void>> = {
-  [UNESCO_CATEGORY_ID]: fixUnescoImages,
-  [MUSEUM_CATEGORY_ID]: fixMuseumImages,
-  [WORSHIP_CATEGORY_ID]: fixWorshipImages,
+  [UNESCO_SOURCE_ID]: fixUnescoImages,
+  [MUSEUM_SOURCE_ID]: fixMuseumImages,
+  [WORSHIP_SOURCE_ID]: fixWorshipImages,
 };
 
-/** Registry mapping category IDs to their sync functions */
+/** Registry mapping source IDs to their sync functions */
 const syncRegistry: Record<
   number,
   (triggeredBy: number | null, options: { dryRun?: boolean; refreshCache?: boolean }) => Promise<void>
@@ -61,15 +61,15 @@ const syncRegistry: Record<
 
 /**
  * Start sync for a source
- * POST /api/admin/sync/categories/:categoryId/start
+ * POST /api/admin/sync/sources/:sourceId/start
  */
 export async function startSync(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const categoryId = parseInt(String(req.params.categoryId));
+  const sourceId = parseInt(String(req.params.sourceId));
 
   // Validate source exists
   const source = await pool.query(
-    'SELECT id, name, is_active FROM experience_categories WHERE id = $1',
-    [categoryId]
+    'SELECT id, name, is_active FROM experience_sources WHERE id = $1',
+    [sourceId]
   );
 
   if (source.rows.length === 0) {
@@ -83,7 +83,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
   }
 
   // Check if already running
-  const existing = runningSyncs.get(categoryId);
+  const existing = runningSyncs.get(sourceId);
   if (existing && !isTerminalSyncStatus(existing.status)) {
     res.status(409).json({ error: 'Sync already in progress for this source' });
     return;
@@ -99,21 +99,21 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
   const refreshCache = req.body.refreshCache === true;
 
   // Start sync based on source type
-  const syncFn = syncRegistry[categoryId];
+  const syncFn = syncRegistry[sourceId];
   if (!syncFn) {
     res.status(400).json({ error: `Sync not implemented for source: ${source.rows[0].name}` });
     return;
   }
 
   syncFn(triggeredBy, { dryRun, refreshCache }).catch((err) => {
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- categoryId is a parseInt result, so it cannot carry a format specifier
-    console.error(`[Sync Controller] Sync error for category ${categoryId}:`, err);
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- sourceId is a parseInt result, so it cannot carry a format specifier
+    console.error(`[Sync Controller] Sync error for source ${sourceId}:`, err);
   });
 
   res.json({
     started: true,
-    categoryId,
-    categoryName: source.rows[0].name,
+    sourceId,
+    sourceName: source.rows[0].name,
     dryRun,
     refreshCache,
     message: buildStartMessage({ dryRun, refreshCache }),
@@ -135,30 +135,30 @@ function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean }): st
 
 /**
  * What answers we are keeping from the source, and how old they are.
- * GET /api/admin/sync/categories/:categoryId/cache
+ * GET /api/admin/sync/sources/:sourceId/cache
  */
 export async function getWikidataCache(req: Request, res: Response): Promise<void> {
-  const categoryId = parseInt(String(req.params.categoryId));
-  res.json({ kinds: await cacheSummary(categoryId) });
+  const sourceId = parseInt(String(req.params.sourceId));
+  res.json({ kinds: await cacheSummary(sourceId) });
 }
 
 /**
  * Forget them — all, or one kind.
- * DELETE /api/admin/sync/categories/:categoryId/cache?kind=classes
+ * DELETE /api/admin/sync/sources/:sourceId/cache?kind=classes
  *
  * A delete rather than an expiry stamp: an admin pressing this means "ask the
  * source again", and a row marked expired reads the same as one that aged out.
  */
 export async function clearWikidataCache(req: Request, res: Response): Promise<void> {
-  const categoryId = parseInt(String(req.params.categoryId));
+  const sourceId = parseInt(String(req.params.sourceId));
   const kind = typeof req.query.kind === 'string' ? req.query.kind : undefined;
-  const removed = await clearCache(categoryId, kind);
+  const removed = await clearCache(sourceId, kind);
   res.json({ removed, kind: kind ?? null });
 }
 
 /**
  * Change how long one kind stays fresh.
- * PUT /api/admin/sync/categories/:categoryId/cache/:kind/ttl  { hours }
+ * PUT /api/admin/sync/sources/:sourceId/cache/:kind/ttl  { hours }
  *
  * Answers with how many kept answers were re-stamped, because that is the part
  * an admin cannot predict: shortening a lifetime can expire everything of that
@@ -166,7 +166,7 @@ export async function clearWikidataCache(req: Request, res: Response): Promise<v
  * or five hundred.
  */
 export async function setWikidataCacheTtl(req: Request, res: Response): Promise<void> {
-  const categoryId = parseInt(String(req.params.categoryId));
+  const sourceId = parseInt(String(req.params.sourceId));
   const kind = String(req.params.kind);
   const hours = Number((req.body as { hours: number }).hours);
 
@@ -176,7 +176,7 @@ export async function setWikidataCacheTtl(req: Request, res: Response): Promise<
   // and a panel that never shows it because the panel lists the kinds a source
   // declares rather than the rows that exist. Refused by name, so the caller
   // learns which kinds this source actually has.
-  const declared = CACHED_KINDS_BY_CATEGORY[categoryId] ?? [];
+  const declared = CACHED_KINDS_BY_SOURCE[sourceId] ?? [];
   if (!declared.includes(kind as CacheKind)) {
     res.status(400).json({
       error: declared.length === 0
@@ -186,19 +186,19 @@ export async function setWikidataCacheTtl(req: Request, res: Response): Promise<
     return;
   }
 
-  const { restamped } = await setCacheTtl(categoryId, kind, Math.round(hours * 60 * 60 * 1000));
+  const { restamped } = await setCacheTtl(sourceId, kind, Math.round(hours * 60 * 60 * 1000));
   res.json({ kind, hours, restamped });
 }
 
 /**
  * Get sync status for a source
- * GET /api/admin/sync/categories/:categoryId/status
+ * GET /api/admin/sync/sources/:sourceId/status
  */
 export async function getSyncStatus(req: Request, res: Response): Promise<void> {
-  const categoryId = parseInt(String(req.params.categoryId));
+  const sourceId = parseInt(String(req.params.sourceId));
 
-  // Get in-memory sync status (generic for all categories)
-  const status = getServiceSyncStatus(categoryId);
+  // Get in-memory sync status (generic for all sources)
+  const status = getServiceSyncStatus(sourceId);
 
   if (status) {
     const isRunning = !isTerminalSyncStatus(status.status);
@@ -233,8 +233,8 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
 
   // No in-memory status - check the database for last sync status
   const source = await pool.query(
-    'SELECT last_sync_at, last_sync_status FROM experience_categories WHERE id = $1',
-    [categoryId]
+    'SELECT last_sync_at, last_sync_status FROM experience_sources WHERE id = $1',
+    [sourceId]
   );
 
   if (source.rows.length === 0) {
@@ -251,38 +251,38 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
 
 /**
  * Cancel sync for a source
- * POST /api/admin/sync/categories/:categoryId/cancel
+ * POST /api/admin/sync/sources/:sourceId/cancel
  */
 export async function cancelSync(req: Request, res: Response): Promise<void> {
-  const categoryId = parseInt(String(req.params.categoryId));
+  const sourceId = parseInt(String(req.params.sourceId));
 
   const source = await pool.query(
-    'SELECT id FROM experience_categories WHERE id = $1',
-    [categoryId]
+    'SELECT id FROM experience_sources WHERE id = $1',
+    [sourceId]
   );
   if (source.rows.length === 0) {
     res.status(404).json({ error: 'Source not found' });
     return;
   }
 
-  const cancelled = cancelServiceSync(categoryId);
+  const cancelled = cancelServiceSync(sourceId);
   res.json({ cancelled });
 }
 
 /**
  * Fix missing images for a source
- * POST /api/admin/sync/categories/:categoryId/fix-images
+ * POST /api/admin/sync/sources/:sourceId/fix-images
  *
  * Two sources answer it, and they answer different questions. For museums it is
  * a picture that was never found; for World Heritage sites it is a picture that
  * was found and may not be shown — the World Heritage Centre's own photographs,
  * which its terms do not license to this product, replaced from Commons or taken
  * away (ADR-0043, #557). Both write now rather than proposing: a repair of the
- * catalogue is an operator's decision, and under a gated category a proposal
+ * catalogue is an operator's decision, and under a gated source a proposal
  * would be a thousand cards nobody asked for.
  */
 export async function fixImages(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const categoryId = parseInt(String(req.params.categoryId));
+  const sourceId = parseInt(String(req.params.sourceId));
   const triggeredBy = req.user?.id || null;
 
   // The same three doors startSync stands at, answered in its order before
@@ -293,8 +293,8 @@ export async function fixImages(req: AuthenticatedRequest, res: Response): Promi
   // got `started: true`, the panel followed the *sync*, and it ended in a
   // sync's sentence with no picture repaired and nothing saying so.
   const source = await pool.query(
-    'SELECT id, is_active FROM experience_categories WHERE id = $1',
-    [categoryId],
+    'SELECT id, is_active FROM experience_sources WHERE id = $1',
+    [sourceId],
   );
   if (source.rows.length === 0) {
     res.status(404).json({ error: 'Source not found' });
@@ -304,20 +304,20 @@ export async function fixImages(req: AuthenticatedRequest, res: Response): Promi
     res.status(400).json({ error: 'Source is not active' });
     return;
   }
-  const repair = PICTURE_REPAIRS[categoryId];
+  const repair = PICTURE_REPAIRS[sourceId];
   if (!repair) {
     res.status(400).json({ error: 'Fix images not implemented for this source' });
     return;
   }
-  const existing = runningSyncs.get(categoryId);
+  const existing = runningSyncs.get(sourceId);
   if (existing && !isTerminalSyncStatus(existing.status)) {
     res.status(409).json({ error: 'Sync already in progress for this source' });
     return;
   }
 
   repair(triggeredBy).catch((err) => {
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- categoryId is a parseInt result, so it cannot carry a format specifier
-    console.error(`[Sync Controller] Fix images error for category ${categoryId}:`, err);
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- sourceId is a parseInt result, so it cannot carry a format specifier
+    console.error(`[Sync Controller] Fix images error for source ${sourceId}:`, err);
   });
   res.json({ started: true, message: 'Fixing pictures. Poll /status endpoint for progress.' });
 }
@@ -327,15 +327,15 @@ export async function fixImages(req: AuthenticatedRequest, res: Response): Promi
  * GET /api/admin/sync/logs
  */
 export async function getSyncLogs(req: Request, res: Response): Promise<void> {
-  const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : null;
+  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : null;
   const limit = Math.min(parseInt(String(req.query.limit)) || 20, 100);
   const offset = parseInt(String(req.query.offset)) || 0;
 
   let query = `
     SELECT
       l.id,
-      l.category_id,
-      s.name as category_name,
+      l.source_id,
+      s.name as source_name,
       l.started_at,
       l.completed_at,
       l.status,
@@ -365,16 +365,16 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
       -- record from an old run, nor a partial landing from a whole one.
       COALESCE(l.error_details @> '[${JSON.stringify(CHANGESET_LOST_MARKER)}]', FALSE) AS changeset_lost
     FROM experience_sync_logs l
-    JOIN experience_categories s ON l.category_id = s.id
+    JOIN experience_sources s ON l.source_id = s.id
     LEFT JOIN users u ON l.triggered_by = u.id
   `;
 
   const params: (number | string)[] = [];
   let paramIndex = 1;
 
-  if (categoryId) {
-    query += ` WHERE l.category_id = $${paramIndex++}`;
-    params.push(categoryId);
+  if (sourceId) {
+    query += ` WHERE l.source_id = $${paramIndex++}`;
+    params.push(sourceId);
   }
 
   query += ` ORDER BY l.started_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
@@ -385,9 +385,9 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
   // Get total count
   let countQuery = 'SELECT COUNT(*) FROM experience_sync_logs';
   const countParams: number[] = [];
-  if (categoryId) {
-    countQuery += ' WHERE category_id = $1';
-    countParams.push(categoryId);
+  if (sourceId) {
+    countQuery += ' WHERE source_id = $1';
+    countParams.push(sourceId);
   }
   const countResult = await pool.query(countQuery, countParams);
 
@@ -409,12 +409,12 @@ export async function getSyncLogDetails(req: Request, res: Response): Promise<vo
   const result = await pool.query(
     `SELECT
       l.*,
-      s.name as category_name,
+      s.name as source_name,
       u.display_name as triggered_by_name,
       EXISTS (SELECT 1 FROM experience_sync_changes c WHERE c.sync_log_id = l.id) AS has_changeset,
       COALESCE(l.error_details @> '[${JSON.stringify(CHANGESET_LOST_MARKER)}]', FALSE) AS changeset_lost
      FROM experience_sync_logs l
-     JOIN experience_categories s ON l.category_id = s.id
+     JOIN experience_sources s ON l.source_id = s.id
      LEFT JOIN users u ON l.triggered_by = u.id
      WHERE l.id = $1`,
     [logId]
@@ -526,13 +526,13 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
 
 /**
  * List all experience sources with assignment status
- * GET /api/admin/sync/categories
+ * GET /api/admin/sync/sources
  *
  * Reports each source's curation gate and what it is holding; the switch that *writes*
  * the gate is `curationGateController.ts`, because this file is about starting, watching
  * and cancelling runs while that is about what a run is allowed to show.
  */
-export async function getCategories(req: Request, res: Response): Promise<void> {
+export async function getSources(req: Request, res: Response): Promise<void> {
   // Get sources
   const sourcesResult = await pool.query(`
     SELECT
@@ -547,7 +547,7 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
       created_at,
       (api_config->>'enterSitelinks')::int AS enter_sitelinks,
       (api_config->>'staySitelinks')::int AS stay_sitelinks
-    FROM experience_categories
+    FROM experience_sources
     WHERE is_active = true
     ORDER BY display_priority, id
   `);
@@ -569,16 +569,16 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
   // argues: the counts are this endpoint's addition, the sources list is what it is
   // for. This aggregate walks every row of `experiences` with three `EXISTS` filters,
   // one of them a `LATERAL` into a run's changeset — a lock, a pool error or a slow
-  // scan on a grown catalogue is enough. A throw used to reject `getCategories`
+  // scan on a grown catalogue is enough. A throw used to reject `getSources`
   // entirely, and the panel that reads it destructures only `data`: no sources, no
   // Start Sync, no Cancel and no message saying why, on all three screens that share
   // the query. `null` costs three numbers and says so; the alternative cost the
   // screen.
-  let waiting: Awaited<ReturnType<typeof waitingCountsByCategory>> | null = null;
+  let waiting: Awaited<ReturnType<typeof waitingCountsBySource>> | null = null;
   try {
-    waiting = await waitingCountsByCategory();
+    waiting = await waitingCountsBySource();
   } catch (error) {
-    console.error('[sync/categories] waiting counts failed:', error);
+    console.error('[sync/sources] waiting counts failed:', error);
   }
 
   // No `assignment_needed` flag any more, and no `last_assignment_at` either.
@@ -608,7 +608,7 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
     // its own API and does not, and on it that button would promise to
     // bypass something that does not exist — the same pretence the cache
     // panel below it refuses to make.
-    caches: (CACHED_KINDS_BY_CATEGORY[source.id as number] ?? []).length > 0,
+    caches: (CACHED_KINDS_BY_SOURCE[source.id as number] ?? []).length > 0,
     // Whether this source's pictures can be repaired from here, read from the
     // same registry the route answers from — the museums' missing pictures, and
     // the World Heritage ones the Centre's terms do not let us show (ADR-0043).
@@ -626,7 +626,7 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
  */
 export async function startRegionAssignment(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.body.worldViewId || req.query.worldViewId));
-  const categoryId = req.body.categoryId ? parseInt(String(req.body.categoryId)) : undefined;
+  const sourceId = req.body.sourceId ? parseInt(String(req.body.sourceId)) : undefined;
 
   if (!worldViewId || isNaN(worldViewId)) {
     res.status(400).json({ error: 'worldViewId is required' });
@@ -645,7 +645,7 @@ export async function startRegionAssignment(req: Request, res: Response): Promis
   }
 
   // Start assignment in background
-  assignExperiencesToRegions(worldViewId, categoryId).catch((err) => {
+  assignExperiencesToRegions(worldViewId, sourceId).catch((err) => {
     console.error('[Sync Controller] Region assignment error:', err);
   });
 
@@ -653,7 +653,7 @@ export async function startRegionAssignment(req: Request, res: Response): Promis
     started: true,
     worldViewId,
     worldViewName: worldView.rows[0].name,
-    categoryId: categoryId || null,
+    sourceId: sourceId || null,
     message: 'Region assignment started. Poll /status endpoint for progress.',
   });
 }
@@ -711,27 +711,27 @@ export async function cancelRegionAssignment(req: Request, res: Response): Promi
  */
 export async function getExperienceCounts(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.query.worldViewId));
-  const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : undefined;
+  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : undefined;
 
   if (!worldViewId || isNaN(worldViewId)) {
     res.status(400).json({ error: 'worldViewId query parameter is required' });
     return;
   }
 
-  const counts = await getExperienceCountsByRegion(worldViewId, categoryId);
+  const counts = await getExperienceCountsByRegion(worldViewId, sourceId);
   res.json(counts);
 }
 
 /**
  * Reorder experience sources (set display_priority)
- * PUT /api/admin/sync/categories/reorder
- * Body: { categoryIds: [1, 3, 2] }  -- array of source IDs in desired order
+ * PUT /api/admin/sync/sources/reorder
+ * Body: { sourceIds: [1, 3, 2] }  -- array of source IDs in desired order
  */
-export async function reorderCategories(req: Request, res: Response): Promise<void> {
-  const { categoryIds } = req.body as { categoryIds?: number[] };
+export async function reorderSources(req: Request, res: Response): Promise<void> {
+  const { sourceIds } = req.body as { sourceIds?: number[] };
 
-  if (!Array.isArray(categoryIds) || categoryIds.length === 0) {
-    res.status(400).json({ error: 'categoryIds array is required' });
+  if (!Array.isArray(sourceIds) || sourceIds.length === 0) {
+    res.status(400).json({ error: 'sourceIds array is required' });
     return;
   }
 
@@ -744,10 +744,10 @@ export async function reorderCategories(req: Request, res: Response): Promise<vo
   let unusable: Error | undefined;
   try {
     await client.query('BEGIN');
-    for (let i = 0; i < categoryIds.length; i++) {
+    for (let i = 0; i < sourceIds.length; i++) {
       await client.query(
-        'UPDATE experience_categories SET display_priority = $1 WHERE id = $2',
-        [i + 1, categoryIds[i]]
+        'UPDATE experience_sources SET display_priority = $1 WHERE id = $2',
+        [i + 1, sourceIds[i]]
       );
     }
     await client.query('COMMIT');
@@ -760,5 +760,5 @@ export async function reorderCategories(req: Request, res: Response): Promise<vo
     client.release(unusable);
   }
 
-  res.json({ success: true, order: categoryIds });
+  res.json({ success: true, order: sourceIds });
 }

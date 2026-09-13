@@ -11,7 +11,7 @@ import {
   listExperiences,
   searchExperiences,
   getExperienceRegionCounts,
-  listCategories,
+  listKinds,
 } from './experienceQueryController.js';
 import { membershipAdmittedSql, membershipVisibleSql } from '../../db/membership.js';
 import { hidePendingSql, hideRefusedSql } from './experienceLifecycle.js';
@@ -24,11 +24,11 @@ function makeRes() {
 
 const EXPERIENCE_ROW = {
   id: 281,
-  category_id: 1,
+  source_id: 1,
   external_id: 'ext-281',
   name: 'Seowon, Korean Neo-Confucian Academies',
   type: 'cultural',
-  category_name: 'UNESCO',
+  kind_name: 'UNESCO',
 };
 
 // Mirrors the confirmed leak: experience 281 assigned to a region in hidden
@@ -154,13 +154,13 @@ describe('getExperience curation relaxation', () => {
 
   /**
    * Queues what a curator call to `getExperience` needs, in the order
-   * `maySeeUnreadExperience` asks for them: the category lookup, then
+   * `maySeeUnreadExperience` asks for them: the source lookup, then
    * `resolveExperienceScope`'s own scope query — both ahead of the two
    * `getExperience` makes itself.
    */
   function queueCuratorPath(scopeRow: { unrestricted: boolean; scoped_region_id: number | null }, regionRows: unknown[]) {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValueOnce({ rows: [{ category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ source_id: 1 }] });
     mockedQuery.mockResolvedValueOnce({ rows: [scopeRow] });
     mockedQuery.mockResolvedValueOnce({ rows: [EXPERIENCE_ROW] });
     mockedQuery.mockResolvedValueOnce({ rows: regionRows });
@@ -199,7 +199,7 @@ describe('getExperience curation relaxation', () => {
  * one that offers a demolished building.
  *
  * A by-id read is a different question and is answered differently: it hides a
- * row the category refused, and today leaves a `lost` one reachable, because
+ * row its kind refused, and today leaves a `lost` one reachable, because
  * that gap predates the admission axis and closing it is a separate decision
  * (`getExperience`'s own comment says so). Which case a path is belongs in the
  * array rather than in this paragraph, so `filtersLost` states it per path and
@@ -247,13 +247,13 @@ describe('lifecycle visibility across the read paths', () => {
     },
     {
       // The count that reported 128 art museums where the catalogue offers 101 —
-      // the 27 rows the category's own rule turned down (#503). It reads nothing
-      // off the request, because the number labels a category rather than a
+      // the 27 rows the kind's own rule turned down (#503). It reads nothing
+      // off the request, because the number labels a kind rather than a
       // page: there is no `includeLost` here to widen it.
-      name: 'the category counts',
+      name: 'the kind counts',
       filtersLost: true,
       countsMemberships: 'km',
-      run: () => listCategories({} as never, makeRes() as never),
+      run: () => listKinds({} as never, makeRes() as never),
     },
     {
       // The by-id read the other five are siblings of (ADR-0024) — the one this
@@ -281,7 +281,7 @@ describe('lifecycle visibility across the read paths', () => {
       const all = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
       // Alias-anchored: every path above reads `experiences` as `e`, and an
       // unanchored match would pass for a predicate on the wrong table. What it
-      // still cannot see is *where* the predicate landed — that a `listCategories`
+      // still cannot see is *where* the predicate landed — that a `listKinds`
       // filter sits inside the `experience_count` subquery and not in the outer
       // WHERE is Postgres's answer, not a mock's.
       if (filtersLost) {
@@ -301,7 +301,7 @@ describe('lifecycle visibility across the read paths', () => {
   }
 
   for (const { name, run, countsMemberships } of paths) {
-    it(`hides what this category refused from ${name}`, async () => {
+    it(`hides what its kind refused from ${name}`, async () => {
       await run();
 
       // Statement by statement rather than over every statement joined: a path
@@ -482,7 +482,7 @@ describe('lifecycle visibility across the read paths', () => {
     expect(count).not.toContain('$4');
   });
 
-  it('leaves an anonymous reader the category window alone', async () => {
+  it('leaves an anonymous reader the source window alone', async () => {
     await getExperiencesByRegion(
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
@@ -790,13 +790,14 @@ describe('searchExperiences region context', () => {
     expect(contextAt).toBeGreaterThan(limitAt);
   });
 
-  it('sends the category a row is filed under, which the search rows render', async () => {
+  it('sends the kind a row is shown under, which the search rows render', async () => {
     const sql = await searchSql();
 
-    // The curator's "search and assign" dialog has rendered `category_name`
-    // since it was written, against a field this read did not send.
-    expect(sql).toMatch(/c\.name as category_name/);
-    expect(sql).toMatch(/LEFT JOIN experience_categories c ON c\.id = m\.category_id/);
+    // The curator's "search and assign" dialog renders the row's kind; this
+    // read did not send it at all until #592, and sent the source's name until #819.
+    expect(sql).toContain('ek.name AS kind_name');
+    expect(sql).toMatch(/JOIN experience_kind_memberships em ON em\.experience_id = e\.id AND em\.source_id = e\.source_id/);
+    expect(sql).toContain('m.kind_name');
   });
 
   it('re-states the order outside the CTE, which a join does not carry', async () => {

@@ -282,7 +282,7 @@ function parsePool(rows: SparqlBinding[], fallbackType: string, fallbackQid: str
  * one answer.
  *
  * A band that fails after its retries fails the run, exactly as the single query
- * did. This is deliberate: the pool decides which museums this category admits
+ * did. This is deliberate: the pool decides which museums this source admits
  * (ADR-0024), so a quietly short pool would withdraw real museums and report
  * success — the one failure mode the whole admission axis exists to prevent.
  * What the bands buy is that each question is small enough to answer, and that a

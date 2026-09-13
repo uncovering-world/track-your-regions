@@ -92,7 +92,7 @@ function refusedBeforeWriting(
   { fieldsOnly }: { fieldsOnly?: true },
 ): string | null {
   // ADR-0025 decision 4, "Admission is asked before publication": whether an
-  // object belongs in this catalogue at all is a question a category's own rule
+  // object belongs in this catalogue at all is a question a source's own rule
   // answers (ADR-0024), and whether anyone has looked at it yet is a different
   // question, "asked only once the first has been answered yes". Publishing a
   // refused row asks the second first — which is what the review queue refuses
@@ -108,7 +108,7 @@ function refusedBeforeWriting(
   // transaction. Refused for a contents publish too, and for the same reason: a
   // refused museum's unread paintings raise no `contents` card either.
   if (row.admission === 'refused') {
-    return 'This row was turned down by its category — answer the refusal first, and putting it back publishes it';
+    return 'This row was turned down by its source — answer the refusal first, and putting it back publishes it';
   }
 
   // A `fieldsOnly` publish over an arrival would put an object in front of
@@ -201,7 +201,7 @@ interface PublishResult {
    * exactly when `placementFailed` is, and never empty.
    *
    * The caller cannot fix any of this: a re-assignment is admin-only, and this
-   * page's ordinary user is a region- or category-scoped curator. What they can
+   * page's ordinary user is a region- or source-scoped curator. What they can
    * do is tell an admin which object and which world views — so the answer has
    * to contain that, and a boolean plus a line in the server's log leaves them
    * saying "something about regions failed". `id: null` is the one case with no
@@ -255,7 +255,7 @@ export async function publishExperience(req: AuthenticatedRequest, res: Response
   const body = req.body as PublishRequest;
 
   const expResult = await pool.query(
-    `SELECT id, category_id FROM experiences WHERE id = $1`,
+    `SELECT id, source_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
@@ -264,7 +264,7 @@ export async function publishExperience(req: AuthenticatedRequest, res: Response
   }
 
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, expResult.rows[0].category_id as number,
+    userId, userRole, experienceId, expResult.rows[0].source_id as number,
   );
   if (!permitted) {
     res.status(403).json({ error: 'You do not have curator permissions for this experience' });

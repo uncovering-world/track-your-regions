@@ -1,8 +1,8 @@
 /**
  * Whether a venue that already passed the museum test is an *art* museum.
  *
- * The category holds art museums by product decision (2026-08-05): archaeology, egyptology,
- * natural-history and military museums are a separate import with their own category, not this
+ * The source holds art museums by product decision (2026-08-05): archaeology, egyptology,
+ * natural-history and military museums are a separate import with their own source, not this
  * one. The dry run measured the boundary and it never made it into the plan that shipped —
  * the first real run admitted 110 museums, of which an audit found 15 typed archaeology,
  * egyptology, natural history or military, 5 that are not institutions at all, and one

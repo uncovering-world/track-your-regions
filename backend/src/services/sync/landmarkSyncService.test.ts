@@ -3,7 +3,7 @@
  *
  * The collection is a pure pipeline with its own test and the orchestrator's
  * handling of refusals and the sweep has one too. What neither can see is the
- * join: that the run reads what the category already admits before asking,
+ * join: that the run reads what the source already admits before asking,
  * hands the collection's refusals back as the run's `filtered`, declares that
  * it recomputes its membership and that belonging is the badge, keeps its
  * answers unless told to refresh, and writes what the rule read onto the row.
@@ -90,13 +90,13 @@ beforeEach(() => {
 describe('syncLandmarks', () => {
   it('recomputes its membership every run, and belonging is the badge', async () => {
     const config = await configOf();
-    expect(config.categoryId).toBe(3);
+    expect(config.sourceId).toBe(3);
     expect(config.sourceCompleteness).toBe('ranked');
     expect(config.recomputesMembership).toBe(true);
     expect(config.badgesAdmitted).toBe(true);
   });
 
-  it('hands the collection what the category already admits, and its refusals back', async () => {
+  it('hands the collection what the source already admits, and its refusals back', async () => {
     const refusal = { externalId: 'Q1499912', name: 'Segovia Cathedral', reason: 'a place of worship, not public art' };
     mockedCollect.mockResolvedValue({ items: [landmark()], fetched: 5, filtered: [refusal] });
 
@@ -113,14 +113,14 @@ describe('syncLandmarks', () => {
   it('keeps its answers by default and asks the source afresh when told to', async () => {
     const config = await configOf({ refreshCache: true });
     await config.fetchItems(progress(), []);
-    expect(mockedWithCache.mock.calls[0][1]).toMatchObject({ categoryId: 3, enabled: false });
+    expect(mockedWithCache.mock.calls[0][1]).toMatchObject({ sourceId: 3, enabled: false });
 
     vi.clearAllMocks();
     mockedAdmitted.mockResolvedValue(new Set());
     mockedCollect.mockResolvedValue({ items: [], fetched: 0, filtered: [] });
     const plain = await configOf();
     await plain.fetchItems(progress(), []);
-    expect(mockedWithCache.mock.calls[0][1]).toMatchObject({ categoryId: 3, enabled: true });
+    expect(mockedWithCache.mock.calls[0][1]).toMatchObject({ sourceId: 3, enabled: true });
   });
 
   it('writes what the rule read onto the row', async () => {

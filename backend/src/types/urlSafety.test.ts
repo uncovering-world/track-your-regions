@@ -56,7 +56,7 @@ const MANUAL_BASE = {
   longitude: 10,
   latitude: 20,
   regionId: 1,
-  categoryId: 1,
+  kindId: 1,
 };
 
 describe('imageUrl a curator stores', () => {

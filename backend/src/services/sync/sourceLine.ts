@@ -6,7 +6,7 @@
  * shares one number and wrong as soon as one does not: a kind whose sources
  * enumerate different worlds needs its own line, and moving it takes a deploy.
  * The line is a property of the source, so it is stored on the source row
- * (`experience_categories.api_config`) — read by the run, edited from the admin
+ * (`experience_sources.api_config`) — read by the run, edited from the admin
  * panel (ADR-0052).
  *
  * Two numbers, not one, because the tier is hysteretic (ADR-0023): a row enters
@@ -57,11 +57,11 @@ export function parseSourceLine(apiConfig: unknown): SourceLine {
   return { enterSitelinks: enter, staySitelinks: stay };
 }
 
-export async function readSourceLine(categoryId: number): Promise<SourceLine> {
+export async function readSourceLine(sourceId: number): Promise<SourceLine> {
   const result = await pool.query(
-    'SELECT api_config FROM experience_categories WHERE id = $1',
-    [categoryId],
+    'SELECT api_config FROM experience_sources WHERE id = $1',
+    [sourceId],
   );
-  if (result.rows.length === 0) throw new Error(`No source row with id ${categoryId}`);
+  if (result.rows.length === 0) throw new Error(`No source row with id ${sourceId}`);
   return parseSourceLine(result.rows[0].api_config);
 }
