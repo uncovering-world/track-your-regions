@@ -25,6 +25,7 @@ docs/sources/
     ├── wikidata-by-class-per-unit.md
     ├── wikidata-places-of-worship.md
     ├── wikidata-archaeology.md
+    ├── wikipedia-archaeological-museum-categories.md
     └── …
 ```
 

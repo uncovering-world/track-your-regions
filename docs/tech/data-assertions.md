@@ -358,10 +358,19 @@ though on a refusal alone rather than on any answer — see its own section for 
 **The refused-badge rule** (`refused-row-wearing-iconic`) is about two columns
 of one membership (`experience_kind_memberships`, where the verdict and the
 badge live since #822) that the same writes are supposed to move together. A museum carries
-`is_iconic` because it holds a work above the fame line, and every museum in the
-catalogue was admitted for exactly that (ADR-0023), so the flag has been a
-synonym of belonging: the run sets it on admission and its two refusal writes
-clear it (`admission.ts`, `CLEAR_ICONIC`). What those writes cannot reach is a
+`is_iconic` because it holds a work above the fame line; where the museum was
+admitted for exactly that (ADR-0023, the works-first source), the flag is a
+synonym of belonging, and the run sets it on admission while its two refusal
+writes clear it (`admission.ts`, `CLEAR_ICONIC`). It is not a synonym of
+belonging everywhere any more. Since #581 a source may declare `badgesAdmitted`
+as a **predicate** instead of `true`: an archaeology museum is in the kind for
+what it is about and wears the badge only if it holds a find at or above the
+finds' enter line (ADR-0058 decision 2, ADR-0045 decision 5), so an admitted row
+with no badge is an ordinary state there rather than a suspicious one. The
+invariant this check asks is unchanged by that, and it is why it is worded as
+"a refused row wears no badge" rather than "an admitted row wears one".
+
+What the run's own writes cannot reach is a
 row a curator has answered — confirming a refusal pins `admission`, and the pin
 keeps every later run off the row, whatever the flag held at that moment. That
 is how eight museums wore the badge refused on the development catalogue (#760):

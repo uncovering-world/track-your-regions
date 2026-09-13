@@ -1149,8 +1149,10 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   (`markIconic`), the run's two refusal writes (`CLEAR_ICONIC`) clear it, and a curator's
   confirmation of a refusal (`setExperienceAdmission`, `lifecycleController.ts`) clears it through
   that same fragment, a flag a curator pinned excepted in all of them. The badge is written after the run's admission step, not per museum, and only
-  because the museum source declares `badgesAdmitted` — belonging is the badge for works-first and
-  for nothing else — so that `admission` is a settled answer when it is read: a refusal a curator confirmed gets nothing
+  because the museum source declares `badgesAdmitted` — belonging is the badge here, as it is for
+  public art and for places of worship, which badge everything they admit too; the exception is
+  Archaeology, which badges a museum only for holding a find above its finds' line (§ Archaeology)
+  — so that `admission` is a settled answer when it is read: a refusal a curator confirmed gets nothing
   though the collector — which consults `admission` nowhere — can select such a museum again,
   and a run cancelled before that step badges nothing rather than a row it never re-admitted.
   `refused-row-wearing-iconic` in Catalogue Checks names a refused row still wearing it (#760).
@@ -1822,8 +1824,11 @@ a department counts as one — then meets the fame line, which is `sourceLine.ts
 (hysteresis, and the sentence a fallen row is refused with) with one thing added here: **a find above
 the finds' own line counts as in before the standing is asked at all**, which is how the
 Archaeological Museum of Delphi enters at 15 sitelinks for the Charioteer, Olympia at 17 for the
-Hermes and Heraklion at 21 for the Phaistos disc. `findsAboveLine` is how many such finds the museum
-holds, counted by the caller; where it is zero the refusal says so, and where the nature is missing
+Hermes and Heraklion at 21 for the Phaistos disc. The verdict is taken on the count that forgives a
+slip — the finds' *stay* line for a museum the source already admits, the enter line for every
+other — while the collected item carries a second count of the same finds taken at the enter line
+alone, which is the badge's and not the door's (below); where the count is zero the refusal says so,
+and where the nature is missing
 the refusal says how many famous finds were not enough. A museum whose categories name only an
 antiquities department — the Hermitage, the Vatican Museums, the Kunsthistorisches Museum, the
 Pushkin Museum, the National Museum of Scotland — is **admitted with the run's question on it** rather than kept out:
@@ -2038,11 +2043,57 @@ own bookkeeping. Credits for the museums' photographs and their finds' are fetch
 pass after the collection (`fetchCommonsCredits`), which is what stops the Rosetta Stone and the
 British Museum crediting the same file differently.
 
-The source declares `sourceCompleteness: 'ranked'`, `recomputesMembership: true` and
-`badgesAdmitted: true`: absence from a run says a row fell below one of the two lines or stopped
-passing the rule and nothing about whether the museum still opens its doors, every run recomputes
-the whole membership from the whole pool, and belonging is the Iconic badge — written once admission
-is settled rather than per museum (#760).
+The source declares `sourceCompleteness: 'ranked'`, `recomputesMembership: true` and — unlike every
+other source that badges — `badgesAdmitted` as a **predicate** rather than `true`: absence from a
+run says a row fell below one of the two lines or stopped passing the rule and nothing about
+whether the museum still opens its doors, every run recomputes the whole membership from the whole
+pool, and **belonging is not the badge here**. A museum is in this kind for what it is about and
+never for one find (ADR-0058 decision 2), so the must-see badge marks the museum that holds a
+famous find and nothing else (ADR-0045 decision 5): `badgesAdmitted: (item) => item.findsAboveLine
+> 0`. The British Museum is badged for the Rosetta Stone; the Bardo, in the kind in full standing
+on its own 35 articles and holding nothing above the finds' line, wears none. It is written once
+admission is settled rather than per museum (#760), and the orchestrator hands `markIconic` only
+the admitted ids whose item passes (`badgeAdmitted`). **And takes it back**: a museum that stays
+admitted and stops passing the predicate — its last famous find slipped below the finds' line — has
+the badge cleared by `unmarkIconic` off the same list, since the writers that clear the flag with a
+membership never reach a row that keeps its membership. **A museum held for a curator wears the badge
+from the first run after they publish it** (#887), because the badge reads `admission = 'admitted'` and a held row
+is not admitted until somebody says so — an art museum arriving with "is the exposition substantially
+archaeology?" written on it is badged by the next run once the answer is yes. That is the choice and
+not an oversight: the card a curator answers on lists the finds the badge would be *for*, with their
+names and their sitelink counts, so the thing being granted is on screen before the decision is
+taken, and a badge written ahead of the answer would be a must-see on a row no reader can see.
+A curator's pin on the badge survives it,
+and so does every badge on a run whose **admission sweep did not run**: the clear speaks about the
+admitted rows the run did not name, which is the sweep's own set, and a run the sweep's guard
+refused — an empty answer, errors, a membership collapsed to under half — has the badges left
+standing with the admissions they belong to. The *add* is ungated, because it only ever speaks about
+rows the run did admit.
+
+**The badge counts at the finds' *enter* line, hysteresis or none**, where the verdict that keeps
+the museum counts at the stay line: two questions, two numbers, and `findsAboveLine` on the
+collected item is the badge's. Counted hysteretically, an admitted museum would be badged for a
+find at 16 articles that the treasure writer leaves unbadged — a museum marked must-see for a work
+shown without the mark, which ADR-0023 decision 2 forbids. The band the other way is accepted as
+under-badging: a find that slips from 18 to 16 keeps its own flag while the museum stops counting
+it, so a museum can stand unbadged beside a badged find; that way round misses a badge rather than
+claiming one the catalogue cannot show. The find's own `is_iconic` is read at the same two numbers
+because the run hands them to the writer (`iconicLine` on `museum/treasureWriter.ts`, where the art
+museums' 22/18 are the default), and both readers of the second pair ask one function for it —
+`contentsLine` in `sourceLine.ts`, which answers the source's find line where it states one and its
+only line where it does not, so a one-line source cannot have its places judged at its own number
+and the objects inside them badged at the art museums'. **Places of worship reads it too** (#883):
+that source states one pair, so `contentsLine` hands the writer the churches' own line and a relic
+is badged at the number the church was judged by. It used to be left on the writer's default and
+agreed with it only because 22/18 is what the row happens to hold — an admin moving the source to
+30/25 would have moved the churches and left the Shroud of Turin at 22. **A work both kinds place is badged at
+whichever line reached it, and that is accepted**: `treasures.is_iconic` is one flag per work,
+globally, because a work is passed once (ADR-0025), so a find at 19 articles in the Louvre is badged
+by the archaeology run at 18 and then kept by the art run, whose release arm holds anything at or
+above 18 — and the Louvre's *art* card shows a must-see the art rule alone (22 to enter) would not
+have granted. The flag is the object's and not the room's: an object the archaeology rule calls a
+must-see find is one wherever it hangs. Scoping the flag per kind is a schema change and
+belongs to #603.
 
 **Refusals**, in the words the *kept out* card shows:
 
@@ -2454,12 +2505,12 @@ are the same refusal.
 Unlike the other two, the machine writes this one. A refusal is not an ambiguous observation:
 the run matched the object in the source's own answer and applied a deterministic rule to it,
 and a candidate that fails the same rule is never created at all — so a row that predates the
-rule has to end up where a new one would. Four writes (`services/sync/admission.ts`), every one
+rule has to end up where a new one would. Five writes (`services/sync/admission.ts`), every one
 on the membership the run's own source brought (`m.source_id`, joined to its place by the external
 id the run names — a run refuses, restores and badges what it brought and nothing another source
 did) — the three that move `admission` all skipping a membership whose `curated_fields` holds
-`admission` and all skipping `is_manual` places, while the fourth, about the badge rather than
-about admission, honours the flag's own pin instead, so a membership a curator overrode is badged:
+`admission` and all skipping `is_manual` places, while the last two, about the badge rather than
+about admission, honour the flag's own pin instead, so a membership a curator overrode is badged:
 
 - `markRefused` — unconditional, for the entities the fetch named and a rule turned down. The
   rule's own words go into `admission_reason` on the membership, because a changeset entry is
@@ -2473,11 +2524,31 @@ about admission, honours the flag's own pin instead, so a membership a curator o
   90 %, because that floor guards a listing and this one guards a rule, and a rule is meant to
   move the set.
 - `markIconic` — the must-see badge on the memberships the run admits, only for a source whose
-  `SyncServiceConfig` declares `badgesAdmitted` (works-first museums, where belonging *is* the
-  badge — ADR-0023; a listing or a rule that is not fame badges nothing however its membership is
-  computed, ADR-0045 decision 5). Written after the admission step, once every row of the run has
+  `SyncServiceConfig` declares `badgesAdmitted`, and in one of two shapes. `true` where belonging
+  *is* the badge — the works-first museums of ADR-0023, and the two rule-cut world tiers that
+  followed. A **predicate over the run's own items** where it is not: the Archaeology source admits
+  a museum for what it is about and badges only the one holding a find at or above the finds' enter
+  line, so `badgeAdmitted` builds an external-id → item map and hands `markIconic` the admitted ids
+  whose item passes and no others — an admitted id with no item among them is left unbadged, since
+  the question cannot be asked of it and badging it would answer `true` by default. Either way a
+  listing or a rule that is not fame badges nothing, however its membership is computed (ADR-0045
+  decision 5). Written after the admission step, once every row of the run has
   the admission it will keep, so a confirmed refusal gets nothing and a cancelled run badges
   nothing (#760).
+- `unmarkIconic` — the same badge taken back, and **only where `badgesAdmitted` is a predicate**:
+  where belonging is the badge every admitted row is in the list handed to `markIconic`, so nothing
+  is left over and no statement is sent. Where the two sets come apart, an archaeology museum whose
+  last famous find fell below the finds' line stays in the kind for what it is and stops wearing a
+  must-see badge for a find it is no longer credited with — nothing else would ever reach it, since
+  the three writers of `CLEAR_ICONIC` all fire when a row *leaves* the kind. It clears against the
+  very list `markIconic` was given, so the two statements cannot disagree about who is badged, and
+  honours the badge's own pin: a curator who called this must-see goes on saying so, while a pin on
+  `admission` is a different answer and does not pin the badge. **Sent only on a run whose sweep
+  above actually ran** — the set it speaks about is the sweep's, and "no skip reason" is not "the
+  sweep ran" (a source that publishes a list skips nothing and sweeps nothing), so the step hands
+  the badge both facts (`SweepOutcome`). Ungated, one broken SPARQL day would take the badge off
+  every row the run failed to reach while the sweep was busy protecting their admission. The flip is
+  recorded in no changeset, in either direction; that is #603's.
 
 Restore and the sweep are order-independent — restore only sees refused rows the run admits,
 the sweep only admitted rows it does not — but both must run after `markRefused`, so a venue a
