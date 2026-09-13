@@ -1195,8 +1195,11 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    sculpture (Q860861) and statue (Q179700), under fountain (Q483453), under war memorial (Q575759)
    and cenotaph (Q321053); plus the commemorative structures pinned by name in `classes.ts`
    (`MONUMENT_CLASSES`: triumphal arch, obelisk, victory, rostral and spiral columns, stele, rock
-   relief, runestone, cross, …) and the heritage-sense classes (`HERITAGE_SENSE_CLASSES`: monument
-   Q4989906, memorial Q5003624, national monument, the US National Memorial and their kin). Two more
+   relief, runestone, cross, …), the memorial classes pinned by name (`MEMORIAL_CLASSES`: memorial
+   Q5003624, Holocaust memorial, cautionary memorial, the tomb of the unknown soldier and their kin —
+   with the two commemorative closures, the trees' `commemorative` set, #803) and the heritage-sense
+   designations (`HERITAGE_SENSE_CLASSES`: monument Q4989906, national monument, the US National
+   Memorial). Two more
    trees are read for the rule below: `P279*` under museum (Q33506, 374 classes) and under structure
    of worship (Q1370598, 1265), the latter over a pinned floor of the worship buildings the first
    import's rows carried (`WORSHIP_CLASSES`: church building, Catholic cathedral, minor basilica,
@@ -1238,7 +1241,21 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    (`CONTAINER_HOPS`, the museum import's `VENUE_HOPS`): the Venus de Milo is located in Room 345,
    which names the Louvre Museum; the Dendera zodiac in Room 325, in the Sully Wing, part of the
    Louvre *Palace* — which Wikidata types a palace, not a museum, so a room or a wing
-   (`INDOOR_CLASSES`) is indoors whatever the building is called. Then what the owners are, the
+   (`INDOOR_CLASSES`) is indoors whatever the building is called. Each container is handed to the
+   rule with how it was reached (`ContainerFact.relation`: the candidate's own `located in` or
+   `part of`, or `above` — walked up to from the container `via` names), because a museum the
+   candidate itself is *part of* is not where it stands (#803): Wikidata types a museum an
+   institution, the Pakistan Monument is part of the Pakistan Monument Museum, which stands in the
+   monument's base and is part of the monument in turn, and the monument stands in Shakarparian
+   park by its `P276`. The rule reads such a museum as an owner — the collection rule below, with
+   `part of Pakistan Monument Museum: a work of a museum` as its reason when nothing else places
+   the work — and what the walk reached *only* through it as the museum's, not the work's: a
+   place is what a chain of places reaches, and a container is listed once with every route that
+   reached it, so which of two `part of` statements the source listed first decides nothing, and
+   a work part of a museum *and* located in its courtyard stands in the museum; a room that is
+   part of a museum is inside it as before, so the Louvre reached through Room 325 still names
+   the museum. Measured on the pool on 2026-09-13: no sculpture above the line reaches a museum by
+   `part of` alone — the works inside museums say `located in`. Then what the owners are, the
    same question, one hop and no walk: an owner is not a place, so it has no chain and no
    building above it. The old `bindingsToLandmarks`
    grouping is this stage's parse: makers deduped by folded label, a label that *is* a QID
@@ -1258,8 +1275,9 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    archaeological site, not public art` (the Ishtar Gate). A district, a forest or a landscape as
    container says nothing — the third dry run refused the Charging Bull as part of the Financial
    District and the Hermannsdenkmal as part of the Teutoburg Forest before the list was narrowed
-   to sites. **Whose it is, only when nothing says where it stands** (#804): a work with no
-   container at all — no location, no part-of, or none that still holds — is asked whose
+   to sites. **Whose it is, only when nothing says where it stands** (#804): a work nothing
+   places — no location, no part-of that is not a museum institution (#803, stage 3), or none
+   that still holds — is asked whose it is, the museum it is part of first and then whose
    collection it is in, and a museum's or a place of worship's makes it theirs: `in the collection of
    Sverdlovsk Regional Natural History Museum: a work of a museum, not public art` (the Shigir
    Idol), `in the collection of St Mark's Basilica: a work of a place of worship, not public art`
@@ -1276,21 +1294,36 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    #804 took for the Stele Forest's, is its find spot forty kilometres away; then a class of
    `VETO_CLASSES` (cemeteries, buildings and structures) or of the museum tree refuses it
    **unless an artwork class answers** — the sculptural and fountain closures and the pinned
-   structures, never the heritage-sense classes. So the Hermannsdenkmal (`sculpture, monument,
+   structures, never the heritage-sense designations — and **the museum's veto alone is lifted by
+   a commemorative class as well** (the `commemorative` set: the war-memorial and cenotaph
+   closures and `MEMORIAL_CLASSES`, #803): a memorial Wikidata also types a museum is a memorial
+   complex with a museum in it, and a traveller stands in front of Tsitsernakaberd's flame
+   (`museum, memorial, Armenian Genocide memorial`), the 9/11 pools (`museum, memorial`) and the
+   Victoria Memorial in Kolkata (`museum, memorial`) whether or not there is a museum below;
+   measured on dry run 109 of 2026-09-13 against dry run 99, those three are what the lift admits
+   above the line — and the Anne Frank House (`historic house museum, war memorial`), a house
+   museum, which is the known false admission it costs; the Anzac Memorial and the Gedenkstätte
+   Berliner Mauer pass the rule now and sit below the line. `monument` is not commemorative: it is what Spain's heritage
+   register calls a listed museum. So the Hermannsdenkmal (`sculpture, monument,
    tower, colossal statue`), Monas in Jakarta (`obelisk, memorial, museum`) and Christ the Redeemer
    (`colossal statue, pilgrimage site, monument`) stay, and the Aljafería (`palace, castle,
-   parliament building, monument`), Arlington (`cemetery, war memorial`) and the Reina Sofía (`art
-   museum, monument`) go. Open places and landforms (a square, a park, a hill) are not vetoes:
+   parliament building, monument`), Arlington (`cemetery, war memorial`), Montjuïc Castle
+   (`memorial, military museum, castle` — a building typed a memorial is the building), the Reina
+   Sofía (`art museum, monument`) and the Bilbao Fine Arts Museum (`art museum, monument`) go.
+   Open places and landforms (a square, a park, a hill) are not vetoes:
    the Mansu Hill Grand Monument is typed `monument, square` and is a monument on a square. A
    coordinate on another globe is refused too (Fallen Astronaut's `P625` is on the Moon). What
    passes is typed `sculpture` when it carries a sculptural class, else `monument` — the
    vocabulary readers had.
    Known false refusals, left to a curator's override: the Bocca della Verità (a church portico),
-   the Pakistan Monument (part of its own museum), Tsitsernakaberd and the 9/11 Memorial (typed
-   museum, no artwork class), Stonehenge (an archaeological site, and World Heritage's), the Neue
-   Wache; and known false admissions, left to a curator's rejection: a work Wikidata neither
-   places nor gives an owner (the Infant Jesus of Prague; the Nestorian Stele, pinned at its find
-   spot rather than in the Stele Forest that holds it), Villa d'Este (typed fountain).
+   Stonehenge and the Madara Rider (archaeological sites — the Rider is part of the Madara
+   preserve, and World Heritage holds both), the Neue Wache, the Soviet War Memorial in the
+   Tiergarten (`cemetery, military museum, monument`: no commemorative class, and a cemetery's veto
+   is not the museum's); and known false admissions, left to a curator's rejection: a work Wikidata
+   neither places nor gives an owner (the Infant Jesus of Prague; the Nestorian Stele, pinned at
+   its find spot rather than in the Stele Forest that holds it), Villa d'Este (typed fountain), the
+   Anne Frank House (typed a war memorial beside its house museum). The Pakistan Monument,
+   Tsitsernakaberd and the 9/11 Memorial were on the first list until #803.
 5. **The line, then the write** — a candidate that passes enters at **22 sitelinks and stays until
    it falls below 18** (`ENTER_SITELINKS`/`STAY_SITELINKS` in the pipeline; the museums' own line,
    ADR-0023), read against what the kind already admits (`admittedExternalIds`). An admitted
