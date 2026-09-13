@@ -10,7 +10,7 @@ import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/workClaims';
-import { VISITED_GREEN } from '../../utils/categoryColors';
+import { VISITED_GREEN } from '../../utils/kindColors';
 import { ARTWORKS_INITIAL_LIMIT } from './utils';
 
 /**

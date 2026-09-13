@@ -198,7 +198,7 @@ function KindRow({ kind, busy, onClear, onSetTtl }: {
   );
 }
 
-export function WikidataCacheSection({ categoryId }: { categoryId: number }) {
+export function WikidataCacheSection({ sourceId }: { sourceId: number }) {
   const queryClient = useQueryClient();
   // Closed until asked for, and not fetched until then either. This is
   // troubleshooting information — the question "why did the run answer that" —
@@ -206,14 +206,14 @@ export function WikidataCacheSection({ categoryId }: { categoryId: number }) {
   // be spending a query to tell nobody anything.
   const [open, setOpen] = useState(false);
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'wikidata-cache', categoryId],
-    queryFn: () => getWikidataCache(categoryId),
+    queryKey: ['admin', 'wikidata-cache', sourceId],
+    queryFn: () => getWikidataCache(sourceId),
     enabled: open,
   });
   const [note, setNote] = useState<string | null>(null);
 
   const refresh = () =>
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wikidata-cache', categoryId] });
+    queryClient.invalidateQueries({ queryKey: ['admin', 'wikidata-cache', sourceId] });
 
   /**
    * A refusal has to say so.
@@ -227,7 +227,7 @@ export function WikidataCacheSection({ categoryId }: { categoryId: number }) {
     setNote(`${what} failed: ${error instanceof Error ? error.message : String(error)}`);
 
   const clear = useMutation({
-    mutationFn: (kind?: string) => clearWikidataCache(categoryId, kind),
+    mutationFn: (kind?: string) => clearWikidataCache(sourceId, kind),
     onSuccess: (result, kind) => {
       const scope = kind ? ` of ${kind}` : '';
       setNote(`Cleared ${plural(result.removed, 'cached answer')}${scope}. The next run asks Wikidata for them again.`);
@@ -238,7 +238,7 @@ export function WikidataCacheSection({ categoryId }: { categoryId: number }) {
 
   const setTtl = useMutation({
     mutationFn: ({ kind, hours }: { kind: string; hours: number }) =>
-      setWikidataCacheTtl(categoryId, kind, hours),
+      setWikidataCacheTtl(sourceId, kind, hours),
     onSuccess: (result) => {
       // The re-stamp count is the part nobody can predict, and it is the answer
       // to "what did I just do": shortening a lifetime can expire a whole kind.

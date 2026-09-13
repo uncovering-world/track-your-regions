@@ -138,7 +138,7 @@ export function noticeFor(result: PublishWaitingResult): string {
   if (result.heldLeftForReview === null) {
     // The count failed after the publications committed, so the reply arrived without
     // it. Points at where the number lives rather than promising one will be there: the
-    // panel's count is a separate, *wider* query — every category rather than this one —
+    // panel's count is a separate, *wider* query — every source rather than this one —
     // and it fails for the same class of cause, so "the panel will show it" could be read
     // three lines under the panel saying it could not count either.
     parts.push('How much this source is still holding could not be counted — the panel '

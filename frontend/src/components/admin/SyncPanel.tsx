@@ -27,13 +27,13 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getCategories,
+  getSources,
   startSync,
   fixPictures,
   getSyncStatus,
   cancelSync,
-  reorderCategories,
-  type ExperienceCategory,
+  reorderSources,
+  type ExperienceSource,
   type SyncStatus,
 } from '../../api/admin';
 import { formatDateTime } from '../../utils/dateFormat';
@@ -46,11 +46,11 @@ export function SyncPanel() {
   const queryClient = useQueryClient();
   const { data: sources, isLoading } = useQuery({
     queryKey: ['admin', 'sources'],
-    queryFn: getCategories,
+    queryFn: getSources,
   });
 
   // Drag-and-drop state
-  const [orderedSources, setOrderedSources] = useState<ExperienceCategory[]>([]);
+  const [orderedSources, setOrderedSources] = useState<ExperienceSource[]>([]);
   const dragItemRef = useRef<number | null>(null);
   const dragOverItemRef = useRef<number | null>(null);
 
@@ -62,7 +62,7 @@ export function SyncPanel() {
   }, [sources]);
 
   const reorderMutation = useMutation({
-    mutationFn: (sourceIds: number[]) => reorderCategories(sourceIds),
+    mutationFn: (sourceIds: number[]) => reorderSources(sourceIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] });
     },
@@ -124,7 +124,7 @@ export function SyncPanel() {
 }
 
 interface SourceCardProps {
-  source: ExperienceCategory;
+  source: ExperienceSource;
 }
 
 /**
@@ -449,7 +449,7 @@ function SourceCard({ source }: SourceCardProps) {
         {/* Inside the source's own card, closed: what a run remembers is a
             property of that source, and it is a thing to open when a run
             surprises you rather than something to read on every visit. */}
-        <WikidataCacheSection categoryId={source.id} />
+        <WikidataCacheSection sourceId={source.id} />
       </CardContent>
 
       <CardActions sx={{ flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>

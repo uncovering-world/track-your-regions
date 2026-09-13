@@ -16,7 +16,7 @@ import type { RowKind } from '../queueRowTypes';
 /**
  * The colour a *question* is drawn in — never an object's own colour.
  *
- * `categoryColors.ts` answers what an object *is* (a museum's blue, a monument's teal,
+ * `kindColors.ts` answers what an object *is* (a museum's blue, a monument's teal,
  * refined by World Heritage's own type); this map answers what is being *asked* about it,
  * and the two vocabularies are deliberately unrelated. A museum holding a change is
  * `waiting`'s blue here whatever the museum palette calls its own blue, and a UNESCO

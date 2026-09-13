@@ -25,15 +25,15 @@ interface VisitedLocationIds {
 /**
  * Hook for managing experience-level visited status (backward compatible)
  */
-export function useVisitedExperiences(categoryId?: number) {
+export function useVisitedExperiences(kindId?: number) {
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
 
   // Fetch visited experience IDs
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['visited-experiences', 'ids', categoryId],
+    queryKey: ['visited-experiences', 'ids', kindId],
     queryFn: async (): Promise<VisitedExperienceIds> => {
-      const params = categoryId ? `?categoryId=${categoryId}` : '';
+      const params = kindId ? `?kindId=${kindId}` : '';
       return authFetchJson(`${API_URL}/api/users/me/visited-experiences/ids${params}`);
     },
     enabled: isAuthenticated,

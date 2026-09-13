@@ -99,7 +99,7 @@ export function publishOutcomeFor(
   if (!data.placementFailed) return outcome;
   // Named, and addressed to someone who cannot fix it. Re-assigning regions is
   // admin-only end to end, and this page's ordinary reader is a region- or
-  // category-scoped curator — so the actionable step is to hand an admin the
+  // kind-scoped curator — so the actionable step is to hand an admin the
   // object and the world views, which means the sentence has to contain them.
   // Ids come along with the names because that is what an admin works from.
   // Bent by what the same sentence just printed, and keyed on a *named* world view

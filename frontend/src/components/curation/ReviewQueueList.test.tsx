@@ -22,7 +22,7 @@ function row(over: Partial<QueueRow> = {}): QueueRow {
     kind: 'conflicts',
     id: 1,
     name: 'Aksum',
-    category: 'World Heritage',
+    placeKind: 'World Heritage',
     question: 'the source disagrees with an edit',
     askedAt: '2026-09-07T08:00:00Z',
     runId: 99,
@@ -182,10 +182,10 @@ describe('ReviewQueueList', () => {
         key: 'a', name: 'A', kind: 'conflicts',
       }),
       row({
-        key: 'b', name: 'B', kind: 'refused', category: 'Art Museums', specific: 'below the line',
+        key: 'b', name: 'B', kind: 'refused', placeKind: 'Art Museums', specific: 'below the line',
       }),
       row({
-        key: 'c', name: 'C', kind: 'refused', category: 'Art Museums', specific: 'below the line',
+        key: 'c', name: 'C', kind: 'refused', placeKind: 'Art Museums', specific: 'below the line',
       }),
     ], { sort: 'question' });
 
@@ -196,9 +196,9 @@ describe('ReviewQueueList', () => {
     expect(refusedHeading.textContent).toContain('2');
   });
 
-  it('names the category, the question word and the specific on the second line', () => {
+  it('names the kind, the question word and the specific on the second line', () => {
     renderList([row({
-      key: 'a', name: 'Aksum', kind: 'waiting', category: 'World Heritage', specific: 'criteria',
+      key: 'a', name: 'Aksum', kind: 'waiting', placeKind: 'World Heritage', specific: 'criteria',
     })]);
 
     const rowButton = screen.getByRole('button', { name: /Aksum/ });
@@ -207,7 +207,7 @@ describe('ReviewQueueList', () => {
 
   it('reads an arrival as "new arrival" with nothing after it', () => {
     renderList([row({
-      key: 'a', name: 'The Kelpies', kind: 'waiting', category: 'Public Art & Monuments', specific: '', subs: ['arrival'],
+      key: 'a', name: 'The Kelpies', kind: 'waiting', placeKind: 'Public Art & Monuments', specific: '', subs: ['arrival'],
     })]);
 
     const rowButton = screen.getByRole('button', { name: /The Kelpies/ });

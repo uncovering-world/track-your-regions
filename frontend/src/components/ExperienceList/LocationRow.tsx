@@ -24,7 +24,7 @@ import { LocationOn as LocationIcon, EditLocationAlt as FixPlaceIcon } from '@mu
 import { locationLabel } from '../../utils/locationLabel';
 import { claimLabel } from '../../utils/placeClaims';
 import { resolveLocationColor } from './utils';
-import { VISITED_GREEN } from '../../utils/categoryColors';
+import { VISITED_GREEN } from '../../utils/kindColors';
 
 /** What a row needs of a place — the card's own display shape, not the API's. */
 export interface LocationRowData {

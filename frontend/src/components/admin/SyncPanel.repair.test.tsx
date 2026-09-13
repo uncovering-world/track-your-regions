@@ -13,27 +13,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SyncPanel } from './SyncPanel';
-import { getCategories, getSyncStatus, fixPictures } from '../../api/admin';
-import type { ExperienceCategory, SyncStatus } from '../../api/admin';
+import { getSources, getSyncStatus, fixPictures } from '../../api/admin';
+import type { ExperienceSource, SyncStatus } from '../../api/admin';
 
 vi.mock('../../api/admin', () => ({
-  getCategories: vi.fn(),
+  getSources: vi.fn(),
   getSyncStatus: vi.fn(),
   startSync: vi.fn(),
   fixPictures: vi.fn(),
   cancelSync: vi.fn(),
-  reorderCategories: vi.fn(),
+  reorderSources: vi.fn(),
 }));
 // The two sections a card carries ask the server for things of their own; they
 // are not what these tests are about.
 vi.mock('./CurationGateControls', () => ({ CurationGateControls: () => null }));
 vi.mock('./WikidataCacheSection', () => ({ WikidataCacheSection: () => null }));
 
-const mockedCategories = getCategories as unknown as ReturnType<typeof vi.fn>;
+const mockedSources = getSources as unknown as ReturnType<typeof vi.fn>;
 const mockedStatus = getSyncStatus as unknown as ReturnType<typeof vi.fn>;
 const mockedFix = fixPictures as unknown as ReturnType<typeof vi.fn>;
 
-const UNESCO: ExperienceCategory = {
+const UNESCO: ExperienceSource = {
   id: 1,
   name: 'UNESCO World Heritage Sites',
   description: 'Official UNESCO World Heritage List',
@@ -70,10 +70,10 @@ function renderPanel() {
 
 describe('a picture repair found already in flight', () => {
   beforeEach(() => {
-    mockedCategories.mockReset();
+    mockedSources.mockReset();
     mockedStatus.mockReset();
     mockedFix.mockReset();
-    mockedCategories.mockResolvedValue([UNESCO]);
+    mockedSources.mockResolvedValue([UNESCO]);
   });
 
   it('is named as one, followed to its end, and ends in its own sentence', async () => {
@@ -152,7 +152,7 @@ describe('a picture repair found already in flight', () => {
 
   it('offers the repair only where the server says it acts', async () => {
     mockedStatus.mockResolvedValue({ running: false });
-    mockedCategories.mockResolvedValue([UNESCO, { ...UNESCO, id: 3, name: 'Public Art & Monuments', repairsPictures: false }]);
+    mockedSources.mockResolvedValue([UNESCO, { ...UNESCO, id: 3, name: 'Public Art & Monuments', repairsPictures: false }]);
 
     renderPanel();
 

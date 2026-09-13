@@ -6,15 +6,15 @@ import {
 import type { Experience } from '../../api/experiences';
 
 const exp = (id: number, name = `E${id}`) => ({ id, name } as Experience);
-const group = (categoryName: string, ids: number[]) => ({
-  categoryName,
+const group = (kindName: string, ids: number[]) => ({
+  kindName,
   experiences: ids.map(id => exp(id)),
 });
 
 /**
  * The three mechanisms windowing the experience list rests on.
  *
- * Measured on Europe before it, where the largest category holds 467 rows:
+ * Measured on Europe before it, where the largest kind holds 467 rows:
  * opening a region blocked the main thread for 2571 ms in a single task, 3839 ms
  * in total, and the page carried 9474 DOM nodes. Windowed, 18 rows are mounted at
  * a time, the longest task is 626 ms and the node count is 2639 (#552). None of
@@ -43,7 +43,7 @@ describe('the windowed experience list', () => {
         [group('UNESCO', [1]), group('Museums', [2]), group('Public Art', [3])],
         new Set(['UNESCO', 'Museums', 'Public Art']),
       );
-      expect(rows.map(r => (r.kind === 'header' ? r.group.categoryName : r.exp.id)))
+      expect(rows.map(r => (r.kind === 'header' ? r.group.kindName : r.exp.id)))
         .toEqual(['UNESCO', 1, 'Museums', 2, 'Public Art', 3]);
     });
 
@@ -52,7 +52,7 @@ describe('the windowed experience list', () => {
         [group('UNESCO', [1, 2]), group('Museums', [3, 4])],
         new Set(['Museums']),
       );
-      expect(rows.map(r => (r.kind === 'header' ? r.group.categoryName : r.exp.id)))
+      expect(rows.map(r => (r.kind === 'header' ? r.group.kindName : r.exp.id)))
         .toEqual(['UNESCO', 'Museums', 3, 4]);
     });
   });
@@ -128,7 +128,7 @@ describe('the windowed experience list', () => {
  * What the list opens by itself (#592).
  *
  * Two ways to be sent to a card and shown nothing, and this decides both. A
- * link to a card in a category that is not the first one — the list opened the
+ * link to a card in a kind that is not the first one — the list opened the
  * first group, always. And a card selected inside the region already open,
  * which is what a search result gives a reader already standing there: no
  * region change, so the once-per-region rule declined to fire at all.

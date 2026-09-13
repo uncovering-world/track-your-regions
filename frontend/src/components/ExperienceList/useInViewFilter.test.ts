@@ -7,8 +7,8 @@ import type { Experience } from '../../api/experiences';
 /** Nothing folded, which is every case here but the fold's own test. */
 const EMPTY: ReadonlySet<number> = new Set<number>();
 
-const exp = (id: number, longitude: number, latitude: number, category = 'UNESCO') =>
-  ({ id, name: `E${id}`, longitude, latitude, category_name: category } as Experience);
+const exp = (id: number, longitude: number, latitude: number, kind = 'UNESCO') =>
+  ({ id, name: `E${id}`, longitude, latitude, kind_name: kind } as Experience);
 
 const PRAGUE: ViewBounds = { west: 14.35, south: 50.05, east: 14.50, north: 50.11 };
 /** Two in Prague, one in Paris, one in Vienna. */
@@ -88,13 +88,13 @@ describe('useInViewFilter', () => {
     expect(result.current.outsideView).toBe(2);
   });
 
-  it('reports each category’s whole-region total, not the view’s', () => {
+  it('reports each kind’s whole-region total, not the view’s', () => {
     const { result } = renderHook(() => useInViewFilter(
       [exp(1, 14.42, 50.087, 'UNESCO'), exp(2, 2.35, 48.85, 'UNESCO'), exp(3, 14.40, 50.09, 'Museums')],
       {}, PRAGUE, 7, null, EMPTY,
     ));
-    expect(result.current.totalByCategory.get('UNESCO')).toBe(2);
-    expect(result.current.totalByCategory.get('Museums')).toBe(1);
+    expect(result.current.totalByKind.get('UNESCO')).toBe(2);
+    expect(result.current.totalByKind.get('Museums')).toBe(1);
     expect(result.current.listedExperiences.map(e => e.id)).toEqual([1, 3]);
   });
 });

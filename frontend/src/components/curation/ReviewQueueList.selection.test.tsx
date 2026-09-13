@@ -12,7 +12,7 @@ import type { QueueRow } from './queueRows';
 
 function row(key: string, name: string): QueueRow {
   return {
-    key, kind: 'waiting', id: Number(key.split(':')[1]), name, category: 'Places of worship',
+    key, kind: 'waiting', id: Number(key.split(':')[1]), name, placeKind: 'Places of worship',
     question: '', askedAt: '2026-09-09T10:00:00Z', runId: 105, specific: '', subs: ['arrival'],
   };
 }

@@ -13,13 +13,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SourceLineControls } from './SourceLineControls';
 import { setSourceLine } from '../../api/admin';
-import type { ExperienceCategory } from '../../api/admin';
+import type { ExperienceSource } from '../../api/admin';
 
 vi.mock('../../api/admin', async () => ({
   setSourceLine: vi.fn(),
 }));
 
-function source(overrides: Partial<ExperienceCategory> = {}): ExperienceCategory {
+function source(overrides: Partial<ExperienceSource> = {}): ExperienceSource {
   return {
     id: 4,
     name: 'Places of worship',
@@ -39,7 +39,7 @@ function source(overrides: Partial<ExperienceCategory> = {}): ExperienceCategory
 
 const mockedSetSourceLine = setSourceLine as unknown as ReturnType<typeof vi.fn>;
 
-function renderControls(s: ExperienceCategory) {
+function renderControls(s: ExperienceSource) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -60,7 +60,7 @@ describe('SourceLineControls', () => {
 
   it('shows the pair and saves a new one', async () => {
     mockedSetSourceLine.mockResolvedValue({
-      categoryId: 4, name: 'Places of worship', enterSitelinks: 30, staySitelinks: 18,
+      sourceId: 4, name: 'Places of worship', enterSitelinks: 30, staySitelinks: 18,
     });
     renderControls(source());
 
@@ -119,7 +119,7 @@ describe('SourceLineControls', () => {
 
   it('refetches the sources after a save, since the card reads the stored line', async () => {
     mockedSetSourceLine.mockResolvedValue({
-      categoryId: 4, name: 'Places of worship', enterSitelinks: 30, staySitelinks: 18,
+      sourceId: 4, name: 'Places of worship', enterSitelinks: 30, staySitelinks: 18,
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const invalidate = vi.spyOn(client, 'invalidateQueries');

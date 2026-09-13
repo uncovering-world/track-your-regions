@@ -26,8 +26,8 @@ describe('findCommonPrefix', () => {
   });
 
   it('trims trailing commas and colons', () => {
-    expect(findCommonPrefix(['Category: A', 'Category: B']))
-      .toBe('Category');
+    expect(findCommonPrefix(['Kind: A', 'Kind: B']))
+      .toBe('Kind');
   });
 
   it('handles identical strings', () => {

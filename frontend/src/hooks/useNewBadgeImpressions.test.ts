@@ -37,7 +37,7 @@ describe('useNewBadgeImpressions', () => {
   });
 
   it('says nothing for a reader there is nobody to remember', () => {
-    // Anonymous readers get the category window and no personal one, so an
+    // Anonymous readers get the kind window and no personal one, so an
     // impression has nowhere to go and the endpoint would 401
     renderHook(() => useNewBadgeImpressions([NEW_ROW], false));
 

@@ -7,7 +7,7 @@
  * curator has claimed needs a choice between two versions. Neither has changed
  * anything for users yet; that is the point of asking.
  *
- * A row this category refused is the exception, and the page says so rather
+ * A row this kind refused is the exception, and the page says so rather
  * than hiding it. The run did not fail to see it — it named it and applied our
  * own rule, so the row is already hidden (ADR-0024). None of the three verdicts
  * above is true of it, which is exactly why it needs a section and two answers
@@ -123,7 +123,7 @@ export function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
 }
 
 /**
- * A row this category's own rule refused, with that objection on it.
+ * A row this kind's own rule refused, with that objection on it.
  *
  * The reason is the whole point of the card. "Refused" alone leaves a curator
  * guessing, and the rule's own note — `not a museum class — named by Column of

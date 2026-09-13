@@ -63,14 +63,14 @@ const bamiyan: Experience = {
   short_description: 'The remains of the Buddhas and the monastic caves around them.',
   type: 'cultural',
   // World Heritage: the one kind whose type a curator can set in this dialog.
-  category_id: 1,
+  kind_id: 1,
   country_codes: ['AF'],
   country_names: ['Afghanistan'],
   image_url: OLD_PICTURE,
   in_danger: true,
   longitude: 67.82,
   latitude: 34.84,
-  category_name: 'UNESCO World Heritage',
+  kind_name: 'UNESCO World Heritage',
 };
 
 function renderDialog(experience: Experience = bamiyan) {
@@ -170,7 +170,7 @@ describe('CurationDialog clearing a field', () => {
     await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { shortDescription: '', websiteUrl: '' }));
   });
 
-  it('sends the category None as an emptied category', async () => {
+  it('sends the kind None as an emptied kind', async () => {
     renderDialog();
     await screen.findByDisplayValue(PORTAL_PAGE);
 

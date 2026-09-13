@@ -20,7 +20,7 @@ function useUnderTest() {
 describe('useAppAddress', () => {
   it('reads the address of the page', () => {
     const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/wv/5/r/6737-europe') });
-    expect(result.current.address).toEqual({ mode: 'map', worldViewId: 5, regionId: 6737, experienceId: null, categoryId: null });
+    expect(result.current.address).toEqual({ mode: 'map', worldViewId: 5, regionId: 6737, experienceId: null, kindId: null });
   });
 
   it('answers null on a page that is not a place', () => {
@@ -85,7 +85,7 @@ describe('useAppAddress', () => {
     const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/') });
 
     act(() => {
-      result.current.go({ mode: 'map', worldViewId: 5, regionId: null, experienceId: null, categoryId: null }, { replace: true });
+      result.current.go({ mode: 'map', worldViewId: 5, regionId: null, experienceId: null, kindId: null }, { replace: true });
       result.current.go(at => ({ ...at, mode: 'discover' }));
     });
 

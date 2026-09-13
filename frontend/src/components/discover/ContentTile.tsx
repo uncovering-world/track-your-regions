@@ -7,7 +7,7 @@ import { toThumbnailUrl } from '../../utils/imageUrl';
 import { creditLabel, ImageCreditLine } from '../shared/ImageCreditLine';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
-import { VISITED_GREEN } from '../../utils/categoryColors';
+import { VISITED_GREEN } from '../../utils/kindColors';
 
 /**
  * One work in the grid: its picture, whether this reader has seen it, and whose photograph it is.

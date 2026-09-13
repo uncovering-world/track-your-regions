@@ -34,7 +34,7 @@ import { ExperienceDetailPanel } from './ExperienceDetailPanel';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-import { getSourceColor, shortSourceName } from '../../utils/categoryColors';
+import { kindColor, shortKindName } from '../../utils/kindColors';
 
 const LEFT_PANEL_WIDTH = 380;
 const DETAIL_PANEL_WIDTH = 480;
@@ -49,8 +49,8 @@ export function DiscoverPage() {
     countsLoading,
     navigateToRegion,
     navigateToBreadcrumb,
-    categories,
-    activeCategories,
+    kinds,
+    activeKinds,
     levelTotals,
     activeView,
     openExperienceView,
@@ -84,11 +84,11 @@ export function DiscoverPage() {
     const scopes = curatorScopes ?? [];
     if (scopes.length === 0) return undefined;
 
-    // Global or category scope → can add to any region
-    const hasGlobalOrCategoryScope = scopes.some(
-      s => s.scopeType === 'global' || s.scopeType === 'category'
+    // Global or kind scope → can add to any region
+    const hasGlobalOrKindScope = scopes.some(
+      s => s.scopeType === 'global' || s.scopeType === 'source'
     );
-    if (hasGlobalOrCategoryScope) return (_regionId: number) => true;
+    if (hasGlobalOrKindScope) return (_regionId: number) => true;
 
     // Region-scoped: check if any breadcrumb ancestor or the region itself is assigned
     const curatorRegionIds = new Set(
@@ -218,17 +218,17 @@ export function DiscoverPage() {
           </Breadcrumbs>
         </Box>
 
-        {/* Level summary — total counts per source */}
+        {/* Level summary — total counts per kind */}
         {!countsLoading && Object.keys(levelTotals).length > 0 && (
           <Box sx={{ px: 1.5, py: 0.75, display: 'flex', gap: 0.75, flexWrap: 'wrap', borderBottom: '1px solid', borderColor: 'divider' }}>
-            {activeCategories.map(source => {
-              const count = levelTotals[source.id] || 0;
+            {activeKinds.map(kind => {
+              const count = levelTotals[kind.id] || 0;
               if (!count) return null;
-              const color = getSourceColor(source.id);
+              const color = kindColor(kind.id);
               return (
                 <Chip
-                  key={source.id}
-                  label={`${shortSourceName(source.name)} ${count}`}
+                  key={kind.id}
+                  label={`${shortKindName(kind.name)} ${count}`}
                   size="small"
                   sx={{
                     height: 24,
@@ -248,10 +248,10 @@ export function DiscoverPage() {
         {/* Region tree list */}
         <DiscoverRegionList
           regions={regionCounts}
-          categories={categories}
+          kinds={kinds}
           isLoading={countsLoading}
           onNavigate={navigateToRegion}
-          onCategoryClick={openExperienceView}
+          onKindClick={openExperienceView}
           onAddExperience={canAddToRegion ? handleAddExperience : undefined}
           canAddToRegion={canAddToRegion}
         />
