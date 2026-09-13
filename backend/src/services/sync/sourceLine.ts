@@ -12,15 +12,32 @@
  * Two numbers, not one, because the tier is hysteretic (ADR-0023): a row enters
  * at `enterSitelinks` and stays until it falls below `staySitelinks`, so a list
  * does not flap as Wikipedia grows.
+ *
+ * A kind whose finds are thinner than its places states a second pair
+ * (ADR-0058 decision 5). Archaeology admits both the site a traveller stands on
+ * and the famous find a museum holds, and a find carries fewer articles than
+ * the museum that shows it: holders of a find number 56 at 22 sitelinks and 78
+ * at 18, the National Museum of Iraq entering through the Warka Vase at 20 and
+ * the Acropolis Museum through the Kritios Boy at 18, while the museums
+ * themselves are known in 36 and 37 languages. One line for both doors would
+ * either lose those two museums or widen the sites into their long tail. The
+ * second pair is optional: a source with one door states one line, and reads
+ * exactly as it did before.
  */
 
 import { pool } from '../../db/index.js';
 
-export interface SourceLine {
+/** One hysteretic line: the count a row enters on, and the count it stays on. */
+export interface LinePair {
   /** How famous a row must be to enter the world tier. */
   enterSitelinks: number;
   /** How far an admitted row may slip before it is refused by name. */
   staySitelinks: number;
+}
+
+export interface SourceLine extends LinePair {
+  /** The finds' own line, where the source states one; absent for a source with one line. */
+  find?: LinePair;
 }
 
 /**
@@ -32,22 +49,25 @@ const isCount = (value: unknown): value is number =>
   Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 1000;
 
 /**
- * The line a source row states, or an error naming what is missing.
+ * One pair of counts off the row, or an error naming the key that is wrong.
  *
- * Throws rather than falling back to a default: a run that quietly used 22
- * because the row said nothing would admit a different catalogue than the panel
- * says it does, and the admission axis exists to prevent exactly that
- * (ADR-0024).
+ * The keys are arguments rather than fixed, because the two pairs a source may
+ * state are the same rule read twice: whichever door the caller is asking
+ * about, an unusable number must be refused by the name the row spells it
+ * under, so an admin reading the error knows which field to correct.
  */
-export function parseSourceLine(apiConfig: unknown): SourceLine {
-  const config = (apiConfig ?? {}) as Record<string, unknown>;
-  const enter = config.enterSitelinks;
-  const stay = config.staySitelinks;
+function parsePair(
+  config: Record<string, unknown>,
+  enterKey: string,
+  stayKey: string,
+): LinePair {
+  const enter = config[enterKey];
+  const stay = config[stayKey];
   if (!isCount(enter)) {
-    throw new Error('The source row states no enterSitelinks line (api_config)');
+    throw new Error(`The source row states no ${enterKey} line (api_config)`);
   }
   if (!isCount(stay)) {
-    throw new Error('The source row states no staySitelinks line (api_config)');
+    throw new Error(`The source row states no ${stayKey} line (api_config)`);
   }
   // Equal is allowed — a source may choose to run without hysteresis — but a
   // stay line above the enter line would refuse rows the same run just admitted.
@@ -55,6 +75,27 @@ export function parseSourceLine(apiConfig: unknown): SourceLine {
     throw new Error(`The stay line (${stay}) is above the enter line (${enter})`);
   }
   return { enterSitelinks: enter, staySitelinks: stay };
+}
+
+/**
+ * The line a source row states, or an error naming what is missing.
+ *
+ * Throws rather than falling back to a default: a run that quietly used 22
+ * because the row said nothing would admit a different catalogue than the panel
+ * says it does, and the admission axis exists to prevent exactly that
+ * (ADR-0024).
+ *
+ * The finds pair is read only when the row mentions it, and then in full: half
+ * a pair is an error rather than a pair completed from the places' line,
+ * because a find silently judged by the museums' line is the flood the second
+ * line exists to prevent (ADR-0058 decision 5).
+ */
+export function parseSourceLine(apiConfig: unknown): SourceLine {
+  const config = (apiConfig ?? {}) as Record<string, unknown>;
+  const main = parsePair(config, 'enterSitelinks', 'staySitelinks');
+  const statesFind = config.findEnterSitelinks !== undefined || config.findStaySitelinks !== undefined;
+  if (!statesFind) return main;
+  return { ...main, find: parsePair(config, 'findEnterSitelinks', 'findStaySitelinks') };
 }
 
 export async function readSourceLine(sourceId: number): Promise<SourceLine> {

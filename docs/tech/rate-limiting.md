@@ -212,12 +212,13 @@ analyser, against the rule this section states, would make the rule mean less
 each time it is done.
 
 `PUT /api/admin/sync/sources/:sourceId/line` — a source's fame line (ADR-0052
-decision 6), the pair of sitelink counts a run reads at its start — stays exempt
+decision 6), the pair of sitelink counts a run reads at its start, and since #581 the
+optional second pair for the finds a kind's museums hold (ADR-0058 decision 5) — stays exempt
 beside it, and CodeQL flags it too. It runs one `SELECT` to decide 404 from 409
 (the source must exist and keep a line for this route to move) and one `UPDATE`
 of that same row's `api_config`, and nothing follows the commit: like the gate
 switch, it changes only what a *future* run admits, never a row a reader sees
-today. One admin sets one pair of integers by hand from the source card — the same
+today. One admin sets one or two pairs of integers by hand from the source card — the same
 shape as the gate switch, and the same reasoning: admin routes are unlimited by
 design, and the attack surface here is a compromised admin account, not a client
 hammering the endpoint. CodeQL alert #354 is dismissed against this paragraph.

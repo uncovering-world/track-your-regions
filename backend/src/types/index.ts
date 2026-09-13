@@ -951,13 +951,29 @@ export const curationGateBodySchema = z.object({
  * `staySitelinks` no higher than `enterSitelinks` — kept identical on purpose:
  * a body this schema passed but the run's reader refused would let an admin
  * save a line no sync could ever use.
+ *
+ * A source whose finds are thinner than its places states a second pair under
+ * the `find…` keys (ADR-0058 decision 5): optional, because most sources have
+ * one door, but taken whole or not at all, since the reader refuses half a pair
+ * rather than completing it from the places' line. An archaeological find
+ * carries fewer articles than the museum that holds it, so the two doors need
+ * two lines.
  */
 export const sourceLineBodySchema = z.object({
   enterSitelinks: z.number().int().min(1).max(1000),
   staySitelinks: z.number().int().min(1).max(1000),
+  findEnterSitelinks: z.number().int().min(1).max(1000).optional(),
+  findStaySitelinks: z.number().int().min(1).max(1000).optional(),
 }).refine(b => b.staySitelinks <= b.enterSitelinks, {
   message: 'staySitelinks must not exceed enterSitelinks',
-});
+}).refine(b => (b.findEnterSitelinks === undefined) === (b.findStaySitelinks === undefined), {
+  message: 'findEnterSitelinks and findStaySitelinks must be sent together',
+}).refine(
+  b => b.findEnterSitelinks === undefined
+    || b.findStaySitelinks === undefined
+    || b.findStaySitelinks <= b.findEnterSitelinks,
+  { message: 'findStaySitelinks must not exceed findEnterSitelinks' },
+);
 
 /**
  * Which catalogue assertion an admin is accepting the debt of.

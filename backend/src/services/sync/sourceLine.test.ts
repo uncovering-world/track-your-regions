@@ -1,6 +1,12 @@
 /**
  * The fame line a source row states for itself: read off `api_config`, and
  * refused when the row does not state a usable one.
+ *
+ * A source whose finds are thinner than its places states a second pair
+ * (ADR-0058 decision 5), so the cases below read both doors: the one-pair row
+ * every source before archaeology writes must keep parsing unchanged, and the
+ * finds pair must be refused half-stated rather than quietly completed from the
+ * places' line.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -35,5 +41,33 @@ describe('parseSourceLine', () => {
   it('allows a stay line equal to the enter line: hysteresis is optional, not required', () => {
     expect(parseSourceLine({ enterSitelinks: 22, staySitelinks: 22 }))
       .toEqual({ enterSitelinks: 22, staySitelinks: 22 });
+  });
+
+  it('reads the finds pair when the row states it', () => {
+    expect(parseSourceLine({
+      enterSitelinks: 22, staySitelinks: 18, findEnterSitelinks: 18, findStaySitelinks: 15,
+    })).toEqual({ enterSitelinks: 22, staySitelinks: 18, find: { enterSitelinks: 18, staySitelinks: 15 } });
+  });
+
+  it('refuses half a finds pair', () => {
+    expect(() => parseSourceLine({ enterSitelinks: 22, staySitelinks: 18, findEnterSitelinks: 18 }))
+      .toThrow(/findStaySitelinks/);
+    expect(() => parseSourceLine({ enterSitelinks: 22, staySitelinks: 18, findStaySitelinks: 15 }))
+      .toThrow(/findEnterSitelinks/);
+  });
+
+  it('refuses a finds stay line above its enter line', () => {
+    expect(() => parseSourceLine({
+      enterSitelinks: 22, staySitelinks: 18, findEnterSitelinks: 15, findStaySitelinks: 18,
+    })).toThrow(/stay line \(18\) is above/);
+  });
+
+  it('bounds the finds counts the way it bounds the places', () => {
+    expect(() => parseSourceLine({
+      enterSitelinks: 22, staySitelinks: 18, findEnterSitelinks: 0, findStaySitelinks: 0,
+    })).toThrow(/findEnterSitelinks/);
+    expect(() => parseSourceLine({
+      enterSitelinks: 22, staySitelinks: 18, findEnterSitelinks: 18, findStaySitelinks: 15.5,
+    })).toThrow(/findStaySitelinks/);
   });
 });
