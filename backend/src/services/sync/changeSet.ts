@@ -124,10 +124,25 @@ const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
  * and whether an artwork class answered it, kept so that Catalogue Checks can
  * ask what an admitted row is typed as; the rule re-reads them every run and
  * files its own refusal when they stop passing.
+ *
+ * The archaeology run adds three of the same shape (ADR-0058 decision 2), and
+ * they are the run's working-out written down rather than facts about the
+ * museum. `wikipediaCategories` is what English Wikipedia files the article
+ * under, read because the class tree is silent about half the canon — the
+ * British Museum is no `archaeological museum` to Wikidata and is
+ * `Archaeological museums in London` to Wikipedia; editors re-file articles
+ * constantly, and each re-filing would be a card asking a curator to approve a
+ * category list nobody displays. `archaeologyNature` is which of the two
+ * answers that reading produced, and `admissionNote` the sentence the rule
+ * wrote for the curator screen about a held row. All three are re-derived from
+ * live Wikidata and Wikipedia on every pass, so a stored copy is never what
+ * decides anything — and a question a run answers again every time it runs is
+ * not a question to put to a person.
  */
 export const SYNC_OWNED_METADATA_KEYS = [
   'artworkCount', 'totalArtworkSitelinks', 'sitelinksCount',
   'wikidataClasses', 'wikidataArtwork',
+  'archaeologyNature', 'admissionNote', 'wikipediaCategories',
 ] as const;
 
 /** Whether a metadata key belongs to the run rather than to the object. */

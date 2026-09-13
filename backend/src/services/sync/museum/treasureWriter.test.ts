@@ -647,9 +647,11 @@ describe('what a run stores about a work photograph', () => {
     // photograph a person chose.
     const onUpdate = String(treasureCall()[0]).slice(String(treasureCall()[0]).indexOf('DO UPDATE SET'));
     // The claim opens the CASE; the gate's term follows it (ADR-0037), pinned
-    // by the describe block at the foot.
+    // by the describe block at the foot. Its THEN arm is the *stored* object —
+    // the credit the curator's picture came with — with only the find spot's
+    // own rule applied over it.
     expect(onUpdate).toMatch(
-      /metadata = CASE WHEN treasures\.curated_fields \? 'image_url'[\s\S]*?THEN treasures\.metadata ELSE EXCLUDED\.metadata END/,
+      /metadata = CASE WHEN treasures\.curated_fields \? 'image_url'[\s\S]*?THEN NULLIF\(CASE[\s\S]*?COALESCE\(treasures\.metadata, '\{\}'::jsonb\)/,
     );
   });
 
@@ -665,6 +667,184 @@ describe('what a run stores about a work photograph', () => {
     const index = columns![1].split(',').map(c => c.trim()).indexOf('metadata');
     const params = treasureCall()[1] as unknown[];
     expect(params[index]).toBeNull();
+  });
+});
+
+/**
+ * Where a find was dug up is the second thing a run stores beside a work, and
+ * the only one the reader is told in the same breath as its name: the Rosetta
+ * Stone is in London and was found at Fort Julien, and a card that cannot say
+ * so describes a display case rather than an object (ADR-0058 decision 3).
+ *
+ * It rides in the same metadata parameter as the credit, so the two promises
+ * are one: a kind that asks where its works come from gets the key, and a kind
+ * whose works were made where they hang never sees it — which is what keeps the
+ * art and worship runs' rows byte for byte what they were.
+ */
+describe('what a run stores about where a find was dug up', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedRetire.mockReset();
+  });
+
+  const FILE = 'http://commons.wikimedia.org/wiki/Special:FilePath/Mona%20Lisa.jpg';
+  const CREDIT: ImageCredit = {
+    author: 'Mbzt',
+    license: 'CC BY-SA 4.0',
+    licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0',
+    detailsUrl: 'https://commons.wikimedia.org/wiki/File:Mona_Lisa.jpg',
+  };
+
+  /** The Rosetta Stone, shown in London and found at Fort Julien. */
+  const find = (overrides: Partial<ProcessedContent> = {}): ProcessedContent => artwork({
+    externalId: 'Q48584',
+    name: 'Rosetta Stone',
+    treasureType: 'stele',
+    artists: [],
+    year: null,
+    imageUrl: null,
+    sitelinksCount: 90,
+    foundAt: { qid: 'Q3077898', label: 'Fort Julien' },
+    ...overrides,
+  });
+
+  /** What the insert sends as `metadata`, resolved through the statement's own column list. */
+  function metadataWritten(): unknown {
+    const sql = String(treasureCall()[0]);
+    const columns = /INSERT INTO treasures \(([\s\S]*?)\) VALUES/.exec(sql);
+    const index = columns![1].split(',').map(c => c.trim()).indexOf('metadata');
+    const param = (treasureCall()[1] as unknown[])[index];
+    return param === null ? null : JSON.parse(String(param));
+  }
+
+  it('sends the find spot to the upsert in the metadata parameter', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [find()]);
+
+    // A work with no picture stores nothing about photographs, and this is
+    // still worth a row of metadata: the find spot is a fact about the object.
+    expect(metadataWritten()).toEqual({ foundAt: { qid: 'Q3077898', label: 'Fort Julien' } });
+  });
+
+  it('stores the find spot beside the credit, not instead of it', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [find({ imageUrl: FILE })], {
+      fetched: new Map([[FILE, CREDIT]]), stored: new Map(),
+    });
+
+    expect(metadataWritten()).toEqual({
+      imageCredit: CREDIT, foundAt: { qid: 'Q3077898', label: 'Fort Julien' },
+    });
+  });
+
+  it('writes no key for a work whose kind never asks where it was found', async () => {
+    scriptWorks('new');
+
+    // The art and worship runs offer no `foundAt` at all, and their rows must
+    // read exactly as they did: a key holding nothing is a key a reader has to
+    // be told to ignore.
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork({ imageUrl: FILE })], {
+      fetched: new Map([[FILE, CREDIT]]), stored: new Map(),
+    });
+
+    expect(metadataWritten()).toEqual({ imageCredit: CREDIT });
+  });
+
+  it('says a find has no spot, rather than saying nothing about it', async () => {
+    scriptWorks('new');
+
+    // `null` is what the collector answers where Wikidata states no discovery
+    // place, and it is *not* the same as a kind that never asks: this run read
+    // the item, so the key is sent holding null and the upsert strips whatever
+    // the row was carrying. It is the only way a find spot is ever removed.
+    await upsertMuseumTreasures(EXPERIENCE_ID, [find({ foundAt: null })]);
+
+    expect(metadataWritten()).toEqual({ foundAt: null });
+  });
+
+  it('stores no find-spot key on a first write, where the null is only a signal', async () => {
+    scriptWorks('new');
+
+    // The parameter carries `{ foundAt: null }` (above) because the update arm
+    // reads the key as "remove what is stored". On the row's first write there
+    // is nothing to remove, so the VALUES arm strips it before the column sees
+    // it — a new find with no discovery place is stored with NULL metadata, not
+    // with a key that says nothing.
+    await upsertMuseumTreasures(EXPERIENCE_ID, [find({ foundAt: null })]);
+
+    const sql = String(treasureCall()[0]);
+    // String positions rather than a lazy regex over the whole statement: the
+    // VALUES arm is what sits between its opening and the gate's CASE.
+    const start = sql.indexOf(') VALUES (');
+    const end = sql.indexOf('CASE WHEN (SELECT requires_curation', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const valuesArm = sql.slice(start, end);
+    expect(valuesArm).toContain("WHEN $9::jsonb -> 'foundAt' = 'null'::jsonb THEN $9::jsonb - 'foundAt'");
+    expect(valuesArm).not.toContain('$8, $9,');
+  });
+
+  it('leaves a stored find spot alone when the run offering none writes the work', async () => {
+    scriptWorks('already linked');
+
+    // A treasure is global by `external_id` (ADR-0025) and two kinds write the
+    // same object: an ancient sculpture in the Louvre is a work of the Art
+    // Museums run and a find of the Archaeology run. The art run sends no key,
+    // and the statement merges the stored spot back rather than replacing the
+    // object whole — otherwise the two runs would take the find spot off each
+    // other's row on every pass.
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork({ imageUrl: FILE })], {
+      fetched: new Map([[FILE, CREDIT]]), stored: new Map(),
+    });
+
+    const onUpdate = String(treasureCall()[0]).slice(
+      String(treasureCall()[0]).indexOf('DO UPDATE SET'),
+    );
+    // No key: the stored spot is merged back in.
+    expect(onUpdate).toContain(
+      "jsonb_build_object('foundAt', treasures.metadata -> 'foundAt')",
+    );
+    // The key holding JSON null: it is stripped.
+    expect(onUpdate).toContain("- 'foundAt'");
+    // And the claim guard still chooses which object is kept.
+    expect(onUpdate).toContain("metadata = CASE WHEN treasures.curated_fields ? 'image_url'");
+  });
+
+  it('lets the find spot follow the source through a curator\'s picture claim', async () => {
+    scriptWorks('already linked');
+
+    // The claim is about a photograph; the find spot is about the object. Frozen
+    // behind the claim, a P189 correction would never reach a work whose picture
+    // a curator once chose, and the card would name the wrong ground for as long
+    // as the claim stood. So the guard still decides *which object* is kept — the
+    // stored one, credit and all — and the find spot's own three-state rule is
+    // applied over it in both arms.
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork({ imageUrl: FILE })], {
+      fetched: new Map([[FILE, CREDIT]]), stored: new Map(),
+    });
+
+    const onUpdate = String(treasureCall()[0]).slice(
+      String(treasureCall()[0]).indexOf('DO UPDATE SET'),
+    );
+    const claimArm = onUpdate.slice(
+      onUpdate.indexOf("metadata = CASE WHEN treasures.curated_fields ? 'image_url'"),
+      onUpdate.indexOf('updated_at = NOW()'),
+    );
+    // The claimed arm rebuilds from the stored object, never from the run's.
+    expect(claimArm).toMatch(/THEN NULLIF\(CASE[\s\S]*?COALESCE\(treasures\.metadata, '\{\}'::jsonb\)/);
+    // Both arms strip and replace the one key, and both ask the run's own
+    // *parameter* what it said about it — never EXCLUDED, which is the evaluated
+    // VALUES row and has had a null key stripped by then (INSERTED_METADATA), so
+    // read there the remove signal is gone before the arm sees it. The base only
+    // decides what the answer applies to.
+    expect(claimArm.match(/COALESCE\(treasures\.metadata, '\{\}'::jsonb\) - 'foundAt'/g)).toHaveLength(1);
+    expect(claimArm.match(/COALESCE\(EXCLUDED\.metadata, '\{\}'::jsonb\) - 'foundAt'/g)).toHaveLength(1);
+    expect(claimArm.match(/\$9::jsonb -> 'foundAt' = 'null'::jsonb/g)).toHaveLength(2);
+    expect(claimArm.match(/COALESCE\(\$9::jsonb, '\{\}'::jsonb\) \? 'foundAt'/g)).toHaveLength(2);
+    expect(claimArm).not.toMatch(/EXCLUDED\.metadata -> 'foundAt'/);
+    expect(claimArm).not.toMatch(/EXCLUDED\.metadata, '\{\}'::jsonb\) \? 'foundAt'/);
   });
 });
 
@@ -735,7 +915,12 @@ describe('a visible work under a gated source', () => {
     expect(onUpdate).toContain(
       `metadata = CASE WHEN treasures.curated_fields ? 'image_url'\n                             OR (${gate.slice(3)}`,
     );
-    expect(onUpdate).toMatch(/AND treasures\.image_url IS DISTINCT FROM EXCLUDED\.image_url\)\s+THEN treasures\.metadata ELSE EXCLUDED\.metadata END/);
+    // The stored object kept, with only the find spot's own rule applied over
+    // it: the credit is the picture's and is held with it, the find spot is the
+    // source's and is not (#887 is what is left frozen — today the credit).
+    expect(onUpdate).toMatch(
+      /AND treasures\.image_url IS DISTINCT FROM EXCLUDED\.image_url\)\s+THEN NULLIF\(CASE/,
+    );
     // The guard's own answer, on the row the statement locked.
     expect(sql).toMatch(/RETURNING id, name,[\s\S]*AS was_held/);
     // Still outside every guard: a count and a threshold on it are measurements.
