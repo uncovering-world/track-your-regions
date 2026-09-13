@@ -188,6 +188,83 @@ describe('collectPublicArt', () => {
     ]);
   });
 
+  it('hands the rule how each container was reached, so a museum a monument is part of owns it', async () => {
+    // The Pakistan Monument: located in Shakarparian, a park; part of the
+    // Pakistan Monument Museum, which stands in the monument's base and says
+    // so — part of the monument, located in the park. The walk reaches the
+    // park again and the monument itself above the museum; the rule reads
+    // the museum as the monument's owner and what stands above it as the
+    // museum's, and the park as where the monument stands (#803). A
+    // sculpture that is only part of a museum has nowhere else to stand, and
+    // is the museum's.
+    const world: World = {
+      museumTree: ['Q33506'],
+      containers: {
+        Q7462557: { label: 'Shakarparian', classes: ['Q22698'] },
+        Q86452047: { label: 'Pakistan Monument Museum', classes: ['Q33506'], parents: ['Q7462557', 'Q3695640'] },
+        Q3695640: { label: 'Pakistan Monument', classes: [MONUMENT] },
+      },
+      entities: [
+        { qid: 'Q3695640', label: 'Pakistan Monument', under: MONUMENT, sitelinks: 25, classes: [MONUMENT],
+          locations: ['Q7462557'], parents: ['Q86452047'] },
+        { qid: 'Q8', label: 'A bust', under: SCULPTURE, sitelinks: 30, classes: [SCULPTURE], parents: ['Q86452047'] },
+      ],
+    };
+    const { items, filtered } = await collectPublicArt(doorTo(world), new Set());
+    expect(items.map((i) => i.qid)).toEqual(['Q3695640']);
+    expect(filtered).toEqual([{
+      externalId: 'Q8', name: 'A bust',
+      reason: 'part of Pakistan Monument Museum: a work of a museum, not public art',
+    }]);
+  });
+
+  it('records a walk that arrives at a museum the work is part of, so the courtyard places it there', async () => {
+    // A work part of a museum and located in its courtyard, which is part of
+    // the museum. The museum is named by the work's own statement and reached
+    // again from the courtyard; the second route is what makes it a place.
+    const world: World = {
+      museumTree: ['Q33506'],
+      containers: {
+        Q4: { label: 'A courtyard', classes: ['Q1178342'], parents: ['Q2'] },
+        Q2: { label: 'A museum', classes: ['Q33506'] },
+      },
+      entities: [
+        { qid: 'Q9', label: 'A bust', under: SCULPTURE, sitelinks: 30, classes: [SCULPTURE],
+          locations: ['Q4'], parents: ['Q2'] },
+      ],
+    };
+    const { items, filtered } = await collectPublicArt(doorTo(world), new Set());
+    expect(items).toEqual([]);
+    expect(filtered).toEqual([
+      { externalId: 'Q9', name: 'A bust', reason: 'inside A museum: a work of a museum, not public art' },
+    ]);
+  });
+
+  it('records every route to a container, so the order of two part-of statements decides nothing', async () => {
+    // A work part of a site museum and of a courtyard, both part of one
+    // museum complex. Walked museum-first, the complex is reached through the
+    // institution first and listed once; the courtyard's route must still be
+    // recorded, or the complex would go with the museum and the veto with it.
+    const complex = (parents: string[]): World => ({
+      museumTree: ['Q33506'],
+      containers: {
+        Q2: { label: 'A site museum', classes: ['Q33506'], parents: ['Q3'] },
+        Q4: { label: 'A courtyard', classes: ['Q1178342'], parents: ['Q3'] },
+        Q3: { label: 'A museum complex', classes: ['Q33506'] },
+      },
+      entities: [
+        { qid: 'Q9', label: 'A bust', under: SCULPTURE, sitelinks: 30, classes: [SCULPTURE], parents },
+      ],
+    });
+    for (const parents of [['Q2', 'Q4'], ['Q4', 'Q2']]) {
+      const { items, filtered } = await collectPublicArt(doorTo(complex(parents)), new Set());
+      expect(items, parents.join(',')).toEqual([]);
+      expect(filtered, parents.join(',')).toEqual([
+        { externalId: 'Q9', name: 'A bust', reason: 'inside A museum complex: a work of a museum, not public art' },
+      ]);
+    }
+  });
+
   it('reads whose collection a work is in only when nothing says where it stands', async () => {
     // The Shigir Idol: no location, no part-of; in the collection of the
     // Sverdlovsk Regional Natural History Museum — the first live run admitted

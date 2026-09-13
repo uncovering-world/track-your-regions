@@ -41,27 +41,47 @@ export const SCULPTURAL_ROOTS: Record<string, string> = {
 
 export const FOUNTAIN_ROOT = 'Q483453';
 
-/** Commemorative closures: what they reach admits, but is not an artwork. */
+/**
+ * Commemorative closures: what they reach admits, but is not an artwork. With
+ * `MEMORIAL_CLASSES` below, the commemorative set of the trees.
+ */
 export const COMMEMORATIVE_ROOTS: Record<string, string> = {
   Q575759: 'war memorial',
   Q321053: 'cenotaph',
 };
 
 /**
- * The heritage sense of "monument": a class that admits a row to the pool and
- * says nothing about what stands there. A memorial can be a plaque, a park or
- * a museum; a National Memorial of the United States is a kind of protected
- * area; a national monument is a designation. None of these lifts a veto.
+ * The commemorative classes pinned by name, beside the closures above: what a
+ * thing built to remember carries. A memorial can be a plaque, a park or a
+ * hall, so none of these is an artwork and none lifts a building's veto — but
+ * a memorial that Wikidata also types a museum is a memorial complex with a
+ * museum in it, not a museum: a traveller stands in front of Tsitsernakaberd's
+ * flame and the 9/11 pools whether or not there is a museum below (#803). So
+ * the commemorative classes lift the museum veto alone. Measured on the pool
+ * of 2026-09-13: above the line, that admits Tsitsernakaberd, the 9/11
+ * Memorial and the Victoria Memorial in Kolkata — and the Anne Frank House,
+ * which Wikidata types `historic house museum, war memorial`, a house museum
+ * left to a curator's rejection.
  */
-export const HERITAGE_SENSE_CLASSES: Record<string, string> = {
-  Q4989906: 'monument',
+export const MEMORIAL_CLASSES: Record<string, string> = {
   Q5003624: 'memorial',
-  Q893745: 'national monument',
-  Q1967454: 'National Memorial of the United States',
   Q20011797: 'Holocaust memorial',
   Q1885014: 'cautionary memorial',
   Q114125020: 'victims of communism memorial',
   Q1541043: 'tomb of the unknown soldier',
+};
+
+/**
+ * The heritage sense of "monument": a designation that admits a row to the
+ * pool and says nothing about what stands there. Spain's register calls a
+ * museum a monument (the Reina Sofía, the Bilbao Fine Arts Museum); a national
+ * monument is a designation; a National Memorial of the United States is a
+ * kind of protected area. None of these lifts a veto — not even the museum's.
+ */
+export const HERITAGE_SENSE_CLASSES: Record<string, string> = {
+  Q4989906: 'monument',
+  Q893745: 'national monument',
+  Q1967454: 'National Memorial of the United States',
 };
 
 /**
@@ -257,8 +277,10 @@ export const SITE_CLASSES: Record<string, string> = {
  *
  * The museum tree, read at run time from Wikidata (`MUSEUM_ROOT`), is a veto
  * of this kind too rather than listed here: Monas in Jakarta is an obelisk
- * with a museum in its base. The worship tree is not — a building of worship
- * refuses outright, see `WORSHIP_CLASSES` and `WORSHIP_DESIGNATIONS`.
+ * with a museum in its base — and, unlike these, one a commemorative class
+ * lifts as well (`MEMORIAL_CLASSES`). The worship tree is not — a building
+ * of worship refuses outright, see `WORSHIP_CLASSES` and
+ * `WORSHIP_DESIGNATIONS`.
  */
 export const VETO_CLASSES: Record<string, string> = {
   // Cemeteries.
@@ -310,7 +332,12 @@ export interface PublicArtTrees {
   sculptural: ReadonlySet<string>;
   /** Everything that lifts a veto: sculptural, fountains, and the pinned structures. */
   artwork: ReadonlySet<string>;
-  /** Everything the pool is asked for: artwork, the commemorative closures, the heritage sense. */
+  /**
+   * The commemorative closures and the pinned memorial classes: what admits,
+   * is not an artwork, and lifts the museum veto alone (`MEMORIAL_CLASSES`).
+   */
+  commemorative: ReadonlySet<string>;
+  /** Everything the pool is asked for: artwork, the commemorative set, the heritage sense. */
   admitting: ReadonlySet<string>;
   /** `P279*` under museum (Q33506). */
   museum: ReadonlySet<string>;
@@ -333,14 +360,14 @@ export function buildTrees(fetched: {
 }): PublicArtTrees {
   const sculptural = new Set(fetched.sculptural);
   const artwork = new Set([...sculptural, ...fetched.fountain, ...Object.keys(MONUMENT_CLASSES)]);
-  const admitting = new Set([
-    ...artwork, ...fetched.commemorative, ...Object.keys(HERITAGE_SENSE_CLASSES),
-  ]);
+  const commemorative = new Set([...fetched.commemorative, ...Object.keys(MEMORIAL_CLASSES)]);
+  const admitting = new Set([...artwork, ...commemorative, ...Object.keys(HERITAGE_SENSE_CLASSES)]);
   const worship = new Set([...fetched.worship, ...Object.keys(WORSHIP_CLASSES)]);
   for (const designation of Object.keys(WORSHIP_DESIGNATIONS)) worship.delete(designation);
   return {
     sculptural,
     artwork,
+    commemorative,
     admitting,
     museum: new Set(fetched.museum),
     worship,

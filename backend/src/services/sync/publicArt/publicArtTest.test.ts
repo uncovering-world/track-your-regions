@@ -24,6 +24,7 @@ const ART_MUSEUM = 'Q207694';
 const MILITARY_MUSEUM = 'Q2772772';
 const LOCAL_MUSEUM = 'Q1595639';
 const NATURAL_HISTORY_MUSEUM = 'Q1970365';
+const HISTORY_MUSEUM = 'Q16735822';
 const WORSHIP = 'Q1370598';
 const CATHOLIC_CATHEDRAL = 'Q56242215';
 const SHINTO_SHRINE = 'Q845945';
@@ -35,7 +36,7 @@ const trees = buildTrees({
   sculptural: [SCULPTURE, STATUE, COLOSSAL_STATUE, MONUMENTAL_SCULPTURE, 'Q29168169'],
   fountain: [FOUNTAIN, 'Q1371047'],
   commemorative: [WAR_MEMORIAL, 'Q321053', 'Q1541043'],
-  museum: [MUSEUM, ART_MUSEUM, MILITARY_MUSEUM, 'Q17431399', LOCAL_MUSEUM, NATURAL_HISTORY_MUSEUM],
+  museum: [MUSEUM, ART_MUSEUM, MILITARY_MUSEUM, 'Q17431399', LOCAL_MUSEUM, NATURAL_HISTORY_MUSEUM, HISTORY_MUSEUM],
   // The tree Wikidata walks under "structure of worship": the buildings, and
   // a pilgrimage site, which is a designation a statue can carry.
   worship: [WORSHIP, CATHOLIC_CATHEDRAL, SHINTO_SHRINE, BASILICA, 'Q1534477', 'Q2031836', PILGRIMAGE_SITE],
@@ -45,8 +46,19 @@ const facts = (over: Partial<PublicArtFacts>): PublicArtFacts => ({
   qid: 'Q1', classes: [SCULPTURE], containers: [], collections: [], onEarth: true, lat: 41.9, lon: 12.5, ...over,
 });
 
-const inside = (qid: string, label: string, classes: string[], building?: string): ContainerFact =>
-  ({ qid, label, classes, building });
+/** A container the entity is located in (`P276`), or walked up to when `via` names the ones below. */
+const inside = (qid: string, label: string, classes: string[], building?: string, ...via: string[]): ContainerFact =>
+  (via.length === 0
+    ? { qid, label, classes, building, relation: 'located in' }
+    : { qid, label, classes, building, relation: 'above', via });
+
+/** A container the entity is part of (`P361`). */
+const partOf = (qid: string, label: string, classes: string[]): ContainerFact =>
+  ({ qid, label, classes, relation: 'part of' });
+
+/** An owner (`P195`). */
+const owned = (qid: string, label: string, classes: string[]): ContainerFact =>
+  ({ qid, label, classes, relation: 'in the collection of' });
 
 function reasonOf(v: ReturnType<typeof publicArtVerdict>): string {
   expect(v.pass).toBe(false);
@@ -186,9 +198,71 @@ describe('publicArtVerdict — what it refuses', () => {
     // pipeline walks the room up to the museum and hands the museum in.
     const v = publicArtVerdict(facts({
       classes: [SCULPTURE],
-      containers: [inside('Q19119449', 'Room 325', ['Q180516']), inside('Q19675', 'Louvre', [ART_MUSEUM])],
+      containers: [
+        inside('Q19119449', 'Room 325', ['Q180516']),
+        inside('Q19675', 'Louvre', [ART_MUSEUM], undefined, 'Q19119449'),
+      ],
     }), trees);
     expect(reasonOf(v)).toContain('inside Louvre');
+  });
+
+  it('refuses a work that is only part of a museum, as the museum\'s', () => {
+    // A sculpture whose one statement about where it is is `part of` a
+    // museum: that is whose it is, and with nothing saying where it stands,
+    // whose it is decides — the collection rule, with the museum it is part
+    // of read as an owner (#803).
+    const v = publicArtVerdict(facts({
+      classes: [SCULPTURE],
+      containers: [partOf('Q637248', 'Naples National Archaeological Museum', ['Q3329412', MUSEUM])],
+    }), trees);
+    expect(reasonOf(v)).toBe('part of Naples National Archaeological Museum: a work of a museum, not public art');
+  });
+
+  it('refuses a work part of an archaeological preserve, though a museum administers it', () => {
+    // The Madara Rider: a rock relief; part of the Madara archaeological
+    // preserve, and part of the Shumen History museum, the institution that
+    // runs the preserve. The first live run refused it as a work inside the
+    // museum; the museum is read as its owner now, and the preserve is what
+    // it stands in — which is archaeology's, and the World Heritage list's.
+    const v = publicArtVerdict(facts({
+      classes: ['Q22022298'],
+      containers: [
+        partOf('Q12292250', 'Shumen History museum', [HISTORY_MUSEUM]),
+        partOf('Q12285540', 'Madara (Archeological Preserve)', ['Q839954']),
+      ],
+    }), trees);
+    expect(reasonOf(v)).toBe('part of Madara (Archeological Preserve): archaeological site, not public art');
+  });
+
+  it('keeps a church typed a museum as a place, though the work is only part of it', () => {
+    // A statue part of a deconsecrated church that is run as a museum — a
+    // container in both trees — and located on the square in front. The
+    // church is a building, and part of it is part of its fabric: it stays a
+    // place, the square does not stand in for it, and the veto runs.
+    const v = publicArtVerdict(facts({
+      classes: [STATUE],
+      containers: [
+        inside('Q1', 'A square', ['Q174782']),
+        partOf('Q2', 'A former church, now a museum', [ART_MUSEUM, 'Q16970']),
+      ],
+    }), trees);
+    expect(reasonOf(v)).toBe('inside A former church, now a museum: a work of a museum, not public art');
+  });
+
+  it('refuses a memorial typed a museum and a castle, for the castle', () => {
+    // Montjuïc Castle: memorial, military museum, prison, castle. A
+    // commemorative class lifts the museum's veto and no other: a building
+    // typed a memorial is still the building.
+    const v = publicArtVerdict(facts({ classes: [MEMORIAL, MILITARY_MUSEUM, 'Q40357', 'Q23413'] }), trees);
+    expect(reasonOf(v)).toBe('not an artwork, and typed: castle');
+  });
+
+  it('refuses a museum the heritage register calls a monument', () => {
+    // Bilbao Fine Arts Museum: art museum, monument — "Monumento" being what
+    // Spain's register calls a listed building. A designation is not a
+    // memorial, and lifts nothing.
+    const v = publicArtVerdict(facts({ classes: [ART_MUSEUM, MONUMENT] }), trees);
+    expect(reasonOf(v)).toBe('not an artwork, and typed: a museum');
   });
 
   it('refuses a work a museum owns when nothing says where it stands, naming the museum', () => {
@@ -202,8 +276,8 @@ describe('publicArtVerdict — what it refuses', () => {
     const v = publicArtVerdict(facts({
       classes: [SCULPTURE],
       collections: [
-        inside('Q4410161', 'Sverdlovsk Regional Natural History Museum', [LOCAL_MUSEUM, NATURAL_HISTORY_MUSEUM, 'Q1081138']),
-        inside('Q105486673', 'Museum of History and Archaeology of the Middle Urals', [MUSEUM]),
+        owned('Q4410161', 'Sverdlovsk Regional Natural History Museum', [LOCAL_MUSEUM, NATURAL_HISTORY_MUSEUM, 'Q1081138']),
+        owned('Q105486673', 'Museum of History and Archaeology of the Middle Urals', [MUSEUM]),
       ],
     }), trees);
     expect(reasonOf(v)).toBe(
@@ -219,7 +293,7 @@ describe('publicArtVerdict — what it refuses', () => {
     // museum, the replicas on its loggia: the basilica's either way.
     const v = publicArtVerdict(facts({
       classes: ['Q2293362'],
-      collections: [inside('Q172988', "St Mark's Basilica", ['Q2977', BASILICA])],
+      collections: [owned('Q172988', "St Mark's Basilica", ['Q2977', BASILICA])],
     }), trees);
     expect(reasonOf(v)).toBe("in the collection of St Mark's Basilica: a work of a place of worship, not public art");
   });
@@ -403,7 +477,7 @@ describe('publicArtVerdict — what it admits', () => {
     const v = publicArtVerdict(facts({
       classes: [SCULPTURE, MONUMENT, MEMORIAL],
       containers: [inside('Q3481120', 'Sibelius Park', ['Q22698'])],
-      collections: [inside('Q5710459', 'HAM Helsinki Art Museum', [ART_MUSEUM])],
+      collections: [owned('Q5710459', 'HAM Helsinki Art Museum', [ART_MUSEUM])],
     }), trees);
     expect(v).toMatchObject({ pass: true, type: 'sculpture' });
   });
@@ -414,9 +488,122 @@ describe('publicArtVerdict — what it admits', () => {
     // fallback asks only whether the owner is a museum or a place of worship.
     const v = publicArtVerdict(facts({
       classes: [SCULPTURE],
-      collections: [inside('Q83627', 'Akademgorodok', ['Q209465'])],
+      collections: [owned('Q83627', 'Akademgorodok', ['Q209465'])],
     }), trees);
     expect(v).toMatchObject({ pass: true, type: 'sculpture' });
+  });
+
+  it('admits a memorial with a museum in it as a monument', () => {
+    // Tsitsernakaberd: museum, memorial, Armenian Genocide memorial — the
+    // eternal flame, the stele, the twelve slabs, with the Genocide Museum
+    // under them. The National September 11 Memorial & Museum: museum,
+    // memorial; part of the World Trade Center, a building complex. The
+    // Victoria Memorial in Kolkata: museum, memorial. The first live run
+    // refused all three as `not an artwork, and typed: a museum` (#803): a
+    // commemorative class beside a museum class is a memorial complex, and a
+    // traveller stands in front of it whether or not there is a museum below.
+    const complexes: [string, Partial<PublicArtFacts>][] = [
+      ['Tsitsernakaberd', { classes: [MUSEUM, MEMORIAL, 'Q135645306'] }],
+      ['9/11 Memorial', {
+        classes: [MUSEUM, MEMORIAL],
+        containers: [partOf('Q20861677', 'World Trade Center', ['Q1497364'])],
+      }],
+      ['Victoria Memorial', { classes: [MUSEUM, MEMORIAL] }],
+    ];
+    for (const [label, over] of complexes) {
+      const v = publicArtVerdict(facts(over), trees);
+      expect(v, label).toMatchObject({ pass: true, type: 'monument', artwork: false });
+    }
+  });
+
+  it('reads a museum a monument is part of as its owner, not its place', () => {
+    // The Pakistan Monument: monument; located in Shakarparian, a park; part
+    // of the Pakistan Monument Museum, which Wikidata types a museum and
+    // which stands in the monument's base — the museum is part of the
+    // monument too. The first live run refused it as a work inside the
+    // museum (#803). A museum is an institution; a monument part of one
+    // belongs to it and stands where its location says, and what the walk
+    // reached above the museum — its own location, the park again, or the
+    // monument itself — is not a place the monument stands in either.
+    const v = publicArtVerdict(facts({
+      classes: [MONUMENT],
+      containers: [
+        inside('Q7462557', 'Shakarparian', ['Q22698']),
+        partOf('Q86452047', 'Pakistan Monument Museum', [MUSEUM]),
+        inside('Q3695640', 'Pakistan Monument', [MONUMENT], undefined, 'Q86452047'),
+      ],
+    }), trees);
+    expect(v).toMatchObject({ pass: true, type: 'monument' });
+  });
+
+  it('does not read what stands above a museum the entity is part of as a place', () => {
+    // A monument part of a museum that is itself inside a museum complex: the
+    // complex is reached through the institution, and is the institution's
+    // building, not the monument's.
+    const v = publicArtVerdict(facts({
+      classes: [MONUMENT],
+      containers: [
+        inside('Q1', 'A square', ['Q174782']),
+        partOf('Q2', 'A site museum', [MUSEUM]),
+        inside('Q3', 'A museum complex', [MUSEUM], undefined, 'Q2'),
+      ],
+    }), trees);
+    expect(v).toMatchObject({ pass: true, type: 'monument' });
+    // Reached from the square instead, the complex is where the monument stands.
+    const w = publicArtVerdict(facts({
+      classes: [MONUMENT],
+      containers: [
+        inside('Q1', 'A square', ['Q174782']),
+        inside('Q3', 'A museum complex', [MUSEUM], undefined, 'Q1'),
+      ],
+    }), trees);
+    expect(reasonOf(w)).toBe('inside A museum complex: a work of a museum, not public art');
+  });
+
+  it('reads a museum the work is part of as where it stands when it is located inside it', () => {
+    // A work part of a museum and located in the museum's courtyard, which is
+    // part of the museum: the courtyard is a place, and it leads to the
+    // museum, so the museum is where the work stands — the institution
+    // reading holds only when no place leads to it.
+    const v = publicArtVerdict(facts({
+      classes: [SCULPTURE],
+      containers: [
+        inside('Q4', 'A courtyard', ['Q1178342']),
+        { qid: 'Q2', label: 'A museum', classes: [MUSEUM], relation: 'part of', via: ['Q4'] },
+      ],
+    }), trees);
+    expect(reasonOf(v)).toBe('inside A museum: a work of a museum, not public art');
+  });
+
+  it('keeps a place some route other than the institution reaches, whichever came first', () => {
+    // A work part of a site museum and part of a courtyard, both part of the
+    // same museum complex: the complex is reached through the museum and
+    // through the courtyard. Only what nothing but an institution reaches
+    // goes with it, so the complex is a place — in either order the source
+    // listed the two routes, and however the walk recorded them.
+    for (const via of [['Q2', 'Q4'], ['Q4', 'Q2']]) {
+      const v = publicArtVerdict(facts({
+        classes: [MONUMENT],
+        containers: [
+          partOf('Q2', 'A site museum', [MUSEUM]),
+          partOf('Q4', 'A courtyard', ['Q1178342']),
+          inside('Q3', 'A museum complex', [MUSEUM], undefined, ...via),
+        ],
+      }), trees);
+      expect(reasonOf(v), via.join(',')).toBe('inside A museum complex: a work of a museum, not public art');
+    }
+    // A route listed after the container it leads to — a later hop arriving
+    // at something an earlier one reached — is read all the same.
+    const late = publicArtVerdict(facts({
+      classes: [MONUMENT],
+      containers: [
+        partOf('Q2', 'A site museum', [MUSEUM]),
+        inside('Q3', 'A museum complex', [MUSEUM], undefined, 'Q2', 'Q5'),
+        inside('Q1', 'A square', ['Q174782']),
+        inside('Q5', 'A block', ['Q123705'], undefined, 'Q1'),
+      ],
+    }), trees);
+    expect(reasonOf(late)).toBe('inside A museum complex: a work of a museum, not public art');
   });
 
   it('treats a coordinate of zero as a position, not an absence', () => {
@@ -443,6 +630,17 @@ describe('buildTrees', () => {
     expect(trees.artwork.has(MONUMENT)).toBe(false);
     expect(trees.artwork.has(MEMORIAL)).toBe(false);
     expect(trees.artwork.has(WAR_MEMORIAL)).toBe(false);
+  });
+
+  it('counts the memorial classes and the commemorative closures as commemorative, not a designation', () => {
+    // What lifts the museum's veto: a memorial, a war memorial — never
+    // `monument`, which is what Spain's register calls a museum.
+    expect(trees.commemorative.has(MEMORIAL)).toBe(true);
+    expect(trees.commemorative.has(WAR_MEMORIAL)).toBe(true);
+    expect(trees.commemorative.has('Q20011797')).toBe(true); // Holocaust memorial
+    expect(trees.commemorative.has(MONUMENT)).toBe(false);
+    expect(trees.commemorative.has('Q893745')).toBe(false); // national monument
+    expect(trees.commemorative.has(OBELISK)).toBe(false);
   });
 
   it('asks the pool for every admitting class, the commemorative closures included', () => {
