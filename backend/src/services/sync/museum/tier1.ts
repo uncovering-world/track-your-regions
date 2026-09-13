@@ -45,6 +45,20 @@ export const MAX_HOLDERS = 2;
  */
 export const ICONIC_RELEASE = 18;
 
+/**
+ * Whether the cap lets this work be placed at all: a work that exists in editions always is
+ * (every holder of an iconic impression has the thing itself), a unique work only while no more
+ * venues than `maxHolders` claim it.
+ *
+ * Exported because a kind that counts what a museum holds outside `selectTier1` — archaeology
+ * credits a museum with its finds whatever their fame, and judges it on the count
+ * (`findsHeldBy`) — has to credit exactly the works this answer places. Asked in two places, a
+ * find claimed by three museums admits none of them here and badges all three there.
+ */
+export function placedUnderCap(work: TierWork, maxHolders: number = MAX_HOLDERS): boolean {
+  return work.multipleMedium === true || work.venues.length <= maxHolders;
+}
+
 export interface Tier1Result {
   museums: Map<string, string[]>;
   homeless: string[];
@@ -67,7 +81,7 @@ export function selectTier1(
     if (!work.venues.length) { homeless.push(work.qid); continue; }
     // The cap asks "which of these is the one to travel for", and an edition has no such
     // answer to give — every holder of an iconic impression has the thing itself.
-    if (!work.multipleMedium && work.venues.length > maxHolders) { shared.push(work.qid); continue; }
+    if (!placedUnderCap(work, maxHolders)) { shared.push(work.qid); continue; }
     for (const v of work.venues) {
       const held = museums.get(v) ?? [];
       held.push(work.qid);
