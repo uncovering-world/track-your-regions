@@ -16,7 +16,8 @@ vi.mock('../../db/index.js', () => ({
 import { createManualExperience } from './curationController.js';
 
 const ADMIN = { id: 1, role: 'admin' };
-const CATEGORY_ID = 3;
+const KIND_ID = 3;
+const SOURCE_ID = 3;
 const REGION_ID = 20;
 const EXPERIENCE_ID = 555;
 const LOCATION_ID = 777;
@@ -27,7 +28,7 @@ const BODY = {
   longitude: 10.5,
   latitude: 50.5,
   regionId: REGION_ID,
-  categoryId: CATEGORY_ID,
+  kindId: KIND_ID,
 };
 
 function makeRes() {
@@ -37,7 +38,7 @@ function makeRes() {
 /**
  * Queues what `pool.query` answers. The admin role short-circuits
  * `checkCuratorScope` before it asks the database anything, so the only
- * `pool.query` call `createManualExperience` makes is the category lookup.
+ * `pool.query` call `createManualExperience` makes is the kind's source lookup.
  * `client.query` then answers the two RETURNING-id inserts the rest of the
  * write depends on, and `{ rows: [] }` for everything else (BEGIN, the two
  * link inserts, the audit log insert, COMMIT).
@@ -46,7 +47,7 @@ function queueQueries() {
   mockPoolQuery.mockReset();
   mockClientQuery.mockReset();
   mockPoolConnect.mockClear();
-  mockPoolQuery.mockResolvedValueOnce({ rows: [{ id: CATEGORY_ID }] });
+  mockPoolQuery.mockResolvedValueOnce({ rows: [{ id: SOURCE_ID }] });
   mockClientQuery.mockImplementation(async (sql: string) => {
     if (typeof sql === 'string' && sql.includes('INSERT INTO experiences')) {
       return { rows: [{ id: EXPERIENCE_ID }] };
@@ -99,7 +100,7 @@ describe('createManualExperience curation state', () => {
     expect(membership).toMatch(/'verified'/);
     expect(membership).toMatch(/published_at/);
     expect(membership).toMatch(/NOW\(\)/);
-    expect(membership).toMatch(/\(SELECT kind_id FROM experience_categories WHERE id = \$2\)/);
+    expect(membership).toMatch(/\(SELECT kind_id FROM experience_sources WHERE id = \$2\)/);
     // A person's judgement does not depend on the source's setting: unlike
     // the sync writer, nothing here may read the gate at all.
     expect(membership).not.toMatch(/requires_curation/);
@@ -107,7 +108,7 @@ describe('createManualExperience curation state', () => {
     const [, membershipParams] = mockClientQuery.mock.calls.find(
       ([callSql]) => typeof callSql === 'string' && /INSERT INTO experience_kind_memberships/.test(callSql),
     ) as [string, unknown[]];
-    expect(membershipParams).toEqual([EXPERIENCE_ID, CATEGORY_ID]);
+    expect(membershipParams).toEqual([EXPERIENCE_ID, SOURCE_ID]);
 
     // The state values are literals, not new bound parameters - the place's
     // params array is unchanged from before the split.

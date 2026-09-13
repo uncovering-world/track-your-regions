@@ -18,18 +18,18 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 vi.mock('../experience/waitingCounts.js', () => ({
-  waitingCountsByCategory: vi.fn(),
+  waitingCountsBySource: vi.fn(),
 }));
 
 import { pool } from '../../db/index.js';
-import { waitingCountsByCategory } from '../experience/waitingCounts.js';
-import { getCategories, reorderCategories } from './syncController.js';
+import { waitingCountsBySource } from '../experience/waitingCounts.js';
+import { getSources, reorderSources } from './syncController.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
 /** The same mock, in its callable shape: `vi.fn()`'s own type is not callable. */
 const answer = mockedQuery as unknown as (sql: string, params?: unknown[]) => Promise<unknown>;
-const mockedCounts = waitingCountsByCategory as unknown as ReturnType<typeof vi.fn>;
+const mockedCounts = waitingCountsBySource as unknown as ReturnType<typeof vi.fn>;
 
 const SOURCES = [
   { id: 1, name: 'UNESCO World Heritage Sites', is_active: true, requires_curation: false },
@@ -40,7 +40,7 @@ function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
 }
 
-describe('getCategories', () => {
+describe('getSources', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedCounts.mockReset();
@@ -50,7 +50,7 @@ describe('getCategories', () => {
   it('asks for the gate flag itself, not only for what is waiting under it', async () => {
     mockedCounts.mockResolvedValue(new Map());
 
-    await getCategories({} as never, makeRes() as never);
+    await getSources({} as never, makeRes() as never);
 
     // Asserted against the statement rather than the fixture: the mock answers `SOURCES`
     // whatever is selected, and `pool.query`'s rows are untyped on the way into the
@@ -76,7 +76,7 @@ describe('getCategories', () => {
     mockedCounts.mockResolvedValue(new Map([[2, { arrivals: 18, held: 1, contents: 3 }]]));
     const res = makeRes();
 
-    await getCategories({} as never, res as never);
+    await getSources({} as never, res as never);
 
     const [payload] = res.json.mock.calls[0] as [Array<{ id: number; waiting: unknown }>];
     // The aggregate groups, so a source with nothing waiting is absent from it rather
@@ -90,7 +90,7 @@ describe('getCategories', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const res = makeRes();
 
-    await getCategories({} as never, res as never);
+    await getSources({} as never, res as never);
 
     const [payload] = res.json.mock.calls[0] as [Array<{ id: number; name: string; waiting: unknown }>];
     // Every source still there, with everything the panel needs to run and cancel a
@@ -116,7 +116,7 @@ describe('getCategories', () => {
  * with none — and the stray transaction on the released client would take a
  * different request's writes down with it when something eventually rolls back.
  */
-describe('reorderCategories', () => {
+describe('reorderSources', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedConnect.mockReset();
@@ -138,12 +138,12 @@ describe('reorderCategories', () => {
     const res = makeRes();
 
     // Public Art & Monuments first, then UNESCO, then the museums.
-    await reorderCategories({ body: { categoryIds: [3, 1, 2] } } as never, res as never);
+    await reorderSources({ body: { sourceIds: [3, 1, 2] } } as never, res as never);
 
     const onClient = client.query.mock.calls.map(call => String(call[0]));
     expect(onClient[0]).toBe('BEGIN');
     expect(onClient.at(-1)).toBe('COMMIT');
-    expect(onClient.filter(sql => /UPDATE experience_categories/i.test(sql))).toHaveLength(3);
+    expect(onClient.filter(sql => /UPDATE experience_sources/i.test(sql))).toHaveLength(3);
     expect(client.release).toHaveBeenCalledTimes(1);
     expect(res.json).toHaveBeenCalledWith({ success: true, order: [3, 1, 2] });
   });
@@ -154,8 +154,8 @@ describe('reorderCategories', () => {
       .mockResolvedValueOnce({ rows: [] })  // BEGIN
       .mockRejectedValueOnce(new Error('deadlock detected'));
 
-    await expect(reorderCategories(
-      { body: { categoryIds: [3, 1, 2] } } as never, makeRes() as never,
+    await expect(reorderSources(
+      { body: { sourceIds: [3, 1, 2] } } as never, makeRes() as never,
     )).rejects.toThrow('deadlock detected');
 
     const onClient = client.query.mock.calls.map(call => String(call[0]));
@@ -167,7 +167,7 @@ describe('reorderCategories', () => {
     const client = pinClient();
     const res = makeRes();
 
-    await reorderCategories({ body: {} } as never, res as never);
+    await reorderSources({ body: {} } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(mockedConnect).not.toHaveBeenCalled();

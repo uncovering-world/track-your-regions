@@ -34,62 +34,62 @@ import { runningSyncs } from './types.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
-const CATEGORY = 99;
-const WORSHIP_CATEGORY = 100;
+const SOURCE = 99;
+const WORSHIP_SOURCE = 100;
 const MUSEUM_NOUN = { singular: 'museum', plural: 'museums' };
 const WORSHIP_NOUN = { singular: 'place', plural: 'places' };
 
 beforeEach(() => {
-  runningSyncs.delete(CATEGORY);
-  runningSyncs.delete(WORSHIP_CATEGORY);
+  runningSyncs.delete(SOURCE);
+  runningSyncs.delete(WORSHIP_SOURCE);
   mockedQuery.mockReset();
   mockedQuery.mockResolvedValue({ rows: [] });
 });
 
 describe('makeWikidataPictureRepair', () => {
   it('refuses to start while a run for that source is in runningSyncs', async () => {
-    runningSyncs.set(CATEGORY, {
+    runningSyncs.set(SOURCE, {
       cancel: false, kind: 'sync', status: 'processing', statusMessage: '', progress: 0,
       total: 0, created: 0, updated: 0, unchanged: 0, missing: 0, curatedConflicts: 0,
       held: 0, filtered: 0, errors: 0, currentItem: '', logId: null, dryRun: false,
     });
-    const fixImages = makeWikidataPictureRepair(CATEGORY, '[Test Sync]', MUSEUM_NOUN);
+    const fixImages = makeWikidataPictureRepair(SOURCE, '[Test Sync]', MUSEUM_NOUN);
 
     await expect(fixImages(null)).rejects.toThrow('[Test Sync] sync already in progress');
   });
 
   it('starts once a previous run has reached a terminal status, and clears its own entry after the window', async () => {
-    runningSyncs.set(CATEGORY, {
+    runningSyncs.set(SOURCE, {
       cancel: false, kind: 'repair', status: 'complete', statusMessage: '', progress: 0,
       total: 0, created: 0, updated: 0, unchanged: 0, missing: 0, curatedConflicts: 0,
       held: 0, filtered: 0, errors: 0, currentItem: '', logId: null, dryRun: false,
     });
-    const fixImages = makeWikidataPictureRepair(CATEGORY, '[Test Sync]', MUSEUM_NOUN);
+    const fixImages = makeWikidataPictureRepair(SOURCE, '[Test Sync]', MUSEUM_NOUN);
     vi.useFakeTimers();
 
     try {
       // No rows to fix, so this returns right after the guard rather than
       // reaching Wikidata or Commons.
       await fixImages(null);
-      expect(runningSyncs.get(CATEGORY)?.status).toBe('complete');
+      expect(runningSyncs.get(SOURCE)?.status).toBe('complete');
 
       // The `finally` block's cleanup is a timer, not immediate: the entry
       // outlives the call so a poller reading it right after still sees the
       // finished run, and only goes once the window the module gives it passes.
       vi.advanceTimersByTime(30000);
-      expect(runningSyncs.has(CATEGORY)).toBe(false);
+      expect(runningSyncs.has(SOURCE)).toBe(false);
     } finally {
       vi.useRealTimers();
     }
   });
 
   it('uses the given noun in its status line rather than "museums" for a source like worship', async () => {
-    const fixImages = makeWikidataPictureRepair(WORSHIP_CATEGORY, '[Worship Sync]', WORSHIP_NOUN);
+    const fixImages = makeWikidataPictureRepair(WORSHIP_SOURCE, '[Worship Sync]', WORSHIP_NOUN);
 
     // No rows to fix, so this returns right after the empty-result branch,
     // which is where the noun the factory was built with shows up.
     await fixImages(null);
 
-    expect(runningSyncs.get(WORSHIP_CATEGORY)?.statusMessage).toBe('All places already have images');
+    expect(runningSyncs.get(WORSHIP_SOURCE)?.statusMessage).toBe('All places already have images');
   });
 });

@@ -18,7 +18,7 @@ import {
 } from './index.js';
 
 const manual = (name: string) => createManualExperienceBodySchema.safeParse({
-  name, longitude: 2.1744, latitude: 41.4036, regionId: 1, categoryId: 1,
+  name, longitude: 2.1744, latitude: 41.4036, regionId: 1, kindId: 1,
 });
 
 describe('a name a curator sends', () => {

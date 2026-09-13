@@ -94,7 +94,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('refuses a curator whose scope does not reach the experience', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
@@ -107,7 +107,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('says so when the source never proposed anything', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     mockedConnect.mockResolvedValue(makeClient(['name'], []).client);
     const res = makeRes();
 
@@ -120,7 +120,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('clears a standing refusal along with the claim it belonged to', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'Renamed upstream', curatedConflict: true }] }];
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
@@ -141,7 +141,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('releases the curator claim, or the next run would refuse the value again', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'Renamed upstream', curatedConflict: true }] }];
     const { client, queries } = makeClient(['name', 'description'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
@@ -161,7 +161,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('writes a name as a person would type it, however the run recorded it', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     // A proposal recorded before the writers tidied (#835): accepting it must
     // not put the run of spaces back into the column migration 047 cleaned.
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: ' Renamed  upstream ', curatedConflict: true }] }];
@@ -180,7 +180,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('will not write a proposal the source has since withdrawn', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     // The withdrawal check is in the SQL, so a withdrawn proposal comes back
     // as no row — the same answer as no proposal ever existing
     const { client, queries } = makeClient(['name'], []);
@@ -206,7 +206,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('resolves the proposal under the same lock that writes it', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
@@ -228,7 +228,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('finishes rolling back before letting go of the client', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 42, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
     const { client, queries } = makeClient(['name'], PROPOSAL);
     let rollbackDone = false;
@@ -257,7 +257,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('refuses a proposal a newer run has replaced', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     // The card was drawn from run 41; run 42 has since proposed something else
     const PROPOSAL = [{ sync_log_id: 42, changed_fields: [{ field: 'name', new: 'Rathaus', curatedConflict: true }] }];
     const { client, queries } = makeClient(['name'], PROPOSAL);
@@ -276,7 +276,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('names the run its value came from, since a later one may differ', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 42, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
     mockedConnect.mockResolvedValue(makeClient(['name'], PROPOSAL).client);
     const res = makeRes();
@@ -290,7 +290,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('releases a field it cannot write, since nothing else ever would', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'tags', new: ['a'], curatedConflict: true }] }];
     const { client, queries } = makeClient(['tags', 'name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
@@ -312,7 +312,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('releases the coordinate on the object and on its pin together', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{
       sync_log_id: 9,
       changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],
@@ -348,7 +348,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('puts a released pin back on the coordinate that run offered for it', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{
       sync_log_id: 9,
       changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],
@@ -387,7 +387,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('finds the entry for a referenceless point the same run renamed', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{
       sync_log_id: 9,
       changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],
@@ -429,7 +429,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('writes no coordinate where that run offered none for the row', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{
       sync_log_id: 9,
       changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],
@@ -453,7 +453,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('does not read an entry with no rename as naming an unnamed point', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     // A referenceless entry for a named point that only moved, beside a
     // released referenceless row whose name is NULL. "No rename recorded" and
     // "the name is null" must not meet in the middle: compared through one
@@ -486,7 +486,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('leaves the points alone when the accepted field is not the coordinate', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
     const { client, queries } = makeClient(['name', 'location'], PROPOSAL, [POINT]);
     mockedConnect.mockResolvedValue(client);
@@ -505,7 +505,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('releases the credit with the picture, and drops the stored one', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{
       sync_log_id: 9,
       changed_fields: [{ field: 'imageUrl', new: 'https://example.org/p.jpg', curatedConflict: true }],
@@ -534,7 +534,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('does not report a credit that was never there', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{
       sync_log_id: 9,
       changed_fields: [{ field: 'imageUrl', new: 'https://example.org/p.jpg', curatedConflict: true }],
@@ -559,7 +559,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('keeps a credit claim when the picture is not what was accepted', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
     const { client, queries } = makeClient(['name', 'metadata.imageCredit'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
@@ -578,7 +578,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('reads the claim it is about to rewrite under the same lock', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
@@ -597,7 +597,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('does not overwrite an answer another curator already gave', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
     // The claim was released while this request was in flight
     const { client, queries } = makeClient([], PROPOSAL);
@@ -614,7 +614,7 @@ describe('acceptSourceValue', () => {
   });
 
   it('refuses a field the source did not propose', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
     mockedConnect.mockResolvedValue(makeClient(['name'], PROPOSAL).client);
     const res = makeRes();

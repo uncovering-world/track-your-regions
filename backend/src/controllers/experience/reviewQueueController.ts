@@ -12,7 +12,7 @@
 import { Response } from 'express';
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS, admissionPinnedSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, admissionPinnedSql, rowKindJoinSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { lifecycleSelectSql } from './experienceLifecycle.js';
@@ -55,7 +55,7 @@ interface ReviewQueueQuery {
 const KIND_WORDS = new Set<string>([...QUEUE_KINDS, ...WAITING_SUBS]);
 
 /**
- * The largest `experience_categories.id` there can be: the column is SERIAL, so
+ * The largest `experience_sources.id` there can be: the column is SERIAL, so
  * a bigger number names no source and, bound into an `int[]`, would be an error
  * from Postgres rather than a filter that matches nothing.
  */
@@ -105,7 +105,7 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
  * - **the source disagrees with an edit** — `curated_fields` refused a change
  *   and the divergence has been accumulating since. The value the source
  *   proposed is carried in the changeset, so it can still be applied.
- * - **this category turned it down** — a rule refused the row and it is already
+ * - **its kind turned it down** — a rule refused the row and it is already
  *   hidden (ADR-0024). The one kind of item here that a run has *already* acted
  *   on, and the exception to the page's usual promise that nothing has changed
  *   what visitors see. It sits apart from the first kind because none of those
@@ -194,11 +194,11 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     hasMore: rows.length > limit,
   });
 
-  // The rows span categories, so the unrestricted check correlates on each
-  // row's own category rather than on the optional request filter.
+  // The rows span sources, so the unrestricted check correlates on each
+  // row's own source rather than on the optional request filter.
   const scopeFilter = isAdmin
     ? 'TRUE'
-    : `(${curatorUnrestrictedScopeExists('e.category_id')} OR EXISTS (
+    : `(${curatorUnrestrictedScopeExists('e.source_id')} OR EXISTS (
          SELECT 1 FROM experience_regions er
          JOIN curator_scoped_regions s ON s.id = er.region_id
          WHERE er.experience_id = e.id
@@ -214,10 +214,10 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // parameter list but in no expression has no inferable type, and Postgres
   // refuses the whole statement with "could not determine data type".
   const params: unknown[] = [userId];
-  let categoryFilter = '';
+  let sourceFilter = '';
   if (filters.sourceIds?.length) {
     params.push(filters.sourceIds);
-    categoryFilter = `AND e.category_id = ANY($${params.length}::int[])`;
+    sourceFilter = `AND e.source_id = ANY($${params.length}::int[])`;
   }
 
   // The search, on the same two lists and for the same reason: a curator looking
@@ -272,13 +272,13 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // the reasoning is on `missingOpenSql` (`reviewQueuePredicates.ts`).
   const missingIds = idsOf('missing');
   const missing = await hydrate(missingIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
     FROM experiences e
-    JOIN experience_categories c ON c.id = e.category_id
+    ${rowKindJoinSql('e', 'mk', 'kd')}
     WHERE ${missingOpenSql('e')}
-      ${categoryFilter}
+      ${sourceFilter}
       AND ${scopeFilter}
       AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.missing_since DESC, e.id
@@ -293,7 +293,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // is on `refusedOpenSql` (`reviewQueuePredicates.ts`).
   //
   // Each of the four membership queues joins the membership the row's own
-  // source brought — `m.source_id = e.category_id`, the equality the catalogue
+  // source brought — `m.source_id = e.source_id`, the equality the catalogue
   // check `membership-source-disagrees-with-row` asserts — rather than any
   // membership of the place. Today a place has one; the day #755 gives it two,
   // a card is per membership (ADR-0045 decision 7) and the queue is keyed on
@@ -301,16 +301,16 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // source's refusal under another's heading, or the same held proposal twice.
   const refusedIds = idsOf('refused');
   const refused = await hydrate(refusedIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, m.kind_id, kd.name AS kind_name,
            m.admission_reason,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'refused' AS kind, ${countedWorksSelectSql()},
            NULL::jsonb AS proposed
     FROM experiences e
-    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
-    JOIN experience_categories c ON c.id = e.category_id
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
+    JOIN ${KINDS} kd ON kd.id = m.kind_id
     WHERE ${refusedOpenSql('m')}
-      ${categoryFilter}
+      ${sourceFilter}
       AND ${scopeFilter}
       AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.id
@@ -336,17 +336,17 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // to it looking for a row they answered a moment ago, having noticed the
   // mis-click, and the row they want is the last one they touched.
   const keptOut = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, m.kind_id, kd.name AS kind_name,
            m.admission_reason, e.state_decided_at, e.state_note,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'kept-out' AS kind, ${countedWorksSelectSql()},
            NULL::jsonb AS proposed
     FROM experiences e
-    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
-    JOIN experience_categories c ON c.id = e.category_id
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
+    JOIN ${KINDS} kd ON kd.id = m.kind_id
     WHERE m.admission = 'refused'
       AND ${admissionPinnedSql('m')}
-      ${categoryFilter}
+      ${sourceFilter}
       ${nameFilter}
       AND ${scopeFilter}
     ORDER BY e.state_decided_at DESC NULLS LAST, e.id
@@ -396,14 +396,14 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // curator's), and stays visible to everyone, as it is in the log.
   const logScopeFilter = isAdmin
     ? 'TRUE'
-    : `(${curatorUnrestrictedScopeExists('e.category_id')}
+    : `(${curatorUnrestrictedScopeExists('e.source_id')}
          OR log.region_id IS NULL
          OR log.region_id IN (SELECT id FROM curator_scoped_regions))`;
   const conflictIds = idsOf('conflict');
   const conflicts = await hydrate(conflictIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
       SELECT DISTINCT ON (e.id)
-             e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+             e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              'conflict' AS kind, ch.sync_log_id,
              -- When the run that is asking finished. The card names a run either
@@ -504,13 +504,13 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
              ) AS proposed
       FROM experience_sync_changes ch
       JOIN experiences e ON e.id = ch.experience_id
-      JOIN experience_categories c ON c.id = e.category_id
+      ${rowKindJoinSql('e', 'mk', 'kd')}
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
       -- conflictChangeOpenSql (reviewQueuePredicates.ts) is the newest-row,
       -- landed-run test; its docblock has the reasoning for the staleness
       -- clause.
       WHERE ${conflictChangeOpenSql('e', 'ch', 'l')}
-        ${categoryFilter}
+        ${sourceFilter}
         AND ${scopeFilter}
         -- Inside the DISTINCT ON rather than outside it, where the LIMIT used to
         -- sit: the pick is per experience, so narrowing to the page's ids first
@@ -531,15 +531,15 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // admission are the membership's, the source's observation is the row's.
   const arrivalIds = waitingIds('arrival');
   const arrivals = await hydrate(arrivalIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, m.kind_id, kd.name AS kind_name,
            m.curation_state, e.first_seen_sync_log_id AS sync_log_id,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'arrival' AS kind, NULL::jsonb AS proposed
     FROM experiences e
-    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
-    JOIN experience_categories c ON c.id = e.category_id
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
+    JOIN ${KINDS} kd ON kd.id = m.kind_id
     WHERE ${arrivalOpenSql('e', 'm')}
-      AND ${scopeFilter} ${categoryFilter}
+      AND ${scopeFilter} ${sourceFilter}
       AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.first_seen_sync_log_id DESC NULLS LAST, e.id
   `, [...params, arrivalIds]));
@@ -555,7 +555,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // cards — `conflicts`, which `accept-source` answers, and `held`, which
   // publishing answers — and after the curator answered via `accept-source` this
   // card would stay behind showing a value already written. `(f->>'held')` keeps
-  // the two questions separate: this card is only the fields the *category's
+  // the two questions separate: this card is only the fields the *source's
   // gate* held, never one a claim already refused for its own reason.
   //
   // The field says so itself rather than being inferred from the absence of a
@@ -601,7 +601,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const heldIds = waitingIds('held');
   const held = await hydrate(heldIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
-      SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+      SELECT e.id, e.external_id, e.name, e.source_id, m.kind_id, kd.name AS kind_name,
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              ch.sync_log_id, 'held' AS kind,
              (SELECT jsonb_agg(f) FROM jsonb_array_elements(ch.changed_fields) AS f
@@ -611,13 +611,13 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       FROM experiences e
       -- The pointer is the membership's (#822): the proposal was held for the
       -- source that made it, on the membership that source brought.
-      JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.category_id
-      JOIN experience_categories c ON c.id = e.category_id
+      JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
+      JOIN ${KINDS} kd ON kd.id = m.kind_id
       JOIN experience_sync_changes ch ON ch.experience_id = e.id
                                      AND ch.sync_log_id = m.pending_change_sync_log_id
       WHERE m.pending_change_sync_log_id IS NOT NULL
         AND ${heldOpenSql('e', 'm', 'ch')}
-        AND ${scopeFilter} ${categoryFilter}
+        AND ${scopeFilter} ${sourceFilter}
         AND e.id = ANY($${params.length + 1}::int[])
     ) q WHERE (q.proposed IS NOT NULL OR q.proposed_parts IS NOT NULL)
     ORDER BY q.sync_log_id DESC, q.id
@@ -627,7 +627,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // object, in their own module (`reviewQueueContents.ts`): they read a different
   // table, they carry the only per-row lists the queue returns, and this file had
   // reached the length the development guide says to split at.
-  const queryContext = { scopeFilter, categoryFilter, params };
+  const queryContext = { scopeFilter, sourceFilter, params };
   const contentsIds = waitingIds('contents');
   const contents = await hydrate(
     contentsIds, () => queryContents({ ...queryContext, ids: contentsIds }),

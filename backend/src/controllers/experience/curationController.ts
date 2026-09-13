@@ -62,14 +62,14 @@ export async function rejectExperience(req: AuthenticatedRequest, res: Response)
   }
 
   // Get experience source for scope check
-  const expResult = await pool.query('SELECT id, category_id FROM experiences WHERE id = $1', [experienceId]);
+  const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     res.status(404).json({ error: 'Experience not found' });
     return;
   }
 
   // Check curator scope
-  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].category_id);
+  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
   if (!hasScope) {
     res.status(403).json({ error: 'You do not have curator permissions for this region' });
     return;
@@ -109,14 +109,14 @@ export async function unrejectExperience(req: AuthenticatedRequest, res: Respons
   }
 
   // Get experience source for scope check
-  const expResult = await pool.query('SELECT id, category_id FROM experiences WHERE id = $1', [experienceId]);
+  const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     res.status(404).json({ error: 'Experience not found' });
     return;
   }
 
   // Check curator scope
-  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].category_id);
+  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
   if (!hasScope) {
     res.status(403).json({ error: 'You do not have curator permissions for this region' });
     return;
@@ -158,14 +158,14 @@ export async function assignExperienceToRegion(req: AuthenticatedRequest, res: R
   }
 
   // Verify experience exists
-  const expResult = await pool.query('SELECT id, category_id FROM experiences WHERE id = $1', [experienceId]);
+  const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     res.status(404).json({ error: 'Experience not found' });
     return;
   }
 
   // Check curator scope
-  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].category_id);
+  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
   if (!hasScope) {
     res.status(403).json({ error: 'You do not have curator permissions for this region' });
     return;
@@ -227,14 +227,14 @@ export async function unassignExperienceFromRegion(req: AuthenticatedRequest, re
   const userRole = req.user!.role;
 
   // Get experience source for scope check
-  const expResult = await pool.query('SELECT id, category_id FROM experiences WHERE id = $1', [experienceId]);
+  const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     res.status(404).json({ error: 'Experience not found' });
     return;
   }
 
   // Check curator scope
-  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].category_id);
+  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
   if (!hasScope) {
     res.status(403).json({ error: 'You do not have curator permissions for this region' });
     return;
@@ -278,14 +278,14 @@ export async function removeExperienceFromRegion(req: AuthenticatedRequest, res:
   const userRole = req.user!.role;
 
   // Get experience source for scope check
-  const expResult = await pool.query('SELECT id, category_id FROM experiences WHERE id = $1', [experienceId]);
+  const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     res.status(404).json({ error: 'Experience not found' });
     return;
   }
 
   // Check curator scope
-  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].category_id);
+  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
   if (!hasScope) {
     res.status(403).json({ error: 'You do not have curator permissions for this region' });
     return;
@@ -405,7 +405,7 @@ function metadataPatchOf(payload: EditPayload): Record<string, unknown> | null {
  * which is what every other writer says for "nothing": the manual create's
  * `|| null`, the picture repair's `SET image_url = NULL`, a run whose source
  * states no picture. The catalogue holds no `''` in any of these columns, the
- * category index is partial on `IS NOT NULL`, and the audit row names the same
+ * source index is partial on `IS NOT NULL`, and the audit row names the same
  * value the row holds (#696).
  */
 function clearedToNull(value: unknown): unknown {
@@ -518,7 +518,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
   }
 
   const expResult = await pool.query(
-    `SELECT id, category_id, name, short_description, description, type, image_url, tags, metadata, curated_fields
+    `SELECT id, source_id, name, short_description, description, type, image_url, tags, metadata, curated_fields
      FROM experiences WHERE id = $1`,
     [experienceId],
   );
@@ -532,7 +532,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     userId,
     userRole,
     experienceId,
-    existing.category_id as number,
+    existing.source_id as number,
   );
   if (!permitted) {
     res.status(403).json({ error: 'You do not have curator permissions for this experience' });
@@ -604,7 +604,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
  * Resolve what a caller may see of one experience's curation log.
  *
  * `unrestricted` — admins, global curators, and curators of the experience's
- * category see every row. `hasScopedRegion` — a region-scoped curator reaches
+ * source see every row. `hasScopedRegion` — a region-scoped curator reaches
  * the log at all only if something in it is attributable to their scope: a
  * region the experience is assigned to, or a region already named by one of
  * its log rows. The second half matters because a curator's last act in a
@@ -624,7 +624,7 @@ async function resolveCurationLogScope(
   userId: number,
   userRole: UserRole,
   experienceId: number,
-  categoryId: number,
+  sourceId: number,
 ): Promise<{ unrestricted: boolean; hasScopedRegion: boolean }> {
   if (userRole === 'admin') return { unrestricted: true, hasScopedRegion: true };
 
@@ -640,7 +640,7 @@ async function resolveCurationLogScope(
         JOIN curator_scoped_regions s ON s.id = cl.region_id
         WHERE cl.experience_id = $2
       )) AS has_scoped_region
-  `, [userId, experienceId, categoryId]);
+  `, [userId, experienceId, sourceId]);
 
   const row = result.rows[0];
   return { unrestricted: row.unrestricted === true, hasScopedRegion: row.has_scoped_region === true };
@@ -660,7 +660,7 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
   const userRole = req.user!.role;
 
   const expResult = await pool.query(
-    'SELECT category_id FROM experiences WHERE id = $1',
+    'SELECT source_id FROM experiences WHERE id = $1',
     [experienceId],
   );
   if (expResult.rows.length === 0) {
@@ -672,7 +672,7 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
     userId,
     userRole,
     experienceId,
-    expResult.rows[0].category_id as number,
+    expResult.rows[0].source_id as number,
   );
   if (!unrestricted && !hasScopedRegion) {
     res.status(403).json({ error: 'You do not have curator permissions for this experience' });
@@ -713,7 +713,7 @@ interface CreateManualBody {
   countryCode?: unknown;
   countryName?: unknown;
   regionId?: unknown;
-  categoryId?: unknown;
+  kindId?: unknown;
   websiteUrl?: unknown;
   wikipediaUrl?: unknown;
 }
@@ -729,8 +729,8 @@ function validateCreateManualInput(body: CreateManualBody): string | null {
   if (!body.regionId) {
     return 'regionId is required for initial region assignment';
   }
-  if (!body.categoryId) {
-    return 'categoryId is required';
+  if (!body.kindId) {
+    return 'kindId is required';
   }
   return null;
 }
@@ -743,7 +743,7 @@ function validateCreateManualInput(body: CreateManualBody): string | null {
  * column's `auto` default. `auto` means "published unread" (ADR-0025); a curator
  * who typed this in and placed the point on the map already read it — they wrote
  * it. There is no source here to gate, so both stamps are the literal rather
- * than a `CASE` reading `experience_categories.requires_curation` the way the
+ * than a `CASE` reading `experience_sources.requires_curation` the way the
  * sync writers do — which is also why neither is the state a sync write would
  * have produced: that one depends on the source's setting, and this one cannot.
  */
@@ -751,7 +751,7 @@ async function insertManualExperience(
   client: PoolClient,
   body: CreateManualBody,
   userId: number,
-  categoryId: number,
+  sourceId: number,
   imageCredit: ImageCredit | null,
 ): Promise<{ experienceId: number; externalId: string }> {
   const externalId = `curator-${userId}-${Date.now()}`;
@@ -771,7 +771,7 @@ async function insertManualExperience(
 
   const expResult = await client.query(`
     INSERT INTO experiences (
-      category_id, external_id, name, short_description, type,
+      source_id, external_id, name, short_description, type,
       location, image_url, tags, country_codes, country_names,
       metadata, is_manual, created_by, status
     ) VALUES (
@@ -780,7 +780,7 @@ async function insertManualExperience(
       $12, true, $13, 'active'
     ) RETURNING id
   `, [
-    categoryId,
+    sourceId,
     externalId,
     body.name,
     body.shortDescription || null,
@@ -796,17 +796,18 @@ async function insertManualExperience(
   ]);
   const experienceId = expResult.rows[0].id as number;
 
-  // The place's membership in the kind the chosen source fills (ADR-0045
-  // decision 4, #822). Verified from the moment it is created, and visible
+  // The place's membership in the kind the curator chose, brought by that
+  // kind's own source (ADR-0045 decision 4, #822; #819). Verified from the
+  // moment it is created, and visible
   // from the moment it exists: see the function comment above. A person's
   // judgement does not depend on the source's gate, so nothing here reads it.
   await client.query(`
     INSERT INTO ${MEMBERSHIPS} (experience_id, kind_id, source_id, curation_state, published_at)
     VALUES (
-      $1, (SELECT kind_id FROM experience_categories WHERE id = $2), $2,
+      $1, (SELECT kind_id FROM experience_sources WHERE id = $2), $2,
       'verified', NOW()
     )
-  `, [experienceId, categoryId]);
+  `, [experienceId, sourceId]);
 
   const locResult = await client.query(`
     INSERT INTO experience_locations (experience_id, name, ordinal, location, curation_state)
@@ -836,7 +837,8 @@ async function insertManualExperience(
   `, [experienceId, userId, body.regionId, JSON.stringify({
     name: body.name,
     type: body.type,
-    categoryId,
+    kindId: body.kindId,
+    sourceId,
   })]);
 
   return { experienceId, externalId };
@@ -845,7 +847,7 @@ async function insertManualExperience(
 /**
  * Create a new manual experience
  * POST /api/experiences
- * Body: { name, shortDescription?, type?, longitude, latitude, imageUrl?, tags?, countryCode?, countryName?, regionId, categoryId, websiteUrl?, wikipediaUrl? }
+ * Body: { name, shortDescription?, type?, longitude, latitude, imageUrl?, tags?, countryCode?, countryName?, regionId, kindId, websiteUrl?, wikipediaUrl? }
  */
 export async function createManualExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user!.id;
@@ -864,15 +866,20 @@ export async function createManualExperience(req: AuthenticatedRequest, res: Res
     return;
   }
 
-  const categoryResult = await pool.query(
-    `SELECT id FROM experience_categories WHERE id = $1`,
-    [body.categoryId],
+  // A curator picks the kind; the row is filed under that kind's own source —
+  // the one that fills it, first by display order — because a place names the
+  // source that brought it (`experiences.source_id`) and a person's addition
+  // has no run of its own (#819). The regional tier of ADR-0048 is where a
+  // curator's list becomes a source in its own right.
+  const sourceResult = await pool.query(
+    `SELECT id FROM experience_sources WHERE kind_id = $1 ORDER BY display_priority, id LIMIT 1`,
+    [body.kindId],
   );
-  if (categoryResult.rows.length === 0) {
-    res.status(400).json({ error: 'Invalid categoryId' });
+  if (sourceResult.rows.length === 0) {
+    res.status(400).json({ error: 'Invalid kindId' });
     return;
   }
-  const categoryId = categoryResult.rows[0].id as number;
+  const sourceId = sourceResult.rows[0].id as number;
 
   // Before the transaction opens, for the reason the edit path gives: this is a
   // request to somebody else's server, and a lock held across one is held for as
@@ -887,7 +894,7 @@ export async function createManualExperience(req: AuthenticatedRequest, res: Res
   try {
     await client.query('BEGIN');
     const { experienceId, externalId } =
-      await insertManualExperience(client, body, userId, categoryId, imageCredit);
+      await insertManualExperience(client, body, userId, sourceId, imageCredit);
     await client.query('COMMIT');
     res.status(201).json({ id: experienceId, name: body.name, externalId });
   } catch (error) {

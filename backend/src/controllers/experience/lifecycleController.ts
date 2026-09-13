@@ -76,7 +76,7 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
   }
 
   const expResult = await pool.query(
-    `SELECT id, category_id FROM experiences WHERE id = $1`,
+    `SELECT id, source_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
@@ -86,7 +86,7 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
   const existing = expResult.rows[0];
 
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, existing.category_id as number,
+    userId, userRole, experienceId, existing.source_id as number,
   );
   if (!permitted) {
     res.status(403).json({ error: 'You do not have curator permissions for this experience' });
@@ -140,7 +140,7 @@ export async function answerStateUnderLock(
     // defaulting to what is already there — so the axis nobody decided has to
     // be read under the lock that writes it. Two curators on one item is the
     // normal case, not a corner: every region-scoped curator covering any of
-    // its regions sees it, as do its category curator and every admin. From an
+    // its regions sees it, as do its source's curator and every admin. From an
     // unlocked read, a verdict on one axis silently reverts a verdict on the
     // other, and the log would then assert `former` beside a column saying
     // `present`. Reverting `lost` costs more still: it puts the row back inside
@@ -333,7 +333,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
   const body = req.body as AdmissionAnswer;
 
   const expResult = await pool.query(
-    `SELECT id, category_id FROM experiences WHERE id = $1`,
+    `SELECT id, source_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
@@ -342,7 +342,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
   }
 
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, expResult.rows[0].category_id as number,
+    userId, userRole, experienceId, expResult.rows[0].source_id as number,
   );
   if (!permitted) {
     res.status(403).json({ error: 'You do not have curator permissions for this experience' });
@@ -474,7 +474,7 @@ export async function answerAdmissionUnderLock(
     // can see and the first real click found immediately.
     //
     // Kept on a confirmed row: it is the record of what the rule objected to,
-    // and the archaeology category will be built by reading exactly these.
+    // and the archaeology kind will be built by reading exactly these.
     // Cleared on an override, where it has stopped being true.
     const nextReason = admitted ? null : before.admission_reason;
 

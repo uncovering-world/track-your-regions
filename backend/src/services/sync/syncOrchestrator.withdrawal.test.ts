@@ -52,7 +52,7 @@ import { updateSyncLog } from './syncUtils.js';
 import { markRefused, restoreAdmission } from './admission.js';
 import { missingDetectionSkipReason } from './missingDetection.js';
 
-const TEST_CATEGORY_ID = 999;
+const TEST_SOURCE_ID = 999;
 
 interface TestItem {
   id: string;
@@ -78,7 +78,7 @@ const REASON = 'this run placed 291 of the 1301 works the catalogue offers at th
 /** Run 42's shape: every museum unchanged, nothing failed, a sixth of the pool. */
 function shortRun(overrides?: Partial<SyncServiceConfig<TestItem>>): SyncServiceConfig<TestItem> {
   return {
-    categoryId: TEST_CATEGORY_ID,
+    sourceId: TEST_SOURCE_ID,
     logPrefix: '[Test Sync]',
     sourceCompleteness: 'ranked',
     fetchItems: vi.fn().mockResolvedValue({
@@ -104,7 +104,7 @@ describe('a run that saw too little to say what left', () => {
     await orchestrateSync(shortRun(), 1);
 
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'partial',
+      TEST_SOURCE_ID, 42, 'partial',
       expect.objectContaining({ errors: 0, unchanged: 2, withdrawalSkippedReason: REASON }),
       undefined,
     );
@@ -137,7 +137,7 @@ describe('a run that saw too little to say what left', () => {
       expect.objectContaining({ withdrawalSkippedReason: null }),
     );
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ withdrawalSkippedReason: null }),
       undefined,
     );
@@ -149,7 +149,7 @@ describe('a run that saw too little to say what left', () => {
     // the same split placement's partial makes.
     await orchestrateSync(shortRun(), 1);
 
-    const status = getSyncStatus(TEST_CATEGORY_ID);
+    const status = getSyncStatus(TEST_SOURCE_ID);
     expect(status?.status).toBe('complete');
     expect(status?.statusMessage).toContain('Complete (partial)');
     expect(status?.statusMessage).toContain(REASON);
@@ -163,7 +163,7 @@ describe('a run that saw too little to say what left', () => {
       .mockRejectedValueOnce(new Error('boom'));
     await orchestrateSync(straggler, 1);
     expect(updateSyncLog).toHaveBeenLastCalledWith(
-      TEST_CATEGORY_ID, 42, 'partial',
+      TEST_SOURCE_ID, 42, 'partial',
       expect.objectContaining({ errors: 1, withdrawalSkippedReason: REASON }),
       expect.anything(),
     );
@@ -174,7 +174,7 @@ describe('a run that saw too little to say what left', () => {
     (broken.processItem as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
     await orchestrateSync(broken, 1);
     expect(updateSyncLog).toHaveBeenLastCalledWith(
-      TEST_CATEGORY_ID, 42, 'failed', expect.anything(), expect.anything(),
+      TEST_SOURCE_ID, 42, 'failed', expect.anything(), expect.anything(),
     );
   });
 });
@@ -196,7 +196,7 @@ describe('a run that saw too little and then failed', () => {
     await expect(orchestrateSync(shortRun(), 1)).rejects.toThrow('db down');
 
     expect(updateSyncLog).toHaveBeenLastCalledWith(
-      TEST_CATEGORY_ID, 42, 'failed',
+      TEST_SOURCE_ID, 42, 'failed',
       expect.objectContaining({ withdrawalSkippedReason: REASON }),
       expect.anything(),
     );
@@ -208,7 +208,7 @@ describe('a run that saw too little and then failed', () => {
     await expect(orchestrateSync(config, 1)).rejects.toThrow('API down');
 
     expect(updateSyncLog).toHaveBeenLastCalledWith(
-      TEST_CATEGORY_ID, 42, 'failed',
+      TEST_SOURCE_ID, 42, 'failed',
       expect.objectContaining({ withdrawalSkippedReason: null }),
       expect.anything(),
     );
@@ -233,7 +233,7 @@ describe('a run whose detection was skipped and then failed', () => {
       .rejects.toThrow('db down');
 
     expect(updateSyncLog).toHaveBeenLastCalledWith(
-      TEST_CATEGORY_ID, 42, 'failed',
+      TEST_SOURCE_ID, 42, 'failed',
       expect.objectContaining({
         detectionSkippedReason: 'source is ranked', withdrawalSkippedReason: REASON,
       }),

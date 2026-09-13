@@ -51,7 +51,7 @@ import {
 } from './admission.js';
 import { assignRegionsForExperiences } from './regionAssignmentService.js';
 
-const TEST_CATEGORY_ID = 999;
+const TEST_SOURCE_ID = 999;
 
 interface TestItem {
   id: string;
@@ -118,7 +118,7 @@ function makeProgress(overrides: Partial<SyncProgress> = {}): SyncProgress {
 
 function makeConfig(overrides?: Partial<SyncServiceConfig<TestItem>>): SyncServiceConfig<TestItem> {
   return {
-    categoryId: TEST_CATEGORY_ID,
+    sourceId: TEST_SOURCE_ID,
     logPrefix: '[Test Sync]',
     sourceCompleteness: 'authoritative',
     fetchItems: vi.fn().mockResolvedValue({ items: [{ id: '1', name: 'Item 1' }, { id: '2', name: 'Item 2' }], fetchedCount: 2 }),
@@ -160,9 +160,9 @@ describe('orchestrateSync', () => {
 
     expect(config.fetchItems).toHaveBeenCalledOnce();
     expect(config.processItem).toHaveBeenCalledTimes(2);
-    expect(createSyncLog).toHaveBeenCalledWith(TEST_CATEGORY_ID, 1, false);
+    expect(createSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 1, false);
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID,
+      TEST_SOURCE_ID,
       42,
       'success',
       expect.objectContaining({ fetched: 2, created: 1, updated: 1, errors: 0 }),
@@ -180,7 +180,7 @@ describe('orchestrateSync', () => {
     await orchestrateSync(config, null);
 
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID,
+      TEST_SOURCE_ID,
       42,
       'partial',
       expect.objectContaining({ fetched: 2, created: 1, updated: 0, errors: 1 }),
@@ -196,7 +196,7 @@ describe('orchestrateSync', () => {
     await orchestrateSync(config, null);
 
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID,
+      TEST_SOURCE_ID,
       42,
       'failed',
       expect.objectContaining({ fetched: 2, created: 0, updated: 0, errors: 2 }),
@@ -221,7 +221,7 @@ describe('orchestrateSync', () => {
 
     // Pre-processing error should be reflected in progress.errors and final status
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID,
+      TEST_SOURCE_ID,
       42,
       'partial', // 1 error + 1 created = partial
       expect.objectContaining({ fetched: 2, created: 1, updated: 0, errors: 1 }),
@@ -230,7 +230,7 @@ describe('orchestrateSync', () => {
   });
 
   it('should throw when sync is already running', async () => {
-    runningSyncs.set(TEST_CATEGORY_ID, makeProgress({ status: 'processing' }));
+    runningSyncs.set(TEST_SOURCE_ID, makeProgress({ status: 'processing' }));
 
     const config = makeConfig();
     await expect(orchestrateSync(config, null))
@@ -238,7 +238,7 @@ describe('orchestrateSync', () => {
   });
 
   it('should allow starting a new sync after previous completed', async () => {
-    runningSyncs.set(TEST_CATEGORY_ID, makeProgress({ status: 'complete', statusMessage: 'Done', progress: 10, created: 10 }));
+    runningSyncs.set(TEST_SOURCE_ID, makeProgress({ status: 'complete', statusMessage: 'Done', progress: 10, created: 10 }));
 
     const config = makeConfig();
     await orchestrateSync(config, null);
@@ -248,7 +248,7 @@ describe('orchestrateSync', () => {
 
   it('empties nothing before it starts, whatever it was asked for', async () => {
     // A run refreshes what the source offers and marks what it withdrew. There
-    // is no mode that empties the category first: the visit records and manual
+    // is no mode that empties the source first: the visit records and manual
     // region assignments that went with it are the one thing no later run can
     // rebuild. The config no longer has a cleanup hook to call, and this holds
     // the line against one coming back.
@@ -278,7 +278,7 @@ describe('orchestrateSync', () => {
     // Should have processed only the first item before cancel was detected
     expect(config.processItem).toHaveBeenCalledTimes(1);
 
-    const status = runningSyncs.get(TEST_CATEGORY_ID);
+    const status = runningSyncs.get(TEST_SOURCE_ID);
     expect(status?.status).toBe('cancelled');
 
     // A cancel exits ahead of the admission step, so a row this run selected
@@ -296,7 +296,7 @@ describe('orchestrateSync', () => {
 
     await expect(orchestrateSync(config, null)).rejects.toThrow('API down');
 
-    const status = runningSyncs.get(TEST_CATEGORY_ID);
+    const status = runningSyncs.get(TEST_SOURCE_ID);
     expect(status?.status).toBe('failed');
     expect(status?.statusMessage).toBe('API down');
   });
@@ -306,12 +306,12 @@ describe('orchestrateSync', () => {
     await orchestrateSync(config, null);
 
     // Progress still exists immediately after sync
-    expect(runningSyncs.has(TEST_CATEGORY_ID)).toBe(true);
+    expect(runningSyncs.has(TEST_SOURCE_ID)).toBe(true);
 
     // Advance past the 30s cleanup timer
     vi.advanceTimersByTime(31000);
 
-    expect(runningSyncs.has(TEST_CATEGORY_ID)).toBe(false);
+    expect(runningSyncs.has(TEST_SOURCE_ID)).toBe(false);
   });
 
   it('should not clean up runningSyncs if a new sync started', async () => {
@@ -320,12 +320,12 @@ describe('orchestrateSync', () => {
 
     // Simulate a new sync starting before cleanup fires
     const newProgress = makeProgress({ status: 'fetching', statusMessage: 'New sync', total: 0 });
-    runningSyncs.set(TEST_CATEGORY_ID, newProgress);
+    runningSyncs.set(TEST_SOURCE_ID, newProgress);
 
     vi.advanceTimersByTime(31000);
 
     // Old cleanup should NOT have removed the new sync's progress
-    expect(runningSyncs.get(TEST_CATEGORY_ID)).toBe(newProgress);
+    expect(runningSyncs.get(TEST_SOURCE_ID)).toBe(newProgress);
   });
 });
 
@@ -362,7 +362,7 @@ describe('orchestrateSync changeset recording', () => {
     await orchestrateSync(config, 1);
 
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID,
+      TEST_SOURCE_ID,
       42,
       'success',
       expect.objectContaining({ created: 0, updated: 1, unchanged: 1 }),
@@ -398,7 +398,7 @@ describe('orchestrateSync changeset recording', () => {
     // A collection answering a museum query is the filter working, not the run
     // breaking — status stays clean and the count lands in its own column
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ filtered: 1, errors: 0 }),
       undefined,
     );
@@ -438,7 +438,7 @@ describe('orchestrateSync changeset recording', () => {
     await orchestrateSync(config, 1);
 
     expect(markRefused).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID,
+      TEST_SOURCE_ID,
       [{ externalId: 'Q6373', name: 'British Museum', reason: 'not an art museum' }],
       false,
     );
@@ -502,15 +502,15 @@ describe('orchestrateSync changeset recording', () => {
 
     expect(order).toEqual(['refuse', 'restore', 'sweep', 'badge']);
     // And restore and the badge are asked about the very id that was refused.
-    expect(restoreAdmission).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1'], false);
-    expect(markIconic).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1'], false);
+    expect(restoreAdmission).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1'], false);
+    expect(markIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1'], false);
   });
 
   it('sweeps against the ids the run actually saw, and badges nothing without the flag', async () => {
     await orchestrateSync(makeConfig({ recomputesMembership: true }), 1);
 
     expect(markNotAdmitted).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, ['1', '2'], expect.any(String), false,
+      TEST_SOURCE_ID, ['1', '2'], expect.any(String), false,
     );
     // Recomputing membership buys the sweep, not the badge: that is a property
     // of the source's admission rule (`badgesAdmitted`), declared on its own.
@@ -528,7 +528,7 @@ describe('orchestrateSync changeset recording', () => {
     expect(markNotAdmitted).not.toHaveBeenCalled();
     // And badging is a statement about rows the run did admit, whatever the
     // guard says about sweeping the rest.
-    expect(markIconic).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1', '2'], false);
+    expect(markIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2'], false);
   });
 
 
@@ -543,7 +543,7 @@ describe('orchestrateSync changeset recording', () => {
     const swept = recorded.find((c: { externalId: string }) => c.externalId === 'Q55685908');
     expect(swept).toMatchObject({ changeType: 'filtered', experienceId: 6288 });
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success', expect.objectContaining({ filtered: 1 }), undefined,
+      TEST_SOURCE_ID, 42, 'success', expect.objectContaining({ filtered: 1 }), undefined,
     );
   });
 
@@ -574,7 +574,7 @@ describe('orchestrateSync changeset recording', () => {
     await orchestrateSync(config, 1);
 
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ curatedConflicts: 2 }),
       undefined,
     );
@@ -608,7 +608,7 @@ describe('orchestrateSync changeset recording', () => {
     // nothing — a run reporting two updates over two rows it did not touch is
     // the report saying the opposite of what the catalogue holds (#519).
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ updated: 0, unchanged: 2 }),
       undefined,
     );
@@ -622,7 +622,7 @@ describe('orchestrateSync changeset recording', () => {
     // That counter means "a person had claimed this field". Nobody has looked at
     // a held one, which is the whole difference the two words carry.
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ curatedConflicts: 0 }),
       undefined,
     );
@@ -639,7 +639,7 @@ describe('orchestrateSync changeset recording', () => {
     // that counter's meaning is already fixed — and is counted again here, per
     // row, where `curatedConflicts` counts per claimed field.
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ held: 2, unchanged: 2, updated: 0 }),
       undefined,
     );
@@ -659,7 +659,7 @@ describe('orchestrateSync changeset recording', () => {
     // nothing is waiting, and a count of the decisions the run left open must
     // not include it.
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ held: 0, curatedConflicts: 2, unchanged: 2 }),
       undefined,
     );
@@ -681,7 +681,7 @@ describe('orchestrateSync changeset recording', () => {
     // already reports it and the queue raises an `arrival` card for it.
     // Counting it here too would report the run's news twice.
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ created: 2, held: 0 }),
       undefined,
     );
@@ -720,7 +720,7 @@ describe('orchestrateSync changeset recording', () => {
     // the increment and the row's word come from the same predicate.
     expect(heldRows).toBe(2);
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ held: heldRows, unchanged: 4, created: 1, updated: 1 }),
       undefined,
     );
@@ -739,7 +739,7 @@ describe('orchestrateSync changeset recording', () => {
     // The failure path writes its own stats, and a proposal the run held before
     // it stopped is still waiting on somebody.
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'cancelled',
+      TEST_SOURCE_ID, 42, 'cancelled',
       expect.objectContaining({ held: 1, unchanged: 1 }),
       expect.anything(),
     );
@@ -854,7 +854,7 @@ describe('orchestrateSync changeset recording', () => {
     // because the held half is the one nobody has answered, and the admin
     // report's `?type=held` filter is where a curator would look for it.
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ held: 1, unchanged: 2, updated: 0 }),
       undefined,
     );
@@ -927,7 +927,7 @@ describe('orchestrateSync changeset recording', () => {
     // `total_updated` counts rows that actually changed, and this one did not —
     // the museum did. Same rule a held row follows (#519): stored, not counted.
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ updated: 0, unchanged: 2 }),
       undefined,
     );
@@ -984,17 +984,17 @@ describe('orchestrateSync changeset recording', () => {
 
     // Counting the offered ids would fold in rows this run created, which only
     // ever lifts the ratio past the floor
-    expect(countSeenAmongActive).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1', '2']);
+    expect(countSeenAmongActive).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2']);
   });
 
-  it('measures coverage on every run, since none of them empties the category', async () => {
-    // The exemption existed because a force run deleted the category first, so
+  it('measures coverage on every run, since none of them empties the source', async () => {
+    // The exemption existed because a force run deleted the source first, so
     // the count would be zero against a pre-deletion denominator. Nothing
     // deletes now, and a run that skipped the floor could conclude that
     // everything it failed to fetch had been delisted.
     await orchestrateSync(makeConfig(), 1, { force: true } as never);
 
-    expect(countSeenAmongActive).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1', '2']);
+    expect(countSeenAmongActive).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2']);
   });
 
   it('measures coverage before the run writes anything', async () => {
@@ -1022,7 +1022,7 @@ describe('orchestrateSync changeset recording', () => {
     await orchestrateSync(makeConfig(), 1, { dryRun: true });
 
     expect(flagMissingExperiences).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, true, ['1', '2'],
+      TEST_SOURCE_ID, 42, true, ['1', '2'],
     );
   });
 
@@ -1037,7 +1037,7 @@ describe('orchestrateSync changeset recording', () => {
 
     // Both ids reach the detector: the source listed them, so neither is missing
     expect(flagMissingExperiences).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, false, ['1', '2'],
+      TEST_SOURCE_ID, 42, false, ['1', '2'],
     );
   });
 
@@ -1062,7 +1062,7 @@ describe('orchestrateSync changeset recording', () => {
     // The run card tells a lost record apart from a pre-provenance run by this
     // marker; without it on this path, a failed run is labelled as ancient
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'failed', expect.anything(),
+      TEST_SOURCE_ID, 42, 'failed', expect.anything(),
       expect.arrayContaining([expect.objectContaining({ externalId: 'changeset' })]),
     );
   });
@@ -1074,7 +1074,7 @@ describe('orchestrateSync changeset recording', () => {
 
     // A run whose per-object record never landed is not a clean run
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'partial', expect.objectContaining({ errors: 1 }),
+      TEST_SOURCE_ID, 42, 'partial', expect.objectContaining({ errors: 1 }),
       expect.arrayContaining([
         expect.objectContaining({ externalId: 'changeset' }),
       ]),
@@ -1090,7 +1090,7 @@ describe('orchestrateSync changeset recording', () => {
     await orchestrateSync(makeConfig(), 1);
 
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ missing: 1 }),
       undefined,
     );
@@ -1103,7 +1103,7 @@ describe('orchestrateSync changeset recording', () => {
 
     expect(flagMissingExperiences).not.toHaveBeenCalled();
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'success',
       expect.objectContaining({ detectionSkippedReason: 'source is ranked' }),
       undefined,
     );
@@ -1114,7 +1114,7 @@ describe('orchestrateSync changeset recording', () => {
 
     await orchestrateSync(config, 1, { dryRun: true });
 
-    expect(createSyncLog).toHaveBeenCalledWith(TEST_CATEGORY_ID, 1, true);
+    expect(createSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 1, true);
     expect(config.processItem).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -1123,11 +1123,11 @@ describe('orchestrateSync changeset recording', () => {
   });
 
   it('previews anything it can run, now that no mode deletes first', async () => {
-    // The refusal was about force deleting the category before there was
+    // The refusal was about force deleting the source before there was
     // anything to preview. With nothing deleted there is nothing to refuse.
     await orchestrateSync(makeConfig(), 1, { force: true, dryRun: true } as never);
 
-    expect(createSyncLog).toHaveBeenCalledWith(TEST_CATEGORY_ID, 1, true);
+    expect(createSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 1, true);
   });
 
   it('puts the run into the failed state, not just a failed message', async () => {
@@ -1139,7 +1139,7 @@ describe('orchestrateSync changeset recording', () => {
 
     // The UI reads `status`; leaving it 'complete' over a failed verdict is the
     // one case where state and verdict genuinely disagree
-    expect(runningSyncs.get(TEST_CATEGORY_ID)?.status).toBe('failed');
+    expect(runningSyncs.get(TEST_SOURCE_ID)?.status).toBe('failed');
   });
 
   it('calls a run partial, not failed, when everything was already current', async () => {
@@ -1152,7 +1152,7 @@ describe('orchestrateSync changeset recording', () => {
     await orchestrateSync(config, 1);
 
     expect(updateSyncLog).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID, 42, 'partial',
+      TEST_SOURCE_ID, 42, 'partial',
       expect.objectContaining({ unchanged: 1, errors: 1 }),
       expect.anything(),
     );
@@ -1164,14 +1164,14 @@ describe('getSyncStatus', () => {
   afterEach(() => runningSyncs.clear());
 
   it('should return null when no sync exists', () => {
-    expect(getSyncStatus(TEST_CATEGORY_ID)).toBeNull();
+    expect(getSyncStatus(TEST_SOURCE_ID)).toBeNull();
   });
 
   it('should return progress when sync exists', () => {
     const progress = makeProgress({ statusMessage: 'Working', progress: 5, created: 3, updated: 2, currentItem: 'Item 5', logId: 42 });
-    runningSyncs.set(TEST_CATEGORY_ID, progress);
+    runningSyncs.set(TEST_SOURCE_ID, progress);
 
-    expect(getSyncStatus(TEST_CATEGORY_ID)).toBe(progress);
+    expect(getSyncStatus(TEST_SOURCE_ID)).toBe(progress);
   });
 });
 
@@ -1180,29 +1180,29 @@ describe('cancelSync', () => {
   afterEach(() => runningSyncs.clear());
 
   it('should return false when no sync exists', () => {
-    expect(cancelSync(TEST_CATEGORY_ID)).toBe(false);
+    expect(cancelSync(TEST_SOURCE_ID)).toBe(false);
   });
 
   it('should cancel a running sync', () => {
-    runningSyncs.set(TEST_CATEGORY_ID, makeProgress({ statusMessage: 'Working', progress: 5, created: 3, updated: 2, currentItem: 'Item 5', logId: 42 }));
+    runningSyncs.set(TEST_SOURCE_ID, makeProgress({ statusMessage: 'Working', progress: 5, created: 3, updated: 2, currentItem: 'Item 5', logId: 42 }));
 
-    expect(cancelSync(TEST_CATEGORY_ID)).toBe(true);
+    expect(cancelSync(TEST_SOURCE_ID)).toBe(true);
 
-    const progress = runningSyncs.get(TEST_CATEGORY_ID);
+    const progress = runningSyncs.get(TEST_SOURCE_ID);
     expect(progress?.cancel).toBe(true);
     expect(progress?.statusMessage).toBe('Cancelling...');
   });
 
   it('should not cancel an already-complete sync', () => {
-    runningSyncs.set(TEST_CATEGORY_ID, makeProgress({ status: 'complete', statusMessage: 'Done', progress: 10, created: 10, logId: 42 }));
+    runningSyncs.set(TEST_SOURCE_ID, makeProgress({ status: 'complete', statusMessage: 'Done', progress: 10, created: 10, logId: 42 }));
 
-    expect(cancelSync(TEST_CATEGORY_ID)).toBe(false);
+    expect(cancelSync(TEST_SOURCE_ID)).toBe(false);
   });
 
   it('should not cancel a failed sync', () => {
-    runningSyncs.set(TEST_CATEGORY_ID, makeProgress({ status: 'failed', statusMessage: 'Error', total: 0, errors: 1, logId: 42 }));
+    runningSyncs.set(TEST_SOURCE_ID, makeProgress({ status: 'failed', statusMessage: 'Error', total: 0, errors: 1, logId: 42 }));
 
-    expect(cancelSync(TEST_CATEGORY_ID)).toBe(false);
+    expect(cancelSync(TEST_SOURCE_ID)).toBe(false);
   });
 });
 
@@ -1210,7 +1210,7 @@ describe('registering a location write', () => {
   beforeEach(() => {
     (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(3);
     (annotateClosedSyncLog as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(undefined);
-    runningSyncs.delete(TEST_CATEGORY_ID);
+    runningSyncs.delete(TEST_SOURCE_ID);
   });
 
   it('keeps what an item wrote even when that item then throws', async () => {

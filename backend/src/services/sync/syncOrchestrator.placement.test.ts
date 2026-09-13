@@ -53,7 +53,7 @@ import { updateSyncLog, annotateClosedSyncLog } from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
 import { assignRegionsForExperiences, worldViewsWithGeometry } from './regionAssignmentService.js';
 
-const TEST_CATEGORY_ID = 999;
+const TEST_SOURCE_ID = 999;
 
 interface TestItem {
   id: string;
@@ -81,7 +81,7 @@ function processed(outcome: 'created' | 'updated' | 'unchanged'): ProcessItemRes
 
 function makeConfig(overrides?: Partial<SyncServiceConfig<TestItem>>): SyncServiceConfig<TestItem> {
   return {
-    categoryId: TEST_CATEGORY_ID,
+    sourceId: TEST_SOURCE_ID,
     logPrefix: '[Test Sync]',
     sourceCompleteness: 'authoritative',
     fetchItems: vi.fn().mockResolvedValue({ items: [{ id: '1', name: 'Item 1' }, { id: '2', name: 'Item 2' }], fetchedCount: 2 }),
@@ -102,7 +102,7 @@ describe('placing what moved', () => {
     (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(3);
     (worldViewsWithGeometry as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([5]);
     (annotateClosedSyncLog as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(undefined);
-    runningSyncs.delete(TEST_CATEGORY_ID);
+    runningSyncs.delete(TEST_SOURCE_ID);
   });
 
   it('places the experiences whose locations moved, once per world view', async () => {
@@ -236,7 +236,7 @@ describe('placing what moved', () => {
     // run (#850) — as if the run were still handling it.
     let nameAfterLoop: string | undefined;
     (recordSyncChanges as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
-      nameAfterLoop = getSyncStatus(TEST_CATEGORY_ID)?.currentItem;
+      nameAfterLoop = getSyncStatus(TEST_SOURCE_ID)?.currentItem;
     });
     const config = makeConfig({
       processItem: vi.fn().mockImplementation(async (_i, _p, ctx) => {
@@ -258,7 +258,7 @@ describe('placing what moved', () => {
     // the one path whose window is not short.
     let nameDuringPlacement: string | undefined;
     (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-      nameDuringPlacement = getSyncStatus(TEST_CATEGORY_ID)?.currentItem;
+      nameDuringPlacement = getSyncStatus(TEST_SOURCE_ID)?.currentItem;
       return 3;
     });
     const config = makeConfig({
@@ -282,7 +282,7 @@ describe('placing what moved', () => {
     // for that whole window, whatever the caption said.
     let lineAfterLoop: string | undefined;
     (recordSyncChanges as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
-      lineAfterLoop = getSyncStatus(TEST_CATEGORY_ID)?.statusMessage;
+      lineAfterLoop = getSyncStatus(TEST_SOURCE_ID)?.statusMessage;
     });
 
     await orchestrateSync(makeConfig(), null);
@@ -295,7 +295,7 @@ describe('placing what moved', () => {
     // tells an admin whether the phase is a blink or a wait.
     let labelDuringPlacement: string | undefined;
     (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-      labelDuringPlacement = getSyncStatus(TEST_CATEGORY_ID)?.statusMessage;
+      labelDuringPlacement = getSyncStatus(TEST_SOURCE_ID)?.statusMessage;
       return 3;
     });
     const config = makeConfig({

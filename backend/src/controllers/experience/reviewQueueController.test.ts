@@ -76,7 +76,7 @@ describe('getReviewQueue', () => {
     mockQueue();
   });
 
-  it('asks separately for the rows this category refused', async () => {
+  it('asks separately for the rows its kind refused', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
     // An answered refusal is pinned, and the pin is what takes it out of the
@@ -87,7 +87,7 @@ describe('getReviewQueue', () => {
     // spelling of the pin the writers honour.
     const [refusedSql] = callMatching(`NOT ${admissionPinnedSql('m')}`);
     expect(refusedSql).toContain("m.admission = 'refused'");
-    expect(refusedSql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.category_id');
+    expect(refusedSql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.source_id');
     expect(refusedSql).toContain('m.admission_reason');
   });
 
@@ -104,7 +104,7 @@ describe('getReviewQueue', () => {
     // The membership the row's own source brought, not any membership of the
     // place: the day a place has two (#755), another source's refusal must
     // not surface under this source's heading.
-    expect(keptOutSql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.category_id');
+    expect(keptOutSql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.source_id');
   });
 
   it('returns the confirmed refusals under their own key', async () => {
@@ -191,7 +191,7 @@ describe('getReviewQueue', () => {
   });
 
   it('drops a source id no source could have, rather than binding it', async () => {
-    // `experience_categories.id` is SERIAL, so a larger number names no source —
+    // `experience_sources.id` is SERIAL, so a larger number names no source —
     // and bound into an `int[]` it is an error from Postgres rather than a
     // filter that matches nothing. The schema bounds the parameter's length; the
     // value of each id in it is bounded where the list is split, which is the
@@ -221,16 +221,16 @@ describe('getReviewQueue', () => {
       // The union's own escaping (`likeParam`), not a second spelling of it: a
       // curator typing `100%` wants a per-cent sign, not every name there is.
       expect(params).toContain('%100\\%%');
-      expect(sql).toContain('e.category_id = ANY($');
+      expect(sql).toContain('e.source_id = ANY($');
       // The region does not reach them, and neither does the run: these rows are
       // answers rather than questions, and a run is what a question was asked by.
       expect(sql).not.toContain('region_subtree');
     }
   });
 
-  it('measures a category curator against each row, whether or not they filtered', async () => {
+  it('measures a source curator against each row, whether or not they filtered', async () => {
     // Correlating on any bound parameter would compare every row against the
-    // caller's optional filter, so a category curator who did not filter would
+    // caller's optional filter, so a source curator who did not filter would
     // lose the scope they hold. Both request shapes, since the source chip
     // changes the numbering: unfiltered, the binds are userId and the ids.
     for (const query of [{}, { source: '2' }]) {
@@ -238,8 +238,8 @@ describe('getReviewQueue', () => {
       await getReviewQueue({ user: CURATOR, query } as never, makeRes() as never);
 
       const [sql] = callMatching("'missing' AS kind");
-      expect(sql).toContain('ca.category_id = e.category_id');
-      expect(sql).not.toMatch(/ca\.category_id = \$\d/);
+      expect(sql).toContain('ca.source_id = e.source_id');
+      expect(sql).not.toMatch(/ca\.source_id = \$\d/);
     }
   });
 
@@ -617,7 +617,7 @@ describe('getReviewQueue', () => {
     const sql = await capturedQueueSql('arrival');
     // An arrival is a membership arriving (#822): its state and its
     // admission are read off the membership, joined to the place.
-    expect(sql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.category_id');
+    expect(sql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.source_id');
     expect(sql).toContain("m.curation_state = 'pending'");
     // A refused row is already invisible for a reason with its own card
     // (§ 2.3): asking "may readers see this?" about it asks the second
@@ -641,7 +641,7 @@ describe('getReviewQueue', () => {
     expect(sql).toContain('ch.sync_log_id = m.pending_change_sync_log_id');
     // One membership per place in the join — the row's own source's — so a
     // place with two (#755) cannot raise the same held proposal twice.
-    expect(sql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.category_id');
+    expect(sql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.source_id');
     // jsonb_agg over an empty set returns NULL, and an empty card is worse than
     // none — on either half: the object's own held fields, or its parts'.
     expect(sql).toMatch(/WHERE \(q\.proposed IS NOT NULL OR q\.proposed_parts IS NOT NULL\)/);
@@ -667,7 +667,7 @@ describe('getReviewQueue', () => {
 
   it('excludes a refused row from the held card', async () => {
     // Already invisible for its own reason (§ 2.3) — the held proposal is not
-    // the question to ask about a row this category has turned down. The
+    // the question to ask about a row its kind has turned down. The
     // membership's verdict, since the pointer is the membership's too (#822).
     const sql = await capturedQueueSql('held');
     expect(sql).toContain(membershipAdmittedSql('m'));
@@ -822,13 +822,16 @@ describe('getReviewQueue', () => {
     expect(sql).toContain(hideRefusedSql('e'));
   });
 
-  it('names the category and external id on all three new kinds, like the older four do', async () => {
-    // An arrival names an object without naming which gated source it
-    // arrived from, and "which source is this" is most of the judgement.
+  it('names the kind, the source and the external id on all three new kinds, like the older four do', async () => {
+    // An arrival names an object without naming what it is or which gated
+    // source it arrived from, and "which kind is this" is most of the
+    // judgement. The kind is the membership's (#819); the source id rides
+    // beside it for the feed's filter.
     for (const kind of ['arrival', 'held', 'contents'] as const) {
       const sql = await capturedQueueSql(kind);
       expect(sql).toContain('e.external_id');
-      expect(sql).toContain('c.name AS category_name');
+      expect(sql).toContain('e.source_id');
+      expect(sql).toContain('kd.name AS kind_name');
     }
   });
 

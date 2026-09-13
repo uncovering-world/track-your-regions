@@ -96,7 +96,7 @@ export async function placeMovedExperiences(
  * which anything here recomputes.
  */
 export async function recordPlacementFailure(
-  config: { categoryId: number },
+  config: { sourceId: number },
   progress: SyncProgress,
   errorDetails: ErrorDetail[],
   failures: string[],
@@ -121,7 +121,7 @@ export async function recordPlacementFailure(
   const status = finishedStatus === 'complete' ? 'partial' : finishedStatus ?? 'failed';
 
   try {
-    await annotateClosedSyncLog(config.categoryId, progress.logId, status, errorDetails);
+    await annotateClosedSyncLog(config.sourceId, progress.logId, status, errorDetails);
     return status;
   } catch (err) {
     console.error('%s Could not record the placement failure: %s',
@@ -137,7 +137,7 @@ export async function recordPlacementFailure(
  * and keeping them together is what lets the caller's `finally` stay readable.
  */
 export async function finishPlacement(
-  config: { categoryId: number },
+  config: { sourceId: number },
   progress: SyncProgress,
   errorDetails: ErrorDetail[],
   moved: Set<number>,
@@ -155,7 +155,7 @@ export async function finishPlacement(
 /**
  * Name the placement phase, when there is a window worth naming.
  *
- * Placement is a window of its own on a category's first run — the whole of it
+ * Placement is a window of its own on a source's first run — the whole of it
  * lands in the moved set and every world view gets its own transaction; seconds
  * since #851, minutes before it — and through it the run is deliberately still
  * open. Left as `processing`, the panel offers a

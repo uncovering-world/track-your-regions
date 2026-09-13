@@ -23,7 +23,7 @@ import { editExperience } from './curationController.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 
 const EXPERIENCE_ID = 281;
-const CATEGORY_ID = 1;
+const SOURCE_ID = 1;
 // The experience of #450 sits in two regions. IN_SCOPE is the one the curator
 // covers; the bug was that an unordered `LIMIT 1` could hand back the other.
 const IN_SCOPE_REGION = 20;
@@ -58,7 +58,7 @@ function queueQueries(opts: {
       ? { rows: [{ curated_fields: opts.lockedCurated ?? [], name: opts.lockedName ?? 'Old name', ...opts.lockedRow }] }
       : { rows: [] });
   mockPoolQuery.mockResolvedValueOnce({
-    rows: opts.experienceRows ?? [{ id: EXPERIENCE_ID, category_id: CATEGORY_ID, name: 'Old name', curated_fields: [] }],
+    rows: opts.experienceRows ?? [{ id: EXPERIENCE_ID, source_id: SOURCE_ID, name: 'Old name', curated_fields: [] }],
   });
   if (opts.scope) mockPoolQuery.mockResolvedValueOnce({ rows: [opts.scope] });
 }
@@ -101,7 +101,7 @@ describe('editExperience scope', () => {
     expect(sql).toMatch(/curator_scoped_regions/);
     expect(sql).toMatch(/experience_regions er[\s\S]*JOIN curator_scoped_regions s ON s\.id = er\.region_id/);
     expect(sql).not.toMatch(/LIMIT 1/);
-    expect(params).toEqual([REGION_CURATOR.id, EXPERIENCE_ID, CATEGORY_ID]);
+    expect(params).toEqual([REGION_CURATOR.id, EXPERIENCE_ID, SOURCE_ID]);
 
     expect(res.status).not.toHaveBeenCalledWith(403);
   });
@@ -147,7 +147,7 @@ describe('editExperience scope', () => {
     expect(mockClientQuery).not.toHaveBeenCalled();
   });
 
-  it('names no region on the audit row for a global or category curator', async () => {
+  it('names no region on the audit row for a global or source curator', async () => {
     // Their authority came from no region in particular, and a row naming none
     // stays visible to every curator who can reach the log.
     queueQueries({ scope: { unrestricted: true, scoped_region_id: null } });
@@ -193,7 +193,7 @@ describe('editExperience claim locking', () => {
     // value would put the claim back over a value the curator just accepted,
     // and the conflict would return at the next run.
     queueQueries({
-      experienceRows: [{ id: EXPERIENCE_ID, category_id: CATEGORY_ID, name: 'Old name', curated_fields: ['name', 'description'] }],
+      experienceRows: [{ id: EXPERIENCE_ID, source_id: SOURCE_ID, name: 'Old name', curated_fields: ['name', 'description'] }],
       lockedCurated: [],
     });
 
@@ -205,7 +205,7 @@ describe('editExperience claim locking', () => {
 
   it('audits the values the lock guarantees, not the ones read before it', async () => {
     queueQueries({
-      experienceRows: [{ id: EXPERIENCE_ID, category_id: CATEGORY_ID, name: 'Stale name', curated_fields: [] }],
+      experienceRows: [{ id: EXPERIENCE_ID, source_id: SOURCE_ID, name: 'Stale name', curated_fields: [] }],
       lockedName: 'Name at lock time',
     });
 
@@ -344,7 +344,7 @@ describe('editExperience and the picture credit', () => {
 describe('editExperience and an emptied field', () => {
   // The catalogue holds nothing as NULL and never as '': the manual create
   // writes `|| null`, the picture repair clears with `SET image_url = NULL`,
-  // and the category index is partial on `IS NOT NULL`. An emptied box is the
+  // and the source index is partial on `IS NOT NULL`. An emptied box is the
   // curator taking the value away, so the row must say what every other
   // writer says for "nothing" — and say it under a claim, or the next run
   // would put the source's value straight back (#696).
@@ -485,7 +485,7 @@ describe('editExperience and the column the type rename removed', () => {
     const sent = [...mockPoolQuery.mock.calls, ...mockClientQuery.mock.calls]
       .map(([sql]) => String(sql));
     expect(sent.length).toBeGreaterThan(1);
-    // `\b` keeps `category_id` — the kind, a column that exists — out of it.
+    // `\b` keeps `source_id` — the kind, a column that exists — out of it.
     for (const sql of sent) expect(sql).not.toMatch(/\bcategory\b/);
   });
 });

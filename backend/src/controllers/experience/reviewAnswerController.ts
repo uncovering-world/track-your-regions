@@ -77,11 +77,11 @@ export async function answerReviewRows(req: AuthenticatedRequest, res: Response)
 
   const distinct = dedupe(rows);
   const found = await pool.query(
-    `SELECT id, name, category_id FROM experiences WHERE id = ANY($1::int[])`,
+    `SELECT id, name, source_id FROM experiences WHERE id = ANY($1::int[])`,
     [distinct.map(r => r.id)],
   );
-  const objects = new Map<number, { name: string; categoryId: number }>(
-    found.rows.map(r => [r.id as number, { name: r.name as string, categoryId: r.category_id as number }]));
+  const objects = new Map<number, { name: string; sourceId: number }>(
+    found.rows.map(r => [r.id as number, { name: r.name as string, sourceId: r.source_id as number }]));
 
   const result: ReviewAnswerResult = {
     answer, answered: [], refused: [], outOfScope: 0, placementFailed: [],
@@ -98,7 +98,7 @@ export async function answerReviewRows(req: AuthenticatedRequest, res: Response)
     // not in a 500 that abandons the rest, exactly as `publishWaiting` reasons.
     try {
       const { permitted, logRegionId } = await resolveExperienceScope(
-        userId, userRole, row.id, object.categoryId);
+        userId, userRole, row.id, object.sourceId);
       if (!permitted) {
         result.outOfScope += 1;
         continue;

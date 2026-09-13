@@ -1,6 +1,6 @@
 /**
  * What a reader is shown once a point can be missing without being deleted, and
- * once a category can refuse the experience that holds it.
+ * once a kind can refuse the experience that holds it.
  *
  * Two rules, on two columns, and they are not the same rule:
  *
@@ -8,7 +8,7 @@
  *   every list, marker batch and count, exactly as it used to when the row was
  *   deleted, but a visit to it survives, because a person who stood there stood
  *   there. That is the same asymmetry `lost` already has one level up.
- * - `admission` on the *experience* — a row this category turned down gives
+ * - `admission` on the *experience* — a row its kind turned down gives
  *   nothing back at its own address, so every by-id read whose answer *is* the
  *   row answers 404, instead of one of them describing a row the others withhold
  *   (ADR-0024). The shape of the refusal follows what the answer is: where the
@@ -669,7 +669,7 @@ describe('the by-id relaxation on /:id/locations', () => {
 
   it('opens the gate for a curator whose scope reaches the experience, on both queries', async () => {
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ category_id: 1 }] }) // category lookup
+      .mockResolvedValueOnce({ rows: [{ source_id: 1 }] }) // source lookup
       .mockResolvedValueOnce({ rows: [{ unrestricted: true, scoped_region_id: null }] }) // scope check
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] }) // existence
       .mockResolvedValueOnce({ rows: [] }); // list

@@ -36,7 +36,7 @@ function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
 }
 
-const REQ = { params: { categoryId: '2' }, user: { id: 7, role: 'curator' as const } } as never;
+const REQ = { params: { sourceId: '2' }, user: { id: 7, role: 'curator' as const } } as never;
 
 /** The two statements the handler runs before publishing anything. */
 function mockSelection(rows: Array<{ id: number; name: string; kind: string }>, held = 0) {
@@ -108,7 +108,7 @@ describe('publishWaiting', () => {
     const payload = res.json.mock.calls[0][0];
     expect(payload.outOfScope).toBe(1);
     expect(payload.published).toHaveLength(1);
-    // Scope is resolved per object, not per category: a region-scoped curator
+    // Scope is resolved per object, not per source: a region-scoped curator
     // covers some of a source's rows and not others.
     expect(mockedScope).toHaveBeenCalledTimes(2);
   });
@@ -226,8 +226,8 @@ describe('publishWaiting', () => {
 
     const [countSql, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
     // Every other number in this response is measured against the caller, and
-    // category-wide here would invert the argument `outOfScope` exists for: two
-    // regions of a forty-held category would be reported as forty still waiting
+    // source-wide here would invert the argument `outOfScope` exists for: two
+    // regions of a forty-held source would be reported as forty still waiting
     // while the queue offers three.
     expect(countSql).toContain('curator_scoped_regions');
     expect(countSql).toContain('er.experience_id = e.id');
@@ -238,12 +238,12 @@ describe('publishWaiting', () => {
     mockSelection([], 0);
 
     await publishWaiting(
-      { params: { categoryId: '2' }, user: { id: 1, role: 'admin' as const } } as never,
+      { params: { sourceId: '2' }, user: { id: 1, role: 'admin' as const } } as never,
       makeRes() as never,
     );
 
     const [countSql] = mockedQuery.mock.calls[1] as [string];
-    // An admin's scope is every category, so the predicate collapses. Asserted
+    // An admin's scope is every source, so the predicate collapses. Asserted
     // against what actually differs between the two paths — the row-level check
     // over `experience_regions` — and not against the name of the function that
     // emits the fragment, which appears in no SQL on either path and so could not
@@ -292,7 +292,7 @@ describe('publishWaiting', () => {
     await publishWaiting(REQ, res as never);
 
     expect(res.json).toHaveBeenCalledWith({
-      categoryId: 2,
+      sourceId: 2,
       published: [{
         id: 6206,
         name: 'Museo Nacional del Prado',

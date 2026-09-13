@@ -74,20 +74,20 @@ interface PublishedObject {
 
 /**
  * Publish everything waiting for one source.
- * POST /api/experiences/categories/:categoryId/publish-waiting
+ * POST /api/experiences/sources/:sourceId/publish-waiting
  *
  * Per object, under its own row lock, with its own `published` audit row — never
  * one row for the batch. A curator reading the log later is asking "when did this
  * museum become visible", and a single row saying "42 objects" answers that for
  * none of them.
  *
- * Scope is resolved per object rather than per category: a region-scoped curator
+ * Scope is resolved per object rather than per source: a region-scoped curator
  * publishes what they cover and the response reports the rest as `outOfScope`,
  * because a batch that quietly published fewer than it found would leave them
  * believing the source was clear.
  */
 export async function publishWaiting(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const categoryId = parseInt(String(req.params.categoryId));
+  const sourceId = parseInt(String(req.params.sourceId));
   const userId = req.user!.id;
   const userRole = req.user!.role;
 
@@ -106,7 +106,7 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
       WHERE m.source_id = $1
         AND (${arrivalWaitingSql()} OR ${contentsWaitingSql()})
       ORDER BY e.id`,
-    [categoryId],
+    [sourceId],
   );
 
   const published: PublishedObject[] = [];
@@ -136,7 +136,7 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
     let outcome;
     try {
       const { permitted, logRegionId } = await resolveExperienceScope(
-        userId, userRole, experienceId, categoryId,
+        userId, userRole, experienceId, sourceId,
       );
       if (!permitted) {
         outOfScope += 1;
@@ -196,16 +196,16 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
   // curator will see in the panel a second later. Read too early it explains the
   // wrong remainder.
   //
-  // Scoped to the caller, like every other number in this response. Category-wide it
+  // Scoped to the caller, like every other number in this response. Source-wide it
   // would invert the argument the `outOfScope` count exists for: a curator covering
-  // two regions of a forty-held category would be told forty changes are still
+  // two regions of a forty-held source would be told forty changes are still
   // waiting, when the queue will offer them three. The panel may legitimately say
   // "forty" — an admin's view of the source — but this reply is the answer to *their*
   // click. Same predicate the queue qualifies its rows with, so the number and the
   // cards agree.
   const scopeFilter = userRole === 'admin'
     ? 'TRUE'
-    : `(${curatorUnrestrictedScopeExists('e.category_id')} OR EXISTS (
+    : `(${curatorUnrestrictedScopeExists('e.source_id')} OR EXISTS (
          SELECT 1 FROM experience_regions er
          JOIN curator_scoped_regions s ON s.id = er.region_id
          WHERE er.experience_id = e.id
@@ -231,23 +231,23 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
          FROM ${MEMBERSHIPS} m
          JOIN experiences e ON e.id = m.experience_id
         WHERE m.source_id = $2 AND ${heldWaitingSql()} AND ${scopeFilter}`,
-      [userId, categoryId],
+      [userId, sourceId],
     );
     heldLeftForReview = heldLeft.rows[0].n as number;
   } catch (error) {
     // Literal format string with the id as an argument, like the loop's catch.
-    console.error('[publish-waiting] held count failed for category %d:', categoryId, error);
+    console.error('[publish-waiting] held count failed for source %d:', sourceId, error);
   }
 
   res.json({
-    categoryId,
+    sourceId,
     published,
     refused,
     outOfScope,
     // Named in the response because a remainder nobody explained reads as a failure: the
     // batch left these behind on purpose, and the reply is where that is said. Not
     // because it is the number the panel will show. The panel counts the same kind for
-    // the same category, but for nobody in particular — `waitingCountsByCategory` carries
+    // the same source, but for nobody in particular — `waitingCountsBySource` carries
     // no scope filter — so between that number and this one the only difference is the
     // filter twenty lines above, and for a region-scoped curator it is a real difference
     // by design. The panel's count can also fail on its own and print nothing.

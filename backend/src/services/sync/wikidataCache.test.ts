@@ -23,21 +23,21 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { withCache, setCacheTtl, CACHED_KINDS_BY_CATEGORY } from './wikidataCache.js';
+import { withCache, setCacheTtl, CACHED_KINDS_BY_SOURCE } from './wikidataCache.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
-describe('CACHED_KINDS_BY_CATEGORY', () => {
+describe('CACHED_KINDS_BY_SOURCE', () => {
   it('declares the four kinds the public-art collector describes', () => {
     // Decision 4 of ADR-0030: only the kinds a source's collector files exist
     // for it. The panel offers "Sync without cache" and the cache section on
     // the strength of this list, so a kind the collector files and this list
     // omits is a cache an admin cannot see or clear.
-    expect(CACHED_KINDS_BY_CATEGORY[3]).toEqual(['classes', 'pool', 'edges', 'entities']);
+    expect(CACHED_KINDS_BY_SOURCE[3]).toEqual(['classes', 'pool', 'edges', 'entities']);
   });
 
   it('still declares nothing for the UNESCO run, which reads its own API', () => {
-    expect(CACHED_KINDS_BY_CATEGORY[1]).toBeUndefined();
+    expect(CACHED_KINDS_BY_SOURCE[1]).toBeUndefined();
   });
 });
 
@@ -56,7 +56,7 @@ function emptyCache() {
   clientQuery.mockResolvedValue({ rows: [], rowCount: 1 });
 }
 
-/** The `(categoryId, kind)` a statement locked on, or undefined if it took no lock. */
+/** The `(sourceId, kind)` a statement locked on, or undefined if it took no lock. */
 function lockKey(calls: [string, unknown[]?][]): unknown[] | undefined {
   return calls.find(([sql]) => String(sql).includes('pg_advisory_xact_lock'))?.[1];
 }
@@ -70,7 +70,7 @@ describe('withCache', () => {
     emptyCache();
     const source = vi.fn(async () => ROWS);
 
-    const cached = withCache(source, { categoryId: MUSEUM, enabled: true });
+    const cached = withCache(source, { sourceId: MUSEUM, enabled: true });
     await cached('SELECT * {}');
 
     // No descriptor means "this is a one-off": filing it under a guessed kind
@@ -90,8 +90,8 @@ describe('withCache', () => {
     const question = 'SELECT DISTINCT ?c WHERE { ?c wdt:P279 wd:Q860861 }';
     const descriptor = { kind: 'classes' as const, label: 'subclasses of 1 class(es)' };
 
-    await withCache(source, { categoryId: MUSEUM, enabled: true })(question, descriptor);
-    await withCache(source, { categoryId: 3, enabled: true })(question, descriptor);
+    await withCache(source, { sourceId: MUSEUM, enabled: true })(question, descriptor);
+    await withCache(source, { sourceId: 3, enabled: true })(question, descriptor);
 
     const reads = mockedQuery.mock.calls.filter(([sql]) => String(sql).includes('SELECT result'));
     expect(reads).toHaveLength(2);
@@ -108,7 +108,7 @@ describe('withCache', () => {
     const source = vi.fn(async () => ROWS);
     const hits: string[] = [];
 
-    const cached = withCache(source, { categoryId: MUSEUM, enabled: true, onHit: d => hits.push(d.label) });
+    const cached = withCache(source, { sourceId: MUSEUM, enabled: true, onHit: d => hits.push(d.label) });
     const rows = await cached('SELECT ?c {}', { kind: 'classes', label: 'museum classes' });
 
     expect(rows).toEqual(ROWS);
@@ -123,7 +123,7 @@ describe('withCache', () => {
     mockedQuery.mockImplementation(async () => ({ rows: [{ result: ROWS }] }));
     const source = vi.fn(async () => ROWS);
 
-    const cached = withCache(source, { categoryId: MUSEUM, enabled: false });
+    const cached = withCache(source, { sourceId: MUSEUM, enabled: false });
     await cached('SELECT ?c {}', { kind: 'classes', label: 'museum classes' });
 
     // A cache that cannot be bypassed is a fork of reality rather than a cache.
@@ -135,7 +135,7 @@ describe('withCache', () => {
     mockedQuery.mockRejectedValue(new Error('relation does not exist'));
     const source = vi.fn(async () => ROWS);
 
-    const cached = withCache(source, { categoryId: MUSEUM, enabled: true });
+    const cached = withCache(source, { sourceId: MUSEUM, enabled: true });
     const rows = await cached('SELECT ?c {}', { kind: 'classes', label: 'museum classes' });
 
     expect(rows).toEqual(ROWS);
@@ -149,7 +149,7 @@ describe('withCache', () => {
     });
     const source = vi.fn(async () => ROWS);
 
-    const cached = withCache(source, { categoryId: MUSEUM, enabled: true });
+    const cached = withCache(source, { sourceId: MUSEUM, enabled: true });
 
     // The run has the answer in hand and the source has already paid for it;
     // throwing here would discard both.
@@ -161,7 +161,7 @@ describe('withCache', () => {
     emptyCache();
     const source = vi.fn(async () => ROWS);
 
-    const cached = withCache(source, { categoryId: MUSEUM, enabled: true });
+    const cached = withCache(source, { sourceId: MUSEUM, enabled: true });
     await cached('SELECT ?c {}', { kind: 'pool', label: 'pool: painting, 100+ sitelinks' });
 
     const insert = clientQuery.mock.calls.find(call => String(call[0]).includes('INSERT INTO wikidata_query_cache'));
@@ -178,7 +178,7 @@ describe('withCache', () => {
     emptyCache();
     const source = vi.fn(async () => ROWS);
 
-    const cached = withCache(source, { categoryId: MUSEUM, enabled: true });
+    const cached = withCache(source, { sourceId: MUSEUM, enabled: true });
     await cached('SELECT ?c {}', { kind: 'pool', label: 'pool: painting' });
 
     // Read first and inserted second, a policy change could commit in between
@@ -195,7 +195,7 @@ describe('withCache', () => {
     emptyCache();
     const source = vi.fn(async () => ROWS);
 
-    await withCache(source, { categoryId: MUSEUM, enabled: true })(
+    await withCache(source, { sourceId: MUSEUM, enabled: true })(
       'SELECT ?c {}', { kind: 'pool', label: 'pool: painting' },
     );
     const writerLock = lockKey(clientQuery.mock.calls as [string, unknown[]][]);
@@ -214,7 +214,7 @@ describe('withCache', () => {
 
   it('locks before it writes, in both paths', async () => {
     emptyCache();
-    await withCache(vi.fn(async () => ROWS), { categoryId: MUSEUM, enabled: true })(
+    await withCache(vi.fn(async () => ROWS), { sourceId: MUSEUM, enabled: true })(
       'SELECT ?c {}', { kind: 'pool', label: 'pool: painting' },
     );
 

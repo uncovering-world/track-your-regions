@@ -89,7 +89,7 @@ beforeEach(() => {
   mockedConnect.mockReset();
   mockedScope.mockReset();
   mockedPlace.mockClear();
-  mockedQuery.mockResolvedValue({ rows: [{ id: 5, category_id: 4 }] });
+  mockedQuery.mockResolvedValue({ rows: [{ id: 5, source_id: 4 }] });
   mockedScope.mockResolvedValue({ permitted: true, logRegionId: 12 });
 });
 

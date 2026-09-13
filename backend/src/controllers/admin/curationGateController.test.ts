@@ -4,7 +4,7 @@
  * The rule worth pinning is the one a column name cannot state: **switching a
  * gate on is not retroactive.** Nothing about `requires_curation = true` implies
  * anything about rows the source already published, and a statement that touched
- * them would remove a whole category from the product on one click. So the test
+ * them would remove a whole source from the product on one click. So the test
  * asserts what the statement does *not* say as firmly as what it does.
  */
 
@@ -25,7 +25,7 @@ function makeRes() {
 
 function makeReq(requiresCuration: boolean) {
   return {
-    params: { categoryId: '2' },
+    params: { sourceId: '2' },
     body: { requiresCuration },
     user: { id: 1, role: 'admin' as const },
   } as never;
@@ -43,14 +43,14 @@ describe('setCurationGate', () => {
 
     expect(mockedQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('UPDATE experience_categories');
+    expect(sql).toContain('UPDATE experience_sources');
     // The whole of "not retroactive", asserted as an absence: no statement here
     // may reach `experiences`, and there may be no second statement to do it.
-    expect(sql).not.toMatch(/experiences\b(?!_categories)/);
+    expect(sql).not.toMatch(/experiences\b(?!_sources)/);
     expect(params).toEqual([true, 2]);
   });
 
-  it('refuses a category that is not active, rather than gating one nobody can run', async () => {
+  it('refuses a source that is not active, rather than gating one nobody can run', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
@@ -59,7 +59,7 @@ describe('setCurationGate', () => {
     const [sql] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('is_active = true');
     expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Category not found' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'Source not found' });
   });
 
   it('answers with the state the source is now in, not the state that was asked for', async () => {
@@ -73,7 +73,7 @@ describe('setCurationGate', () => {
     await setCurationGate(makeReq(true), res as never);
 
     expect(res.json).toHaveBeenCalledWith({
-      categoryId: 2, name: 'Art Museums', requiresCuration: false,
+      sourceId: 2, name: 'Art Museums', requiresCuration: false,
     });
   });
 

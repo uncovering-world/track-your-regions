@@ -10,7 +10,7 @@
  * `pending`, so nothing a reader sees has changed and the pass still describes
  * what is live; retiring it there would punish the row for an arrival nobody
  * has been shown. The flag is read in SQL through the membership's source,
- * because these writers have an experience id and no category id, and a
+ * because these writers have an experience id and no source id, and a
  * parameter would be a second source of truth that could disagree with the
  * column between the check and the write.
  *
@@ -52,7 +52,7 @@ export async function retirePassAfterNewContent(
     `UPDATE ${MEMBERSHIPS} m SET curation_state = 'auto', updated_at = NOW()
       WHERE m.experience_id = $1 AND m.curation_state = 'verified'
         AND NOT EXISTS (
-          SELECT 1 FROM experience_categories c
+          SELECT 1 FROM experience_sources c
            WHERE c.id = m.source_id AND c.requires_curation
         )`,
     [experienceId],

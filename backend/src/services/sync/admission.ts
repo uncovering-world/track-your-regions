@@ -86,13 +86,13 @@ export interface AdmissionSweepInput {
   cancelled: boolean;
   /** External ids this run admitted. */
   admittedCount: number;
-  /** How many the category held as admitted before the run touched it. */
+  /** How many the source held as admitted before the run touched it. */
   previousAdmittedCount: number;
 }
 
 /**
  * How far the admitted set may shrink in one run before the sweep refuses to
- * act. ADR-0022's "no run may empty a category", applied to this axis.
+ * act. ADR-0022's "no run may empty a source", applied to this axis.
  *
  * Looser than missing detection's 90 %, deliberately. That floor guards a
  * *listing*, where a 10 % drop means the source misbehaved. This one guards a
@@ -112,7 +112,7 @@ export function admissionSweepSkipReason(input: AdmissionSweepInput): string | n
     return `run finished with ${input.errors} error(s), so an absent row may be a fetch failure`;
   }
   if (input.admittedCount === 0) {
-    return 'run admitted nothing, which is a broken run rather than an empty category';
+    return 'run admitted nothing, which is a broken run rather than an empty source';
   }
   if (input.previousAdmittedCount === 0) {
     return null;
@@ -132,14 +132,14 @@ const SOURCE_MEMBERSHIPS = `${MEMBERSHIPS} m JOIN experiences e ON e.id = m.expe
  * How many rows the source currently admits. Read before the run writes, so
  * it is the denominator the sweep guard compares against.
  */
-export async function countAdmitted(categoryId: number): Promise<number> {
+export async function countAdmitted(sourceId: number): Promise<number> {
   const result = await pool.query(
     `SELECT COUNT(*)::int AS count
      FROM ${SOURCE_MEMBERSHIPS}
      WHERE m.source_id = $1
        AND m.admission = 'admitted'
        AND e.is_manual = FALSE`,
-    [categoryId]
+    [sourceId]
   );
   return Number(result.rows[0]?.count ?? 0);
 }
@@ -151,14 +151,14 @@ export async function countAdmitted(categoryId: number): Promise<number> {
  * who is in. A curator's own row is excluded for the reason `UNPROTECTED`
  * spells out — its key can never appear in a source's answer.
  */
-export async function admittedExternalIds(categoryId: number): Promise<Set<string>> {
+export async function admittedExternalIds(sourceId: number): Promise<Set<string>> {
   const result = await pool.query(
     `SELECT e.external_id
      FROM ${SOURCE_MEMBERSHIPS}
      WHERE m.source_id = $1
        AND m.admission = 'admitted'
        AND e.is_manual = FALSE`,
-    [categoryId]
+    [sourceId]
   );
   return new Set(result.rows.map((row: { external_id: string }) => row.external_id));
 }
@@ -238,7 +238,7 @@ export const CLEAR_ICONIC = `is_iconic = CASE
  * A preview writes no row and reports none, as the per-item write did not.
  */
 export async function markIconic(
-  categoryId: number,
+  sourceId: number,
   admittedExternalIds: string[],
   dryRun: boolean,
 ): Promise<AdmissionRow[]> {
@@ -254,7 +254,7 @@ export async function markIconic(
         AND NOT m.is_iconic
         AND NOT ${iconicPinnedSql('m')}
   RETURNING ${RETURNING}`,
-    [categoryId, admittedExternalIds],
+    [sourceId, admittedExternalIds],
   );
   return rowsFrom(result);
 }
@@ -268,7 +268,7 @@ export async function markIconic(
  * id the run named and the curator reads it from the row.
  */
 export async function markRefused(
-  categoryId: number,
+  sourceId: number,
   refusals: Refusal[],
   dryRun: boolean,
 ): Promise<AdmissionRow[]> {
@@ -284,7 +284,7 @@ export async function markRefused(
   const result = dryRun
     ? await pool.query(
         `SELECT ${RETURNING} FROM ${SOURCE_MEMBERSHIPS}, ${named} WHERE ${predicate}`,
-        [categoryId, externalIds, reasons]
+        [sourceId, externalIds, reasons]
       )
     : await pool.query(
         `UPDATE ${MEMBERSHIPS} m
@@ -295,7 +295,7 @@ export async function markRefused(
           WHERE e.id = m.experience_id
             AND ${predicate}
       RETURNING ${RETURNING}`,
-        [categoryId, externalIds, reasons]
+        [sourceId, externalIds, reasons]
       );
 
   return rowsFrom(result);
@@ -313,7 +313,7 @@ export async function markRefused(
  * their predicates are disjoint — though it still does.
  */
 export async function restoreAdmission(
-  categoryId: number,
+  sourceId: number,
   admittedExternalIds: string[],
   dryRun: boolean,
 ): Promise<AdmissionRow[]> {
@@ -327,7 +327,7 @@ export async function restoreAdmission(
   const result = dryRun
     ? await pool.query(
         `SELECT ${RETURNING} FROM ${SOURCE_MEMBERSHIPS} WHERE ${predicate}`,
-        [categoryId, admittedExternalIds]
+        [sourceId, admittedExternalIds]
       )
     : await pool.query(
         `UPDATE ${MEMBERSHIPS} m
@@ -336,7 +336,7 @@ export async function restoreAdmission(
           WHERE e.id = m.experience_id
             AND ${predicate}
       RETURNING ${RETURNING}`,
-        [categoryId, admittedExternalIds]
+        [sourceId, admittedExternalIds]
       );
 
   return rowsFrom(result);
@@ -352,10 +352,10 @@ export async function restoreAdmission(
  * Call only when `admissionSweepSkipReason` returns null, and only for a source
  * that recomputes its whole membership. An empty admitted set is refused here
  * as well as by the guard, because `external_id <> ALL('{}')` is true of every
- * row and would refuse the category wholesale.
+ * row and would refuse the source wholesale.
  */
 export async function markNotAdmitted(
-  categoryId: number,
+  sourceId: number,
   admittedExternalIds: string[],
   reason: string,
   dryRun: boolean,
@@ -370,7 +370,7 @@ export async function markNotAdmitted(
   const result = dryRun
     ? await pool.query(
         `SELECT ${RETURNING} FROM ${SOURCE_MEMBERSHIPS} WHERE ${predicate}`,
-        [categoryId, admittedExternalIds]
+        [sourceId, admittedExternalIds]
       )
     : await pool.query(
         `UPDATE ${MEMBERSHIPS} m
@@ -381,7 +381,7 @@ export async function markNotAdmitted(
           WHERE e.id = m.experience_id
             AND ${predicate}
       RETURNING ${RETURNING}`,
-        [categoryId, admittedExternalIds, reason]
+        [sourceId, admittedExternalIds, reason]
       );
 
   return rowsFrom(result);

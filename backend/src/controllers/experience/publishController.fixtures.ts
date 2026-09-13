@@ -225,8 +225,8 @@ export function noWrites(queries: Recorded[]): boolean {
  * scope-resolution read itself, right after calling this, because that one
  * only runs for a non-admin caller.
  */
-export function grantScope(categoryId = 2) {
-  mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: categoryId }] });
+export function grantScope(sourceId = 2) {
+  mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: sourceId }] });
 }
 
 export async function publish(

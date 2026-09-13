@@ -89,7 +89,7 @@ const LOCK_SQL = 'SELECT pg_advisory_xact_lock($1::int, hashtext($2)::int)';
  * setting the rule to two days must expire it rather than grant it two more.
  */
 export async function setCacheTtl(
-  categoryId: number, kind: string, ttlMs: number,
+  sourceId: number, kind: string, ttlMs: number,
 ): Promise<{ restamped: number }> {
   // One transaction, because the two halves are one decision. Apart, a failure
   // between them leaves the panel showing a lifetime that nothing already kept
@@ -98,18 +98,18 @@ export async function setCacheTtl(
   let unusable: Error | undefined;
   try {
     await client.query('BEGIN');
-    await client.query(LOCK_SQL, [categoryId, kind]);
+    await client.query(LOCK_SQL, [sourceId, kind]);
     await client.query(
-      `INSERT INTO wikidata_cache_policy (category_id, kind, ttl_ms, updated_at)
+      `INSERT INTO wikidata_cache_policy (source_id, kind, ttl_ms, updated_at)
        VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (category_id, kind) DO UPDATE SET ttl_ms = EXCLUDED.ttl_ms, updated_at = NOW()`,
-      [categoryId, kind, ttlMs],
+       ON CONFLICT (source_id, kind) DO UPDATE SET ttl_ms = EXCLUDED.ttl_ms, updated_at = NOW()`,
+      [sourceId, kind, ttlMs],
     );
     const restamped = await client.query(
       `UPDATE wikidata_query_cache
           SET expires_at = fetched_at + ($3::bigint * INTERVAL '1 millisecond')
-        WHERE category_id = $1 AND kind = $2`,
-      [categoryId, kind, ttlMs],
+        WHERE source_id = $1 AND kind = $2`,
+      [sourceId, kind, ttlMs],
     );
     await client.query('COMMIT');
     return { restamped: restamped.rowCount ?? 0 };
@@ -143,7 +143,7 @@ export async function setCacheTtl(
  * source with an empty cache shows the kinds it *would* fill rather than
  * nothing, and a source that caches nothing says exactly that.
  */
-export const CACHED_KINDS_BY_CATEGORY: Record<number, CacheKind[]> = {
+export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
   // Art Museums.
   2: ['classes', 'pool', 'statements', 'entities', 'edges'],
   // Public Art & Monuments.
@@ -171,8 +171,8 @@ export interface CacheDescriptor {
  * and clearing it clears exactly that. Migration 043 drops the rows keyed the
  * old way.
  */
-function hashOf(categoryId: number, query: string): string {
-  return createHash('sha256').update(`${categoryId}\n${query}`).digest('hex');
+function hashOf(sourceId: number, query: string): string {
+  return createHash('sha256').update(`${sourceId}\n${query}`).digest('hex');
 }
 
 /**
@@ -182,12 +182,12 @@ function hashOf(categoryId: number, query: string): string {
  * by one clock — the panel reads the same column and would otherwise disagree
  * with the reader by whatever the two processes' clocks differ by.
  */
-async function readCached(categoryId: number, query: string): Promise<SparqlBinding[] | null> {
+async function readCached(sourceId: number, query: string): Promise<SparqlBinding[] | null> {
   try {
     const hit = await pool.query(
       `SELECT result FROM wikidata_query_cache
         WHERE query_hash = $1 AND expires_at > NOW()`,
-      [hashOf(categoryId, query)],
+      [hashOf(sourceId, query)],
     );
     return hit.rows.length > 0 ? (hit.rows[0].result as SparqlBinding[]) : null;
   } catch (error) {
@@ -199,12 +199,12 @@ async function readCached(categoryId: number, query: string): Promise<SparqlBind
 /**
  * Keep an answer, replacing whatever was there for the same question.
  *
- * `ON CONFLICT` rather than delete-then-insert: two runs of the same category
+ * `ON CONFLICT` rather than delete-then-insert: two runs of the same source
  * cannot overlap, but a dry run and a real one can, and the second writer should
  * win rather than fail.
  */
 async function writeCached(
-  categoryId: number, query: string, descriptor: CacheDescriptor, rows: SparqlBinding[],
+  sourceId: number, query: string, descriptor: CacheDescriptor, rows: SparqlBinding[],
 ): Promise<void> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -218,18 +218,18 @@ async function writeCached(
     // commit. Without the lock a row could land carrying an expiry the panel no
     // longer shows — the disagreement ADR-0030 decision 7 exists to prevent.
     await client.query('BEGIN');
-    await client.query(LOCK_SQL, [categoryId, descriptor.kind]);
+    await client.query(LOCK_SQL, [sourceId, descriptor.kind]);
     await client.query(
       `INSERT INTO wikidata_query_cache
-         (category_id, query_hash, kind, label, query_text, result, row_count, fetched_at, expires_at)
+         (source_id, query_hash, kind, label, query_text, result, row_count, fetched_at, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, NOW(),
                NOW() + (COALESCE(
                  (SELECT ttl_ms FROM wikidata_cache_policy
-                   WHERE category_id = $1 AND kind = $3),
+                   WHERE source_id = $1 AND kind = $3),
                  $8::bigint
                ) * INTERVAL '1 millisecond'))
        ON CONFLICT (query_hash) DO UPDATE SET
-         category_id = EXCLUDED.category_id,
+         source_id = EXCLUDED.source_id,
          kind = EXCLUDED.kind,
          label = EXCLUDED.label,
          result = EXCLUDED.result,
@@ -237,7 +237,7 @@ async function writeCached(
          fetched_at = EXCLUDED.fetched_at,
          expires_at = EXCLUDED.expires_at`,
       [
-        categoryId, hashOf(categoryId, query), descriptor.kind, descriptor.label, query,
+        sourceId, hashOf(sourceId, query), descriptor.kind, descriptor.label, query,
         JSON.stringify(rows), rows.length, DEFAULT_TTL_MS[descriptor.kind],
       ],
     );
@@ -268,7 +268,7 @@ export function withCache(
   sparql: (query: string) => Promise<SparqlBinding[]>,
   options: {
     /** Whose run this is. Every question an admin asks of the cache is per source. */
-    categoryId: number;
+    sourceId: number;
     enabled: boolean;
     onHit?: (descriptor: CacheDescriptor, rows: number) => void;
   },
@@ -276,14 +276,14 @@ export function withCache(
   return async (query, descriptor) => {
     if (!descriptor || !options.enabled) return sparql(query);
 
-    const cached = await readCached(options.categoryId, query);
+    const cached = await readCached(options.sourceId, query);
     if (cached) {
       options.onHit?.(descriptor, cached.length);
       return cached;
     }
 
     const rows = await sparql(query);
-    await writeCached(options.categoryId, query, descriptor, rows);
+    await writeCached(options.sourceId, query, descriptor, rows);
     return rows;
   };
 }
@@ -315,7 +315,7 @@ export interface CacheKindSummary {
  * length of the JSON text, because that is the number the database will report
  * for the row and a person comparing the two should see them agree.
  */
-export async function cacheSummary(categoryId: number): Promise<CacheKindSummary[]> {
+export async function cacheSummary(sourceId: number): Promise<CacheKindSummary[]> {
   // Every kind the code knows about appears, even with nothing kept yet: a
   // panel that lists only what has been fetched cannot answer "how long would a
   // pool live if I ran this now", which is the question an admin has *before*
@@ -323,7 +323,7 @@ export async function cacheSummary(categoryId: number): Promise<CacheKindSummary
   const overrides = new Map<string, number>();
   try {
     const rows = await pool.query(
-      'SELECT kind, ttl_ms FROM wikidata_cache_policy WHERE category_id = $1', [categoryId],
+      'SELECT kind, ttl_ms FROM wikidata_cache_policy WHERE source_id = $1', [sourceId],
     );
     for (const row of rows.rows) overrides.set(row.kind as string, Number(row.ttl_ms));
   } catch (error) {
@@ -340,16 +340,16 @@ export async function cacheSummary(categoryId: number): Promise<CacheKindSummary
             COALESCE(SUM(pg_column_size(result)), 0)::bigint AS bytes,
             (ARRAY_AGG(label ORDER BY fetched_at DESC))[1:3] AS labels
        FROM wikidata_query_cache
-      WHERE category_id = $1
+      WHERE source_id = $1
       GROUP BY kind
       ORDER BY kind`,
-    [categoryId],
+    [sourceId],
   );
   const stored = new Map(result.rows.map(row => [row.kind as string, row]));
   // What this source can keep, plus anything it has already kept — the second
   // half only matters after a kind is retired from the collector while its rows
   // outlive it, which is exactly when an admin needs the button to drop them.
-  const declared = CACHED_KINDS_BY_CATEGORY[categoryId] ?? [];
+  const declared = CACHED_KINDS_BY_SOURCE[sourceId] ?? [];
   const kinds = [...new Set<string>([...declared, ...stored.keys()])].sort();
 
   return kinds.map((kind) => {
@@ -377,11 +377,11 @@ export async function cacheSummary(categoryId: number): Promise<CacheKindSummary
  * saying "ask the source again", and a row marked expired reads the same as a
  * row that aged out, which is a worse story to debug.
  */
-export async function clearCache(categoryId: number, kind?: string): Promise<number> {
+export async function clearCache(sourceId: number, kind?: string): Promise<number> {
   const result = kind
     ? await pool.query(
-      'DELETE FROM wikidata_query_cache WHERE category_id = $1 AND kind = $2', [categoryId, kind],
+      'DELETE FROM wikidata_query_cache WHERE source_id = $1 AND kind = $2', [sourceId, kind],
     )
-    : await pool.query('DELETE FROM wikidata_query_cache WHERE category_id = $1', [categoryId]);
+    : await pool.query('DELETE FROM wikidata_query_cache WHERE source_id = $1', [sourceId]);
   return result.rowCount ?? 0;
 }

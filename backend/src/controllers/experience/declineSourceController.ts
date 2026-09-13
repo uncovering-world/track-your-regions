@@ -49,7 +49,7 @@ export async function declineSourceValue(req: AuthenticatedRequest, res: Respons
   }
 
   const expResult = await pool.query(
-    `SELECT id, category_id FROM experiences WHERE id = $1`,
+    `SELECT id, source_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
@@ -59,7 +59,7 @@ export async function declineSourceValue(req: AuthenticatedRequest, res: Respons
   const existing = expResult.rows[0];
 
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, existing.category_id as number,
+    userId, userRole, experienceId, existing.source_id as number,
   );
   if (!permitted) {
     res.status(403).json({ error: 'You do not have curator permissions for this experience' });

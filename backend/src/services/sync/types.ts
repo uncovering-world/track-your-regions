@@ -32,13 +32,13 @@ export interface SyncProgress {
   /** Field-level divergences the curated_fields guard refused to apply. */
   curatedConflicts: number;
   /**
-   * Rows a reader can already see whose every proposed change the category's
+   * Rows a reader can already see whose every proposed change the source's
    * gate kept out, so a verdict is waiting on each (#523). A subset of
    * `unchanged` — nothing was written — counted again so a gated run stops
    * reading as one that touched nothing.
    */
   held: number;
-  /** Entities the source offered that this category does not hold. Not errors. */
+  /** Entities the source offered that this source does not hold. Not errors. */
   filtered: number;
   errors: number;
   currentItem: string;
@@ -48,7 +48,7 @@ export interface SyncProgress {
 }
 
 /**
- * Store for tracking running syncs by categoryId
+ * Store for tracking running syncs by sourceId
  */
 export const runningSyncs = new Map<number, SyncProgress>();
 
@@ -65,7 +65,7 @@ export interface UnescoApiRecord {
   name_zh?: string;
   short_description_en?: string;
   short_description_fr?: string;
-  category: string;
+  source: string;
   coordinates?: {
     lat: number;
     lon: number;
@@ -206,7 +206,7 @@ export interface WikidataLandmark {
  * Processed experience data ready for DB insertion
  */
 export interface ProcessedExperience {
-  categoryId: number;
+  sourceId: number;
   externalId: string;
   name: string;
   nameLocal: Record<string, string>;

@@ -20,7 +20,7 @@ export interface ChangeRecord {
    * The two words for a row the source wanted to change and the run refused:
    * nothing changed, but the two now disagree, which is a fact a curator has to
    * see. `conflict` is a `curated_fields` claim — the stored value won on
-   * purpose, nothing is waiting. `held` is the category's gate keeping a write
+   * purpose, nothing is waiting. `held` is the source's gate keeping a write
    * out of a row a reader can already see — nobody has looked yet, and a verdict
    * is waiting (#519). Reporting a held row as `updated` told a curator the
    * proposal was already live.

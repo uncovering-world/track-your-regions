@@ -278,7 +278,7 @@ describe('queryQueueKeys', () => {
     // Driven from the source table, like facet_region from region_roots: a
     // source whose count under the other chips is zero is a dimmed row rather
     // than a missing one, or the chip that picked it could not untick it.
-    expect(source).toContain('FROM experience_categories cat');
+    expect(source).toContain('FROM experience_sources cat');
     expect(source).toContain('COALESCE(counted.n, 0) AS count');
     expect(source).toContain('LEFT JOIN');
   });

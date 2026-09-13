@@ -23,7 +23,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import {
-  waitingCountsByCategory, arrivalWaitingSql, heldWaitingSql, contentsWaitingSql,
+  waitingCountsBySource, arrivalWaitingSql, heldWaitingSql, contentsWaitingSql,
 } from './waitingCounts.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -113,13 +113,13 @@ describe('the waiting predicates', () => {
   });
 });
 
-describe('waitingCountsByCategory', () => {
+describe('waitingCountsBySource', () => {
   beforeEach(() => mockedQuery.mockReset());
 
   it('asks once for every source, with the three kinds as filters on one pass', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await waitingCountsByCategory();
+    await waitingCountsBySource();
 
     expect(mockedQuery).toHaveBeenCalledTimes(1);
     const [sql] = mockedQuery.mock.calls[0] as [string];
@@ -136,16 +136,16 @@ describe('waitingCountsByCategory', () => {
     expect(sql.match(/::int/g)).toHaveLength(3);
   });
 
-  it('answers by category id, so a source with nothing waiting is absent rather than wrong', async () => {
+  it('answers by source id, so a source with nothing waiting is absent rather than wrong', async () => {
     mockedQuery.mockResolvedValueOnce({
-      rows: [{ category_id: 2, arrivals: 18, held: 1, contents: 3 }],
+      rows: [{ source_id: 2, arrivals: 18, held: 1, contents: 3 }],
     });
 
-    const counts = await waitingCountsByCategory();
+    const counts = await waitingCountsBySource();
 
     expect(counts.get(2)).toEqual({ arrivals: 18, held: 1, contents: 3 });
-    // Nothing invents a zero row here: a category `GROUP BY` never saw is missing
-    // from the map, and the caller decides what absence means. `getCategories`
+    // Nothing invents a zero row here: a source `GROUP BY` never saw is missing
+    // from the map, and the caller decides what absence means. `getSources`
     // reads it as three zeros, which is right for the panel and would be wrong
     // for a caller asking "did this source get counted at all".
     expect(counts.get(1)).toBeUndefined();

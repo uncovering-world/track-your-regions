@@ -167,7 +167,7 @@ describe('the museum run and its floor', () => {
     expect(mockedWriter).toHaveBeenCalledWith(
       6184, expect.anything(), expect.anything(),
       {
-        syncLogId: 42, withdrawalSkippedReason: 'this run placed 1 of the 10 works', categoryId: 2,
+        syncLogId: 42, withdrawalSkippedReason: 'this run placed 1 of the 10 works', sourceId: 2,
       },
       expect.anything(),
     );

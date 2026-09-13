@@ -38,7 +38,7 @@ export interface FieldChange {
   /** A curator had claimed this field, so the stored value won on purpose. */
   curatedConflict: boolean;
   /**
-   * The category's gate kept this write out of a row a reader can already see,
+   * The source's gate kept this write out of a row a reader can already see,
    * so the stored value won *provisionally* and a verdict is waiting (#519).
    *
    * The other half of "why was this not written", and never true beside
@@ -608,7 +608,7 @@ function collectDifferences(
  * Every difference lands in exactly one of three buckets, and which one says why
  * the run did or did not write it. `changedFields` means *written*.
  * `curatedConflicts` means a curator had claimed the field, so the stored value
- * won on purpose and nothing is waiting. `heldFields` means the category's gate
+ * won on purpose and nothing is waiting. `heldFields` means the source's gate
  * kept the write out of a row a reader can already see, so the stored value won
  * provisionally and a verdict **is** waiting (#519).
  *

@@ -34,7 +34,7 @@ import { reconcileLinks } from './linkWithdrawal.js';
  * show there even where this venue's link is still pending, and its attribution
  * is exactly what a reader can already see. A work still `pending` has nothing
  * to protect and keeps being refreshed in place. The gate is the run's own
- * source (`run.categoryId`), bound as the same parameter the insert reads it
+ * source (`run.sourceId`), bound as the same parameter the insert reads it
  * from, so the two cannot disagree. Evaluated inside `DO UPDATE` on the row
  * the statement locked and again in its RETURNING, so the record cannot
  * disagree with the write (`heldSql` in experienceUpsert.ts, and #519 for why
@@ -45,7 +45,7 @@ import { reconcileLinks } from './linkWithdrawal.js';
  * own CASE just computed — `pending` under a gate — which would make the guard
  * `true AND false` for every row.
  */
-const HELD_WORK = `((SELECT requires_curation FROM experience_categories WHERE id = $12)
+const HELD_WORK = `((SELECT requires_curation FROM experience_sources WHERE id = $12)
                     AND treasures.curation_state <> 'pending')`;
 
 /** What a run knows about who took the pictures: what it fetched, and what the rows hold. */
@@ -68,7 +68,7 @@ export interface TreasureWriteRun extends WriteRun {
    * The source whose gate the treasure's curation_state reads, and whose
    * links the withdrawal arm reconciles.
    */
-  categoryId: number;
+  sourceId: number;
 }
 
 /**
@@ -313,7 +313,7 @@ export async function upsertVenueTreasures(
 
     // Step 1: Upsert into treasures (globally unique by external_id)
     //
-    // `curation_state` is bound to `run.categoryId` directly rather than
+    // `curation_state` is bound to `run.sourceId` directly rather than
     // reached through an experience: a treasure is globally shared and is not
     // owned by any one of them. It is set on insert only — absent from
     // `DO UPDATE SET` — because a work already stored may already have been
@@ -323,7 +323,7 @@ export async function upsertVenueTreasures(
         external_id, name, treasure_type, artists, year,
         image_url, sitelinks_count, is_iconic, metadata, curation_state, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-        CASE WHEN (SELECT requires_curation FROM experience_categories WHERE id = $12)
+        CASE WHEN (SELECT requires_curation FROM experience_sources WHERE id = $12)
              THEN 'pending' ELSE 'auto' END,
         NOW(), NOW())
       ON CONFLICT (external_id) DO UPDATE SET
@@ -418,7 +418,7 @@ export async function upsertVenueTreasures(
         Object.keys(patch).length > 0 ? JSON.stringify(patch) : null,
         ICONIC_SITELINKS,
         ICONIC_RELEASE,
-        run.categoryId,
+        run.sourceId,
         sameMakers,
       ]
     );
@@ -439,7 +439,7 @@ export async function upsertVenueTreasures(
       `INSERT INTO experience_treasures (experience_id, treasure_id, curation_state)
        VALUES ($1, $2,
          CASE WHEN (SELECT c.requires_curation
-                      FROM experiences e JOIN experience_categories c ON c.id = e.category_id
+                      FROM experiences e JOIN experience_sources c ON c.id = e.source_id
                      WHERE e.id = $1)
               THEN 'pending' ELSE 'auto' END)
        ON CONFLICT (experience_id, treasure_id) DO NOTHING

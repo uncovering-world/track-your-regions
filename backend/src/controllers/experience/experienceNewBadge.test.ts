@@ -41,9 +41,9 @@ describe('isNewSql', () => {
     expect(sql).not.toContain('completed_at');
   });
 
-  it('lights for an arrival published after a later run of the same category', () => {
+  it('lights for an arrival published after a later run of the same source', () => {
     // The case the old predicate could not pass, and the one #529 names as its
-    // acceptance: a museum arrives Monday, the category runs again Wednesday, a
+    // acceptance: a museum arrives Monday, the source runs again Wednesday, a
     // curator publishes Thursday. Nothing in this expression mentions a run, so
     // the later one cannot switch the chip off.
     const sql = isNewSql();
@@ -51,7 +51,7 @@ describe('isNewSql', () => {
     expect(sql).toMatch(/published_at > NOW\(\) - \(c\.new_badge_days/);
   });
 
-  it('takes the window from the category, since sources have different cadences', () => {
+  it('takes the window from the source, since sources have different cadences', () => {
     expect(isNewSql()).toContain("(c.new_badge_days || ' days')::interval");
   });
 
@@ -61,16 +61,16 @@ describe('isNewSql', () => {
 
   it('reads the two windows as alternatives, so neither can shorten the other', () => {
     const sql = isNewSql();
-    // A maximum, not a choice: the category window is the floor everyone gets, and
+    // A maximum, not a choice: the source window is the floor everyone gets, and
     // a reader who arrives near its end keeps the chip a week from their own first
     // sighting rather than losing it the next day.
     expect(sql).toMatch(/new_badge_days[\s\S]*\)\s*OR\s*EXISTS/);
   });
 
-  it('leaves the anonymous reader with the category window alone', () => {
+  it('leaves the anonymous reader with the source window alone', () => {
     // `NULL` for the reader means the personal clause can never match, rather
     // than the whole predicate collapsing: an anonymous reader still gets the
-    // category's window.
+    // source's window.
     expect(isNewSql('e', 'NULL')).toContain('v.user_id = NULL');
   });
 
@@ -86,7 +86,7 @@ describe('isNewSql', () => {
     expect(sql).toContain('km.published_at IS NOT NULL');
     // The window is the membership's source's, not the row's column.
     expect(sql).toContain('c.id = km.source_id');
-    expect(sql).not.toContain('category_id');
+    expect(sql).not.toContain('x.source_id');
     expect(sql).toContain('v.experience_id = x.id');
     expect(sql).not.toMatch(/(?<![.\w])published_at/);
   });

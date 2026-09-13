@@ -120,7 +120,7 @@ describe('getExperienceTreasures gate', () => {
 
   it('opens the gate for a curator whose scope reaches the experience', async () => {
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ category_id: 1 }] }) // category lookup
+      .mockResolvedValueOnce({ rows: [{ source_id: 1 }] }) // source lookup
       .mockResolvedValueOnce({ rows: [{ unrestricted: true, scoped_region_id: null }] }) // scope check
       .mockResolvedValueOnce({ rows: [] }); // the treasures query itself
 
@@ -135,7 +135,7 @@ describe('getExperienceTreasures gate', () => {
 
   it('keeps the gate closed for a curator whose scope does not reach the experience', async () => {
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ category_id: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ source_id: 1 }] })
       .mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] })
       .mockResolvedValueOnce({ rows: [] });
 

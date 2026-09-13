@@ -338,7 +338,7 @@ describe('pool truncation', () => {
   it('stops the run when a band comes back holding exactly its LIMIT', async () => {
     const { run } = runner(vi.fn(async () => rows(2)));
 
-    // Fatal, not a warning. The pool decides which museums this category admits
+    // Fatal, not a warning. The pool decides which museums this source admits
     // (ADR-0024), so a pool cut off at its limit withdraws real museums and
     // calls the run a success — and with no ORDER BY inside a band, the rows
     // that survive are an arbitrary subset rather than the famous ones.

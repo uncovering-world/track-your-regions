@@ -2,7 +2,7 @@
  * Giving the World Heritage catalogue pictures it is allowed to show.
  *
  * The repair half of ADR-0043. The run itself proposes rather than writes —
- * UNESCO is a gated category, so a picture arriving through
+ * UNESCO is a gated source, so a picture arriving through
  * `unescoSyncService` reaches a curator as a held proposal, and 1260 rows
  * carrying a picture the World Heritage Centre's terms do not let this product
  * draw are not a queue of 1260 questions. Taking those pictures off, and putting
@@ -35,7 +35,7 @@ import {
   delay, waitMessage, SPARQL_DELAY_MS, SPARQL_WAIT_BUDGET_MS, WIKIDATA_USER_AGENT,
 } from './wikidataUtils.js';
 
-const UNESCO_CATEGORY_ID = 1;
+const UNESCO_SOURCE_ID = 1;
 const LOG_PREFIX = '[UNESCO Sync]';
 
 interface SiteRow {
@@ -74,9 +74,9 @@ async function readSites(): Promise<SiteRow[]> {
   const result = await pool.query(
     `SELECT id, external_id, name, image_url
        FROM experiences
-      WHERE category_id = $1
+      WHERE source_id = $1
       ORDER BY name`,
-    [UNESCO_CATEGORY_ID],
+    [UNESCO_SOURCE_ID],
   );
   return result.rows as SiteRow[];
 }
@@ -178,7 +178,7 @@ async function repairRows(
  * about who owns it.
  */
 export async function fixUnescoImages(_triggeredBy: number | null): Promise<void> {
-  const existing = runningSyncs.get(UNESCO_CATEGORY_ID);
+  const existing = runningSyncs.get(UNESCO_SOURCE_ID);
   if (existing && !isTerminalSyncStatus(existing.status)) {
     throw new Error('UNESCO sync already in progress');
   }
@@ -202,7 +202,7 @@ export async function fixUnescoImages(_triggeredBy: number | null): Promise<void
     logId: null,
     dryRun: false,
   };
-  runningSyncs.set(UNESCO_CATEGORY_ID, progress);
+  runningSyncs.set(UNESCO_SOURCE_ID, progress);
 
   try {
     const rows = sitesNeedingAPicture(await readSites());
@@ -227,7 +227,7 @@ export async function fixUnescoImages(_triggeredBy: number | null): Promise<void
     }
 
     const credits = await creditsFor(
-      picturesToAskAbout(rows, facts, await readStoredCredits(UNESCO_CATEGORY_ID)),
+      picturesToAskAbout(rows, facts, await readStoredCredits(UNESCO_SOURCE_ID)),
       progress, budget,
     );
 
@@ -253,8 +253,8 @@ export async function fixUnescoImages(_triggeredBy: number | null): Promise<void
     // The captured reference, so a later run's entry is never the one deleted.
     const thisProgress = progress;
     setTimeout(() => {
-      if (runningSyncs.get(UNESCO_CATEGORY_ID) === thisProgress) {
-        runningSyncs.delete(UNESCO_CATEGORY_ID);
+      if (runningSyncs.get(UNESCO_SOURCE_ID) === thisProgress) {
+        runningSyncs.delete(UNESCO_SOURCE_ID);
       }
     }, 60000);
   }

@@ -5,7 +5,7 @@
  * few it may fall to before it is refused by name) used to be two constants in
  * the pipeline that owned it. A kind whose sources enumerate different worlds
  * needs its own numbers, so the line is stored on the source row
- * (`experience_categories.api_config`) and read by the run through
+ * (`experience_sources.api_config`) and read by the run through
  * `parseSourceLine` (`services/sync/sourceLine.ts`) — this route is that
  * value's only writer, and the two share one bound (integers 1..1000, stay no
  * higher than enter) enforced twice: here by `sourceLineBodySchema`, there by
@@ -27,10 +27,10 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 /**
  * Set a source's fame line: how many sitelinks a row needs to enter the world
  * tier, and how few it may fall to before the tier lets it go.
- * PUT /api/admin/sync/categories/:categoryId/line
+ * PUT /api/admin/sync/sources/:sourceId/line
  */
 export async function setSourceLine(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const categoryId = parseInt(String(req.params.categoryId));
+  const sourceId = parseInt(String(req.params.sourceId));
   const { enterSitelinks, staySitelinks } = req.body as { enterSitelinks: number; staySitelinks: number };
 
   // `is_active` in the guard, not only the id, for the same reason the gate
@@ -38,13 +38,13 @@ export async function setSourceLine(req: AuthenticatedRequest, res: Response): P
   // inactive one is stale or hand-made.
   const exists = await pool.query(
     `SELECT id, api_config ? 'enterSitelinks' AS has_line
-       FROM experience_categories
+       FROM experience_sources
       WHERE id = $1 AND is_active = true`,
-    [categoryId],
+    [sourceId],
   );
 
   if (exists.rows.length === 0) {
-    res.status(404).json({ error: 'Category not found' });
+    res.status(404).json({ error: 'Source not found' });
     return;
   }
 
@@ -56,24 +56,24 @@ export async function setSourceLine(req: AuthenticatedRequest, res: Response): P
   // `||` merges rather than replaces, so a source's other api_config keys
   // (its userAgent, its cache settings) survive a line change untouched.
   const result = await pool.query(
-    `UPDATE experience_categories
+    `UPDATE experience_sources
         SET api_config = COALESCE(api_config, '{}'::jsonb) || $1::jsonb
       WHERE id = $2
       RETURNING id, name, api_config`,
-    [JSON.stringify({ enterSitelinks, staySitelinks }), categoryId],
+    [JSON.stringify({ enterSitelinks, staySitelinks }), sourceId],
   );
 
-  const category = result.rows[0];
-  // No per-category audit table, same as the gate switch beside it — but a
+  const source = result.rows[0];
+  // No per-source audit table, same as the gate switch beside it — but a
   // number that decides what a run admits changing with no trace anywhere is
   // not acceptable either.
   console.log(
-    `[source-line] ${category.name} (${category.id}) -> enter ${enterSitelinks}, stay ${staySitelinks} by user ${req.user?.id}`,
+    `[source-line] ${source.name} (${source.id}) -> enter ${enterSitelinks}, stay ${staySitelinks} by user ${req.user?.id}`,
   );
 
   res.json({
-    categoryId: category.id,
-    name: category.name,
+    sourceId: source.id,
+    name: source.name,
     enterSitelinks,
     staySitelinks,
   });

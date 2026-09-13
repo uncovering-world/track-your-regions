@@ -69,7 +69,7 @@ describe('missingDetectionSkipReason', () => {
     expect(missingDetectionSkipReason(input({ seenCount }))).toBeNull();
   });
 
-  it('allows detection for a category that was empty before', () => {
+  it('allows detection for a source that was empty before', () => {
     expect(missingDetectionSkipReason(input({ seenCount: 0, previousActiveCount: 0 }))).toBeNull();
   });
 });

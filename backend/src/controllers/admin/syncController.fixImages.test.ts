@@ -32,7 +32,7 @@ function makeRes() {
   return res;
 }
 
-const request = (categoryId: number) => ({ params: { categoryId: String(categoryId) }, user: { id: 7 } });
+const request = (sourceId: number) => ({ params: { sourceId: String(sourceId) }, user: { id: 7 } });
 
 describe('fixImages', () => {
   beforeEach(() => {

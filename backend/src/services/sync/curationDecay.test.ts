@@ -39,7 +39,7 @@ describe('retirePassAfterNewContent', () => {
     // `auto` one is already there.
     expect(sql).toContain("m.curation_state = 'verified'");
     // The gate is read through the membership's source, because these writers
-    // have an experience id and no category id. Under a gated source the new
+    // have an experience id and no source id. Under a gated source the new
     // content was written `pending` — nothing a reader sees changed, so the
     // pass still holds.
     expect(sql).toContain('c.id = m.source_id AND c.requires_curation');

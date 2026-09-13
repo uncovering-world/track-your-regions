@@ -76,7 +76,7 @@ const PUBLISHED = {
  * withdrawn points. Everything under a lock is a mocked writer.
  */
 function poolAnswers({
-  names = [{ id: 5, name: 'Chartres Cathedral', category_id: 4 }],
+  names = [{ id: 5, name: 'Chartres Cathedral', source_id: 4 }],
   subs = { arrival: true, held: false, contents: false },
   refusedOpen = true,
   missing = { source_membership: 'present', existence: 'extant', missing_since: new Date('2026-09-01T00:00:00Z') },
@@ -259,8 +259,8 @@ describe('the dispatch table', () => {
 describe('each object is its own act', () => {
   it('answers the rest when one throws, and names the one that did', async () => {
     poolAnswers({ names: [
-      { id: 5, name: 'Chartres Cathedral', category_id: 4 },
-      { id: 6, name: 'Reims Cathedral', category_id: 4 },
+      { id: 5, name: 'Chartres Cathedral', source_id: 4 },
+      { id: 6, name: 'Reims Cathedral', source_id: 4 },
     ] });
     mockedPublish
       .mockRejectedValueOnce(new Error('boom'))
@@ -306,9 +306,9 @@ describe('each object is its own act', () => {
   });
 
   it("carries a writer's refusal into the report with its words", async () => {
-    mockedPublish.mockResolvedValueOnce({ refusal: { status: 409, error: 'This row was turned down by its category' } });
+    mockedPublish.mockResolvedValueOnce({ refusal: { status: 409, error: 'This row was turned down by its source' } });
     const res = makeRes();
     await answerReviewRows(req([{ kind: 'waiting', id: 5 }], 'accept'), res as never);
-    expect(res.json.mock.calls[0][0].refused[0].error).toBe('This row was turned down by its category');
+    expect(res.json.mock.calls[0][0].refused[0].error).toBe('This row was turned down by its source');
   });
 });

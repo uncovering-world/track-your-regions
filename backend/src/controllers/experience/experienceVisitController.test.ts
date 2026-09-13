@@ -2,7 +2,7 @@
  * `markVisited` is the write path Major 1 closes: before this, any
  * authenticated caller could POST a guessed id for a `pending` experience,
  * get its name echoed back, and have `getVisitedExperiences` hand back the
- * rest of the row — name, description, category, coordinates — for ever,
+ * rest of the row — name, description, kind, coordinates — for ever,
  * since nothing else here ever clears the row the POST just wrote.
  *
  * The same sentence held for a *refused* row one round longer than it should
@@ -124,12 +124,12 @@ describe('getVisitedExperiences', () => {
     }
   });
 
-  it('carries the category filter and the gate together on the count', async () => {
+  it('carries the kind filter and the gate together on the count', async () => {
     await getVisitedExperiences(
-      { query: { categoryId: '2' }, user: { id: 5 } } as never, makeRes() as never);
+      { query: { kindId: '2' }, user: { id: 5 } } as never, makeRes() as never);
 
     const [, countSql] = mockedQuery.mock.calls.map(c => String(c[0]));
-    expect(countSql).toContain('e.category_id = $2');
+    expect(countSql).toContain('m.kind_id = $2');
     expect(countSql).toContain(hidePendingSql('e'));
   });
 });

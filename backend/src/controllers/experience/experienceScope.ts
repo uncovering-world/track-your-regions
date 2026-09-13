@@ -23,7 +23,7 @@ import { CURATOR_SCOPED_REGIONS_CTE, CURATOR_UNRESTRICTED_SCOPE_EXISTS } from '.
  *
  * The region it hands back is the audit row's, and deliberately not just some
  * region the experience sits in. `unrestricted` callers — admins, global
- * curators, curators of the experience's category — get `null`: no single
+ * curators, curators of the experience's source — get `null`: no single
  * region is where their authority came from, and since #442 the log is
  * filtered per row, so naming one arbitrarily would hide the edit from every
  * curator except whoever happens to cover that region. A row naming no region
@@ -36,7 +36,7 @@ export async function resolveExperienceScope(
   userId: number,
   userRole: UserRole,
   experienceId: number,
-  categoryId: number,
+  sourceId: number,
 ): Promise<{ permitted: boolean; logRegionId: number | null }> {
   if (userRole === 'admin') return { permitted: true, logRegionId: null };
 
@@ -49,7 +49,7 @@ export async function resolveExperienceScope(
         JOIN curator_scoped_regions s ON s.id = er.region_id
         WHERE er.experience_id = $2
       ) AS scoped_region_id
-  `, [userId, experienceId, categoryId]);
+  `, [userId, experienceId, sourceId]);
 
   const row = result.rows[0] as { unrestricted: boolean; scoped_region_id: number | null };
   if (row.unrestricted === true) return { permitted: true, logRegionId: null };
@@ -71,8 +71,8 @@ export async function resolveExperienceScope(
  * because those describe a *set*, and a curator's set has to match a reader's
  * or the two could never agree on what the catalogue offers.
  *
- * Takes `experienceId` alone rather than a pre-fetched `categoryId`, unlike
- * `resolveExperienceScope`: none of the three by-id reads has a category to
+ * Takes `experienceId` alone rather than a pre-fetched `sourceId`, unlike
+ * `resolveExperienceScope`: none of the three by-id reads has a source to
  * hand before its row is fetched — the row is exactly what the pending gate
  * is deciding whether to return — so the lookup lives here once instead of
  * being repeated at each of the three call sites.
@@ -85,10 +85,10 @@ export async function maySeeUnreadExperience(
   if (userRole === 'admin') return true;
   if (!userId || userRole !== 'curator') return false;
 
-  const categoryResult = await pool.query('SELECT category_id FROM experiences WHERE id = $1', [experienceId]);
-  if (categoryResult.rows.length === 0) return false;
+  const sourceResult = await pool.query('SELECT source_id FROM experiences WHERE id = $1', [experienceId]);
+  if (sourceResult.rows.length === 0) return false;
 
-  const { permitted } = await resolveExperienceScope(userId, userRole, experienceId, categoryResult.rows[0].category_id);
+  const { permitted } = await resolveExperienceScope(userId, userRole, experienceId, sourceResult.rows[0].source_id);
   return permitted;
 }
 

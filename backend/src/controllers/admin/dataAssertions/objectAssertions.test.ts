@@ -57,7 +57,7 @@ describe('the danger flag against its tag', () => {
     // is published (#570). The held *flag*, not the held row -- any held field
     // sets the pointer, and every UNESCO row on the dev database carries one
     // (criteria and a credit held on all 1272), so a bare pointer test would
-    // switch the check off for the whole category. The flag is named on its
+    // switch the check off for the whole source. The flag is named on its
     // own, never inside the `metadata` catch-all, so only its own name is asked.
     // The pointer is the membership's (#822), so the changeset is reached
     // through it.
@@ -111,7 +111,7 @@ describe('a refused row still wearing the Iconic badge', () => {
     // asked, not a reader composite.
     expect(sql).toContain('FROM experience_kind_memberships m');
     expect(sql).toContain("WHERE m.admission = 'refused' AND m.is_iconic");
-    expect(sql).toContain('JOIN experience_categories c ON c.id = m.source_id');
+    expect(sql).toContain('JOIN experience_sources c ON c.id = m.source_id');
     expect(assertion.kind).toBe('invariant');
   });
 
@@ -122,9 +122,9 @@ describe('a refused row still wearing the Iconic badge', () => {
     expect(sql).toContain(`AND NOT ${iconicPinnedSql('m')}`);
   });
 
-  it('names the row and the category that turned it away', () => {
+  it('names the row and the source that turned it away', () => {
     expect(assertion.describe({
-      experience_id: 6205, experience_name: 'British Museum', category_name: 'Art Museums',
+      experience_id: 6205, experience_name: 'British Museum', source_name: 'Art Museums',
     })).toBe('British Museum: turned away from Art Museums and still badged as a must-see '
       + '(experience 6205)');
   });
@@ -208,7 +208,7 @@ describe('a place that belongs to no kind', () => {
 
   it('names the source the row is keyed on, which is the kind it wants', () => {
     expect(assertion.describe({
-      experience_id: 12001, experience_name: 'Kartlis Deda', category_name: 'Public Art & Monuments',
+      experience_id: 12001, experience_name: 'Kartlis Deda', source_name: 'Public Art & Monuments',
     })).toBe('Kartlis Deda: keyed on Public Art & Monuments and a member of no kind (experience 12001)');
   });
 });
@@ -218,10 +218,10 @@ describe('a membership brought by a source other than the one its row is keyed o
   const sql = collapse(assertion.sql);
 
   it('compares the membership\'s source with the row\'s identity column', () => {
-    // `experiences.category_id` is the identity arbiter until #755, and the
+    // `experiences.source_id` is the identity arbiter until #755, and the
     // lists read it while the counts read the membership; a row where the two
     // disagree is shown in one kind and counted in another.
-    expect(sql).toContain('WHERE m.source_id <> e.category_id');
+    expect(sql).toContain('WHERE m.source_id <> e.source_id');
     expect(assertion.kind).toBe('invariant');
   });
 

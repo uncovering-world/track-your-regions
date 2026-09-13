@@ -23,6 +23,7 @@ import {
 // A region's count is of places (ADR-0046 decision 8, #822): the cards it
 // offers, each once, whatever kinds they belong to.
 import { countedPlacesSql } from './experienceCounts.js';
+import { rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import { isNewSql } from './experienceNewBadge.js';
 import { dangerSelectSql } from './experienceDanger.js';
 
@@ -57,7 +58,7 @@ export function buildRegionQueries(opts: {
   // labels it from the columns selected above.
   //
   // A refusal has no toggle and never gets one. `includeLostRows` exists so a
-  // reader can ask to see what no longer exists; a row this category's rule
+  // reader can ask to see what no longer exists; a row its kind's rule
   // turned down is not something the reader is missing, it is something that
   // should never have been offered (ADR-0024). The curation queue reads it
   // through its own query.
@@ -91,7 +92,7 @@ export function buildRegionQueries(opts: {
   // count beside it disagreeing about the set is the same defect twice.
   const membershipFilter = ` AND ${readerRegionMembershipSql()}`;
   // The chip's personal half needs to know who is asking. Anonymous readers
-  // bind nothing and fall back to the category window, which is the whole rule
+  // bind nothing and fall back to the source's window, which is the whole rule
   // for them — there is nobody to have shown it to. Both branches bind
   // regionId, limit and offset in that order, so the reader lands on $4.
   const readerParam = userId ? '$4' : 'NULL';
@@ -122,8 +123,9 @@ export function buildRegionQueries(opts: {
         e.name,
         e.short_description,
         e.type,
-        -- The kind, by its source row: what a colour is decided by (#814).
-        e.category_id,
+        -- The kind, off the row's membership: what a colour and a group are
+        -- decided by (#814, #819).
+        ${rowKindSelectSql()},
         e.country_codes,
         e.country_names,
         e.image_url,
@@ -154,20 +156,18 @@ export function buildRegionQueries(opts: {
            JOIN treasures t ON t.id = et.treasure_id
           WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
             AND ${publishedContentSql('et')} AND ${publishedContentSql('t')}) as treasure_count,
-        s.name as category_name,
-        s.display_priority as category_priority,
         ${lifecycleSelectSql()},
         ${isNewSql('e', readerParam)} AS is_new
         ${rejectionSelect}
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
-      JOIN experience_categories s ON e.category_id = s.id
+      ${rowKindJoinSql('e')}
       ${descendantRejectionJoin}
       WHERE er.region_id IN (SELECT id FROM descendant_regions)
       ${rejectionFilter}
       ${membershipFilter}
       ${lifecycleFilter}
-      GROUP BY e.id, s.name, s.display_priority
+      GROUP BY e.id, m.kind_id, k.name, k.display_priority
       ORDER BY e.name
       LIMIT $2 OFFSET $3
     `;
@@ -183,7 +183,6 @@ export function buildRegionQueries(opts: {
         ${countedPlacesSql('e')} FILTER (WHERE ${lostHiddenPredicate})::int AS lost_hidden
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
-      JOIN experience_categories s ON e.category_id = s.id
       ${descendantRejectionJoin}
       WHERE er.region_id IN (SELECT id FROM descendant_regions)
       ${rejectionFilter}
@@ -200,8 +199,9 @@ export function buildRegionQueries(opts: {
         e.name,
         e.short_description,
         e.type,
-        -- The kind, by its source row: what a colour is decided by (#814).
-        e.category_id,
+        -- The kind, off the row's membership: what a colour and a group are
+        -- decided by (#814, #819).
+        ${rowKindSelectSql()},
         e.country_codes,
         e.country_names,
         e.image_url,
@@ -232,14 +232,12 @@ export function buildRegionQueries(opts: {
            JOIN treasures t ON t.id = et.treasure_id
           WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
             AND ${publishedContentSql('et')} AND ${publishedContentSql('t')}) as treasure_count,
-        s.name as category_name,
-        s.display_priority as category_priority,
         ${lifecycleSelectSql()},
         ${isNewSql('e', readerParam)} AS is_new
         ${rejectionSelect}
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
-      JOIN experience_categories s ON e.category_id = s.id
+      ${rowKindJoinSql('e')}
       ${simpleRejectionJoin}
       WHERE er.region_id = $1
       ${rejectionFilter}
@@ -254,7 +252,6 @@ export function buildRegionQueries(opts: {
         ${countedPlacesSql('e')} FILTER (WHERE ${lostHiddenPredicate})::int AS lost_hidden
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
-      JOIN experience_categories s ON e.category_id = s.id
       ${simpleRejectionJoin}
       WHERE er.region_id = $1
       ${rejectionFilter}

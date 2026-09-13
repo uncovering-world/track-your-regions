@@ -31,7 +31,7 @@ const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
 const mockedRollback = rollbackQuietly as unknown as ReturnType<typeof vi.fn>;
 
 const PARAMS: ExperienceUpsertParams = {
-  categoryId: 1,
+  sourceId: 1,
   externalId: '156',
   name: 'Serengeti National Park',
   nameLocal: { en: 'Serengeti National Park' },
@@ -435,7 +435,7 @@ describe('a dry run', () => {
     // #822.
     const sql = String(mockedQuery.mock.calls[0][0]);
     expect(sql).toContain(
-      '((SELECT requires_curation FROM experience_categories WHERE id = $1)'
+      '((SELECT requires_curation FROM experience_sources WHERE id = $1)'
       + ` AND ${placeVisibleSql('experiences')}) AS was_held`,
     );
     expect(sql).not.toMatch(/experiences\.curation_state/);
@@ -524,13 +524,13 @@ describe('one transaction per object, the row locked first', () => {
     // the memberships read in the locking statement would still be the ones
     // from before a publish that committed during the wait (`db/locks.ts`).
     const [locked, params] = lockedRead();
-    expect(locked).toBe('SELECT id FROM experiences WHERE category_id = $1 AND external_id = $2 FOR NO KEY UPDATE');
-    expect(params).toEqual([PARAMS.categoryId, PARAMS.externalId]);
+    expect(locked).toBe('SELECT id FROM experiences WHERE source_id = $1 AND external_id = $2 FOR NO KEY UPDATE');
+    expect(params).toEqual([PARAMS.sourceId, PARAMS.externalId]);
     // The read after it, on the same row, with no lock of its own.
     const [snapshot, snapshotParams] = snapshotRead();
     expect(snapshot).not.toContain('FOR NO KEY UPDATE');
-    expect(snapshot).toContain('WHERE e.category_id = $1 AND e.external_id = $2');
-    expect(snapshotParams).toEqual([PARAMS.categoryId, PARAMS.externalId]);
+    expect(snapshot).toContain('WHERE e.source_id = $1 AND e.external_id = $2');
+    expect(snapshotParams).toEqual([PARAMS.sourceId, PARAMS.externalId]);
     expect(sql.indexOf(locked)).toBeLessThan(sql.indexOf(snapshot));
     expect(sql.indexOf(snapshot)).toBeLessThan(sql.findIndex(s => /INSERT INTO experiences/.test(s)));
     expect(client.release).toHaveBeenCalledWith(undefined);
@@ -555,7 +555,7 @@ describe('one transaction per object, the row locked first', () => {
     // the answer is about the memberships as they stand when the statement
     // then writes.
     expect(snapshot).toContain(
-      '((SELECT requires_curation FROM experience_categories WHERE id = $1)'
+      '((SELECT requires_curation FROM experience_sources WHERE id = $1)'
       + ` AND ${placeVisibleSql('e')}) AS was_held`,
     );
   });
@@ -621,7 +621,7 @@ describe('the keys a run computes about its own pass go past both guards', () =>
    * The behaviour these regexes stand in for was measured against the live
    * database, each inside BEGIN...ROLLBACK on the real Louvre row (#571):
    *
-   * - held row (`auto` under a gated category): `totalArtworkSitelinks` went
+   * - held row (`auto` under a gated source): `totalArtworkSitelinks` went
    *   2363 → 2365 while `website` and `wikipediaUrl` kept their stored values,
    *   so the counter crossed the gate and the content did not;
    * - a UNESCO row, whose source sends neither key: metadata gained no key at
@@ -687,7 +687,7 @@ describe('the membership the run writes beside the place', () => {
     // The kind is read off the source, never passed in: a parameter would be a
     // second source of truth that could disagree with the column.
     expect(cte).toContain('INSERT INTO experience_kind_memberships');
-    expect(cte).toContain('(SELECT kind_id FROM experience_categories WHERE id = $1)');
+    expect(cte).toContain('(SELECT kind_id FROM experience_sources WHERE id = $1)');
     expect(cte).toContain('ON CONFLICT (experience_id, kind_id) DO UPDATE SET');
     expect(cte).toContain('FROM ins');
   });
@@ -712,7 +712,7 @@ describe('the membership the run writes beside the place', () => {
 
     // A parameter would be a second source of truth that can disagree with the
     // column between the check and the write.
-    expect(upsert()[0]).toMatch(/gate AS \(\s*SELECT requires_curation FROM experience_categories WHERE id = \$1/);
+    expect(upsert()[0]).toMatch(/gate AS \(\s*SELECT requires_curation FROM experience_sources WHERE id = \$1/);
   });
 
   it('arrives pending with no published_at when the source is gated', async () => {
@@ -725,7 +725,7 @@ describe('the membership the run writes beside the place', () => {
     expect(cte).toMatch(/CASE WHEN \(SELECT requires_curation FROM gate\) THEN 'pending' ELSE 'auto' END/);
     expect(cte).toMatch(/CASE WHEN \(SELECT requires_curation FROM gate\) THEN NULL ELSE NOW\(\) END/);
     // And on the membership alone: the place no longer carries a state.
-    const placeInsert = upsert()[0].slice(0, upsert()[0].indexOf('ON CONFLICT (category_id'));
+    const placeInsert = upsert()[0].slice(0, upsert()[0].indexOf('ON CONFLICT (source_id'));
     expect(placeInsert).not.toContain('curation_state');
     expect(placeInsert).not.toContain('published_at');
   });
@@ -894,8 +894,8 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // The gate is read through the membership's source, and the membership is
     // the run's own source's, read off its log: the statement is shared with
     // the content writers (heldProposalPointer.ts), which have an experience id
-    // and no category id.
-    expect(pointer).toMatch(/m\.source_id = run\.category_id/);
+    // and no source id.
+    expect(pointer).toMatch(/m\.source_id = run\.source_id/);
     expect(pointer).toMatch(/c\.id = m\.source_id AND c\.requires_curation/);
     expect(params).toEqual([501, 42]);
   });
@@ -929,7 +929,7 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     expect(cleared).toMatch(/m\.source_id = \$2/);
     expect(cleared).toMatch(/curation_state <> 'pending'/);
     expect(cleared).toMatch(/EXISTS \(/);
-    expect(params).toEqual([501, PARAMS.categoryId]);
+    expect(params).toEqual([501, PARAMS.sourceId]);
   });
 
   it('points a held membership at the run whose proposal a claim refused', async () => {
@@ -966,7 +966,7 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     const assigned = assignmentsOf(upsert()[0]);
     // A gated run still records that the source listed the object,
     // or missing detection starts flagging everything the gate holds and one
-    // gated source manufactures a category-wide false alarm.
+    // gated source manufactures a source-wide false alarm.
     // Every one of the five named individually: naming three of them and
     // calling it "the provenance columns" would pass while a guard sat on
     // either of the other two.
@@ -1023,9 +1023,9 @@ describe('a trusted source decays a curator pass', () => {
     // and this is the statement that retires a curator's pass.
     const [decay, params] = callMatching(/SET curation_state = 'auto'/);
     expect(decay).toMatch(
-      /NOT EXISTS \(\s*SELECT 1 FROM experience_categories\s*WHERE id = \$2 AND requires_curation\s*\)/,
+      /NOT EXISTS \(\s*SELECT 1 FROM experience_sources\s*WHERE id = \$2 AND requires_curation\s*\)/,
     );
-    expect(params).toEqual([501, PARAMS.categoryId]);
+    expect(params).toEqual([501, PARAMS.sourceId]);
   });
 
   it('sends no decay statement for a provenance-only pass', async () => {

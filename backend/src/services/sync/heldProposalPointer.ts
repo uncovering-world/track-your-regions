@@ -27,7 +27,7 @@
  *
  * Which membership: the one whose source is the run's, read off the run's own
  * log rather than passed in, since the content writers have an experience id
- * and no category id. A pending membership never carries a pointer — an
+ * and no source id. A pending membership never carries a pointer — an
  * arrival is refreshed in place rather than held. A gated second membership of
  * a place another source made visible is held by the upsert (the hold asks
  * whether a reader can see the place) and gets no pointer and no card here;
@@ -72,10 +72,10 @@ export async function pointHeldProposalAt(
     `UPDATE ${MEMBERSHIPS} m SET pending_change_sync_log_id = $2, updated_at = NOW()
        FROM experience_sync_logs run
       WHERE m.experience_id = $1
-        AND run.id = $2 AND m.source_id = run.category_id
+        AND run.id = $2 AND m.source_id = run.source_id
         AND m.curation_state <> 'pending'
         AND EXISTS (
-          SELECT 1 FROM experience_categories c
+          SELECT 1 FROM experience_sources c
            WHERE c.id = m.source_id AND c.requires_curation
         )`,
     [experienceId, syncLogId],

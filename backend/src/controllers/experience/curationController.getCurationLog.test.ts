@@ -36,7 +36,7 @@ function queueQueries(opts: {
   logRows?: unknown[];
 }) {
   mockedQuery.mockReset();
-  mockedQuery.mockResolvedValueOnce({ rows: opts.experienceRows ?? [{ category_id: 1 }] });
+  mockedQuery.mockResolvedValueOnce({ rows: opts.experienceRows ?? [{ source_id: 1 }] });
   if (opts.scope) mockedQuery.mockResolvedValueOnce({ rows: [opts.scope] });
   mockedQuery.mockResolvedValueOnce({ rows: opts.logRows ?? [IN_SCOPE_ROW] });
 }
@@ -122,7 +122,7 @@ describe('getCurationLog scope', () => {
     expect(mockedQuery).toHaveBeenCalledTimes(2);
   });
 
-  it('leaves the rows unfiltered for a global or category curator', async () => {
+  it('leaves the rows unfiltered for a global or source curator', async () => {
     queueQueries({ scope: { unrestricted: true, has_scoped_region: false } });
     const { res, done } = callGetCurationLog(REGION_CURATOR);
     await done;

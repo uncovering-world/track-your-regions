@@ -170,7 +170,7 @@ export async function writeExperienceLocations(
    * arrived first.
    *
    * The gate is read through the experience, exactly as the insert arm reads
-   * it: this writer has an experience id and no category id, and a parameter
+   * it: this writer has an experience id and no source id, and a parameter
    * would be a second source of truth that could disagree with the column
    * between the check and the write. Evaluated inside the keeping arm on the
    * row it locked, and again in that arm's RETURNING, so the report cannot
@@ -183,7 +183,7 @@ export async function writeExperienceLocations(
    * claimed coordinate is the claim's to refuse, never the gate's.
    */
   const heldPoint = `((SELECT c.requires_curation
-                        FROM experiences e JOIN experience_categories c ON c.id = e.category_id
+                        FROM experiences e JOIN experience_sources c ON c.id = e.source_id
                        WHERE e.id = $1)
                      AND el.curation_state <> 'pending')`;
 
@@ -499,11 +499,11 @@ export async function writeExperienceLocations(
               -- curator nothing to review for an arrival.
               --
               -- Read from the experience rather than passed in: this writer has
-              -- an experience id and no category id, and a parameter would be a
+              -- an experience id and no source id, and a parameter would be a
               -- second source of truth that could disagree with the column
               -- between the check and the write.
               CASE WHEN (SELECT c.requires_curation
-                           FROM experiences e JOIN experience_categories c ON c.id = e.category_id
+                           FROM experiences e JOIN experience_sources c ON c.id = e.source_id
                           WHERE e.id = $1)
                    THEN 'pending' ELSE 'auto' END
        FROM incoming i

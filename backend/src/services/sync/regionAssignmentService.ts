@@ -33,14 +33,14 @@ function checkCancelled(progress: AssignmentProgress): boolean {
   return true;
 }
 
-/** Step 1: drop the previous run's auto-assignments for this world view (and optionally one category). */
+/** Step 1: drop the previous run's auto-assignments for this world view (and optionally one source). */
 async function clearPreviousAssignments(
   worldViewId: number,
-  categoryId: number | undefined,
+  sourceId: number | undefined,
   progress: AssignmentProgress
 ): Promise<void> {
   progress.statusMessage = 'Clearing previous auto-assignments...';
-  const params = categoryId ? [worldViewId, categoryId] : [worldViewId];
+  const params = sourceId ? [worldViewId, sourceId] : [worldViewId];
 
   const clearLocResult = await pool.query(`
     DELETE FROM experience_location_regions elr
@@ -50,7 +50,7 @@ async function clearPreviousAssignments(
       AND elr.region_id = r.id
       AND r.world_view_id = $1
       AND elr.assignment_type = 'auto'
-      ${categoryId ? 'AND e.category_id = $2' : ''}
+      ${sourceId ? 'AND e.source_id = $2' : ''}
   `, params);
   console.log(`[Region Assignment] Cleared ${clearLocResult.rowCount} location-region auto-assignments`);
 
@@ -60,7 +60,7 @@ async function clearPreviousAssignments(
     WHERE er.region_id = r.id
       AND r.world_view_id = $1
       AND er.assignment_type = 'auto'
-      ${categoryId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE category_id = $2)' : ''}
+      ${sourceId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE source_id = $2)' : ''}
   `, params);
   console.log(`[Region Assignment] Cleared ${clearExpResult.rowCount} experience-region auto-assignments`);
 }
@@ -179,21 +179,21 @@ function directPlacementSql(pointFilter: string): string {
 }
 
 /** The points of one source's objects, for a rebuild narrowed to that source. */
-const ONE_SOURCE = 'AND e.category_id = $2';
+const ONE_SOURCE = 'AND e.source_id = $2';
 /** The points of the objects a run or a curator has just moved. */
 const THESE_EXPERIENCES = 'AND el.experience_id = ANY($2::int[])';
 
 /** Step 2: insert direct location→region rows — the leaves that hold each point, and for a point no leaf holds, the other regions that do. */
 async function assignDirect(
   worldViewId: number,
-  categoryId: number | undefined,
+  sourceId: number | undefined,
   progress: AssignmentProgress
 ): Promise<void> {
   progress.statusMessage = 'Computing direct spatial containment for locations...';
 
   const directResult = await pool.query(
-    directPlacementSql(categoryId ? ONE_SOURCE : ''),
-    categoryId ? [worldViewId, categoryId] : [worldViewId],
+    directPlacementSql(sourceId ? ONE_SOURCE : ''),
+    sourceId ? [worldViewId, sourceId] : [worldViewId],
   );
 
   progress.directAssignments = directResult.rowCount || 0;
@@ -203,12 +203,12 @@ async function assignDirect(
 /** Step 3: propagate location→region assignments to all ancestor regions. */
 async function assignAncestors(
   worldViewId: number,
-  categoryId: number | undefined,
+  sourceId: number | undefined,
   progress: AssignmentProgress
 ): Promise<void> {
   progress.status = 'propagating';
   progress.statusMessage = 'Propagating to ancestor regions...';
-  const params = categoryId ? [worldViewId, categoryId] : [worldViewId];
+  const params = sourceId ? [worldViewId, sourceId] : [worldViewId];
 
   const ancestorResult = await pool.query(`
     WITH RECURSIVE ancestors AS (
@@ -219,10 +219,10 @@ async function assignAncestors(
       WHERE r.world_view_id = $1
         AND r.parent_region_id IS NOT NULL
         AND elr.assignment_type = 'auto'
-        ${categoryId ? `AND elr.location_id IN (
+        ${sourceId ? `AND elr.location_id IN (
           SELECT el.id FROM experience_locations el
           JOIN experiences e ON el.experience_id = e.id
-          WHERE e.category_id = $2
+          WHERE e.source_id = $2
         )` : ''}
 
       UNION
@@ -247,12 +247,12 @@ async function assignAncestors(
 /** Step 4: denormalize location→region rows into experience→region for backward compatibility. */
 async function denormalizeExperienceRegions(
   worldViewId: number,
-  categoryId: number | undefined,
+  sourceId: number | undefined,
   progress: AssignmentProgress
 ): Promise<void> {
   progress.status = 'denormalizing';
   progress.statusMessage = 'Denormalizing to experience-region assignments...';
-  const params = categoryId ? [worldViewId, categoryId] : [worldViewId];
+  const params = sourceId ? [worldViewId, sourceId] : [worldViewId];
 
   const expResult = await pool.query(`
     INSERT INTO experience_regions (experience_id, region_id, assignment_type)
@@ -262,7 +262,7 @@ async function denormalizeExperienceRegions(
     JOIN experiences e ON el.experience_id = e.id
     JOIN regions r ON elr.region_id = r.id
     WHERE r.world_view_id = $1
-      ${categoryId ? 'AND e.category_id = $2' : ''}
+      ${sourceId ? 'AND e.source_id = $2' : ''}
     ON CONFLICT (experience_id, region_id) DO NOTHING
   `, params);
 
@@ -276,11 +276,11 @@ async function denormalizeExperienceRegions(
  * Then propagates assignments up to ancestor regions and denormalizes to experience_regions.
  *
  * @param worldViewId - The world view to assign experiences within
- * @param categoryId - Optional: only assign experiences from this source
+ * @param sourceId - Optional: only assign experiences from this source
  */
 export async function assignExperiencesToRegions(
   worldViewId: number,
-  categoryId?: number
+  sourceId?: number
 ): Promise<AssignmentProgress> {
   // Check if already running for this world view
   const existing = runningAssignments.get(worldViewId);
@@ -300,19 +300,19 @@ export async function assignExperiencesToRegions(
   runningAssignments.set(worldViewId, progress);
 
   try {
-    const sourceSuffix = categoryId ? ` (source ${categoryId})` : '';
+    const sourceSuffix = sourceId ? ` (source ${sourceId})` : '';
     console.log(`[Region Assignment] Starting for world view ${worldViewId}${sourceSuffix}`);
 
-    await clearPreviousAssignments(worldViewId, categoryId, progress);
+    await clearPreviousAssignments(worldViewId, sourceId, progress);
     if (checkCancelled(progress)) return progress;
 
-    await assignDirect(worldViewId, categoryId, progress);
+    await assignDirect(worldViewId, sourceId, progress);
     if (checkCancelled(progress)) return progress;
 
-    await assignAncestors(worldViewId, categoryId, progress);
+    await assignAncestors(worldViewId, sourceId, progress);
     if (checkCancelled(progress)) return progress;
 
-    await denormalizeExperienceRegions(worldViewId, categoryId, progress);
+    await denormalizeExperienceRegions(worldViewId, sourceId, progress);
 
     await pool.query(
       'UPDATE world_views SET last_assignment_at = NOW() WHERE id = $1',
@@ -370,7 +370,7 @@ export function cancelAssignment(worldViewId: number): boolean {
  */
 export async function getExperienceCountsByRegion(
   worldViewId: number,
-  categoryId?: number
+  sourceId?: number
 ): Promise<{ regionId: number; regionName: string; count: number }[]> {
   const result = await pool.query(`
     SELECT
@@ -379,12 +379,12 @@ export async function getExperienceCountsByRegion(
       COUNT(er.experience_id) as count
     FROM regions r
     LEFT JOIN experience_regions er ON r.id = er.region_id
-      ${categoryId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE category_id = $2)' : ''}
+      ${sourceId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE source_id = $2)' : ''}
     WHERE r.world_view_id = $1
     GROUP BY r.id, r.name
     HAVING COUNT(er.experience_id) > 0
     ORDER BY count DESC
-  `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
+  `, sourceId ? [worldViewId, sourceId] : [worldViewId]);
 
   return result.rows.map(row => ({
     regionId: row.region_id,

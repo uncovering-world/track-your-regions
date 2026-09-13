@@ -371,7 +371,7 @@ function creditsByExternalId(rows: StoredCreditRow[]): Map<string, StoredCredit>
 }
 
 /**
- * The credits a category's rows already carry, keyed by external id.
+ * The credits a source's rows already carry, keyed by external id.
  *
  * Read once per run, because a run that could not fetch a credit has to resend
  * the stored one rather than omit it: the sync upsert writes
@@ -380,12 +380,12 @@ function creditsByExternalId(rows: StoredCreditRow[]): Map<string, StoredCredit>
  * dropped. Omitting the credit would therefore erase it — exactly the failure
  * that resending exists to prevent.
  */
-export async function readStoredCredits(categoryId: number): Promise<Map<string, StoredCredit>> {
+export async function readStoredCredits(sourceId: number): Promise<Map<string, StoredCredit>> {
   const result = await pool.query(
     `${STORED_CREDIT_COLUMNS}
        FROM experiences
-      WHERE category_id = $1`,
-    [categoryId],
+      WHERE source_id = $1`,
+    [sourceId],
   );
   return creditsByExternalId(result.rows as StoredCreditRow[]);
 }
@@ -393,8 +393,8 @@ export async function readStoredCredits(categoryId: number): Promise<Map<string,
 /**
  * The same, for the works inside those rows.
  *
- * Every treasure rather than a category's worth of them, because a treasure has
- * no category: it is globally unique by `external_id` and shared by every venue
+ * Every treasure rather than a source's worth of them, because a treasure has
+ * no source: it is globally unique by `external_id` and shared by every venue
  * that holds it (ADR-0023). No `WHERE` at all, then, and one query per run —
  * the run reads the whole table once and looks up what it needs by
  * `external_id`, rather than asking per work.

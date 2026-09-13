@@ -40,7 +40,7 @@ export const SPARQL_DELAY_MS = 1000;
  * `Q214867` — a label service given one language answers with the QID for
  * anything that has no label in it. Shared rather than per-collector, because a
  * query that asks for `"en"` alone is a query whose answers can contain QIDs
- * where a reader expects a name, and that is not a per-category preference.
+ * where a reader expects a name, and that is not a per-source preference.
  */
 export const LABEL_LANGS = 'en,mul,en-gb,de,fr,es,it,nl';
 

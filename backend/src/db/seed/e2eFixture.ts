@@ -18,7 +18,7 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../index.js';
 import {
-  experienceCategories,
+  experienceSources,
   experienceKindMemberships,
   experienceLocationRegions,
   experienceLocations,
@@ -51,9 +51,9 @@ export const E2E_CURATOR = { email: 'curator@e2e.test', password: 'e2e-curator-p
 const TEST_DB_NAME_PATTERN = /(^|[_-])test($|[_-])/i;
 
 /** UNESCO World Heritage Sites — seeded by db/init/01-schema.sql. */
-const UNESCO_CATEGORY_NAME = 'UNESCO World Heritage Sites';
+const UNESCO_SOURCE_NAME = 'UNESCO World Heritage Sites';
 /** The gated source `01-schema.sql` seeds (ADR-0052): its arrivals wait for a curator. */
-const WORSHIP_CATEGORY_NAME = 'Places of worship';
+const WORSHIP_SOURCE_NAME = 'Places of worship';
 
 const EXPERIENCES = [
   { id: 9001, name: 'Testland Old Town', lon: 10.1, lat: 50.1 },
@@ -93,17 +93,17 @@ const REGION_WKT =
   'MULTIPOLYGON(((10 50, 10.5 50, 10.5 50.5, 10 50.5, 10 50)))';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-type Category = { id: number; kindId: number };
+type Source = { id: number; kindId: number };
 
-async function categoryNamed(tx: Tx, name: string): Promise<Category> {
-  const [category] = await tx
-    .select({ id: experienceCategories.id, kindId: experienceCategories.kindId })
-    .from(experienceCategories)
-    .where(eq(experienceCategories.name, name));
-  if (!category) {
-    throw new Error(`Category "${name}" missing - is db/init applied?`);
+async function sourceNamed(tx: Tx, name: string): Promise<Source> {
+  const [source] = await tx
+    .select({ id: experienceSources.id, kindId: experienceSources.kindId })
+    .from(experienceSources)
+    .where(eq(experienceSources.name, name));
+  if (!source) {
+    throw new Error(`Source "${name}" missing - is db/init applied?`);
   }
-  return category;
+  return source;
 }
 
 /**
@@ -116,7 +116,7 @@ async function categoryNamed(tx: Tx, name: string): Promise<Category> {
 async function seedPlace(
   tx: Tx,
   exp: { id: number; name: string; lon: number; lat: number },
-  category: Category,
+  source: Source,
   curationState: 'auto' | 'pending',
 ): Promise<void> {
   // Unlike regions.geom, experiences.location and experience_locations.location
@@ -132,12 +132,12 @@ async function seedPlace(
   await tx.execute(
     sql`INSERT INTO experiences (
           ${sql.identifier(experiences.id.name)},
-          ${sql.identifier(experiences.categoryId.name)},
+          ${sql.identifier(experiences.sourceId.name)},
           ${sql.identifier(experiences.externalId.name)},
           ${sql.identifier(experiences.name.name)},
           location
         ) VALUES (
-          ${exp.id}, ${category.id}, ${`e2e-${exp.id}`}, ${exp.name},
+          ${exp.id}, ${source.id}, ${`e2e-${exp.id}`}, ${exp.name},
           ST_SetSRID(ST_MakePoint(${exp.lon}, ${exp.lat}), 4326)
         )`,
   );
@@ -149,8 +149,8 @@ async function seedPlace(
   // trusted source's arrival is; or pending, the way a gated one's is.
   await tx.insert(experienceKindMemberships).values({
     experienceId: exp.id,
-    kindId: category.kindId,
-    sourceId: category.id,
+    kindId: source.kindId,
+    sourceId: source.id,
     curationState,
     publishedAt: curationState === 'auto' ? new Date() : null,
   });
@@ -252,8 +252,8 @@ export async function seedE2eFixture(): Promise<void> {
     await tx.delete(worldViews).where(eq(worldViews.id, E2E_WORLD_VIEW_ID));
     await tx.execute(sql`DELETE FROM users WHERE email = ${E2E_CURATOR.email}`);
 
-    const unesco = await categoryNamed(tx, UNESCO_CATEGORY_NAME);
-    const worship = await categoryNamed(tx, WORSHIP_CATEGORY_NAME);
+    const unesco = await sourceNamed(tx, UNESCO_SOURCE_NAME);
+    const worship = await sourceNamed(tx, WORSHIP_SOURCE_NAME);
 
     await tx.insert(worldViews).values({
       id: E2E_WORLD_VIEW_ID,

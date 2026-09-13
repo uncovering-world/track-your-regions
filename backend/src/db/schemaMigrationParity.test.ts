@@ -152,7 +152,7 @@ const splitMigration = collapse(renamedBy055(splitMigrationRaw));
  * both files names them so, and must: a database that reaches it has never run
  * a later migration, so it still holds these names.
  */
-const CATEGORIES_BEFORE_THE_GATE = [
+const SOURCES_BEFORE_THE_GATE = [
   'UNESCO World Heritage Sites',
   'Top Art Museums',
   'Public Art & Monuments',
@@ -177,7 +177,7 @@ const PART_STATE_TABLES = STATE_TABLES.filter(table => table !== 'experiences');
 const STATE_CHECK = "CHECK (curation_state IN ('pending', 'auto', 'verified'))";
 
 /** The seed INSERTs of `01-schema.sql` — what a fresh database learns the rows from. */
-const categorySeeds = schema.match(/INSERT INTO experience_sources .*?ON CONFLICT [^;]*;/g) ?? [];
+const sourceSeeds = schema.match(/INSERT INTO experience_sources .*?ON CONFLICT [^;]*;/g) ?? [];
 
 /**
  * One `CREATE TABLE` block of a collapsed file, from its opening to the `);`
@@ -261,7 +261,7 @@ describe('the curation gate exists in both schema homes', () => {
     }
   });
 
-  it('both files state the truth about the three categories that predate the gate', () => {
+  it('both files state the truth about the three sources that predate the gate', () => {
     // Leaving them `true` would not record that they publish unread,
     // it would silently change it — every arrival from the next run invisible
     // with nobody having decided anything. Named one at a time rather than
@@ -271,7 +271,7 @@ describe('the curation gate exists in both schema homes', () => {
       expect(sql).toContain(
         'UPDATE experience_sources SET requires_curation = false WHERE name IN (',
       );
-      for (const name of CATEGORIES_BEFORE_THE_GATE) {
+      for (const name of SOURCES_BEFORE_THE_GATE) {
         expect(sql).toContain(`'${name}'`);
       }
     }
@@ -283,11 +283,11 @@ describe('the curation gate exists in both schema homes', () => {
     // the guard is reached only by a database that predates migration 018, which
     // still holds the old name — so both files keep the guard as it was, and the
     // new name never appears in the migration written before the rename.
-    expect(categorySeeds.length).toBeGreaterThan(0);
-    expect(categorySeeds.some(seed => seed.includes("VALUES ( 'Art Museums',"))).toBe(true);
+    expect(sourceSeeds.length).toBeGreaterThan(0);
+    expect(sourceSeeds.some(seed => seed.includes("VALUES ( 'Art Museums',"))).toBe(true);
     // The old name survives in the schema only inside the guard: a seed still
     // carrying it would give a fresh database the row under both names.
-    for (const seed of categorySeeds) {
+    for (const seed of sourceSeeds) {
       expect(seed).not.toContain("'Top Art Museums'");
     }
     expect(schema).not.toContain("'Art Museums', 'Public Art & Monuments')");
@@ -311,7 +311,7 @@ describe('the curation gate exists in both schema homes', () => {
     // both orders and any number of re-applications come out the same. Asserted
     // as one block, byte-identical in both files, because a copy that drifted in
     // either direction is the bug.
-    const named = CATEGORIES_BEFORE_THE_GATE.map(name => `'${name}'`).join(', ');
+    const named = SOURCES_BEFORE_THE_GATE.map(name => `'${name}'`).join(', ');
     const guard =
       `DO $$ BEGIN ` +
       `IF NOT EXISTS ( SELECT 1 FROM information_schema.columns ` +
@@ -338,12 +338,12 @@ describe('the curation gate exists in both schema homes', () => {
     }
   });
 
-  it('every seeded category decides its own gate in 01-schema.sql', () => {
-    // A fresh database gets its categories from these INSERTs and never runs
+  it('every seeded source decides its own gate in 01-schema.sql', () => {
+    // A fresh database gets its sources from these INSERTs and never runs
     // migration 018, so a seed that omits the column takes the `true` default
     // and gates a source the migrated database publishes from — the two homes
     // agreeing about columns while disagreeing about behaviour.
-    const seeds = categorySeeds;
+    const seeds = sourceSeeds;
     // Every seed must be captured, or a future one written without ON CONFLICT
     // would slip past the loop below without failing anything.
     expect(seeds.length).toBe((schema.match(/INSERT INTO experience_sources/g) ?? []).length);
@@ -469,7 +469,7 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // comparison — the list's *order* is part of what the two files must agree on.
     'declined_source',
     // What POST /:id/decline-held records (#722): a curator saying "not this" to
-    // a value a category's *gate* held, where nobody claimed anything. Beside
+    // a value a source's *gate* held, where nobody claimed anything. Beside
     // its neighbour above because the SQL lists it there, and a separate action
     // because a history that showed one word for both would not say which
     // question was answered.
@@ -940,7 +940,7 @@ describe('a kind and a membership exist in both schema homes', () => {
     expect(schema).toContain(addColumn);
     expect(splitMigration).toContain(addColumn);
     expect(createTable(schema, 'experience_sources')).toContain('kind_id INTEGER REFERENCES experience_kinds(id)');
-    for (const seed of categorySeeds) {
+    for (const seed of sourceSeeds) {
       expect(seed).toContain('kind_id');
       expect(seed).toMatch(/\(SELECT id FROM experience_kinds WHERE name = '[^']+'\)/);
     }

@@ -736,7 +736,7 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
       -- list of its points — so it closes. getVisitedExperiences, the person's
       -- own list of what they visited, does not, and neither does the write
       -- path: if a traveller stood in the British Museum, that is true whether
-      -- or not this category calls it an art museum.
+      -- or not this kind calls it an art museum.
       AND ${offeredLocationSql()}
       AND ${publishedContentSql('el')}
     ORDER BY el.ordinal

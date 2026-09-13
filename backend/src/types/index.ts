@@ -318,8 +318,8 @@ export const experienceSearchQuerySchema = z.object({
 });
 
 export const experienceListQuerySchema = z.object({
-  categoryId: z.coerce.number().int().positive().optional(),
-  /** The type within the kind — `cultural`, `monument` … — not the kind, which is `categoryId`. */
+  kindId: z.coerce.number().int().positive().optional(),
+  /** The type within the kind — `cultural`, `monument` … — not the kind, which is `kindId`. */
   type: z.string().max(255).optional(),
   country: z.string().max(255).optional(),
   regionId: z.coerce.number().int().positive().optional(),
@@ -406,7 +406,8 @@ export const createManualExperienceBodySchema = z.object({
   countryCode: z.string().max(10).optional(),
   countryName: z.string().max(255).optional(),
   regionId: z.number().int().positive(),
-  categoryId: z.number().int().positive(),
+  /** The kind the curator files the place under; its source is the kind's own (#819). */
+  kindId: z.number().int().positive(),
   websiteUrl: safeUrlSchema,
   wikipediaUrl: safeUrlSchema,
 });
@@ -435,13 +436,13 @@ export const markLocationVisitedBodySchema = z.object({
 });
 
 export const visitedExperiencesQuerySchema = z.object({
-  categoryId: z.coerce.number().int().positive().optional(),
+  kindId: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
 export const visitedIdsQuerySchema = z.object({
-  categoryId: z.coerce.number().int().positive().optional(),
+  kindId: z.coerce.number().int().positive().optional(),
 });
 
 export const visitedLocationIdsQuerySchema = z.object({
@@ -464,8 +465,8 @@ export const visitedRegionBodySchema = z.object({
 // Admin schemas
 // =============================================================================
 
-export const categoryIdParamSchema = z.object({
-  categoryId: z.coerce.number().int().positive(),
+export const sourceIdParamSchema = z.object({
+  sourceId: z.coerce.number().int().positive(),
 });
 
 export const logIdParamSchema = z.object({
@@ -509,11 +510,11 @@ export const clearCacheQuerySchema = z.object({
  *
  * **Both**, because `validate(..., 'params')` replaces `req.params` with what
  * the schema parsed. Naming only `kind` left the handler reading
- * `req.params.categoryId` off an object that no longer had it — `parseInt` of
+ * `req.params.sourceId` off an object that no longer had it — `parseInt` of
  * `undefined` is `NaN`, and the endpoint could not work at all.
  */
 export const cacheKindParamSchema = z.object({
-  categoryId: z.coerce.number().int().positive(),
+  sourceId: z.coerce.number().int().positive(),
   kind: z.string().min(1).max(40),
 });
 
@@ -924,8 +925,8 @@ export const syncChangesQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
-export const reorderCategoriesBodySchema = z.object({
-  categoryIds: z.array(z.number().int().positive()).min(1),
+export const reorderSourcesBodySchema = z.object({
+  sourceIds: z.array(z.number().int().positive()).min(1),
 });
 
 /**
@@ -975,7 +976,7 @@ export const dataAssertionAcceptBodySchema = z.object({
 
 export const startRegionAssignmentBodySchema = z.object({
   worldViewId: z.coerce.number().int().positive(),
-  categoryId: z.coerce.number().int().positive().optional(),
+  sourceId: z.coerce.number().int().positive().optional(),
 });
 
 export const regionAssignmentStatusQuerySchema = z.object({
@@ -984,20 +985,20 @@ export const regionAssignmentStatusQuerySchema = z.object({
 
 export const experienceCountsQuerySchema = z.object({
   worldViewId: z.coerce.number().int().positive(),
-  categoryId: z.coerce.number().int().positive().optional(),
+  sourceId: z.coerce.number().int().positive().optional(),
 });
 
 export const syncLogsQuerySchema = z.object({
-  categoryId: z.coerce.number().int().positive().optional(),
+  sourceId: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
 export const createCuratorAssignmentBodySchema = z.object({
   userId: z.number().int().positive(),
-  scopeType: z.enum(['region', 'category', 'global']),
+  scopeType: z.enum(['region', 'source', 'global']),
   regionId: z.number().int().positive().optional(),
-  categoryId: z.number().int().positive().optional(),
+  sourceId: z.number().int().positive().optional(),
   notes: z.string().max(1000).optional(),
 });
 

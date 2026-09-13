@@ -63,22 +63,22 @@ export function missingDetectionSkipReason(input: MissingDetectionInput): string
 /**
  * Count the rows a run is expected to see again.
  *
- * A refused row is not among them (ADR-0024). The category has already turned
+ * A refused row is not among them (ADR-0024). The source has already turned
  * it down, so it is neither something the source owes us nor something whose
- * absence says anything; counting it would drag every category that refuses
+ * absence says anything; counting it would drag every source that refuses
  * anything toward the 90 % floor that disables detection.
  */
-export async function countActiveExperiences(categoryId: number): Promise<number> {
+export async function countActiveExperiences(sourceId: number): Promise<number> {
   const result = await pool.query(
     `SELECT COUNT(*)::int AS count
      FROM experiences
-     WHERE category_id = $1
+     WHERE source_id = $1
        AND source_membership = 'present'
        AND missing_since IS NULL
        AND is_manual = FALSE
        AND existence <> 'lost'
        AND ${placeAdmittedSql('experiences')}`,
-    [categoryId]
+    [sourceId]
   );
   return Number(result.rows[0]?.count ?? 0);
 }
@@ -94,20 +94,20 @@ export async function countActiveExperiences(categoryId: number): Promise<number
  * where the 90 % rule would refuse.
  */
 export async function countSeenAmongActive(
-  categoryId: number,
+  sourceId: number,
   seenExternalIds: string[],
 ): Promise<number> {
   const result = await pool.query(
     `SELECT COUNT(*)::int AS count
      FROM experiences
-     WHERE category_id = $1
+     WHERE source_id = $1
        AND source_membership = 'present'
        AND missing_since IS NULL
        AND is_manual = FALSE
        AND existence <> 'lost'
        AND ${placeAdmittedSql('experiences')}
        AND external_id = ANY($2::text[])`,
-    [categoryId, seenExternalIds]
+    [sourceId, seenExternalIds]
   );
   return Number(result.rows[0]?.count ?? 0);
 }
@@ -118,7 +118,7 @@ export async function countSeenAmongActive(
  *
  * Absence is decided against the external ids the run actually saw, not against
  * `last_seen_sync_log_id`. A dry run stamps nothing, so keying off the column
- * would report the entire category as missing; and in a real run a row that
+ * would report the entire source as missing; and in a real run a row that
  * arrived but failed to process never gets stamped either, though the source
  * plainly still lists it.
  *
@@ -126,21 +126,21 @@ export async function countSeenAmongActive(
  * written — the preview says what would be flagged without flagging it.
  */
 export async function flagMissingExperiences(
-  categoryId: number,
+  sourceId: number,
   syncLogId: number,
   dryRun: boolean,
   seenExternalIds: string[],
 ): Promise<ChangeRecord[]> {
   // is_manual rows are excluded on both counts. A curator can add an experience
-  // straight into any category, UNESCO included; its `curator-<id>-<ts>` key
+  // straight into any source, UNESCO included; its `curator-<id>-<ts>` key
   // can never appear in a source listing, so measuring it against one would
   // report every clean run as having delisted the curator's own work.
   // A row judged `lost` is answered, whatever the source still says. Asking
   // again every run would put it back in the review queue for good — the only
   // way out would be to answer a different question — and leaving it in the
   // denominator counts a row that can never be seen against the coverage
-  // guard, dragging the category toward the 90 % floor that disables detection.
-  const predicate = `category_id = $1
+  // guard, dragging the source toward the 90 % floor that disables detection.
+  const predicate = `source_id = $1
       AND source_membership = 'present'
       AND missing_since IS NULL
       AND is_manual = FALSE
@@ -151,13 +151,13 @@ export async function flagMissingExperiences(
   const result = dryRun
     ? await pool.query(
         `SELECT id, external_id, name FROM experiences WHERE ${predicate}`,
-        [categoryId, seenExternalIds]
+        [sourceId, seenExternalIds]
       )
     : await pool.query(
         `UPDATE experiences SET missing_since = NOW()
          WHERE ${predicate}
          RETURNING id, external_id, name`,
-        [categoryId, seenExternalIds]
+        [sourceId, seenExternalIds]
       );
 
   return result.rows.map((row: { id: number; external_id: string; name: string }) => ({
