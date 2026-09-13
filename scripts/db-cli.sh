@@ -671,22 +671,22 @@ cmd_status() {
         echo "  experience_rejections:    $exp_reject_count"
         echo "  experience_curation_log:  $exp_curation_count"
 
-        if table_exists "$active" "experience_categories" && table_exists "$active" "experiences"; then
-            local category_breakdown
-            category_breakdown=$(psql_cmd -d "$active" -tAc "
+        if table_exists "$active" "experience_sources" && table_exists "$active" "experiences"; then
+            local source_breakdown
+            source_breakdown=$(psql_cmd -d "$active" -tAc "
                 SELECT c.name, COUNT(e.id)
-                FROM experience_categories c
-                LEFT JOIN experiences e ON e.category_id = c.id
+                FROM experience_sources c
+                LEFT JOIN experiences e ON e.source_id = c.id
                 GROUP BY c.id, c.name, c.display_priority
                 ORDER BY c.display_priority, c.id
             " 2>/dev/null || true)
 
-            if [[ -n "$category_breakdown" ]]; then
-                echo "  by category:"
-                while IFS='|' read -r category_name category_count; do
-                    [[ -z "$category_name" ]] && continue
-                    echo "    - $category_name: $category_count"
-                done <<< "$category_breakdown"
+            if [[ -n "$source_breakdown" ]]; then
+                echo "  by source:"
+                while IFS='|' read -r source_name source_count; do
+                    [[ -z "$source_name" ]] && continue
+                    echo "    - $source_name: $source_count"
+                done <<< "$source_breakdown"
             fi
         fi
 

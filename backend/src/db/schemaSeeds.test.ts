@@ -12,7 +12,7 @@ const schema = readFileSync(SCHEMA_PATH, 'utf8');
 
 /** Tables the schema file is expected to seed. A new entry here is a signal to
  *  check that the new seed carries an arbiter of its own. */
-const SEEDED_TABLES = ['experience_categories', 'experience_kinds', 'world_views'];
+const SEEDED_TABLES = ['experience_kinds', 'experience_sources', 'world_views'];
 
 /**
  * Blank out the contents of every `$$ … $$` block, preserving length so offsets

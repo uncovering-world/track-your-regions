@@ -29,10 +29,19 @@ const repoRoot = join(__dirname, '..', '..', '..');
  * ends left to say where a comment stops.
  */
 const collapse = (sql: string) => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ');
+/**
+ * Migration 055 (#819) renamed the source table and its foreign keys after
+ * 018 and 046 were written, and a migration is immutable: the two still say
+ * `experience_categories` and `category_id`, and the schema file says what
+ * the database says now. The parity asserted below is over the shape of a
+ * guard, not its spelling, so the older file is read under the newer names.
+ */
+const renamedBy055 = (sql: string) =>
+  sql.replace(/experience_categories/g, 'experience_sources').replace(/\bcategory_id\b/g, 'source_id');
 const schema = collapse(readFileSync(join(repoRoot, 'db', 'init', '01-schema.sql'), 'utf8'));
-const migration = collapse(
+const migration = collapse(renamedBy055(
   readFileSync(join(repoRoot, 'db', 'migrations', '018-curation-gate.sql'), 'utf8'),
-);
+));
 /**
  * The newest migration that restates the curation-log action list, found rather than named.
  *
@@ -135,7 +144,7 @@ const splitMigrationRaw = readFileSync(
   join(repoRoot, 'db', 'migrations', '046-a-kind-is-its-own-table-and-a-membership-its-own-row.sql'),
   'utf8',
 );
-const splitMigration = collapse(splitMigrationRaw);
+const splitMigration = collapse(renamedBy055(splitMigrationRaw));
 
 /**
  * The three sources that predate the gate and must keep publishing on arrival,
@@ -168,7 +177,7 @@ const PART_STATE_TABLES = STATE_TABLES.filter(table => table !== 'experiences');
 const STATE_CHECK = "CHECK (curation_state IN ('pending', 'auto', 'verified'))";
 
 /** The seed INSERTs of `01-schema.sql` — what a fresh database learns the rows from. */
-const categorySeeds = schema.match(/INSERT INTO experience_categories .*?ON CONFLICT [^;]*;/g) ?? [];
+const categorySeeds = schema.match(/INSERT INTO experience_sources .*?ON CONFLICT [^;]*;/g) ?? [];
 
 /**
  * One `CREATE TABLE` block of a collapsed file, from its opening to the `);`
@@ -192,7 +201,7 @@ function createTable(sql: string, table: string): string {
  */
 function experiencesTable(sql: string): string {
   const table = createTable(sql, 'experiences');
-  expect(table, 'the experiences block was cut short').toContain('UNIQUE(category_id, external_id)');
+  expect(table, 'the experiences block was cut short').toContain('UNIQUE(source_id, external_id)');
   return table;
 }
 const membershipTable = (sql: string) => createTable(sql, 'experience_kind_memberships');
@@ -260,7 +269,7 @@ describe('the curation gate exists in both schema homes', () => {
     // being applied is not silently trusted.
     for (const sql of [schema, migration]) {
       expect(sql).toContain(
-        'UPDATE experience_categories SET requires_curation = false WHERE name IN (',
+        'UPDATE experience_sources SET requires_curation = false WHERE name IN (',
       );
       for (const name of CATEGORIES_BEFORE_THE_GATE) {
         expect(sql).toContain(`'${name}'`);
@@ -306,11 +315,11 @@ describe('the curation gate exists in both schema homes', () => {
     const guard =
       `DO $$ BEGIN ` +
       `IF NOT EXISTS ( SELECT 1 FROM information_schema.columns ` +
-      `WHERE table_name = 'experience_categories' AND column_name = 'requires_curation' ` +
+      `WHERE table_name = 'experience_sources' AND column_name = 'requires_curation' ` +
       `) THEN ` +
-      `ALTER TABLE experience_categories ` +
+      `ALTER TABLE experience_sources ` +
       `ADD COLUMN requires_curation BOOLEAN NOT NULL DEFAULT true; ` +
-      `UPDATE experience_categories SET requires_curation = false ` +
+      `UPDATE experience_sources SET requires_curation = false ` +
       `WHERE name IN (${named}); ` +
       `END IF; ` +
       `END $$;`;
@@ -323,9 +332,9 @@ describe('the curation gate exists in both schema homes', () => {
     // anywhere, reintroduces exactly the ordering hole the guard closes.
     for (const sql of [schema, migration]) {
       expect(sql).not.toContain(
-        'ALTER TABLE experience_categories ADD COLUMN IF NOT EXISTS requires_curation',
+        'ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS requires_curation',
       );
-      expect(sql.match(/UPDATE experience_categories SET requires_curation/g) ?? []).toHaveLength(1);
+      expect(sql.match(/UPDATE experience_sources SET requires_curation/g) ?? []).toHaveLength(1);
     }
   });
 
@@ -337,7 +346,7 @@ describe('the curation gate exists in both schema homes', () => {
     const seeds = categorySeeds;
     // Every seed must be captured, or a future one written without ON CONFLICT
     // would slip past the loop below without failing anything.
-    expect(seeds.length).toBe((schema.match(/INSERT INTO experience_categories/g) ?? []).length);
+    expect(seeds.length).toBe((schema.match(/INSERT INTO experience_sources/g) ?? []).length);
     expect(seeds.length).toBeGreaterThan(0);
     for (const seed of seeds) {
       expect(seed).toContain('requires_curation');
@@ -910,10 +919,11 @@ describe('a kind and a membership exist in both schema homes', () => {
     + 'ON CONFLICT (name) DO NOTHING;';
 
   it('both files create the kinds table and seed the kinds under the sources\' ids', () => {
-    // The ids are the contract: `categoryColors.ts` and the sync services
-    // key on the source ids, and the seed is what keeps a fresh database's kinds
-    // under the same numbers as its sources. Explicit ids need the sequence
-    // moved past them, in both files, or the next kind collides with the last seeded.
+    // The ids are the contract: `kindColors.ts` keys a colour on the kind's id
+    // and the sync services key on the source's, and the seed is what keeps a
+    // fresh database's kinds under the same numbers as its sources, so the two
+    // readings land on the same colour. Explicit ids need the sequence moved
+    // past them, in both files, or the next kind collides with the last seeded.
     for (const sql of [schema, splitMigration]) {
       expect(createTable(sql, 'experience_kinds')).toContain('name VARCHAR(255) NOT NULL UNIQUE');
       expect(sql).toContain(KIND_SEED);
@@ -926,16 +936,16 @@ describe('a kind and a membership exist in both schema homes', () => {
     // schema file also declares it inline for a fresh one, and its seeds name
     // it — a seed without it would leave a source filling nothing.
     const addColumn =
-      'ALTER TABLE experience_categories ADD COLUMN IF NOT EXISTS kind_id INTEGER REFERENCES experience_kinds(id);';
+      'ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS kind_id INTEGER REFERENCES experience_kinds(id);';
     expect(schema).toContain(addColumn);
     expect(splitMigration).toContain(addColumn);
-    expect(createTable(schema, 'experience_categories')).toContain('kind_id INTEGER REFERENCES experience_kinds(id)');
+    expect(createTable(schema, 'experience_sources')).toContain('kind_id INTEGER REFERENCES experience_kinds(id)');
     for (const seed of categorySeeds) {
       expect(seed).toContain('kind_id');
       expect(seed).toMatch(/\(SELECT id FROM experience_kinds WHERE name = '[^']+'\)/);
     }
     for (const sql of [schema, splitMigration]) {
-      expect(sql).toContain('ALTER TABLE experience_categories ALTER COLUMN kind_id SET NOT NULL');
+      expect(sql).toContain('ALTER TABLE experience_sources ALTER COLUMN kind_id SET NOT NULL');
     }
   });
 
@@ -946,7 +956,7 @@ describe('a kind and a membership exist in both schema homes', () => {
       const table = membershipTable(sql);
       expect(table).toContain('experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE');
       expect(table).toContain('kind_id INTEGER NOT NULL REFERENCES experience_kinds(id)');
-      expect(table).toContain('source_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE');
+      expect(table).toContain('source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE');
       expect(table).toContain("admission VARCHAR(10) NOT NULL DEFAULT 'admitted' CHECK (admission IN ('admitted', 'refused'))");
       expect(table).toContain("curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb");
       expect(table).toContain('pending_change_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL');

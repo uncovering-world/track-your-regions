@@ -133,7 +133,8 @@ export const regionMembersRelations = relations(regionMembers, ({ one }) => ({
 /**
  * A kind of place a traveller browses by (ADR-0045 decision 1): World Heritage
  * sites, art museums, public art, places of worship. Seeded under the ids of the sources that fill
- * them, so a reader keyed on the source id reads the same thing either way until #819.
+ * them, so a colour or an order keyed on either id reads the same; every reader
+ * reads the membership's `kindId` since #819.
  */
 export const experienceKinds = pgTable('experience_kinds', {
   id: serial('id').primaryKey(),
@@ -145,9 +146,9 @@ export const experienceKinds = pgTable('experience_kinds', {
 /**
  * Sources: the lists a sync reads to fill a kind (ADR-0045 decision 3) — the
  * UNESCO API, a Wikidata query — each with its endpoint, config and gate.
- * Named "categories" until #819 renames the table.
+ * Named "categories" until migration 055 (#819) gave the source side its word.
  */
-export const experienceCategories = pgTable('experience_categories', {
+export const experienceSources = pgTable('experience_sources', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 255 }).notNull().unique(),
   description: varchar('description', { length: 2000 }),
@@ -171,7 +172,7 @@ export const experienceCategories = pgTable('experience_categories', {
  */
 export const experiences = pgTable('experiences', {
   id: serial('id').primaryKey(),
-  categoryId: integer('category_id').notNull().references(() => experienceCategories.id, { onDelete: 'cascade' }),
+  sourceId: integer('source_id').notNull().references(() => experienceSources.id, { onDelete: 'cascade' }),
   externalId: varchar('external_id', { length: 255 }).notNull(),
   // Names
   name: varchar('name', { length: 500 }).notNull(),
@@ -184,8 +185,8 @@ export const experiences = pgTable('experiences', {
    * The type within the kind — cultural / natural / mixed, monument / sculpture,
    * cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue — and
    * NULL for a museum, which is a kind without types (ADR-0045, #814). The kind is the
-   * one `categoryId`'s source fills (`experience_categories.kind_id`, #822); `categoryId`
-   * itself names the source.
+   * place's membership (`experience_kind_memberships.kind_id`, #822); `sourceId`
+   * names the source that brought the row.
    */
   type: varchar('type', { length: 100 }),
   // tags stored as JSONB in DB
@@ -202,9 +203,9 @@ export const experiences = pgTable('experiences', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
-  categoryIdx: index('idx_experiences_category_id').on(table.categoryId),
+  sourceIdx: index('idx_experiences_source_id').on(table.sourceId),
   typeIdx: index('idx_experiences_type').on(table.type),
-  uniqueCategoryExternal: unique('unique_category_external_id').on(table.categoryId, table.externalId),
+  uniqueSourceExternal: unique('experiences_source_id_external_id_key').on(table.sourceId, table.externalId),
 }));
 
 /**
@@ -246,7 +247,7 @@ export const userVisitedExperiences = pgTable('user_visited_experiences', {
  */
 export const experienceSyncLogs = pgTable('experience_sync_logs', {
   id: serial('id').primaryKey(),
-  categoryId: integer('category_id').notNull().references(() => experienceCategories.id, { onDelete: 'cascade' }),
+  sourceId: integer('source_id').notNull().references(() => experienceSources.id, { onDelete: 'cascade' }),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   status: varchar('status', { length: 50 }).default('running'),
@@ -262,7 +263,7 @@ export const experienceSyncLogs = pgTable('experience_sync_logs', {
   triggeredBy: integer('triggered_by'),  // References users(id) - handled at DB level
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
-  categoryIdx: index('idx_experience_sync_logs_category').on(table.categoryId),
+  sourceIdx: index('idx_experience_sync_logs_source').on(table.sourceId),
   statusIdx: index('idx_experience_sync_logs_status').on(table.status),
 }));
 
@@ -279,7 +280,7 @@ export const experienceKindMemberships = pgTable('experience_kind_memberships', 
   id: serial('id').primaryKey(),
   experienceId: integer('experience_id').notNull().references(() => experiences.id, { onDelete: 'cascade' }),
   kindId: integer('kind_id').notNull().references(() => experienceKinds.id),
-  sourceId: integer('source_id').notNull().references(() => experienceCategories.id, { onDelete: 'cascade' }),
+  sourceId: integer('source_id').notNull().references(() => experienceSources.id, { onDelete: 'cascade' }),
   admission: varchar('admission', { length: 10 }).notNull().default('admitted'),
   admissionReason: text('admission_reason'),
   // admittedFor stored as JSONB in DB ({ qid, label })
@@ -301,13 +302,13 @@ export const experienceKindMemberships = pgTable('experience_kind_memberships', 
 // =============================================================================
 
 export const experienceKindsRelations = relations(experienceKinds, ({ many }) => ({
-  sources: many(experienceCategories),
+  sources: many(experienceSources),
   memberships: many(experienceKindMemberships),
 }));
 
-export const experienceCategoriesRelations = relations(experienceCategories, ({ one, many }) => ({
+export const experienceSourcesRelations = relations(experienceSources, ({ one, many }) => ({
   kind: one(experienceKinds, {
-    fields: [experienceCategories.kindId],
+    fields: [experienceSources.kindId],
     references: [experienceKinds.id],
   }),
   experiences: many(experiences),
@@ -316,9 +317,9 @@ export const experienceCategoriesRelations = relations(experienceCategories, ({ 
 }));
 
 export const experiencesRelations = relations(experiences, ({ one, many }) => ({
-  category: one(experienceCategories, {
-    fields: [experiences.categoryId],
-    references: [experienceCategories.id],
+  source: one(experienceSources, {
+    fields: [experiences.sourceId],
+    references: [experienceSources.id],
   }),
   memberships: many(experienceKindMemberships),
   regionAssignments: many(experienceRegions),
@@ -336,9 +337,9 @@ export const experienceKindMembershipsRelations = relations(experienceKindMember
     fields: [experienceKindMemberships.kindId],
     references: [experienceKinds.id],
   }),
-  source: one(experienceCategories, {
+  source: one(experienceSources, {
     fields: [experienceKindMemberships.sourceId],
-    references: [experienceCategories.id],
+    references: [experienceSources.id],
   }),
 }));
 
@@ -362,9 +363,9 @@ export const userVisitedExperiencesRelations = relations(userVisitedExperiences,
 }));
 
 export const experienceSyncLogsRelations = relations(experienceSyncLogs, ({ one }) => ({
-  category: one(experienceCategories, {
-    fields: [experienceSyncLogs.categoryId],
-    references: [experienceCategories.id],
+  source: one(experienceSources, {
+    fields: [experienceSyncLogs.sourceId],
+    references: [experienceSources.id],
   }),
   // Note: triggeredBy user relation not defined as users table is not in Drizzle
 }));
@@ -525,7 +526,7 @@ export const curatorAssignments = pgTable('curator_assignments', {
   userId: integer('user_id').notNull(),  // References users(id) - handled at DB level
   scopeType: varchar('scope_type', { length: 20 }).notNull(),
   regionId: integer('region_id').references(() => regions.id, { onDelete: 'cascade' }),
-  categoryId: integer('category_id').references(() => experienceCategories.id, { onDelete: 'cascade' }),
+  sourceId: integer('source_id').references(() => experienceSources.id, { onDelete: 'cascade' }),
   assignedBy: integer('assigned_by').notNull(),  // References users(id)
   assignedAt: timestamp('assigned_at', { withTimezone: true }).defaultNow(),
   notes: varchar('notes', { length: 2000 }),

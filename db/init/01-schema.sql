@@ -2260,7 +2260,7 @@ CREATE INDEX IF NOT EXISTS idx_regions_world_view_id ON regions(world_view_id);
 -- Generic system for location-based experiences that can be assigned to regions.
 -- Designed to be extensible for multiple data sources (UNESCO, national parks, etc.)
 
--- Experience categories (UNESCO, museums, landmarks, etc.)
+-- Experience sources and kinds (UNESCO, museums, landmarks, etc.)
 -- =============================================================================
 -- Kinds of place (ADR-0045 decision 1)
 -- =============================================================================
@@ -2268,12 +2268,12 @@ CREATE INDEX IF NOT EXISTS idx_regions_world_view_id ON regions(world_view_id);
 -- them: a World Heritage site, an art museum, a monument. Each kind is its own
 -- list, pin colour and count, and it is offered to readers only once a sync
 -- fills it on its own terms (decision 2). A *source* -- a row of
--- experience_categories below -- is a list we read to fill a kind: a kind may
--- have several, and one source may feed several kinds (decision 3). Until #819
--- every reader still keys on the source row through experiences.category_id,
--- which is why the kinds are seeded under the ids of the sources that fill
--- them: a reader keyed on the source id reads the same colour and order
--- either way, and switching it is a join and not a renumbering.
+-- experience_sources below -- is a list we read to fill a kind: a kind may
+-- have several, and one source may feed several kinds (decision 3). The kinds
+-- are seeded under the ids of the sources that fill them: every reader keyed
+-- on the source row until #819, and the switch to the membership's kind_id
+-- was a join and not a renumbering, so a colour or an order keyed on those
+-- ids reads the same either way.
 CREATE TABLE IF NOT EXISTS experience_kinds (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
@@ -2281,7 +2281,7 @@ CREATE TABLE IF NOT EXISTS experience_kinds (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE experience_kinds IS 'A kind of place a traveller browses by (ADR-0045 decision 1): its own list, pin colour and count. Filled by one or more sources (experience_categories); a place''s membership in it is a row of experience_kind_memberships.';
+COMMENT ON TABLE experience_kinds IS 'A kind of place a traveller browses by (ADR-0045 decision 1): its own list, pin colour and count. Filled by one or more sources (experience_sources); a place''s membership in it is a row of experience_kind_memberships.';
 COMMENT ON COLUMN experience_kinds.name IS 'What a traveller calls the thing in front of them -- World Heritage Sites, Art Museums -- never a source''s name for a selection rule (ADR-0045 decision 8).';
 COMMENT ON COLUMN experience_kinds.display_priority IS 'Display order of the kind''s list and pills (lower = shown first).';
 
@@ -2305,9 +2305,24 @@ SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experienc
 -- =============================================================================
 -- One row per list we read to fill a kind -- the UNESCO API, a Wikidata query --
 -- with its endpoint, its config, its gate (requires_curation) and the sync
--- service registered under it. Named "categories" until #819 renames the table
--- and every reader says which of the two words it means.
-CREATE TABLE IF NOT EXISTS experience_categories (
+-- service registered under it. Named `experience_categories` until migration
+-- 055 (#819) gave the source side its word; a reader that means the kind reads
+-- the membership's kind_id, and nothing in this file says "category" now.
+--
+-- A database that predates that migration must apply it before this file:
+-- `CREATE TABLE IF NOT EXISTS` would otherwise stand a second, empty source
+-- table beside the full one, and every row would keep pointing at the old.
+-- The guard fires whenever the old table exists -- also beside the new one,
+-- which is exactly that state, reached by a run of this file past the error
+-- (psql without ON_ERROR_STOP), and the one a silent guard would then keep
+-- reporting as fine.
+DO $$
+BEGIN
+    IF to_regclass('experience_categories') IS NOT NULL THEN
+        RAISE EXCEPTION 'experience_categories still exists: apply db/migrations/055-sources-are-named-as-sources.sql before re-applying 01-schema.sql (an empty experience_sources beside it is the state that file repairs)';
+    END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS experience_sources (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
@@ -2322,19 +2337,19 @@ CREATE TABLE IF NOT EXISTS experience_categories (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE experience_categories IS 'Sources: the lists a sync reads to fill a kind (ADR-0045 decision 3). One row per sync service, with its endpoint, config and gate.';
+COMMENT ON TABLE experience_sources IS 'Sources: the lists a sync reads to fill a kind (ADR-0045 decision 3). One row per sync service, with its endpoint, config and gate.';
 -- For a database that predates the column; a fresh one has it from the CREATE.
 -- Filled and made required below the seeds, once every row can name its kind.
-ALTER TABLE experience_categories ADD COLUMN IF NOT EXISTS kind_id INTEGER REFERENCES experience_kinds(id);
-COMMENT ON COLUMN experience_categories.kind_id IS 'The kind this source fills (ADR-0045 decision 3). One kind per source today; a membership records which source brought it, so a kind can have several sources.';
-COMMENT ON COLUMN experience_categories.api_config IS 'Category-specific API configuration (pagination, auth, etc.)';
-COMMENT ON COLUMN experience_categories.last_sync_status IS 'Status of last sync: success, partial, or failed';
-COMMENT ON COLUMN experience_categories.display_priority IS 'Display order in experience list (lower = shown first)';
+ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS kind_id INTEGER REFERENCES experience_kinds(id);
+COMMENT ON COLUMN experience_sources.kind_id IS 'The kind this source fills (ADR-0045 decision 3). One kind per source today; a membership records which source brought it, so a kind can have several sources.';
+COMMENT ON COLUMN experience_sources.api_config IS 'Source-specific API configuration (pagination, auth, etc.)';
+COMMENT ON COLUMN experience_sources.last_sync_status IS 'Status of last sync: success, partial, or failed';
+COMMENT ON COLUMN experience_sources.display_priority IS 'Display order in experience list (lower = shown first)';
 
-ALTER TABLE experience_categories ADD COLUMN IF NOT EXISTS new_badge_days INTEGER NOT NULL DEFAULT 30;
-COMMENT ON COLUMN experience_categories.new_badge_days IS 'How long an object keeps the "New" chip after it becomes visible to readers. Per category, because sources have different cadences. Counted from published_at, not from the run that found the row: under a gate those are a curator week apart (#529).';
+ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS new_badge_days INTEGER NOT NULL DEFAULT 30;
+COMMENT ON COLUMN experience_sources.new_badge_days IS 'How long an object keeps the "New" chip after it becomes visible to readers. Per source, because sources have different cadences. Counted from published_at, not from the run that found the row: under a gate those are a curator week apart (#529).';
 
--- The curation gate (ADR-0025). A category is a source here, and this is the
+-- The curation gate (ADR-0025). This is the
 -- per-source decision: does what a run brings in wait for a person, or publish
 -- on arrival. The default is `true` so a source nobody has decided about does
 -- not publish unread.
@@ -2354,18 +2369,18 @@ DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'experience_categories' AND column_name = 'requires_curation'
+         WHERE table_name = 'experience_sources' AND column_name = 'requires_curation'
     ) THEN
-        ALTER TABLE experience_categories
+        ALTER TABLE experience_sources
             ADD COLUMN requires_curation BOOLEAN NOT NULL DEFAULT true;
-        UPDATE experience_categories SET requires_curation = false
+        UPDATE experience_sources SET requires_curation = false
          WHERE name IN ('UNESCO World Heritage Sites', 'Top Art Museums', 'Public Art & Monuments');
     END IF;
 END $$;
-COMMENT ON COLUMN experience_categories.requires_curation IS 'Does a run from this source wait for a curator before its rows reach a reader (ADR-0025). Only an admin sets it; no run ever changes it.';
+COMMENT ON COLUMN experience_sources.requires_curation IS 'Does a run from this source wait for a curator before its rows reach a reader (ADR-0025). Only an admin sets it; no run ever changes it.';
 
 -- Seed UNESCO as the first source, filling the World Heritage kind
-INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     'UNESCO World Heritage Sites',
     'Official UNESCO World Heritage List - Cultural, Natural, and Mixed sites worldwide',
@@ -2377,10 +2392,10 @@ VALUES (
 )
 ON CONFLICT (name) DO NOTHING;
 
--- Generic experiences (category-agnostic)
+-- Generic experiences (source-agnostic)
 CREATE TABLE IF NOT EXISTS experiences (
     id SERIAL PRIMARY KEY,
-    category_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE,
+    source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
     external_id VARCHAR(255) NOT NULL,
 
     -- Names (multilingual support)
@@ -2391,8 +2406,8 @@ CREATE TABLE IF NOT EXISTS experiences (
     description TEXT,
     short_description TEXT,
 
-    -- Classification: the type within the kind (see the column comment). The kind is the one
-    -- category_id's source fills (experience_categories.kind_id); category_id names the source
+    -- Classification: the type within the kind (see the column comment). The kind is the
+    -- place's membership (experience_kind_memberships.kind_id); source_id names the source
     type VARCHAR(100),
     tags JSONB,  -- ["architecture", "religious", "ancient"]
 
@@ -2410,7 +2425,7 @@ CREATE TABLE IF NOT EXISTS experiences (
     -- Media
     image_url VARCHAR(1000),
 
-    -- Category-specific metadata (UNESCO: date_inscribed, danger, criteria, etc.)
+    -- Source-specific metadata (UNESCO: date_inscribed, danger, criteria, etc.)
     metadata JSONB,
 
     -- Curation fields
@@ -2422,11 +2437,11 @@ CREATE TABLE IF NOT EXISTS experiences (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
 
-    UNIQUE(category_id, external_id)
+    UNIQUE(source_id, external_id)
 );
 
-COMMENT ON TABLE experiences IS 'Location-based experiences from various categories (UNESCO sites, museums, etc.)';
-COMMENT ON COLUMN experiences.external_id IS 'ID from the category system (e.g., UNESCO id_no)';
+COMMENT ON TABLE experiences IS 'Location-based experiences from various sources (UNESCO sites, museums, etc.)';
+COMMENT ON COLUMN experiences.external_id IS 'ID from the source''s own system (e.g., UNESCO id_no)';
 COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "fr": "...", ...}';
 COMMENT ON COLUMN experiences.type IS
   'The type within the kind, where a kind has types a traveller still browses together '
@@ -2437,15 +2452,15 @@ COMMENT ON COLUMN experiences.type IS
 COMMENT ON COLUMN experiences.location IS 'Required point location for the experience';
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
-COMMENT ON COLUMN experiences.metadata IS 'Category-specific data (UNESCO: date_inscribed, danger, criteria, etc.)';
+COMMENT ON COLUMN experiences.metadata IS 'Source-specific data (UNESCO: date_inscribed, danger, criteria, etc.)';
 
 -- Spatial indexes for experiences
 CREATE INDEX IF NOT EXISTS idx_experiences_location ON experiences USING GIST(location);
 CREATE INDEX IF NOT EXISTS idx_experiences_boundary ON experiences USING GIST(boundary) WHERE boundary IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experiences_name_trgm ON experiences USING GIN(name gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS idx_experiences_category_id ON experiences(category_id);
+CREATE INDEX IF NOT EXISTS idx_experiences_source_id ON experiences(source_id);
 CREATE INDEX IF NOT EXISTS idx_experiences_type ON experiences(type) WHERE type IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_experiences_external_id ON experiences(category_id, external_id);
+CREATE INDEX IF NOT EXISTS idx_experiences_external_id ON experiences(source_id, external_id);
 
 -- Experience-Region junction table (auto-computed via spatial containment)
 -- When an experience point falls within a region's geometry, it gets assigned
@@ -2486,7 +2501,7 @@ CREATE INDEX IF NOT EXISTS idx_user_visited_experiences_experience ON user_visit
 -- Sync audit log for tracking sync operations
 CREATE TABLE IF NOT EXISTS experience_sync_logs (
     id SERIAL PRIMARY KEY,
-    category_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE,
+    source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
     started_at TIMESTAMPTZ DEFAULT NOW(),
     completed_at TIMESTAMPTZ,
     status VARCHAR(50) DEFAULT 'running',  -- 'running', 'success', 'partial', 'failed', 'cancelled'
@@ -2503,7 +2518,7 @@ COMMENT ON TABLE experience_sync_logs IS 'Audit log for experience sync operatio
 COMMENT ON COLUMN experience_sync_logs.status IS 'Sync status: running, success, partial, failed, cancelled';
 COMMENT ON COLUMN experience_sync_logs.triggered_by IS 'Admin user who triggered the sync (NULL for scheduled syncs)';
 
-CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_category ON experience_sync_logs(category_id);
+CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_source ON experience_sync_logs(source_id);
 CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_status ON experience_sync_logs(status) WHERE status = 'running';
 
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_unchanged INTEGER DEFAULT 0;
@@ -2516,21 +2531,21 @@ ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_held INTEGER DEF
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS withdrawal_skipped_reason TEXT;
 
 COMMENT ON COLUMN experience_sync_logs.total_updated IS 'Rows whose fields actually changed. Runs before migration 009 counted every row that passed through ON CONFLICT, changed or not — the two are not comparable.';
-COMMENT ON COLUMN experience_sync_logs.total_unchanged IS 'Rows the run wrote nothing to. Two kinds: ones that turned out identical, and ones the run proposed a change to and was refused - a curated_fields claim (each claimed field counted again in total_curated_conflicts) or the category gate holding a row a reader can already see (the row counted again in total_held). Counted here, never stored per object.';
-COMMENT ON COLUMN experience_sync_logs.total_held IS 'Rows a reader can already see whose every proposed change the category gate kept out, so a verdict is waiting on each (#523). A subset of total_unchanged - nothing was written - counted again here so a gated run stops reading as one that touched nothing: run 68 held all 1272 UNESCO sites and reported unchanged 1272. Decided per row by the predicate that files the changeset row as held, so it equals the number of held rows the run recorded; migration 038 filled it from those rows for the runs that predate the column. A row the gate wrote pending is created, not held.';
+COMMENT ON COLUMN experience_sync_logs.total_unchanged IS 'Rows the run wrote nothing to. Two kinds: ones that turned out identical, and ones the run proposed a change to and was refused - a curated_fields claim (each claimed field counted again in total_curated_conflicts) or the source''s gate holding a row a reader can already see (the row counted again in total_held). Counted here, never stored per object.';
+COMMENT ON COLUMN experience_sync_logs.total_held IS 'Rows a reader can already see whose every proposed change the source''s gate kept out, so a verdict is waiting on each (#523). A subset of total_unchanged - nothing was written - counted again here so a gated run stops reading as one that touched nothing: run 68 held all 1272 UNESCO sites and reported unchanged 1272. Decided per row by the predicate that files the changeset row as held, so it equals the number of held rows the run recorded; migration 038 filled it from those rows for the runs that predate the column. A row the gate wrote pending is created, not held.';
 COMMENT ON COLUMN experience_sync_logs.is_dry_run IS 'TRUE for preview runs: the changeset was computed but experiences were not written. Excluded from every "latest run" query.';
-COMMENT ON COLUMN experience_sync_logs.total_filtered IS 'Entities the source offered that are not of the kind this category holds — e.g. a Wikidata collection with no physical address answering a museum query. Not errors: nothing failed, and the run stays successful.';
+COMMENT ON COLUMN experience_sync_logs.total_filtered IS 'Entities the source offered that are not of the kind this source fills — e.g. a Wikidata collection with no physical address answering a museum query. Not errors: nothing failed, and the run stays successful.';
 COMMENT ON COLUMN experience_sync_logs.detection_skipped_reason IS 'Why missing-object detection did not run: ranked source, force run, cancelled, errors, or coverage below the floor. Every value missingDetectionSkipReason() produces lands here.';
 COMMENT ON COLUMN experience_sync_logs.withdrawal_skipped_reason IS 'Why this run marked none of the works its museums stopped holding: works coverage below the floor (ADR-0044). Every value worksCoverageSkipReason() produces lands here, and a run carrying one is partial, never success. NULL where withdrawals were applied, and on every run of a source whose contents need no floor: points are paired per object, not measured per pool.';
 
 -- Built for the "New" chip's per-row lookup of the latest completed non-dry run
--- of a category, which #529 deleted: the chip now counts from published_at and
+-- of a source, which #529 deleted: the chip now counts from published_at and
 -- reads no sync log at all. Kept because dropping an index is its own decision
 -- with its own measurement, but nothing about the chip should be read from it.
 -- Declared here rather than beside the other sync-log indexes above because it
 -- reads is_dry_run, which the ALTER just above adds.
 CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_latest
-    ON experience_sync_logs(category_id, completed_at DESC, id DESC)
+    ON experience_sync_logs(source_id, completed_at DESC, id DESC)
     WHERE is_dry_run = FALSE AND completed_at IS NOT NULL;
 
 -- =============================================================================
@@ -2571,7 +2586,7 @@ COMMENT ON COLUMN experiences.missing_since IS 'When a clean run of an authorita
 COMMENT ON COLUMN experiences.source_membership IS 'present or former. Only a curator sets former: a source outage must never change what users see. A sync that lists the row again sets it back to present, which only ever restores visibility.';
 COMMENT ON COLUMN experiences.existence IS 'extant or lost. Whether the object still physically exists — independent of whether the source lists it.';
 
-CREATE INDEX IF NOT EXISTS idx_experiences_missing ON experiences(category_id) WHERE missing_since IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_experiences_missing ON experiences(source_id) WHERE missing_since IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experiences_membership ON experiences(source_membership) WHERE source_membership <> 'present';
 CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) WHERE existence <> 'extant';
 CREATE INDEX IF NOT EXISTS idx_experiences_first_seen ON experiences(first_seen_sync_log_id);
@@ -2600,8 +2615,8 @@ CREATE INDEX IF NOT EXISTS idx_experiences_first_seen ON experiences(first_seen_
 --               is_iconic, the curator's pins on those, curation_state,
 --               published_at, pending_change_sync_log_id
 --
--- `experiences.category_id` stays: it is the arbiter of the row's identity
--- (UNIQUE(category_id, external_id)) until the identity work of ADR-0046
+-- `experiences.source_id` stays: it is the arbiter of the row's identity
+-- (UNIQUE(source_id, external_id)) until the identity work of ADR-0046
 -- decision 1 moves a source's id onto the membership (#755). Every row's
 -- membership names that same source today, and the admin panel's catalogue
 -- checks say so (`membership-source-disagrees-with-row`).
@@ -2632,7 +2647,7 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     kind_id INTEGER NOT NULL REFERENCES experience_kinds(id),
-    source_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE,
+    source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
     admission VARCHAR(10) NOT NULL DEFAULT 'admitted' CHECK (admission IN ('admitted', 'refused')),
     admission_reason TEXT,
     admitted_for JSONB,
@@ -2694,7 +2709,7 @@ ALTER TABLE experience_sync_changes ADD COLUMN IF NOT EXISTS contents JSONB;
 
 COMMENT ON COLUMN experience_sync_changes.contents IS 'What the run did to what the object holds, keyed by kind of contents: {"locations": {"added": [{"name","ref"}], "withdrawn": [...], "returned": [...], "changed": [{"item": {"name","ref"}, "fields": [{field, old, new, significance, curatedConflict, held}]}]}, "treasures": {...}}. See ADR-0026, and ADR-0029 decision 7 for the fourth key. That key is read by two write paths, not only by a report: accepting the source coordinate takes the value it puts a released pin on out of contents.locations.changed, and publishing writes a held field of a part - a place name, a work attribution, picture and credit - from an entry whose field carries held = true (ADR-0037), so the item shape here is a contract rather than a description, and the row an entry names is found by one rule (backend partRecord.ts): the reference narrows, the name decides among duplicated references, the lowest id breaks a tie. Keyed rather than one column per kind so a new kind of contents costs no migration; a kind the run did nothing to is absent. Items are named, never identified by id, so the record stays legible after the row it names is renamed. NULL means the run recorded nothing here - for a run older than this column that is not the same as "the contents did not move", and the location rows cannot be asked instead (created_at was overwritten wholesale on 2026-08-04).';
 
-COMMENT ON COLUMN experience_sync_changes.changed_fields IS 'Array of {field, old, new, significance, curatedConflict, held}. Each entry holds the value the source proposed for that field even when the run refused to write it, so a curator can answer it later; the two flags say why it was refused - curatedConflict = a curator had claimed the field (answered by accept-source), held = the category gate kept it out of a row a reader can already see (answered by publishing). Both false on a field the run applied.';
+COMMENT ON COLUMN experience_sync_changes.changed_fields IS 'Array of {field, old, new, significance, curatedConflict, held}. Each entry holds the value the source proposed for that field even when the run refused to write it, so a curator can answer it later; the two flags say why it was refused - curatedConflict = a curator had claimed the field (answered by accept-source), held = the source''s gate kept it out of a row a reader can already see (answered by publishing). Both false on a field the run applied.';
 
 -- CREATE TABLE IF NOT EXISTS is a no-op where the table already exists, so a
 -- widened CHECK has to be applied on its own or re-applying this file would
@@ -2903,7 +2918,7 @@ CREATE INDEX IF NOT EXISTS idx_experience_location_regions_region ON experience_
 -- name is the reader's (ADR-0045 decision 8, #818); it was seeded as "Top Art
 -- Museums" — the works-first selection rule's name — until migration 045
 -- renamed it.
-INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     'Art Museums',
     'World''s most notable museums ranked by artwork fame, sourced from Wikidata',
@@ -2916,7 +2931,7 @@ VALUES (
 ON CONFLICT (name) DO NOTHING;
 
 -- Seed the public-art source, filling the Public Art & Monuments kind
-INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     'Public Art & Monuments',
     'Notable outdoor sculptures and monuments worldwide, sourced from Wikidata',
@@ -2933,7 +2948,7 @@ ON CONFLICT (name) DO NOTHING;
 -- staySitelinks), read by every run and set from the admin panel; gated on
 -- arrival, since a community-edited source's first rows wait for a person
 -- (ADR-0025).
-INSERT INTO experience_categories (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     4,
     'Places of worship',
@@ -2945,14 +2960,14 @@ VALUES (
     (SELECT id FROM experience_kinds WHERE name = 'Places of worship')
 )
 ON CONFLICT (name) DO NOTHING;
-SELECT setval('experience_categories_id_seq', GREATEST((SELECT MAX(id) FROM experience_categories), 1));
+SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
 
 -- Every source names the kind it fills (ADR-0045 decision 3). Filled by name
 -- for a database whose rows predate the column -- the museum source under
 -- either of its names -- and then required: a source row naming no kind would
 -- fill nothing a reader can browse. Guarded so a re-application changes
 -- nothing once the column is required.
-UPDATE experience_categories c
+UPDATE experience_sources c
    SET kind_id = k.id
   FROM experience_kinds k
  WHERE c.kind_id IS NULL
@@ -2963,8 +2978,8 @@ UPDATE experience_categories c
                 END;
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM experience_categories WHERE kind_id IS NULL) THEN
-        ALTER TABLE experience_categories ALTER COLUMN kind_id SET NOT NULL;
+    IF NOT EXISTS (SELECT 1 FROM experience_sources WHERE kind_id IS NULL) THEN
+        ALTER TABLE experience_sources ALTER COLUMN kind_id SET NOT NULL;
     END IF;
 END $$;
 
@@ -3130,17 +3145,17 @@ CREATE INDEX IF NOT EXISTS idx_user_viewed_treasures_treasure ON user_viewed_tre
 CREATE TABLE IF NOT EXISTS curator_assignments (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    scope_type VARCHAR(20) NOT NULL CHECK (scope_type IN ('region', 'category', 'global')),
+    scope_type VARCHAR(20) NOT NULL CHECK (scope_type IN ('region', 'source', 'global')),
     region_id INTEGER REFERENCES regions(id) ON DELETE CASCADE,
-    category_id INTEGER REFERENCES experience_categories(id) ON DELETE CASCADE,
+    source_id INTEGER REFERENCES experience_sources(id) ON DELETE CASCADE,
     assigned_by INTEGER NOT NULL REFERENCES users(id),
     assigned_at TIMESTAMPTZ DEFAULT NOW(),
     notes TEXT,
     -- Ensure correct nullable combinations per scope_type
     CONSTRAINT valid_scope CHECK (
-        (scope_type = 'global' AND region_id IS NULL AND category_id IS NULL) OR
-        (scope_type = 'region' AND region_id IS NOT NULL AND category_id IS NULL) OR
-        (scope_type = 'category' AND region_id IS NULL AND category_id IS NOT NULL)
+        (scope_type = 'global' AND region_id IS NULL AND source_id IS NULL) OR
+        (scope_type = 'region' AND region_id IS NOT NULL AND source_id IS NULL) OR
+        (scope_type = 'source' AND region_id IS NULL AND source_id IS NOT NULL)
     )
 );
 
@@ -3149,13 +3164,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_global_assignment
     ON curator_assignments(user_id) WHERE scope_type = 'global';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_region_assignment
     ON curator_assignments(user_id, region_id) WHERE scope_type = 'region';
-CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_category_assignment
-    ON curator_assignments(user_id, category_id) WHERE scope_type = 'category';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_source_assignment
+    ON curator_assignments(user_id, source_id) WHERE scope_type = 'source';
 
 CREATE INDEX IF NOT EXISTS idx_curator_assignments_user ON curator_assignments(user_id);
 
-COMMENT ON TABLE curator_assignments IS 'Scoped curator permissions: global, per-region, or per-category';
-COMMENT ON COLUMN curator_assignments.scope_type IS 'Permission scope: global (all), region (specific region + descendants), category (specific experience category)';
+COMMENT ON TABLE curator_assignments IS 'Scoped curator permissions: global, per-region, or per-source';
+COMMENT ON COLUMN curator_assignments.scope_type IS 'Permission scope: global (all), region (specific region + descendants), source (every place one source brought)';
 
 -- Experience curation audit log
 CREATE TABLE IF NOT EXISTS experience_curation_log (
@@ -3302,7 +3317,7 @@ CREATE TABLE IF NOT EXISTS curator_queue_set_aside (
 COMMENT ON TABLE curator_queue_set_aside IS 'Runs whose open questions this curator has set aside on the review page; the batch is hidden from their default list until its rows are answered';
 
 -- When a user was first shown the "New" chip (issue #480). The chip lives for
--- max(category window, a week from this timestamp), so only the first
+-- max(source window, a week from this timestamp), so only the first
 -- impression matters — a later view must not restart the week. No index beyond
 -- the primary key: that is what the chip's lookup uses, and there is no sweep.
 CREATE TABLE IF NOT EXISTS user_new_badge_views (
@@ -3508,7 +3523,7 @@ CREATE TABLE IF NOT EXISTS wikidata_query_cache (
     -- Whose run kept this: the store is shared, but every question an admin asks
     -- about it is about one source, and lifetimes differ by source as much as by
     -- kind.
-    category_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE,
+    source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
     query_hash TEXT NOT NULL UNIQUE,
     kind TEXT NOT NULL,
     label TEXT NOT NULL,
@@ -3528,17 +3543,17 @@ CREATE INDEX IF NOT EXISTS idx_wikidata_cache_expires ON wikidata_query_cache(ex
 -- re-stamps what is already kept, or the panel would show one rule and the
 -- reader honour another.
 CREATE TABLE IF NOT EXISTS wikidata_cache_policy (
-    category_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE,
+    source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
     kind TEXT NOT NULL,
     ttl_ms BIGINT NOT NULL CHECK (ttl_ms > 0),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (category_id, kind)
+    PRIMARY KEY (source_id, kind)
 );
 
 COMMENT ON TABLE wikidata_cache_policy IS 'Per-kind overrides for how long a cached Wikidata answer stays fresh. Absent kind = the default in wikidataCache.ts, which states why that number and not another.';
 
 COMMENT ON TABLE wikidata_query_cache IS 'Answers from query.wikidata.org, kept so a failed run resumes where it stopped and a repeated question costs their cluster nothing. Never a source of truth: every row carries its own expiry, a run can be told to ignore the cache entirely, and the admin panel shows each kind''s age and expiry with a button to drop it.';
-COMMENT ON COLUMN wikidata_query_cache.query_hash IS 'SHA-256 of the asking source''s category_id and the exact query text (ADR-0047). The query is the question, so a changed filter is a different key and misses by construction rather than by remembering to invalidate.';
+COMMENT ON COLUMN wikidata_query_cache.query_hash IS 'SHA-256 of the asking source''s source_id and the exact query text (ADR-0047). The query is the question, so a changed filter is a different key and misses by construction rather than by remembering to invalidate.';
 COMMENT ON COLUMN wikidata_query_cache.expires_at IS 'Stored rather than derived: the row keeps the rule that applied when it was written, and the panel shows the same expiry the reader honours.';
 
 -- =============================================================================
