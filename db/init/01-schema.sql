@@ -2300,6 +2300,13 @@ INSERT INTO experience_kinds (id, name, display_priority) VALUES
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
 
+-- The fifth kind: sites and museums in one list; two lines on the row, one
+-- for places and one for finds (ADR-0058).
+INSERT INTO experience_kinds (id, name, display_priority) VALUES
+    (5, 'Archaeology', 5)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
+
 -- =============================================================================
 -- Sources (ADR-0045 decision 3)
 -- =============================================================================
@@ -2958,6 +2965,25 @@ VALUES (
     4,
     true,
     (SELECT id FROM experience_kinds WHERE name = 'Places of worship')
+)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
+
+-- Its one source: Wikidata, sites and museums in one list; two lines on the
+-- row, one for places and one for finds (ADR-0058) -- a find has fewer
+-- Wikipedia articles than the museum that holds it, so its pair sits lower.
+-- Gated on arrival like the source before it (ADR-0025); the first live run
+-- waits for the site door (ADR-0058 decision 7).
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+VALUES (
+    5,
+    'Archaeology',
+    'Archaeological sites and archaeology museums the world knows, and the finds inside the museums, sourced from Wikidata',
+    'https://query.wikidata.org/sparql',
+    '{"enterSitelinks": 22, "staySitelinks": 18, "findEnterSitelinks": 18, "findStaySitelinks": 15}'::jsonb,
+    5,
+    true,
+    (SELECT id FROM experience_kinds WHERE name = 'Archaeology')
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));

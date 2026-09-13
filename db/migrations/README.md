@@ -487,6 +487,24 @@ hours the previous statement took — so recording it with `db:baseline` instead
 one wrong answer, since nothing afterwards says why placement is slower. Re-runnable — the backfill cuts only the leaves
 without pieces — and order-independent with `01-schema.sql`.
 
+`056-archaeology-kind-and-source.sql` seeds the fifth kind a traveller browses by —
+Archaeology — and the one source that fills it
+(#581, [ADR-0058](../../docs/decisions/0058-archaeology-is-one-kind-of-sites-and-museums.md)):
+sites and museums the world knows, and the finds inside the museums, read from Wikidata. The
+source row carries two lines rather than one: `enterSitelinks` / `staySitelinks` for a place at
+22 and 18, `findEnterSitelinks` / `findStaySitelinks` for a find at 18 and 15, a find having
+fewer Wikipedia articles than the museum that holds it. `01-schema.sql`'s seeds carry the same
+two rows, but a database already holding a catalogue does not see them until the file is
+re-applied, so this file gets there first. Both ids are pinned — kind 5 and source 5, each with
+a `setval` moving its sequence past it — for the reason 050 pins 4: the sync service the
+source's own task adds hardcodes the id the way the other sources' services do. Re-runnable:
+both inserts are guarded by `ON CONFLICT (name)`. Order-independent with `01-schema.sql`, which
+seeds the identical rows. The **source** is seeded gated (`requires_curation = true`), so what its
+first live run writes waits for a curator; and no live run has been made, so the kind holds no
+place and nothing a reader is shown draws it — a kind with no site in it is not one a traveller can
+trust (ADR-0058 decision 7). The kind itself is not hidden: `GET /api/experiences/kinds` lists
+every kind an active source fills, so it answers Archaeology with a count of 0.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the
