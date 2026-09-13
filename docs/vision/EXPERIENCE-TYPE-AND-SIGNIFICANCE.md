@@ -8,7 +8,7 @@ The words this document uses are the ones [ADR-0045](../decisions/0045-a-travell
 |---|---|
 | **Kind** | What a traveller browses by — what they would call the thing in front of them: a World Heritage site, an art museum, an archaeology museum, a monument. Each kind is its own list, pin colour and count |
 | **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query. Not something a visitor sees |
-| **Type** | A distinction *inside* a kind whose members a traveller still browses together — cultural, natural or mixed for a World Heritage site; monument or sculpture for public art; cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue for a place of worship. A kind whose members a traveller would want as separate lists has no types: they are kinds |
+| **Type** | A distinction *inside* a kind whose members a traveller still browses together — cultural, natural or mixed for a World Heritage site; monument or sculpture for public art; cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue for a place of worship; site or museum for archaeology. A kind whose members a traveller would want as separate lists has no types: they are kinds |
 | **Treasure type** | What kind of thing a treasure inside a venue is — an artwork, a species. Independent of the venue's kind and type |
 
 ---
@@ -29,7 +29,7 @@ A type is a distinction *inside* a kind whose members a traveller still browses 
 
 ### Key rules
 
-- **A kind decides whether it has types at all.** The test is the traveller's: would a person who wants one of these still want to see the others in the same list? A cultural and a natural World Heritage site, yes — one list, a chip and a filter. An art museum and an archaeology museum, no — two lists, so two kinds and no type ([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) decision 1). "Museums" is not one kind with a type chip.
+- **A kind decides whether it has types at all.** The test is the traveller's: would a person who wants one of these still want to see the others in the same list? A cultural and a natural World Heritage site, yes — one list, a chip and a filter. An art museum and an archaeology museum, no — two lists, so two kinds and no type ([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) decision 1). "Museums" is not one kind with a type chip. That `museum` is one of Archaeology's two types is the same rule read the same way and not an exception to it: what the museum is a type of there is *archaeology*, beside the dig, because a traveller planning Egypt wants Saqqara and the Egyptian Museum on one list ([ADR-0058](../decisions/0058-archaeology-is-one-kind-of-sites-and-museums.md) decision 1).
 - Where a kind has types, the vocabulary is **closed and its own**. Types are designed for **filtering inside the kind** — tap "Natural" in World Heritage and get the natural sites — and for the chip on the card.
 - One value per object. A kind without types stores none.
 
@@ -40,6 +40,7 @@ A type is a distinction *inside* a kind whose members a traveller still browses 
 | World Heritage sites | `cultural`, `natural`, `mixed` | UNESCO's own classification, carried through from the source |
 | Public art & monuments | `monument`, `sculpture` | Which of the source's two lists the object came from |
 | Places of worship | `cathedral`, `monastery`, `mosque`, `synagogue`, `chapel`, `church`, `shrine`, `temple` | Read from Wikidata's class trees in that order, the first one a place's classes reach winning — so Durham, a cathedral and a monastery, is a cathedral, and the Hagia Sophia is a mosque rather than a church. Where the class graph and a guidebook disagree the guidebook wins: a Thai *wat* is a temple, so Wat Pho is a temple though Wikidata files it under monastery. A place none of the eight words fits is stored with no type at all, which is a real answer rather than a gap ([ADR-0052](../decisions/0052-a-place-of-worship-is-admitted-for-itself-or-for-what-it-holds.md) decision 5) |
+| Archaeology | `site`, `museum` | The dig a traveller stands in, or the museum that shows what came out of it — one kind, because they are one interest, and two chips inside it ([ADR-0058](../decisions/0058-archaeology-is-one-kind-of-sites-and-museums.md) decision 1). Only `museum` is written today: the museum door is built (#581) and the site door is the next slice. The source is gated and has never run live, so the kind holds no place and no reader surface draws it — the kinds list names it with a count of 0, and a curator's create dialog offers it |
 | Art museums | *none* | An art museum is a kind, not a type within "Museums" — the literal `art` every museum row once carried said nothing the kind does not (#814) |
 
 ### Kinds of museum
@@ -49,13 +50,13 @@ What an earlier version of this document listed as museum *types* are museum **k
 | Kind | What the visitor gets | Status |
 |---|---|---|
 | Art museums | Paintings, sculpture, photography, design, decorative arts | Live — filled by the works-first source (ADR-0023); a second source that asks nothing about famous works is #628 |
-| Archaeology museums | Ancient civilizations, excavations, material evidence of the past | Planned — #581 imports archaeology and history museums as kinds of their own, starting from the rows the art test expelled (the British Museum, egyptology, natural-history and military museums) |
-| History museums | National/city/regional history, social change, everyday life, migration | Planned (#581, with archaeology) |
+| Archaeology museums | Ancient civilizations, excavations, material evidence of the past | Built, as one half of the **Archaeology** kind (#581, [ADR-0058](../decisions/0058-archaeology-is-one-kind-of-sites-and-museums.md)): a museum is admitted for what it is about, never for one famous find, and its finds are its treasures. The digs themselves are the kind's other type and the next slice, and the first live run — the one that would give the kind a place a reader can see — waits until both are filled |
+| History museums | National/city/regional history, social change, everyday life, migration | Planned — a kind of its own with a rule of its own and its own issue. A history museum is visited for a story and an archaeology museum for what was dug up, so a museum whose nature is local or national history is not made an archaeology museum by a find it holds, and the Lion man and the Shigir Idol wait here (ADR-0058 decision 1) |
 | Science & technology museums | Engineering, transport, space, medicine, computing, industrial heritage | Proposed |
 | Ethnography museums | Cultures, traditions, crafts, costume, religious practices in cultural context | Proposed — should carry metadata about collection provenance and exhibition framing where available |
 | Memorial & personal museums | House-museums, memorials, museums of specific people or events | Proposed |
 | Religion & sacred heritage | Religious art, monastic collections, sacred material culture | Proposed |
-| Natural history museums | Geology, paleontology, biodiversity, ecology, museum centres at national parks | Proposed — the natural-history museums the art test expelled sit in #581's seed rows; whether they become a kind of their own is decided there |
+| Natural history museums | Geology, paleontology, biodiversity, ecology, museum centres at national parks | Proposed — and now owed to real objects: a natural history museum **with nothing archaeological said about it** is not an archaeology museum whatever one find it holds (ADR-0058 decision 2), so the Venus of Willendorf in Vienna, the Venus of Lespugue in Paris and Lucy in Addis Ababa reach no kind until this one exists. A museum of both natures is a museum of both and joins archaeology on that signal: the Yorkshire Museum is typed natural history and archaeological alike, is filed under *Archaeological museums in England*, and its draw is Roman York |
 | Specialized & niche museums | Single-topic: food, music, cinema, sport, fashion, money, toys, espionage, etc. | Proposed — a catch-all to keep the list of kinds short; a niche that grows large enough (50+ music museums worldwide) becomes a kind of its own |
 
 A kind appears to readers only once it has a sync of its own and a rule that says what complete means for it (ADR-0045 decision 2): a list of thirty-seven churches worldwide with none in Prague is a claim about the world, and a false one.
@@ -201,7 +202,7 @@ Note: `format`, `experience_style`, `visit_context`, and `access` are all **clos
 | Kind | Automated sourcing | Manual curation needed |
 |---|---|---|
 | Art, history, science, natural-history museums | Good coverage via Wikidata (museum type properties, collection data) | Minimal — mainly significance validation |
-| Archaeology museums | Moderate — Wikidata has major sites, gaps in smaller ones | Some curation for regional experiences |
+| Archaeology museums | Measured 2026-09-13: Wikidata's class types only 28 of them at the world line and misses the canon outright — the British Museum, the Pergamon, the Bardo, the Museo del Oro — so the rule reads English Wikipedia's `Archaeological museums in …` category beside the class (ADR-0058) | A museum famous as an institution whose holdings are not itemised (the Larco Museum, the National Museum of Korea) is the regional tier's and a curator's |
 | Ethnography, religion | Moderate — Wikidata coverage varies by region | Sensitivity review recommended |
 | Memorial & personal | Good for major memorials, patchy for personal museums | House-museums often need manual entry |
 | Niche | Low — highly heterogeneous | Highest manual effort, but also lowest volume |
