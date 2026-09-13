@@ -79,8 +79,8 @@ const VOCABULARY_BY_KIND: Record<number, TypeVocabulary> = {
 };
 
 /** The types a curator may set on an object of this kind — none for a museum. */
-export function typeOptionsFor(categoryId: number | null | undefined): TypeOption[] {
-  return categoryId != null ? VOCABULARY_BY_KIND[categoryId]?.options ?? [] : [];
+export function typeOptionsFor(kindId: number | null | undefined): TypeOption[] {
+  return kindId != null ? VOCABULARY_BY_KIND[kindId]?.options ?? [] : [];
 }
 
 /**

@@ -13,7 +13,7 @@ import type { QueueRow } from '../queueRows';
 
 function row(kind: QueueRow['kind'], subs: string[] = []): QueueRow {
   return {
-    key: `${kind}:1`, kind, id: 1, name: 'x', category: 'c', question: '', askedAt: null,
+    key: `${kind}:1`, kind, id: 1, name: 'x', placeKind: 'c', question: '', askedAt: null,
     runId: null, specific: '', subs,
   };
 }

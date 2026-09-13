@@ -3,17 +3,17 @@
  *
  * Manages:
  * - Region tree navigation (breadcrumbs, current level children)
- * - Experience counts per category at each tree level
- * - Active view state: which region+category is being explored
+ * - Experience counts per kind at each tree level
+ * - Active view state: which region+kind is being explored
  * - Loading experiences for the active view
  * - Selected experience for inline detail
  *
  * Discover keeps no place of its own (#644). The region in question is the one
  * `useNavigation` holds — so the map and Discover share one place, and the
- * header carries it across — and the category list and the open card are read
- * from the address: `/discover/wv/5/r/7100-malta/e/1234-stonehenge?cat=1`.
+ * header carries it across — and the kind list and the open card are read
+ * from the address: `/discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1`.
  *
- * `r` is the region the visitor is looking at. With a category list open it is
+ * `r` is the region the visitor is looking at. With a kind list open it is
  * the region whose list it is, and the tree stands at its parent — exactly the
  * state a chip click produces, since chips sit on the rows of a level. Without
  * one, the tree stands at the region itself.
@@ -23,7 +23,7 @@ import { useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchExperienceRegionCounts,
-  fetchExperienceCategories,
+  fetchExperienceKinds,
   fetchExperiencesByRegion,
   fetchExperienceLocations,
   WHOLE_REGION_LIMIT,
@@ -32,12 +32,12 @@ import type { Region } from '../types';
 import { useNavigation } from './useNavigation';
 import { useAppAddress } from './useAppAddress';
 
-/** The active experience view: region + category selection */
+/** The active experience view: region + kind selection */
 export interface ActiveView {
   regionId: number;
   regionName: string;
-  categoryId: number;
-  categoryName: string;
+  kindId: number;
+  kindName: string;
 }
 
 /** Breadcrumb item for tree navigation */
@@ -53,8 +53,8 @@ export function useDiscoverExperiences() {
   } = useNavigation();
   const { address, go } = useAppAddress();
 
-  const categoryId = address?.mode === 'discover' ? address.categoryId : null;
-  const listOpen = categoryId !== null && selectedRegion !== null;
+  const kindId = address?.mode === 'discover' ? address.kindId : null;
+  const listOpen = kindId !== null && selectedRegion !== null;
 
   // The trail to the region in question. The ancestors read answers it for
   // certain; until it does — it fires on every selection — the trail is what a
@@ -82,10 +82,10 @@ export function useDiscoverExperiences() {
     [levelTrail],
   );
 
-  // Fetch experience categories (for icon/name mapping)
-  const { data: categories = [] } = useQuery({
-    queryKey: ['experience-categories'],
-    queryFn: fetchExperienceCategories,
+  // Fetch experience kinds (for icon/name mapping)
+  const { data: kinds = [] } = useQuery({
+    queryKey: ['experience-kinds'],
+    queryFn: fetchExperienceKinds,
     staleTime: 300000,
   });
 
@@ -97,43 +97,43 @@ export function useDiscoverExperiences() {
     staleTime: 120000,
   });
 
-  // Active categories (only those with counts at this level)
-  const activeCategories = useMemo(() => {
-    const categoryIds = new Set<number>();
+  // Active kinds (only those with counts at this level)
+  const activeKinds = useMemo(() => {
+    const kindIds = new Set<number>();
     for (const rc of regionCounts) {
-      for (const sid of Object.keys(rc.category_counts)) {
-        categoryIds.add(Number(sid));
+      for (const sid of Object.keys(rc.kind_counts)) {
+        kindIds.add(Number(sid));
       }
     }
-    return categories.filter(s => s.is_active && categoryIds.has(s.id));
-  }, [categories, regionCounts]);
+    return kinds.filter(s => kindIds.has(s.id));
+  }, [kinds, regionCounts]);
 
-  // Total experience count per source at current level
+  // Total experience count per kind at current level
   const levelTotals = useMemo(() => {
     const totals: Record<number, number> = {};
     for (const rc of regionCounts) {
-      for (const [sid, count] of Object.entries(rc.category_counts)) {
+      for (const [sid, count] of Object.entries(rc.kind_counts)) {
         totals[Number(sid)] = (totals[Number(sid)] || 0) + count;
       }
     }
     return totals;
   }, [regionCounts]);
 
-  // The open list: the region in question and the category the address names.
+  // The open list: the region in question and the kind the address names.
   const activeView = useMemo((): ActiveView | null => {
     if (!listOpen) return null;
-    const category = categories.find(c => c.id === categoryId);
-    if (!category) return null;
-    return { regionId: selectedRegion.id, regionName: selectedRegion.name, categoryId: category.id, categoryName: category.name };
-  }, [listOpen, categories, categoryId, selectedRegion]);
+    const kind = kinds.find(c => c.id === kindId);
+    if (!kind) return null;
+    return { regionId: selectedRegion.id, regionName: selectedRegion.name, kindId: kind.id, kindName: kind.name };
+  }, [listOpen, kinds, kindId, selectedRegion]);
 
-  // A category nobody knows is dropped from the address, in place, once the
-  // categories have answered — before that, every category is unknown.
+  // A kind nobody knows is dropped from the address, in place, once the
+  // kinds have answered — before that, every kind is unknown.
   useEffect(() => {
-    if (address === null || categoryId === null || categories.length === 0) return;
-    if (categories.some(c => c.id === categoryId)) return;
-    go({ ...address, categoryId: null }, { replace: true });
-  }, [address, categoryId, categories, go]);
+    if (address === null || kindId === null || kinds.length === 0) return;
+    if (kinds.some(c => c.id === kindId)) return;
+    go({ ...address, kindId: null }, { replace: true });
+  }, [address, kindId, kinds, go]);
 
   // The card the address names — of this region, and only once the region is
   // here: during a restore the address arrives first.
@@ -143,20 +143,20 @@ export function useDiscoverExperiences() {
 
   // Fetch experiences for active view (region + source)
   const { data: experiencesData, isLoading: experiencesLoading } = useQuery({
-    // Keyed on the region alone. The response is category-independent — the
-    // filter below runs in `select`, per observer — so carrying `categoryId` in
+    // Keyed on the region alone. The response is kind-independent — the
+    // filter below runs in `select`, per observer — so carrying `kindId` in
     // the key gave each tab its own cache entry and refetched the whole region
     // on every switch. That was wasteful at 500 rows and is more so now that a
     // region is fetched whole. The `['discover-experiences']` prefix used for
     // invalidation is unchanged.
     //
     // Read for an open list, and also for a card the address names without a
-    // category — the header writes that on the way from the map — so that the
-    // category can be read off the object below.
+    // kind — the header writes that on the way from the map — so that the
+    // kind can be read off the object below.
     queryKey: ['discover-experiences', selectedRegion?.id],
-    // The category filter runs in `select` below, on what came back — so a
+    // The kind filter runs in `select` below, on what came back — so a
     // truncated response is filtered, not a filtered response truncated. At 500
-    // that lost the smaller categories first: Europe holds 69 museums among 661
+    // that lost the smaller kinds first: Europe holds 69 museums among 661
     // experiences, and `Museo del Prado` sorts past the cut.
     queryFn: () => fetchExperiencesByRegion(selectedRegion!.id, {
       includeChildren: true,
@@ -165,14 +165,11 @@ export function useDiscoverExperiences() {
     enabled: selectedRegion !== null && (listOpen || addressedExperienceId !== null),
     staleTime: 120000,
     select: (data) => {
-      // Filter to only the selected category
+      // Filter to only the selected kind
       if (!activeView) return data;
       return {
         ...data,
-        experiences: data.experiences.filter(e => {
-          const categoryMatch = categories.find(s => s.name === e.category_name);
-          return categoryMatch && categoryMatch.id === activeView.categoryId;
-        }),
+        experiences: data.experiences.filter(e => e.kind_id === activeView.kindId),
       };
     },
   });
@@ -182,26 +179,26 @@ export function useDiscoverExperiences() {
     [experiencesData?.experiences],
   );
 
-  // A card without a category: the category is the object's own, so it is read
+  // A card without a kind: the kind is the object's own, so it is read
   // off the object and written into the address in place; an object the region
-  // does not hold is dropped the same way. Not before the categories and the
+  // does not hold is dropped the same way. Not before the kinds and the
   // region have answered — until then every object is unknown — and a read that
   // failed is not an answer: it must not spend a shared link on a hiccup.
   useEffect(() => {
-    if (address === null || addressedExperienceId === null || categoryId !== null) return;
-    if (categories.length === 0 || !experiencesData) return;
+    if (address === null || addressedExperienceId === null || kindId !== null) return;
+    if (kinds.length === 0 || !experiencesData) return;
     const object = experiencesData?.experiences.find(e => e.id === addressedExperienceId);
-    const category = object ? categories.find(c => c.name === object.category_name) : undefined;
+    const kind = object ? kinds.find(c => c.id === object.kind_id) : undefined;
     go(
-      category ? { ...address, categoryId: category.id } : { ...address, experienceId: null },
+      kind ? { ...address, kindId: kind.id } : { ...address, experienceId: null },
       { replace: true, names: { experience: object?.name } },
     );
-  }, [address, addressedExperienceId, categoryId, categories, experiencesData, go]);
+  }, [address, addressedExperienceId, kindId, kinds, experiencesData, go]);
 
   const selectedExperienceId = activeView ? addressedExperienceId : null;
 
   // A card the open list does not hold — hidden, rejected, elsewhere, of
-  // another category, or not there at all — is dropped from the address once
+  // another kind, or not there at all — is dropped from the address once
   // the list has answered, in place and in silence: one answer for all of them.
   // A *successful* answer, for the reason above.
   useEffect(() => {
@@ -257,12 +254,12 @@ export function useDiscoverExperiences() {
 
   // Navigate into a region (drill down): the region is the level now.
   const navigateToRegion = useCallback((regionId: number, regionName: string) => {
-    setSelectedRegion(rowRegion(regionId, regionName), { categoryId: null });
+    setSelectedRegion(rowRegion(regionId, regionName), { kindId: null });
   }, [setSelectedRegion, rowRegion]);
 
   // Navigate to a breadcrumb level: one of the trail's own entries, or the root.
   const navigateToBreadcrumb = useCallback((index: number) => {
-    setSelectedRegion(index < 0 ? null : levelTrail[index] ?? null, { categoryId: null });
+    setSelectedRegion(index < 0 ? null : levelTrail[index] ?? null, { kindId: null });
   }, [setSelectedRegion, levelTrail]);
 
   // Open experience view for a region + source: the region is in question, the
@@ -270,15 +267,15 @@ export function useDiscoverExperiences() {
   const openExperienceView = useCallback((
     regionId: number,
     regionName: string,
-    categoryId: number,
-    _categoryName: string,
+    kindId: number,
+    _kindName: string,
   ) => {
-    setSelectedRegion(rowRegion(regionId, regionName), { categoryId });
+    setSelectedRegion(rowRegion(regionId, regionName), { kindId });
   }, [setSelectedRegion, rowRegion]);
 
   // Close experience view (back to tree): the level the list was opened from.
   const closeExperienceView = useCallback(() => {
-    setSelectedRegion(levelTrail[levelTrail.length - 1] ?? null, { categoryId: null });
+    setSelectedRegion(levelTrail[levelTrail.length - 1] ?? null, { kindId: null });
   }, [setSelectedRegion, levelTrail]);
 
   // Open or close a card: a step the visitor took, so Back undoes it.
@@ -312,8 +309,8 @@ export function useDiscoverExperiences() {
     navigateToBreadcrumb,
 
     // Sources
-    categories,
-    activeCategories,
+    kinds,
+    activeKinds,
     levelTotals,
 
     // Experience view

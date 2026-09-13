@@ -2,7 +2,7 @@
  * Says a place has something to look at inside, derived from the region row's
  * `treasure_count` (offered + published treasure links).
  *
- * Silent for a museum (`category_id` 2): every museum row already carries
+ * Silent for a museum (`kind_id` 2): every museum row already carries
  * works, and a card there shows the count as the point of the row rather than
  * as a side note — a second "N treasures inside" chip would repeat it. Every
  * other kind that links treasures — places of worship among them — gets the
@@ -22,11 +22,11 @@ const ART_MUSEUMS = 2;
 
 export interface TreasuresInsideChipProps {
   count?: number | null;
-  categoryId: number;
+  kindId: number;
 }
 
-export function TreasuresInsideChip({ count, categoryId }: TreasuresInsideChipProps) {
-  if (!count || categoryId === ART_MUSEUMS) return null;
+export function TreasuresInsideChip({ count, kindId }: TreasuresInsideChipProps) {
+  if (!count || kindId === ART_MUSEUMS) return null;
 
   const text = `${count} ${count === 1 ? 'treasure' : 'treasures'} inside`;
 

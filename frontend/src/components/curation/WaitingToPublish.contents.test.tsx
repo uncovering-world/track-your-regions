@@ -43,7 +43,7 @@ import { GatedCard } from './WaitingToPublish';
 function contents(...works: NonNullable<ReviewQueueItem['pending_works']>): ReviewQueueItem {
   return {
     id: 6194, external_id: 'Q165631', name: 'Gemäldegalerie Berlin',
-    category_id: 2, category_name: 'Art Museums',
+    kind_id: 2, kind_name: 'Art Museums',
     missing_since: null, source_membership: 'present', existence: 'extant',
     kind: 'contents', proposed: null,
     pending_locations: 0, pending_treasures: works.length,
@@ -64,7 +64,7 @@ function renderCard(item: ReviewQueueItem, onDone: (message?: string) => void = 
 function points(...rows: NonNullable<ReviewQueueItem['pending_points']>): ReviewQueueItem {
   return {
     id: 1345, external_id: '1465', name: 'Champagne Hillsides, Houses and Cellars',
-    category_id: 1, category_name: 'UNESCO World Heritage Sites',
+    kind_id: 1, kind_name: 'World Heritage Sites',
     missing_since: null, source_membership: 'present', existence: 'extant',
     kind: 'contents', proposed: null,
     pending_locations: rows.length, pending_treasures: 0,

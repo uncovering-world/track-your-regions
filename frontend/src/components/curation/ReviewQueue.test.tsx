@@ -509,7 +509,7 @@ describe('ReviewQueue', () => {
     expect(screen.getByText(/Wikivoyage \(world view 4\)/)).toBeInTheDocument();
   });
 
-  describe('a row this category refused', () => {
+  describe('a row this kind refused', () => {
     beforeEach(() => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [REFUSED], conflicts: [], limit: 25,
@@ -1030,7 +1030,7 @@ describe('ReviewQueue', () => {
       fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
 
       // Not `accept-source`: its lookup requires `curatedConflict: true`, and a
-      // field held by the category's gate carries false — that button would 409
+      // field held by the kind's gate carries false — that button would 409
       // on every click. The run id is the held pointer, so a newer proposal
       // cannot substitute itself for the one on the card.
       await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, { expectedSyncLogId: 47 }));

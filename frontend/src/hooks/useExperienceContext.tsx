@@ -78,8 +78,8 @@ interface ExperienceContextType {
   getExperienceById: (id: number) => Experience | undefined;
 
   // Expanded source names (controls which markers are visible)
-  expandedCategoryNames: Set<string>;
-  setExpandedCategoryNames: (names: Set<string>) => void;
+  expandedKindNames: Set<string>;
+  setExpandedKindNames: (names: Set<string>) => void;
 
   /** Objects this reader asked to see as a single pin rather than as their places. */
   collapsedExperienceIds: ReadonlySet<number>;
@@ -121,7 +121,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   const onAddressedRegion = address !== null && address.regionId === regionId;
   const selectedExperienceId = onAddressedRegion ? address.experienceId : null;
   const [flyToExperienceId, setFlyToExperienceId] = useState<number | null>(null);
-  const [expandedCategoryNames, setExpandedCategoryNames] = useState<Set<string>>(new Set());
+  const [expandedKindNames, setExpandedKindNames] = useState<Set<string>>(new Set());
   const [artworkPreview, setArtworkPreview] = useState<ArtworkPreview | null>(null);
   // Held for the region it was measured in: a view belongs to the map that was
   // showing that region, and carrying it into the next one would filter the new
@@ -275,13 +275,13 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     triggerFlyTo,
     clearFlyTo,
     getExperienceById,
-    expandedCategoryNames,
-    setExpandedCategoryNames,
+    expandedKindNames,
+    setExpandedKindNames,
     collapsedExperienceIds,
     toggleCollapsedExperience,
     artworkPreview,
     setArtworkPreview,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedKindNames, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>

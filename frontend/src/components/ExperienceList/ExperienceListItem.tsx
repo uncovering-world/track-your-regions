@@ -20,12 +20,12 @@ import type {
 } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
-import { experienceColor } from '../../utils/categoryColors';
+import { experienceColor } from '../../utils/kindColors';
 import { preloadCardImage } from '../../utils/imagePreload';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
 import { subscribeToHoverTarget, useHoverActions } from '../../hooks/useHoverContext';
 import {
-  CategoryIcon, PlacePin, RowItem, TitleRow, TitleText, VisitCheckbox, VisitIcon,
+  KindIcon, PlacePin, RowItem, TitleRow, TitleText, VisitCheckbox, VisitIcon,
 } from './ExperienceListItem.styles';
 import { PlacesCountChip, foldLabel } from './PlacesCountChip';
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
@@ -190,7 +190,7 @@ function ExperienceListItemComponent({
   } else if (isSelected) {
     expandIndicator = <ExpandLess fontSize="small" />;
   }
-  const color = experienceColor(experience.category_id, experience.type);
+  const color = experienceColor(experience.kind_id, experience.type);
 
   // Use batch locations from parent (shared hook) — no per-item fetch
   const totalLocations = locations?.length ?? (experience.location_count ?? 0);
@@ -399,10 +399,10 @@ function ExperienceListItemComponent({
           </VisitIcon>
         )}
 
-        {/* Category color indicator */}
-        <CategoryIcon>
+        {/* Kind color indicator */}
+        <KindIcon>
           <PlacePin />
-        </CategoryIcon>
+        </KindIcon>
 
         {/* Experience name */}
         <ListItemText
@@ -416,7 +416,7 @@ function ExperienceListItemComponent({
                 {experience.name}
               </TitleText>
               <LifecycleChip state={experience} />
-              <TreasuresInsideChip count={experience.treasure_count} categoryId={experience.category_id} />
+              <TreasuresInsideChip count={experience.treasure_count} kindId={experience.kind_id} />
               {experience.is_new && (
                 <Chip
                   label="New"

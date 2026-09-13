@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { TYPE_COLORS, experienceColor, experienceColors, getSourceColor, shortSourceName } from './categoryColors';
+import { TYPE_COLORS, experienceColor, experienceColors, kindColor, shortKindName } from './kindColors';
 
 /** The source rows `db/init/01-schema.sql` seeds. */
 const WORLD_HERITAGE = 1;
@@ -67,10 +67,10 @@ describe('experienceColors', () => {
     // art — over cards and pins drawn blue and teal: two colours per kind, one
     // per function. One answer now.
     for (const kind of [WORLD_HERITAGE, ART_MUSEUMS, PUBLIC_ART]) {
-      expect(getSourceColor(kind)).toBe(experienceColor(kind, null));
+      expect(kindColor(kind)).toBe(experienceColor(kind, null));
     }
     // A kind with no colour of its own still gets a deterministic one from the palette.
-    expect(getSourceColor(99)).not.toBe(experienceColors(99, null).primary);
+    expect(kindColor(99)).not.toBe(experienceColors(99, null).primary);
   });
 
   it('falls to a neutral colour for a kind it does not know, never to another kind\'s', () => {
@@ -85,12 +85,14 @@ describe('experienceColors', () => {
   it('gives a place of worship its own colour, whatever its type', () => {
     expect(experienceColor(PLACES_OF_WORSHIP, 'cathedral')).toBe('#BE185D');
     expect(experienceColor(PLACES_OF_WORSHIP, null)).toBe('#BE185D');
-    expect(getSourceColor(PLACES_OF_WORSHIP)).toBe('#BE185D');
+    expect(kindColor(PLACES_OF_WORSHIP)).toBe('#BE185D');
   });
 });
 
-describe('shortSourceName', () => {
+describe('shortKindName', () => {
   it('shortens the kind name for a chip', () => {
-    expect(shortSourceName('Places of worship')).toBe('Worship');
+    expect(shortKindName('Places of worship')).toBe('Worship');
+    expect(shortKindName('World Heritage Sites')).toBe('World Heritage');
+    expect(shortKindName('Art Museums')).toBe('Art Museums');
   });
 });

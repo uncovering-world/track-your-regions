@@ -40,7 +40,7 @@ import {
 } from '../../hooks/useVisitedExperiences';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 
-import { experienceColors } from '../../utils/categoryColors';
+import { experienceColors } from '../../utils/kindColors';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ContentsSection } from './ContentsSection';
 import { locationLabel } from '../../utils/locationLabel';
@@ -107,7 +107,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
   const imageFailed = !!imageUrl && failedUrl === imageUrl;
   const setImageFailed = () => setFailedUrl(imageUrl);
   // The kind's colour, refined by the type where the types are told apart (#814).
-  const colors = experienceColors(experience.category_id, experience.type);
+  const colors = experienceColors(experience.kind_id, experience.type);
   const catStyle = { bg: colors.bg, text: colors.text };
 
   let visitedStatusLabel = 'Not Started';
@@ -196,7 +196,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
           </Box>
         )}
 
-        {/* Category + country chips */}
+        {/* Kind + country chips */}
         <Box sx={{ display: 'flex', gap: 0.75, mb: 2, flexWrap: 'wrap' }}>
           {experience.type && (
             <Chip

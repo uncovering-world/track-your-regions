@@ -1,7 +1,7 @@
 /**
  * A source's sitelinks line, on its card in the sync panel: the two Wikipedia-
  * language counts a run reads to decide whether an item counts (Task 8's
- * `PUT /api/admin/sync/categories/:id/line`), and a save that the *next* run
+ * `PUT /api/admin/sync/sources/:id/line`), and a save that the *next* run
  * applies — nothing here re-runs the source or touches a row already synced.
  *
  * Renders nothing for a source whose threshold lives in code rather than on
@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Box, Button, TextField, Typography } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { setSourceLine, type ExperienceCategory } from '../../api/admin';
+import { setSourceLine, type ExperienceSource } from '../../api/admin';
 
 const MIN_SITELINKS = 1;
 const MAX_SITELINKS = 1000;
@@ -25,7 +25,7 @@ function parseSitelinks(raw: string): number | null {
   return n >= MIN_SITELINKS && n <= MAX_SITELINKS ? n : null;
 }
 
-export function SourceLineControls({ source }: { source: ExperienceCategory }) {
+export function SourceLineControls({ source }: { source: ExperienceSource }) {
   const queryClient = useQueryClient();
   const [enterRaw, setEnterRaw] = useState(String(source.enter_sitelinks ?? ''));
   const [stayRaw, setStayRaw] = useState(String(source.stay_sitelinks ?? ''));

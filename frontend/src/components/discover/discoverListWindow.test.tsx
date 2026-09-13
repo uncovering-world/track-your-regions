@@ -96,13 +96,13 @@ function renderList(count: number) {
     <HoverProvider>
       <GrabActions />
       <DiscoverExperienceList
-        activeView={{ regionId: 1, regionName: 'Europe', categoryId: 1, categoryName: 'UNESCO World Heritage Sites' }}
+        activeView={{ regionId: 1, regionName: 'Europe', kindId: 1, kindName: 'UNESCO World Heritage Sites' }}
         experiences={experiences}
         filteredExperiences={experiences}
         isLoading={false}
         search=""
         setSearch={noop}
-        shortSourceName="UNESCO"
+        shortKindName="UNESCO"
         rejectedCount={0}
         hasCuratorScope={false}
         isAuthenticated={false}

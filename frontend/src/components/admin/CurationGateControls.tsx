@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  setCurationGate, publishWaiting, type ExperienceCategory, type WaitingCounts,
+  setCurationGate, publishWaiting, type ExperienceSource, type WaitingCounts,
 } from '../../api/admin';
 import { invalidateAfterBatchPublication } from '../../utils/queryInvalidation';
 import { plural } from '../../utils/plural';
@@ -142,7 +142,7 @@ function ungatedConsequence(waiting: WaitingCounts): string {
   return sentences.join(' ');
 }
 
-export function CurationGateControls({ source }: { source: ExperienceCategory }) {
+export function CurationGateControls({ source }: { source: ExperienceSource }) {
   const queryClient = useQueryClient();
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);

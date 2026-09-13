@@ -37,13 +37,11 @@ export interface Experience {
    * The type within the kind — `cultural` / `natural` / `mixed` on a World Heritage
    * site, `monument` / `sculpture` on public art, `cathedral` / `church` / `chapel` /
    * `monastery` / `mosque` / `temple` / `shrine` / `synagogue` on a place of worship —
-   * and `null` on a museum, whose kind has no types (ADR-0045, #814). The kind is the
-   * one `category_id`'s source
-   * fills (`experience_categories.kind_id`, #822); `category_id` names the source.
+   * and `null` on a museum, whose kind has no types (ADR-0045, #814).
    */
   type: string | null;
-  /** The kind, by its source row — what a colour and a group are decided by. */
-  category_id: number;
+  /** The kind, off the row's membership (#819) — what a colour and a group are decided by. */
+  kind_id: number;
   country_codes: string[];
   country_names: string[];
   image_url: string | null;
@@ -65,8 +63,9 @@ export interface Experience {
   danger_since?: number | null;
   longitude: number;
   latitude: number;
-  category_name: string;
-  category_priority?: number;
+  /** The kind's name, and its display order — what the list groups and orders by. */
+  kind_name: string;
+  kind_priority?: number;
   location_count?: number;
   /** Offered + published treasure links. Drives `TreasuresInsideChip`. */
   treasure_count?: number;
@@ -79,7 +78,7 @@ export interface Experience {
   // and the counts — so `existence` is 'lost' only where they survive on
   // purpose: a visit history, a list the reader unfiltered, or a by-id answer.
   // `ExperienceDetail` extends this interface, so `fetchExperience` is the third
-  // case: a by-id read hides a row the category refused and leaves a `lost` one
+  // case: a by-id read hides a row the kind refused and leaves a `lost` one
   // reachable (`getExperience`'s own comment says why).
   source_membership?: 'present' | 'former';
   existence?: 'extant' | 'lost';
@@ -87,7 +86,7 @@ export interface Experience {
   missing_since?: string | null;
   /**
    * Decided by the server: the reader could first see this recently — the row has
-   * been published, and either that publication is inside the category's window or
+   * been published, and either that publication is inside the kind's window or
    * this reader's own week has not run out.
    * Not "recently created", and not "found by the latest run" either: under a gated
    * source those are a curator's working week apart (#529). See
@@ -199,13 +198,15 @@ export interface ExperienceRegionRef {
 }
 
 export interface ExperienceDetail extends Experience {
-  category_id: number;
+  /** The source that brought the row (`experiences.source_id`), beside the kind it is shown under. */
+  source_id: number;
   name_local: Record<string, string> | null;
   description: string | null;
   metadata: Record<string, unknown> | null;
   boundary_geojson: GeoJSON.Geometry | null;
   area_km2: number | null;
-  category_description: string | null;
+  source_name: string;
+  source_description: string | null;
   regions: ExperienceRegionRef[];
 }
 
@@ -226,9 +227,9 @@ export interface ExperienceSearchResult {
   short_description: string | null;
   /** The type within the kind; `null` on a museum (#814). */
   type: string | null;
-  category_id: number;
-  /** Always present: `experiences.category_id` is NOT NULL. */
-  category_name: string;
+  kind_id: number;
+  /** Always present: every place has a membership, and every membership a kind. */
+  kind_name: string;
   /** Nullable in the column, and so here — the row reads without it. */
   country_names: string[] | null;
   image_url: string | null;
@@ -256,13 +257,14 @@ export interface ExperiencesByRegionResponse {
   offset: number;
 }
 
-export interface ExperienceCategory {
+/**
+ * A kind of place a traveller browses by (ADR-0045 decision 1), as
+ * `GET /api/experiences/kinds` lists them: only the kinds a source fills
+ * today, in display order, each with the count of what it offers.
+ */
+export interface ExperienceKind {
   id: number;
   name: string;
-  description: string | null;
-  is_active: boolean;
-  last_sync_at: string | null;
-  last_sync_status: string | null;
   display_priority: number;
   experience_count: string;
 }
@@ -343,10 +345,10 @@ export async function searchExperiences(
 }
 
 /**
- * List experience categories
+ * List the kinds a traveller browses by (#819)
  */
-export async function fetchExperienceCategories(): Promise<ExperienceCategory[]> {
-  return fetchJson<ExperienceCategory[]>(`${API_URL}/api/experiences/categories`);
+export async function fetchExperienceKinds(): Promise<ExperienceKind[]> {
+  return fetchJson<ExperienceKind[]>(`${API_URL}/api/experiences/kinds`);
 }
 
 /**
@@ -466,11 +468,11 @@ export interface RegionExperienceCount {
   region_name: string;
   region_color: string | null;
   has_subregions: boolean;
-  category_counts: Record<number, number>;
+  kind_counts: Record<number, number>;
 }
 
 /**
- * Get experience counts per region per category for a world view
+ * Get experience counts per region per kind for a world view
  * Used by Discover page tree navigation
  */
 export async function fetchExperienceRegionCounts(
@@ -556,8 +558,8 @@ export interface ReviewQueueItem {
   id: number;
   external_id: string;
   name: string;
-  category_id: number;
-  category_name: string;
+  kind_id: number;
+  kind_name: string;
   /**
    * The lifecycle axes, on **every** kind rather than only the two whose cards
    * are about them. Required here and therefore selected by every one of the queries
@@ -594,7 +596,7 @@ export interface ReviewQueueItem {
    */
   in_danger?: boolean;
   danger_since?: number | null;
-  /** Why this category turned the row down, in the rule's own words. Refused items only. */
+  /** Why this kind turned the row down, in the rule's own words. Refused items only. */
   admission_reason?: string | null;
   /** When a curator answered. Kept-out items only. */
   state_decided_at?: string | null;
@@ -603,7 +605,7 @@ export interface ReviewQueueItem {
   /**
    * `acceptable` false means accepting releases the claim and the next run
    * writes it — a `conflict` field only. A `held` field carries `held: true`
-   * instead and no `acceptable`: nobody claimed it, the category's gate kept it
+   * instead and no `acceptable`: nobody claimed it, the kind's gate kept it
    * out, and publishing is the only thing that can apply it (ADR-0025).
    *
    * `null` on every kind that carries no proposal, never absent: each of those
@@ -653,7 +655,7 @@ export interface ReviewQueueItem {
    */
   proposed_parts?: HeldPart[] | null;
   /**
-   * The famous works the category's rule weighed, most widely known first, capped at twelve.
+   * The famous works the kind's rule weighed, most widely known first, capped at twelve.
    *
    * Refusals only, and only because the refusal text talks about them: "0 of 5 famous
    * works are paintings" asks *which five*, and the answer is already in the catalogue —
@@ -1419,7 +1421,7 @@ export interface DeclineHeldResult {
  *
  * The other answer to a held row, and not the same act as refusing a conflict:
  * `decline-source` closes a disagreement with a curator's *claim*, and its
- * lookup requires one, so it would 409 on every field a category's gate held
+ * lookup requires one, so it would 409 on every field a kind's gate held
  * with nobody having claimed anything.
  *
  * No value goes up, for the reason `declineSourceValue` sends none: the queue
@@ -1577,7 +1579,7 @@ export interface HeldSelectionPart {
  *
  * Not `accept-source`, which looks the same from a distance and is not an
  * option: its lookup requires `curatedConflict: true`, and a field held purely
- * by a category's gate carries `false`, so it would refuse every one of them.
+ * by a kind's gate carries `false`, so it would refuse every one of them.
  *
  * Naming no contents publishes the object — its held fields, its own state, and
  * every unread point and work under it. Naming any makes it those rows and
@@ -1752,7 +1754,7 @@ export async function assignExperienceToRegion(
 export async function createManualExperience(data: {
   name: string;
   shortDescription?: string;
-  /** The type within the kind the row is created under — never the kind itself, which is `categoryId`. */
+  /** The type within the kind the row is created under — never the kind itself, which is `kindId`. */
   type?: string;
   longitude: number;
   latitude: number;
@@ -1761,7 +1763,7 @@ export async function createManualExperience(data: {
   countryCode?: string;
   countryName?: string;
   regionId: number;
-  categoryId?: number;
+  kindId?: number;
   websiteUrl?: string;
   wikipediaUrl?: string;
 }): Promise<{ id: number; name: string; externalId: string }> {

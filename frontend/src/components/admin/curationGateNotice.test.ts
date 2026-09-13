@@ -19,7 +19,7 @@ type Published = Result['published'][number];
 
 function result(over: Partial<Result> = {}): Result {
   return {
-    categoryId: 2, published: [], refused: [], outOfScope: 0, heldLeftForReview: 0, ...over,
+    sourceId: 2, published: [], refused: [], outOfScope: 0, heldLeftForReview: 0, ...over,
   };
 }
 

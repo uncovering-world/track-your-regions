@@ -1,7 +1,7 @@
 /**
  * Tells the server which "New" chips a reader has actually been shown.
  *
- * The chip lives for `max(category window, a week from this reader's first
+ * The chip lives for `max(kind window, a week from this reader's first
  * sighting)`, and the second half only means anything if someone records the
  * sighting. That is deliberately not a side effect of the read that produced
  * the chips: a GET that writes is a GET that lies about being repeatable, and a

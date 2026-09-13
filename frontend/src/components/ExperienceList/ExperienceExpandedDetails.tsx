@@ -46,7 +46,7 @@ import { VisitedStatusButton } from './VisitedStatusButton';
 import { computeVisitedStatus } from './utils';
 import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
-import { experienceColors } from '../../utils/categoryColors';
+import { experienceColors } from '../../utils/kindColors';
 
 export interface ExperienceExpandedDetailsProps {
   experience: Experience;
@@ -202,7 +202,7 @@ function ExperienceExpandedDetailsComponent({
 
   // The type chip in the colour every other surface draws this object in —
   // one rule, `experienceColors`, rather than a third copy of the palette (#814).
-  const typeStyle = experienceColors(experience.category_id, experience.type);
+  const typeStyle = experienceColors(experience.kind_id, experience.type);
 
   return (
     <Box
@@ -268,7 +268,7 @@ function ExperienceExpandedDetailsComponent({
         </Box>
       )}
 
-      {/* Category & Country chips */}
+      {/* Kind & Country chips */}
       <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
         {experience.type && (
           <Chip

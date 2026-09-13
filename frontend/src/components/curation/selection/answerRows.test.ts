@@ -26,7 +26,7 @@ const mockedFetch = fetchReviewQueue as unknown as ReturnType<typeof vi.fn>;
 function row(key: string, over: Partial<QueueRow> = {}): QueueRow {
   const [kind, id] = key.split(':');
   return {
-    key, kind: kind as QueueRow['kind'], id: Number(id), name: key, category: 'Places of worship',
+    key, kind: kind as QueueRow['kind'], id: Number(id), name: key, placeKind: 'Places of worship',
     question: '', askedAt: null, runId: 105, specific: '', subs: [], ...over,
   };
 }
@@ -94,7 +94,7 @@ describe('answerAllMatching', () => {
   function page(ids: number[], nextCursor: string | null = null) {
     return {
       order: ids.map(id => ({ kind: 'waiting', id, askedAt: null, runId: 105, subs: ['arrival'] })),
-      arrivals: ids.map(id => ({ id, name: `#${id}`, category_name: 'Places of worship' })),
+      arrivals: ids.map(id => ({ id, name: `#${id}`, kind_name: 'Places of worship' })),
       held: [], contents: [], conflicts: [], missing: [], refused: [], withdrawn: [],
       keptOut: [], answeredWithdrawals: [], total: ids.length, limit: 2,
       paging: { cursor: null, nextCursor },

@@ -100,7 +100,7 @@ function isTrustedImageUrl(url: string): boolean {
  * The file types a picture may be, read from the name it is served under — the
  * same list the storing side holds (`PICTURE_EXTENSIONS`, `urlSafety.ts`), and
  * pinned to it by `urlSafety.test.ts`, which reads this declaration as it reads
- * the host list above. A Commons *page* — a category, a file's description —
+ * the host list above. A Commons *page* — a kind, a file's description —
  * sits on the same host and answers HTML, which an `<img>` draws as nothing;
  * and Commons serves PDFs, videos and scanned books under the same
  * `Special:FilePath` shape.

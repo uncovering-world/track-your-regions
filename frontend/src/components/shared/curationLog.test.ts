@@ -166,7 +166,7 @@ describe('a verdict on the whole object', () => {
 describe('a verdict on a rule’s refusal', () => {
   it('keeps the objection and the curator’s answer to it', () => {
     // Both halves are the point: the rule's own words are how a bad rule is found in a
-    // category's history, and the note is why this curator agreed with it.
+    // kind's history, and the note is why this curator agreed with it.
     const line = formatLogDetails(entry('admission_confirmed', {
       reason: 'not an art museum — painting-share: 0 painting(s) vs 2 sculptural work(s)',
       note: 'Sculpture park, and the works are the collection',
@@ -181,7 +181,7 @@ describe('a verdict on a rule’s refusal', () => {
   it('says that overriding published the object, which is half of what it did', () => {
     // An override on a row nobody had passed makes it visible in the same transaction
     // (ADR-0025 § 4.5). A history that recorded only the admission would leave a curator
-    // to infer the publication from the category of act.
+    // to infer the publication from the kind of act.
     const line = formatLogDetails(entry('admission_overridden', {
       reason: 'not an art museum — named by a monument',
       note: null,

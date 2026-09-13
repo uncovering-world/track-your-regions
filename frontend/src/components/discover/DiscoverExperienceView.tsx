@@ -36,7 +36,7 @@ import { SOURCE_ID, HIGHLIGHT_SOURCE_ID } from './discoverMapLayers';
 import { useDiscoverMap } from './useDiscoverMap';
 import { useDiscoverHover } from './useDiscoverHover';
 import { frameGeoJson } from '../../utils/mapUtils';
-import { experienceColor } from '../../utils/categoryColors';
+import { experienceColor } from '../../utils/kindColors';
 import { foldLabel } from '../../utils/labelFold';
 
 /**
@@ -55,8 +55,8 @@ function pointsOf(places: ReadonlyArray<{ lng: number; lat: number }>): GeoJSON.
   };
 }
 
-/** Discover shows one category at a time, so the builder's filter has nothing to do. */
-const NO_CATEGORY_FILTER: Set<string> = new Set();
+/** Discover shows one kind at a time, so the builder's filter has nothing to do. */
+const NO_KIND_FILTER: Set<string> = new Set();
 
 interface DiscoverExperienceViewProps {
   activeView: ActiveView | null;
@@ -225,12 +225,12 @@ export function DiscoverExperienceView({
     mapRef, experiences, drawnCoordsRef, selectedExpIdRef, selectedLocsRef,
   });
 
-  // Not `utils/categoryColors.shortSourceName`: this heading has room for
+  // Not `utils/kindColors.shortKindName`: this heading has room for
   // "Public Art" where a chip does not, and the shared one shortens that to
   // "Art". The museum row reads "Art Museums" on its own since #818, so it needs
   // no shortening here or there.
-  const shortSourceName = activeView
-    ? activeView.categoryName
+  const shortKindName = activeView
+    ? activeView.kindName
         .replace('UNESCO World Heritage Sites', 'UNESCO')
         .replace('Public Art & Monuments', 'Public Art')
         .replace('Places of worship', 'Worship')
@@ -255,7 +255,7 @@ export function DiscoverExperienceView({
   // Reset search when active view changes
   useEffect(() => {
     setSearch('');
-  }, [activeView?.regionId, activeView?.categoryId]);
+  }, [activeView?.regionId, activeView?.kindId]);
 
   // ── Map init (once) ──
   useDiscoverMap({
@@ -328,7 +328,7 @@ export function DiscoverExperienceView({
       // (ADR-0028 decision 1, #558). Clusters of places are the honest thing to
       // cluster: a cluster of property locators counted sites nobody could visit.
       const markers = buildExperienceMarkers(
-        visibleExperiences, locationsByExperience, NO_CATEGORY_FILTER, collapsedExperienceIds);
+        visibleExperiences, locationsByExperience, NO_KIND_FILTER, collapsedExperienceIds);
 
       // No feature-level `id`: it used to be the experience's, which now repeats
       // across every one of its places, and nothing here reads it — clustering
@@ -345,7 +345,7 @@ export function DiscoverExperienceView({
           // expressions read `color`, `locationCount` and `point_count`.
           // `id` stays the object's, which is what the handlers ask for.
           // The pin's colour, decided once for every surface (`experienceColor`).
-          color: experienceColor(m.experience.category_id, m.experience.type),
+          color: experienceColor(m.experience.kind_id, m.experience.type),
           // 1 for a place drawn as itself, the count only for a pin standing in
           // for places it does not draw — which is what the badge means.
           locationCount: m.locationCount,
@@ -567,10 +567,10 @@ export function DiscoverExperienceView({
             <Box sx={{ textAlign: 'center', bgcolor: 'rgba(255,255,255,0.9)', borderRadius: 2, px: 4, py: 3, boxShadow: 2 }}>
               <ExploreIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
               <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                Select a category in the tree
+                Select a kind in the tree
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                Click a source tag (e.g. UNESCO 42) to see experiences on the map
+                Click a kind's tag (e.g. World Heritage 42) to see its places on the map
               </Typography>
             </Box>
           </Box>
@@ -589,7 +589,7 @@ export function DiscoverExperienceView({
           isLoading={isLoading}
           search={search}
           setSearch={setSearch}
-          shortSourceName={shortSourceName}
+          shortKindName={shortKindName}
           rejectedCount={rejectedCount}
           hasCuratorScope={hasCuratorScope}
           isAuthenticated={isAuthenticated}
@@ -618,7 +618,7 @@ export function DiscoverExperienceView({
           onClose={() => setAddDialogOpen(false)}
           regionId={activeView.regionId}
           regionName={activeView.regionName}
-          defaultCategoryId={activeView.categoryId}
+          defaultKindId={activeView.kindId}
         />
       )}
     </Box>

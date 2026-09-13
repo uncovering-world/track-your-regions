@@ -1,6 +1,6 @@
 /**
  * ExperienceCard — Compact horizontal layout for sidebar.
- * Shows thumbnail, category, country, name, and visited status.
+ * Shows thumbnail, kind, country, name, and visited status.
  */
 
 import { Box, Typography, Chip, Checkbox, Tooltip, IconButton } from '@mui/material';
@@ -10,7 +10,7 @@ import TuneIcon from '@mui/icons-material/Tune';
 import BlockIcon from '@mui/icons-material/Block';
 import PlaceIcon from '@mui/icons-material/Place';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
-import { experienceColors, shortSourceName, VISITED_GREEN } from '../../utils/categoryColors';
+import { experienceColors, shortKindName, VISITED_GREEN } from '../../utils/kindColors';
 import { inDangerLabel } from '../../utils/dangerLabel';
 import type { Experience } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
@@ -85,7 +85,7 @@ export function ExperienceCard({
   const imageUrl = extractImageUrl(experience.image_url);
   // The kind's colour, refined by the type where the types are told apart —
   // one rule for the card's edge, its chip and its pin (#814).
-  const colors = experienceColors(experience.category_id, experience.type);
+  const colors = experienceColors(experience.kind_id, experience.type);
   const catStyle = { bg: colors.bg, text: colors.text, border: colors.primary };
 
   const cardStyle = computeCardSurfaceStyle({ isRejected, isVisited, isHovered, isSelected, catStyle });
@@ -153,7 +153,7 @@ export function ExperienceCard({
             <Typography sx={{ fontSize: '0.55rem', color: catStyle.text }}>
               {/* The type's initial, or the kind's where the kind has no types — a
                   museum is not "?", it is an art museum (#814). */}
-              {(experience.type ?? shortSourceName(experience.category_name))?.charAt(0).toUpperCase() || '?'}
+              {(experience.type ?? shortKindName(experience.kind_name))?.charAt(0).toUpperCase() || '?'}
             </Typography>
           </Box>
         )}
@@ -203,7 +203,7 @@ export function ExperienceCard({
             />
           )}
           <LifecycleChip state={experience} />
-          <TreasuresInsideChip count={experience.treasure_count} categoryId={experience.category_id} />
+          <TreasuresInsideChip count={experience.treasure_count} kindId={experience.kind_id} />
           {(experience.location_count ?? 0) > 1 && (
             <Chip
               icon={<PlaceIcon sx={{ fontSize: '0.6rem !important' }} />}

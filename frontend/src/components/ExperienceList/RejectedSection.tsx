@@ -37,7 +37,7 @@ export function RejectedSection({ experiences, open, onToggle, renderRow }: Reje
       {/* A button rather than a `div` with an `onClick`: it is the control that
           opens the section, and on a `div` a keyboard cannot reach it and nothing
           announces whether it is open. Here `aria-controls` can point somewhere
-          real — unlike a category's rows, these live inside one `Collapse`. */}
+          real — unlike a kind's rows, these live inside one `Collapse`. */}
       <ListItemButton
         onClick={onToggle}
         aria-expanded={open}

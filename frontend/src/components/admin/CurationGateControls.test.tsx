@@ -14,14 +14,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CurationGateControls } from './CurationGateControls';
 import { publishWaiting, setCurationGate } from '../../api/admin';
-import type { ExperienceCategory } from '../../api/admin';
+import type { ExperienceSource } from '../../api/admin';
 
 vi.mock('../../api/admin', async () => ({
   setCurationGate: vi.fn(),
   publishWaiting: vi.fn(),
 }));
 
-function source(overrides: Partial<ExperienceCategory> = {}): ExperienceCategory {
+function source(overrides: Partial<ExperienceSource> = {}): ExperienceSource {
   return {
     id: 2,
     name: 'Art Museums',
@@ -42,7 +42,7 @@ function source(overrides: Partial<ExperienceCategory> = {}): ExperienceCategory
 const mockedPublishWaiting = publishWaiting as unknown as ReturnType<typeof vi.fn>;
 const mockedSetCurationGate = setCurationGate as unknown as ReturnType<typeof vi.fn>;
 
-function renderControls(s: ExperienceCategory) {
+function renderControls(s: ExperienceSource) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -62,7 +62,7 @@ describe('CurationGateControls', () => {
   });
 
   it('asks the server to hold this source, and only this source', async () => {
-    mockedSetCurationGate.mockResolvedValue({ categoryId: 2, name: 'Art Museums', requiresCuration: true });
+    mockedSetCurationGate.mockResolvedValue({ sourceId: 2, name: 'Art Museums', requiresCuration: true });
     renderControls(source({ requires_curation: false }));
 
     fireEvent.click(screen.getByRole('checkbox'));
@@ -74,7 +74,7 @@ describe('CurationGateControls', () => {
   });
 
   it('asks the server to stop holding it when the switch is already on', async () => {
-    mockedSetCurationGate.mockResolvedValue({ categoryId: 2, name: 'Art Museums', requiresCuration: false });
+    mockedSetCurationGate.mockResolvedValue({ sourceId: 2, name: 'Art Museums', requiresCuration: false });
     renderControls(source({ requires_curation: true }));
 
     fireEvent.click(screen.getByRole('checkbox'));
@@ -85,7 +85,7 @@ describe('CurationGateControls', () => {
   });
 
   it('refetches the sources after a flip, since every sentence here reads the flag', async () => {
-    mockedSetCurationGate.mockResolvedValue({ categoryId: 2, name: 'Art Museums', requiresCuration: true });
+    mockedSetCurationGate.mockResolvedValue({ sourceId: 2, name: 'Art Museums', requiresCuration: true });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const invalidate = vi.spyOn(client, 'invalidateQueries');
     render(
@@ -353,7 +353,7 @@ describe('CurationGateControls', () => {
 
   it('puts what the batch did into the alert, wording and all', async () => {
     mockedPublishWaiting.mockResolvedValue({
-      categoryId: 2,
+      sourceId: 2,
       published: [{ id: 1, name: 'Museo Nacional del Prado', locationsPublished: 3,
         treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 2 }],
       refused: [{ id: 9, name: 'Rijksmuseum', error: 'holding a proposal from a different run' }],

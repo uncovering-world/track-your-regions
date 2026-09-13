@@ -79,4 +79,4 @@ Every `test*` command now prints an explicit final report including:
 Current smoke scenarios:
 - Shell navigation (`Map` <-> `Discover`, sign-in dialog open/close)
 - Map explore workflow (select region, open/close explore panel)
-- Discover source workflow (click region source tag and load experience view)
+- Discover kind workflow (click a region's kind tag and load the experience view)

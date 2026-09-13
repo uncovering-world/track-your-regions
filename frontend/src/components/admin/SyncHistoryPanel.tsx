@@ -153,7 +153,7 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
     <TableRow hover>
       <TableCell>{getStatusChip()}</TableCell>
       <TableCell>
-        {log.category_name}
+        {log.source_name}
         {log.is_dry_run && (
           <Chip label="Preview" size="small" color="info" variant="outlined" sx={{ ml: 1 }} />
         )}
@@ -324,8 +324,8 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
           <Box>
             <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: '1fr 1fr', mb: 3 }}>
               <Box>
-                <Typography variant="subtitle2" color="text.secondary">Category</Typography>
-                <Typography>{log.category_name}</Typography>
+                <Typography variant="subtitle2" color="text.secondary">Source</Typography>
+                <Typography>{log.source_name}</Typography>
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">Status</Typography>

@@ -10,7 +10,7 @@ import type { Experience, ExperienceLocation } from '../../api/experiences';
  * no error and no clue.
  *
  * Since #558 the set holds one marker per *place* rather than one per object.
- * Measured on Europe with the UNESCO category expanded, the set both surfaces
+ * Measured on Europe with the UNESCO kind expanded, the set both surfaces
  * were reading: its 467 objects drew 467 markers and now draw 3463. The region as
  * a whole holds 661 offered objects over 3725 visible places in the database, of
  * which 3531 are UNESCO's — the app draws fewer than the raw count because an
@@ -22,7 +22,7 @@ function makeExperience(id: number, overrides: Partial<Experience> = {}): Experi
   return {
     id,
     name: `Experience ${id}`,
-    category_name: 'UNESCO World Heritage Sites',
+    kind_name: 'World Heritage Sites',
     longitude: 10 + id / 1000,
     latitude: 50 + id / 1000,
     location_count: 1,
@@ -284,9 +284,9 @@ describe('buildExperienceMarkers', () => {
     expect(marker.longitude).toBe(12);
   });
 
-  it('honours the expanded category filter', () => {
-    const shown = makeExperience(1, { category_name: 'Top Museums' });
-    const hidden = makeExperience(2, { category_name: 'Public Art' });
+  it('honours the expanded kind filter', () => {
+    const shown = makeExperience(1, { kind_name: 'Top Museums' });
+    const hidden = makeExperience(2, { kind_name: 'Public Art' });
 
     const markers = buildExperienceMarkers([shown, hidden], {}, new Set());
     const filtered = buildExperienceMarkers([shown, hidden], {}, new Set(['Top Museums']));

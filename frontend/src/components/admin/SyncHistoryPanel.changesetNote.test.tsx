@@ -22,8 +22,8 @@ import type { SyncLog } from '../../api/admin';
 function log(overrides: Partial<SyncLog> = {}) {
   return {
     id: 1,
-    category_id: 1,
-    category_name: 'UNESCO World Heritage Sites',
+    source_id: 1,
+    source_name: 'UNESCO World Heritage Sites',
     started_at: '2026-07-26T14:00:00Z',
     completed_at: '2026-07-26T14:03:59Z',
     status: 'partial',
@@ -73,7 +73,7 @@ describe('changesetNote', () => {
   });
 
   it('explains an initial sync that created rows but kept no record', () => {
-    // The first run of every category: created 1247, updated 0. Gating on
+    // The first run of every source: created 1247, updated 0. Gating on
     // total_updated left this one showing "Created: 1,247" above
     // "No changes recorded for this run" with nothing to explain it.
     render(<>{changesetNote(log({ total_created: 1247 }))}</>);

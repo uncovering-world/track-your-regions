@@ -105,7 +105,7 @@ export function Search() {
         worldViewId: region.world_view_id,
         regionId: region.id,
         experienceId: result.id,
-        categoryId: null,
+        kindId: null,
       }, { names: { region: region.name, experience: result.name } });
       setQuery('');
     },

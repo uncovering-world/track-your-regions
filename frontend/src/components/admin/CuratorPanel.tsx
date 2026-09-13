@@ -41,7 +41,7 @@ import {
   PersonAdd as PersonAddIcon,
   Public as PublicIcon,
   Map as MapIcon,
-  Category as CategoryIcon,
+  Source as SourceIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
@@ -52,7 +52,7 @@ import {
   revokeCuratorAssignment,
   getCuratorActivity,
   searchUsers,
-  getCategories,
+  getSources,
 } from '../../api/admin';
 import { fetchWorldViews } from '../../api/worldViews';
 import { useAuth } from '../../hooks/useAuth';
@@ -216,14 +216,14 @@ function ScopeChip({
   onDelete: () => void;
   disabled: boolean;
 }) {
-  let icon: JSX.Element = <CategoryIcon />;
+  let icon: JSX.Element = <SourceIcon />;
   if (scope.scopeType === 'global') icon = <PublicIcon />;
   else if (scope.scopeType === 'region') icon = <MapIcon />;
 
   let label: string;
   if (scope.scopeType === 'global') label = 'Global';
   else if (scope.scopeType === 'region') label = scope.regionName || `Region #${scope.regionId}`;
-  else label = scope.categoryName || `Category #${scope.categoryId}`;
+  else label = scope.sourceName || `Source #${scope.sourceId}`;
 
   return (
     <Chip
@@ -262,7 +262,7 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
   } | null>(null);
 
   // Scope
-  const [scopeType, setScopeType] = useState<'region' | 'category' | 'global'>('region');
+  const [scopeType, setScopeType] = useState<'region' | 'source' | 'global'>('region');
   const [selectedRegion, setSelectedRegion] = useState<RegionSearchResult | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
@@ -295,8 +295,8 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
 
   const { data: sources } = useQuery({
     queryKey: ['admin', 'sources'],
-    queryFn: getCategories,
-    enabled: open && scopeType === 'category',
+    queryFn: getSources,
+    enabled: open && scopeType === 'source',
   });
 
   const createMutation = useMutation({
@@ -326,7 +326,7 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
       userId: selectedUser.id,
       scopeType,
       regionId: scopeType === 'region' ? selectedRegion?.id : undefined,
-      categoryId: scopeType === 'category' ? selectedSourceId ?? undefined : undefined,
+      sourceId: scopeType === 'source' ? selectedSourceId ?? undefined : undefined,
       notes: notes || undefined,
     });
   };
@@ -335,7 +335,7 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
     selectedUser &&
     (scopeType === 'global' ||
       (scopeType === 'region' && selectedRegion) ||
-      (scopeType === 'category' && selectedSourceId));
+      (scopeType === 'source' && selectedSourceId));
 
   // Auto-select first world view
   if (worldViews?.length && !selectedWorldViewId) {
@@ -383,13 +383,13 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
               value={scopeType}
               label="Scope Type"
               onChange={(e) => {
-                setScopeType(e.target.value as 'region' | 'category' | 'global');
+                setScopeType(e.target.value as 'region' | 'source' | 'global');
                 setSelectedRegion(null);
                 setSelectedSourceId(null);
               }}
             >
               <MenuItem value="region">Region</MenuItem>
-              <MenuItem value="category">Category</MenuItem>
+              <MenuItem value="source">Source</MenuItem>
               <MenuItem value="global">Global</MenuItem>
             </Select>
           </FormControl>
@@ -451,7 +451,7 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
           )}
 
           {/* Source Scope: Source Dropdown */}
-          {scopeType === 'category' && (
+          {scopeType === 'source' && (
             <FormControl fullWidth>
               <InputLabel>Experience Source</InputLabel>
               <Select

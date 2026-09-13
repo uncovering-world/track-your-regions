@@ -54,9 +54,9 @@ function unreachableReason(result: ExperienceSearchResult): string {
   return result.regions.length > 0 ? 'not in this world view' : 'not on a map yet';
 }
 
-/** Category, then the countries it is in — what tells two same-named sites apart. */
+/** Kind, then the countries it is in — what tells two same-named sites apart. */
 function context(result: ExperienceSearchResult): string {
-  return [result.category_name, result.country_names?.join(', ')].filter(Boolean).join(' · ');
+  return [result.kind_name, result.country_names?.join(', ')].filter(Boolean).join(' · ');
 }
 
 export function ExperienceSearchResults({ results, worldViewId, onSelect }: ExperienceSearchResultsProps) {

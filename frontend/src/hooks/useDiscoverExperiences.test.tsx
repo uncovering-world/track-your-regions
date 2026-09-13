@@ -1,10 +1,10 @@
 /**
  * Discover reads its place from the address (#644): the region the visitor is
- * looking at, the category list open on it, the card open in that list.
+ * looking at, the kind list open on it, the card open in that list.
  *
  *   /discover/wv/5/r/7100-malta          the tree standing at Malta
- *   /discover/wv/5/r/7100-malta?cat=1    Malta's UNESCO list, the tree at its parent
- *   /discover/wv/5/r/7100-malta/e/1234-stonehenge?cat=1   that list, with the card open
+ *   /discover/wv/5/r/7100-malta?kind=1    Malta's UNESCO list, the tree at its parent
+ *   /discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1   that list, with the card open
  *
  * `r` is the region in question. With a list open it is the region whose list
  * it is, and the tree stands at its parent — exactly the state a chip click
@@ -42,8 +42,8 @@ vi.mock('../api/experiences', async (importOriginal) => {
   return {
     ...actual,
     fetchExperienceRegionCounts: countsSpy,
-    fetchExperienceCategories: vi.fn().mockResolvedValue([
-      { id: 1, name: 'UNESCO World Heritage Sites', is_active: true },
+    fetchExperienceKinds: vi.fn().mockResolvedValue([
+      { id: 1, name: 'World Heritage Sites' },
       { id: 2, name: 'Art Museums', is_active: true },
     ]),
     fetchExperiencesByRegion: mockFetchByRegion,
@@ -59,7 +59,7 @@ const WV5 = { id: 5, name: 'Administrative', isDefault: false, isPublic: true };
 const WV2 = { id: 2, name: 'Wikivoyage Regions', isDefault: false, isPublic: true };
 const EUROPE = { id: 6737, worldViewId: 5, name: 'Europe', parentRegionId: null, color: null, hasSubregions: true };
 const MALTA = { id: 7100, worldViewId: 5, name: 'Malta', parentRegionId: 6737, color: null, hasSubregions: false };
-const STONEHENGE = { id: 1234, name: 'Stonehenge', type: 'cultural', category_name: 'UNESCO World Heritage Sites' } as Experience;
+const STONEHENGE = { id: 1234, name: 'Stonehenge', type: 'cultural', kind_id: 1, kind_name: 'World Heritage Sites' } as Experience;
 
 function makeWrapper(entry = '/discover/wv/5') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -111,7 +111,7 @@ describe('useDiscoverExperiences — the place is in the address', () => {
     expect(result.current.discover.activeView).toBeNull();
   });
 
-  it('writes an open category list beside the region, with the tree at its parent', async () => {
+  it('writes an open kind list beside the region, with the tree at its parent', async () => {
     const { result } = renderAt();
     await waitFor(() => expect(result.current.discover.selectedWorldView?.id).toBe(5));
     act(() => { result.current.discover.navigateToRegion(6737, 'Europe'); });
@@ -120,11 +120,11 @@ describe('useDiscoverExperiences — the place is in the address', () => {
     await waitFor(() => expect(result.current.discover.breadcrumbs).toEqual([{ regionId: 6737, regionName: 'Europe' }]));
 
     // A chip on Malta's row, at the Europe level.
-    act(() => { result.current.discover.openExperienceView(7100, 'Malta', 1, 'UNESCO World Heritage Sites'); });
+    act(() => { result.current.discover.openExperienceView(7100, 'Malta', 1, 'World Heritage Sites'); });
 
-    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta?cat=1'));
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta?kind=1'));
     expect(result.current.discover.activeView).toEqual({
-      regionId: 7100, regionName: 'Malta', categoryId: 1, categoryName: 'UNESCO World Heritage Sites',
+      regionId: 7100, regionName: 'Malta', kindId: 1, kindName: 'World Heritage Sites',
     });
     // The tree stays where the chip was clicked. The level trail derives from
     // the region's ancestors, so it settles a tick after the address.
@@ -144,11 +144,11 @@ describe('useDiscoverExperiences — the place is in the address', () => {
   });
 
   it('restores an open list from the address, with the tree at the region\'s parent', async () => {
-    const { result } = renderAt('/discover/wv/5/r/7100?cat=1');
+    const { result } = renderAt('/discover/wv/5/r/7100?kind=1');
 
     await waitFor(() => expect(result.current.discover.activeView?.regionId).toBe(7100));
     expect(result.current.discover.activeView).toEqual({
-      regionId: 7100, regionName: 'Malta', categoryId: 1, categoryName: 'UNESCO World Heritage Sites',
+      regionId: 7100, regionName: 'Malta', kindId: 1, kindName: 'World Heritage Sites',
     });
     expect(result.current.discover.currentParentId).toBe(6737);
     expect(result.current.discover.breadcrumbs).toEqual([{ regionId: 6737, regionName: 'Europe' }]);
@@ -156,7 +156,7 @@ describe('useDiscoverExperiences — the place is in the address', () => {
   });
 
   it('closing the list returns to the level it was opened from', async () => {
-    const { result } = renderAt('/discover/wv/5/r/7100?cat=1');
+    const { result } = renderAt('/discover/wv/5/r/7100?kind=1');
     await waitFor(() => expect(result.current.discover.activeView?.regionId).toBe(7100));
 
     act(() => { result.current.discover.closeExperienceView(); });
@@ -181,45 +181,45 @@ describe('useDiscoverExperiences — the place is in the address', () => {
   });
 
   it('opens a card by writing it into the address, pushed', async () => {
-    const { result } = renderAt('/discover/wv/5/r/7100?cat=1');
+    const { result } = renderAt('/discover/wv/5/r/7100?kind=1');
     await waitFor(() => expect(result.current.discover.experiences).toEqual([STONEHENGE]));
 
     act(() => { result.current.discover.setSelectedExperienceId(1234); });
 
-    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge?cat=1'));
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1'));
     expect(result.current.type).toBe('PUSH');
     expect(result.current.discover.selectedExperienceId).toBe(1234);
   });
 
-  it('finds the category of a card the address names without one', async () => {
-    // What the header writes on the way from the map: the card, no category.
-    // The category is the object's own, so it is read off the object.
+  it('finds the kind of a card the address names without one', async () => {
+    // What the header writes on the way from the map: the card, no kind.
+    // The kind is the object's own, so it is read off the object.
     const { result } = renderAt('/discover/wv/5/r/7100/e/1234');
 
-    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge?cat=1'));
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1'));
     expect(result.current.type).toBe('REPLACE');
-    expect(result.current.discover.activeView?.categoryId).toBe(1);
+    expect(result.current.discover.activeView?.kindId).toBe(1);
     expect(result.current.discover.selectedExperienceId).toBe(1234);
   });
 
   it('brings the card\'s slug up to date in place once the list names it', async () => {
-    const { result } = renderAt('/discover/wv/5/r/7100-malta/e/1234?cat=1');
+    const { result } = renderAt('/discover/wv/5/r/7100-malta/e/1234?kind=1');
 
-    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge?cat=1'));
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1'));
     expect(result.current.type).toBe('REPLACE');
     expect(result.current.discover.selectedExperienceId).toBe(1234);
   });
 
   it('keeps the card when the list fails, rather than spending the link on a hiccup', async () => {
     mockFetchByRegion.mockRejectedValue(new Error('HTTP 500'));
-    const { result } = renderAt('/discover/wv/5/r/7100-malta/e/1234-stonehenge?cat=1');
+    const { result } = renderAt('/discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1');
 
     await new Promise(resolve => setTimeout(resolve, 60));
-    expect(result.current.at).toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge?cat=1');
+    expect(result.current.at).toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1');
   });
 
-  it('keeps a card whose category is unknown when the list fails', async () => {
-    // The other effect: without a category it reads the object to find one, and
+  it('keeps a card whose kind is unknown when the list fails', async () => {
+    // The other effect: without a kind it reads the object to find one, and
     // a failure there must not take the card out of the address either.
     mockFetchByRegion.mockRejectedValue(new Error('HTTP 500'));
     const { result } = renderAt('/discover/wv/5/r/7100-malta/e/1234-stonehenge');
@@ -229,15 +229,15 @@ describe('useDiscoverExperiences — the place is in the address', () => {
   });
 
   it('drops a card the list does not hold, in place', async () => {
-    const { result } = renderAt('/discover/wv/5/r/7100/e/999?cat=1');
+    const { result } = renderAt('/discover/wv/5/r/7100/e/999?kind=1');
 
-    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta?cat=1'));
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta?kind=1'));
     expect(result.current.type).toBe('REPLACE');
     expect(result.current.discover.selectedExperienceId).toBeNull();
   });
 
-  it('drops a category nobody knows, in place', async () => {
-    const { result } = renderAt('/discover/wv/5/r/7100?cat=42');
+  it('drops a kind nobody knows, in place', async () => {
+    const { result } = renderAt('/discover/wv/5/r/7100?kind=42');
 
     await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta'));
     expect(result.current.discover.activeView).toBeNull();
@@ -253,7 +253,7 @@ describe('useDiscoverExperiences — the place is in the address', () => {
  */
 describe('useDiscoverExperiences — the world view underneath it', () => {
   it('drops its whole context when the world view changes underneath it', async () => {
-    const { result } = renderAt('/discover/wv/5/r/7100/e/1234?cat=1');
+    const { result } = renderAt('/discover/wv/5/r/7100/e/1234?kind=1');
     await waitFor(() => expect(result.current.discover.selectedExperienceId).toBe(1234));
     expect(result.current.discover.breadcrumbs).toHaveLength(1);
     expect(result.current.discover.activeView).not.toBeNull();

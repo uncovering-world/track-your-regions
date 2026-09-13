@@ -1,7 +1,7 @@
 /**
  * CurationDialog — Shared dialog for curator actions on an experience.
  *
- * Supports editing (name, description, category, image), rejecting, and
+ * Supports editing (name, description, kind, image), rejecting, and
  * unrejecting an experience within a region, and lists the places the object
  * is made of with the way to correct each (`CurationPlaces`). Includes a
  * collapsible curation history log. Self-contained mutations that invalidate
@@ -98,7 +98,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editType, setEditType] = useState('');
-  const typeOptions = typeOptionsFor(experience?.category_id);
+  const typeOptions = typeOptionsFor(experience?.kind_id);
   const [editImageUrl, setEditImageUrl] = useState('');
   const [editWebsiteUrl, setEditWebsiteUrl] = useState('');
   const [editWikipediaUrl, setEditWikipediaUrl] = useState('');
@@ -294,8 +294,8 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
           <Typography variant="h6" sx={{ flex: 1 }}>
             Curate Experience
           </Typography>
-          {experience.category_name && (
-            <Chip label={experience.category_name} size="small" variant="outlined" />
+          {experience.kind_name && (
+            <Chip label={experience.kind_name} size="small" variant="outlined" />
           )}
         </Box>
       </DialogTitle>

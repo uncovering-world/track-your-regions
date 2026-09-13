@@ -5,7 +5,7 @@
  * *places* are rather than where their objects were pinned.
  *
  * A module of its own so it can be exercised without a map. The marker set is a
- * pure function of the experiences, their locations, which category groups are
+ * pure function of the experiences, their locations, which kind groups are
  * expanded and which objects this reader folded, and it is what the list-to-map
  * hover resolves an experience against — a marker that is not built is a row
  * whose hover does nothing.
@@ -144,7 +144,7 @@ function placeMarkers(exp: Experience, places: ExperienceLocation[]): MarkerData
 export function buildExperienceMarkers(
   experiences: Experience[],
   locationsByExperience: Record<number, ExperienceLocation[]>,
-  expandedCategoryNames: Set<string>,
+  expandedKindNames: Set<string>,
   collapsedExperienceIds: ReadonlySet<number> = EMPTY_COLLAPSED,
 ): MarkerData[] {
   const result: MarkerData[] = [];
@@ -159,8 +159,8 @@ export function buildExperienceMarkers(
   // scan of this array either way — it resolves markers directly rather than
   // searching what the map currently draws.
   for (const exp of experiences) {
-    const categoryName = exp.category_name || 'Experiences';
-    if (expandedCategoryNames.size > 0 && !expandedCategoryNames.has(categoryName)) continue;
+    const kindName = exp.kind_name || 'Experiences';
+    if (expandedKindNames.size > 0 && !expandedKindNames.has(kindName)) continue;
 
     const locations = locationsByExperience[exp.id];
     if (!locations || locations.length === 0) {

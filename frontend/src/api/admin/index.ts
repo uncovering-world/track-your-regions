@@ -22,7 +22,7 @@ export interface WaitingCounts {
   contents: number;
 }
 
-export interface ExperienceCategory {
+export interface ExperienceSource {
   id: number;
   name: string;
   description: string | null;
@@ -92,8 +92,8 @@ export interface SyncStatus {
 
 export interface SyncLog {
   id: number;
-  category_id: number;
-  category_name: string;
+  source_id: number;
+  source_name: string;
   started_at: string;
   completed_at: string | null;
   status: string;
@@ -139,7 +139,7 @@ export interface SyncFieldChange {
   /** A curator had claimed this field: the stored value won on purpose. */
   curatedConflict: boolean;
   /**
-   * The category's gate kept this write out of a row readers can already see, so
+   * The source's gate kept this write out of a row readers can already see, so
    * `new` is a proposal waiting on a curator and `old` is what is live. Absent on
    * rows recorded before the flag existed, which is when nothing was ever held.
    */
@@ -208,23 +208,23 @@ export interface AssignmentStatus {
 // =============================================================================
 
 /**
- * Get all experience categories
+ * Get all experience sources
  */
-export async function getCategories(): Promise<ExperienceCategory[]> {
-  return authFetchJson<ExperienceCategory[]>(`${API_URL}/api/admin/sync/categories`);
+export async function getSources(): Promise<ExperienceSource[]> {
+  return authFetchJson<ExperienceSource[]>(`${API_URL}/api/admin/sync/sources`);
 }
 
 /**
- * Start sync for a category
- * @param categoryId - The category to sync
+ * Start sync for a source
+ * @param sourceId - The source to sync
  * @param options - `dryRun` records the changeset without writing any
  *   experiences. A sync deletes nothing either way.
  */
 export async function startSync(
-  categoryId: number,
+  sourceId: number,
   options: { dryRun?: boolean; refreshCache?: boolean } = {},
 ): Promise<{ started: boolean; message: string; dryRun?: boolean; refreshCache?: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/start`, {
+  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -245,8 +245,8 @@ export async function startSync(
  * curator owns is never touched. Reports through the same status endpoint a
  * sync does.
  */
-export async function fixPictures(categoryId: number): Promise<{ started: boolean; message: string }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/fix-images`, {
+export async function fixPictures(sourceId: number): Promise<{ started: boolean; message: string }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/fix-images`, {
     method: 'POST',
   });
 }
@@ -275,17 +275,17 @@ export interface WikidataCacheKind {
  * What we are keeping from the source, so an admin can see its age rather than
  * discover it while debugging an answer from last week.
  */
-export async function getWikidataCache(categoryId: number): Promise<{ kinds: WikidataCacheKind[] }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/cache`);
+export async function getWikidataCache(sourceId: number): Promise<{ kinds: WikidataCacheKind[] }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/cache`);
 }
 
 /** Forget one kind, or everything when `kind` is absent. */
 export async function clearWikidataCache(
-  categoryId: number, kind?: string,
+  sourceId: number, kind?: string,
 ): Promise<{ removed: number }> {
   const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
   return authFetchJson(
-    `${API_URL}/api/admin/sync/categories/${categoryId}/cache${query}`, { method: 'DELETE' },
+    `${API_URL}/api/admin/sync/sources/${sourceId}/cache${query}`, { method: 'DELETE' },
   );
 }
 
@@ -297,9 +297,9 @@ export async function clearWikidataCache(
  * re-fetches five things or five hundred.
  */
 export async function setWikidataCacheTtl(
-  categoryId: number, kind: string, hours: number,
+  sourceId: number, kind: string, hours: number,
 ): Promise<{ kind: string; hours: number; restamped: number }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/cache/${encodeURIComponent(kind)}/ttl`, {
+  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/cache/${encodeURIComponent(kind)}/ttl`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ hours }),
@@ -307,17 +307,17 @@ export async function setWikidataCacheTtl(
 }
 
 /**
- * Get sync status for a category
+ * Get sync status for a source
  */
-export async function getSyncStatus(categoryId: number): Promise<SyncStatus> {
-  return authFetchJson<SyncStatus>(`${API_URL}/api/admin/sync/categories/${categoryId}/status`);
+export async function getSyncStatus(sourceId: number): Promise<SyncStatus> {
+  return authFetchJson<SyncStatus>(`${API_URL}/api/admin/sync/sources/${sourceId}/status`);
 }
 
 /**
- * Cancel sync for a category
+ * Cancel sync for a source
  */
-export async function cancelSync(categoryId: number): Promise<{ cancelled: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/cancel`, {
+export async function cancelSync(sourceId: number): Promise<{ cancelled: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/cancel`, {
     method: 'POST',
   });
 }
@@ -334,9 +334,9 @@ export async function cancelSync(categoryId: number): Promise<{ cancelled: boole
  * next run — the hold only exists while the gate does.
  */
 export async function setCurationGate(
-  categoryId: number, requiresCuration: boolean,
-): Promise<{ categoryId: number; name: string; requiresCuration: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/curation-gate`, {
+  sourceId: number, requiresCuration: boolean,
+): Promise<{ sourceId: number; name: string; requiresCuration: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/curation-gate`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ requiresCuration }),
@@ -350,9 +350,9 @@ export async function setCurationGate(
  * carries no line at all — its threshold lives in code, not here.
  */
 export async function setSourceLine(
-  categoryId: number, line: { enterSitelinks: number; staySitelinks: number },
-): Promise<{ categoryId: number; name: string; enterSitelinks: number; staySitelinks: number }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/line`, {
+  sourceId: number, line: { enterSitelinks: number; staySitelinks: number },
+): Promise<{ sourceId: number; name: string; enterSitelinks: number; staySitelinks: number }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/line`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(line),
@@ -412,26 +412,26 @@ export interface PublishedWaitingObject {
  * count it — the publications had already committed by then, so the report is sent
  * with the count missing rather than replaced by a `0` nothing checked.
  */
-export async function publishWaiting(categoryId: number): Promise<{
-  categoryId: number;
+export async function publishWaiting(sourceId: number): Promise<{
+  sourceId: number;
   published: PublishedWaitingObject[];
   refused: Array<{ id: number; name: string; error: string }>;
   outOfScope: number;
   heldLeftForReview: number | null;
 }> {
-  return authFetchJson(`${API_URL}/api/experiences/categories/${categoryId}/publish-waiting`, {
+  return authFetchJson(`${API_URL}/api/experiences/sources/${sourceId}/publish-waiting`, {
     method: 'POST',
   });
 }
 
 /**
- * Reorder experience categories (set display_priority)
+ * Reorder experience sources (set display_priority)
  */
-export async function reorderCategories(categoryIds: number[]): Promise<{ success: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/categories/reorder`, {
+export async function reorderSources(sourceIds: number[]): Promise<{ success: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/sources/reorder`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ categoryIds }),
+    body: JSON.stringify({ sourceIds }),
   });
 }
 
@@ -439,12 +439,12 @@ export async function reorderCategories(categoryIds: number[]): Promise<{ succes
  * Get sync logs
  */
 export async function getSyncLogs(
-  categoryId?: number,
+  sourceId?: number,
   limit = 20,
   offset = 0
 ): Promise<SyncLogsResponse> {
   const params = new URLSearchParams();
-  if (categoryId) params.set('categoryId', String(categoryId));
+  if (sourceId) params.set('sourceId', String(sourceId));
   params.set('limit', String(limit));
   params.set('offset', String(offset));
 
@@ -492,12 +492,12 @@ export async function getSyncLogChanges(
  */
 export async function startRegionAssignment(
   worldViewId: number,
-  categoryId?: number
+  sourceId?: number
 ): Promise<{ started: boolean; message: string }> {
   return authFetchJson(`${API_URL}/api/admin/experiences/assign-regions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ worldViewId, categoryId }),
+    body: JSON.stringify({ worldViewId, sourceId }),
   });
 }
 
@@ -526,10 +526,10 @@ export async function cancelAssignment(worldViewId: number): Promise<{ cancelled
  */
 export async function getExperienceCountsByRegion(
   worldViewId: number,
-  categoryId?: number
+  sourceId?: number
 ): Promise<{ regionId: number; regionName: string; count: number }[]> {
   const params = new URLSearchParams({ worldViewId: String(worldViewId) });
-  if (categoryId) params.set('categoryId', String(categoryId));
+  if (sourceId) params.set('sourceId', String(sourceId));
 
   return authFetchJson(`${API_URL}/api/admin/experiences/counts-by-region?${params}`);
 }
@@ -540,11 +540,11 @@ export async function getExperienceCountsByRegion(
 
 export interface CuratorScope {
   id: number;
-  scopeType: 'region' | 'category' | 'global';
+  scopeType: 'region' | 'source' | 'global';
   regionId: number | null;
   regionName: string | null;
-  categoryId: number | null;
-  categoryName: string | null;
+  sourceId: number | null;
+  sourceName: string | null;
   assignedAt: string;
   notes: string | null;
 }
@@ -581,9 +581,9 @@ export async function listCurators(): Promise<CuratorInfo[]> {
  */
 export async function createCuratorAssignment(data: {
   userId: number;
-  scopeType: 'region' | 'category' | 'global';
+  scopeType: 'region' | 'source' | 'global';
   regionId?: number;
-  categoryId?: number;
+  sourceId?: number;
   notes?: string;
 }): Promise<{ id: number; userId: number; scopeType: string; rolePromoted: boolean }> {
   return authFetchJson(`${API_URL}/api/admin/curators`, {

@@ -36,7 +36,7 @@ import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../h
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience } from '../api/experiences';
 import { locationLabel } from '../utils/locationLabel';
-import { experienceColor } from '../utils/categoryColors';
+import { experienceColor } from '../utils/kindColors';
 import { frameGeoJson } from '../utils/mapUtils';
 
 interface ExperienceLocation {
@@ -65,8 +65,8 @@ function tryHoverSpecificLocation(
       experienceName: exp.name,
       locationId: loc.id,
       locationName: locationLabel(loc),
-      categoryName: exp.category_name ?? null,
-      categoryId: exp.category_id,
+      kindName: exp.kind_name ?? null,
+      kindId: exp.kind_id,
       treasureCount: exp.treasure_count,
       imageUrl: exp.image_url,
       imageCredit: exp.image_credit ?? null,
@@ -92,7 +92,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     flyToExperienceId,
     clearFlyTo,
     getExperienceById,
-    expandedCategoryNames,
+    expandedKindNames,
     collapsedExperienceIds,
     toggleCollapsedExperience,
     showLost,
@@ -140,8 +140,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   // highlight layer below, which follows the same rule.
   const markers = useMemo(
     () => buildExperienceMarkers(
-      experiences, locationsByExperience, expandedCategoryNames, collapsedExperienceIds),
-    [experiences, locationsByExperience, expandedCategoryNames, collapsedExperienceIds],
+      experiences, locationsByExperience, expandedKindNames, collapsedExperienceIds),
+    [experiences, locationsByExperience, expandedKindNames, collapsedExperienceIds],
   );
 
   // Keep a ref so map callbacks can access the latest markers
@@ -176,7 +176,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
           experienceName: m.experience.name,
           // The pin's colour, decided once for every surface (`experienceColor`):
           // the kind's, refined by the type where the types are told apart.
-          color: experienceColor(m.experience.category_id, m.experience.type),
+          color: experienceColor(m.experience.kind_id, m.experience.type),
           locationCount: m.locationCount,
           folded: m.folded === true,
         },
@@ -289,7 +289,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     if (!marker) {
       // Nothing to show. Returning bare would leave the previous row's ring and
       // card up, where they read as this row's — worse than showing none. Both
-      // go, not just the ring: the card carries the name, image and category.
+      // go, not just the ring: the card carries the name, image and kind.
       setHoverData(EMPTY_FC);
       setHoverPreview(null);
       return;
@@ -299,8 +299,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       experienceName: marker.experience.name,
       locationId: marker.locationId,
       locationName: marker.locationName,
-      categoryName: marker.experience.category_name ?? null,
-      categoryId: marker.experience.category_id,
+      kindName: marker.experience.kind_name ?? null,
+      kindId: marker.experience.kind_id,
       treasureCount: marker.experience.treasure_count,
       imageUrl: marker.experience.image_url,
       imageCredit: marker.experience.image_credit ?? null,

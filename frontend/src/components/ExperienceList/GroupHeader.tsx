@@ -1,5 +1,5 @@
 /**
- * One category heading in the experience list: its name, its count, and the
+ * One kind heading in the experience list: its name, its count, and the
  * curator's way to add an object under it.
  *
  * Split out of `ExperienceList` when the view filter (#553) gave the count a
@@ -17,7 +17,7 @@ interface GroupHeaderProps {
   expanded: boolean;
   onToggle: () => void;
   /**
-   * How many the category holds in the whole region, or null when the list is
+   * How many the kind holds in the whole region, or null when the list is
    * not filtering — where it would only repeat the number already printed.
    */
   regionTotal: number | null;
@@ -29,12 +29,12 @@ export function GroupHeader({
   group, expanded, onToggle, regionTotal, canAdd, onAdd,
 }: GroupHeaderProps) {
   // Both numbers while the view is filtering: "12 of 467" says what is here *and*
-  // that the category holds more, which one number cannot (#553).
+  // that the kind holds more, which one number cannot (#553).
   const shown = group.experiences.length;
   const count = regionTotal !== null && regionTotal > shown ? `${shown} of ${regionTotal}` : `${shown}`;
   // The row's name as it is: since migration 045 no source row starts with
   // "Top ", so "Add new art museums" needs nothing stripped (#818).
-  const addLabel = `Add new ${group.categoryName.toLowerCase()}`;
+  const addLabel = `Add new ${group.kindName.toLowerCase()}`;
 
   return (
     <ListItem
@@ -43,7 +43,7 @@ export function GroupHeader({
       sx={{ bgcolor: 'grey.100', '&:hover': { bgcolor: 'grey.200' } }}
     >
       {/* A button, not a `div` with an `onClick`: this is the control that opens
-          and closes a category, and on a `div` it cannot be reached by keyboard
+          and closes a kind, and on a `div` it cannot be reached by keyboard
           at all, nor does anything announce whether the group is open. The add
           button stays outside it — a button inside a button is invalid, and its
           click must not toggle the group.
@@ -56,12 +56,12 @@ export function GroupHeader({
         <ListItemText
           primary={
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              {group.categoryName} ({count})
+              {group.kindName} ({count})
             </Typography>
           }
         />
         {/* Inside the button, not beside it: the chevron is the thing a reader
-            aims at to open a category, and as a sibling of the button it is
+            aims at to open a kind, and as a sibling of the button it is
             inert — the button's `flexGrow` stops at the add button. That also
             leaves the two headers extracted from this file behaving alike. */}
         {expanded ? <ExpandLess /> : <ExpandMore />}

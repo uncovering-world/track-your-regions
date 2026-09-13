@@ -27,7 +27,8 @@ export interface QueueRow {
   kind: RowKind;
   id: number;
   name: string;
-  category: string;
+  /** The kind of place, as the chip beside the name says it — never the row's own `kind`, the question. */
+  placeKind: string;
   /** What is being asked, in the words the section heading uses. */
   question: string;
   /** When the run that raised this question completed; `null` for one still in flight. */
@@ -76,9 +77,9 @@ function waitingRow(entry: QueueOrderEntry, group: GatedGroup): QueueRow {
     kind: 'waiting',
     id: entry.id,
     name: group.name,
-    // The group carries no category of its own — it is three kinds about one object, and
-    // whichever of them is present names the same category.
-    category: (group.arrival ?? group.held ?? group.contents)?.category_name ?? '',
+    // The group carries no kind of its own — it is three kinds about one object, and
+    // whichever of them is present names the same kind.
+    placeKind: (group.arrival ?? group.held ?? group.contents)?.kind_name ?? '',
     question: QUESTION.waiting,
     askedAt: entry.askedAt,
     runId: entry.runId,
@@ -94,7 +95,7 @@ function itemRow(kind: Exclude<RowKind, 'waiting'>, entry: QueueOrderEntry, item
     kind,
     id: entry.id,
     name: item.name,
-    category: item.category_name,
+    placeKind: item.kind_name,
     question: QUESTION[kind],
     askedAt: entry.askedAt,
     runId: entry.runId,

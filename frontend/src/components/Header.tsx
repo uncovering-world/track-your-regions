@@ -24,7 +24,7 @@ export function Header() {
   const { isCurator } = useAuth();
 
   // The place carries over between the two views: the world view and the region
-  // stay, and so does an open card — Discover finds its category from the
+  // stay, and so does an open card — Discover finds its kind from the
   // object. Asked of `go` rather than built from this render's `address`, which
   // can be one write behind it (see `GoTarget`) — the failure that costs is a
   // click landing just after the root named its world view, which would carry
@@ -39,11 +39,11 @@ export function Header() {
         worldViewId: selectedWorldView && !selectedWorldView.isDefault ? selectedWorldView.id : null,
         regionId: null,
         experienceId: null,
-        categoryId: null,
+        kindId: null,
       });
       return;
     }
-    go(at => ({ ...at, mode: nextMode, categoryId: null }));
+    go(at => ({ ...at, mode: nextMode, kindId: null }));
   };
 
   return (

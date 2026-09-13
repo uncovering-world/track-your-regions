@@ -341,7 +341,7 @@ export function ReviewQueueList({
                     </Typography>
                   </Box>
                   <Typography variant="caption" color="text.secondary" noWrap component="div">
-                    {row.category}
+                    {row.placeKind}
                     {' · '}
                     <Box component="span" sx={{ fontWeight: 700, color }}>{word}</Box>
                     {row.specific ? `: ${row.specific}` : null}

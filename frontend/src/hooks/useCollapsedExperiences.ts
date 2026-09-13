@@ -4,9 +4,9 @@
  * Drawing every place is right by default and wrong for a few rows: the Rock Art
  * of the Mediterranean Basin puts 734 rock shelters on a map of Spain — 563 of
  * them on screen at once at the zoom that frames Valencia — and it and the Roman
- * limes own a third of the 3463 pins Europe's UNESCO category draws. So the ask
+ * limes own a third of the 3463 pins Europe's UNESCO kind draws. So the ask
  * exists — and it is per object, never a mode, because a reader who folds that
- * one site still wants the other 466 of that category's rows drawn as the places
+ * one site still wants the other 466 of that kind's rows drawn as the places
  * they are.
  *
  * Held for the region it was made in, and *derived* rather than cleared by an

@@ -13,13 +13,13 @@ import {
   type ReviewAddress,
 } from './appUrl';
 
-const MAP_ROOT: AppAddress = { mode: 'map', worldViewId: null, regionId: null, experienceId: null, categoryId: null };
+const MAP_ROOT: AppAddress = { mode: 'map', worldViewId: null, regionId: null, experienceId: null, kindId: null };
 
 /**
  * One grammar for every address the app writes and reads (#644). The path
  * carries what names a resource — the world view, the region, the open card —
  * and the query carries view state a visitor set deliberately: today only
- * Discover's category. Slugs decorate; ids decide.
+ * Discover's kind. Slugs decorate; ids decide.
  */
 describe('parseAppUrl', () => {
   it('reads the map root as the default world view with nothing selected', () => {
@@ -28,13 +28,17 @@ describe('parseAppUrl', () => {
 
   it('reads world view, region and experience from the path, ignoring the slugs', () => {
     expect(parseAppUrl('/wv/5/r/6737-europe/e/1234-historic-centre-of-saint-petersburg', '')).toEqual({
-      mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, categoryId: null,
+      mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, kindId: null,
     });
   });
 
-  it('reads Discover with its category', () => {
+  it('reads Discover with its kind', () => {
+    expect(parseAppUrl('/discover/wv/5/r/7120-france', '?kind=1')).toEqual({
+      mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, kindId: 1,
+    });
+    // The parameter was spelled `cat` until #819; a link shared before it still opens the list.
     expect(parseAppUrl('/discover/wv/5/r/7120-france', '?cat=1')).toEqual({
-      mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, categoryId: 1,
+      mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, kindId: 1,
     });
   });
 
@@ -69,12 +73,12 @@ describe('parseAppUrl', () => {
     expect(parseAppUrl('/wv/7', '?wv=5')).toEqual({ ...MAP_ROOT, worldViewId: 7 });
   });
 
-  it('ignores a category outside Discover', () => {
-    expect(parseAppUrl('/wv/5/r/1', '?cat=2')).toEqual({ ...MAP_ROOT, worldViewId: 5, regionId: 1 });
+  it('ignores a kind outside Discover', () => {
+    expect(parseAppUrl('/wv/5/r/1', '?kind=2')).toEqual({ ...MAP_ROOT, worldViewId: 5, regionId: 1 });
   });
 
-  it('ignores a category that does not parse', () => {
-    expect(parseAppUrl('/discover/wv/5/r/1', '?cat=x')).toEqual({ ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 1 });
+  it('ignores a kind that does not parse', () => {
+    expect(parseAppUrl('/discover/wv/5/r/1', '?kind=x')).toEqual({ ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 1 });
   });
 
   it('tolerates a trailing slash', () => {
@@ -84,18 +88,18 @@ describe('parseAppUrl', () => {
 
 describe('buildAppUrl', () => {
   it('writes bare ids when no names are given', () => {
-    expect(buildAppUrl({ mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, categoryId: null })).toBe('/wv/5/r/6737/e/1234');
+    expect(buildAppUrl({ mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, kindId: null })).toBe('/wv/5/r/6737/e/1234');
   });
 
   it('decorates the ids with slugs when the names are known', () => {
     expect(buildAppUrl(
-      { mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, categoryId: null },
+      { mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, kindId: null },
       { region: 'Europe', experience: 'Historic Centre of Saint Petersburg and Related Groups of Monuments' },
     )).toBe('/wv/5/r/6737-europe/e/1234-historic-centre-of-saint-petersburg-and-related-groups-of-mo');
   });
 
-  it('writes Discover with its category', () => {
-    expect(buildAppUrl({ mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, categoryId: 1 })).toBe('/discover/wv/5/r/7120?cat=1');
+  it('writes Discover with its kind', () => {
+    expect(buildAppUrl({ mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, kindId: 1 })).toBe('/discover/wv/5/r/7120?kind=1');
   });
 
   it('writes the default world view as the bare root', () => {
@@ -103,9 +107,9 @@ describe('buildAppUrl', () => {
     expect(buildAppUrl({ ...MAP_ROOT, mode: 'discover' })).toBe('/discover');
   });
 
-  it('drops what cannot stand alone: an experience without a region, a category outside Discover', () => {
+  it('drops what cannot stand alone: an experience without a region, a kind outside Discover', () => {
     expect(buildAppUrl({ ...MAP_ROOT, worldViewId: 5, experienceId: 1234 })).toBe('/wv/5');
-    expect(buildAppUrl({ ...MAP_ROOT, worldViewId: 5, regionId: 1, categoryId: 2 })).toBe('/wv/5/r/1');
+    expect(buildAppUrl({ ...MAP_ROOT, worldViewId: 5, regionId: 1, kindId: 2 })).toBe('/wv/5/r/1');
   });
 
   it('writes nothing for a name whose slug is empty', () => {
@@ -121,8 +125,8 @@ describe('an address survives the round trip', () => {
     { ...MAP_ROOT, worldViewId: 5, regionId: 6737 },
     { ...MAP_ROOT, worldViewId: 5, regionId: 6737, experienceId: 1234 },
     { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120 },
-    { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120, categoryId: 1 },
-    { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: 1234, categoryId: 1 },
+    { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120, kindId: 1 },
+    { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: 1234, kindId: 1 },
   ];
 
   it.each(addresses)('%j', (address) => {
@@ -144,7 +148,7 @@ describe('legacyRedirect', () => {
   it('leaves a canonical address alone', () => {
     expect(legacyRedirect('/', '')).toBeNull();
     expect(legacyRedirect('/wv/5/r/6737-europe', '')).toBeNull();
-    expect(legacyRedirect('/discover/wv/5/r/1', '?cat=2')).toBeNull();
+    expect(legacyRedirect('/discover/wv/5/r/1', '?kind=2')).toBeNull();
   });
 
   it('leaves pages that are not places alone', () => {

@@ -43,7 +43,7 @@ import {
   searchExperiences,
   assignExperienceToRegion,
   createManualExperience,
-  fetchExperienceCategories,
+  fetchExperienceKinds,
   type ExperienceSearchResult,
 } from '../../api/experiences';
 import { searchPlaces, suggestImageUrl, type PlaceResult, type ImageSuggestion } from '../../api/geocode';
@@ -130,7 +130,7 @@ function SearchResultBody({ exp, imageUrl }: { exp: ExperienceSearchResult; imag
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <ListItemText
           primary={exp.name}
-          secondary={[exp.category_name, exp.type, exp.country_names?.[0]].filter(Boolean).join(' \u00B7 ')}
+          secondary={[exp.kind_name, exp.type, exp.country_names?.[0]].filter(Boolean).join(' \u00B7 ')}
           primaryTypographyProps={{ variant: 'body2', fontWeight: 500, noWrap: true }}
           secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
           sx={{ my: 0 }}
@@ -152,12 +152,12 @@ interface AddExperienceDialogProps {
   /** Region name — appended to Nominatim queries for better geo-disambiguation */
   regionName?: string;
   /** Pre-select this source when opening Create New tab */
-  defaultCategoryId?: number;
+  defaultKindId?: number;
   /** Open directly on a specific tab: 0 = Create New, 1 = Search & Add */
   defaultTab?: 0 | 1;
 }
 
-function AddExperienceDialogComponent({ open, onClose, regionId, regionName, defaultCategoryId, defaultTab }: AddExperienceDialogProps) {
+function AddExperienceDialogComponent({ open, onClose, regionId, regionName, defaultKindId, defaultTab }: AddExperienceDialogProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(defaultTab ?? 0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -176,29 +176,29 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     },
   });
 
-  // --- Categories for Create New tab ---
-  const { data: categories } = useQuery({
-    queryKey: ['experience-categories'],
-    queryFn: fetchExperienceCategories,
+  // --- Kinds for Create New tab ---
+  const { data: kinds } = useQuery({
+    queryKey: ['experience-kinds'],
+    queryFn: fetchExperienceKinds,
   });
 
-  // Sync tab and category when dialog opens with different defaults
+  // Sync tab and kind when dialog opens with different defaults
   useEffect(() => {
     if (open) {
       setActiveTab(defaultTab ?? 0);
-      setNewCategoryId(defaultCategoryId ?? '');
+      setNewKindId(defaultKindId ?? '');
       // A type belongs to a kind: a value picked for the last kind is not one of this
       // kind's, and a select holding a value outside its items renders blank.
       setNewType('');
     }
-  }, [open, defaultTab, defaultCategoryId]);
+  }, [open, defaultTab, defaultKindId]);
 
   // --- Create New tab state ---
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newType, setNewType] = useState('');
-  const [newCategoryId, setNewCategoryId] = useState<number | ''>(defaultCategoryId ?? '');
-  const typeOptions = typeOptionsFor(newCategoryId === '' ? null : newCategoryId);
+  const [newKindId, setNewKindId] = useState<number | ''>(defaultKindId ?? '');
+  const typeOptions = typeOptionsFor(newKindId === '' ? null : newKindId);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [newWikipediaUrl, setNewWikipediaUrl] = useState('');
@@ -388,7 +388,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
       setNewName('');
       setNewDescription('');
       setNewType('');
-      setNewCategoryId('');
+      setNewKindId('');
       setCoords(null);
       setNewImageUrl('');
       setNewWikipediaUrl('');
@@ -435,12 +435,12 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
       imageUrl: newImageUrl || undefined,
       wikipediaUrl: newWikipediaUrl || undefined,
       websiteUrl: newWebsiteUrl || undefined,
-      categoryId: newCategoryId || undefined,
+      kindId: newKindId || undefined,
       regionId,
     });
   };
 
-  const canCreate = !!newName && coords !== null && !!newCategoryId;
+  const canCreate = !!newName && coords !== null && !!newKindId;
 
   // Helper text for image field
   const imageHelperText = pickImageHelperText({
@@ -534,13 +534,13 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
 
             <Box sx={{ display: 'flex', gap: 2 }}>
               <FormControl fullWidth size="small" required>
-                <InputLabel>Category</InputLabel>
+                <InputLabel>Kind</InputLabel>
                 <Select
-                  value={newCategoryId}
-                  label="Category"
-                  onChange={(e) => { setNewCategoryId(e.target.value as number | ''); setNewType(''); }}
+                  value={newKindId}
+                  label="Kind"
+                  onChange={(e) => { setNewKindId(e.target.value as number | ''); setNewType(''); }}
                 >
-                  {categories?.map((s) => (
+                  {kinds?.map((s) => (
                     <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                   ))}
                 </Select>
