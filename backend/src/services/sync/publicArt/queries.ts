@@ -192,10 +192,17 @@ export async function fetchBroadPool(
  *
  * The ids come from the catalogue rather than from code, so they are checked
  * for shape before they are spliced into the query, as the constants are.
+ *
+ * `about` names whose ids these are, for the one line a person reads in the
+ * panel. The admitted rows are what the question was written for and stay its
+ * default; the Archaeology kind asks it about the museums English Wikipedia's
+ * categories named, and an admin watching that phase should not be told it is
+ * looking after admitted rows.
  */
 export async function fetchEntitiesByIds(
   sparql: SparqlFn,
   qids: string[],
+  about = 'admitted rows the pool did not name',
 ): Promise<PoolEntity[]> {
   const asked = qids.filter(isQid);
   if (!asked.length) return [];
@@ -204,7 +211,7 @@ export async function fetchEntitiesByIds(
       VALUES ?e { ${values(asked)} }
       ?e wikibase:sitelinks ?sl .
       OPTIONAL { ?e wdt:P625 ?coord }${POOL_DETAILS}
-    }`, { kind: 'pool', label: `admitted rows the pool did not name: ${asked.length}` });
+    }`, { kind: 'pool', label: `${about}: ${asked.length}` });
   return parsePool(rows, { placeless: true });
 }
 

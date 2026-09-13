@@ -21,6 +21,12 @@
  * museums that one famous find (the Lion man) would wrongly admit. The counts
  * are in `docs/sources/global/wikidata-archaeology.md`.
  *
+ * The category is also a *door* and not only a test (`NATURE_CATEGORY_ROOT`),
+ * and what walks in through it is asked one thing more: whether Wikidata calls
+ * the place a museum at all (`isMuseumOnWikidata`). An editorial shelf holds
+ * the dig beside the building, and a museum named by a class or by a find it
+ * holds is a museum by the road it came in on.
+ *
  * The shape of `worship/worshipTest.ts`, and for the same reason: every fact is
  * handed in, so the rule is pure and can be tried on the catalogue's own
  * mistakes without a network. The rules run in the order a person would give
@@ -117,6 +123,57 @@ export function museumNature(facts: MuseumFacts, trees: ArchaeologyTrees): Museu
   if (department) return { nature: 'department', why: `category: ${department}` };
 
   return { nature: 'none' };
+}
+
+/**
+ * The sentence a row refused at the category door carries, and the door it is
+ * sent to instead.
+ */
+export const NOT_A_MUSEUM = 'no museum class on Wikidata: a site, a castle or a city in '
+  + 'Wikipedia\'s category — the site door\'s';
+
+/**
+ * Whether Wikidata calls this place a museum at all — the one thing a row the
+ * English Wikipedia category named has to carry.
+ *
+ * `Archaeological museums in <country>` is an editorial shelf, not a class, and
+ * the editors file the dig beside the building: of the 776 articles under the
+ * root's country categories on 2026-09-13, 75 are at or above the place line
+ * and **27 of those carry no museum class at all** — Pompeii (`archaeological
+ * site, ancient city`, 122 sitelinks), Chichén Itzá, Teotihuacan, Masada,
+ * Çatalhöyük, Hierapolis, Sforza Castle, Bodrum Castle, the Cathedral of the
+ * Annunciation. Nothing else in this rule refuses them: the park veto reads
+ * Wikidata's park tree and Pompeii is in none of it, and the category answers
+ * the nature question before the class is ever asked. Admitted, each would be
+ * a `museum` pin on an ancient city.
+ *
+ * So the category door asks Wikidata one question of its own, and it asks it of
+ * every museum the walk named rather than only of those nothing else knows. A
+ * row another road really did vouch for passes by construction — a pool row is
+ * a museum by the class that named it and a holder is a venue the museum import
+ * already judged, both classes being under `museum` — so nothing is refused
+ * that those roads admitted for good reasons, and there is no road to exempt.
+ * Being in the *venue graph* vouches for nothing: it holds every entity a find
+ * points at, the dig it was dug out of included, which is the row this gate is
+ * really for. Which road a row came by is the pipeline's to know; this is the
+ * rule it applies.
+ *
+ * The set is the museum import's own closure (`fetchMuseumClasses`), the same
+ * one its venue rule reads, rather than a second list: what counts as a museum
+ * is one question for the catalogue, and a kind with a narrower answer would
+ * refuse the Bardo, which is typed nothing but `museum`.
+ *
+ * What is refused here is not refused from the catalogue — it is the site door's
+ * (ADR-0058 decision 4). Whether the refusal is *named* is the caller's
+ * question and the line's: the sites at or above the place line are a worklist
+ * that door will want, and a country's whole archaeology named row by row is
+ * the long tail every `out` in this kind exists to keep out of a curator's
+ * list.
+ */
+export function isMuseumOnWikidata(
+  facts: MuseumFacts, museumClasses: ReadonlySet<string>,
+): boolean {
+  return facts.classes.some((cls) => museumClasses.has(cls));
 }
 
 export type MuseumVerdict =

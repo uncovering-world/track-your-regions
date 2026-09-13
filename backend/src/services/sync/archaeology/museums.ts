@@ -2,12 +2,15 @@
  * Which museums this run may have to judge, and everything it knows about each
  * one before the rule is asked.
  *
- * Two questions meet here. A museum reaches this kind's verdict either because
- * the class question named it — the pool — or because it holds a find the world
- * knows (ADR-0058 decision 2), and the two arrive by different roads: a pool row
- * carries its own label, coordinate and article, while a holder is an entity of
- * the venue graph the finds pointed at. What the rule reads of both is the same
- * three facts: the classes, the categories, and where the museum stands.
+ * Three questions meet here. A museum reaches this kind's verdict because the
+ * class question named it — the pool — because English Wikipedia files its
+ * article under the archaeological-museum categories, or because it holds a
+ * find the world knows (ADR-0058 decision 2), and they arrive by different
+ * roads: a pool row carries its own label, coordinate and article, a holder is
+ * an entity of the venue graph the finds pointed at, and a member of a category
+ * arrives as a bare id that has to be asked after. What the rule reads of all
+ * three is the same three facts: the classes, the categories, and where the
+ * museum stands.
  *
  * The stage `worship/places.ts` is to that kind's first door, without its fame
  * line: the line is the verdict's (`museumTest.ts`), because a find above the
@@ -19,9 +22,10 @@ import { placedUnderCap, selectTier1 } from '../museum/tier1.js';
 import { heldBy, type WorksCollection } from '../museum/worksCollector.js';
 import type { PoolWork } from '../museum/queries.js';
 import { survivorOf, type VenueGraph } from '../museum/venueGraph.js';
-import { fetchEntityFacts, type PoolEntity } from '../publicArt/queries.js';
+import { fetchEntitiesByIds, fetchEntityFacts, type PoolEntity } from '../publicArt/queries.js';
 import { enwikiTitleOf } from '../wikipediaCategories.js';
 import { chunk, type QueryRunner } from '../wikidataQueries.js';
+import { isQid } from '../wikidataUtils.js';
 import type { MuseumFacts } from './museumTest.js';
 import type { LinePair } from '../sourceLine.js';
 
@@ -136,9 +140,90 @@ export function findJudged(
   return holders;
 }
 
+/** What the walk's ids came to, once this run has asked Wikidata about them. */
+export interface CategoryMembers {
+  /**
+   * Every one this run can judge at all — and every one the museum-class gate
+   * is asked of (`isMuseumOnWikidata`), whatever else also names it.
+   *
+   * Of every member, because "some other road also knows it" is not the same
+   * fact as "some other road vouched for it": the venue graph holds every
+   * entity a work's `P276` or `P195` points at, refused venues included, so a
+   * dig that one find names in situ is in the graph exactly as a museum is. A
+   * row a class pool or a resolved venue really did vouch for passes the gate
+   * by construction — an archaeology museum class and a venue's own class are
+   * both under `museum` — so asking every member costs nothing and leaves no
+   * road in.
+   */
+  judged: Set<string>;
+  /**
+   * Every member the by-id question answered for, kept or dropped: what this
+   * run fetched, as against what it could use.
+   */
+  fetched: Set<string>;
+}
+
 /**
- * Whose classes and categories this run has to read: the pool, the holders of a
- * find above the line, and every survivor a fold names.
+ * The museums English Wikipedia's categories name, asked after and sorted by
+ * the road each came by.
+ *
+ * A member is a bare id: the walk answers with what each article is about, and
+ * nothing else about the museum. The rows come from the by-id question every
+ * other id this run holds is asked with (`fetchEntitiesByIds`), in the same
+ * batches of fifty, and land in the pool — which is where `collectMuseumPool`
+ * already puts what it asks after by id, so that one map answers "what is known
+ * about this museum" for the whole run.
+ *
+ * A member the pool or the venue graph already carries is not asked about: the
+ * class question names the Delphi museum and a find's venue graph names the
+ * British Museum, and a fact bought twice is a query the run did not need to
+ * send.
+ *
+ * No floor of its own. A category holds the museums of a country whatever the
+ * world has heard of them, so most members are far below the place line and are
+ * asked after all the same — fifty to a question here and fifty to a question
+ * in `readClasses` — and each is then judged by the line like any other row.
+ * Where a row stands against the line is `sourceLine.ts`'s decision and no
+ * door's, which is what keeps one kind from having two answers to "is this
+ * famous enough".
+ *
+ * A member the by-id question does not answer for — a `wikibase_item` left
+ * behind by a merged or deleted item — is left out of the answer rather than
+ * reported: there is no row to refuse and nothing to say about it. **And a row
+ * that comes back without an English article is left out the same way**: the
+ * walk found this museum *through* an English article, so a row answering
+ * without one is the two reads disagreeing, and judging it anyway would read
+ * the categories of an article it does not have — an empty list — and refuse
+ * the museum by name for a fact nobody stated. A data oddity is not a verdict.
+ */
+export async function readMembers(
+  run: QueryRunner,
+  members: Iterable<string>,
+  pool: Map<string, PoolEntity>,
+  graph: VenueGraph,
+): Promise<CategoryMembers> {
+  const wanted = [...new Set(members)].filter(isQid);
+  const knownAlready = new Set(wanted.filter((qid) => pool.has(qid) || graph.details.has(qid)));
+  const batches = chunk(wanted.filter((qid) => !knownAlready.has(qid)), FACT_BATCH);
+  const fetched = new Set<string>();
+  for (let i = 0; i < batches.length; i++) {
+    run.phase(`Asking after the museums the categories name (batch ${i + 1}/${batches.length})...`);
+    await run.step();
+    for (const entity of await fetchEntitiesByIds(
+      run.sparql, batches[i], 'museums the categories name',
+    )) {
+      fetched.add(entity.qid);
+      if (entity.articleUrl) pool.set(entity.qid, entity);
+    }
+  }
+  const judged = new Set(wanted.filter((qid) => knownAlready.has(qid) || pool.has(qid)));
+  return { judged, fetched };
+}
+
+/**
+ * Whose classes and categories this run has to read: the pool, the museums the
+ * categories named, the holders of a find above the line, and every survivor a
+ * fold names.
  *
  * The holders are asked of the placements on both sides of the folds, because
  * the fold filter can hand a museum its finds back — a museum whose fold is
@@ -149,15 +234,22 @@ export function findJudged(
  * `none` for want of an answer rather than because of one: a door is a museum no
  * work ever names (Palazzo Pitti, the Vatican Museums), so nothing else brings
  * it into this set at all.
+ *
+ * The members are a set of their own beside the pool, because most of them are
+ * in it — `readMembers` put them there — and the ones that are not are museums
+ * the venue graph already carried: a member that is a venue of some find below
+ * the line reaches the verdict through no other road.
  */
 export function candidatesOf(
   pool: Map<string, PoolEntity>,
   works: WorksCollection,
   findLine: LinePair,
   admitted: ReadonlySet<string>,
+  members: ReadonlySet<string>,
 ): Set<string> {
   return new Set([
     ...pool.keys(),
+    ...members,
     ...findJudged(works, works.placed, findLine, admitted),
     ...findJudged(works, works.afterFolds, findLine, admitted),
     ...Object.keys(works.folds).map((qid) => survivorOf(works.folds, qid)),

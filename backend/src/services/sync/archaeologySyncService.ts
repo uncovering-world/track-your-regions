@@ -33,6 +33,8 @@ import {
   collectArchaeologyMuseums, type CollectedArchaeologyMuseum,
 } from './archaeology/pipeline.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
+import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
+import { NATURE_CATEGORY, NATURE_CATEGORY_ROOT } from './archaeology/classes.js';
 // The museum run's reader, taking the source as an argument since the day the
 // floor was written: "where the catalogue offers each work" is the same
 // question for any kind that hangs treasures off a venue, and asking it twice
@@ -73,15 +75,19 @@ const LOG_PREFIX = '[Archaeology Sync]';
  * reality. A hit says so on screen, because an admin who cannot tell a cached
  * phase from a fetched one will eventually debug an answer from last week.
  *
+ * The budget is handed in rather than minted here, because this run waits on two
+ * wikis and the patience is the *run's* (#886): a budget per door would let a
+ * run spend `SPARQL_WAIT_BUDGET_MS` on Wikidata and as much again on Wikipedia.
+ *
  * This kind asks the museum import's whole set: the archaeology class trees,
  * the pool of museums and the pool of finds, the venue statements, the details
  * and the edges. All of it runs before the first museum is written, which is
  * where a wait is invisible and an answer is worth keeping.
  */
 function collectingSparql(
-  progress: SyncProgress, refreshCache: boolean,
+  progress: SyncProgress, refreshCache: boolean, budget: WaitBudget,
 ): (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]> {
-  return withCache(wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), LOG_PREFIX), {
+  return withCache(wikidataDoor(progress, budget, LOG_PREFIX), {
     sourceId: ARCHAEOLOGY_SOURCE_ID,
     enabled: !refreshCache,
     onHit: (descriptor, rows) => {
@@ -100,18 +106,45 @@ function collectingSparql(
  * category-less — which for half the canon is fifty museums this kind refuses,
  * the British Museum among them — on a run whose log said success.
  *
- * **Debt: the panel says nothing while Wikipedia is being waited out.**
- * `CategoryOptions` has no `onWait` and no shared budget, so a run held up by a
- * 429 keeps showing the last phase line for as long as the retries take, and an
- * admin cannot tell a slow wiki from a stuck run. Worth a ticket: the Commons
- * client already reports its waits through `waitMessage`, and this door should
- * report them the same way rather than growing a second vocabulary for waiting.
+ * **A wait says so, on the run's own patience** (#886). The waits go through
+ * `waitMessage` like Wikidata's, so the panel reads "Waiting on Wikipedia…"
+ * rather than the last phase line for as long as a 429's `Retry-After` lasts,
+ * and they are drawn from the budget this run shares with its Wikidata door — a
+ * budget per wiki would let one run wait twice the number either was held to.
  */
-function categoriesDoor(progress: SyncProgress): (titles: string[]) => Promise<Map<string, string[]>> {
+function categoriesDoor(
+  progress: SyncProgress, budget: WaitBudget,
+): (titles: string[]) => Promise<Map<string, string[]>> {
   return (titles) => fetchWikipediaCategories(titles, {
     userAgent: WIKIDATA_USER_AGENT,
     isCancelled: () => progress.cancel,
     pause: () => delay(SPARQL_DELAY_MS),
+    budget,
+    onWait: (wait) => { progress.statusMessage = waitMessage('Wikipedia', wait, budget); },
+  });
+}
+
+/**
+ * The same categories entered rather than tested: the walk down
+ * `Archaeological museums by country`, which names the museums no class does
+ * (ADR-0058 decision 2, `archaeology/classes.ts`).
+ *
+ * **A category that cannot be read ends the run**, exactly as a batch of titles
+ * does and for a stronger reason: a lost category is every museum of a country
+ * missing from the candidate set — the Bardo, the Museo del Oro and the
+ * National Museum of Iraq are in the catalogue by this walk alone — on a run
+ * whose log said success.
+ */
+function categoryMembersDoor(
+  progress: SyncProgress, budget: WaitBudget,
+): () => Promise<Map<string, string>> {
+  return () => fetchCategoryMembers(NATURE_CATEGORY_ROOT, {
+    userAgent: WIKIDATA_USER_AGENT,
+    isCancelled: () => progress.cancel,
+    pause: () => delay(SPARQL_DELAY_MS),
+    recurseInto: NATURE_CATEGORY,
+    budget,
+    onWait: (wait) => { progress.statusMessage = waitMessage('Wikipedia', wait, budget); },
   });
 }
 
@@ -196,12 +229,19 @@ async function fetchArchaeologyItems(
   // hysteretic tier has something to hold (ADR-0023).
   const admitted = await admittedExternalIds(ARCHAEOLOGY_SOURCE_ID);
 
+  // One patience for the whole run, spent on whichever wiki asks for it: this
+  // kind reads Wikidata and English Wikipedia in the same collection, and a
+  // budget per door is a run that can wait twice as long as either number says
+  // (#886).
+  const waiting = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
+
   const { items, fetched, filtered } = await collectArchaeologyMuseums({
-    sparql: collectingSparql(progress, refreshCache),
+    sparql: collectingSparql(progress, refreshCache, waiting),
     previousPlacements,
     admitted,
     line,
-    categories: categoriesDoor(progress),
+    categories: categoriesDoor(progress, waiting),
+    categoryMembers: categoryMembersDoor(progress, waiting),
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');

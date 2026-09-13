@@ -17,14 +17,22 @@
  * — the trap the readership measurement fell into. A batch lost that way would
  * read as museums that are not archaeological, so one that cannot be read
  * throws rather than coming back empty.
+ *
+ * The same door read the other way round — who is filed *under* a category —
+ * is `wikipediaCategoryMembers.ts`, a module of its own so neither question has
+ * to be read past to follow the other. It sends its requests through this
+ * file's transport rather than a second copy of it: one endpoint, one retry
+ * rule, one wording for a refusal.
  */
 
 import {
   withRetries, abortOn, exponentialBackoff, backoffFromRetryAfter, RetrySignal, WaitBudget,
+  type SourceWait,
 } from './sourceRetry.js';
 import { isStorableHttpUrl } from '../../types/urlSafety.js';
 
-const LOG_PREFIX = '[Wikipedia]';
+/** Exported for the walk next door, so both questions log under one name. */
+export const LOG_PREFIX = '[Wikipedia]';
 const ENWIKI_API = 'https://en.wikipedia.org/w/api.php';
 const ENWIKI_HOST = 'en.wikipedia.org';
 const ARTICLE_PATH = '/wiki/';
@@ -32,8 +40,20 @@ const ARTICLE_PATH = '/wiki/';
 /** The API's documented ceiling for a titles list, and the whole of a batch's limit. */
 const TITLE_BATCH = 50;
 
-/** Far past what a batch of fifty articles can need, and short of forever. */
-const MAX_ASKS_PER_BATCH = 10;
+/**
+ * How many times one question may be asked before the run stops believing the
+ * answers: far past what a question can need — fifty articles' categories, or
+ * five hundred members of a category, ten times over — and short of forever.
+ *
+ * Ten asks of `cmlimit: max` is about five thousand articles of one category.
+ * The walk of 2026-09-13 read 1,148 articles under 121 categories, the largest
+ * of them well inside one ask, so the cap is far from anything real; a category
+ * that reached it would be a source repeating itself rather than a long list,
+ * which is why hitting it ends the run (`nextContinuation`) instead of
+ * truncating the answer — a walk that stopped early and said nothing is a
+ * country's museums missing from a run whose log said success (#887).
+ */
+const MAX_ASKS_PER_QUESTION = 10;
 
 /**
  * The Commons client's patience, mirrored rather than shared: `imageCredit.ts`
@@ -45,7 +65,8 @@ const MAX_ASKS_PER_BATCH = 10;
 const CATEGORY_TIMEOUT_MS = 30000;
 const CATEGORY_MAX_RETRIES = 4;
 const CATEGORY_BACKOFF_CEILING_MS = 60000;
-const CATEGORY_WAIT_BUDGET_MS = 900000;
+/** Exported so the walk next door waits exactly as long, on a budget of its own. */
+export const CATEGORY_WAIT_BUDGET_MS = 900000;
 
 /** Everything the question asks for except the titles and a continuation. */
 const CATEGORY_QUERY: Record<string, string> = {
@@ -54,15 +75,23 @@ const CATEGORY_QUERY: Record<string, string> = {
 };
 
 /** A page the API has no article for carries `missing` and no categories, so an empty list falls out. */
-interface CategoryPage { title?: string; missing?: boolean; categories?: { title?: string }[] }
+export interface CategoryPage {
+  title?: string;
+  missing?: boolean;
+  categories?: { title?: string }[];
+  /** Which Wikidata item the article is about, where the question asked for it. */
+  pageprops?: { wikibase_item?: string };
+}
 interface TitleHop { from: string; to: string }
 
-interface CategoryAnswer {
+export interface CategoryAnswer {
   query?: {
     /** An array under `formatversion=2`, an object keyed by page id under version 1. */
     pages?: CategoryPage[] | Record<string, CategoryPage>;
     redirects?: TitleHop[];
     normalized?: TitleHop[];
+    /** What a `list=categorymembers` question answers with: the members themselves. */
+    categorymembers?: { title?: string }[];
   };
   continue?: Record<string, string>;
   /** The Action API's way of saying no inside an HTTP 200. */
@@ -73,6 +102,22 @@ export interface CategoryOptions {
   userAgent: string;
   isCancelled?: () => boolean;
   pause?: () => Promise<void>;
+  /**
+   * Called before each wait, for a caller with somewhere to show it — the shape
+   * `SparqlOptions` uses, so a run reports a Wikipedia wait exactly as it
+   * reports a Wikidata one (`wikidataDoor`). Without it a run held up by a 429
+   * with a three-minute `Retry-After` goes on showing its last phase line, and
+   * an admin watching cannot tell waiting from hung (#886).
+   */
+  onWait?: (wait: SourceWait) => void;
+  /**
+   * How much waiting the whole *run* has left, shared across every question it
+   * asks — Wikipedia's and Wikidata's alike. Without it each call minted a
+   * budget of its own, so a run could wait far longer in total than the number
+   * any one of them was held to. A fresh `CATEGORY_WAIT_BUDGET_MS` where none is
+   * given, which is what keeps a test and a one-off caller working.
+   */
+  budget?: WaitBudget;
   /** The door, for the test; defaults to global fetch. */
   fetchImpl?: typeof fetch;
 }
@@ -117,31 +162,34 @@ function isRetriableApiError(code: string): boolean {
 }
 
 /**
- * A 200 that answers nothing, caught rather than read as an answer.
+ * A 200 that says no, caught rather than read as an answer.
  *
- * The Action API says no inside a 200: an `error` object, or a body with no
- * `query` in it at all. Either one, taken at face value, is fifty museums with
- * no categories — which is fifty museums this kind refuses — on a run whose log
- * said success. That is the silent refusal this module exists to prevent, so it
- * is an error like any other and the retriable codes wait like a 503.
+ * The Action API refuses inside a 200, with an `error` object. Taken at face
+ * value that is fifty museums with no categories — which is fifty museums this
+ * kind refuses — on a run whose log said success. That is the silent refusal
+ * this module exists to prevent, so it is an error like any other and the
+ * retriable codes wait like a 503.
+ *
+ * What it does *not* judge is an answer with no `query` at all. For a batch of
+ * titles that is the same silence and the caller says so
+ * (`readBatch`); for a category with no articles in it, it is the whole truth —
+ * the live API answers a generator that matched nothing exactly that way.
  */
 function failOnApiError(answer: CategoryAnswer, attempt: number): void {
   const { code, info } = answer.error ?? {};
-  if (code ?? info) {
-    if (attempt < CATEGORY_MAX_RETRIES && code && isRetriableApiError(code)) {
-      throw new RetrySignal(
-        exponentialBackoff(attempt, CATEGORY_BACKOFF_CEILING_MS), `Wikipedia ${code}`,
-      );
-    }
-    throw new Error(`Wikipedia API said ${code ?? 'no'}: ${info ?? 'no reason given'}`);
+  if (!(code ?? info)) return;
+  if (attempt < CATEGORY_MAX_RETRIES && code && isRetriableApiError(code)) {
+    throw new RetrySignal(
+      exponentialBackoff(attempt, CATEGORY_BACKOFF_CEILING_MS), `Wikipedia ${code}`,
+    );
   }
-  if (!answer.query) throw new Error('Wikipedia answered without a query, so without categories');
+  throw new Error(`Wikipedia API said ${code ?? 'no'}: ${info ?? 'no reason given'}`);
 }
 
 async function askWikipedia(
-  titles: string[], cont: Record<string, string>, options: CategoryOptions, attempt: number,
+  params: Record<string, string>, options: CategoryOptions, attempt: number,
 ): Promise<CategoryAnswer> {
-  const body = new URLSearchParams({ ...CATEGORY_QUERY, titles: titles.join('|'), ...cont });
+  const body = new URLSearchParams(params);
   const { signal, release } = abortOn(CATEGORY_TIMEOUT_MS, options.isCancelled);
   try {
     const response = await (options.fetchImpl ?? fetch)(ENWIKI_API, {
@@ -168,26 +216,60 @@ async function askWikipedia(
   }
 }
 
-/** One request, retried; a failure names the batch, so a run says which museums it lost. */
-async function askBatch(
-  titles: string[], cont: Record<string, string>, options: CategoryOptions, budget: WaitBudget,
+/**
+ * One request, retried; a failure names what was being read, so a run says what
+ * it lost rather than how many bytes it did not get.
+ *
+ * Exported for the members walk next door: both questions go to the same
+ * endpoint under the same retry rule and the same patience, and a second copy
+ * of this would be a second way for a lost answer to read as a fact.
+ */
+export async function askWikipediaOnce(
+  params: Record<string, string>, options: CategoryOptions, budget: WaitBudget, what: string,
 ): Promise<CategoryAnswer> {
   try {
-    return await withRetries((attempt) => askWikipedia(titles, cont, options, attempt), {
+    return await withRetries((attempt) => askWikipedia(params, options, attempt), {
       logPrefix: LOG_PREFIX, retries: CATEGORY_MAX_RETRIES, budget,
-      isCancelled: options.isCancelled, classify,
+      isCancelled: options.isCancelled, onWait: options.onWait, classify,
     });
   } catch (error) {
     if (options.isCancelled?.()) throw error;
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `${LOG_PREFIX} the batch of ${titles.length} from "${titles[0]}" could not be read: ${message}`,
-    );
+    throw new Error(`${LOG_PREFIX} ${what} could not be read: ${message}`);
   }
 }
 
+/**
+ * The continuation to send back, or nothing where the answer was the last one.
+ *
+ * Everything in `continue` goes back, which is what the API asks for:
+ * `clcontinue` is the page of categories, `gcmcontinue` the page of members,
+ * and `continue` the marker beside either. The cap is about a source that will
+ * not stop rather than about a long question — a loop driven by somebody else's
+ * answer is a run that never finishes — and it is asked of the continuation and
+ * not of the count alone: a question that finished on its tenth answer
+ * finished, and throwing there would lose what it had just read.
+ *
+ * A question that reaches the cap says so by name and by number, in the log and
+ * in the error the run fails with: "continues without end" alone left an admin
+ * to guess which category, how many asks and whether the limit was ours or
+ * Wikipedia's (#887).
+ */
+export function nextContinuation(
+  answer: CategoryAnswer, asks: number, what: string,
+): Record<string, string> | undefined {
+  const cont = answer.continue && Object.keys(answer.continue).length > 0
+    ? answer.continue : undefined;
+  if (cont && asks >= MAX_ASKS_PER_QUESTION) {
+    const said = `${what} still continues after ${asks} asks, this run's cap`;
+    console.log(`${LOG_PREFIX} ${said} — stopping rather than reading on`);
+    throw new Error(`${LOG_PREFIX} ${said}`);
+  }
+  return cont;
+}
+
 /** Both shapes of `query.pages`, so a `formatversion` that does not take is not silence. */
-function pagesOf(answer: CategoryAnswer): CategoryPage[] {
+export function pagesOf(answer: CategoryAnswer): CategoryPage[] {
   const pages = answer.query?.pages;
   if (!pages) return [];
   return Array.isArray(pages) ? pages : Object.values(pages);
@@ -254,21 +336,20 @@ async function readBatch(
 ): Promise<void> {
   let cont: Record<string, string> | undefined = {};
   let asks = 0;
+  const what = `the batch of ${titles.length} from "${titles[0]}"`;
   while (cont) {
-    const answer: CategoryAnswer = await askBatch(titles, cont, options, budget);
+    const answer: CategoryAnswer = await askWikipediaOnce(
+      { ...CATEGORY_QUERY, titles: titles.join('|'), ...cont }, options, budget, what,
+    );
     asks += 1;
-    foldPages(titles, answer, into);
-    // Everything in `continue` goes back, which is what the API asks for:
-    // `clcontinue` is the page of categories, `continue` the marker beside it.
-    cont = answer.continue && Object.keys(answer.continue).length > 0 ? answer.continue : undefined;
-    // Fifty articles cannot hold `cllimit=max` categories ten times over, so a
-    // batch *still continuing* here is a source repeating itself — and a loop
-    // driven by somebody else's answer is a run that never finishes. Asked of
-    // `cont` and not of the count alone: a batch that finished on its tenth
-    // answer finished, and throwing there would lose what it had just read.
-    if (cont && asks >= MAX_ASKS_PER_BATCH) {
-      throw new Error(`${LOG_PREFIX} "${titles[0]}" continues without end`);
+    // A batch answered with no `query` at all is every one of its museums read
+    // as category-less, which is every one of them refused: the silent refusal
+    // this module exists to prevent, so it is an error like a 400 is.
+    if (!answer.query) {
+      throw new Error(`${LOG_PREFIX} ${what}: Wikipedia answered without a query, so without categories`);
     }
+    foldPages(titles, answer, into);
+    cont = nextContinuation(answer, asks, `"${titles[0]}"`);
     if (options.pause) await options.pause();
   }
   console.log(`${LOG_PREFIX} ${titles.length} articles from "${titles[0]}" in ${asks} request(s)`);
@@ -285,7 +366,7 @@ export async function fetchWikipediaCategories(
 ): Promise<Map<string, string[]>> {
   const wanted = [...new Set(titles.filter((title) => title.trim().length > 0))];
   const categories = new Map<string, string[]>(wanted.map((title) => [title, []]));
-  const budget = new WaitBudget(CATEGORY_WAIT_BUDGET_MS);
+  const budget = options.budget ?? new WaitBudget(CATEGORY_WAIT_BUDGET_MS);
   for (let start = 0; start < wanted.length; start += TITLE_BATCH) {
     await readBatch(wanted.slice(start, start + TITLE_BATCH), options, budget, categories);
   }

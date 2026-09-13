@@ -27,12 +27,14 @@ const LINE: SourceLine = {
 function collect(w: World, opts: {
   line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
 } = {}): Promise<CollectedArchaeology> {
+  const door = categoryDoor(w);
   return collectArchaeologyMuseums({
     sparql: (query: string) => Promise.resolve(answer(w, query)),
     previousPlacements: opts.previousPlacements ?? {},
     admitted: new Set(opts.admitted ?? []),
     line: opts.line ?? LINE,
-    categories: categoryDoor(w).categories,
+    categories: door.categories,
+    categoryMembers: door.categoryMembers,
   });
 }
 
@@ -70,6 +72,120 @@ describe('collectArchaeologyMuseums', () => {
     });
     expect(item(out, 'Q6373')?.classes).toEqual([ART_MUSEUM, NATIONAL_MUSEUM, MUSEUM]);
     expect(item(out, 'Q6373')?.admittedFor).toBeUndefined();
+  });
+
+  it('admits the Bardo, which nothing but the category walk names', async () => {
+    // `museum` on Wikidata and no find of ours: no class question names it, no
+    // find carries it, and read only of candidates the category would never be
+    // asked about it at all. The walk is the door (ADR-0058 decision 2).
+    const out = await collect(world());
+
+    expect(item(out, 'Q1429003')).toMatchObject({
+      type: 'museum',
+      label: 'Bardo National Museum',
+      countryLabel: 'Tunisia',
+      sitelinks: 35,
+      classes: [MUSEUM],
+      nature: 'archaeological',
+      natureWhy: 'category: Archaeological museums in Tunisia',
+      admissionNote: null,
+      lat: 36.80944,
+      lon: 10.13444,
+    });
+    // Its own 35 articles carried it over the line, and it holds nothing this
+    // run knows about: admitted for what it is, as the decision says.
+    expect(item(out, 'Q1429003')?.admittedFor).toBeUndefined();
+    expect(treasuresOf(out, 'Q1429003')).toEqual([]);
+  });
+
+  it('sends Pompeii to the site door, because Wikidata does not call it a museum', async () => {
+    // Wikipedia files the dig itself under `Archaeological museums in Italy`,
+    // and nothing else refuses it: `archaeological site, ancient city` is not
+    // in the park tree the veto reads, and the category answers the nature
+    // question before the class is ever asked. Admitted, it would be a museum
+    // pin on an ancient city of 122 languages. The class pool and the finds
+    // carry museums by the road they came in on; a row here by the category
+    // alone has to be a museum on Wikidata too.
+    const out = await collect(world());
+
+    expect(item(out, 'Q43332')).toBeUndefined();
+    expect(reason(out, 'Q43332')).toBe(
+      'no museum class on Wikidata: a site, a castle or a city in Wikipedia\'s category '
+      + '— the site door\'s',
+    );
+    // And a find that names the dig as where it stands does not excuse it. The
+    // venue graph holds every entity a work's `P276` points at, refused venues
+    // included, so "the graph knows it" is not one of the roads a museum comes
+    // in by: the Pompeii Lakshmi is placed nowhere and Pompeii is still asked
+    // whether Wikidata calls it a museum.
+    expect(out.items.some((i) => i.treasures.some((t) => t.externalId === 'Q24269542'))).toBe(false);
+  });
+
+  it('says nothing about a site under the line, whose name would be one of hundreds', async () => {
+    // Mactaris is on the same shelf as the Bardo and known in 7 languages. The
+    // 27 sites above the place line are a worklist for the site door; the rest
+    // of a country's archaeology, named one by one, is the long tail that
+    // buries the refusals a curator actually reads — the same silence in a
+    // louder voice.
+    const out = await collect(world());
+
+    expect(item(out, 'Q3485394')).toBeUndefined();
+    expect(reason(out, 'Q3485394')).toBeUndefined();
+  });
+
+  it('does not judge a member Wikidata answers about without an English article', async () => {
+    // The walk found the article and the row came back without the sitelink.
+    // There are no categories to read of an article the row does not have, so
+    // the museum would fall to its bare `museum` class and be refused by name
+    // for a fact nobody stated. A data oddity is not a verdict.
+    const out = await collect(world());
+
+    expect(item(out, 'Q1109031')).toBeUndefined();
+    expect(reason(out, 'Q1109031')).toBeUndefined();
+  });
+
+  it('leaves a member below the place line out, and says nothing about it', async () => {
+    const out = await collect(world());
+
+    // The Zeugma Mosaic Museum is filed under `Archaeological museums in
+    // Turkey` and known in 20 languages against a line of 22. The category is a
+    // door, not a line of its own: a member the source never admitted and the
+    // world has not heard enough of is out, and naming it would bury the
+    // refusals a curator reads under every museum in sixty countries.
+    expect(item(out, 'Q196982')).toBeUndefined();
+    expect(reason(out, 'Q196982')).toBeUndefined();
+  });
+
+  it('asks Wikidata about the members no pool of this run already carries', async () => {
+    const w = world();
+    const byId: string[] = [];
+    const door = categoryDoor(w);
+    await collectArchaeologyMuseums({
+      // The by-id pool question asked about the members, which names itself in
+      // the line the panel shows (`fetchEntitiesByIds`).
+      sparql: (query: string, descriptor?: { label: string }) => {
+        if (descriptor?.label.startsWith('museums the categories name')) byId.push(query);
+        return Promise.resolve(answer(w, query));
+      },
+      previousPlacements: {},
+      admitted: new Set<string>(),
+      line: LINE,
+      categories: door.categories,
+      categoryMembers: door.categoryMembers,
+    });
+
+    // Seven members, three of them already known: Delphi is in the class pool,
+    // the British Museum is a venue of the graph and Pompeii is in the graph as
+    // the place a find names — and a fact bought twice is a query this run did
+    // not need to send. Being known is only about the asking: what each row is
+    // judged by does not change with the road it arrived on.
+    expect(byId).toHaveLength(1);
+    expect(byId[0]).toContain('wd:Q1429003');
+    expect(byId[0]).toContain('wd:Q196982');
+    expect(byId[0]).toContain('wd:Q3485394');
+    expect(byId[0]).not.toContain('wd:Q636928');
+    expect(byId[0]).not.toContain('wd:Q6373');
+    expect(byId[0]).not.toContain('wd:Q43332');
   });
 
   it('writes the Rosetta Stone as a treasure that says where it was dug up', async () => {
@@ -148,9 +264,15 @@ describe('collectArchaeologyMuseums', () => {
     // above the line are judged, so the long tail produces no refusals at all:
     // the Uffizi, which a rule refused, and the Pio-Clementino, which folded
     // into the Vatican Museums — and nothing else.
-    expect(out.filtered.map((f) => f.externalId)).toEqual(['Q51252', 'Q1439912']);
-    // Two museums the class question named, five finds: seven entities.
-    expect(out.fetched).toBe(7);
+    // Pompeii, which a rule refused; the Uffizi, which a rule refused; and the
+    // Pio-Clementino, which folded into the Vatican Museums.
+    expect(out.filtered.map((f) => f.externalId)).toEqual(['Q43332', 'Q51252', 'Q1439912']);
+    // Two museums the class question named; four rows the categories asked
+    // after, of which the Gold Museum's was dropped for want of an article and
+    // is counted all the same, because the run fetched it; and six finds:
+    // twelve entities. Pompeii is not among them — the walk named it, but the
+    // venue graph already had it and no question of this run's went out for it.
+    expect(out.fetched).toBe(12);
   });
 
   it('keeps a fold onto a department held for a curator, and reports what it lost', async () => {
@@ -218,6 +340,7 @@ describe('collectArchaeologyMuseums', () => {
   it('asks Wikidata what a museum is only where the venue graph cannot say', async () => {
     const w = world();
     const facts: string[] = [];
+    const door = categoryDoor(w);
     await collectArchaeologyMuseums({
       sparql: (query: string) => {
         // The classes-and-containers question, which is the one this run sends
@@ -228,7 +351,8 @@ describe('collectArchaeologyMuseums', () => {
       previousPlacements: {},
       admitted: new Set<string>(),
       line: LINE,
-      categories: categoryDoor(w).categories,
+      categories: door.categories,
+      categoryMembers: door.categoryMembers,
     });
 
     // One batch, and it holds the Louvre: no find points at it, so the venue
@@ -268,13 +392,21 @@ describe('collectArchaeologyMuseums', () => {
       admitted: new Set<string>(),
       line: LINE,
       categories: door.categories,
+      categoryMembers: door.categoryMembers,
     });
 
     expect(door.calls).toHaveLength(1);
     expect([...door.calls[0]].sort()).toEqual([
-      'British Museum', 'Delphi Archaeological Museum', 'Hermitage Museum', 'Louvre',
-      'Uffizi', 'Vatican Museums',
+      'Bardo National Museum (Tunis)', 'British Museum', 'Delphi Archaeological Museum',
+      'Hermitage Museum', 'Louvre', 'Makthar (archaeological site)', 'Pompeii', 'Uffizi',
+      'Vatican Museums', 'Zeugma Mosaic Museum',
     ]);
+    // The walk is one question for the whole run, and the categories of the
+    // museums it named are read with everyone else's: a member is a candidate,
+    // and what the rule reads off it is the article's own list. Six are named
+    // and one of them — the Gold Museum, whose row carries no article — is not
+    // asked about, because there is no title to ask under.
+    expect(door.walks).toEqual([7]);
   });
 
   it('keeps an admitted museum that slipped to the stay band and refuses one below it by name', async () => {
