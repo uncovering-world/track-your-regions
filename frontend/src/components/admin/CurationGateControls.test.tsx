@@ -35,6 +35,8 @@ function source(overrides: Partial<ExperienceSource> = {}): ExperienceSource {
     waiting: { arrivals: 0, held: 0, contents: 0 },
     enter_sitelinks: null,
     stay_sitelinks: null,
+    find_enter_sitelinks: null,
+    find_stay_sitelinks: null,
     ...overrides,
   };
 }

@@ -62,6 +62,32 @@ export interface ExperienceSource {
   enter_sitelinks: number | null;
   /** Wikipedia languages an item already in this kind must keep, to stay; `null` alongside `enter_sitelinks`. */
   stay_sitelinks: number | null;
+  /**
+   * The second door's pair, and `null` for a source with one door.
+   *
+   * Archaeology admits both the site a traveller stands on and the famous find
+   * a museum holds, and a find is written up in fewer languages than its
+   * museum, so its row carries a lower line for the finds beside the main one
+   * (ADR-0058 decision 5). This is what tells the panel that a source has a
+   * finds line at all: without it an admin could move the line a run reads for
+   * the museums while the one it reads for the finds stayed out of reach.
+   */
+  find_enter_sitelinks: number | null;
+  /** Sitelinks a find already in this kind must keep, to stay; `null` alongside `find_enter_sitelinks`. */
+  find_stay_sitelinks: number | null;
+}
+
+/**
+ * A source's fame line as the panel sends it: the main pair always, the finds
+ * pair only for a source that has one. The route writes whichever keys the body
+ * carries, so an absent finds pair leaves the row's own alone — and a finds pair
+ * sent for a one-door source would give it a line no run of its would read.
+ */
+export interface SourceLineBody {
+  enterSitelinks: number;
+  staySitelinks: number;
+  findEnterSitelinks?: number;
+  findStaySitelinks?: number;
 }
 
 export interface SyncStatus {
@@ -345,13 +371,14 @@ export async function setCurationGate(
 
 /**
  * Set the sitelinks line a source's own run reads: the Wikipedia-language count an
- * item needs to enter this kind, and the lower count it must keep to stay once in.
+ * item needs to enter this kind, and the lower count it must keep to stay once in —
+ * and the same pair for its finds, where the source has that second door.
  * 404 for a source that is not active or does not exist; 409 for a source whose row
  * carries no line at all — its threshold lives in code, not here.
  */
 export async function setSourceLine(
-  sourceId: number, line: { enterSitelinks: number; staySitelinks: number },
-): Promise<{ sourceId: number; name: string; enterSitelinks: number; staySitelinks: number }> {
+  sourceId: number, line: SourceLineBody,
+): Promise<{ sourceId: number; name: string } & SourceLineBody> {
   return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/line`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
