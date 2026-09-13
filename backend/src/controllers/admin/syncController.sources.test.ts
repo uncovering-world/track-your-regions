@@ -70,6 +70,14 @@ describe('getSources', () => {
     // source keeps its line in code" and is a different claim about the source.
     expect(sql).toContain('enter_sitelinks');
     expect(sql).toContain('stay_sitelinks');
+    // And the second pair, for a source with two doors: Archaeology admits the
+    // site a traveller stands on and the famous find a museum holds, and a find
+    // is written up in fewer languages than its museum, so the row carries a
+    // lower finds line beside the main one (ADR-0058 decision 5). Absent from
+    // the SELECT, the panel cannot tell a two-door source from a one-door one
+    // and would offer an admin no way to move the line a run actually reads.
+    expect(sql).toContain('find_enter_sitelinks');
+    expect(sql).toContain('find_stay_sitelinks');
   });
 
   it('answers three zeros for a source the aggregate returned no row for', async () => {

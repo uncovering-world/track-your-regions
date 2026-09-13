@@ -55,6 +55,15 @@ export function objectContextSelectSql(alias = 'e'): string {
           ST_X(${alias}.location) AS longitude,
           ${alias}.metadata->>'website' AS website_url,
           ${alias}.metadata->>'wikipediaUrl' AS wikipedia_url,
+          -- The run's own question about a row it could not settle by its rule
+          -- (ADR-0058): an art museum with an antiquities department is a
+          -- judgement about the exposition that no classes answer, so the run
+          -- writes down what it saw and holds the row. On the card rather than
+          -- only on the preview behind it, because this is where the answer is
+          -- given -- and where a batch answer can dispose of the row without
+          -- the object ever being opened (#852). Null on every row no run
+          -- asked anything about, which is nearly all of them.
+          ${alias}.metadata->>'admissionNote' AS admission_note,
           (SELECT jsonb_agg(r.name ORDER BY r.name)
              FROM experience_regions er
              JOIN regions r ON r.id = er.region_id
