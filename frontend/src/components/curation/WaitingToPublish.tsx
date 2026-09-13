@@ -22,7 +22,7 @@
 
 import { useState } from 'react';
 import {
-  Typography, Card, CardContent, Button, Stack, Divider,
+  Box, Typography, Card, CardContent, Button, Stack, Divider,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -103,6 +103,10 @@ function count(value: number | undefined): number {
 export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (message?: string) => void }) {
   const { arrival, held, contents } = group;
   const item = arrival ?? held ?? contents!;
+  // Trimmed before it is asked about, as `ObjectPreview` trims the same note:
+  // a note of blanks is a note nobody wrote, and drawing "The run asks:" over
+  // nothing tells a curator a question was asked and then withholds it.
+  const askedNote = item.admission_note?.trim();
   const queryClient = useQueryClient();
   const [showObject, setShowObject] = useState(false);
   // Which part is open, held as the part rather than a flag: the card is mounted
@@ -385,6 +389,18 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1.5 }}>
           {holdingNote(group)}
         </Typography>
+
+        {/* The run's own question, beside the sentence saying what is being held
+            — on the card and not only on the preview behind "Look at the object".
+            A rule that cannot settle a row writes down what it saw and holds it
+            (ADR-0058), and the batch answer of #852 can dispose of the row
+            without the object ever being opened: a question kept behind a toggle
+            is one a curator can answer without having been shown it. */}
+        {askedNote && (
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+            <Box component="span" sx={{ fontWeight: 600 }}>The run asks:</Box> {askedNote}
+          </Typography>
+        )}
 
         {showObject && <ObjectPreview experienceId={group.id} />}
         <PartPreviewDialog

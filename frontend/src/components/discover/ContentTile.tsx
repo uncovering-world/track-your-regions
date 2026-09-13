@@ -205,6 +205,24 @@ export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed
           placeholder above — a photographer named under a picture nobody is looking
           at is credited for nothing. Every treasure image stored today is a
           `Special:FilePath` URL, so this guards the next source, not this one. */}
+      {/* Where it was dug up, in the words Map mode's row uses (#885): an
+          archaeology museum's holdings are objects taken from somewhere, and a
+          tile naming only the museum tells a traveller the smaller half of what
+          the thing is (ADR-0058). Under the tile and not inside it, for the
+          reason the credit is: the square is 100 px with the name already across
+          its foot. Above the credit, because it is a fact about the object and
+          the credit is a fact about the photograph. */}
+      {content.found_at?.label && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          display="block"
+          noWrap
+          sx={{ fontSize: '0.6rem', mt: 0.25 }}
+        >
+          found at {content.found_at.label}
+        </Typography>
+      )}
       {thumbUrl && <ImageCreditLine credit={content.image_credit} redundantWith={content.artists} />}
     </Box>
   );

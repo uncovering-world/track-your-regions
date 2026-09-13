@@ -15,6 +15,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import SearchIcon from '@mui/icons-material/Search';
 import type { ExperienceTreasure } from '../../api/experiences';
 import { foldLabel } from '../../utils/labelFold';
+import { holdingsNoun } from '../../utils/experienceTypes';
 import { ContentTile } from './ContentTile';
 
 /** Shut by default past this many, which is most museums. */
@@ -30,6 +31,8 @@ interface ContentsSectionProps {
   onUnmarkViewed: (id: number) => void;
   /** A curator's way into correcting one of these works (#731). */
   onCorrect?: (work: ExperienceTreasure) => void;
+  /** Which kind's object this panel is showing, which decides what its holdings are called. */
+  kindId?: number | null;
 }
 
 /**
@@ -45,6 +48,7 @@ export function ContentsSection({
   onMarkViewed,
   onUnmarkViewed,
   onCorrect,
+  kindId,
 }: ContentsSectionProps) {
   const shouldCollapse = totalCount > CONTENTS_COLLAPSE_THRESHOLD;
   const [expanded, setExpanded] = useState(!shouldCollapse);
@@ -94,7 +98,11 @@ export function ContentsSection({
         onClick={() => setExpanded(!expanded)}
       >
         <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
-          Notable Works ({totalCount})
+          {/* The kind's own noun, off the rule Map mode's list reads: the same
+              British Museum used to be headed "Notable finds" there and
+              "Notable Works" here, which is the drift the shared-patterns
+              inventory exists to prevent (#885). */}
+          Notable {holdingsNoun(kindId)} ({totalCount})
         </Typography>
         {isAuthenticated && viewedCount > 0 && (
           <Typography variant="caption" color={viewedCount === totalCount ? 'success.main' : 'text.secondary'}>
@@ -109,7 +117,7 @@ export function ContentsSection({
         {totalCount > CONTENTS_COLLAPSE_THRESHOLD && (
           <TextField
             size="small"
-            placeholder="Filter works..."
+            placeholder={`Filter ${holdingsNoun(kindId)}...`}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             fullWidth
@@ -158,7 +166,7 @@ export function ContentsSection({
         {/* Show more button */}
         {!showAll && !needle && totalCount > CONTENTS_INITIAL_SHOW && (
           <Button size="small" variant="text" onClick={() => setShowAll(true)} sx={{ mt: 0.5 }}>
-            Show all {totalCount} works
+            Show all {totalCount} {holdingsNoun(kindId)}
           </Button>
         )}
       </Collapse>

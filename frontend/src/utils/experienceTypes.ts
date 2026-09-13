@@ -4,12 +4,12 @@
  * A type is a distinction inside a kind whose members a traveller still browses
  * together (ADR-0045): a World Heritage site is cultural, natural or mixed; a
  * piece of public art is a monument or a sculpture; a place of worship is a
- * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue. A
- * museum has no type — an
- * art museum and an archaeology museum are two kinds, not two types — and the
- * literal `art` every museum row used to carry said nothing the kind does not
- * (#814). One closed vocabulary per kind, never one shared enum, which is why
- * a value alone says which kind's vocabulary it belongs to.
+ * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue. An
+ * art museum has no type; Archaeology has two, site and museum, because a
+ * traveller browses the dig and its museum as one list (ADR-0058). The literal
+ * `art` every museum row used to carry said nothing the kind does not (#814).
+ * One closed vocabulary per kind, never one shared enum, which is why a value
+ * alone says which kind's vocabulary it belongs to.
  *
  * The dialogs that let a curator set a type offer the kind's own list and
  * nothing else; the review card explains a proposed type in the words of the
@@ -64,23 +64,51 @@ const PLACES_OF_WORSHIP: TypeVocabulary = {
   whenItChanges: 'Retyped on Wikidata. The same place either way; the filter chip it answers to changes.',
 };
 
+const ARCHAEOLOGY: TypeVocabulary = {
+  options: [
+    { value: 'site', label: 'Site' },
+    { value: 'museum', label: 'Museum' },
+  ],
+  what: 'An excavation a traveller stands in, or the museum that shows what was dug up — one list, two chips.',
+  whenItChanges: 'Retyped by the run from Wikidata’s classes; the same place either way.',
+};
+
 /**
  * The kinds' vocabularies, by the id each kind's source row is seeded with in
  * `db/init/01-schema.sql` (1 World Heritage, 2 Art Museums, 3 Public Art &
- * Monuments, 4 Places of worship). Until the kind table of ADR-0045 §4 lands,
- * a kind is its source row and the id is what every read carries — a name is
- * renamed (#815). A kind absent here has no types; a museum is absent on
- * purpose.
+ * Monuments, 4 Places of worship, 5 Archaeology). Until the kind table of
+ * ADR-0045 §4 lands, a kind is its source row and the id is what every read
+ * carries — a name is renamed (#815). A kind absent here has no types; Art
+ * Museums is absent on purpose.
  */
 const VOCABULARY_BY_KIND: Record<number, TypeVocabulary> = {
   1: WORLD_HERITAGE,
   3: PUBLIC_ART,
   4: PLACES_OF_WORSHIP,
+  5: ARCHAEOLOGY,
 };
 
-/** The types a curator may set on an object of this kind — none for a museum. */
+/** The types a curator may set on an object of this kind — none for an art museum. */
 export function typeOptionsFor(kindId: number | null | undefined): TypeOption[] {
   return kindId != null ? VOCABULARY_BY_KIND[kindId]?.options ?? [] : [];
+}
+
+/** The Archaeology kind, whose holdings were dug up rather than made for a wall. */
+const ARCHAEOLOGY_KIND_ID = 5;
+
+/**
+ * What a reader calls the things inside an object of this kind: an archaeology
+ * museum's case of steles and pottery holds **finds**, every other kind holds
+ * **works** (ADR-0058).
+ *
+ * One rule, because two surfaces say it. Map mode's list (`ArtworksList`) and
+ * Discover's section (`ContentsSection`) describe the same British Museum, and a
+ * reader who opened it in one and then the other used to be told it held notable
+ * finds and then notable works (#885). A kind absent here holds works: the noun
+ * is the art museums' and is what every kind but this one has always used.
+ */
+export function holdingsNoun(kindId: number | null | undefined): 'finds' | 'works' {
+  return kindId === ARCHAEOLOGY_KIND_ID ? 'finds' : 'works';
 }
 
 /**

@@ -14,6 +14,7 @@ const WORLD_HERITAGE = 1;
 const ART_MUSEUMS = 2;
 const PUBLIC_ART = 3;
 const PLACES_OF_WORSHIP = 4;
+const ARCHAEOLOGY = 5;
 
 describe('typeOptionsFor', () => {
   it('offers a World Heritage site its three, and public art its two', () => {
@@ -27,14 +28,23 @@ describe('typeOptionsFor', () => {
     );
   });
 
-  it('offers a museum nothing: an art museum is a kind, not a type', () => {
+  it('offers an art museum nothing: it is a kind, not a type', () => {
     expect(typeOptionsFor(ART_MUSEUMS)).toEqual([]);
     expect(typeOptionsFor(null)).toEqual([]);
     expect(typeOptionsFor(99)).toEqual([]);
   });
 
+  it('offers archaeology the dig and the museum that shows what came out of it', () => {
+    // The one kind whose list holds both: a traveller planning Egypt wants
+    // Saqqara and the Egyptian Museum on one list, so they are two types of one
+    // kind rather than two kinds (ADR-0058) — which is not a contradiction of
+    // the line above, since it is *archaeology* the museum is a type of.
+    expect(typeOptionsFor(ARCHAEOLOGY).map(o => o.value)).toEqual(['site', 'museum']);
+  });
+
   it('keeps the vocabularies disjoint, so a value names its kind', () => {
-    const all = [WORLD_HERITAGE, PUBLIC_ART, PLACES_OF_WORSHIP].flatMap(kind => typeOptionsFor(kind).map(o => o.value));
+    const all = [WORLD_HERITAGE, PUBLIC_ART, PLACES_OF_WORSHIP, ARCHAEOLOGY]
+      .flatMap(kind => typeOptionsFor(kind).map(o => o.value));
     expect(new Set(all).size).toBe(all.length);
   });
 });
@@ -48,6 +58,16 @@ describe('typeVocabularyOf', () => {
 
   it('explains a mosque as a place of worship', () => {
     expect(typeVocabularyOf('mosque')?.what).toMatch(/place of worship/i);
+  });
+
+  it('explains a site and a museum in archaeology\'s words, the same words for both', () => {
+    // Both values are one vocabulary's, so the review card says the same thing
+    // about a dig and about the museum beside it — which is the claim ADR-0058
+    // makes: one kind, told apart by a chip.
+    expect(typeVocabularyOf('site')?.what).toMatch(/excavation/i);
+    expect(typeVocabularyOf('museum')).toBe(typeVocabularyOf('site'));
+    // And not the museums' or public art's: the vocabularies stay disjoint.
+    expect(typeVocabularyOf('site')?.what).not.toMatch(/monument or sculpture/);
   });
 
   it('answers nothing for a value no kind declares', () => {

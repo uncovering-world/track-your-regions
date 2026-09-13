@@ -2,11 +2,13 @@
  * Says a place has something to look at inside, derived from the region row's
  * `treasure_count` (offered + published treasure links).
  *
- * Silent for a museum (`kind_id` 2): every museum row already carries
- * works, and a card there shows the count as the point of the row rather than
- * as a side note — a second "N treasures inside" chip would repeat it. Every
- * other kind that links treasures — places of worship among them — gets the
- * chip only where the count is actually above zero.
+ * Silent for the kinds whose row already lists what is inside — art museums
+ * (`kind_id` 2) and archaeology (5), whose museums hold finds the row lists the
+ * same way. A card of either shows the holdings as the point of the row rather
+ * than as a side note, so a second "N treasures inside" chip would say the same
+ * thing twice. Every other kind that links treasures — places of worship among
+ * them, where the treasures are a side note beside the building — gets the chip
+ * where the count is actually above zero.
  *
  * Sized to match `LifecycleChip`, the badge it sits beside in every row and
  * card: MUI's own `size="small"` (24px) reads a third taller than the other
@@ -18,7 +20,8 @@
 import { Chip } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
-const ART_MUSEUMS = 2;
+/** The kinds whose row lists its holdings itself, so the chip would repeat it. */
+const LISTS_ITS_OWN_CONTENTS = [2, 5];
 
 export interface TreasuresInsideChipProps {
   count?: number | null;
@@ -26,7 +29,7 @@ export interface TreasuresInsideChipProps {
 }
 
 export function TreasuresInsideChip({ count, kindId }: TreasuresInsideChipProps) {
-  if (!count || kindId === ART_MUSEUMS) return null;
+  if (!count || LISTS_ITS_OWN_CONTENTS.includes(kindId)) return null;
 
   const text = `${count} ${count === 1 ? 'treasure' : 'treasures'} inside`;
 

@@ -234,3 +234,62 @@ describe('the points a contents card lists', () => {
     expect(screen.queryByRole('button', { name: 'Unplaced component' })).toBeNull();
   });
 });
+
+/**
+ * The run's own question, on the card where it is answered.
+ *
+ * A row the Archaeology rule could not settle by itself is held with the doubt
+ * written down (ADR-0058): the Pushkin Museum's antiquities are one department
+ * of an art museum, and whether the exposition is substantially archaeology is
+ * a judgement no classes answer. On the preview alone the question sits behind
+ * "Look at the object" — and the batch answer of #852 can dispose of the row
+ * without the object ever being opened, so a curator could answer a question
+ * they were never shown.
+ */
+describe('the question the run wrote down', () => {
+  /** An arrival held for a curator, with or without a note from the run. */
+  function arrival(admission_note: string | null): ReviewQueueItem {
+    return {
+      id: 7311, external_id: 'Q4238', name: 'Pushkin Museum',
+      kind_id: 5, kind_name: 'Archaeology',
+      missing_since: null, source_membership: 'present', existence: 'extant',
+      kind: 'arrival', proposed: null,
+      pending_locations: 0, pending_treasures: 0,
+      pending_points: [], pending_works: [],
+      admission_note,
+    };
+  }
+
+  function renderArrival(item: ReviewQueueItem) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={client}>
+        <GatedCard group={{ id: item.id, name: item.name, arrival: item }} onDone={() => {}} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('is on the card itself, beside the sentence saying what is being held', () => {
+    renderArrival(arrival(
+      'an antiquities department (category: Egyptological collections in Russia);'
+      + ' is the exposition substantially archaeology?',
+    ));
+
+    expect(screen.getByText(/The run asks:/)).toBeInTheDocument();
+    expect(screen.getByText(/is the exposition substantially archaeology\?/)).toBeInTheDocument();
+  });
+
+  it('says nothing on a row the rule admitted by itself', () => {
+    renderArrival(arrival(null));
+
+    expect(screen.queryByText(/The run asks:/)).toBeNull();
+  });
+
+  it('says nothing for a note of blanks, as the preview says nothing for one', () => {
+    // A label drawn over nothing tells a curator a question was asked and then
+    // withholds it. `ObjectPreview` trims the same note for the same reason.
+    renderArrival(arrival('   '));
+
+    expect(screen.queryByText(/The run asks:/)).toBeNull();
+  });
+});

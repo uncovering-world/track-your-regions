@@ -57,6 +57,7 @@ const FIELD_LABEL: Record<string, string> = {
   'metadata.criteria': 'criteria',
   'metadata.wikipediaUrl': 'Wikipedia link',
   'metadata.imageCredit': 'picture credit',
+  'metadata.foundAt': 'find spot',
   imageUrl: 'picture',
   'metadata.creators': 'makers',
   shortDescription: 'short description',

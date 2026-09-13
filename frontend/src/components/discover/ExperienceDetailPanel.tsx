@@ -339,6 +339,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
           <ContentsSection
             contents={contentsData.treasures}
             totalCount={contentsData.total}
+            kindId={experience.kind_id}
             isAuthenticated={isAuthenticated}
             viewedIds={viewedIds}
             onMarkViewed={(id) => markViewed({ treasureId: id, experienceId: experience.id })}

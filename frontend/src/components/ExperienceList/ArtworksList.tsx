@@ -10,6 +10,7 @@ import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/workClaims';
+import { holdingsNoun } from '../../utils/experienceTypes';
 import { VISITED_GREEN } from '../../utils/kindColors';
 import { ARTWORKS_INITIAL_LIMIT } from './utils';
 
@@ -137,6 +138,17 @@ function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArt
             yearLabel(content.year), content.treasure_type]
             .filter(Boolean).join(' · ')}
         </Typography>
+        {/* Where it was dug up, for the works that were: an archaeology
+            museum's holdings are objects taken from somewhere, and a row naming
+            only the museum tells a traveller the smaller half of what the thing
+            is (ADR-0058). Its own line rather than another term in the row
+            above, which is the makers-and-date line a painting fills and a find
+            usually leaves empty. */}
+        {content.found_at?.label && (
+          <Typography variant="caption" color="text.secondary" display="block" noWrap>
+            found at {content.found_at.label}
+          </Typography>
+        )}
         {/* `redundantWith` because the line above already names the makers, and
             Commons names the painter as the author of a photograph of a painting —
             so on most rows this would repeat a maker and add a licence that asks
@@ -175,11 +187,13 @@ interface ArtworksListProps {
   contents: ExperienceTreasure[];
   total: number;
   experienceId: number;
+  /** Which kind's row this box sits on, which decides what its holdings are called. */
+  kindId?: number | null;
   /** A curator's way into correcting one of these works (#731); absent for everyone else. */
   onCorrect?: (work: ExperienceTreasure) => void;
 }
 
-export function ArtworksList({ contents, total, experienceId, onCorrect }: ArtworksListProps) {
+export function ArtworksList({ contents, total, experienceId, kindId, onCorrect }: ArtworksListProps) {
   const { setArtworkPreview } = useExperienceContext();
   const { isAuthenticated } = useAuth();
   const { viewedIds, viewedCount, markViewed, unmarkViewed } = useViewedTreasures(experienceId);
@@ -190,6 +204,11 @@ export function ArtworksList({ contents, total, experienceId, onCorrect }: Artwo
   const [showAll, setShowAll] = useState(false);
   const displayContents = showAll ? contents : contents.slice(0, ARTWORKS_INITIAL_LIMIT);
   const hasMore = total > ARTWORKS_INITIAL_LIMIT;
+  // What this box calls what it holds, decided once and shared with Discover:
+  // the heading and the control that opens the rest of the list name the same
+  // things, and the same museum opened on the other surface names them that way
+  // too (`holdingsNoun`, #885).
+  const holdings = holdingsNoun(kindId);
 
   const handleToggleViewed = (treasureId: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -203,7 +222,8 @@ export function ArtworksList({ contents, total, experienceId, onCorrect }: Artwo
   return (
     <Box sx={{ mb: 2 }}>
       <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontWeight: 600 }}>
-        Notable works ({total}){isAuthenticated && viewedCount > 0 && ` · ${viewedCount} seen`}
+        Notable {holdings} ({total})
+        {isAuthenticated && viewedCount > 0 && ` · ${viewedCount} seen`}
       </Typography>
       <Box
         sx={{
@@ -245,7 +265,7 @@ export function ArtworksList({ contents, total, experienceId, onCorrect }: Artwo
             }}
           >
             <Typography variant="caption" color="primary">
-              Show all {total} works
+              Show all {total} {holdings}
             </Typography>
           </ButtonBase>
         )}

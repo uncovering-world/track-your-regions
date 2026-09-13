@@ -17,6 +17,7 @@ const WORLD_HERITAGE = 1;
 const ART_MUSEUMS = 2;
 const PUBLIC_ART = 3;
 const PLACES_OF_WORSHIP = 4;
+const ARCHAEOLOGY = 5;
 
 describe('experienceColors', () => {
   it('refines a World Heritage site by its type, which is what the map tells apart', () => {
@@ -25,8 +26,10 @@ describe('experienceColors', () => {
     expect(experienceColor(WORLD_HERITAGE, 'mixed')).toBe(TYPE_COLORS.mixed.primary);
   });
 
-  it('gives a museum its kind\'s colour, with no type to hang it on', () => {
-    // Every museum row used to carry the literal `art`; a museum has no type now.
+  it('gives an art museum its kind\'s colour, with no type to hang it on', () => {
+    // Every museum row used to carry the literal `art`; an art museum has no
+    // type now. Archaeology's `museum` *is* a type (ADR-0058) — of archaeology,
+    // not of museums — and it hangs on the kind below, not here.
     expect(experienceColor(ART_MUSEUMS, null)).toBe('#2563EB');
   });
 
@@ -43,9 +46,23 @@ describe('experienceColors', () => {
     const primaries = [
       experienceColor(WORLD_HERITAGE, 'cultural'), experienceColor(WORLD_HERITAGE, 'natural'),
       experienceColor(WORLD_HERITAGE, 'mixed'), experienceColor(ART_MUSEUMS, null),
-      experienceColor(PUBLIC_ART, null),
+      experienceColor(PUBLIC_ART, null), experienceColor(PLACES_OF_WORSHIP, null),
+      experienceColor(ARCHAEOLOGY, null),
     ];
     expect(new Set(primaries).size).toBe(primaries.length);
+    // The tints too, not the line colours alone: `bg` and `text` are what the
+    // type chip is drawn in (`discover/ExperienceCard.tsx`,
+    // `ExperienceDetailPanel.tsx`, `ExperienceExpandedDetails.tsx`), so two
+    // kinds sharing a background put an archaeology museum's "Museum" chip on
+    // the tint a mixed World Heritage site's chip already sits on — the same
+    // "which kind is this" confusion the primaries are kept apart to prevent.
+    const backgrounds = [
+      experienceColors(WORLD_HERITAGE, 'cultural').bg, experienceColors(WORLD_HERITAGE, 'natural').bg,
+      experienceColors(WORLD_HERITAGE, 'mixed').bg, experienceColors(ART_MUSEUMS, null).bg,
+      experienceColors(PUBLIC_ART, null).bg, experienceColors(PLACES_OF_WORSHIP, null).bg,
+      experienceColors(ARCHAEOLOGY, null).bg,
+    ];
+    expect(new Set(backgrounds).size).toBe(backgrounds.length);
   });
 
   it('lets a type value name its kind where no kind id came with it', () => {
@@ -86,6 +103,21 @@ describe('experienceColors', () => {
     expect(experienceColor(PLACES_OF_WORSHIP, 'cathedral')).toBe('#BE185D');
     expect(experienceColor(PLACES_OF_WORSHIP, null)).toBe('#BE185D');
     expect(kindColor(PLACES_OF_WORSHIP)).toBe('#BE185D');
+  });
+
+  it('draws a dig and the museum that shows its finds in one colour', () => {
+    // Archaeology has two types and one colour: a traveller browses the
+    // excavation and the museum holding what came out of it as one list
+    // (ADR-0058), so neither type refines the pin. The amber-brown sits beside
+    // the art museums' blue — the kind a museum row is easiest to confuse with.
+    expect(experienceColor(ARCHAEOLOGY, 'site')).toBe('#B45309');
+    expect(experienceColor(ARCHAEOLOGY, 'museum')).toBe('#B45309');
+    expect(experienceColor(ARCHAEOLOGY, null)).toBe('#B45309');
+    expect(kindColor(ARCHAEOLOGY)).toBe('#B45309');
+    // An archaeology museum is not an art museum, and the map must not say it is.
+    expect(experienceColor(ARCHAEOLOGY, 'museum')).not.toBe(experienceColor(ART_MUSEUMS, null));
+    // Nor the neutral a kind this file does not know falls to.
+    expect(experienceColor(ARCHAEOLOGY, null)).not.toBe(experienceColors(99, null).primary);
   });
 });
 

@@ -434,6 +434,15 @@ export interface ExperienceTreasure {
    * photographer is named wherever it appears.
    */
   image_credit?: ImageCredit | null;
+  /**
+   * Where the object was dug up, for the kind whose works are finds: an
+   * archaeology museum's holdings are things taken from somewhere, and that
+   * somewhere is half of what the object is (ADR-0058) — the Rosetta Stone is
+   * a British Museum object and a Fort Julien one, the fort at Rashid where it
+   * was dug up. Absent on every work no run wrote it for; a painting has a
+   * maker, not a find spot.
+   */
+  found_at?: { qid: string; label: string } | null;
   sitelinks_count: number;
 }
 
@@ -589,6 +598,15 @@ export interface ReviewQueueItem {
   website_url?: string | null;
   wikipedia_url?: string | null;
   region_names?: string[] | null;
+  /**
+   * The run's own question about a row it could not settle by its rule
+   * (ADR-0058) — an art museum with an antiquities department, where whether
+   * the exposition is substantially archaeology is nobody's class to answer.
+   * On the card because that is where the answer is given, and where a batch
+   * can dispose of the row without the object ever being opened (#852). Null
+   * on every row no run asked anything about, which is nearly all of them.
+   */
+  admission_note?: string | null;
   /**
    * The danger listing as the reader-facing reads carry it, so a card about
    * `inDanger` can say "listed since 2003" rather than reading as this year's
