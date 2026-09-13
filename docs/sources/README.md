@@ -24,6 +24,7 @@ docs/sources/
 └── global/                  ← sources native to no unit: read per unit, or read for the world
     ├── wikidata-by-class-per-unit.md
     ├── wikidata-places-of-worship.md
+    ├── wikidata-archaeology.md
     └── …
 ```
 
