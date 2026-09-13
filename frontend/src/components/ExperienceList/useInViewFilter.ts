@@ -23,8 +23,8 @@ export interface InViewFilter {
   /** Whether this reader has asked for the whole region back, in this region. */
   showWholeRegion: boolean;
   toggleWholeRegion: () => void;
-  /** Each category's whole-region count, for the "of N" half of a header. */
-  totalByCategory: Map<string, number>;
+  /** Each kind's whole-region count, for the "of N" half of a header. */
+  totalByKind: Map<string, number>;
 }
 
 export function useInViewFilter(
@@ -58,10 +58,10 @@ export function useInViewFilter(
     [viewBounds, activeExperiences, locationsByExperience, collapsedExperienceIds],
   );
 
-  const totalByCategory = useMemo(() => {
+  const totalByKind = useMemo(() => {
     const totals = new Map<string, number>();
     for (const exp of activeExperiences) {
-      const name = exp.category_name || 'Experiences';
+      const name = exp.kind_name || 'Experiences';
       totals.set(name, (totals.get(name) ?? 0) + 1);
     }
     return totals;
@@ -95,6 +95,6 @@ export function useInViewFilter(
     isFiltered,
     showWholeRegion,
     toggleWholeRegion: () => setShownFor(showWholeRegion ? null : regionId),
-    totalByCategory,
+    totalByKind,
   };
 }

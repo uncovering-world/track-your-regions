@@ -35,7 +35,7 @@ describe('a kind counts its memberships', () => {
     expect(sql).toContain(collapse(countedMembershipSql('km', 'ke')));
     // Not off the place's source column: the count is of memberships in the
     // kind, which is what a place in two kinds counts once in each of.
-    expect(sql).not.toContain('category_id');
+    expect(sql).not.toContain('source_id');
     // Uncast: COUNT is a bigint the driver hands over as a string, and the
     // readers of experience_count have parsed it that way since the column
     // existed.

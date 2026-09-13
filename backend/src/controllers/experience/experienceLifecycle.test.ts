@@ -78,12 +78,12 @@ describe('hideLostSql', () => {
 });
 
 describe('hideRefusedSql', () => {
-  it('hides only what this category turned down', () => {
+  it('hides only what its kind turned down', () => {
     const sql = hideRefusedSql();
 
     expect(sql).toContain("admission <> 'refused'");
     // Not a claim about the world. The British Museum stands open and Wikidata
-    // still lists it; what changed is which of our categories claims it.
+    // still lists it; what changed is which of our kinds claims it.
     expect(sql).not.toContain('existence');
     expect(sql).not.toContain('source_membership');
     // A refusal is a decision with a reason, and the reason is for the curator

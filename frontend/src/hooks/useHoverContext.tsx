@@ -29,9 +29,9 @@ export interface HoverPreview {
   experienceName: string;
   locationId: number | null;
   locationName: string | null;
-  categoryName: string | null;
+  kindName: string | null;
   /** The kind, for `TreasuresInsideChip` — silent for a museum, where every row has works. */
-  categoryId: number;
+  kindId: number;
   /** Offered + published treasure links, for `TreasuresInsideChip`. */
   treasureCount?: number;
   imageUrl: string | null;

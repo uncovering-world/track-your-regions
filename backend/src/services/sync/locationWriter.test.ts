@@ -489,9 +489,9 @@ describe('a new point arrives stamped', () => {
     expect(insert).toBeDefined();
     expect(insert).toMatch(/curation_state/);
     // The gate is reached through the experience, because this writer has an
-    // experienceId and no categoryId — one subselect rather than a parameter
+    // experienceId and no sourceId — one subselect rather than a parameter
     // threaded through every sync service.
-    expect(insert).toMatch(/FROM experiences[\s\S]*JOIN experience_categories/);
+    expect(insert).toMatch(/FROM experiences[\s\S]*JOIN experience_sources/);
     // Both branches named, so an edit that stamped every row 'auto' (or every
     // row 'pending') fails this test instead of passing on column presence alone.
     expect(insert).toMatch(/THEN 'pending' ELSE 'auto' END/);
@@ -1436,7 +1436,7 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
  * the object: a visible component's name keeps its stored value, the diff says
  * the gate held it, and the object is pointed at the run so the curator's card
  * can find the proposal. Measured before this existed: 73 part-field changes
- * had been written live under gated categories, two of them renames of a place
+ * had been written live under gated sources, two of them renames of a place
  * (#717).
  */
 describe('a visible point under a gated source', () => {

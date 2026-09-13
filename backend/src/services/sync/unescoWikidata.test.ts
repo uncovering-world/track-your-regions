@@ -102,7 +102,7 @@ describe('factsForSite', () => {
 
   it('answers the same whatever order the rows arrive in', () => {
     // The endpoint states no order, so a picture that depended on one would
-    // change between runs — and on a gated category every change is a card.
+    // change between runs — and on a gated source every change is a card.
     const rows = [
       binding('540-020c', { image: 'C.jpg' }),
       binding('540-003b 16', { image: 'B.jpg' }),

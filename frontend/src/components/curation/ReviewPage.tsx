@@ -379,7 +379,7 @@ export function ReviewPage() {
               to the top, so the answer to a click is always where the click was. */}
           <Box
             sx={{
-              // 400, not 320: a row carries an object's name and, under it, its category
+              // 400, not 320: a row carries an object's name and, under it, its kind
               // and what is being asked of it. At 320 both truncate after a few words —
               // "Cultural Landscape and Archaeolo…" over "UNESCO World Heritage Sites ·
               // holds a change: …" — which leaves the list unable to do the one thing it

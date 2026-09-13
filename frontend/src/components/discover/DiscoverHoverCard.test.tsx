@@ -36,7 +36,7 @@ const basePreview = {
   experienceName: 'Uffizi Gallery',
   locationId: null,
   locationName: null,
-  categoryName: 'Art Museums',
+  kindName: 'Art Museums',
   imageUrl: null,
   imageCredit: null,
   longitude: 11.26,
@@ -54,7 +54,7 @@ describe('DiscoverHoverCard treasures-inside chip', () => {
     renderCard();
 
     act(() => {
-      actions.setHoverPreview({ ...basePreview, categoryId: PLACES_OF_WORSHIP, treasureCount: 3 });
+      actions.setHoverPreview({ ...basePreview, kindId: PLACES_OF_WORSHIP, treasureCount: 3 });
     });
 
     expect(screen.getByText('3 treasures inside')).toBeInTheDocument();
@@ -64,7 +64,7 @@ describe('DiscoverHoverCard treasures-inside chip', () => {
     renderCard();
 
     act(() => {
-      actions.setHoverPreview({ ...basePreview, categoryId: ART_MUSEUMS, treasureCount: 55 });
+      actions.setHoverPreview({ ...basePreview, kindId: ART_MUSEUMS, treasureCount: 55 });
     });
 
     expect(screen.getByText('Uffizi Gallery')).toBeInTheDocument();

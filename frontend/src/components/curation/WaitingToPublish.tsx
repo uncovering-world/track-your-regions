@@ -252,7 +252,7 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
               tags, which are no longer a question and no longer a row — would
               otherwise read "proposes nothing" over an empty table while its button
               wrote them. None on this database today; the shape is real, and it
-              clears at the category's next run. */}
+              clears at the kind's next run. */}
           {proposed.length > 0 && rows.length === 0 && (
             <GatedRow label="fields">
               <Typography variant="body2">

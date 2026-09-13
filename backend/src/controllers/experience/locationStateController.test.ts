@@ -45,7 +45,7 @@ function makeRes() {
 const CURATOR = { id: 7, role: 'curator' as const };
 
 /** The live row this whole slice was built against. */
-const BILBAO = { id: 13211, experience_id: 502, category_id: 2 };
+const BILBAO = { id: 13211, experience_id: 502, source_id: 2 };
 
 /** What a card showing an unanswered withdrawal sends back. */
 const WAITING = { membership: 'present' as const, existence: 'extant' as const, flagged: true };
@@ -118,7 +118,7 @@ describe('setLocationState', () => {
     );
 
     // The point carries no scope of its own: it is judged through the object that
-    // holds it, which is where regions and category live.
+    // holds it, which is where regions and source live.
     expect(res.status).toHaveBeenCalledWith(403);
     expect(mockedConnect).not.toHaveBeenCalled();
   });

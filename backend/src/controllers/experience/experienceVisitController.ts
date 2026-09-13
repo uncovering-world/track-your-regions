@@ -7,6 +7,7 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import { experienceOfferedToReaderSql, hidePendingSql, lifecycleSelectSql, readerPositionSql } from './experienceLifecycle.js';
+import { rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
@@ -20,7 +21,7 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
     return;
   }
 
-  const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : null;
+  const kindId = req.query.kindId ? parseInt(String(req.query.kindId)) : null;
   const limit = Math.min(parseInt(String(req.query.limit)) || 100, 500);
   const offset = parseInt(String(req.query.offset)) || 0;
 
@@ -34,16 +35,15 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
       e.name,
       e.short_description,
       e.type,
-      -- The kind, by its source row: what a colour is decided by (#814).
-      e.category_id,
+      -- The kind, off the row's membership: what a colour is decided by (#814, #819).
+      ${rowKindSelectSql()},
       e.country_names,
       e.image_url,
       ${readerPositionSql('e')},
-      s.name as category_name,
       ${lifecycleSelectSql()}
     FROM user_visited_experiences uve
     JOIN experiences e ON uve.experience_id = e.id
-    JOIN experience_categories s ON e.category_id = s.id
+    ${rowKindJoinSql('e')}
     WHERE uve.user_id = $1
       AND ${hidePendingSql()}
   `;
@@ -65,9 +65,9 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
   const params: (number | string)[] = [userId];
   let paramIndex = 2;
 
-  if (categoryId) {
-    query += ` AND e.category_id = $${paramIndex++}`;
-    params.push(categoryId);
+  if (kindId) {
+    query += ` AND m.kind_id = $${paramIndex++}`;
+    params.push(kindId);
   }
 
   query += ` ORDER BY uve.visited_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
@@ -79,11 +79,11 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
   // count on this branch carries whatever its list carries: a total that
   // counted a manufactured visit the list above already hides would disagree
   // with what a caller can even see rows for.
-  let countQuery = `SELECT COUNT(*) FROM user_visited_experiences uve JOIN experiences e ON uve.experience_id = e.id WHERE uve.user_id = $1 AND ${hidePendingSql()}`;
+  let countQuery = `SELECT COUNT(*) FROM user_visited_experiences uve JOIN experiences e ON uve.experience_id = e.id ${rowKindJoinSql('e')} WHERE uve.user_id = $1 AND ${hidePendingSql()}`;
   const countParams: number[] = [userId];
-  if (categoryId) {
-    countQuery += ' AND e.category_id = $2';
-    countParams.push(categoryId);
+  if (kindId) {
+    countQuery += ' AND m.kind_id = $2';
+    countParams.push(kindId);
   }
   const countResult = await pool.query(countQuery, countParams);
 
@@ -125,7 +125,7 @@ export async function markVisited(req: AuthenticatedRequest, res: Response): Pro
   // naming its id is a guess rather than an action on something they were
   // shown. Without the pair this handler echoes the row's name back below and
   // leaves `getVisitedExperiences` handing back the rest of it — name,
-  // description, category, coordinates — for ever, because that read exempts
+  // description, kind, coordinates — for ever, because that read exempts
   // `admission` deliberately (ADR-0022: a visit outlives the catalogue's
   // verdict) and nothing here ever clears the row the POST just wrote.
   //
@@ -263,7 +263,7 @@ export async function getVisitedIds(req: AuthenticatedRequest, res: Response): P
     return;
   }
 
-  const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : null;
+  const kindId = req.query.kindId ? parseInt(String(req.query.kindId)) : null;
 
   let query = `
     SELECT uve.experience_id
@@ -272,12 +272,13 @@ export async function getVisitedIds(req: AuthenticatedRequest, res: Response): P
 
   const params: number[] = [userId];
 
-  if (categoryId) {
+  if (kindId) {
     query += `
       JOIN experiences e ON uve.experience_id = e.id
-      WHERE uve.user_id = $1 AND e.category_id = $2
+      ${rowKindJoinSql('e')}
+      WHERE uve.user_id = $1 AND m.kind_id = $2
     `;
-    params.push(categoryId);
+    params.push(kindId);
   } else {
     query += ' WHERE uve.user_id = $1';
   }

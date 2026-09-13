@@ -7,7 +7,7 @@
  * would have taken two thirds of the catalogue's works off the walls. What
  * makes a withdrawal safe is a floor over how much of what the catalogue holds
  * the run saw again — the treasures analogue of missing detection's floor for
- * experiences (`missingDetection.ts`), which this category, being `ranked`,
+ * experiences (`missingDetection.ts`), which this source, being `ranked`,
  * never reaches.
  *
  * **Measured on works, per pool** (ADR-0044). Of the works the catalogue offers

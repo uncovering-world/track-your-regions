@@ -64,7 +64,7 @@ describe('declineSourceValue', () => {
   });
 
   it('refuses a curator whose scope does not reach the experience', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
@@ -77,7 +77,7 @@ describe('declineSourceValue', () => {
   });
 
   it('records the value from the proposal, not from the request', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     const { client, queries } = makeClient(['short_description'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
@@ -101,7 +101,7 @@ describe('declineSourceValue', () => {
   });
 
   it('records a name-carrying value as the catalogue stores a name', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     // The queue matches the refusal to the record by value, and every run
     // records the tidied form now (#835): a refusal keyed by the run of spaces
     // the source once sent would silence nothing.
@@ -122,7 +122,7 @@ describe('declineSourceValue', () => {
   });
 
   it('writes nothing to the row it is about', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
 
@@ -138,7 +138,7 @@ describe('declineSourceValue', () => {
   });
 
   it('records one standing answer per field rather than a pile', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
 
@@ -153,7 +153,7 @@ describe('declineSourceValue', () => {
   });
 
   it('leaves a trail, since standing by your own edit used to leave none', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
 
@@ -171,7 +171,7 @@ describe('declineSourceValue', () => {
   });
 
   it('refuses a run other than the one the card showed', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
@@ -190,7 +190,7 @@ describe('declineSourceValue', () => {
   });
 
   it('refuses a field the source is not proposing anything for', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     const { client } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
@@ -204,7 +204,7 @@ describe('declineSourceValue', () => {
   });
 
   it('refuses on behalf of a claim that has since been released', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     // Someone accepted the source while this card was open: the field is no longer a
     // conflict, and suppressing it would hide a card that should be showing.
     const { client, queries } = makeClient([], PROPOSAL);
@@ -221,7 +221,7 @@ describe('declineSourceValue', () => {
   });
 
   it('answers every field, including the ones accept-source cannot write', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     const LOCATION = [{
       sync_log_id: 9,
       changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],

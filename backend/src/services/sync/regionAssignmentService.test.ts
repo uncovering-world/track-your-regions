@@ -41,7 +41,7 @@ function fakeClient() {
   return { client, statements };
 }
 
-const ONE_SOURCE = 'AND e.category_id = $2';
+const ONE_SOURCE = 'AND e.source_id = $2';
 const THESE_EXPERIENCES = 'AND el.experience_id = ANY($2::int[])';
 
 /** The direct step is the insert that reads the leaves' pieces; the ancestor walk inserts too. */
@@ -59,9 +59,9 @@ async function movedPathDirect(): Promise<string> {
 }
 
 /** The direct statement and its parameters a world view's rebuild sends, narrowed to one source or not. */
-async function rebuildDirect(worldViewId: number, categoryId?: number): Promise<{ sql: string; params: unknown[] }> {
+async function rebuildDirect(worldViewId: number, sourceId?: number): Promise<{ sql: string; params: unknown[] }> {
   mockedQuery.mockClear();
-  await assignExperiencesToRegions(worldViewId, categoryId);
+  await assignExperiencesToRegions(worldViewId, sourceId);
   const call = mockedQuery.mock.calls.find(c => isDirect(String(c[0])));
   expect(call, 'no direct placement statement was sent').toBeDefined();
   return { sql: String(call?.[0]), params: call?.[1] as unknown[] };

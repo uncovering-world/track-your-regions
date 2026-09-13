@@ -75,7 +75,7 @@ describe('pointChanges', () => {
 
   it('says the gate held a rename on a point readers can already see', () => {
     // Château de Montésgur → Château de Montségur: a typo fix from the source
-    // that landed on a gated category without anyone looking (#717). Under
+    // that landed on a gated source without anyone looking (#717). Under
     // ADR-0037 the writer keeps the stored name, and this is how it says so.
     const before = { name: 'Château de Montésgur', lon: 1.83, lat: 42.88 };
     const changes = pointChanges(before, { ...before, name: 'Château de Montségur' }, [], true);
@@ -197,7 +197,7 @@ describe('workChanges', () => {
   it('says the gate held a re-attribution on a work readers can already see', () => {
     // The Wine Glass, Gemäldegalerie: Wikidata moved the attribution from
     // Johannes Vermeer to an obscure namesake, and run 64 wrote it live under a
-    // gated category (#717). Held, the card asks; written, nobody was asked.
+    // gated source (#717). Held, the card asks; written, nobody was asked.
     const glass = { ...MONA, name: 'The Wine Glass', artists: ['Johannes Vermeer'], year: 1660 };
     const changes = workChanges(
       glass, { ...glass, artists: ['Jan Vermeer van Haarlem the Elder'] }, [], true,

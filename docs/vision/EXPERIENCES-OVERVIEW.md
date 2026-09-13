@@ -16,7 +16,7 @@ The defining property: an experience is **trackable**. You can mark it as done, 
 
 ### Kinds
 
-Experiences are organized into **kinds** — what a traveller browses by, what they would call the thing in front of them ([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md)). Each kind is its own list, pin colour and count, with its own natural tracking verb, sources and UI needs. Kinds are the real structure of the system — all other concepts (type, significance, treasures) exist within them. The screens and the code still say *category* for a kind; the glossary in [`experiences.md`](../tech/experiences.md#glossary) maps the words.
+Experiences are organized into **kinds** — what a traveller browses by, what they would call the thing in front of them ([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md)). Each kind is its own list, pin colour and count, with its own natural tracking verb, sources and UI needs. Kinds are the real structure of the system — all other concepts (type, significance, treasures) exist within them. The code and the database say *kind* since #819 (`experience_kinds`, `kind_id`) and *source* for what fills one (`experience_sources`); the glossary in [`experiences.md`](../tech/experiences.md#glossary) maps the words.
 
 Examples of kinds: World Heritage sites (visited), Art museums (visited), Archaeology museums (visited), Public art & monuments (visited), Books (read), Films (watched), Regional Food (tried), Languages (learned), Festivals (attended), Hiking Trails (walked), Wildlife (observed). Kinds are siblings: an art museum and an archaeology museum are two lists to a person who wants one and not the other, not two entries under "Museums".
 
@@ -86,7 +86,7 @@ The system collects broader treasure data than what qualifies as highlights (e.g
 | Term | Meaning |
 |------|---------|
 | **Experience** | Anything a user can engage with in connection with a region — must be trackable |
-| **Kind** | What a traveller browses by: World Heritage sites, art museums, archaeology museums, books, films, food, languages, etc. Each its own list, pin colour and count. Called a *category* on the screens and in the code today |
+| **Kind** | What a traveller browses by: World Heritage sites, art museums, archaeology museums, books, films, food, languages, etc. Each its own list, pin colour and count. Called a *kind* in the code and the database since #819 (`experience_kinds`, `kind_id`); the list a sync reads to fill one is a *source* (`experience_sources`) |
 | **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query, curator input. Never what a visitor sees; a kind may have several |
 | **Treasure** | An independently trackable thing inside a venue (artwork, species, artifact). Many-to-many with venues |
 | **Venue** | An experience that holds treasures (museum, zoo, national park) |
@@ -177,7 +177,7 @@ Supplementary import methods: smart manual input (tap regions on a map), Google 
 
 Curators are the quality layer — local experts or subject-matter specialists who keep content accurate and relevant. They can reject bad assignments, edit metadata, add missing treasures, create new experiences, and remove permanently wrong entries. They also answer what a sync run could not decide for itself: whether an object the source stopped listing was delisted, destroyed, or never gone, and which version wins where the source disagrees with a curator's edit.
 
-The system trusts curators: nobody approves their work and there are no drafts. The review page runs the other way round — the machine asking a curator, not a curator waiting on anyone. Actions are logged for accountability, and curator edits are protected from being overwritten by automated syncs. Curation is scoped — a curator might be responsible for a specific region, a specific category, or have global access.
+The system trusts curators: nobody approves their work and there are no drafts. The review page runs the other way round — the machine asking a curator, not a curator waiting on anyone. Actions are logged for accountability, and curator edits are protected from being overwritten by automated syncs. Curation is scoped — a curator might be responsible for a specific region, a specific source, or have global access.
 
 See [`curator-system.md`](../tech/planning/curator-system.md) for what's implemented and remaining improvements.
 

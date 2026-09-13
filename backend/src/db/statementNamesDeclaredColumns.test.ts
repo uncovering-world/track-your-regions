@@ -352,9 +352,9 @@ describe('the schema as read', () => {
     expect(tables.get('experiences')).not.toContain('category');
     // `ALTER TABLE world_views ADD COLUMN IF NOT EXISTS is_public …`
     expect(tables.get('world_views')).toContain('is_public');
-    // The guarded form: `ALTER TABLE experience_categories` on one line and
+    // The guarded form: `ALTER TABLE experience_sources` on one line and
     // `ADD COLUMN requires_curation …` on the next, inside a DO block.
-    expect(tables.get('experience_categories')).toContain('requires_curation');
+    expect(tables.get('experience_sources')).toContain('requires_curation');
     // A constraint line is not a column.
     expect(tables.get('experiences')).not.toContain('CONSTRAINT');
   });
@@ -373,7 +373,7 @@ describe('the schema as read', () => {
 describe('the extractor', () => {
   it('names the column the type rename removed, in the statement that broke (#824)', () => {
     const sweep = undeclaredColumns(
-      'SELECT id, category_id, name, short_description, description, category, image_url, tags, metadata, curated_fields\n     FROM experiences WHERE id = $1',
+      'SELECT id, source_id, name, short_description, description, category, image_url, tags, metadata, curated_fields\n     FROM experiences WHERE id = $1',
       tables,
     );
     expect(sweep.undeclared).toEqual([{ reference: 'category', table: 'experiences' }]);
@@ -416,7 +416,7 @@ describe('the extractor', () => {
   it('holds a SET clause and an INSERT column list to their table', () => {
     expect(undeclaredColumns('UPDATE experiences SET category = $1, name = $2 WHERE id = $3', tables).undeclared)
       .toEqual([{ reference: 'category', table: 'experiences' }]);
-    expect(undeclaredColumns('INSERT INTO experiences (category_id, category) VALUES ($1, $2)', tables).undeclared)
+    expect(undeclaredColumns('INSERT INTO experiences (source_id, category) VALUES ($1, $2)', tables).undeclared)
       .toEqual([{ reference: 'category', table: 'experiences' }]);
   });
 

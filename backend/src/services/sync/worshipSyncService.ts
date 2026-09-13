@@ -50,7 +50,7 @@ import {
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 
-const WORSHIP_CATEGORY_ID = 4;
+const WORSHIP_SOURCE_ID = 4;
 
 const LOG_PREFIX = '[Worship Sync]';
 
@@ -72,7 +72,7 @@ function collectingSparql(
   progress: SyncProgress, refreshCache: boolean,
 ): (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]> {
   return withCache(wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), LOG_PREFIX), {
-    categoryId: WORSHIP_CATEGORY_ID,
+    sourceId: WORSHIP_SOURCE_ID,
     enabled: !refreshCache,
     onHit: (descriptor, rows) => {
       progress.statusMessage = `${descriptor.label}: ${rows} rows, from cache`;
@@ -149,14 +149,14 @@ async function fetchWorshipItems(
   // business sending a query: it would admit a different catalogue than the
   // panel says it does (ADR-0052), and the collector needs the number for its
   // very first decision.
-  const line = await readSourceLine(WORSHIP_CATEGORY_ID);
-  const previousPlacements = await readPreviousPlacements(WORSHIP_CATEGORY_ID);
+  const line = await readSourceLine(WORSHIP_SOURCE_ID);
+  const previousPlacements = await readPreviousPlacements(WORSHIP_SOURCE_ID);
   imageCredits = new Map();
-  storedCredits = await readStoredCredits(WORSHIP_CATEGORY_ID);
+  storedCredits = await readStoredCredits(WORSHIP_SOURCE_ID);
   storedTreasureCredits = await readStoredTreasureCredits();
   // What the source holds as admitted before the run, so the stay line of the
   // hysteretic tier has something to hold (ADR-0023).
-  const admitted = await admittedExternalIds(WORSHIP_CATEGORY_ID);
+  const admitted = await admittedExternalIds(WORSHIP_SOURCE_ID);
 
   const { items, fetched, filtered } = await collectPlacesOfWorship({
     sparql: collectingSparql(progress, refreshCache),
@@ -256,7 +256,7 @@ async function processPlace(
   };
 
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
-    categoryId: WORSHIP_CATEGORY_ID,
+    sourceId: WORSHIP_SOURCE_ID,
     externalId: place.qid,
     name: place.label,
     nameLocal: { en: place.label },
@@ -308,7 +308,7 @@ async function processPlace(
       {
         syncLogId: context.syncLogId,
         withdrawalSkippedReason: context.withdrawalSkippedReason,
-        categoryId: WORSHIP_CATEGORY_ID,
+        sourceId: WORSHIP_SOURCE_ID,
       },
       placedElsewhereFor(place.qid),
     );
@@ -342,7 +342,7 @@ export function syncPlacesOfWorship(
   options: { dryRun?: boolean; refreshCache?: boolean } = {},
 ): Promise<void> {
   return orchestrateSync<CollectedPlaceOfWorship>({
-    categoryId: WORSHIP_CATEGORY_ID,
+    sourceId: WORSHIP_SOURCE_ID,
     logPrefix: LOG_PREFIX,
     // A fame line over two pools, so absence from a run says a row fell below
     // it or stopped passing the rule — nothing about whether the building
@@ -370,14 +370,14 @@ export function syncPlacesOfWorship(
  * Get current places-of-worship sync status
  */
 export function getWorshipSyncStatus() {
-  return getSyncStatus(WORSHIP_CATEGORY_ID);
+  return getSyncStatus(WORSHIP_SOURCE_ID);
 }
 
 /**
  * Cancel running places-of-worship sync
  */
 export function cancelWorshipSync() {
-  return cancelSync(WORSHIP_CATEGORY_ID);
+  return cancelSync(WORSHIP_SOURCE_ID);
 }
 
 /**
@@ -386,7 +386,7 @@ export function cancelWorshipSync() {
  * picture, started by hand from the admin panel against rows already stored
  * rather than during a sync pass.
  */
-export const fixWorshipImages = makeWikidataPictureRepair(WORSHIP_CATEGORY_ID, LOG_PREFIX, {
+export const fixWorshipImages = makeWikidataPictureRepair(WORSHIP_SOURCE_ID, LOG_PREFIX, {
   singular: 'place',
   plural: 'places',
 });

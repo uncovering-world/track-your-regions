@@ -8,7 +8,7 @@ import {
   styled,
 } from '@mui/material';
 import { Place as PlaceIcon } from '@mui/icons-material';
-import { VISITED_GREEN, PARTIAL_AMBER } from '../../utils/categoryColors';
+import { VISITED_GREEN, PARTIAL_AMBER } from '../../utils/kindColors';
 
 /**
  * The row's chrome as classes made once, not as `sx` objects made per row.
@@ -25,7 +25,7 @@ import { VISITED_GREEN, PARTIAL_AMBER } from '../../utils/categoryColors';
  * this file loads, and mounting a row is then DOM plus a class name.
  *
  * What varies per row goes through a CSS variable rather than a new class: the
- * category's colour is set as `--tyr-row-color` in a plain inline style, which
+ * kind's colour is set as `--tyr-row-color` in a plain inline style, which
  * costs nothing to serialise and — unlike an inline `color` — does not outrank
  * the `.Mui-checked` rule that turns a ticked box green.
  *
@@ -64,7 +64,7 @@ export const VisitCheckbox = styled(Checkbox)({
   '&.MuiCheckbox-indeterminate': { color: PARTIAL_AMBER },
 });
 
-export const CategoryIcon = styled(ListItemIcon)({ minWidth: 32 });
+export const KindIcon = styled(ListItemIcon)({ minWidth: 32 });
 
 export const PlacePin = styled(PlaceIcon)({ fontSize: 20, color: 'var(--tyr-row-color)' });
 

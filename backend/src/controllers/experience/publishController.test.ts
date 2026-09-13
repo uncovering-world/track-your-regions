@@ -997,7 +997,7 @@ describe('refusing to publish', () => {
     }
   });
 
-  it('refuses to publish a row the category turned down', async () => {
+  it('refuses to publish a row the source turned down', async () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'pending', admission: 'refused' },
@@ -1017,7 +1017,7 @@ describe('refusing to publish', () => {
     expect(noWrites(queries)).toBe(true);
   });
 
-  it('refuses a contents publish on a row the category turned down', async () => {
+  it('refuses a contents publish on a row the source turned down', async () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'auto', admission: 'refused' },
@@ -1032,7 +1032,7 @@ describe('refusing to publish', () => {
     expect(noWrites(queries)).toBe(true);
   });
 
-  it('publishes a row the category admitted', async () => {
+  it('publishes a row the source admitted', async () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'pending', admission: 'admitted' },

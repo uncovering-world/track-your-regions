@@ -44,7 +44,7 @@ import type { CatalogueAssertion } from './assertion.js';
  * of the two on the ground: it tells a traveller a place is in peril on no
  * evidence at all.
  *
- * Except while the flag itself is held. Under a gated category the run writes
+ * Except while the flag itself is held. Under a gated source the run writes
  * tags past the gate -- labels nothing renders, derived from facts the row
  * stores by name (#570) -- and holds the flag with the rest of the row for a
  * curator, so a site the Committee has just listed carries the tag ahead of
@@ -56,7 +56,7 @@ import type { CatalogueAssertion } from './assertion.js';
  * is set by *any* held field, and on this database every one of the 1272
  * UNESCO rows carries it -- the criteria and a picture credit are held on all
  * of them -- so leaving out every row with a pointer would switch this check
- * off for the whole category it was written for. Asking the pointed-at
+ * off for the whole source it was written for. Asking the pointed-at
  * changeset whether it holds `metadata.inDanger` leaves out the 58 rows whose
  * flag is actually waiting on a curator and keeps the guard over the rest.
  * The flag is a major key, reported under its own name and never inside the
@@ -126,7 +126,7 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
 };
 
 /**
- * A row its category turned away, still badged as a must-see.
+ * A row its source turned away, still badged as a must-see.
  *
  * A museum carries `is_iconic` because it holds a work above the fame line, and
  * every museum in this catalogue was admitted for exactly that (ADR-0023), so
@@ -161,10 +161,10 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
 const refusedRowWearingIconic: CatalogueAssertion = {
   id: 'refused-row-wearing-iconic',
   area: 'objects',
-  title: 'A row its category turned away, still badged as a must-see',
+  title: 'A row its source turned away, still badged as a must-see',
   kind: 'invariant',
   meaning:
-    'The row is refused — hidden from readers by its category\'s own rule — and still carries '
+    'The row is refused — hidden from readers by its source\'s own rule — and still carries '
     + 'the Iconic flag, which a read of the flag on its own (the Iconic filter, an export) would '
     + 'hand a reader as a must-see the catalogue has turned away. The run\'s refusal writes and a '
     + 'curator\'s confirmation both clear the flag, so a row here was refused by a path that did '
@@ -172,10 +172,10 @@ const refusedRowWearingIconic: CatalogueAssertion = {
     + 'are what db/migrations/042-refused-row-keeps-no-iconic-badge.sql clears.',
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
-               c.name AS category_name
+               c.name AS source_name
           FROM ${MEMBERSHIPS} m
           JOIN experiences e ON e.id = m.experience_id
-          JOIN experience_categories c ON c.id = m.source_id
+          JOIN experience_sources c ON c.id = m.source_id
          WHERE m.admission = 'refused'
            AND m.is_iconic
            -- A flag a curator pinned outranks the rule here exactly as it does
@@ -184,7 +184,7 @@ const refusedRowWearingIconic: CatalogueAssertion = {
            AND NOT ${iconicPinnedSql('m')}
          ORDER BY e.name`,
   describe: row =>
-    `${text(row, 'experience_name')}: turned away from ${text(row, 'category_name')} `
+    `${text(row, 'experience_name')}: turned away from ${text(row, 'source_name')} `
     + `and still badged as a must-see (experience ${count(row, 'experience_id')})`,
 };
 
@@ -313,7 +313,7 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
   title: 'A public-art row admitted with a class the rule refuses',
   kind: 'invariant',
   meaning:
-    'The row is admitted to Public Art & Monuments and carries a Wikidata class the category\'s '
+    'The row is admitted to Public Art & Monuments and carries a Wikidata class the source\'s '
     + 'rule refuses — a place of worship, a camp, a stadium, an archaeological site, a tomb, an '
     + 'organisation, a settlement, or a building or cemetery with no artwork class to answer it. '
     + 'The rule refuses such a row on every run it reaches, so a row here was admitted before '
@@ -382,29 +382,31 @@ const placeWithoutMembership: CatalogueAssertion = {
     + 'that did not, and wants one written by hand for the kind its source fills.',
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
-               c.name AS category_name
+               c.name AS source_name
           FROM experiences e
-          JOIN experience_categories c ON c.id = e.category_id
+          JOIN experience_sources c ON c.id = e.source_id
          WHERE NOT EXISTS (
            SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id
          )
          ORDER BY e.name`,
   describe: row =>
-    `${text(row, 'experience_name')}: keyed on ${text(row, 'category_name')} and a member of no `
+    `${text(row, 'experience_name')}: keyed on ${text(row, 'source_name')} and a member of no `
     + `kind (experience ${count(row, 'experience_id')})`,
 };
 
 /**
  * A membership that names a source other than the one its row is keyed on.
  *
- * `experiences.category_id` is the arbiter of a row's identity —
- * `UNIQUE(category_id, external_id)` — until #755 moves a source's id onto the
+ * `experiences.source_id` is the arbiter of a row's identity —
+ * `UNIQUE(source_id, external_id)` — until #755 moves a source's id onto the
  * membership; the membership's `source_id` is the source that brought it.
- * Today the two say the same thing about every row, and every reader still
- * groups, colours and scopes by the row's column while the counts read the
- * membership's (#822). A row where they disagree is one the two halves of the
- * catalogue would place in different lists, and the readers #819 switches
- * would then move it in front of a reader without anyone deciding to.
+ * Every reader-facing row reads its kind through that equality
+ * (`rowKindJoinSql`, #819): the membership with `source_id = e.source_id` is
+ * the row's own. A row where the two disagree therefore has no kind to be
+ * shown under — it is listed, counted and keyed with a null kind, which no
+ * group, pin colour or chip knows how to draw — and the counts, which read
+ * the memberships (#822), file it under the kind its membership names. The
+ * two have to be made to agree, and this check is where that is seen.
  */
 const membershipSourceDisagreesWithRow: CatalogueAssertion = {
   id: 'membership-source-disagrees-with-row',
@@ -412,20 +414,21 @@ const membershipSourceDisagreesWithRow: CatalogueAssertion = {
   title: 'A membership brought by a source other than the one its row is keyed on',
   kind: 'invariant',
   meaning:
-    'The row is keyed on one source and its membership says another brought it. Until #819 the '
-    + 'lists and pins read the row and the counts read the membership, so such a row is counted '
-    + 'in one kind and shown in another. Either the membership was written for the wrong source '
-    + 'or the row was re-keyed by hand; whichever it is, the two have to be made to agree before '
-    + 'the readers switch.',
+    'The row is keyed on one source and its membership says another brought it. Every list, '
+    + 'search, visit and review card reads the row\'s kind off the membership its own source '
+    + 'brought (#819), so this row has no kind to be shown under — it comes back with none, which '
+    + 'no group, pin colour or chip can draw — while the counts file it under the kind its '
+    + 'membership names. Either the membership was written for the wrong source or the row was '
+    + 're-keyed by hand; whichever it is, the two have to be made to agree.',
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
                row_source.name AS row_source_name,
                membership_source.name AS membership_source_name
           FROM ${MEMBERSHIPS} m
           JOIN experiences e ON e.id = m.experience_id
-          JOIN experience_categories row_source ON row_source.id = e.category_id
-          JOIN experience_categories membership_source ON membership_source.id = m.source_id
-         WHERE m.source_id <> e.category_id
+          JOIN experience_sources row_source ON row_source.id = e.source_id
+          JOIN experience_sources membership_source ON membership_source.id = m.source_id
+         WHERE m.source_id <> e.source_id
          ORDER BY e.name`,
   describe: row =>
     `${text(row, 'experience_name')}: keyed on ${text(row, 'row_source_name')}, its membership `

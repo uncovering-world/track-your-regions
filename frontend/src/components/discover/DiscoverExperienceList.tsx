@@ -89,7 +89,7 @@ interface DiscoverExperienceListProps {
   isLoading: boolean;
   search: string;
   setSearch: (value: string) => void;
-  shortSourceName: string | null;
+  shortKindName: string | null;
   rejectedCount: number;
   hasCuratorScope: boolean;
   isAuthenticated: boolean;
@@ -111,7 +111,7 @@ export function DiscoverExperienceList({
   isLoading,
   search,
   setSearch,
-  shortSourceName,
+  shortKindName,
   rejectedCount,
   hasCuratorScope,
   isAuthenticated,
@@ -199,7 +199,7 @@ export function DiscoverExperienceList({
     ? filteredExperiences.slice(range.startIndex, range.endIndex + 1).map(e => e.id)
     : [];
   const seenIds = useSeenWindowIds(
-    idsInVisibleRange, `${activeView.regionId}:${activeView.categoryId}`);
+    idsInVisibleRange, `${activeView.regionId}:${activeView.kindId}`);
   // `experiences`, deliberately not the filtered rows: membership in `seenIds`
   // already means "this row rendered", and narrowing to what the filter leaves
   // *now* would drop rows the reader did see before typing.
@@ -229,7 +229,7 @@ export function DiscoverExperienceList({
             </IconButton>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography variant="subtitle2" noWrap sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                {shortSourceName} in {activeView.regionName}
+                {shortKindName} in {activeView.regionName}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {(() => {

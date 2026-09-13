@@ -1,7 +1,7 @@
 /**
  * Experience Query Controller
  *
- * Public browsing endpoints: list, get, search, region counts, categories.
+ * Public browsing endpoints: list, get, search, region counts, kinds.
  */
 
 import { Request, Response } from 'express';
@@ -10,7 +10,7 @@ import {
   hideLostSql, hideRefusedSql, hidePendingSql, lifecycleSelectSql, includeLost,
   offeredLocationSql, publishedContentSql, readerPositionSql, readerRegionMembershipSql,
 } from './experienceLifecycle.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
@@ -31,7 +31,7 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
   // than it wanted, never a demolished building offered as somewhere to go.
   if (!includeLost(query)) conditions.push(hideLostSql());
   // Unconditional full stop: `includeLost` is a reader asking to see what is
-  // gone, and a row the category's own rule turned down was never theirs to
+  // gone, and a row the kind's own rule turned down was never theirs to
   // miss (ADR-0024).
   conditions.push(hideRefusedSql());
   // Unconditional, and with no toggle at all: unlike `includeLost`, there is
@@ -39,9 +39,11 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
   // relaxation `curation_state` gets is on the three by-id reads (ADR-0025).
   conditions.push(hidePendingSql());
 
-  if (query.categoryId) {
-    conditions.push(`e.category_id = $${paramIndex++}`);
-    params.push(parseInt(String(query.categoryId)));
+  // The kind, off the row's membership (#819): the join `buildListQuery`'s
+  // caller adds is what puts `m` in scope here.
+  if (query.kindId) {
+    conditions.push(`m.kind_id = $${paramIndex++}`);
+    params.push(parseInt(String(query.kindId)));
   }
   if (query.type) {
     conditions.push(`e.type = $${paramIndex++}`);
@@ -120,7 +122,7 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
  * GET /api/experiences
  *
  * Query params:
- * - sourceId: Filter by source
+ * - kindId: Filter by the kind (#819)
  * - type: Filter by the type within the kind (cultural, natural, mixed; monument, sculpture;
  *   cathedral, church, chapel, monastery, mosque, temple, shrine, synagogue)
  * - regionId: Filter by region
@@ -145,8 +147,9 @@ export async function listExperiences(req: Request, res: Response): Promise<void
       e.name,
       e.short_description,
       e.type,
-      -- The kind, by its source row: what a colour is decided by (#814).
-      e.category_id,
+      -- The kind, off the row's membership: what a colour and a group are
+      -- decided by (#814, #819).
+      ${rowKindSelectSql()},
       e.country_codes,
       e.country_names,
       e.image_url,
@@ -156,18 +159,16 @@ export async function listExperiences(req: Request, res: Response): Promise<void
       e.metadata->'imageCredit' as image_credit,
       e.metadata->>'dateInscribed' as date_inscribed,
       ${dangerSelectSql('e')},
-      ${readerPositionSql('e')},
-      s.name as category_name,
-      s.display_priority as category_priority
+      ${readerPositionSql('e')}
     FROM experiences e
-    JOIN experience_categories s ON e.category_id = s.id
+    ${rowKindJoinSql('e')}
     ${whereClause}
     ORDER BY e.name LIMIT $${limitIdx} OFFSET $${offsetIdx}
   `;
 
   const result = await pool.query(query, [...params, limit, offset]);
 
-  const countQuery = `SELECT COUNT(*) FROM experiences e JOIN experience_categories s ON e.category_id = s.id${whereClause}`;
+  const countQuery = `SELECT COUNT(*) FROM experiences e ${rowKindJoinSql('e')}${whereClause}`;
   const countResult = await pool.query(countQuery, params);
 
   res.json({
@@ -202,7 +203,7 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
   const result = await pool.query(`
     SELECT
       e.id,
-      e.category_id,
+      e.source_id,
       e.external_id,
       e.name,
       e.name_local,
@@ -222,15 +223,19 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
       ${readerPositionSql('e', '$2')},
       ST_AsGeoJSON(e.boundary)::json as boundary_geojson,
       e.area_km2,
-      s.name as category_name,
-      s.description as category_description
+      ${rowKindSelectSql()},
+      -- The source that brought the row, beside the kind it is shown under:
+      -- a curator's screen names both (#819).
+      s.name as source_name,
+      s.description as source_description
     FROM experiences e
-    JOIN experience_categories s ON e.category_id = s.id
+    ${rowKindJoinSql('e')}
+    JOIN experience_sources s ON e.source_id = s.id
     WHERE e.id = $1
       -- A by-id read does not offer a *set* to go through, which is what the
       -- lost predicate protects, but it does still offer somewhere to go
       -- (ADR-0024) — so a refused row answers 404 rather than handing back a card
-      -- for something this category has turned down. An object judged lost is
+      -- for something its kind has turned down. An object judged lost is
       -- deliberately not filtered here and never was: that gap predates this
       -- axis, and closing it would be a separate decision about a different
       -- question.
@@ -348,31 +353,32 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
 }
 
 /**
- * List experience categories
- * GET /api/experiences/categories
+ * List the kinds a traveller browses by (ADR-0045 decision 1; #819)
+ * GET /api/experiences/kinds
+ *
+ * A kind is offered only while a source fills it (decision 2): one whose
+ * every source an admin has switched off leaves the pills and the group
+ * headers, the way the source row's own `is_active` took it off this list
+ * when the two were one row.
  */
-export async function listCategories(_req: Request, res: Response): Promise<void> {
+export async function listKinds(_req: Request, res: Response): Promise<void> {
   const result = await pool.query(`
     SELECT
-      s.id,
-      s.name,
-      s.description,
-      s.is_active,
-      s.last_sync_at,
-      s.last_sync_status,
-      s.display_priority,
+      k.id,
+      k.name,
+      k.display_priority,
       -- A kind's count is of memberships (ADR-0046 decision 8, #822): the
-      -- memberships the kind this source fills offers, each once. The same
-      -- three questions every list under this heading asks. Without them the
-      -- API reported 128 art museums where the catalogue offers 101 — the 27
-      -- rows this category's own rule turned down (#503).
+      -- memberships the kind offers, each once — the same three questions
+      -- every list under this heading asks. Without them the API reported 128
+      -- art museums where the catalogue offers 101 — the 27 rows the kind's
+      -- own rule turned down (#503).
       --
       -- Unconditional rather than includeLost-aware: this number labels a
-      -- category, not a page, and no caller passes that parameter here.
-      ${kindCountSql('s.kind_id')} as experience_count
-    FROM experience_categories s
-    WHERE s.is_active = true
-    ORDER BY s.display_priority, s.name
+      -- kind, not a page, and no caller passes that parameter here.
+      ${kindCountSql('k.id')} as experience_count
+    FROM ${KINDS} k
+    WHERE EXISTS (SELECT 1 FROM experience_sources s WHERE s.kind_id = k.id AND s.is_active = true)
+    ORDER BY k.display_priority, k.name
   `);
 
   res.json(result.rows);
@@ -410,7 +416,9 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
         e.name,
         e.short_description,
         e.type,
-        e.category_id,
+        -- The kind, off the row's membership (#819). Its own aliases, since
+        -- m outside is this CTE.
+        ${rowKindSelectSql('em', 'ek')},
         e.country_names,
         e.image_url,
         -- Beside the picture here too. The curator's "search and assign" dialog
@@ -426,6 +434,7 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
         -- spellings of one rule are two things to keep in step.
         (e.name ILIKE $2) as name_contains
       FROM experiences e
+      ${rowKindJoinSql('e', 'em', 'ek')}
       -- The two name matches are alternatives to each other, not to the
       -- lifecycle filter: without the brackets, OR would re-admit every lost
       -- object whose name happens to match by trigram.
@@ -444,7 +453,9 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
       m.name,
       m.short_description,
       m.type,
-      m.category_id,
+      m.kind_id,
+      m.kind_name,
+      m.kind_priority,
       m.country_names,
       m.image_url,
       m.image_credit,
@@ -454,9 +465,6 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
       m.longitude,
       m.latitude,
       m.relevance,
-      -- What the row is filed under, which the curator's dialog has been
-      -- rendering all along against a field this read never sent.
-      c.name as category_name,
       -- Where this object can be opened. Published world views only: an
       -- unpublished one is not a place to send a reader, and this route carries
       -- no session, so "visible" can mean nothing else here.
@@ -501,7 +509,6 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
               AND rej.region_id = er.region_id)
       ), '[]'::json) as regions
     FROM matches m
-    LEFT JOIN experience_categories c ON c.id = m.category_id
     -- A join does not carry the CTE's order.
     ORDER BY m.name_contains DESC, m.relevance DESC
   `, [query, `%${query}%`, limit]);
@@ -514,14 +521,14 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
 }
 
 /**
- * Get experience counts per region per source for a world view
+ * Get experience counts per region per kind for a world view
  * GET /api/experiences/region-counts
  *
  * Query params:
  * - worldViewId: Required. The world view to get counts for
  * - parentRegionId: Optional. If provided, returns counts for subregions only
  *
- * Returns an array of { region_id, region_name, has_subregions, category_counts: { [categoryId]: count } }
+ * Returns an array of { region_id, region_name, has_subregions, kind_counts: { [kindId]: count } }
  * Only returns direct assignment counts (not recursive children).
  */
 export async function getExperienceRegionCounts(req: Request, res: Response): Promise<void> {
@@ -540,17 +547,16 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
   // does not filter, so the count shrinking cannot erase a visit.
   //
   // A kind's count is of memberships (ADR-0046 decision 8, #822): a place in
-  // two kinds is in both lists and counts once in each. The kind is returned
-  // under the key readers group by — the kinds carry their sources' ids — and
-  // the membership's own admission and gate are asked, the way the list under
-  // each header asks them.
+  // two kinds is in both lists and counts once in each. The membership's own
+  // admission and gate are asked, the way the list under each header asks
+  // them.
   const result = await pool.query(`
     SELECT
       r.id as region_id,
       r.name as region_name,
       r.color as region_color,
       EXISTS(SELECT 1 FROM regions c WHERE c.parent_region_id = r.id LIMIT 1) as has_subregions,
-      m.kind_id AS category_id,
+      m.kind_id,
       ${countedMembershipsSql('m')} as count
     FROM regions r
     JOIN experience_regions er ON r.id = er.region_id
@@ -583,12 +589,12 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
     ORDER BY r.name
   `, parentRegionId ? [worldViewId, parentRegionId] : [worldViewId]);
 
-  // Aggregate into { regionId -> { categoryId -> count } }
+  // Aggregate into { regionId -> { kindId -> count } }
   const countMap = new Map<number, Record<number, number>>();
   for (const row of result.rows) {
     const rid = row.region_id;
     if (!countMap.has(rid)) countMap.set(rid, {});
-    countMap.get(rid)![row.category_id] = parseInt(row.count);
+    countMap.get(rid)![row.kind_id] = parseInt(row.count);
   }
 
   const response = allRegionsResult.rows.map(row => ({
@@ -596,7 +602,7 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
     region_name: row.region_name,
     region_color: row.region_color,
     has_subregions: row.has_subregions,
-    category_counts: countMap.get(row.region_id) || {},
+    kind_counts: countMap.get(row.region_id) || {},
   }));
 
   res.json(response);

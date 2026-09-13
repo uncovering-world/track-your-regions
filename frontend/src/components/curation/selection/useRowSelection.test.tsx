@@ -12,7 +12,7 @@ import type { QueueRow } from '../queueRows';
 function row(key: string): QueueRow {
   const [kind, id] = key.split(':');
   return {
-    key, kind: kind as QueueRow['kind'], id: Number(id), name: key, category: 'c',
+    key, kind: kind as QueueRow['kind'], id: Number(id), name: key, placeKind: 'c',
     question: '', askedAt: null, runId: null, specific: '', subs: [],
   };
 }

@@ -12,7 +12,7 @@ import {
   getExperiencesByRegion,
   getExperienceRegionCounts,
   getRegionExperienceLocations,
-  listCategories,
+  listKinds,
   searchExperiences,
   getExperienceLocations,
   getExperienceTreasures,
@@ -55,7 +55,7 @@ import {
   experienceLocationsQuerySchema,
   regionLocationsQuerySchema,
   idParamSchema,
-  categoryIdParamSchema,
+  sourceIdParamSchema,
   reviewQueueQuerySchema,
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
@@ -90,10 +90,10 @@ const router = Router();
 // Search experiences (full-text search)
 router.get('/search', searchLimiter, validate(experienceSearchQuerySchema, 'query'), searchExperiences);
 
-// List experience categories
-router.get('/categories', publicReadLimiter, listCategories);
+// List the kinds a traveller browses by (#819)
+router.get('/kinds', publicReadLimiter, listKinds);
 
-// Get experience counts per region per category (for Discover page tree)
+// Get experience counts per region per kind (for Discover page tree)
 router.get('/region-counts', publicReadLimiter, validate(experienceRegionCountsQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('worldViewIdQuery'), getExperienceRegionCounts);
 
 // Get experiences by region (optionalAuth to support curator rejection visibility)
@@ -215,7 +215,7 @@ router.post('/:id/accept-source', authenticatedLimiter, validate(idParamSchema, 
 // transaction and schedules no post-commit work at all — it does not even touch
 // the experience, because the value it refuses had already won every run.
 router.post('/:id/decline-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(declineSourceBodySchema), declineSourceValue);
-// The same answer one gate over (#722): "not this" to a value the category's gate
+// The same answer one gate over (#722): "not this" to a value the source's gate
 // held, rather than to one a curator had claimed. Exempt on the same criterion as
 // the line above and for the same reason — it writes a handful of small rows
 // inside one transaction, touches no column a reader sees, and schedules nothing
@@ -250,19 +250,19 @@ router.post('/:id/unrefuse-contents', authenticatedLimiter, validate(idParamSche
 // more force: it runs that transaction once per waiting object and can reach the
 // post-commit placement on any of them.
 //
-// Mounted under `categories/` rather than `:id/` so it cannot be read as an
+// Mounted under `sources/` rather than `:id/` so it cannot be read as an
 // action on one experience. Its position among the `:id` routes is free, and
 // that is worth stating because the obvious guess is wrong. Two `:id` routes are
 // three segments like this one — `/:id/assign/:regionId` and
 // `/:id/remove-from-region/:regionId` — but both are `DELETE`, and Express matches
-// per method, so no `POST` sibling can capture `categories` as an id. Even a future
+// per method, so no `POST` sibling can capture `sources` as an id. Even a future
 // `POST /:id/assign/:regionId` would not: its middle segment is a literal, and
 // `publish-waiting` is not `assign`. What would collide is a `POST /:id/:action/:x`
 // with a parameter in the middle, and there is none.
 router.post(
-  '/categories/:categoryId/publish-waiting',
+  '/sources/:sourceId/publish-waiting',
   authenticatedLimiter,
-  validate(categoryIdParamSchema, 'params'),
+  validate(sourceIdParamSchema, 'params'),
   requireAuth,
   requireCurator,
   publishWaiting,

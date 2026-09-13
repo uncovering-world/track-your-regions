@@ -5,12 +5,12 @@
  *   /wv/5                                   map, world view 5
  *   /wv/5/r/6737-europe                     map, region 6737 selected
  *   /wv/5/r/6737-europe/e/1234-stonehenge   map, card 1234 open in the explore panel
- *   /discover[/wv/5[/r/7120-france[/e/9]]][?cat=1]
+ *   /discover[/wv/5[/r/7120-france[/e/9]]][?kind=1]
  *
  * What names a resource — the world view, the region, the open card — is a
  * path segment, because it must survive being pasted into another browser.
  * View state a visitor set deliberately is a query parameter; today that is
- * Discover's category alone. Ids decide and slugs decorate: a segment is digits
+ * Discover's kind alone. Ids decide and slugs decorate: a segment is digits
  * followed by `-` or its end, and whatever follows that `-` is ignored — so a
  * renamed region keeps every link that was ever shared, and `useAppAddress`
  * rewrites the slug in place once the name is known. Deliberately stricter than
@@ -35,8 +35,8 @@ export interface AppAddress {
   regionId: number | null;
   /** Only meaningful under a region; dropped by `buildAppUrl` without one. */
   experienceId: number | null;
-  /** Discover's open category list; ignored on the map. */
-  categoryId: number | null;
+  /** Discover's open kind list; ignored on the map. */
+  kindId: number | null;
 }
 
 /** Route prefixes that are pages of their own, not places on the map. */
@@ -113,9 +113,12 @@ export function parseAppUrl(pathname: string, search: string): AppAddress | null
     }
   }
 
-  const categoryId = mode === 'discover' && regionId !== null ? readId(params.get('cat')) : null;
+  // `cat` is the parameter's spelling until #819; a link shared before it still opens the list.
+  const kindId = mode === 'discover' && regionId !== null
+    ? readId(params.get('kind') ?? params.get('cat'))
+    : null;
 
-  return { mode, worldViewId, regionId, experienceId, categoryId };
+  return { mode, worldViewId, regionId, experienceId, kindId };
 }
 
 /**
@@ -142,8 +145,8 @@ export function buildAppUrl(
   }
 
   const path = `/${parts.join('/')}`;
-  const query = address.mode === 'discover' && regionId !== null && address.categoryId !== null
-    ? `?cat=${address.categoryId}`
+  const query = address.mode === 'discover' && regionId !== null && address.kindId !== null
+    ? `?kind=${address.kindId}`
     : '';
   return `${path}${query}`;
 }

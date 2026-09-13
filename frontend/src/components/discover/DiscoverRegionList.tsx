@@ -1,9 +1,9 @@
 /**
  * DiscoverRegionList — Virtualized list of regions with text-based source count tags.
- * Each row: region name + readable source pills like "UNESCO 42 · Museums 15".
+ * Each row: region name + readable kind pills like "World Heritage 42 · Art Museums 15".
  * Click region name → navigate deeper. Click source pill → view experiences.
  *
- * Uses text labels (not icons) to scale to dozens of experience categories.
+ * Uses text labels (not icons) to scale to dozens of experience kinds.
  */
 
 import { useRef, useMemo } from 'react';
@@ -18,18 +18,18 @@ import PlaceIcon from '@mui/icons-material/Place';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AddIcon from '@mui/icons-material/Add';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { RegionExperienceCount, ExperienceCategory } from '../../api/experiences';
-import { getSourceColor, shortSourceName } from '../../utils/categoryColors';
+import type { RegionExperienceCount, ExperienceKind } from '../../api/experiences';
+import { kindColor, shortKindName } from '../../utils/kindColors';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { EmptyState } from '../shared/EmptyState';
 
 interface DiscoverRegionListProps {
   regions: RegionExperienceCount[];
-  categories: ExperienceCategory[];
+  kinds: ExperienceKind[];
   isLoading: boolean;
   onNavigate: (regionId: number, regionName: string) => void;
-  onCategoryClick: (regionId: number, regionName: string, categoryId: number, categoryName: string) => void;
-  /** Called when curator clicks "+" to add experience of any category to a region.
+  onKindClick: (regionId: number, regionName: string, kindId: number, kindName: string) => void;
+  /** Called when curator clicks "+" to add experience of any kind to a region.
    *  Only called for regions where canAddToRegion returns true (if provided). */
   onAddExperience?: (regionId: number, regionName: string) => void;
   /** Predicate to check if the curator can add to a specific region. If not provided, all regions are allowed. */
@@ -38,21 +38,21 @@ interface DiscoverRegionListProps {
 
 export function DiscoverRegionList({
   regions,
-  categories,
+  kinds,
   isLoading,
   onNavigate,
-  onCategoryClick,
+  onKindClick,
   onAddExperience,
   canAddToRegion,
 }: DiscoverRegionListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // Build a lookup: categoryId → category object
-  const categoryById = useMemo(() => {
-    const map = new Map<number, ExperienceCategory>();
-    for (const s of categories) map.set(s.id, s);
+  // Build a lookup: kindId → kind object
+  const kindById = useMemo(() => {
+    const map = new Map<number, ExperienceKind>();
+    for (const s of kinds) map.set(s.id, s);
     return map;
-  }, [categories]);
+  }, [kinds]);
 
   const virtualizer = useVirtualizer({
     count: regions.length,
@@ -86,11 +86,11 @@ export function DiscoverRegionList({
           const hasChildren = region.has_subregions;
 
           // Sorted source entries (by display_priority)
-          const sortedSourceEntries = Object.entries(region.category_counts)
-            .map(([sid, count]) => ({ categoryId: Number(sid), count }))
+          const sortedKindEntries = Object.entries(region.kind_counts)
+            .map(([sid, count]) => ({ kindId: Number(sid), count }))
             .sort((a, b) => {
-              const sa = categoryById.get(a.categoryId);
-              const sb = categoryById.get(b.categoryId);
+              const sa = kindById.get(a.kindId);
+              const sb = kindById.get(b.kindId);
               return (sa?.display_priority ?? 99) - (sb?.display_priority ?? 99);
             });
 
@@ -152,21 +152,21 @@ export function DiscoverRegionList({
 
               {/* Source count pills — text labels, not icons */}
               <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0, alignItems: 'center' }}>
-                {sortedSourceEntries.map(({ categoryId, count }) => {
-                  const source = categoryById.get(categoryId);
+                {sortedKindEntries.map(({ kindId, count }) => {
+                  const source = kindById.get(kindId);
                   if (!source) return null;
-                  const color = getSourceColor(categoryId);
-                  const label = shortSourceName(source.name);
+                  const color = kindColor(kindId);
+                  const label = shortKindName(source.name);
 
                   return (
                     <Tooltip
-                      key={categoryId}
+                      key={kindId}
                       title={`${count} ${source.name} in ${region.region_name}`}
                     >
                       <Box
                         onClick={(e) => {
                           e.stopPropagation();
-                          onCategoryClick(region.region_id, region.region_name, categoryId, source.name);
+                          onKindClick(region.region_id, region.region_name, kindId, source.name);
                         }}
                         sx={{
                           display: 'inline-flex',

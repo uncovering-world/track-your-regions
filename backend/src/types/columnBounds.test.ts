@@ -110,7 +110,7 @@ function manualExperience(override: Record<string, unknown>): unknown {
     longitude: 2.1744,
     latitude: 41.4036,
     regionId: 1,
-    categoryId: 1,
+    kindId: 1,
     ...override,
   };
 }

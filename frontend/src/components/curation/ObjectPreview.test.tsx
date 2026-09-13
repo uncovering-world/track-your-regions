@@ -30,9 +30,9 @@ function detail(over: Partial<ExperienceDetail> = {}): ExperienceDetail {
   return {
     id: 1, external_id: 'Q1', name: 'Aksum', short_description: null, type: null,
     country_codes: [], country_names: [], image_url: null, in_danger: false,
-    longitude: 38.7, latitude: 14.1, category_name: 'UNESCO World Heritage Sites',
-    category_id: 1, name_local: null, description: 'A place.', tags: null,
-    metadata: null, boundary_geojson: null, area_km2: null, category_description: null,
+    longitude: 38.7, latitude: 14.1, kind_name: 'World Heritage Sites',
+    kind_id: 1, name_local: null, description: 'A place.', tags: null,
+    metadata: null, boundary_geojson: null, area_km2: null, source_name: 'UNESCO World Heritage Sites', source_description: null,
     regions: [],
     ...over,
   } as ExperienceDetail;

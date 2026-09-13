@@ -38,7 +38,7 @@ import { contentsHeld, recordedContents } from './types.js';
 
 
 /**
- * An entity the source offered that is not of the kind this category holds —
+ * An entity the source offered that is not of the kind this source holds —
  * a Wikidata collection answering a museum query, say. Nothing failed, so it is
  * counted apart from errors and leaves the run's status alone.
  */
@@ -111,7 +111,7 @@ export interface ProcessItemResult {
 }
 
 export interface SyncServiceConfig<T> {
-  categoryId: number;
+  sourceId: number;
   logPrefix: string;
   /**
    * Whether the source hands over its whole collection. Only `authoritative`
@@ -127,7 +127,7 @@ export interface SyncServiceConfig<T> {
    */
   recomputesMembership?: boolean;
   /**
-   * Whether belonging to the category *is* the must-see badge: the source's
+   * Whether belonging to the source *is* the must-see badge: the source's
    * admission rule is a fame threshold, so every row it admits holds a work
    * above the line and carries `is_iconic` for that (works-first museums,
    * ADR-0023). A listing, or a source whose rule is not fame, badges nothing
@@ -178,7 +178,7 @@ function initSyncProgress(dryRun: boolean): SyncProgress {
 }
 
 /**
- * The category's gate kept every proposed write out of a row a reader can
+ * The source's gate kept every proposed write out of a row a reader can
  * already see: nothing moved, and a verdict is waiting (#519).
  *
  * The one predicate behind two readers — the changeset row's word and the run's
@@ -208,7 +208,7 @@ function wasHeld(result: ProcessItemResult, contents: ContentsByKind | null): bo
  *
  * The two refusals are two different events and get two different words (#519).
  * `conflict` is a value a curator had claimed: the stored value won on purpose
- * and nothing is waiting. `held` is a value the category's gate kept out of a row
+ * and nothing is waiting. `held` is a value the source's gate kept out of a row
  * a reader can already see: nobody has looked, and a verdict *is* waiting. A row
  * carrying both is `held`, because the held half is the part still unanswered —
  * `conflict` would be false of it, while `held` stays true of the whole row.
@@ -364,7 +364,7 @@ function recordItemFailure<T>(
  * errors. A collection answering a museum query did not fail; it was never a
  * museum.
  *
- * `refused` are the rows the category already held under one of those ids, now
+ * `refused` are the rows the source already held under one of those ids, now
  * marked (ADR-0024). Keying the changeset entry to the row is what lets a
  * curator get from "the run turned this down" to the thing it turned down.
  */
@@ -419,7 +419,7 @@ async function badgeAdmitted<T>(
 ): Promise<void> {
   if (!config.badgesAdmitted) return;
 
-  const badged = await markIconic(config.categoryId, admittedExternalIds, progress.dryRun);
+  const badged = await markIconic(config.sourceId, admittedExternalIds, progress.dryRun);
   if (badged.length > 0) {
     console.log(`${config.logPrefix} Badged ${badged.length} admitted row(s) as must-see`);
   }
@@ -445,7 +445,7 @@ async function applyAdmissionSweep<T>(
 ): Promise<string | null> {
   if (!config.recomputesMembership || progress.logId === null) return null;
 
-  const restored = await restoreAdmission(config.categoryId, admittedExternalIds, progress.dryRun);
+  const restored = await restoreAdmission(config.sourceId, admittedExternalIds, progress.dryRun);
   for (const row of restored) {
     console.log(`${config.logPrefix} Re-admitted ${row.name} (${row.externalId})`);
   }
@@ -459,7 +459,7 @@ async function applyAdmissionSweep<T>(
   if (skipReason !== null) return skipReason;
 
   const swept = await markNotAdmitted(
-    config.categoryId, admittedExternalIds, NOT_ADMITTED_REASON, progress.dryRun,
+    config.sourceId, admittedExternalIds, NOT_ADMITTED_REASON, progress.dryRun,
   );
   for (const row of swept) {
     progress.filtered++;
@@ -584,7 +584,7 @@ async function detectMissing<T>(
   if (skipReason !== null || progress.logId === null) return skipReason;
 
   const missing = await flagMissingExperiences(
-    config.categoryId, progress.logId, progress.dryRun, seenExternalIds,
+    config.sourceId, progress.logId, progress.dryRun, seenExternalIds,
   );
   progress.missing = missing.length;
   changes.push(...missing);
@@ -624,7 +624,7 @@ async function recordSyncFailure<T>(
       errorDetails.push({ ...CHANGESET_LOST_MARKER, error: `Failed to record changeset: ${msg}` });
       console.error('%s Failed to record changeset:', config.logPrefix, msg);
     }
-    await updateSyncLog(config.categoryId, progress.logId, verdict, {
+    await updateSyncLog(config.sourceId, progress.logId, verdict, {
       fetched: progress.total,
       created: progress.created,
       updated: progress.updated,
@@ -664,15 +664,15 @@ export async function orchestrateSync<T>(
   triggeredBy: number | null,
   options: { dryRun?: boolean } = {},
 ): Promise<void> {
-  const { categoryId, logPrefix } = config;
+  const { sourceId, logPrefix } = config;
   const dryRun = options.dryRun ?? false;
 
-  if (isSyncStillRunning(runningSyncs.get(categoryId))) {
+  if (isSyncStillRunning(runningSyncs.get(sourceId))) {
     throw new Error(`${logPrefix} sync already in progress`);
   }
 
   const progress = initSyncProgress(dryRun);
-  runningSyncs.set(categoryId, progress);
+  runningSyncs.set(sourceId, progress);
   const errorDetails: ErrorDetail[] = [];
   const changes: ChangeRecord[] = [];
   // Experiences whose geometry moved, so their region assignment is stale.
@@ -693,12 +693,12 @@ export async function orchestrateSync<T>(
   let withdrawalSkippedReason: string | null = null;
 
   try {
-    progress.logId = await createSyncLog(categoryId, triggeredBy, dryRun);
+    progress.logId = await createSyncLog(sourceId, triggeredBy, dryRun);
     console.log(`${logPrefix} Started sync (log ID: ${progress.logId})${dryRun ? ' [DRY RUN]' : ''}`);
 
-    const previousActiveCount = await countActiveExperiences(categoryId);
+    const previousActiveCount = await countActiveExperiences(sourceId);
     // Read before the run writes, so the sweep's floor compares like with like.
-    const previousAdmittedCount = config.recomputesMembership ? await countAdmitted(categoryId) : 0;
+    const previousAdmittedCount = config.recomputesMembership ? await countAdmitted(sourceId) : 0;
 
     const fetched = await config.fetchItems(progress, errorDetails);
     const { items, fetchedCount, filtered } = fetched;
@@ -712,7 +712,7 @@ export async function orchestrateSync<T>(
     // Unconditional, and before anything else touches admission: the run named
     // these and a rule turned them down, which no coverage floor or error count
     // can make less true (ADR-0024).
-    const refusedRows = await markRefused(categoryId, filtered ?? [], dryRun);
+    const refusedRows = await markRefused(sourceId, filtered ?? [], dryRun);
     recordFilteredEntities(filtered ?? [], progress, changes, refusedRows);
 
     // Both sides of the coverage ratio are measured against the table as it
@@ -722,7 +722,7 @@ export async function orchestrateSync<T>(
     // floor the guard exists to enforce.
     const seenExternalIds = items.map(config.getItemId);
     const seenCount = config.sourceCompleteness === 'authoritative'
-      ? await countSeenAmongActive(categoryId, seenExternalIds)
+      ? await countSeenAmongActive(sourceId, seenExternalIds)
       : 0;
 
     const context: SyncRunContext = {
@@ -788,7 +788,7 @@ export async function orchestrateSync<T>(
       + `${progress.unchanged} unchanged (${progress.held} held), ${progress.missing} missing, `
       + `${progress.errors} errors${skipped}`;
 
-    await updateSyncLog(categoryId, progress.logId, finalStatus, {
+    await updateSyncLog(sourceId, progress.logId, finalStatus, {
       fetched: fetchedCount,
       created: progress.created,
       updated: progress.updated,
@@ -818,7 +818,7 @@ export async function orchestrateSync<T>(
   } finally {
     // The run is not over, but it is no longer processing items: placement is
     // its own phase, and a window of its own on a first run, where the whole
-    // category lands in `movedExperiences` and every world view gets its own
+    // source lands in `movedExperiences` and every world view gets its own
     // transaction (seconds since #851, minutes before it). Naming the phase
     // keeps `isSyncStillRunning` true — the poller must keep polling — while
     // giving `cancelSync` something to refuse and the panel something truthful
@@ -848,8 +848,8 @@ export async function orchestrateSync<T>(
     // Clean up after delay, but only if this sync's progress is still current.
     const thisProgress = progress;
     setTimeout(() => {
-      if (runningSyncs.get(categoryId) === thisProgress) {
-        runningSyncs.delete(categoryId);
+      if (runningSyncs.get(sourceId) === thisProgress) {
+        runningSyncs.delete(sourceId);
       }
     }, 30000);
   }
@@ -860,10 +860,10 @@ export async function orchestrateSync<T>(
 // =============================================================================
 
 /**
- * Get sync status for any category by ID.
+ * Get sync status for any source by ID.
  */
-export function getSyncStatus(categoryId: number): SyncProgress | null {
-  return runningSyncs.get(categoryId) || null;
+export function getSyncStatus(sourceId: number): SyncProgress | null {
+  return runningSyncs.get(sourceId) || null;
 }
 
 /**
@@ -885,13 +885,13 @@ export function isCancellable(progress: SyncProgress): boolean {
 }
 
 /**
- * Cancel a running sync for any category by ID.
+ * Cancel a running sync for any source by ID.
  *
  * Answers whether the press was acted on, not whether the run stopped: it sets
  * a flag the item loop reads, and refuses outright once there is no loop left.
  */
-export function cancelSync(categoryId: number): boolean {
-  const progress = runningSyncs.get(categoryId);
+export function cancelSync(sourceId: number): boolean {
+  const progress = runningSyncs.get(sourceId);
   if (progress && isCancellable(progress)) {
     progress.cancel = true;
     progress.statusMessage = 'Cancelling...';

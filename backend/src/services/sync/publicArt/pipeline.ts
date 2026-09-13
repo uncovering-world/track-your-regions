@@ -145,7 +145,7 @@ async function collectPool(
     }
   }
 
-  // The rows the category admits that no class question named — fallen below
+  // The rows the source admits that no class question named — fallen below
   // the pool floor, or retyped by Wikidata — are asked for by id, so that
   // every admitted row gets the rule's own reason rather than the sweep's.
   const missing = [...admitted].filter((qid) => !pool.has(qid));
@@ -266,7 +266,7 @@ function collectionFacts(facts: EntityFacts, containers: Map<string, ContainerFa
 
 /**
  * Where a candidate that passed the rule stands against the fame line: in,
- * out, or — for a row the category admits that has fallen below the stay
+ * out, or — for a row the source admits that has fallen below the stay
  * line — refused by name, with its number. A candidate that was never in and
  * is below the line is simply out: a refusal names a rule, and none ran on it.
  */
@@ -283,7 +283,7 @@ function lineVerdict(
  * and clear the fame line, and every candidate the rule refused, with the
  * reason it gave.
  *
- * `admitted` is what the category holds as admitted before the run, so the
+ * `admitted` is what the source holds as admitted before the run, so the
  * stay line has something to hold. Items come back most famous first, which
  * is the order the run writes them in and the order a person watching it
  * reads.

@@ -76,13 +76,13 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response):
           ca.scope_type as "scopeType",
           ca.region_id as "regionId",
           r.name as "regionName",
-          ca.category_id as "categoryId",
-          es.name as "categoryName",
+          ca.source_id as "sourceId",
+          es.name as "sourceName",
           ca.assigned_at as "assignedAt",
           ca.notes
         FROM curator_assignments ca
         LEFT JOIN regions r ON ca.region_id = r.id
-        LEFT JOIN experience_categories es ON ca.category_id = es.id
+        LEFT JOIN experience_sources es ON ca.source_id = es.id
         WHERE ca.user_id = $1
         ORDER BY ca.assigned_at DESC
       `, [req.user!.id]);

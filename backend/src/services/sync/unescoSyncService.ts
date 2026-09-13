@@ -43,7 +43,7 @@ import type {
   ContentsByKind,
 } from './types.js';
 
-const UNESCO_CATEGORY_ID = 1; // Seeded in migration
+const UNESCO_SOURCE_ID = 1; // Seeded in migration
 
 /**
  * What each site's row already says about who took its picture.
@@ -155,8 +155,8 @@ async function creditsForNewPictures(
 export async function indexOfWhatIsStored(): Promise<WorldHeritageIndex> {
   const stored = await pool.query(
     `SELECT external_id, image_url, metadata->>'wikipediaUrl' AS article
-       FROM experiences WHERE category_id = $1`,
-    [UNESCO_CATEGORY_ID],
+       FROM experiences WHERE source_id = $1`,
+    [UNESCO_SOURCE_ID],
   );
   return indexWorldHeritageFacts(stored.rows.map((row: { external_id: string; image_url: string | null; article: string | null }) => ({
     whc: { value: row.external_id },
@@ -215,9 +215,9 @@ function isSet(value: unknown): boolean {
   return false;
 }
 
-function normalizeCategory(category: string | undefined | null): string | null {
-  if (!category) return null;
-  const cat = category.toLowerCase();
+function normalizeSource(source: string | undefined | null): string | null {
+  if (!source) return null;
+  const cat = source.toLowerCase();
   if (cat.includes('cultural')) return 'cultural';
   if (cat.includes('natural')) return 'natural';
   if (cat.includes('mixed')) return 'mixed';
@@ -367,15 +367,15 @@ export function transformRecord(
   };
 
   return {
-    categoryId: UNESCO_CATEGORY_ID,
+    sourceId: UNESCO_SOURCE_ID,
     externalId: String(record.id_no),
     name: record.name_en || `Site ${record.id_no}`,
     nameLocal: buildMultilingualNames(record),
     description: null, // UNESCO API doesn't provide full description
     shortDescription: record.short_description_en || null,
-    // UNESCO's own field is called `category`; on our side it is the type within
+    // UNESCO's own field is called `source`; on our side it is the type within
     // the World Heritage kind — cultural, natural or mixed (ADR-0045, #814).
-    type: normalizeCategory(record.category),
+    type: normalizeSource(record.source),
     tags: buildUnescoTags(record),
     lat: point.lat,
     lon: point.lon,
@@ -395,7 +395,7 @@ async function upsertExperience(
   context: SyncRunContext,
 ): Promise<ProcessItemResult> {
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
-    categoryId: exp.categoryId,
+    sourceId: exp.sourceId,
     externalId: exp.externalId,
     name: exp.name,
     nameLocal: exp.nameLocal,
@@ -486,7 +486,7 @@ export function syncUnescoSites(
   let credits: Map<string, ImageCredit>;
 
   return orchestrateSync<UnescoApiRecord>({
-    categoryId: UNESCO_CATEGORY_ID,
+    sourceId: UNESCO_SOURCE_ID,
     logPrefix: '[UNESCO Sync]',
     // UNESCO publishes its whole list, so a site absent from a clean run really
     // is absent from the list.
@@ -505,7 +505,7 @@ export function syncUnescoSites(
         // Read for the fixture too: the delisting tests run against real rows,
         // and a stale map from a previous run would decide who owns their
         // pictures.
-        storedCredits = await readStoredCredits(UNESCO_CATEGORY_ID);
+        storedCredits = await readStoredCredits(UNESCO_SOURCE_ID);
         return { items: fixture, fetchedCount: fixture.length };
       }
 
@@ -513,7 +513,7 @@ export function syncUnescoSites(
       // it: a portal having a bad day and a query service having a bad day are
       // the same fifteen minutes as far as the person watching is concerned.
       const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
-      storedCredits = await readStoredCredits(UNESCO_CATEGORY_ID);
+      storedCredits = await readStoredCredits(UNESCO_SOURCE_ID);
       const records = await fetchUnescoRecords(progress, budget);
 
       // The article and the picture, from the one join that answers both. A
@@ -549,12 +549,12 @@ export function syncUnescoSites(
  * Get current sync status
  */
 export function getUnescoSyncStatus() {
-  return getSyncStatus(UNESCO_CATEGORY_ID);
+  return getSyncStatus(UNESCO_SOURCE_ID);
 }
 
 /**
  * Cancel running sync
  */
 export function cancelUnescoSync() {
-  return cancelSync(UNESCO_CATEGORY_ID);
+  return cancelSync(UNESCO_SOURCE_ID);
 }

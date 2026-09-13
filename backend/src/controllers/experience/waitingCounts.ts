@@ -216,18 +216,18 @@ export interface WaitingCounts {
  * One pass over the memberships, one row per source.
  *
  * Not scoped to a curator: this feeds the admin sync panel, which is behind
- * `requireAdmin`, and an admin's scope is every category. The queue itself
+ * `requireAdmin`, and an admin's scope is every source. The queue itself
  * restricts what a *curator* is asked about, so the panel's number can be larger
  * than what a region-scoped curator will find there — the panel answers "is this
  * source holding anything", not "is there work for me".
  *
- * Grouped by the membership's source rather than the row's `category_id`: what
+ * Grouped by the membership's source rather than the row's `source_id`: what
  * a source holds is the memberships its runs brought, which is the same set
  * today and stops being one the day a place has two (#755).
  */
-export async function waitingCountsByCategory(): Promise<Map<number, WaitingCounts>> {
+export async function waitingCountsBySource(): Promise<Map<number, WaitingCounts>> {
   const result = await pool.query(`
-    SELECT m.source_id AS category_id,
+    SELECT m.source_id AS source_id,
            COUNT(*) FILTER (WHERE ${arrivalWaitingSql()})::int  AS arrivals,
            COUNT(*) FILTER (WHERE ${heldWaitingSql()})::int     AS held,
            COUNT(*) FILTER (WHERE ${contentsWaitingSql()})::int AS contents
@@ -236,7 +236,7 @@ export async function waitingCountsByCategory(): Promise<Map<number, WaitingCoun
     GROUP BY m.source_id
   `);
   return new Map(result.rows.map(r => [
-    r.category_id as number,
+    r.source_id as number,
     { arrivals: r.arrivals as number, held: r.held as number, contents: r.contents as number },
   ]));
 }

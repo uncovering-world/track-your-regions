@@ -199,13 +199,13 @@ describe('restoreAdmission', () => {
 describe('markNotAdmitted', () => {
   it('refuses to run against an empty admitted set', async () => {
     // `external_id <> ALL('{}')` is true of every row, so this would refuse the
-    // whole category. The guard says so too; this is the second lock.
+    // whole source. The guard says so too; this is the second lock.
     await markNotAdmitted(2, [], 'reason', false);
 
     expect(mockedQuery).not.toHaveBeenCalled();
   });
 
-  it('only touches rows the category still admits', async () => {
+  it('only touches rows the source still admits', async () => {
     await markNotAdmitted(2, ['Q19675'], 'nothing placed here', false);
 
     // Scoped to `admitted`, so a row refused by name earlier in the same run
@@ -214,7 +214,7 @@ describe('markNotAdmitted', () => {
     expect(lastSql()).toContain('e.external_id <> ALL($2::text[])');
   });
 
-  it('never sweeps a curator-created row out of the category', async () => {
+  it('never sweeps a curator-created row out of the source', async () => {
     await markNotAdmitted(2, ['Q19675'], 'reason', false);
 
     expect(lastSql()).toContain('e.is_manual = FALSE');
@@ -286,7 +286,7 @@ describe('markIconic', () => {
 });
 
 describe('countAdmitted', () => {
-  it('counts only admitted, non-curator rows in the category', async () => {
+  it('counts only admitted, non-curator rows in the source', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ count: 82 }] });
 
     const count = await countAdmitted(2);
@@ -298,7 +298,7 @@ describe('countAdmitted', () => {
 });
 
 describe('admittedExternalIds', () => {
-  it('names the admitted, non-curator rows of the category', async () => {
+  it('names the admitted, non-curator rows of the source', async () => {
     // What a stay line is read against: a source whose rule has hysteresis
     // needs to know who is already in, and a curator's own row is not a
     // candidate the source ever named.

@@ -34,7 +34,7 @@ test.describe('Addressable places @smoke', () => {
     await page.getByRole('button', { name: 'Explore experiences in this region' }).click();
     await expect(page.getByText(/World Heritage Sites \(\d+\)/)).toBeVisible();
 
-    // By name, not by row index: index 0 is the category header, and the row
+    // By name, not by row index: index 0 is the kind header, and the row
     // the address should name is the one whose name it should carry.
     await page.locator('[data-index]').filter({ hasText: FIXTURE_EXPERIENCE }).first().click();
     await expect(page).toHaveURL(/\/wv\/9001\/r\/9001-testland\/e\/9001-testland-old-town$/);

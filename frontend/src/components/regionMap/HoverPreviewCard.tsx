@@ -117,14 +117,14 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
         <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }} noWrap>
           {hoverPreview.locationName || 'Primary location'}
         </Typography>
-        {(hoverPreview.categoryName || hoverPreview.treasureCount) && (
+        {(hoverPreview.kindName || hoverPreview.treasureCount) && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-            {hoverPreview.categoryName && (
+            {hoverPreview.kindName && (
               <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
-                {hoverPreview.categoryName}
+                {hoverPreview.kindName}
               </Typography>
             )}
-            <TreasuresInsideChip count={hoverPreview.treasureCount} categoryId={hoverPreview.categoryId} />
+            <TreasuresInsideChip count={hoverPreview.treasureCount} kindId={hoverPreview.kindId} />
           </Box>
         )}
       </Box>

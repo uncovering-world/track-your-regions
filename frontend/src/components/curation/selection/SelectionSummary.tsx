@@ -67,7 +67,7 @@ export function SelectionSummary({
     ? facets.source
       .filter(s => s.count > 0 && (sourceIds.length === 0 || sourceIds.includes(s.id)))
       .map(s => [s.name, s.count])
-    : countBy(rows, row => row.category || null);
+    : countBy(rows, row => row.placeKind || null);
   const runs: Array<[number, number]> = allMatching && facets
     ? facets.run
       .filter(r => r.count > 0 && (runId === null || r.id === runId) && (showAside || !r.setAside))

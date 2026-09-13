@@ -105,7 +105,7 @@ export interface WorldHeritageIndex {
  *
  * Deterministic, and that is the whole requirement rather than a nicety: the
  * endpoint states no order among an item's claims, so a picture chosen by
- * arrival order would differ between runs — and on a gated category every
+ * arrival order would differ between runs — and on a gated source every
  * difference is a proposal a curator has to answer. The order carries no
  * judgement about which component is the better photograph, which is why the
  * report says which ref answered.

@@ -497,10 +497,10 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     return { parentRegionMapUrlById: urlMap, parentRegionMapNameById: nameMap };
   }, [tree]);
 
-  // Render nav-category toolbar: either NavControls (when active) or a count button.
+  // Render nav-source toolbar: either NavControls (when active) or a count button.
   // Extracted to keep the component body's cognitive complexity under the cap.
-  const renderNavCategoryButton = (params: {
-    category: 'unresolved' | 'warnings' | 'single-child' | 'incomplete-coverage';
+  const renderNavSourceButton = (params: {
+    source: 'unresolved' | 'warnings' | 'single-child' | 'incomplete-coverage';
     ids: ReadonlyArray<number>;
     label: string;
     icon: React.ReactNode;
@@ -509,14 +509,14 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     buttonSx?: { color: string };
   }) => {
     if (params.ids.length === 0) return null;
-    if (nav.activeNav?.category === params.category) {
+    if (nav.activeNav?.source === params.source) {
       return (
         <NavControls
           label={params.label}
           idx={nav.activeNav.idx}
           total={params.ids.length}
-          onPrev={() => nav.navigateTo(params.category, nav.activeNav!.idx - 1)}
-          onNext={() => nav.navigateTo(params.category, nav.activeNav!.idx + 1)}
+          onPrev={() => nav.navigateTo(params.source, nav.activeNav!.idx - 1)}
+          onNext={() => nav.navigateTo(params.source, nav.activeNav!.idx + 1)}
           onClose={() => nav.setActiveNav(null)}
         />
       );
@@ -525,7 +525,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
       <Button
         size="small"
         startIcon={params.icon}
-        onClick={() => nav.navigateTo(params.category, 0)}
+        onClick={() => nav.navigateTo(params.source, 0)}
         color={params.buttonColor}
         sx={params.buttonSx}
       >
@@ -555,8 +555,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
         <Button size="small" startIcon={<CollapseAllIcon />} onClick={nav.collapseAll}>
           Collapse All
         </Button>
-        {renderNavCategoryButton({
-          category: 'unresolved',
+        {renderNavSourceButton({
+          source: 'unresolved',
           ids: nav.unresolvedIds,
           label: 'unresolved',
           icon: <UnresolvedIcon />,
@@ -568,24 +568,24 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
             Show {shadowInsertions.length} Gap{shadowInsertions.length !== 1 ? 's' : ''} to Review
           </Button>
         )}
-        {renderNavCategoryButton({
-          category: 'warnings',
+        {renderNavSourceButton({
+          source: 'warnings',
           ids: nav.warningIds,
           label: 'warnings',
           icon: <WarningIcon />,
           buttonText: `${nav.warningIds.length} Hierarchy Warning${nav.warningIds.length !== 1 ? 's' : ''}`,
           buttonSx: { color: 'warning.main' },
         })}
-        {renderNavCategoryButton({
-          category: 'single-child',
+        {renderNavSourceButton({
+          source: 'single-child',
           ids: nav.singleChildIds,
           label: 'single-child',
           icon: <SingleChildIcon />,
           buttonText: `${nav.singleChildIds.length} Single-Child`,
           buttonColor: 'secondary',
         })}
-        {renderNavCategoryButton({
-          category: 'incomplete-coverage',
+        {renderNavSourceButton({
+          source: 'incomplete-coverage',
           ids: nav.incompleteCoverageIds,
           label: 'incomplete coverage',
           icon: <CoverageIcon />,

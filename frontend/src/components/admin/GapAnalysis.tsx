@@ -80,7 +80,7 @@ export function ShadowCreateRow({ shadow, depth, onApproveShadow, onRejectShadow
   );
 }
 
-/** Reusable prev/counter/next/close controls for category navigation */
+/** Reusable prev/counter/next/close controls for source navigation */
 export function NavControls({ label, idx, total, onPrev, onNext, onClose }: {
   label: string; idx: number; total: number;
   onPrev: () => void; onNext: () => void; onClose: () => void;

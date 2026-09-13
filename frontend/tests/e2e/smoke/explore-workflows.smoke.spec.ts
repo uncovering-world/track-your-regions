@@ -21,20 +21,21 @@ test.describe('Explore Workflows @smoke', () => {
     await expect(page.getByText('Experiences')).not.toBeVisible();
   });
 
-  test('discover mode opens source workflow from region source tag', async ({ page }) => {
+  test('discover mode opens a kind list from a region kind tag', async ({ page }) => {
     await page.goto('/discover/wv/' + FIXTURE_WORLD_VIEW);
 
-    await expect(page.getByText('Select a category in the tree')).toBeVisible();
+    await expect(page.getByText('Select a kind in the tree')).toBeVisible();
 
-    const sourceTag = page
-      .locator('[aria-label*="UNESCO World Heritage Sites in"], [aria-label*="Art Museums in"], [aria-label*="Public Art & Monuments in"]')
+    // The tag names the kind, never the source (ADR-0045 §8, #819).
+    const kindTag = page
+      .locator('[aria-label*="World Heritage Sites in"], [aria-label*="Art Museums in"], [aria-label*="Public Art & Monuments in"]')
       .first();
 
-    await expect(sourceTag).toBeVisible();
-    await sourceTag.click();
+    await expect(kindTag).toBeVisible();
+    await kindTag.click();
 
     await expect(page.getByRole('heading', { name: / in / })).toBeVisible();
     await expect(page.getByText(/\d+\s+experiences/)).toBeVisible();
-    await expect(page.getByText('Select a category in the tree')).not.toBeVisible();
+    await expect(page.getByText('Select a kind in the tree')).not.toBeVisible();
   });
 });

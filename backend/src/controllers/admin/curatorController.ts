@@ -26,15 +26,15 @@ export async function listCurators(_req: AuthenticatedRequest, res: Response): P
         'scopeType', ca.scope_type,
         'regionId', ca.region_id,
         'regionName', r.name,
-        'categoryId', ca.category_id,
-        'categoryName', es.name,
+        'sourceId', ca.source_id,
+        'sourceName', es.name,
         'assignedAt', ca.assigned_at,
         'notes', ca.notes
       ) ORDER BY ca.assigned_at DESC) as scopes
     FROM users u
     JOIN curator_assignments ca ON u.id = ca.user_id
     LEFT JOIN regions r ON ca.region_id = r.id
-    LEFT JOIN experience_categories es ON ca.category_id = es.id
+    LEFT JOIN experience_sources es ON ca.source_id = es.id
     WHERE u.role IN ('curator', 'admin')
     GROUP BY u.id, u.display_name, u.email, u.role, u.avatar_url
     ORDER BY u.display_name
@@ -45,9 +45,9 @@ export async function listCurators(_req: AuthenticatedRequest, res: Response): P
 
 interface AssignmentInput {
   userId: number;
-  scopeType: 'region' | 'category' | 'global';
+  scopeType: 'region' | 'source' | 'global';
   regionId?: number;
-  categoryId?: number;
+  sourceId?: number;
   notes?: string;
 }
 
@@ -69,18 +69,18 @@ type ValidationError = { status: number; error: string };
 const USER_ROLE_LOCK = 'FOR NO KEY UPDATE';
 
 function validateAssignmentInput(body: AssignmentInput): ValidationError | null {
-  const { userId, scopeType, regionId, categoryId } = body;
+  const { userId, scopeType, regionId, sourceId } = body;
   if (!userId || !scopeType) {
     return { status: 400, error: 'userId and scopeType are required' };
   }
-  if (!['region', 'category', 'global'].includes(scopeType)) {
-    return { status: 400, error: 'scopeType must be region, category, or global' };
+  if (!['region', 'source', 'global'].includes(scopeType)) {
+    return { status: 400, error: 'scopeType must be region, source, or global' };
   }
   if (scopeType === 'region' && !regionId) {
     return { status: 400, error: 'regionId is required for region scope' };
   }
-  if (scopeType === 'category' && !categoryId) {
-    return { status: 400, error: 'categoryId is required for category scope' };
+  if (scopeType === 'source' && !sourceId) {
+    return { status: 400, error: 'sourceId is required for source scope' };
   }
   return null;
 }
@@ -105,13 +105,13 @@ async function verifyAssignmentReferences(body: AssignmentInput): Promise<Valida
     }
   }
 
-  if (body.scopeType === 'category') {
+  if (body.scopeType === 'source') {
     const catResult = await pool.query(
-      'SELECT id FROM experience_categories WHERE id = $1',
-      [body.categoryId],
+      'SELECT id FROM experience_sources WHERE id = $1',
+      [body.sourceId],
     );
     if (catResult.rows.length === 0) {
-      return { status: 404, error: 'Category not found' };
+      return { status: 404, error: 'Source not found' };
     }
   }
 
@@ -147,11 +147,11 @@ async function insertAssignmentAndPromote(
 
     const insertResult = await client.query(
       `
-      INSERT INTO curator_assignments (user_id, scope_type, region_id, category_id, assigned_by, notes)
+      INSERT INTO curator_assignments (user_id, scope_type, region_id, source_id, assigned_by, notes)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id, assigned_at
     `,
-      [body.userId, body.scopeType, body.regionId || null, body.categoryId || null, assignedBy, body.notes || null],
+      [body.userId, body.scopeType, body.regionId || null, body.sourceId || null, assignedBy, body.notes || null],
     );
 
     // No row means the user was deleted since the reference check; the INSERT
@@ -206,7 +206,7 @@ export async function createCuratorAssignment(req: AuthenticatedRequest, res: Re
       userId: body.userId,
       scopeType: body.scopeType,
       regionId: body.regionId || null,
-      categoryId: body.categoryId || null,
+      sourceId: body.sourceId || null,
       assignedAt: inserted.assignedAt,
       rolePromoted: inserted.rolePromoted,
     });

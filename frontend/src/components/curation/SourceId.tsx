@@ -42,9 +42,9 @@ export function sourceIdHref(id: string, sourcePage: string | null | undefined):
   return new URL(page).pathname.split('/').includes(id) ? page : null;
 }
 
-export function SourceId({ id, category, sourcePage }: {
+export function SourceId({ id, kind, sourcePage }: {
   id: string;
-  category: string;
+  kind: string;
   /** The row's stored source page (`metadata.website`), for an id that page names. */
   sourcePage?: string | null;
 }) {
@@ -70,7 +70,7 @@ export function SourceId({ id, category, sourcePage }: {
       <Tooltip
         title={copied
           ? 'Copied'
-          : `How ${category} knows this object. Click to copy — quote it when reporting a row.`}
+          : `How ${kind} knows this object. Click to copy — quote it when reporting a row.`}
         describeChild
       >
         <Typography
@@ -97,11 +97,11 @@ export function SourceId({ id, category, sourcePage }: {
 
   const site = wikidataItemUrl(id) ? 'Wikidata' : new URL(href).hostname;
   // `describeChild` on both: without it MUI writes the tooltip into the child's
-  // `aria-label`, so the link would be announced as a sentence about the category
+  // `aria-label`, so the link would be announced as a sentence about the kind
   // rather than as the id it shows, and the copy button's own name would be lost.
   return (
     <Stack direction="row" alignItems="center" spacing={0.25}>
-      <Tooltip title={`How ${category} knows this object. Opens it at ${site}.`} describeChild>
+      <Tooltip title={`How ${kind} knows this object. Opens it at ${site}.`} describeChild>
         {/* `rel` on every outbound link, as `ObjectContext` does: this opens somebody
             else's site, and `noopener` is what keeps that page from reaching back. */}
         <Link

@@ -1,8 +1,8 @@
 /**
- * ExperienceList - Display experiences grouped by source
+ * ExperienceList - Display experiences grouped by kind
  *
  * Features:
- * - Grouped by category_name (e.g., "UNESCO World Heritage Sites")
+ * - Grouped by kind_name (e.g., "World Heritage Sites")
  * - Hover-to-highlight: bidirectional between list and markers
  * - Click expands inline details
  * - Checkboxes for authenticated users to mark visited
@@ -39,7 +39,7 @@ import { useNewBadgeImpressions } from '../hooks/useNewBadgeImpressions';
 import { useVisitedExperiences, useVisitedLocations } from '../hooks/useVisitedExperiences';
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import {
-  fetchExperienceCategories,
+  fetchExperienceKinds,
   unrejectExperience,
   removeExperienceFromRegion,
   type Experience,
@@ -61,8 +61,8 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSeenWindowIds } from '../hooks/useSeenWindowIds';
 
 interface ExperienceGroup {
-  categoryName: string;
-  categoryPriority: number;
+  kindName: string;
+  kindPriority: number;
   experiences: Experience[];
 }
 
@@ -84,7 +84,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     arrivedAtExperienceId,
     settleArrival,
     triggerFlyTo,
-    setExpandedCategoryNames,
+    setExpandedKindNames,
     collapsedExperienceIds,
     toggleCollapsedExperience,
   } = useExperienceContext();
@@ -127,23 +127,23 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const [rejectedSectionOpen, setRejectedSectionOpen] = useState(false);
   const [addDialogState, setAddDialogState] = useState<{
     open: boolean;
-    defaultCategoryId?: number;
+    defaultKindId?: number;
     defaultTab?: 0 | 1;
   }>({ open: false });
 
-  // Fetch categories to map category names → IDs for per-group add buttons
-  const { data: categoriesData } = useQuery({
-    queryKey: ['experience-categories'],
-    queryFn: fetchExperienceCategories,
+  // Fetch kinds to map kind names → IDs for per-group add buttons
+  const { data: kindsData } = useQuery({
+    queryKey: ['experience-kinds'],
+    queryFn: fetchExperienceKinds,
     enabled: !!isCurator,
   });
 
-  // Build a category name → category ID lookup
-  const categoryNameToId = useMemo(() => {
+  // Build a kind name → kind ID lookup
+  const kindNameToId = useMemo(() => {
     const map = new Map<string, number>();
-    categoriesData?.forEach((s) => map.set(s.name, s.id));
+    kindsData?.forEach((s) => map.set(s.name, s.id));
     return map;
-  }, [categoriesData]);
+  }, [kindsData]);
 
   // Check if any experiences have is_rejected field (indicates curator has scope for this region)
   const hasCuratorScope = isCurator && experiences.some((exp) => exp.is_rejected !== undefined);
@@ -160,7 +160,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
    */
   const {
     listedExperiences, outsideView, isFiltered: groupsAreFiltered,
-    showWholeRegion, toggleWholeRegion, totalByCategory,
+    showWholeRegion, toggleWholeRegion, totalByKind,
   } = useInViewFilter(
     activeExperiences, locationsByExperience, viewBounds, regionId, selectedExperienceId,
     collapsedExperienceIds,
@@ -191,21 +191,21 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // parent expects — see `LocationRow`.
   const locationRefs = useRef<Map<number, HTMLElement>>(new Map());
 
-  // Group active experiences by category_name, sorted by display_priority
+  // Group active experiences by kind_name, sorted by display_priority
   const groups = useMemo<ExperienceGroup[]>(() => {
     const groupMap = new Map<string, { experiences: Experience[]; priority: number }>();
 
     for (const exp of listedExperiences) {
-      const categoryName = exp.category_name || 'Experiences';
-      if (!groupMap.has(categoryName)) {
-        groupMap.set(categoryName, { experiences: [], priority: exp.category_priority ?? 100 });
+      const kindName = exp.kind_name || 'Experiences';
+      if (!groupMap.has(kindName)) {
+        groupMap.set(kindName, { experiences: [], priority: exp.kind_priority ?? 100 });
       }
-      groupMap.get(categoryName)!.experiences.push(exp);
+      groupMap.get(kindName)!.experiences.push(exp);
     }
 
     return Array.from(groupMap.entries())
-      .map(([categoryName, { experiences: exps, priority }]) => ({ categoryName, categoryPriority: priority, experiences: exps }))
-      .sort((a, b) => a.categoryPriority - b.categoryPriority);
+      .map(([kindName, { experiences: exps, priority }]) => ({ kindName, kindPriority: priority, experiences: exps }))
+      .sort((a, b) => a.kindPriority - b.kindPriority);
   }, [listedExperiences]);
 
   // Reset when the region changes, during render rather than in an effect:
@@ -244,9 +244,9 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   useEffect(() => {
     if (regionId !== parentResetRegionId.current) {
       parentResetRegionId.current = regionId;
-      setExpandedCategoryNames(new Set());
+      setExpandedKindNames(new Set());
     }
-  }, [regionId, setExpandedCategoryNames]);
+  }, [regionId, setExpandedKindNames]);
 
   // What the list opens by itself — the card's group, and a region's first
   // group once — is `expansionForSelection`'s decision, so the rule can be read
@@ -271,8 +271,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     expandedForCard.current = decision.forCard;
     if (!decision.open) return;
     setExpandedGroups(decision.open);
-    setExpandedCategoryNames(decision.open);
-  }, [groups, selectedExperienceId, expandedGroups, setExpandedCategoryNames]);
+    setExpandedKindNames(decision.open);
+  }, [groups, selectedExperienceId, expandedGroups, setExpandedKindNames]);
 
   // ── One flat list, so the rows can be windowed ──
   //
@@ -281,7 +281,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // become one sequence, and a collapsed group contributes its header alone —
   // which is what `unmountOnExit` did before, arrived at differently.
   //
-  // Measured on Europe, where the largest category holds 467: rendering them all
+  // Measured on Europe, where the largest kind holds 467: rendering them all
   // blocked the main thread for 2.5 s in one task, and 2.9 s of the 3.8 s that
   // opening a region cost was these rows (#552).
   const flatRows = useMemo(() => flattenGroups(groups, expandedGroups), [groups, expandedGroups]);
@@ -301,7 +301,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     (index: number) => {
       const row = flatRows[index];
       if (!row) return index;
-      return row.kind === 'header' ? `h:${row.group.categoryName}` : `e:${row.exp.id}`;
+      return row.kind === 'header' ? `h:${row.group.kindName}` : `e:${row.exp.id}`;
     },
     [flatRows],
   );
@@ -325,7 +325,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     getItemKey: getRowKey,
     // No `scrollMargin` here, deliberately, and it is not free: the list is not
     // the first thing in the scroll container — a curator gets the "add a
-    // category" box above it — so the virtualiser's origin is the container's
+    // kind" box above it — so the virtualiser's origin is the container's
     // rather than the list's and its range is off by that distance, masked in
     // practice by `overscan`. The documented remedy is the list's `offsetTop`,
     // and here that reads 102 px where the true distance is 47: `offsetTop` counts
@@ -360,15 +360,15 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       ?.focus({ preventScroll: true });
   }, [handleCardOpened, settleArrival]);
 
-  const toggleGroup = (categoryName: string) => {
+  const toggleGroup = (kindName: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(categoryName)) {
-        next.delete(categoryName);
+      if (next.has(kindName)) {
+        next.delete(kindName);
       } else {
-        next.add(categoryName);
+        next.add(kindName);
       }
-      setExpandedCategoryNames(next);
+      setExpandedKindNames(next);
       return next;
     });
   };
@@ -521,13 +521,13 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const renderGroupHeader = (group: ExperienceGroupLike) => (
     <GroupHeader
       group={group}
-      expanded={expandedGroups.has(group.categoryName)}
-      onToggle={() => toggleGroup(group.categoryName)}
-      regionTotal={groupsAreFiltered ? totalByCategory.get(group.categoryName) ?? null : null}
+      expanded={expandedGroups.has(group.kindName)}
+      onToggle={() => toggleGroup(group.kindName)}
+      regionTotal={groupsAreFiltered ? totalByKind.get(group.kindName) ?? null : null}
       canAdd={!!hasCuratorScope && !!regionId}
       onAdd={() => setAddDialogState({
         open: true,
-        defaultCategoryId: categoryNameToId.get(group.categoryName),
+        defaultKindId: kindNameToId.get(group.kindName),
         defaultTab: 0,
       })}
     />
@@ -571,7 +571,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   return (
     <Box>
-      {/* Curator: Add experience of a new category */}
+      {/* Curator: Add experience of a new kind */}
       {hasCuratorScope && regionId && (
         <Box sx={{ p: 1, display: 'flex', justifyContent: 'flex-end' }}>
           <Button
@@ -580,7 +580,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
             startIcon={<AssignIcon />}
             onClick={() => setAddDialogState({ open: true, defaultTab: 0 })}
           >
-            Add experience of a new category
+            Add experience of a new kind
           </Button>
         </Box>
       )}
@@ -694,7 +694,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
           onClose={closeAddDialog}
           regionId={regionId}
           regionName={selectedRegion?.name}
-          defaultCategoryId={addDialogState.defaultCategoryId}
+          defaultKindId={addDialogState.defaultKindId}
           defaultTab={addDialogState.defaultTab}
         />
       )}

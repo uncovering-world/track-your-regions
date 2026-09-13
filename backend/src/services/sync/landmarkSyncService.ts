@@ -33,7 +33,7 @@ import {
   type StoredCredit,
 } from './imageCredit.js';
 
-const LANDMARK_CATEGORY_ID = 3;
+const LANDMARK_SOURCE_ID = 3;
 const LOG_PREFIX = '[Landmark Sync]';
 
 /**
@@ -70,7 +70,7 @@ function collectingSparql(
   progress: SyncProgress, refreshCache: boolean,
 ): (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]> {
   return withCache(wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), LOG_PREFIX), {
-    categoryId: LANDMARK_CATEGORY_ID,
+    sourceId: LANDMARK_SOURCE_ID,
     enabled: !refreshCache,
     onHit: (descriptor, rows) => {
       progress.statusMessage = `${descriptor.label}: ${rows} rows, from cache`;
@@ -114,7 +114,7 @@ async function upsertLandmarkExperience(
   };
 
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
-    categoryId: LANDMARK_CATEGORY_ID,
+    sourceId: LANDMARK_SOURCE_ID,
     externalId: landmark.qid,
     name: landmark.label,
     nameLocal: { en: landmark.label },
@@ -178,7 +178,7 @@ function disambiguateDuplicateNames(landmarks: WikidataLandmark[]): void {
  * Collect, decide, and ask Commons about the pictures of what was admitted.
  *
  * The refusals come back as the run's `filtered`, which is what the
- * orchestrator marks on the rows (ADR-0024); what the category already admits
+ * orchestrator marks on the rows (ADR-0024); what the source already admits
  * is read first, so the collection's stay line has something to hold.
  */
 async function fetchLandmarkItems(
@@ -186,8 +186,8 @@ async function fetchLandmarkItems(
   refreshCache: boolean,
 ): Promise<FetchResult<WikidataLandmark>> {
   imageCredits = new Map();
-  storedCredits = await readStoredCredits(LANDMARK_CATEGORY_ID);
-  const admitted = await admittedExternalIds(LANDMARK_CATEGORY_ID);
+  storedCredits = await readStoredCredits(LANDMARK_SOURCE_ID);
+  const admitted = await admittedExternalIds(LANDMARK_SOURCE_ID);
 
   const { items, fetched, filtered } = await collectPublicArt({
     sparql: collectingSparql(progress, refreshCache),
@@ -230,21 +230,21 @@ export function syncLandmarks(
   options: { dryRun?: boolean; refreshCache?: boolean } = {},
 ): Promise<void> {
   return orchestrateSync<WikidataLandmark>({
-    categoryId: LANDMARK_CATEGORY_ID,
+    sourceId: LANDMARK_SOURCE_ID,
     logPrefix: LOG_PREFIX,
     // A fame line over a pool, so absence from a run says the row fell below
     // it or stopped passing the rule — nothing about whether it still stands.
     sourceCompleteness: 'ranked',
     // Every run recomputes the whole membership from the whole pool rather than
     // fetching a published list, so absence from the admitted set is this
-    // category's own decision and belongs on the admission axis (ADR-0024).
+    // source's own decision and belongs on the admission axis (ADR-0024).
     recomputesMembership: true,
     // Belonging is the badge: the world tier is what clears the fame line, and
     // every row this run admits carries is_iconic for that (ADR-0045 decision
     // 5) — written once admission is settled, not per landmark (#760).
     badgesAdmitted: true,
     // The one place the run's options reach the collection: the cache is a
-    // property of *this* run rather than of the category.
+    // property of *this* run rather than of the source.
     // Nothing appends to the orchestrator's error list any more: a collection
     // that fails throws, and fails the run.
     fetchItems: (progress) => fetchLandmarkItems(progress, options.refreshCache === true),
@@ -258,12 +258,12 @@ export function syncLandmarks(
  * Get current landmark sync status
  */
 export function getLandmarkSyncStatus() {
-  return getSyncStatus(LANDMARK_CATEGORY_ID);
+  return getSyncStatus(LANDMARK_SOURCE_ID);
 }
 
 /**
  * Cancel running landmark sync
  */
 export function cancelLandmarkSync() {
-  return cancelSync(LANDMARK_CATEGORY_ID);
+  return cancelSync(LANDMARK_SOURCE_ID);
 }

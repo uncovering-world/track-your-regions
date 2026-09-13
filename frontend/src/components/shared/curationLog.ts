@@ -360,12 +360,12 @@ function formatDeclinedHeld(d: Record<string, unknown>): string | null {
  * A verdict on a rule's refusal: what the rule objected to, and what the curator made of it.
  *
  * The reason is the whole point of the card this answers, and it stays the point
- * afterwards — a run of near-identical objections in a category's history is how a bad
+ * afterwards — a run of near-identical objections in a kind's history is how a bad
  * rule is found. It reads correctly under either chip: the rule said this, and it was
  * either upheld or overruled.
  *
  * An override is also a publication (ADR-0025 § 4.5) — the object becomes visible in the
- * same transaction — and that is not something to leave a reader to infer from a category
+ * same transaction — and that is not something to leave a reader to infer from a kind
  * of act. It is said, with the contents it released beside it.
  */
 function formatAdmission(d: Record<string, unknown>): string | null {

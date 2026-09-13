@@ -31,7 +31,7 @@ test.describe('Shell Navigation @smoke', () => {
 
     await page.getByRole('button', { name: 'Discover' }).click();
     await expectPath(page, `/discover/wv/${FIXTURE_WORLD_VIEW}`);
-    await expect(page.getByText('Select a category in the tree')).toBeVisible();
+    await expect(page.getByText('Select a kind in the tree')).toBeVisible();
 
     await page.getByRole('button', { name: 'Map', exact: true }).click();
     await expectPath(page, `/wv/${FIXTURE_WORLD_VIEW}`);

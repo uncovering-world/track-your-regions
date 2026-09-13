@@ -32,7 +32,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  getCategories,
+  getSources,
   startRegionAssignment,
   getAssignmentStatus,
   cancelAssignment,
@@ -45,7 +45,7 @@ import { useAuth } from '../../hooks/useAuth';
 export function AssignmentPanel() {
   const { user } = useAuth();
   const [selectedWorldView, setSelectedWorldView] = useState<number | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [selectedSource, setSelectedSource] = useState<number | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [status, setStatus] = useState<AssignmentStatus | null>(null);
 
@@ -58,22 +58,22 @@ export function AssignmentPanel() {
     queryFn: fetchWorldViews,
   });
 
-  // Fetch categories — they populate the optional category filter below.
-  const { data: categories } = useQuery({
-    queryKey: ['admin', 'categories'],
-    queryFn: getCategories,
+  // Fetch sources — they populate the optional source filter below.
+  const { data: sources } = useQuery({
+    queryKey: ['admin', 'sources'],
+    queryFn: getSources,
   });
 
   // Fetch experience counts when world view is selected
   const { data: counts, refetch: refetchCounts } = useQuery({
-    queryKey: ['admin', 'experienceCounts', selectedWorldView, selectedCategory],
-    queryFn: () => getExperienceCountsByRegion(selectedWorldView!, selectedCategory || undefined),
+    queryKey: ['admin', 'experienceCounts', selectedWorldView, selectedSource],
+    queryFn: () => getExperienceCountsByRegion(selectedWorldView!, selectedSource || undefined),
     enabled: !!selectedWorldView,
   });
 
   // Start assignment mutation
   const startMutation = useMutation({
-    mutationFn: () => startRegionAssignment(selectedWorldView!, selectedCategory || undefined),
+    mutationFn: () => startRegionAssignment(selectedWorldView!, selectedSource || undefined),
     onSuccess: () => {
       setIsPolling(true);
     },
@@ -160,15 +160,15 @@ export function AssignmentPanel() {
             </FormControl>
 
             <FormControl sx={{ minWidth: 250 }}>
-              <InputLabel>Category (optional)</InputLabel>
+              <InputLabel>Source (optional)</InputLabel>
               <Select
-                value={selectedCategory || ''}
-                label="Category (optional)"
-                onChange={(e) => setSelectedCategory(e.target.value as number || null)}
+                value={selectedSource || ''}
+                label="Source (optional)"
+                onChange={(e) => setSelectedSource(e.target.value as number || null)}
                 disabled={isRunning}
               >
-                <MenuItem value="">All Categories</MenuItem>
-                {categories?.map((cat) => (
+                <MenuItem value="">All Sources</MenuItem>
+                {sources?.map((cat) => (
                   <MenuItem key={cat.id} value={cat.id}>
                     {cat.name}
                   </MenuItem>

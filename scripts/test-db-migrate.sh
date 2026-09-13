@@ -251,7 +251,7 @@ echo "an empty ledger on a database that holds a catalogue is refused, not appli
 # now holding rows that 015 would delete by volume.
 psql_cmd -d "$TEST_DB" -q -c "DELETE FROM schema_migrations" > /dev/null
 psql_cmd -d "$TEST_DB" -q -c "
-    INSERT INTO experiences (category_id, external_id, name, location)
+    INSERT INTO experiences (source_id, external_id, name, location)
     VALUES (1, 'migrate-test-1', 'A place', ST_SetSRID(ST_MakePoint(0, 0), 4326))
     ON CONFLICT DO NOTHING" > /dev/null
 if out="$(run_migrate apply < /dev/null)"; then

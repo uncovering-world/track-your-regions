@@ -49,7 +49,7 @@ beforeEach(() => {
 function held(): ReviewQueueItem {
   return {
     id: 6194, external_id: 'Q165631', name: 'Gemäldegalerie Berlin',
-    category_id: 2, category_name: 'Art Museums',
+    kind_id: 2, kind_name: 'Art Museums',
     missing_since: null, source_membership: 'present', existence: 'extant',
     kind: 'held', sync_log_id: 64, proposed: null,
     counted_works_total: 27,
@@ -224,8 +224,8 @@ describe('a held card about a part', () => {
 function heldPlace(locationId: number | null, curatedFields: string[] = []): ReviewQueueItem {
   return {
     ...held(),
-    id: 1084, external_id: '1234', name: 'Cathar Castles', category_id: 1,
-    category_name: 'UNESCO World Heritage Sites',
+    id: 1084, external_id: '1234', name: 'Cathar Castles', kind_id: 1,
+    kind_name: 'World Heritage Sites',
     proposed_parts: [{
       kind: 'locations',
       item: { name: 'Château de Montségur', ref: '1234-001' },

@@ -22,7 +22,7 @@ const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 describe('readPreviousPlacements', () => {
   beforeEach(() => mockedQuery.mockReset());
 
-  it('reads only the links the source still places, and only this category', async () => {
+  it('reads only the links the source still places, and only this source', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
     await readPreviousPlacements(2);
@@ -32,7 +32,7 @@ describe('readPreviousPlacements', () => {
     // counted, it could never be withdrawn again and would drag the coverage
     // ratio down on every later run for works nobody sees.
     expect(sql).toContain('et.missing_since IS NULL');
-    expect(sql).toContain('e.category_id = $1');
+    expect(sql).toContain('e.source_id = $1');
     expect(params).toEqual([2]);
   });
 

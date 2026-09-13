@@ -79,7 +79,7 @@ export function outsideViewLabel(count: number): string {
 }
 
 /**
- * One entry of the windowed list: a category heading, or one experience under it.
+ * One entry of the windowed list: a kind heading, or one experience under it.
  *
  * The list reads as groups and renders as a sequence, because a virtualiser counts
  * rows and a group is not a row.
@@ -90,7 +90,7 @@ export type FlatRow =
 
 /** Only what flattening needs, so the caller's fuller group type still fits. */
 export interface ExperienceGroupLike {
-  categoryName: string;
+  kindName: string;
   experiences: Experience[];
 }
 
@@ -112,7 +112,7 @@ export interface GroupExpansion {
  *
  * Both were one rule before, fired once per region, and each half of that was
  * a way to be sent somewhere and shown nothing. A link to a museum in a region
- * whose first category is UNESCO opened UNESCO. And a reader already standing
+ * whose first kind is UNESCO opened UNESCO. And a reader already standing
  * in Noord-Holland who searched "Rijksmuseum" (#592) got an address change with
  * no region change at all, so the once-per-region rule declined to fire and the
  * card stayed folded away — the defect the first half had just fixed, on the
@@ -142,9 +142,9 @@ export function expansionForSelection<T extends ExperienceGroupLike>(opts: {
     );
     if (holding) {
       return {
-        open: expanded.has(holding.categoryName)
+        open: expanded.has(holding.kindName)
           ? null
-          : new Set(expanded).add(holding.categoryName),
+          : new Set(expanded).add(holding.kindName),
         forCard: selectedExperienceId,
       };
     }
@@ -154,7 +154,7 @@ export function expansionForSelection<T extends ExperienceGroupLike>(opts: {
   }
 
   if (openedForRegion) return null;
-  return { open: new Set([groups[0].categoryName]), forCard: openedForCard };
+  return { open: new Set([groups[0].kindName]), forCard: openedForCard };
 }
 
 /**
@@ -171,7 +171,7 @@ export function flattenGroups(
   const rows: FlatRow[] = [];
   for (const group of groups) {
     rows.push({ kind: 'header', group });
-    if (expandedGroups.has(group.categoryName)) {
+    if (expandedGroups.has(group.kindName)) {
       for (const exp of group.experiences) rows.push({ kind: 'experience', exp });
     }
   }

@@ -91,15 +91,15 @@ describe('toThumbnailUrl', () => {
   });
 
   it('refuses a Commons page, which answers HTML, and a file that is not a picture', () => {
-    // The same host serves categories and file descriptions; an <img> handed one
+    // The same host serves kinds and file descriptions; an <img> handed one
     // draws nothing. The storing side asks the same of a file name.
-    expect(toThumbnailUrl('https://commons.wikimedia.org/wiki/Category:Wudang_Mountains')).toBe('');
+    expect(toThumbnailUrl('https://commons.wikimedia.org/wiki/Kind:Wudang_Mountains')).toBe('');
     // A description page is named like a file and is not one.
     expect(toThumbnailUrl('https://commons.wikimedia.org/wiki/File:Louvre.jpg')).toBe('');
     expect(toThumbnailUrl('https://commons.wikimedia.org/wiki/Special:FilePath/Nomination.pdf')).toBe('');
     // A subdomain of the upload host is the upload host for this purpose.
     expect(toThumbnailUrl('https://x.upload.wikimedia.org/wikipedia/en/b/b1/Poster.jpg')).toBe('');
-    expect(extractImageUrl('https://commons.wikimedia.org/wiki/Category:Wudang_Mountains')).toBeNull();
+    expect(extractImageUrl('https://commons.wikimedia.org/wiki/Kind:Wudang_Mountains')).toBeNull();
     expect(extractImageUrl('https://commons.wikimedia.org/wiki/Special:FilePath/A%20tour.ogv')).toBeNull();
   });
 });

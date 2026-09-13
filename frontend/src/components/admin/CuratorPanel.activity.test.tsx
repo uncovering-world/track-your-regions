@@ -26,7 +26,7 @@ vi.mock('../../api/admin', async () => ({
   revokeCuratorAssignment: vi.fn(),
   getCuratorActivity: vi.fn(),
   searchUsers: vi.fn(),
-  getCategories: vi.fn(),
+  getSources: vi.fn(),
 }));
 vi.mock('../../api/worldViews', async () => ({ fetchWorldViews: vi.fn().mockResolvedValue([]) }));
 vi.mock('../../hooks/useAuth', async () => ({ useAuth: () => ({ user: { id: 1, role: 'admin' } }) }));

@@ -48,8 +48,8 @@ const RIJKSMUSEUM = {
   name: 'Rijksmuseum',
   short_description: null,
   type: null,
-  category_id: 2,
-  category_name: 'Art Museums',
+  kind_id: 2,
+  kind_name: 'Art Museums',
   country_names: ['Netherlands'],
   image_url: null,
   longitude: 4.88,
@@ -67,7 +67,7 @@ const ALHAMBRA = {
   ...RIJKSMUSEUM,
   id: 411,
   name: 'Alhambra',
-  category_name: 'UNESCO World Heritage Sites',
+  kind_name: 'World Heritage Sites',
   country_names: ['Spain'],
   regions: [
     { id: 8001, name: 'Andalusia', world_view_id: 2, world_view_name: 'Wikivoyage Regions' },
@@ -79,7 +79,7 @@ const GREAT_BARRIER_REEF = {
   ...RIJKSMUSEUM,
   id: 412,
   name: 'Great Barrier Reef',
-  category_name: 'UNESCO World Heritage Sites',
+  kind_name: 'World Heritage Sites',
   country_names: ['Australia'],
   regions: [],
 };

@@ -28,8 +28,8 @@ import type { AppAddress } from '../utils/appUrl';
 import type { GoOptions } from './useAppAddress';
 
 export interface SelectRegionOptions {
-  /** Discover's open category list, written beside the region; the map ignores it. */
-  categoryId?: number | null;
+  /** Discover's open kind list, written beside the region; the map ignores it. */
+  kindId?: number | null;
 }
 
 interface AddressedRegionInput {
@@ -182,7 +182,7 @@ export function useAddressedRegion({ address, go, isCustomWorldView, authLoading
     }
     // Not there, not visible, or not this world view: one silence for all three.
     setRestoreId(null);
-    go({ ...address, regionId: null, experienceId: null, categoryId: null }, { replace: true });
+    go({ ...address, regionId: null, experienceId: null, kindId: null }, { replace: true });
   }, [restoreId, regionAncestors, ancestorsFailed, address, urlWorldViewId, go]);
 
   // Bring the slug up to date once the name is known: in place, since it is a
@@ -196,7 +196,7 @@ export function useAddressedRegion({ address, go, isCustomWorldView, authLoading
 
   /**
    * A selection made in the app: the object now, the address with it. A new
-   * region is a new panel, so the card goes; the category is Discover's to say.
+   * region is a new panel, so the card goes; the kind is Discover's to say.
    */
   const setSelectedRegion = useCallback((region: Region | null, options?: SelectRegionOptions) => {
     setSelectedRegionState(region);
@@ -209,7 +209,7 @@ export function useAddressedRegion({ address, go, isCustomWorldView, authLoading
       ...at,
       regionId: region?.id ?? null,
       experienceId: null,
-      categoryId: options?.categoryId ?? null,
+      kindId: options?.kindId ?? null,
     }, { names: { region: region?.name } });
   }, [go]);
 

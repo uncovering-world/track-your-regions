@@ -2,7 +2,7 @@
  * useNavigationState — Custom hook for tree navigation and virtualization.
  *
  * Extracted from WorldViewImportTree.tsx. Owns the expanded set, scroll management,
- * category navigation (unresolved/warnings/single-child/incomplete-coverage),
+ * source navigation (unresolved/warnings/single-child/incomplete-coverage),
  * virtualizer setup, and highlight tracking.
  */
 
@@ -19,7 +19,7 @@ import {
   type FlatTreeItem,
 } from './importTreeUtils';
 
-export type NavCategory = 'unresolved' | 'warnings' | 'single-child' | 'incomplete-coverage';
+export type NavSource = 'unresolved' | 'warnings' | 'single-child' | 'incomplete-coverage';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic alias for any concrete useVirtualizer<TItem, TElement> return; consumers pass typed virtualizers
 type AnyVirtualizer = ReturnType<typeof useVirtualizer<any, any>>;
@@ -37,17 +37,17 @@ export interface UseNavigationStateResult {
   virtualizer: AnyVirtualizer;
   parentRef: React.RefObject<HTMLDivElement | null>;
 
-  // Category navigation
-  activeNav: { category: NavCategory; idx: number } | null;
-  setActiveNav: React.Dispatch<React.SetStateAction<{ category: NavCategory; idx: number } | null>>;
-  navIdsMap: Record<NavCategory, number[]>;
-  navigateTo: (category: NavCategory, idx: number) => void;
+  // Source navigation
+  activeNav: { source: NavSource; idx: number } | null;
+  setActiveNav: React.Dispatch<React.SetStateAction<{ source: NavSource; idx: number } | null>>;
+  navIdsMap: Record<NavSource, number[]>;
+  navigateTo: (source: NavSource, idx: number) => void;
 
   // Highlight
   highlightedRegionId: number | null;
   navigateToRegion: (regionId: number) => void;
 
-  // Category ID lists (exposed for toolbar badge counts)
+  // Source ID lists (exposed for toolbar badge counts)
   unresolvedIds: number[];
   singleChildIds: number[];
   warningIds: number[];
@@ -191,7 +191,7 @@ export function useNavigationState(
     requestScrollTo(shadowInsertions[0].targetRegionId);
   }, [tree, shadowInsertions, requestScrollTo]);
 
-  // Category ID lists for navigation
+  // Source ID lists for navigation
   const unresolvedIds = useMemo(() => tree ? findUnresolvedNodes(tree) : [], [tree]);
   const singleChildIds = useMemo(() => tree ? findSingleChildNodes(tree) : [], [tree]);
   const warningIds = useMemo(() => tree ? findNodesWithWarnings(tree) : [], [tree]);
@@ -206,10 +206,10 @@ export function useNavigationState(
     return ids;
   }, [coverageData?.coverage]);
 
-  // Unified category navigation state
-  const [activeNav, setActiveNav] = useState<{ category: NavCategory; idx: number } | null>(null);
+  // Unified source navigation state
+  const [activeNav, setActiveNav] = useState<{ source: NavSource; idx: number } | null>(null);
 
-  const navIdsMap: Record<NavCategory, number[]> = useMemo(() => ({
+  const navIdsMap: Record<NavSource, number[]> = useMemo(() => ({
     unresolved: unresolvedIds,
     warnings: warningIds,
     'single-child': singleChildIds,
@@ -220,14 +220,14 @@ export function useNavigationState(
   const [reviewHighlightId, setReviewHighlightId] = useState<number | null>(null);
 
   const highlightedRegionId = activeNav
-    ? navIdsMap[activeNav.category][activeNav.idx] ?? null
+    ? navIdsMap[activeNav.source][activeNav.idx] ?? null
     : reviewHighlightId;
 
-  const navigateTo = useCallback((category: NavCategory, idx: number) => {
+  const navigateTo = useCallback((source: NavSource, idx: number) => {
 
-    const ids = navIdsMap[category];
+    const ids = navIdsMap[source];
     if (!tree || idx < 0 || idx >= ids.length) return;
-    setActiveNav({ category, idx });
+    setActiveNav({ source, idx });
 
     const targetId = ids[idx];
     const ancestorIds = collectAncestorsOfIds(tree, new Set([targetId]));
@@ -244,7 +244,7 @@ export function useNavigationState(
       prevNavLengthRef.current = null;
       return;
     }
-    const ids = navIdsMap[activeNav.category];
+    const ids = navIdsMap[activeNav.source];
     const prevLength = prevNavLengthRef.current;
     prevNavLengthRef.current = ids.length;
 
@@ -257,7 +257,7 @@ export function useNavigationState(
     if (prevLength != null && prevLength !== ids.length) {
       const clampedIdx = Math.min(activeNav.idx, ids.length - 1);
       if (clampedIdx !== activeNav.idx) {
-        setActiveNav({ category: activeNav.category, idx: clampedIdx });
+        setActiveNav({ source: activeNav.source, idx: clampedIdx });
       }
       // Scroll to the (possibly new) item at this index
 
@@ -268,7 +268,7 @@ export function useNavigationState(
         requestScrollTo(targetId);
       }
     } else if (activeNav.idx >= ids.length) {
-      setActiveNav({ category: activeNav.category, idx: ids.length - 1 });
+      setActiveNav({ source: activeNav.source, idx: ids.length - 1 });
     }
   }, [activeNav, navIdsMap, tree, requestScrollTo]);
 

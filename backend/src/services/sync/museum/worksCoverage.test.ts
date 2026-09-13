@@ -56,7 +56,7 @@ describe('measureWorksCoverage', () => {
     expect(measureWorksCoverage(moved)).toEqual({ stored: 10, seen: 10, museums: 3 });
   });
 
-  it('leaves a museum that left the category out of both sides', () => {
+  it('leaves a museum that left the source out of both sides', () => {
     // Admission has its own floor (ADR-0024) and its own sweep; a museum the art
     // test drops takes its works out of this measure entirely, or every
     // admission change would read as an under-fetch.
@@ -149,7 +149,7 @@ describe('worksCoverageSkipReason', () => {
   });
 
   it('allows withdrawal when the catalogue offers nothing at the admitted museums', () => {
-    // A first run, or a category rebuilt from nothing: there is no link to
+    // A first run, or a source rebuilt from nothing: there is no link to
     // withdraw, so there is nothing a floor could protect.
     expect(worksCoverageSkipReason(input({ stored: {} }), 'museums')).toBeNull();
     expect(worksCoverageSkipReason(input({ admitted: [] }), 'museums')).toBeNull();

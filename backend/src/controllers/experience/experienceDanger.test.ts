@@ -59,11 +59,11 @@ describe('withDangerFields', () => {
 
   it('leaves every other field of the row alone', () => {
     const row = withDangerFields({
-      id: 3, name: 'Tyre', category_name: 'UNESCO World Heritage Sites',
+      id: 3, name: 'Tyre', kind_name: 'World Heritage Sites',
       in_danger: 'true', danger_list: 'Y 2026',
     });
 
     expect(row.name).toBe('Tyre');
-    expect(row.category_name).toBe('UNESCO World Heritage Sites');
+    expect(row.kind_name).toBe('World Heritage Sites');
   });
 });
