@@ -20,7 +20,7 @@
  * `admission` in the membership's `curated_fields`, and every write to
  * `admission` here skips the row.
  *
- * Four operations, and the order they run in matters:
+ * Five operations, and the order they run in matters:
  *
  *   1. `markRefused` — the run named it and a rule said no. Unconditional: no
  *      coverage floor or error count makes a named refusal less true.
@@ -30,10 +30,19 @@
  *      ambiguous kind of statement again: a broken SPARQL day must not blank a
  *      catalogue.
  *   4. `markIconic` — the must-see badge on the memberships the run admits, for
- *      a source whose admission rule is the badge. The one write here that is
+ *      a source whose admission rule is the badge — or, where only one of its
+ *      doors is, on the rows the orchestrator picked out of them
+ *      (`badgesAdmitted`). The one write here that is
  *      about the flag rather than about admission, and so honours the flag's
  *      own pin rather than admission's: a membership a curator overrode is
  *      badged, since the curator admitted it and the rule would badge it.
+ *   5. `unmarkIconic` — the same badge taken back, where the kind's badge is a
+ *      predicate and an admitted row has stopped passing it. Only then: where
+ *      the badge is the admission rule there is nothing to take back, and a
+ *      row that leaves the kind altogether is cleared by the writer that puts
+ *      it out (`CLEAR_ICONIC`). Runs straight after step 4, off the same list —
+ *      and only on a run whose step 3 actually ran, since it speaks about the
+ *      rows the run did not name and those are the sweep's to decide.
  *
  * Steps 2 and 3 are order-independent: restore matches `admission = 'refused'
  * AND external_id = ANY(seen)` and the sweep matches `admission = 'admitted' AND
@@ -210,12 +219,18 @@ export const CLEAR_ICONIC = `is_iconic = CASE
 
 /**
  * Badge the memberships this run admits — the fourth writer of the flag, kept
- * beside the three that take it away, and run after `restoreAdmission` on
- * purpose.
+ * beside the three that take it away with a row's membership and the one
+ * (`unmarkIconic`) that takes it back from a row that stays, and run after
+ * `restoreAdmission` on purpose.
  *
  * Every museum works-first admits holds a work above the fame line, so the flag
  * is a property of belonging to the kind rather than a field the source
- * proposes — which is why it is written here and not through the
+ * proposes. Where a kind's world tier has a second door that is not a
+ * masterpiece — an archaeology museum enters for what it is as well as for the
+ * find it holds — only the rows holding one are handed over, and the flag is a
+ * property of that half of the rule (`badgeAdmitted`, ADR-0045 decision 5).
+ * Either way it is the rule and not a proposal — which is why it is written
+ * here and not through the
  * curated_fields-aware upsert, and outside the changeset: nothing sets it by
  * hand yet, but the moment a curation surface does, a run writing `true` over
  * a curator's `false` would show up in no record of its own, so the pin is
@@ -255,6 +270,61 @@ export async function markIconic(
         AND NOT ${iconicPinnedSql('m')}
   RETURNING ${RETURNING}`,
     [sourceId, admittedExternalIds],
+  );
+  return rowsFrom(result);
+}
+
+/**
+ * Take the badge back off the memberships this run admits and no longer calls
+ * must-see — the fifth writer of the flag, and the other half of `markIconic`.
+ *
+ * Only a kind whose badge is a predicate needs it (`badgesAdmitted` a function,
+ * `badgeAdmitted`): where the badge *is* the admission rule, every admitted row
+ * is handed to `markIconic` and there is nothing left over to clear. Where the
+ * kind has a second door — an archaeology museum enters for what it is, and
+ * wears the badge only while it holds a famous find — the two sets come apart,
+ * and a museum whose last famous find fell below the finds' line would otherwise
+ * wear a must-see badge no rule of this run would give it. The three writers
+ * that clear the flag (`CLEAR_ICONIC`) all fire when a row *leaves* the kind, so
+ * none of them ever reaches it.
+ *
+ * `keepExternalIds` is what `markIconic` was handed, so the two statements
+ * cannot disagree about who is badged: everything this source admits and this
+ * run did not name is cleared.
+ *
+ * That set includes rows the run never selected at all, which is why the caller
+ * sends this **only on a run whose admission sweep ran** (`badgeAdmitted`): the
+ * sweep is what decides those rows, clearing the flag with the admission
+ * (`CLEAR_ICONIC`), and on a run where its guard refused — an empty answer, a
+ * collapse to under half the previous membership — it deliberately leaves them
+ * standing. Sent anyway, this statement would take the badge off every one of
+ * them while their admission was being protected, which is the sweep's guard
+ * honoured in one column and broken in the other.
+ *
+ * The curator's pin is honoured, exactly as `CLEAR_ICONIC` honours it: a person
+ * who marked this must-see goes on saying so. Admission's own pin does not
+ * protect the badge — they are two answers and two pins (`iconicPinnedSql`).
+ *
+ * A preview writes no row and reports none, as `markIconic` does not.
+ */
+export async function unmarkIconic(
+  sourceId: number,
+  keepExternalIds: string[],
+  dryRun: boolean,
+): Promise<AdmissionRow[]> {
+  if (dryRun) return [];
+
+  const result = await pool.query(
+    `UPDATE ${MEMBERSHIPS} m SET is_iconic = false, updated_at = NOW()
+       FROM experiences e
+      WHERE e.id = m.experience_id
+        AND m.source_id = $1
+        AND NOT (e.external_id = ANY($2::text[]))
+        AND m.admission = 'admitted'
+        AND m.is_iconic
+        AND NOT ${iconicPinnedSql('m')}
+  RETURNING ${RETURNING}`,
+    [sourceId, keepExternalIds],
   );
   return rowsFrom(result);
 }

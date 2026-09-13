@@ -22,7 +22,13 @@
  * types the three museums `museum` and nothing more, and Pompeii
  * `archaeological site, ancient city` and no museum at all.
  *
- * Four things are this fixture's own, and each is a case the rule needs:
+ * Five things are this fixture's own, and each is a case the rule needs:
+ *   - **Hadrian's Villa's place on the editorial shelf**. Its classes, count and
+ *     coordinates are real (`archaeological site, archaeological park`, 52
+ *     languages, Tivoli), and the park class is what matters: Wikidata files it
+ *     under `archaeological museum` and so under `museum`, so this row *passes*
+ *     the museum-class gate and only the park veto turns it away. A park no
+ *     category named would never reach that gate at all (#887);
  *   - the **Venus of Buret'** is raised from 9 sitelinks to 25 and given a
  *     `P195` on the Hermitage. The Mal'ta–Buret' figurines are in the
  *     Hermitage's Paleolithic collection, but the item states no collection and
@@ -66,7 +72,7 @@ export const ART_MUSEUM = 'Q207694'; // art museum
 export const NATIONAL_MUSEUM = 'Q17431399'; // national museum
 export const ARCHAEOLOGICAL_MUSEUM = 'Q3329412'; // archaeological museum
 const EGYPTOLOGICAL_MUSEUM = 'Q3330834'; // egyptological museum
-const PALACE = 'Q16560'; // palace
+export const PALACE = 'Q16560'; // palace
 const ARCHAEOLOGICAL_SITE = 'Q839954'; // archaeological site
 const ANCIENT_CITY = 'Q15661340'; // ancient city
 const SCULPTURE = 'Q860861'; // sculpture
@@ -253,6 +259,24 @@ const WORLD: World = {
       label: 'Pio-Clementino museum', classes: [ART_MUSEUM, ARCHAEOLOGICAL_MUSEUM], sitelinks: 10,
       lat: 41.90673, lon: 12.45351, parents: ['Q182955'],
     },
+    // The row the park veto exists for, and the one case the class door and the
+    // category door both have to be asked about. Hadrian's Villa is
+    // `archaeological site, archaeological park` on Wikidata (verified with
+    // wbgetentities on 2026-09-14, 52 sitelinks, Tivoli), and Wikidata files
+    // `archaeological park` under `archaeological museum` and so under `museum`
+    // — so the museum-class gate *passes* it and only the park veto turns it
+    // away. Its place on the editorial shelf is this fixture's own, standing for
+    // the parks the editors really do file there (Pompeii above is the measured
+    // case): a park no category named would be refused by the veto without the
+    // gate ever being reached, which is not the question this row asks.
+    Q272777: {
+      label: 'Hadrian\'s Villa', classes: [ARCHAEOLOGICAL_SITE, ARCHAEOLOGICAL_PARK],
+      sitelinks: 52, lat: 41.941944, lon: 12.775278, countryLabel: 'Italy',
+      description: 'archaeological complex in Tivoli, Italy',
+      articleUrl: 'https://en.wikipedia.org/wiki/Hadrian%27s_Villa',
+      categories: ['Archaeological museums in Italy', 'Archaeological parks'],
+      inNatureCategories: true,
+    },
     Q182955: {
       label: 'Vatican Museums', classes: [ART_MUSEUM, NATIONAL_MUSEUM], sitelinks: 64,
       lat: 41.90639, lon: 12.45444,
@@ -312,8 +336,16 @@ const WORLD: World = {
     [ARCHAEOLOGICAL_PARK]: [ARCHAEOLOGICAL_PARK],
     [NATURAL_HISTORY_ROOT]: [NATURAL_HISTORY_ROOT],
     [ARTEFACT_ROOT]: [ARTEFACT_ROOT],
-    // What a venue may be, for the shared collector's rule.
-    [MUSEUM]: [MUSEUM, ART_MUSEUM, NATIONAL_MUSEUM, ARCHAEOLOGICAL_MUSEUM, EGYPTOLOGICAL_MUSEUM],
+    // What a venue may be, for the shared collector's rule. The park is in it
+    // because Wikidata really files `archaeological park` under `archaeological
+    // museum` and so under `museum` (which is why `buildArchaeologyTrees` walks
+    // the park tree and subtracts it): without it here, a park reaching the
+    // category door would be refused for carrying no museum class, and the park
+    // veto — the rule that actually turns it away — would never be asked (#887).
+    [MUSEUM]: [
+      MUSEUM, ART_MUSEUM, NATIONAL_MUSEUM, ARCHAEOLOGICAL_MUSEUM, EGYPTOLOGICAL_MUSEUM,
+      ARCHAEOLOGICAL_PARK,
+    ],
     // The lost tree (#868): nothing here is under it.
     [LOST_WORK_ROOT]: [LOST_WORK_ROOT, 'Q21745157'],
   },

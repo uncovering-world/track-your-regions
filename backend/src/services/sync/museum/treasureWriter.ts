@@ -21,6 +21,7 @@ import type {
   ContentItem, ContentItemChange, ContentsDelta, ProcessedContent,
 } from '../types.js';
 import { ICONIC_SITELINKS, ICONIC_RELEASE } from './tier1.js';
+import type { LinePair } from '../sourceLine.js';
 import { isCommonsPictureUrl } from '../../../types/urlSafety.js';
 import { reconcileLinks } from './linkWithdrawal.js';
 
@@ -137,6 +138,29 @@ export interface TreasureWriteRun extends WriteRun {
    * links the withdrawal arm reconciles.
    */
   sourceId: number;
+  /**
+   * The line this run badges a work at, where it is not the art museums' own.
+   *
+   * A kind whose contents carry fewer articles than the places showing them
+   * states a line for them (ADR-0058 decision 5, `contentsLine`), and its world
+   * tier is read at that line: an archaeology museum is badged for holding a
+   * find above it. The work's own flag has to be read at the same numbers, or
+   * the museum's badge and the find's would disagree about the same find
+   * (ADR-0023 decision 2) — a museum marked must-see for a work shown without
+   * the mark. Absent for the museum run, whose works are the constants below.
+   *
+   * **A work both kinds place is badged at whichever line reached it, and that
+   * is accepted.** `treasures.is_iconic` is one flag per work, globally, because
+   * a work is passed once (ADR-0025): a find at 19 articles in the Louvre is
+   * badged by the archaeology run at 18 and then kept by the art run, whose
+   * release arm holds anything at or above 18 — so the Louvre's *art* card shows
+   * a must-see the art rule alone (22 to enter) would not have granted. The flag
+   * is the object's and not the room's: an object the archaeology rule calls a
+   * must-see find is one wherever it hangs, and the reader is shown a real
+   * highlight either way. Scoping the flag per kind is a schema change and
+   * belongs to #603.
+   */
+  iconicLine?: LinePair;
 }
 
 /**
@@ -228,6 +252,40 @@ function creditPatch(
  * The object's own diff reports the same key under the same name, so the
  * curator's vocabulary needs nothing new to say "picture credit".
  */
+/**
+ * The entry that reports a moved find spot.
+ *
+ * Its own function beside the credit's rather than a term in `workChanges`,
+ * because it is not a column: it lives in `metadata`, and the comparison is
+ * against what the *run said* rather than against what the statement wrote — the
+ * same contract every other entry here keeps.
+ *
+ * Silent for a kind that never asked (`foundAt` absent from the patch): the art
+ * and worship runs read no `P189`, the upsert keeps whatever the row holds, and
+ * an entry there would report a change nobody made. Loud for the other two
+ * states, which are the two a curator has reason to see — a discovery place
+ * arriving, moving, or going away — including `null` over a stored spot, which
+ * is the one way a find spot is ever removed (#887).
+ *
+ * Never a `curatedConflict`: `treasures.curated_fields` claims `name`,
+ * `artists`, `year` and `image_url`, and nothing claims where a thing was found.
+ * Never `held` either — the find spot is written through both arms of the
+ * upsert's metadata guard, so unlike the credit it does not wait on a claim or
+ * a gate.
+ */
+function findSpotChange(
+  before: { qid: string; label: string } | null,
+  patch: { foundAt?: { qid: string; label: string } | null },
+): FieldChange | null {
+  if (!('foundAt' in patch)) return null;
+  const after = patch.foundAt ?? null;
+  if (jsonEquals(before, after)) return null;
+  return {
+    field: 'metadata.foundAt', old: before, new: after,
+    significance: 'minor', curatedConflict: false, held: false,
+  };
+}
+
 function creditChange(
   fields: FieldChange[],
   before: ImageCredit | null,
@@ -268,6 +326,8 @@ interface StoredWork {
   year: number | null;
   imageUrl: string | null;
   imageCredit: ImageCredit | null;
+  /** Where the row says the object was dug up, for the entry `findSpotChange` builds. */
+  foundAt: { qid: string; label: string } | null;
   curatedFields: string[];
 }
 
@@ -298,6 +358,10 @@ function rewriteOf(
   }, was.curatedFields, wasHeld);
   const credit = creditChange(fields, was.imageCredit, patch);
   if (credit) fields.push(credit);
+  // Off the whole patch the statement writes, which is where the find spot's
+  // three states are spelled — the credit's alone would not carry them.
+  const spot = findSpotChange(was.foundAt, metadataPatch(artwork, patch));
+  if (spot) fields.push(spot);
   if (fields.length === 0) return null;
   return { item: { name: was.name, ref: artwork.externalId }, fields };
 }
@@ -305,9 +369,11 @@ function rewriteOf(
 /**
  * Upsert artworks as treasures and link to experience via junction table.
  *
- * `is_iconic` is sticky on the way down: a work joins the highlights at `ICONIC_SITELINKS` and
- * only leaves below `ICONIC_RELEASE`, so the badge does not flicker on and off as Wikipedia
+ * `is_iconic` is sticky on the way down: a work joins the highlights at the run's enter line and
+ * only leaves below its stay line, so the badge does not flicker on and off as Wikipedia
  * grows. Selection upstream uses the single threshold; only the stored flag has hysteresis.
+ * The line is the run's where it states one (`iconicLine`) and the art museums'
+ * `ICONIC_SITELINKS` / `ICONIC_RELEASE` where it does not.
  *
  * Returns what the museum gained, lost and got back, and what the run rewrote
  * about what it already held, named (ADR-0026). `withdrawn` and `returned`
@@ -361,6 +427,12 @@ export async function upsertVenueTreasures(
 ): Promise<ContentsDelta> {
   const added: ContentItem[] = [];
   const changed: ContentItemChange[] = [];
+  // The two numbers the flag is decided on, read once for the whole museum:
+  // this run's line where its kind states one, and the art museums' constants
+  // where it does not. Only the values bound change — the statement asks the
+  // same question of whatever it is told.
+  const iconicEnter = run.iconicLine?.enterSitelinks ?? ICONIC_SITELINKS;
+  const iconicStay = run.iconicLine?.staySitelinks ?? ICONIC_RELEASE;
   // Every work the run offers here, by the id the upsert answered with: what
   // the two arms after the loop compare the museum's links against.
   const offeredIds: number[] = [];
@@ -376,10 +448,13 @@ export async function upsertVenueTreasures(
   const before = new Map<string, StoredWork>();
   if (refs.length > 0) {
     // The credit comes with the picture, for the entry `creditChange` builds: a
-    // held picture's proposal has to carry who took the new one.
+    // held picture's proposal has to carry who took the new one. The find spot
+    // comes for `findSpotChange`, which is the only thing that puts a moved
+    // discovery place in front of a curator (#887).
     const stored = await pool.query(
       `SELECT external_id, name, artists, year, image_url, curated_fields,
-              metadata->'imageCredit' AS image_credit
+              metadata->'imageCredit' AS image_credit,
+              metadata->'foundAt' AS found_at
          FROM treasures WHERE external_id = ANY($1::text[])`,
       [refs],
     );
@@ -387,6 +462,7 @@ export async function upsertVenueTreasures(
       before.set(row.external_id, {
         name: row.name, artists: row.artists ?? [], year: row.year,
         imageUrl: row.image_url, imageCredit: row.image_credit ?? null,
+        foundAt: row.found_at ?? null,
         curatedFields: row.curated_fields ?? [],
       });
     }
@@ -531,12 +607,12 @@ export async function upsertVenueTreasures(
         artwork.year,
         artwork.imageUrl,
         artwork.sitelinksCount,
-        artwork.sitelinksCount >= ICONIC_SITELINKS,
+        artwork.sitelinksCount >= iconicEnter,
         // What `treasureMetadata` serialises, from the patch computed above and
         // the find spot the work carries.
         serialiseMetadata(metadataPatch(artwork, patch)),
-        ICONIC_SITELINKS,
-        ICONIC_RELEASE,
+        iconicEnter,
+        iconicStay,
         run.sourceId,
         sameMakers,
       ]

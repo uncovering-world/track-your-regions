@@ -68,17 +68,25 @@ export type MuseumNatureOrVeto = MuseumNature | { veto: string };
 /**
  * What the museum is about, or why it is not this kind's at all.
  *
- * The vetoes come first, because a veto names the thing better than "no
- * archaeological signal" would and it refuses whatever else the row carries —
- * the shape `worshipVerdict`'s kill classes use. The Naturhistorisches Museum
- * Wien is typed `natural history museum` and holds the Venus of Willendorf; its
- * Wikipedia article carries `Natural history museums in Austria`, `Geology
- * museums in Austria` and no archaeology category at all. So what the veto
- * refuses of it today is the find door — a famous find does not make a museum
- * this kind's (ADR-0058 decision 2) — and it stands in front of the class door
- * besides. No natural-history museum in the 2026-09-13 pool carries the nature
- * category; the veto is read first so that one which ever does is refused all
- * the same, rather than the rule depending on an editorial absence.
+ * A veto is answered ahead of any nature, because it names the thing better
+ * than "no archaeological signal" would — the shape `worshipVerdict`'s kill
+ * classes use.
+ *
+ * The natural-history veto is for a natural history museum **with no
+ * archaeological signal of its own**, and it is the find door it refuses: a
+ * famous find does not make a museum this kind's (ADR-0058 decision 2). The
+ * Naturhistorisches Museum Wien is typed `natural history museum`, holds the
+ * Venus of Willendorf, and its article carries `Natural history museums in
+ * Austria`, `Geology museums in Austria` and nothing archaeological — vetoed,
+ * and the Venus reaches no kind until a natural-history one exists. The
+ * Yorkshire Museum is typed `natural history museum` *and* `archaeological
+ * museum`, and its article carries `Archaeological museums in England` and
+ * `Museums of ancient Rome in the United Kingdom` beside `Natural history
+ * museums in England`; its draw is Roman York. A museum of both is a museum of
+ * both and enters — held or not, that is the verdict's question, not this one.
+ * So the veto is asked *after* the two signals of the nature have been read and
+ * only when neither answered: either signal is enough, because the class misses
+ * the canon and the category is where half of it is named.
  *
  * The park veto reads the whole park tree, not the one root class.
  * `buildArchaeologyTrees` already took that tree out of the museum set, which
@@ -102,19 +110,24 @@ export type MuseumNatureOrVeto = MuseumNature | { veto: string };
  * Peru`, and a department word beside a nature takes nothing away.
  */
 export function museumNature(facts: MuseumFacts, trees: ArchaeologyTrees): MuseumNatureOrVeto {
-  if (facts.classes.some((c) => trees.naturalHistory.has(c))) {
+  // The two signals of the nature, read before either veto is asked. The first
+  // matching *category*, not the first matching pattern: the why quotes what
+  // Wikipedia says, in the order the article lists it.
+  const nature = facts.categories.find((c) => NATURE_CATEGORY.test(c));
+  const cls = facts.classes.find((c) => trees.museum.has(c));
+
+  if (!nature && !cls && facts.classes.some((c) => trees.naturalHistory.has(c))) {
     return { veto: 'a natural history museum, not an archaeology museum' };
   }
+  // The park veto is asked of every row, signal or no signal: an open-air
+  // excavation with a ticket office is somewhere you walk around whatever
+  // Wikipedia shelves it under, and the site door admits it on its own terms.
   if (facts.classes.some((c) => trees.park.has(c))) {
     return { veto: 'an archaeological park: a site, not a museum' };
   }
 
-  // The first matching *category*, not the first matching pattern: the why
-  // quotes what Wikipedia says, in the order the article lists it.
-  const nature = facts.categories.find((c) => NATURE_CATEGORY.test(c));
   if (nature) return { nature: 'archaeological', why: `category: ${nature}` };
 
-  const cls = facts.classes.find((c) => trees.museum.has(c));
   if (cls) {
     return { nature: 'archaeological', why: `class: ${MUSEUM_ROOTS[cls] ?? 'archaeological museum'}` };
   }

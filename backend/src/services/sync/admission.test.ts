@@ -25,6 +25,7 @@ import {
   markNotAdmitted,
   markRefused,
   restoreAdmission,
+  unmarkIconic,
   ADMISSION_SWEEP_MIN_SHARE,
   type AdmissionSweepInput,
 } from './admission.js';
@@ -282,6 +283,44 @@ describe('markIconic', () => {
     await restoreAdmission(2, ['Q55685908'], false);
 
     expect(lastSql()).toContain(`NOT ${admissionPinnedSql('m')}`);
+  });
+});
+
+describe('unmarkIconic', () => {
+  it('writes nothing in a preview', async () => {
+    expect(await unmarkIconic(5, ['Q636928'], true)).toEqual([]);
+
+    expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('clears the badge on every admitted row the run did not badge', async () => {
+    // An empty keep list is a real answer and not an empty write, which is why
+    // this one does not return early the way `markIconic` does: a run that
+    // badges nobody has to take the badge off everybody it admits.
+    mockedQuery.mockResolvedValue({
+      rows: [{ id: 7301, external_id: 'Q636928', name: 'Delphi Archaeological Museum' }],
+    });
+
+    const cleared = await unmarkIconic(5, ['Q6373'], false);
+
+    expect(lastSql()).toContain('UPDATE experience_kind_memberships m SET is_iconic = false');
+    expect(lastSql()).toContain('AND NOT (e.external_id = ANY($2::text[]))');
+    expect(lastSql()).toContain("AND m.admission = 'admitted'");
+    expect(lastSql()).toContain('AND m.is_iconic');
+    expect(lastParams()).toEqual([5, ['Q6373']]);
+    expect(cleared).toEqual([
+      { id: 7301, externalId: 'Q636928', name: 'Delphi Archaeological Museum' },
+    ]);
+  });
+
+  it('leaves a flag a curator pinned alone, through the same guard the adds use', async () => {
+    // The badge's own pin and not admission's: a curator who called this
+    // must-see goes on saying so, and a pin on `admission` answers a different
+    // question.
+    await unmarkIconic(5, ['Q6373'], false);
+
+    expect(lastSql()).toContain(`AND NOT ${iconicPinnedSql('m')}`);
+    expect(lastSql()).not.toContain(admissionPinnedSql('m'));
   });
 });
 

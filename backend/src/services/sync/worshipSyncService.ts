@@ -21,7 +21,7 @@ import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncOrche
 import type { SyncProgress, ContentsDelta } from './types.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { admittedExternalIds } from './admission.js';
-import { readSourceLine } from './sourceLine.js';
+import { contentsLine, readSourceLine, type LinePair } from './sourceLine.js';
 import { collectPlacesOfWorship, type CollectedPlaceOfWorship } from './worship/pipeline.js';
 // The museum run's reader, taking the source as an argument since the day the
 // floor was written: "where the catalogue offers each work" is the same
@@ -111,6 +111,34 @@ let storedCredits = new Map<string, StoredCredit>();
 let storedTreasureCredits = new Map<string, StoredCredit>();
 
 /**
+ * The line this run's relics are badged at: the source row's own, read once in
+ * `fetchWorshipItems` and handed to the treasure writer.
+ *
+ * This kind states one pair and not two — a relic is written up in about as many
+ * languages as the church around it — so `contentsLine` answers with the places'
+ * own line, and the place and the thing inside it are judged at one number.
+ * Carried at all because the writer's default is the *art museums'* constants
+ * (22/18), a different catalogue's line that happens to hold the same numbers
+ * today: an admin who moves this source to 30/25 would move the churches and
+ * leave the Shroud of Turin at 22, which is the disagreement ADR-0023 decision 2
+ * forbids (#883).
+ */
+let relicLine: LinePair | undefined;
+
+/**
+ * That line, or the run's own mistake said out loud — `archaeologySyncService`'s
+ * `theFindsLine`, for the same reason: a silent fall back to the constants would
+ * badge this kind's relics at a number nothing in the panel names, on rows
+ * nothing later re-reads.
+ */
+function theRelicLine(): LinePair {
+  if (!relicLine) {
+    throw new Error(`${LOG_PREFIX} the relic line was never read: fetchItems runs before any write`);
+  }
+  return relicLine;
+}
+
+/**
  * Where this run places each treasure, by the treasure's id: the admitted
  * places holding it in the proposal. Built once in `fetchWorshipItems` and read
  * per place in `processPlace`, for the hold on a moved treasure's old link
@@ -150,6 +178,7 @@ async function fetchWorshipItems(
   // panel says it does (ADR-0052), and the collector needs the number for its
   // very first decision.
   const line = await readSourceLine(WORSHIP_SOURCE_ID);
+  relicLine = contentsLine(line);
   const previousPlacements = await readPreviousPlacements(WORSHIP_SOURCE_ID);
   imageCredits = new Map();
   storedCredits = await readStoredCredits(WORSHIP_SOURCE_ID);
@@ -309,6 +338,10 @@ async function processPlace(
         syncLogId: context.syncLogId,
         withdrawalSkippedReason: context.withdrawalSkippedReason,
         sourceId: WORSHIP_SOURCE_ID,
+        // The line the places themselves were judged at, so a relic's must-see
+        // flag cannot disagree with the church's about the same church
+        // (ADR-0023 decision 2, #883).
+        iconicLine: theRelicLine(),
       },
       placedElsewhereFor(place.qid),
     );

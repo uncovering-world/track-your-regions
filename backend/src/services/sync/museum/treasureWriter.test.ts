@@ -48,6 +48,7 @@ import { pool, rollbackQuietly } from '../../../db/index.js';
 import { retirePassAfterNewContent } from '../curationDecay.js';
 import { reconcileLinks } from './linkWithdrawal.js';
 import { treasureMetadata, upsertVenueTreasures as writeTreasures } from './treasureWriter.js';
+import { ICONIC_SITELINKS, ICONIC_RELEASE } from './tier1.js';
 import type { TreasureCredits, TreasureWriteRun } from './treasureWriter.js';
 import type { ProcessedContent } from '../types.js';
 import type { ImageCredit, StoredCredit } from '../imageCredit.js';
@@ -670,6 +671,75 @@ describe('what a run stores about a work photograph', () => {
   });
 });
 
+describe('the line a work is badged at', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedRetire.mockReset();
+  });
+
+  /**
+   * The Warka Vase (Q656070, 20 sitelinks on 2026-09-13, typed `container` and
+   * so outside the finds pool): a find between the two lines, which is the
+   * whole case. Above the archaeology kind's 18 and below the art museums' 22.
+   */
+  const find = (): ProcessedContent => artwork({
+    externalId: 'Q656070',
+    name: 'Warka Vase',
+    treasureType: 'container',
+    artists: [],
+    year: null,
+    imageUrl: null,
+    sitelinksCount: 20,
+  });
+
+  /**
+   * The flag the insert binds and the two thresholds the update reads, resolved
+   * through the statement rather than asserted by position: renumber the list
+   * and this still answers, bind the wrong number and it fails.
+   */
+  function badgeBinding() {
+    const sql = String(treasureCall()[0]);
+    const params = treasureCall()[1] as unknown[];
+    const columns = /INSERT INTO treasures \(([\s\S]*?)\) VALUES/.exec(sql);
+    expect(columns, 'the treasure insert no longer names its columns').not.toBeNull();
+    const arm = /EXCLUDED\.sitelinks_count >= \$(\d+) THEN true[\s\S]*?EXCLUDED\.sitelinks_count >= \$(\d+)/
+      .exec(sql);
+    expect(arm, 'the treasure upsert no longer decides is_iconic on two thresholds').not.toBeNull();
+    const at = columns![1].split(',').map((c) => c.trim()).indexOf('is_iconic');
+    return { flag: params[at], enter: params[Number(arm![1]) - 1], stay: params[Number(arm![2]) - 1] };
+  }
+
+  it('badges a find at the line the run states', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [find()], NO_CREDITS, {
+      syncLogId: 42,
+      withdrawalSkippedReason: null,
+      sourceId: 5,
+      iconicLine: { enterSitelinks: 18, staySitelinks: 15 },
+    });
+
+    // A kind whose finds carry fewer articles than the places showing them
+    // states a second pair (ADR-0058 decision 5), and the museum's own badge is
+    // read at it. The find's flag has to read the same numbers, or the two
+    // badges disagree about the same find (ADR-0023 decision 2).
+    expect(badgeBinding()).toEqual({ flag: true, enter: 18, stay: 15 });
+  });
+
+  it('badges a work at the art museums\' line where the run states none', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [find()]);
+
+    // The same 20 articles, under the line the museum run has always used: not
+    // a masterpiece, and the default is the constants rather than a number this
+    // writer invents for a run that said nothing.
+    expect(badgeBinding()).toEqual({
+      flag: false, enter: ICONIC_SITELINKS, stay: ICONIC_RELEASE,
+    });
+  });
+});
+
 /**
  * Where a find was dug up is the second thing a run stores beside a work, and
  * the only one the reader is told in the same breath as its name: the Rosetta
@@ -810,6 +880,66 @@ describe('what a run stores about where a find was dug up', () => {
     expect(onUpdate).toContain("- 'foundAt'");
     // And the claim guard still chooses which object is kept.
     expect(onUpdate).toContain("metadata = CASE WHEN treasures.curated_fields ? 'image_url'");
+  });
+
+  it('reports a moved find spot the way it reports a moved credit', async () => {
+    // Until now a discovery place could arrive, change or go away with nothing
+    // in the record: a curator reading a gated source's changeset saw the work
+    // and not the ground it came out of (#887). The entry is the credit's shape,
+    // and the "after" is the source's offer like every other entry here.
+    scriptStored([{
+      external_id: 'Q48584', name: 'Rosetta Stone', artists: [], year: null,
+      image_url: null, curated_fields: [],
+      found_at: { qid: 'Q3077898', label: 'Fort Julien' },
+    }]);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Rosetta Stone' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [find({
+      foundAt: { qid: 'Q13217298', label: 'Rashid' },
+    })]);
+
+    expect(delta.changed[0].fields).toContainEqual({
+      field: 'metadata.foundAt',
+      old: { qid: 'Q3077898', label: 'Fort Julien' },
+      new: { qid: 'Q13217298', label: 'Rashid' },
+      significance: 'minor',
+      curatedConflict: false,
+      held: false,
+    });
+  });
+
+  it('reports a find spot taken away, which is the only way one ever goes', async () => {
+    scriptStored([{
+      external_id: 'Q48584', name: 'Rosetta Stone', artists: [], year: null,
+      image_url: null, curated_fields: [],
+      found_at: { qid: 'Q3077898', label: 'Fort Julien' },
+    }]);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Rosetta Stone' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [find({ foundAt: null })]);
+
+    expect(delta.changed[0].fields).toContainEqual(expect.objectContaining({
+      field: 'metadata.foundAt', old: { qid: 'Q3077898', label: 'Fort Julien' }, new: null,
+    }));
+  });
+
+  it('says nothing about a find spot a run of another kind never read', async () => {
+    // The art and worship runs offer no key, the upsert keeps what the row
+    // holds, and an entry here would report a change nobody made.
+    scriptStored([{
+      external_id: 'Q12418', name: 'Mona Lisa', artists: [], year: null,
+      image_url: null, curated_fields: [],
+      found_at: { qid: 'Q3077898', label: 'Fort Julien' },
+    }]);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Mona Lisa' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
+
+    const fields = delta.changed[0]?.fields ?? [];
+    expect(fields.map((f) => f.field)).not.toContain('metadata.foundAt');
   });
 
   it('lets the find spot follow the source through a curator\'s picture claim', async () => {

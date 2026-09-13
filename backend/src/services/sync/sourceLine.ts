@@ -99,6 +99,22 @@ export function parseSourceLine(apiConfig: unknown): SourceLine {
 }
 
 /**
+ * The line a source's *contents* are judged by: its second pair where it states
+ * one, and its only line where it does not (ADR-0058 decision 5).
+ *
+ * One function rather than a `?? ` at each reader, because two readers of one
+ * source now ask it — the collector, deciding which find carries a museum over
+ * the place line, and the run, telling the treasure writer which line the find's
+ * own must-see flag is read at. Spelled twice, a source with one line would have
+ * its museums judged at its own number and its finds badged at the art museums'
+ * 22/18, and the two badges would disagree about the same find (ADR-0023
+ * decision 2).
+ */
+export function contentsLine(line: SourceLine): LinePair {
+  return line.find ?? line;
+}
+
+/**
  * Where a row stands against the line it is judged by: in, out, or fallen.
  *
  * `fell` and `out` are both below the line and they are not the same answer.

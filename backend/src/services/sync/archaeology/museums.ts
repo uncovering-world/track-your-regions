@@ -222,37 +222,54 @@ export async function readMembers(
 
 /**
  * Whose classes and categories this run has to read: the pool, the museums the
- * categories named, the holders of a find above the line, and every survivor a
- * fold names.
+ * categories named, **every venue a find is placed at at all**, and every museum
+ * a fold names on either end.
  *
- * The holders are asked of the placements on both sides of the folds, because
- * the fold filter can hand a museum its finds back — a museum whose fold is
- * dropped holds again what it held before the folds ran.
+ * Read once, before the verdict, and therefore of every set the fold decision
+ * could later judge rather than of the one it starts from — this is asked of
+ * placements the run has not decided yet.
  *
- * The survivors are here because the fold filter asks what each of them *is*
- * before any of this is settled, and a survivor with no facts read would answer
+ * **Every venue, not the holders of a famous find**, because "holder" is not a
+ * fact about a museum: `findHolders` asks `selectTier1`, whose cap is a
+ * predicate over the *length of a find's whole venue list* (`placedUnderCap`,
+ * `MAX_HOLDERS`). Fold a venue away and the list shortens; drop that fold and it
+ * lengthens again — so a find over the cap under one fold set is under it in
+ * another, and a museum that holds nothing in either extreme can hold something
+ * in between. The loop judges exactly those in-between sets: the nature
+ * narrowing on the first pass, a strict subset on every round after it. Asked at
+ * the two extremes alone, a venue that only a partial set makes a holder reaches
+ * the verdict with no row, and the run answers `no row to judge` about a bare id
+ * and loses a museum the rule would have admitted. The whole placement map costs
+ * nothing to walk and cannot miss one.
+ *
+ * Both ends of every fold. The **survivor** because the fold filter asks what it
+ * *is* before any of this is settled, and one with no facts read would answer
  * `none` for want of an answer rather than because of one: a door is a museum no
  * work ever names (Palazzo Pitti, the Vatican Museums), so nothing else brings
- * it into this set at all.
+ * it into this set at all. The **source** because a dropped fold hands it its
+ * finds back and it is judged on its own.
  *
  * The members are a set of their own beside the pool, because most of them are
  * in it — `readMembers` put them there — and the ones that are not are museums
  * the venue graph already carried: a member that is a venue of some find below
  * the line reaches the verdict through no other road.
+ *
+ * No query is added by any of this. A venue reaches a placement through the
+ * venue graph, so the graph already holds its row and its classes, and
+ * `readClasses` asks Wikidata only where the graph cannot answer. Its
+ * *categories* are read where it carries an English article, exactly as they
+ * are for any other row — one more title in a batch, not another question.
  */
 export function candidatesOf(
   pool: Map<string, PoolEntity>,
   works: WorksCollection,
-  findLine: LinePair,
-  admitted: ReadonlySet<string>,
   members: ReadonlySet<string>,
 ): Set<string> {
   return new Set([
     ...pool.keys(),
     ...members,
-    ...findJudged(works, works.placed, findLine, admitted),
-    ...findJudged(works, works.afterFolds, findLine, admitted),
-    ...Object.keys(works.folds).map((qid) => survivorOf(works.folds, qid)),
+    ...Object.values(works.placed).flat(),
+    ...Object.keys(works.folds).flatMap((qid) => [qid, survivorOf(works.folds, qid)]),
   ]);
 }
 

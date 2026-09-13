@@ -15,8 +15,11 @@
  * already passed that door and stands below the museums' line, which is how the
  * Archaeological Museum of Delphi enters at 15 sitelinks for the Charioteer.
  * Both lines are the source's own fame line (ADR-0045 decision 5), which is why
- * the run badges everything it admits and recomputes the whole membership every
- * pass.
+ * the run recomputes the whole membership every pass — but only one of them is
+ * the must-see badge. A museum is badged for holding a find above the finds'
+ * line, whichever line let it in: the British Museum enters on its own 109
+ * articles and is badged for the Rosetta Stone, while the Bardo, whose whole
+ * claim is what it is, stands in the kind without a badge.
  *
  * The kind's other half is the site a traveller stands on (ADR-0058 decision
  * 1). It is another door and another run; nothing here knows about it.
@@ -28,7 +31,7 @@ import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncOrche
 import type { SyncProgress, ContentsDelta } from './types.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { admittedExternalIds } from './admission.js';
-import { readSourceLine } from './sourceLine.js';
+import { contentsLine, readSourceLine, type LinePair } from './sourceLine.js';
 import {
   collectArchaeologyMuseums, type CollectedArchaeologyMuseum,
 } from './archaeology/pipeline.js';
@@ -189,6 +192,35 @@ let storedTreasureCredits = new Map<string, StoredCredit>();
 let placedThisRun = new Map<string, Set<string>>();
 
 /**
+ * The line this run's finds are judged by, read off the source row with the
+ * museums' own and handed to the treasure writer.
+ *
+ * Module state for the reason the credits are: the orchestrator hands
+ * `processItem` one museum at a time, and the row is read once at the start of
+ * the run (`fetchArchaeologyItems`) rather than per museum. Carried at all
+ * because the museum's badge is read at this line, so the find's own must-see
+ * flag has to be read at it too (ADR-0023 decision 2).
+ */
+let findsLine: LinePair | undefined;
+
+/**
+ * That line, or the run's own mistake said out loud.
+ *
+ * Never a default: the art museums' 22/18 is a *different* catalogue's line,
+ * and a run that fell back to it would badge this kind's museums at 18 and
+ * their finds at 22 — silently, on rows nothing later re-reads. The
+ * orchestrator always fetches before it writes, so this cannot happen to a real
+ * run; it names the miss rather than papering over it for the one caller that
+ * could get the order wrong.
+ */
+function theFindsLine(): LinePair {
+  if (!findsLine) {
+    throw new Error(`${LOG_PREFIX} the finds line was never read: fetchItems runs before any write`);
+  }
+  return findsLine;
+}
+
+/**
  * The finds this run places at another admitted museum and not at this one.
  * What the writer holds a visible link for while the new museum is unread.
  */
@@ -221,6 +253,7 @@ async function fetchArchaeologyItems(
   // decision 5); the collector falls back to the one line for a source that
   // states no second pair.
   const line = await readSourceLine(ARCHAEOLOGY_SOURCE_ID);
+  findsLine = contentsLine(line);
   const previousPlacements = await readPreviousPlacements(ARCHAEOLOGY_SOURCE_ID);
   imageCredits = new Map();
   storedCredits = await readStoredCredits(ARCHAEOLOGY_SOURCE_ID);
@@ -371,11 +404,12 @@ async function processMuseum(
   let treasures: ContentsDelta | undefined;
 
   if (!context.dryRun) {
-    // The must-see flag is not written here. The door is the world tier, so the
-    // flag is a property of belonging to this kind rather than a field the
-    // source proposes — and it is written where belonging is settled, after the
-    // run's restore step (`markIconic`, admission.ts), so a cancelled run never
-    // badges a row it did not re-admit (#760).
+    // The must-see flag is not written here. It is a property of the find the
+    // museum holds rather than a field the source proposes — the collector
+    // counted them (`findsAboveLine`) and the orchestrator asks that count once
+    // admission is settled, after the run's restore step (`markIconic`,
+    // admission.ts), so a cancelled run never badges a row it did not re-admit
+    // (#760).
     const written = await upsertSingleLocation(
       experienceId, item.qid, item.lon, item.lat, { syncLogId: context.syncLogId },
     );
@@ -399,6 +433,9 @@ async function processMuseum(
         syncLogId: context.syncLogId,
         withdrawalSkippedReason: context.withdrawalSkippedReason,
         sourceId: ARCHAEOLOGY_SOURCE_ID,
+        // The line the museum's own badge was read at, so the find's must-see
+        // flag cannot disagree with it about the same find (ADR-0023 decision 2).
+        iconicLine: theFindsLine(),
       },
       placedElsewhereFor(item.qid),
     );
@@ -443,10 +480,14 @@ export function syncArchaeology(
     // list, so absence from the admitted set is this source's own decision and
     // belongs on the admission axis (ADR-0024).
     recomputesMembership: true,
-    // And belonging is the badge: a museum enters on its own fame or carries a
-    // find that entered on its, and both lines are the world tier (ADR-0045
-    // decision 5) — written once admission is settled, not per museum (#760).
-    badgesAdmitted: true,
+    // But belonging is not the badge, as it is for the works-first museums: a
+    // museum is here for what it is and never for a find (ADR-0058 decision 2),
+    // so the badge marks the one that holds a famous find and nothing else
+    // (ADR-0045 decision 5). The British Museum is badged for the Rosetta
+    // Stone; the Bardo, in the catalogue on its own 35 articles and holding
+    // nothing above the finds' line, stands in the kind in full standing
+    // without one. Written once admission is settled, not per museum (#760).
+    badgesAdmitted: (item) => item.findsAboveLine > 0,
     // The one place the run's options reach the collection: the cache is a
     // property of *this* run rather than of the source.
     fetchItems: (progress) => fetchArchaeologyItems(progress, options.refreshCache === true),

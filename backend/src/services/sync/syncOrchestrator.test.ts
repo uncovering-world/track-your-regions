@@ -32,6 +32,7 @@ vi.mock('./admission.js', () => ({
   markRefused: vi.fn().mockResolvedValue([]),
   restoreAdmission: vi.fn().mockResolvedValue([]),
   markIconic: vi.fn().mockResolvedValue([]),
+  unmarkIconic: vi.fn().mockResolvedValue([]),
   markNotAdmitted: vi.fn().mockResolvedValue([]),
 }));
 
@@ -47,7 +48,7 @@ import { recordSyncChanges } from './changeRecorder.js';
 import { missingDetectionSkipReason, flagMissingExperiences, countSeenAmongActive } from './missingDetection.js';
 import {
   admissionSweepSkipReason, countAdmitted, markRefused, restoreAdmission, markIconic,
-  markNotAdmitted,
+  unmarkIconic, markNotAdmitted,
 } from './admission.js';
 import { assignRegionsForExperiences } from './regionAssignmentService.js';
 
@@ -506,6 +507,52 @@ describe('orchestrateSync changeset recording', () => {
     expect(markIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1'], false);
   });
 
+  it('badges only the admitted rows a predicate passes, where belonging is not the badge', async () => {
+    // A kind whose world tier has a door that is not a masterpiece — archaeology
+    // admits a museum for what it is as well as for the famous find it holds
+    // (ADR-0058 decision 2) — badges the masterpiece only (ADR-0045 decision 5).
+    // The question is asked of the item the collector judged, because the row on
+    // disk does not carry the answer.
+    await orchestrateSync(makeConfig({
+      recomputesMembership: true,
+      badgesAdmitted: (item) => item.id === '2',
+    }), 1);
+
+    // Every id is still swept against, and only the one that passed is badged:
+    // an unbadged row is in the kind in full standing.
+    expect(markNotAdmitted).toHaveBeenCalledWith(
+      TEST_SOURCE_ID, ['1', '2'], expect.any(String), false,
+    );
+    expect(markIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['2'], false);
+  });
+
+  it('takes the badge back off an admitted row the predicate stopped passing', async () => {
+    // The other half of a predicate badge. An archaeology museum whose last
+    // famous find fell below the finds' line stays in the catalogue for what it
+    // is, and must stop wearing a must-see badge for a find it is no longer
+    // credited with. Nothing else reaches it: `CLEAR_ICONIC` fires when a row
+    // leaves the kind, and this row does not leave.
+    await orchestrateSync(makeConfig({
+      recomputesMembership: true,
+      badgesAdmitted: (item) => item.id === '2',
+    }), 1);
+
+    // Off the very list `markIconic` was handed, so the two statements cannot
+    // disagree about who is badged. The curator's pin on the badge is the
+    // clear's own guard (`unmarkIconic`).
+    expect(unmarkIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['2'], false);
+  });
+
+  it('issues no clear where belonging is the badge, having nothing to take back', async () => {
+    // `badgesAdmitted: true` hands every admitted row to `markIconic`, so the
+    // leftover set is empty by construction and a statement would be a write
+    // that can only ever match nothing.
+    await orchestrateSync(makeConfig({ recomputesMembership: true, badgesAdmitted: true }), 1);
+
+    expect(markIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2'], false);
+    expect(unmarkIconic).not.toHaveBeenCalled();
+  });
+
   it('sweeps against the ids the run actually saw, and badges nothing without the flag', async () => {
     await orchestrateSync(makeConfig({ recomputesMembership: true }), 1);
 
@@ -515,6 +562,7 @@ describe('orchestrateSync changeset recording', () => {
     // Recomputing membership buys the sweep, not the badge: that is a property
     // of the source's admission rule (`badgesAdmitted`), declared on its own.
     expect(markIconic).not.toHaveBeenCalled();
+    expect(unmarkIconic).not.toHaveBeenCalled();
   });
 
   it('still restores, but does not sweep, when a guard refuses', async () => {
@@ -529,6 +577,39 @@ describe('orchestrateSync changeset recording', () => {
     // And badging is a statement about rows the run did admit, whatever the
     // guard says about sweeping the rest.
     expect(markIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2'], false);
+  });
+
+  it('takes no badge back on a run whose sweep a guard refused', async () => {
+    // The clear speaks about every admitted row the run did *not* name, which is
+    // the set the sweep just declined to touch. Sent anyway, one broken SPARQL
+    // day would strip the must-see badge off every archaeology museum the run
+    // failed to reach — the sweep's guard honoured in the admission column and
+    // broken in the badge one.
+    (admissionSweepSkipReason as ReturnType<typeof vi.fn>).mockReturnValue('run had 3 errors');
+
+    await orchestrateSync(makeConfig({
+      recomputesMembership: true,
+      badgesAdmitted: (item) => item.id === '2',
+    }), 1);
+
+    expect(markNotAdmitted).not.toHaveBeenCalled();
+    expect(markIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['2'], false);
+    expect(unmarkIconic).not.toHaveBeenCalled();
+  });
+
+  it('takes no badge back for a source that sweeps nothing at all', async () => {
+    // No skip reason and no sweep either: a source that publishes a list rather
+    // than recomputing its membership never decides the rows it did not name, so
+    // "the reason is null" is not "the sweep ran" and the clear must not read it
+    // as one (`SweepOutcome`).
+    await orchestrateSync(makeConfig({
+      recomputesMembership: false,
+      badgesAdmitted: (item) => item.id === '2',
+    }), 1);
+
+    expect(markNotAdmitted).not.toHaveBeenCalled();
+    expect(markIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['2'], false);
+    expect(unmarkIconic).not.toHaveBeenCalled();
   });
 
 
