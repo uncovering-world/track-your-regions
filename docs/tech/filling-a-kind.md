@@ -169,7 +169,15 @@ Reading a list and showing what it says are two different permissions, and both 
   OSM's museum rows beside rows from a CC BY register makes a derivative database whose ODbL
   obligations reach the whole; ADR-0002 noted the same for boundaries. Reading OSM to *find*
   and *count* (a yardstick, § 6.1) binds nothing; adopting it as a source of rows is a decision
-  that has to answer the share-alike question first.
+  that has to answer the share-alike question first. **For OpenStreetMap that question is
+  answered**, by
+  [ADR-0059](../decisions/0059-what-the-catalogue-takes-from-openstreetmap-it-keeps-separable-and-offers-under-odbl.md):
+  every fact taken from OSM — a verdict, an extent, a coordinate, a row — is stored with the OSM
+  object, the tag read and the date, so the OSM-derived part of the catalogue can be named and
+  extracted and the rest is not bound by it; that part is offered under ODbL to anyone who asks,
+  and "© OpenStreetMap contributors" is shown wherever it is shown. A connector is written from a
+  register record that has read the ODbL text, the OSMF guidelines and the endpoint's usage
+  policy, never before. No other share-alike source has been answered for.
 - **Database right.** In the EU a database's maker has a right of its own, apart from copyright
   (Directive 96/9/EC, article 7): extracting or re-utilising a substantial part of a database
   needs a licence even where no single entry is copyrighted. A ministry's register under an
@@ -235,7 +243,9 @@ deliberately flat; the vetoes are what decides.
 it as a *source* and leaves it as a *list a curator reads* — the verdict is `curator-list`,
 whatever the total. **Hold**: a source whose terms score 1 *because of share-alike* (ODbL;
 CC BY-SA on what would be copied) is `hold`, whatever its total, until the catalogue has
-answered what a derivative database would bind (§ 5). **Provisional**: a scorecard filled from
+answered what a derivative database would bind (§ 5) — which for OpenStreetMap it now has
+(ADR-0059), so an OSM record is scored on its merits and each kind's issue adopts it or not,
+while every other share-alike source is still held. **Provisional**: a scorecard filled from
 the publisher's own description with nothing measured is `provisional` — its unmeasured
 criteria are written `unknown`, and it adopts nothing. With none of those: **adoptable** at 11
 of 16 or more; **adoptable with a curator's pass over every row** at 8–10; **not adoptable**
@@ -601,6 +611,9 @@ Changes are logged here:
 | 2026-09-06 | First version (#799) | The rules before the first adoption |
 | 2026-09-08 | First non-museum kind (#753, ADR-0052): the scorecard's criteria held for a world-tier source read on the world-tier reading of Signal and Completeness; the two doors are one source | Places of worship adopted `wikidata-places-of-worship` — the criteria are the family's, not the kind's, and § 6.2's wording, which is the regional tier's, needed reading rather than rewriting: Signal 2 is a signal comparable across the world, Completeness 2 is a stated subset with its rule written. A place admitted for its own fame and one admitted for a work it holds are two admissions of one source at one line, so they are one record, not two |
 | 2026-09-11 | Wikipedia readership measured for art museums (#807; ADR-0055, ADR-0056 and ADR-0057, in draft): § 7.4's readership verdict, § 8's readership line, and the by-class record's signal scored 2 | The within-unit signal § 7.4 named was measured over a year on the import's own placement: read from the monthly dumps, it opens a second world-tier door on views in every language, and as local fame it cuts the fallback of a country with no native source |
+| 2026-09-13 | A kind may read a museum's **nature** as its admission signal, and may read it from a second source beside the classes of the first — English Wikipedia's categories beside Wikidata's classes; and one source row may state **two lines**, one for its places and one for the objects inside them (#581, ADR-0058) | Archaeology admits a museum for what it is about rather than for what it owns: the class tree says nothing archaeological about the British Museum, the Pergamon, the Bardo or the Museo del Oro, while the editorial category `Archaeological museums in …` sits on all four, so § 2's "one signal" is one *question* — what is this place about — that two sources may answer. And a find carries fewer Wikipedia articles than the museum showing it (56 holders at 22 sitelinks, 78 at 18 on the survey's widest reading), so a second, lower pair of numbers on the source row cuts the finds where one line would either lose the museums that enter for one of them — Delphi at 15 sitelinks for the Charioteer, Olympia at 17, Heraklion at 21 — or widen the places into their long tail |
+| 2026-09-13 | An editorial **category tree** may be adopted as a world-tier door in its own right, gated by a class and by the line: § 2's "one signal" may be entered as well as tested, and a source that enumerates by shelf rather than by class gets a record of its own (#581, ADR-0058 decision 2) | English Wikipedia's `Archaeological museums by country` names the museums no class names — the Bardo, the National Museum of Iraq, the Museo del Oro, the Pergamon — and dry run 113 admitted 31 museums through it that the classes and the finds pool together could not reach, only 6 of them in an anglophone country. An editorial shelf holds the dig beside the building (27 of the 75 members at or above the place line carry no museum class at all), so a door of this family needs two guards a class door does not: a class test on what walks in, and the kind's own line deciding which refusals are worth naming |
+| 2026-09-13 | Share-alike is no longer an unanswered `hold` for OpenStreetMap: § 5 and § 6.2 now name the terms on which OSM may be read (ADR-0059, #581) | OSM is the only source that says what stands on the ground — Wikidata's site tree cannot tell Athens from Pompeii — and the licence question had been open since ADR-0002. It is answered by keeping what is taken from OSM separable with its provenance, offering that part under ODbL, and showing the credit; the register's OSM record moves from `hold` to a verdict on its merits when a connector is written from it |
 
 ## 10. Out of scope
 
