@@ -47,7 +47,15 @@ export async function getExperienceTreasures(req: AuthenticatedRequest, res: Res
       -- served from Wikimedia Commons and a share of them are CC BY or CC BY-SA,
       -- which of a screen that shows a picture ask one thing -- that whoever
       -- took it is named wherever it appears. A list of works is showing them.
-      t.metadata->'imageCredit' AS image_credit
+      t.metadata->'imageCredit' AS image_credit,
+      -- Where the object was dug up, for the kind whose works are finds: an
+      -- archaeology museum's holdings are things taken from somewhere, and
+      -- that somewhere is half of what the object is (ADR-0058). The Rosetta
+      -- Stone is a British Museum object and a Fort Julien one -- the fort at
+      -- Rashid the run stores from its discovery place -- and a row naming
+      -- only the museum tells a traveller the smaller half. Null on every
+      -- work no run wrote it for — a painting has a maker, not a find spot.
+      t.metadata->'foundAt' AS found_at
     FROM treasures t
     JOIN experience_treasures et ON t.id = et.treasure_id
     JOIN experiences e ON e.id = et.experience_id

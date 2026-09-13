@@ -314,6 +314,25 @@ describe('getReviewQueue', () => {
     expect(heldSql).toContain("COALESCE(part->>'storedName', part->'item'->>'name')");
   });
 
+  it('carries the run\'s own question on every card, not only on the preview behind it', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // A row the rule could not settle is held with the doubt written down
+    // (ADR-0058) — an art museum with an antiquities department, where whether
+    // the exposition is substantially archaeology is nobody's class to answer.
+    // The card is where that gets answered, and where a batch can dispose of
+    // the row without the object ever being opened (#852), so the note travels
+    // with the rest of the object's context rather than only on the by-id read
+    // behind "Look at the object". Through the shared fragment, which is why it
+    // is asserted on more than the one kind that carries it today: a column
+    // added to one query is exactly the drift `objectContextSelectSql` exists
+    // to prevent.
+    for (const kind of ["'arrival' AS kind", "'held' AS kind", "'contents' AS kind"]) {
+      const [sql] = callMatching(kind);
+      expect(sql).toContain("metadata->>'admissionNote' AS admission_note");
+    }
+  });
+
   it('drops a conflict once the field is no longer claimed', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 

@@ -76,6 +76,31 @@ describe('getExperienceTreasures gate', () => {
     });
   });
 
+  it('carries where a find was dug up, which is half of what a find is', async () => {
+    // An archaeology museum's holdings are finds, and a find's place of
+    // discovery is the fact a traveller reads it by: the Rosetta Stone is a
+    // British Museum object and a Fort Julien one — the fort at Rashid where it
+    // was dug up, which is what the run stores (ADR-0058). Asserted against the
+    // statement as well as the row, because the alias is untyped on the way
+    // out — dropping it from the SELECT would quietly take the line off every
+    // work row instead of failing anywhere.
+    const find = {
+      id: 8801, external_id: 'Q48584', name: 'Rosetta Stone',
+      artists: [], artists_curated: false, year: null,
+      found_at: { qid: 'Q3077898', label: 'Fort Julien' },
+    };
+    mockedQuery.mockResolvedValueOnce({ rows: [find] });
+    const res = makeRes();
+
+    await getExperienceTreasures({ params: { id: '6187' } } as never, res as never);
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql).toContain("t.metadata->'foundAt' AS found_at");
+    expect(res.json.mock.calls[0][0].treasures[0]).toMatchObject({
+      found_at: { qid: 'Q3077898', label: 'Fort Julien' },
+    });
+  });
+
   it('hides a link the source stopped placing here, for a curator as for anyone', async () => {
     // The gate widens for a curator on all three curation predicates; the mark
     // does not. A withdrawn link is not an unread one waiting on a verdict, it

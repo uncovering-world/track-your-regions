@@ -551,7 +551,16 @@ export async function getSources(req: Request, res: Response): Promise<void> {
       display_priority,
       created_at,
       (api_config->>'enterSitelinks')::int AS enter_sitelinks,
-      (api_config->>'staySitelinks')::int AS stay_sitelinks
+      (api_config->>'staySitelinks')::int AS stay_sitelinks,
+      -- The second door's pair, and NULL for the sources that have one door.
+      -- Archaeology admits both the site a traveller stands on and the famous
+      -- find a museum holds, and a find is written up in fewer languages than
+      -- its museum, so its row carries a lower finds line beside the main one
+      -- (ADR-0058 decision 5). This is the only way the panel can tell that a
+      -- source has a finds line at all: without it an admin can move the line
+      -- a run reads for the museums and not the one it reads for the finds.
+      (api_config->>'findEnterSitelinks')::int AS find_enter_sitelinks,
+      (api_config->>'findStaySitelinks')::int AS find_stay_sitelinks
     FROM experience_sources
     WHERE is_active = true
     ORDER BY display_priority, id
