@@ -1,8 +1,8 @@
 /**
  * The stages every works-first kind shares: find the classes a work of its kind can be, collect
- * the pool of works, read the venue statements they carry, build the venue graph those
- * statements name, place each work in the venue that survives resolution, and fold the venues
- * that are one visit.
+ * the pool of works, keep the ones this kind calls its own, read the venue statements they
+ * carry, build the venue graph those statements name, place each work in the venue that
+ * survives resolution, and fold the venues that are one visit.
  *
  * This is what `museum/pipeline.ts` used to do end to end, before a kind that admits churches for
  * the works they hold — relics, tombs — needed the same stages with its own `VenueRule` and its
@@ -180,6 +180,41 @@ export interface WorksCollectorOptions {
   rule: VenueRule;
   closure?: ClosureOptions;
   logPrefix: string;
+  /**
+   * What else the kind needs to know about each work of the pool before it can
+   * say which of them are its own: the classes the item carries and where it
+   * was discovered. Asked once, of the whole pool, and it batches inside
+   * itself — the pool is tens of thousands of QIDs.
+   *
+   * Optional, because a kind that keeps everything it collects needs nothing
+   * beyond the pool row. The facts are handed to `keep` and not kept here: a
+   * caller that needs them again — the discovery place goes on the treasure —
+   * holds them in the closure it passes.
+   */
+  workFacts?: (run: QueryRunner, qids: string[]) => Promise<Map<string, WorkFacts>>;
+  /**
+   * Which works of the pool are this kind's. Applied before the venue
+   * statements are read, so a work that is dropped costs no query.
+   *
+   * The art pool is collected whole by the roots above and then cut: the
+   * Archaeology kind reads sculpture and statue in bands the way the art
+   * museums do, and keeps the ones that were dug up. Absent, nothing is
+   * dropped and the pool is the collection, which is what the art museums and
+   * the places of worship ask for.
+   */
+  keep?: (work: PoolWork, facts: WorkFacts | undefined) => boolean;
+}
+
+/**
+ * What a kind's `keep` is told about a work beyond its pool row: every `P31`
+ * the item carries, and its discovery place (`P189`) where it has one.
+ *
+ * Defined here rather than in the kind that needs it, because the hook above is
+ * this module's: nothing under `museum/` may import from a kind's directory.
+ */
+export interface WorkFacts {
+  classes: string[];
+  discoveryPlace: { qid: string; label: string } | null;
 }
 
 export interface WorksCollection {
@@ -295,6 +330,34 @@ async function collectPool(
 
   console.log(`${opts.logPrefix} Pool: ${pool.size} works`);
   return pool;
+}
+
+/**
+ * Cut the pool down to the works this kind keeps, in place.
+ *
+ * Between the pool and the statements, and deliberately: the statements are the
+ * expensive stage — one query per fifty works — so a work dropped here is a
+ * question never asked. A kind with no `keep` leaves with the pool it
+ * collected, and one with no `workFacts` decides on the pool row alone.
+ */
+async function keepOurs(
+  run: QueryRunner,
+  pool: Map<string, PoolWork>,
+  opts: WorksCollectorOptions,
+): Promise<void> {
+  if (!opts.workFacts && !opts.keep) return;
+  const facts = opts.workFacts
+    ? await opts.workFacts(run, [...pool.keys()])
+    : new Map<string, WorkFacts>();
+  const keep = opts.keep;
+  if (!keep) return;
+  const collected = pool.size;
+  for (const [qid, work] of pool) {
+    if (!keep(work, facts.get(qid))) pool.delete(qid);
+  }
+  console.log(
+    `${opts.logPrefix} Kept ${pool.size} of ${collected} pool works as ${opts.noun.works}`,
+  );
 }
 
 async function collectStatements(
@@ -422,6 +485,7 @@ export function toContent(work: PoolWork): ProcessedContent {
 export async function collectWorks(run: QueryRunner, opts: WorksCollectorOptions): Promise<WorksCollection> {
   const classes = await artworkClassesOf(run, opts);
   const pool = await collectPool(run, classes.all, opts);
+  await keepOurs(run, pool, opts);
   const statements = await collectStatements(run, [...pool.keys()]);
   const lost = await collectLost(run, pool, opts);
   // An unknown value names no venue to load.

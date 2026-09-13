@@ -54,6 +54,45 @@ describe('collectWorks', () => {
     expect(out.pool.get('Q216141')?.type).toBe('relic');
   });
 
+  it('keeps only the works a kind wants, and asks no statements about the rest', async () => {
+    // Archaeology collects the art pool and keeps the finds in it: a sculpture of
+    // 1510 with no discovery place is nobody's find, and reading its venues would
+    // be a question asked about a work already dropped.
+    const sparql = makeSparql();
+    const run = { sparql, phase: () => {}, step: async () => {} };
+    const asked: string[][] = [];
+    const out = await collectWorks(run, {
+      broadRoots: MUSEUM_BROAD_ROOTS, wholeRoots: MUSEUM_WHOLE_ROOTS, pinned: MUSEUM_PINNED_CLASSES,
+      pinnedEditionClasses: MUSEUM_PINNED_EDITION_CLASSES, editionRoot: EDITION_ROOT,
+      noun: { work: 'find', works: 'finds' },
+      rule: museumRule(MUSEUM_CLASSES), logPrefix: '[test]',
+      workFacts: async (_run, qids) => {
+        asked.push(qids);
+        return new Map([['Q12418', { classes: ['Q_NOT_OURS'], discoveryPlace: null }]]);
+      },
+      keep: (_work, facts) => !facts?.classes.includes('Q_NOT_OURS'),
+    });
+
+    // The facts are asked once, of the whole pool, before anything is dropped.
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain('Q12418');
+    expect(asked[0]).toContain('Q207947');
+
+    expect(out.pool.has('Q12418')).toBe(false);
+    expect(out.placed.Q12418).toBeUndefined();
+    expect(out.afterFolds.Q12418).toBeUndefined();
+    // A work no rule dropped is collected as it always was.
+    expect(out.pool.has('Q207947')).toBe(true);
+
+    // A dropped work costs no statement query: the venue statements are asked of
+    // what survived the keep, not of the pool that was collected.
+    const statementQueries = sparql.mock.calls
+      .map((c) => String(c[0])).filter((q) => q.includes('p:P195'));
+    expect(statementQueries.length).toBeGreaterThan(0);
+    expect(statementQueries.some((q) => q.includes('Q12418'))).toBe(false);
+    expect(statementQueries.some((q) => q.includes('Q207947'))).toBe(true);
+  });
+
   it('places a work nobody can see nowhere, and says why (#868)', async () => {
     const run = { sparql: makeSparql(), phase: () => {}, step: async () => {} };
     const out = await collectWorks(run, {

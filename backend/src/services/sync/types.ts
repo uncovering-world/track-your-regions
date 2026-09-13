@@ -143,6 +143,19 @@ export interface ProcessedContent {
   year: number | null;
   imageUrl: string | null;
   sitelinksCount: number;
+  /**
+   * Where a find was dug up (`P189`), stored in the treasure's metadata so the
+   * card can say "found at Mycenae" (ADR-0058 decision 3).
+   *
+   * Three states, and a treasure is global by `external_id`, so the difference
+   * between the first two is what keeps one kind from erasing the other's answer
+   * (`metadataWithFindSpot` in `museum/treasureWriter.ts`, and `INSERTED_METADATA`
+   * on a first write): **absent** is a kind
+   * whose works were made where they hang, and keeps whatever is stored;
+   * **`null`** is this kind having read the item and found no discovery place,
+   * and removes it; an object replaces it.
+   */
+  foundAt?: { qid: string; label: string } | null;
 }
 
 /**
