@@ -72,7 +72,7 @@ const shown = (name: string) => screen.queryAllByText(name).length > 0;
 
 /** The filter box, once the section is opened. */
 function filter() {
-  fireEvent.keyDown(screen.getByRole('button', { name: /Notable Works/ }), { key: 'Enter' });
+  fireEvent.keyDown(screen.getByRole('button', { name: /Notable works/ }), { key: 'Enter' });
   return screen.getByPlaceholderText('Filter works...');
 }
 

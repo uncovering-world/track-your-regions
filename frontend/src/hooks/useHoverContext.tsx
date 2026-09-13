@@ -30,7 +30,11 @@ export interface HoverPreview {
   locationId: number | null;
   locationName: string | null;
   kindName: string | null;
-  /** The kind, for `TreasuresInsideChip` — silent for a museum, where every row has works. */
+  /**
+   * The kind, for `TreasuresInsideChip` — silent for kinds 2 and 5, whose rows
+   * list what is inside themselves (an art museum's works, an archaeology
+   * museum's finds), so the chip would say it twice.
+   */
   kindId: number;
   /** Offered + published treasure links, for `TreasuresInsideChip`. */
   treasureCount?: number;

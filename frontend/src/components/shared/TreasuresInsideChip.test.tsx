@@ -4,6 +4,7 @@ import { TreasuresInsideChip } from './TreasuresInsideChip';
 
 const ART_MUSEUMS = 2;
 const PLACES_OF_WORSHIP = 4;
+const ARCHAEOLOGY = 5;
 
 describe('TreasuresInsideChip', () => {
   it('says how many treasures are inside', () => {
@@ -18,11 +19,15 @@ describe('TreasuresInsideChip', () => {
     expect(screen.getByText('1 treasure inside')).toBeInTheDocument();
   });
 
-  it('is silent for none, and for a museum', () => {
+  it('is silent for none, and for the kinds whose row already lists what is inside', () => {
+    // An art museum's paintings and an archaeology museum's finds are both on
+    // the row itself — the works list is the point of the row, not a side note
+    // — so a chip counting them again says nothing twice.
     const { container } = render(
       <>
         <TreasuresInsideChip count={0} kindId={PLACES_OF_WORSHIP} />
         <TreasuresInsideChip count={5} kindId={ART_MUSEUMS} />
+        <TreasuresInsideChip count={5} kindId={ARCHAEOLOGY} />
       </>,
     );
 

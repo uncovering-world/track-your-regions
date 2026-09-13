@@ -134,6 +134,34 @@ describe('a work with more than one maker', () => {
   });
 });
 
+/**
+ * Where a find was dug up.
+ *
+ * An archaeology museum's holdings are things taken from somewhere, and that
+ * somewhere is half of what the object is (ADR-0058): the Rosetta Stone is a
+ * British Museum object and a Fort Julien one — the fort at Rashid where it was
+ * dug up, which is what the run stores — and a row naming only the museum
+ * tells a traveller the smaller half. Only the finds carry it — a painting has
+ * a maker and no find spot — so the line has to be absent rather than empty on
+ * every other work in the catalogue.
+ */
+describe('a work that was dug up somewhere', () => {
+  it('says where, under the makers', () => {
+    renderList([work({
+      name: 'Rosetta Stone', external_id: 'Q48584', artists: [], image_url: null,
+      found_at: { qid: 'Q3077898', label: 'Fort Julien' },
+    })]);
+
+    expect(screen.getByText(/found at Fort Julien/)).toBeInTheDocument();
+  });
+
+  it('says nothing on a work with no find spot', () => {
+    renderList([work({ name: 'Mona Lisa', artists: ['Leonardo da Vinci'] })]);
+
+    expect(screen.queryByText(/found at/)).not.toBeInTheDocument();
+  });
+});
+
 describe('a work whose picture does not arrive', () => {
   beforeEach(() => setArtworkPreview.mockReset());
 
@@ -245,5 +273,44 @@ describe('the tick box beside a work', () => {
 
     expect(screen.getByRole('checkbox', { name: /Mesha Stele — mark as not seen/ }))
       .toBeInTheDocument();
+  });
+});
+
+/**
+ * What the box of holdings is called.
+ *
+ * An archaeology museum holds finds, not works: the Rosetta Stone was dug up,
+ * not made for a wall, and "Notable works" over a case of steles and pottery is
+ * the art museum's noun borrowed for a room it does not describe (ADR-0058).
+ */
+describe('what the box of holdings is called', () => {
+  const ARCHAEOLOGY = 5;
+  const ART_MUSEUMS = 2;
+
+  it('calls an archaeology museum\'s holdings finds, heading and control alike', () => {
+    const finds = Array.from({ length: 12 }, (_, i) => work({ id: i + 1, name: `Find ${i + 1}` }));
+    render(
+      <ArtworksList contents={finds} total={12} experienceId={7} kindId={ARCHAEOLOGY} />,
+    );
+
+    expect(screen.getByText(/Notable finds \(12\)/)).toBeInTheDocument();
+    // The control that opens the rest of the list names the same things the
+    // heading does: "Notable finds" over "Show all 12 works" is one box giving a
+    // traveller two words for one case of steles.
+    expect(screen.getByRole('button', { name: /Show all 12 finds/ })).toBeInTheDocument();
+  });
+
+  it('calls every other kind\'s holdings works, as it always has', () => {
+    render(
+      <ArtworksList contents={[work()]} total={1} experienceId={7} kindId={ART_MUSEUMS} />,
+    );
+
+    expect(screen.getByText(/Notable works \(1\)/)).toBeInTheDocument();
+  });
+
+  it('says works where no kind came with the row', () => {
+    renderList();
+
+    expect(screen.getByText(/Notable works \(1\)/)).toBeInTheDocument();
   });
 });

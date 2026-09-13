@@ -86,6 +86,34 @@ describe('the object a waiting card opens', () => {
     expect(screen.getByText('A place.')).toBeInTheDocument();
   });
 
+  it('puts the run\'s own question in front of the curator being asked it', async () => {
+    // A museum the Archaeology run could not settle on its own arrives with the
+    // doubt written down (ADR-0058): the Pushkin Museum's antiquities are one
+    // department of an art museum, and whether its exposition is substantially
+    // archaeology is a judgement nobody's classes answer. Held with the note
+    // unread, the curator sees a museum in the queue and no reason it is there.
+    fetchExperience.mockResolvedValue(detail({
+      name: 'Pushkin Museum',
+      metadata: {
+        admissionNote: 'an antiquities department (category: Egyptological collections in Russia); is the exposition substantially archaeology?',
+      },
+    }));
+
+    renderPreview(1);
+
+    expect(await screen.findByText(/The run asks:/)).toBeInTheDocument();
+    expect(screen.getByText(/is the exposition substantially archaeology\?/)).toBeInTheDocument();
+  });
+
+  it('asks nothing on an object the run admitted by its rule', async () => {
+    fetchExperience.mockResolvedValue(detail({ metadata: { wikidataQid: 'Q1' } }));
+
+    renderPreview(1);
+
+    await screen.findByText('A place.');
+    expect(screen.queryByText(/The run asks:/)).not.toBeInTheDocument();
+  });
+
   it('does not carry one object\'s failed picture onto the next', async () => {
     fetchExperience.mockImplementation(async (id: number) =>
       (id === 1 ? withPicture(1, 'Broken.jpg') : withPicture(2, 'Stonehenge.jpg')));

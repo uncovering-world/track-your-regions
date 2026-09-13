@@ -52,7 +52,7 @@ function works(n: number): ExperienceTreasure[] {
 }
 
 /** Past `CONTENTS_COLLAPSE_THRESHOLD` (15), so the section starts shut — the Louvre's case. */
-function renderSection(count = 20) {
+function renderSection(count = 20, kindId?: number) {
   return render(
     <ContentsSection
       contents={works(count)}
@@ -61,6 +61,7 @@ function renderSection(count = 20) {
       viewedIds={new Set<number>()}
       onMarkViewed={vi.fn()}
       onUnmarkViewed={vi.fn()}
+      kindId={kindId}
     />,
   );
 }
@@ -69,14 +70,14 @@ describe('the way into a museum\'s works', () => {
   it('is a control the keyboard can reach, and says whether it is open', () => {
     renderSection();
 
-    const header = screen.getByRole('button', { name: /Notable Works/ });
+    const header = screen.getByRole('button', { name: /Notable works/ });
     expect(header).toHaveAttribute('tabindex', '0');
     expect(header).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('opens on Enter, which is the only way in without a pointer', () => {
     renderSection();
-    const header = screen.getByRole('button', { name: /Notable Works/ });
+    const header = screen.getByRole('button', { name: /Notable works/ });
 
     fireEvent.keyDown(header, { key: 'Enter' });
 
@@ -86,7 +87,7 @@ describe('the way into a museum\'s works', () => {
   it('leaves a short holding open, since there is nothing to fold away', () => {
     renderSection(3);
 
-    expect(screen.getByRole('button', { name: /Notable Works/ }))
+    expect(screen.getByRole('button', { name: /Notable works/ }))
       .toHaveAttribute('aria-expanded', 'true');
   });
 });
@@ -193,5 +194,46 @@ describe('the way into a serial site\'s places', () => {
     renderLocations(3, new Set(), undefined, 2);
 
     expect(screen.getByText('pin corrected')).toBeInTheDocument();
+  });
+});
+
+/**
+ * What this section calls what a museum holds, and that it is the same word Map
+ * mode uses.
+ *
+ * A reader who opened the British Museum in Map mode saw "Notable finds" and
+ * then, opening it here, "Notable Works": one museum described two ways by two
+ * copies of one rule (#885). Both surfaces now read `holdingsNoun`.
+ */
+describe('what Discover calls a museum\'s holdings', () => {
+  const ARCHAEOLOGY = 5;
+  const ART_MUSEUMS = 2;
+
+  it('calls an archaeology museum\'s holdings finds', () => {
+    renderSection(20, ARCHAEOLOGY);
+
+    expect(screen.getByRole('button', { name: /Notable finds \(20\)/ })).toBeInTheDocument();
+  });
+
+  it('uses the same noun in the filter box and the show-all control', () => {
+    // Past `CONTENTS_INITIAL_SHOW`, so the show-all control is drawn: a heading
+    // that says finds over a box that says works is the drift again, one line down.
+    renderSection(21, ARCHAEOLOGY);
+    fireEvent.keyDown(screen.getByRole('button', { name: /Notable finds \(21\)/ }), { key: 'Enter' });
+
+    expect(screen.getByPlaceholderText('Filter finds...')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show all 21 finds' })).toBeInTheDocument();
+  });
+
+  it('calls every other kind\'s holdings works', () => {
+    renderSection(20, ART_MUSEUMS);
+
+    expect(screen.getByRole('button', { name: /Notable works \(20\)/ })).toBeInTheDocument();
+  });
+
+  it('says works where no kind came with the panel', () => {
+    renderSection();
+
+    expect(screen.getByRole('button', { name: /Notable works \(20\)/ })).toBeInTheDocument();
   });
 });

@@ -137,4 +137,20 @@ describe('a work in the contents grid', () => {
     // The tile stays, and stays operable: the work is still there to be marked.
     expect(screen.getByRole('button', { name: /Mesha Stele/ })).toBeInTheDocument();
   });
+
+  it('says where a find was dug up, in Map mode\'s words', () => {
+    // The Mesha Stele is at the Louvre and was found at Dhiban: a tile naming
+    // only the museum tells a traveller the smaller half of what the thing is
+    // (ADR-0058). Map mode's row has said so since #581; this is the same
+    // sentence on the other surface (#885).
+    renderTile({ found_at: { qid: 'Q337376', label: 'Dhiban' } });
+
+    expect(screen.getByText('found at Dhiban')).toBeInTheDocument();
+  });
+
+  it('says nothing about a find spot for a work that has none', () => {
+    renderTile();
+
+    expect(screen.queryByText(/found at/)).not.toBeInTheDocument();
+  });
 });

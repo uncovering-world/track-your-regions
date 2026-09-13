@@ -527,6 +527,13 @@ const MEANINGS: Record<string, FieldMeaning> = {
     },
   },
 
+  'metadata.foundAt': {
+    label: 'found at',
+    what: 'Where the object was dug up (Wikidata’s P189), which is a fact about the thing rather than about the room it is shown in: the Rosetta Stone is a British Museum object and a Fort Julien one.',
+    whenItChanges: 'A different place usually means the source corrected a discovery site, or matched the object to a better-documented one. Where it goes away, Wikidata no longer records one — the object is unchanged, the card simply stops naming the ground.',
+    render: (value) => (isRecord(value) && typeof value.label === 'string' ? value.label : null),
+  },
+
   // Art Museums, Public Art & Monuments, Places of worship
   'metadata.wikidataQid': {
     label: 'Wikidata item',

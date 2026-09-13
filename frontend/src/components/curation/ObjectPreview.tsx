@@ -59,38 +59,56 @@ export function ObjectPreview({ experienceId }: { experienceId: number }) {
   // Already in hand: `GET /experiences/:id` returns `metadata` whole, so the
   // credit was reaching this preview and simply not being drawn.
   const credit = (data.metadata?.imageCredit ?? null) as ImageCredit | null;
+  // The run's own doubt, in front of the curator who is being asked to settle
+  // it. A source that cannot decide by its rule writes down what it saw and
+  // holds the row rather than guessing (ADR-0058): an art museum with an
+  // antiquities department is a judgement about how much of the exposition is
+  // archaeology, and no classes on Wikidata answer that. Held without the note
+  // on screen, the card names a museum and gives no reason it is in the queue,
+  // so the curator has to rediscover the question before answering it. Above
+  // the facts, because it is why the facts are being read.
+  const note = typeof data.metadata?.admissionNote === 'string'
+    ? data.metadata.admissionNote.trim()
+    : '';
   return (
-    <Stack direction="row" spacing={2} sx={{ mt: 2 }} alignItems="flex-start">
-      {image && (
-        <Box sx={{ width: 120, flexShrink: 0 }}>
-          <Box
-            component="img"
-            src={image}
-            alt={data.name}
-            sx={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 1 }}
-            onError={() => setFailedUrl(image)}
-          />
-          <ImageCreditLine credit={credit} />
-        </Box>
+    <>
+      {note && (
+        <Typography variant="body2" sx={{ mt: 2 }}>
+          <Box component="span" sx={{ fontWeight: 600 }}>The run asks:</Box> {note}
+        </Typography>
       )}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="body2" sx={{ mb: 0.5 }}>
-          {data.description || data.short_description || 'No description on the object.'}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" display="block">
-          {data.latitude.toFixed(4)}, {data.longitude.toFixed(4)}
-          {data.country_names?.length > 0 ? ` — ${data.country_names.join(', ')}` : ''}
-        </Typography>
-        {/* `fetchExperience` (`GET /api/experiences/:id`) carries no
-            `location_count` at all — that column exists only on the region
-            list's own query (`buildRegionQueries`) — so a count here would
-            read zero regardless of the object's real contents. A true
-            sentence beats a number that is always wrong; #524 tracks the read
-            that would list this object's points and works properly. */}
-        <Typography variant="caption" color="text.secondary" display="block">
-          Its points and works are not listed on this preview.
-        </Typography>
-      </Box>
-    </Stack>
+      <Stack direction="row" spacing={2} sx={{ mt: 2 }} alignItems="flex-start">
+        {image && (
+          <Box sx={{ width: 120, flexShrink: 0 }}>
+            <Box
+              component="img"
+              src={image}
+              alt={data.name}
+              sx={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 1 }}
+              onError={() => setFailedUrl(image)}
+            />
+            <ImageCreditLine credit={credit} />
+          </Box>
+        )}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            {data.description || data.short_description || 'No description on the object.'}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" display="block">
+            {data.latitude.toFixed(4)}, {data.longitude.toFixed(4)}
+            {data.country_names?.length > 0 ? ` — ${data.country_names.join(', ')}` : ''}
+          </Typography>
+          {/* `fetchExperience` (`GET /api/experiences/:id`) carries no
+              `location_count` at all — that column exists only on the region
+              list's own query (`buildRegionQueries`) — so a count here would
+              read zero regardless of the object's real contents. A true
+              sentence beats a number that is always wrong; #524 tracks the read
+              that would list this object's points and works properly. */}
+          <Typography variant="caption" color="text.secondary" display="block">
+            Its points and works are not listed on this preview.
+          </Typography>
+        </Box>
+      </Stack>
+    </>
   );
 }

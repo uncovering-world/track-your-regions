@@ -330,6 +330,7 @@ function ExperienceExpandedDetailsComponent({
           contents={contentsData.treasures}
           total={contentsData.total}
           experienceId={experience.id}
+          kindId={experience.kind_id}
           onCorrect={onCorrectWork}
         />
       )}
