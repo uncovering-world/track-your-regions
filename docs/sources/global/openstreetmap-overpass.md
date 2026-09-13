@@ -73,3 +73,12 @@ register lists — and a source of *rows* only once the share-alike question is 
 catalogue as a whole: the total is 12, and the verdict is `hold` by § 6.2's share-alike clause,
 whatever the total. Identity is the other weakness: ids move on re-mapping, and only the
 Wikidata tag is stable.
+
+**The share-alike question is answered (2026-09-13).**
+[ADR-0059](../../decisions/0059-what-the-catalogue-takes-from-openstreetmap-it-keeps-separable-and-offers-under-odbl.md)
+decides it for OSM-derived data — kept separable, offered under ODbL to anyone who asks, credited
+wherever it is shown — so the `hold` above no longer waits on the catalogue as a whole. The verdict
+and the status stand until the first connector is written, which is the site door's slice: decision
+4 asks a record that has read the ODbL text, the OSMF guidelines that apply, the usage policy of
+the endpoint it reads and the tagging documentation of the keys it asks for, and this record has
+not yet quoted them.
