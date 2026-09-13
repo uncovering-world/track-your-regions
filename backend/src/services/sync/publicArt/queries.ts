@@ -276,8 +276,11 @@ const emptyFacts = (): EntityFacts => ({
  * error upstream (preferred is for what holds now), and none on the pool of
  * 603 on 2026-09-05 — 13 preferred statements across the three properties,
  * not one of them ended.
+ *
+ * Exported for its second reader: the Archaeology kind asks a find's discovery
+ * place (`P189`) under the same rule (`archaeology/queries.ts`).
  */
-function standing(subject: string, property: string, object: string): string {
+export function standing(subject: string, property: string, object: string): string {
   const st = `?st${property.slice(1)}`;
   return `${subject} p:${property} ${st} . ${st} a wikibase:BestRank ; ps:${property} ${object} .
         FILTER NOT EXISTS { ${st} pq:P582 ?ended }`;
