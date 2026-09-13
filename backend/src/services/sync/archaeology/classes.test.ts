@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   MUSEUM_ROOTS, FIND_CLASSES, NOT_A_FIND, NATURE_CATEGORY, DEPARTMENT_CATEGORIES,
   buildArchaeologyTrees, ANCIENT_CUTOFF_YEAR, NATURAL_HISTORY_ROOT, ARTEFACT_ROOT,
+  ARCHAEOLOGICAL_PARK,
 } from './classes.js';
 
 describe('archaeology classes', () => {
@@ -24,7 +25,7 @@ describe('archaeology classes', () => {
     });
     expect(trees.museum.has('Q3329412')).toBe(true);
   });
-  it('takes the whole park tree out of the museum set, and floors the other two', () => {
+  it('takes the whole park tree out of the museum set, keeps it, and floors the other two', () => {
     const t = buildArchaeologyTrees({
       museum: ['Q3329412', 'Q3363945', 'Q11665453'],
       park: ['Q3363945', 'Q11665453'],
@@ -34,6 +35,9 @@ describe('archaeology classes', () => {
     expect(t.museum.has('Q3363945')).toBe(false);
     expect(t.museum.has('Q11665453')).toBe(false);
     expect(t.museum.has('Q3329412')).toBe(true);
+    // Kept, not discarded: the category door needs something to ask.
+    expect(t.park.has('Q11665453')).toBe(true);
+    expect(t.park.has(ARCHAEOLOGICAL_PARK)).toBe(true);
     expect(t.naturalHistory.has(NATURAL_HISTORY_ROOT)).toBe(true);
     expect(t.artefact.has(ARTEFACT_ROOT)).toBe(true);
   });

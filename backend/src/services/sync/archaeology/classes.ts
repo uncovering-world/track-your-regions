@@ -281,6 +281,8 @@ export const DEPARTMENT_CATEGORIES: RegExp[] = [
 export interface ArchaeologyTrees {
   /** Every class that makes a museum an archaeology museum, floored and cleaned. */
   museum: ReadonlySet<string>;
+  /** Every class that makes a row a park, and so a site rather than a museum. */
+  park: ReadonlySet<string>;
   /** Every class that vetoes one (`NATURAL_HISTORY_ROOT`). */
   naturalHistory: ReadonlySet<string>;
   /** Every class that makes an object something dug up (`ARTEFACT_ROOT`). */
@@ -304,6 +306,13 @@ export interface ArchaeologyTrees {
  * a museum — which is why this takes a fourth closure rather than deleting a
  * QID. `ARCHAEOLOGICAL_PARK` floors that closure for the same reason the other
  * three roots floor theirs.
+ *
+ * The park set is also handed on rather than discarded after the subtraction.
+ * Taking the parks out of the museum set closes the class door against them and
+ * nothing more, and the museum door has a second signal: a row typed only
+ * `Fudoki no oka` whose English article carries `Archaeological museums in
+ * Japan` would walk in through the category. The rule that refuses it has to be
+ * able to ask whether a class is a park, so the answer is a set it can read.
  */
 export function buildArchaeologyTrees(fetched: {
   museum: string[];
@@ -312,9 +321,11 @@ export function buildArchaeologyTrees(fetched: {
   artefact: string[];
 }): ArchaeologyTrees {
   const museum = new Set([...fetched.museum, ...Object.keys(MUSEUM_ROOTS)]);
-  for (const park of [...fetched.park, ARCHAEOLOGICAL_PARK]) museum.delete(park);
+  const park = new Set([...fetched.park, ARCHAEOLOGICAL_PARK]);
+  for (const cls of park) museum.delete(cls);
   return {
     museum,
+    park,
     naturalHistory: new Set([...fetched.naturalHistory, NATURAL_HISTORY_ROOT]),
     artefact: new Set([...fetched.artefact, ARTEFACT_ROOT]),
   };
