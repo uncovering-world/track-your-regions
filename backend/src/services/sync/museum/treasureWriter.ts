@@ -48,6 +48,74 @@ import { reconcileLinks } from './linkWithdrawal.js';
 const HELD_WORK = `((SELECT requires_curation FROM experience_sources WHERE id = $12)
                     AND treasures.curation_state <> 'pending')`;
 
+/**
+ * One object with the find spot's three states applied to it — the run's own
+ * `EXCLUDED.metadata` where the source owns the column, the stored
+ * `treasures.metadata` where a curator's picture claim has frozen it.
+ *
+ * Parametrised on the base rather than written twice because it is one rule.
+ * The credit is the *picture's* and is frozen with it; the find spot is the
+ * *source's* and follows the source in both arms. Frozen behind the claim, a
+ * P189 correction would never reach a work whose photograph a curator once
+ * chose — the object would keep a wrong find spot for as long as the claim
+ * stood, which is a fact about the world held hostage to a fact about a
+ * photograph.
+ *
+ * `foundAt` is asked of the **parameter** (`$9`) in both arms and never of
+ * `EXCLUDED.metadata`, because the question is always "what did this run say
+ * about the find spot" — and `EXCLUDED` is the *evaluated* VALUES row, which
+ * `INSERTED_METADATA` below has already stripped of a null key, so read there
+ * the remove signal is gone before this arm sees it. The base only decides
+ * what the answer is applied *to*.
+ *
+ * A treasure is global by `external_id` and more than one kind places the same
+ * object: an ancient sculpture in the Louvre is a work of the Art Museums run
+ * and a find of the Archaeology run, and they write the same row. Replacing
+ * `metadata` whole makes the last run to pass the arbiter of a key it knows
+ * nothing about — the art run, whose `ProcessedContent.foundAt` is `undefined`,
+ * would erase where the Archaeology run said the sculpture was dug up, and the
+ * next archaeology run would put it back, on and on.
+ *
+ * So the key is written from three states and not two (`metadataPatch`, which
+ * spells them):
+ *   - **no key** — a kind that does not read find spots: whatever the row holds
+ *     is merged back in and kept;
+ *   - **the key with JSON `null`** — this kind read the item and Wikidata
+ *     records no discovery place: the key is stripped, which is how a find spot
+ *     is ever removed;
+ *   - **the key with an object** — replaced.
+ *
+ * `COALESCE` on both sides because either may be SQL `NULL`: a work with no
+ * picture and no find spot stores nothing at all (`serialiseMetadata`), and
+ * `NULL || anything` is `NULL`. `NULLIF` at the end restores that contract —
+ * stripping the only key leaves `{}`, and an empty object in the column would
+ * report a change on every run to something nobody reads.
+ */
+/**
+ * The same rule on the row's first write, where there is no stored spot to keep
+ * and only the *remove* signal can arrive: a new find the run read and found no
+ * discovery place for is sent as `{"foundAt": null}`, and the key is a signal
+ * for the update arm, not a value for the column. Without this a first live run
+ * would store a meaningless key on most finds — about half the pool enters
+ * through the artefact tree with no spot — and a `metadata` that is non-null
+ * where the writer's own contract says NULL.
+ */
+const INSERTED_METADATA = `NULLIF(CASE
+          WHEN $9::jsonb -> 'foundAt' = 'null'::jsonb THEN $9::jsonb - 'foundAt'
+          ELSE $9::jsonb END, '{}'::jsonb)`;
+
+const metadataWithFindSpot = (base: string): string => `NULLIF(CASE
+          WHEN NOT (COALESCE($9::jsonb, '{}'::jsonb) ? 'foundAt')
+            THEN CASE WHEN treasures.metadata ? 'foundAt'
+                      THEN COALESCE(${base}, '{}'::jsonb)
+                           || jsonb_build_object('foundAt', treasures.metadata -> 'foundAt')
+                      ELSE ${base} END
+          WHEN $9::jsonb -> 'foundAt' = 'null'::jsonb
+            THEN COALESCE(${base}, '{}'::jsonb) - 'foundAt'
+          ELSE COALESCE(${base}, '{}'::jsonb)
+               || jsonb_build_object('foundAt', $9::jsonb -> 'foundAt')
+        END, '{}'::jsonb)`;
+
 /** What a run knows about who took the pictures: what it fetched, and what the rows hold. */
 export interface TreasureCredits {
   fetched: Map<string, ImageCredit>;
@@ -72,12 +140,14 @@ export interface TreasureWriteRun extends WriteRun {
 }
 
 /**
- * What a run should store beside a work, which today is who took its picture.
+ * What a run should store beside a work: who took its picture, and where the
+ * object was dug up.
  *
- * `null` and not an empty object where there is no credit: the upsert writes
- * `metadata = EXCLUDED.metadata` outright, so an empty object would replace a
- * `null` on every work with no picture and report a change to a column nobody
- * reads. The rule about *which* credit — this run's, the row's own, or none —
+ * `null` and not an empty object where there is neither: the upsert takes what
+ * this composes as the new value (`INSERTED_METADATA` on a first write,
+ * `metadataWithFindSpot` on an update), so an empty object would
+ * replace a `null` on every work with no picture and report a change to a
+ * column nobody reads. The rule about *which* credit — this run's, the row's own, or none —
  * is `creditToWrite`'s and is the same one the three experience collectors go
  * through, claim included: `treasures.curated_fields` holds `image_url` in its
  * claimable set, and a claimed picture must not be described by whoever took a
@@ -92,11 +162,46 @@ export function treasureMetadata(
   fetched: Map<string, ImageCredit>,
   stored: Map<string, StoredCredit>,
 ): string | null {
-  const patch = creditPatch(artwork, fetched, stored);
+  return serialiseMetadata(metadataPatch(artwork, creditPatch(artwork, fetched, stored)));
+}
+
+/**
+ * The whole of what a run writes into a work's metadata: the credit it decided
+ * on, and where the object was found where the kind knows.
+ *
+ * `foundAt` is offered by the kind whose works were dug up somewhere other than
+ * where they are shown (ADR-0058 decision 3): the Rosetta Stone is in London
+ * and was found at Fort Julien, and a card that cannot say so describes the
+ * display case rather than the object.
+ *
+ * It does *not* follow the credit's rule about replacement, and that is the
+ * whole of the difference between the two keys. The credit is written whole
+ * because every run that writes a work has asked Commons about its picture; a
+ * find spot is asked about by the one kind that reads `P189`, and a treasure is
+ * global (ADR-0025), so the Art Museums run and the Archaeology run write the
+ * same ancient sculpture in the Louvre. A run that never asked must not answer,
+ * so the patch says which of the three things happened and the upsert obeys it
+ * (`metadataWithFindSpot`; `INSERTED_METADATA` on a first write):
+ *   - **no key** — this kind does not read find spots, as the art and the
+ *     worship runs do not: the stored spot is kept;
+ *   - **the key with `null`** — this kind read the item and Wikidata records no
+ *     discovery place: the stored spot is removed, and on a first write the key
+ *     is not stored at all (`INSERTED_METADATA`). The one way a spot ever goes;
+ *   - **the key with an object** — replaced.
+ */
+function metadataPatch(
+  artwork: ProcessedContent,
+  credit: { imageCredit?: ImageCredit | null },
+): { imageCredit?: ImageCredit | null; foundAt?: { qid: string; label: string } | null } {
+  return artwork.foundAt === undefined ? credit : { ...credit, foundAt: artwork.foundAt };
+}
+
+/** What the upsert's metadata parameter takes: the object, or `null` where it holds nothing. */
+function serialiseMetadata(patch: Record<string, unknown>): string | null {
   return Object.keys(patch).length > 0 ? JSON.stringify(patch) : null;
 }
 
-/** The credit the run would write, as the object `treasureMetadata` serialises. */
+/** The credit the run would write, as `metadataPatch` composes it. */
 function creditPatch(
   artwork: ProcessedContent,
   fetched: Map<string, ImageCredit>,
@@ -299,8 +404,9 @@ export async function upsertVenueTreasures(
     // it that way when a source starts answering with something else.
     const artwork = withShowablePicture(withTidyNames(offered));
 
-    // Once per work, and read twice: serialised as the ninth parameter, and
-    // compared against the stored credit where the picture is held.
+    // Once per work, and read twice: composed into the ninth parameter with
+    // whatever else the run stores about the work, and compared against the
+    // stored credit where the picture is held.
     const patch = creditPatch(artwork, credits.fetched, credits.stored);
 
     // A work the run has just inserted has no "before" and is an arrival.
@@ -322,7 +428,7 @@ export async function upsertVenueTreasures(
       `INSERT INTO treasures (
         external_id, name, treasure_type, artists, year,
         image_url, sitelinks_count, is_iconic, metadata, curation_state, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, ${INSERTED_METADATA},
         CASE WHEN (SELECT requires_curation FROM experience_sources WHERE id = $12)
              THEN 'pending' ELSE 'auto' END,
         NOW(), NOW())
@@ -391,10 +497,22 @@ export async function upsertVenueTreasures(
         -- would be unable to gain a credit for as long as the gate stood, with
         -- nothing recorded and no card to apply it from, which is the licence
         -- rule and the gate's own promise broken at once.
+        --
+        -- And the find spot is the one key a run that knows nothing about it
+        -- does not get to erase, because a treasure is global and two kinds
+        -- write the same ancient sculpture -- nor one a *claim* gets to freeze,
+        -- because the claim is about a photograph and the find spot is about the
+        -- object. So the guard still chooses which object is kept, and both
+        -- arms then let the source have its say on that one key
+        -- (metadataWithFindSpot): the credit stays with the picture it belongs
+        -- to, and a P189 correction reaches a work whose photograph a curator
+        -- chose. What the claim still freezes whole is everything else in there,
+        -- which today is the credit alone (#887).
         metadata = CASE WHEN treasures.curated_fields ? 'image_url'
                              OR (${HELD_WORK}
                                  AND treasures.image_url IS DISTINCT FROM EXCLUDED.image_url)
-                        THEN treasures.metadata ELSE EXCLUDED.metadata END,
+                        THEN ${metadataWithFindSpot('treasures.metadata')}
+                        ELSE ${metadataWithFindSpot('EXCLUDED.metadata')} END,
         updated_at = NOW()
       -- The name beside the id because a link is named by what the catalogue
       -- calls the work, which on a claimed field is not what the source sent.
@@ -414,8 +532,9 @@ export async function upsertVenueTreasures(
         artwork.imageUrl,
         artwork.sitelinksCount,
         artwork.sitelinksCount >= ICONIC_SITELINKS,
-        // What `treasureMetadata` serialises, from the patch computed above.
-        Object.keys(patch).length > 0 ? JSON.stringify(patch) : null,
+        // What `treasureMetadata` serialises, from the patch computed above and
+        // the find spot the work carries.
+        serialiseMetadata(metadataPatch(artwork, patch)),
         ICONIC_SITELINKS,
         ICONIC_RELEASE,
         run.sourceId,
