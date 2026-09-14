@@ -33,6 +33,10 @@ import {
   ARTEFACT_ROOT,
   MUSEUM_ROOTS,
   NATURAL_HISTORY_ROOT,
+  SETTLEMENT_ROOT,
+  SHIPWRECK_ROOT,
+  SITE_ROOT,
+  WORLD_HERITAGE_DESIGNATION,
   buildArchaeologyTrees,
   type ArchaeologyTrees,
 } from './classes.js';
@@ -42,8 +46,13 @@ const CLASS_BATCH = 25;
 const ID_BATCH = 50;
 
 /**
- * The four class trees the rules read: what an archaeology museum is, which of
- * those classes are parks, what vetoes a museum, and what was dug up.
+ * The seven class trees the rules read: what an archaeology museum is, which of
+ * those classes are parks, what vetoes a museum, what was dug up, what an
+ * archaeological site is, what a human settlement is, and what a shipwreck is.
+ *
+ * The last three are the site door's (#581 PR 2). Measured on 2026-09-14: 590
+ * classes under `archaeological site`, 2,720 under `human settlement`, 4 under
+ * `shipwreck` — all three cheap, because the traversal is in class space.
  *
  * A tree each rather than one walk, because each answers a different question
  * and two of them are subtractions from the others. The museum roots are walked
@@ -84,11 +93,26 @@ export async function fetchArchaeologyTrees(run: QueryRunner): Promise<Archaeolo
   await run.step();
   const artefact = await fetchClassTree(run.sparql, ARTEFACT_ROOT, 'archaeological artefact classes');
 
+  run.phase('Reading what an archaeological site is...');
+  await run.step();
+  const site = await fetchClassTree(run.sparql, SITE_ROOT, 'archaeological site classes');
+
+  run.phase('Reading what a human settlement is...');
+  await run.step();
+  const settlement = await fetchClassTree(run.sparql, SETTLEMENT_ROOT, 'human settlement classes');
+
+  run.phase('Reading what a shipwreck is...');
+  await run.step();
+  const shipwreck = await fetchClassTree(run.sparql, SHIPWRECK_ROOT, 'shipwreck classes');
+
   return buildArchaeologyTrees({
     museum,
     park: [...park],
     naturalHistory: [...naturalHistory],
     artefact: [...artefact],
+    site: [...site],
+    settlement: [...settlement],
+    shipwreck: [...shipwreck],
   });
 }
 
@@ -192,4 +216,62 @@ export async function collectMuseumPool(
     }
   }
   return pool;
+}
+
+/** What the site rule reads off the item itself. */
+export interface SiteFactsRow {
+  /** Every `P31`. */
+  classes: string[];
+  /** `P757` present, or `P1435` naming World Heritage: the place is one itself. */
+  worldHeritage: boolean;
+  /** `P1082` present — any number, 0 included. */
+  statesPopulation: boolean;
+}
+
+/**
+ * What each candidate of a batch is, and the two facts the living-place dispute
+ * turns on.
+ *
+ * One question per batch by UNION, so the four do not cross-multiply — an item
+ * with nine population statements (Asyut has nine) would otherwise arrive nine
+ * times over every class it carries. Every QID asked about gets an entry, empty
+ * where the answer said nothing: a rule reading a missing entry as "no facts"
+ * would be reading a failed batch as a statement about the world.
+ *
+ * The statements are read at `wdt:` rather than through `standing`, and
+ * deliberately: the question is not "what is true today" but "has anybody ever
+ * said this place holds people" — a population statement from 1950 still tells
+ * Asyut from Saqqara, and `P757` on a delisted site still says the Committee
+ * once inscribed it.
+ */
+export async function fetchSiteFacts(
+  sparql: SparqlFn,
+  qids: string[],
+): Promise<Map<string, SiteFactsRow>> {
+  const out = new Map<string, SiteFactsRow>();
+  const asked = qids.filter(isQid);
+  if (!asked.length) return out;
+  for (const qid of asked) {
+    out.set(qid, { classes: [], worldHeritage: false, statesPopulation: false });
+  }
+
+  const rows = await sparql(`
+    SELECT ?e ?cls ?whc ?desig ?pop WHERE {
+      VALUES ?e { ${values(asked)} }
+      { ?e wdt:P31 ?cls } UNION { ?e wdt:P757 ?whc } UNION
+      { ?e wdt:P1435 ?desig } UNION { ?e wdt:P1082 ?pop }
+    }`, { kind: 'edges', label: `classes, listings and populations of ${asked.length} sites` });
+
+  for (const row of rows) {
+    const facts = out.get(extractQid(row.e?.value ?? ''));
+    if (!facts) continue;
+    const cls = extractQid(row.cls?.value ?? '');
+    if (isQid(cls)) facts.classes.push(cls);
+    if (row.whc?.value) facts.worldHeritage = true;
+    if (extractQid(row.desig?.value ?? '') === WORLD_HERITAGE_DESIGNATION) {
+      facts.worldHeritage = true;
+    }
+    if (row.pop?.value) facts.statesPopulation = true;
+  }
+  return out;
 }

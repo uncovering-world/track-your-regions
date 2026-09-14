@@ -10,11 +10,16 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { collectMuseumPool, fetchArchaeologyTrees, fetchFindFacts } from './queries.js';
+import {
+  collectMuseumPool, fetchArchaeologyTrees, fetchFindFacts, fetchSiteFacts,
+} from './queries.js';
 import {
   ARCHAEOLOGICAL_PARK,
   ARTEFACT_ROOT,
   NATURAL_HISTORY_ROOT,
+  SETTLEMENT_ROOT,
+  SHIPWRECK_ROOT,
+  SITE_ROOT,
   buildArchaeologyTrees,
 } from './classes.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
@@ -103,6 +108,9 @@ describe('fetchArchaeologyTrees', () => {
     [ARCHAEOLOGICAL_PARK]: [ARCHAEOLOGICAL_PARK, FUDOKI_NO_OKA],
     [NATURAL_HISTORY_ROOT]: [NATURAL_HISTORY_ROOT],
     [ARTEFACT_ROOT]: [ARTEFACT_ROOT],
+    [SITE_ROOT]: [SITE_ROOT, 'Q1708422'],
+    [SETTLEMENT_ROOT]: [SETTLEMENT_ROOT, 'Q1708422'],
+    [SHIPWRECK_ROOT]: [SHIPWRECK_ROOT],
   };
 
   const door = (query: string): SparqlBinding[] => {
@@ -111,19 +119,23 @@ describe('fetchArchaeologyTrees', () => {
     return (TREES[root[1]] ?? []).map((cls) => ({ c: ref(cls) }));
   };
 
-  it('walks the four trees, and every park class comes out of the museum set', async () => {
+  it('walks the seven trees, and every park class comes out of the museum set', async () => {
     const { run, phases, sent, stepsBefore } = runnerOver(door);
     const trees = await fetchArchaeologyTrees(run);
 
     expect(sent.map((query) => askedFor(query)[0])).toEqual([
       'Q3329412', 'Q3330834', ARCHAEOLOGICAL_PARK, NATURAL_HISTORY_ROOT, ARTEFACT_ROOT,
+      SITE_ROOT, SETTLEMENT_ROOT, SHIPWRECK_ROOT,
     ]);
-    expect(stepsBefore).toEqual([1, 2, 3, 4, 5]);
+    expect(stepsBefore).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(phases).toEqual([
       'Reading what an archaeology museum is...',
       'Reading what an archaeological park is...',
       'Reading what a natural history museum is...',
       'Reading what an archaeological artefact is...',
+      'Reading what an archaeological site is...',
+      'Reading what a human settlement is...',
+      'Reading what a shipwreck is...',
     ]);
 
     expect([...trees.museum].sort()).toEqual(['Q3329412', 'Q3330834']);
@@ -133,6 +145,11 @@ describe('fetchArchaeologyTrees', () => {
     expect([...trees.park].sort()).toEqual([ARCHAEOLOGICAL_PARK, FUDOKI_NO_OKA].sort());
     expect([...trees.naturalHistory]).toEqual([NATURAL_HISTORY_ROOT]);
     expect([...trees.artefact]).toEqual([ARTEFACT_ROOT]);
+    // `settlement site` is under both roots, which is the ambiguity itself: it
+    // is the class Wikidata gives Troy.
+    expect(trees.site.has('Q1708422')).toBe(true);
+    expect(trees.settlement.has('Q1708422')).toBe(true);
+    expect([...trees.shipwreck]).toEqual([SHIPWRECK_ROOT]);
   });
 });
 
@@ -181,5 +198,49 @@ describe('collectMuseumPool', () => {
     const pool = await collectMuseumPool(run, trees, new Set([LOUVRE]));
     expect(byId).toEqual([]);
     expect([...pool.keys()]).toEqual([LOUVRE]);
+  });
+});
+
+describe('fetchSiteFacts', () => {
+  it('reads the classes, the listing and the population without cross-multiplying', async () => {
+    const sent: string[] = [];
+    const sparql: SparqlFn = (query) => {
+      sent.push(query);
+      return Promise.resolve([
+        { e: ref('Q29962'), cls: ref('Q515') },
+        { e: ref('Q29962'), cls: ref('Q839954') },
+        { e: ref('Q29962'), pop: { value: '562061' } },
+        { e: ref('Q192134'), cls: ref('Q200141') },
+        { e: ref('Q29317'), whc: { value: '1588' } },
+        { e: ref('Q190048'), desig: ref('Q9259') },
+      ]);
+    };
+    const facts = await fetchSiteFacts(sparql, ['Q29962', 'Q192134', 'Q29317', 'Q190048']);
+
+    expect(sent[0]).toContain('UNION');
+    expect(facts.get('Q29962')).toEqual({
+      classes: ['Q515', 'Q839954'], worldHeritage: false, statesPopulation: true,
+    });
+    // Saqqara: a necropolis class and nobody counted.
+    expect(facts.get('Q192134')).toEqual({
+      classes: ['Q200141'], worldHeritage: false, statesPopulation: false,
+    });
+    // Bagan by its World Heritage id, Tassili n'Ajjer by its designation.
+    expect(facts.get('Q29317')?.worldHeritage).toBe(true);
+    expect(facts.get('Q190048')?.worldHeritage).toBe(true);
+  });
+
+  it('answers for every item asked about, so a silent batch is not a fact', async () => {
+    const facts = await fetchSiteFacts(answer([]), ['Q22647']);
+    expect(facts.get('Q22647')).toEqual({
+      classes: [], worldHeritage: false, statesPopulation: false,
+    });
+  });
+
+  it('asks nothing where there is nothing to ask about', async () => {
+    let asked = 0;
+    const sparql: SparqlFn = () => { asked += 1; return Promise.resolve([]); };
+    expect(await fetchSiteFacts(sparql, [])).toEqual(new Map());
+    expect(asked).toBe(0);
   });
 });
