@@ -26,7 +26,7 @@ access:
   mode: api
   format: "SPARQL (the Query Service for the run, banded; QLever for the measurements)"
   cadence: continuous
-  volume: "1130 sites at 22 sitelinks with coordinates; 44 museums typed archaeological at 22 (14 at 40 or more, 30 between 22 and 39); 56 museums holding a find at 22, 78 at 18 (2026-09-13)"
+  volume: "1130 sites at 22 sitelinks with coordinates; 44 museums typed archaeological at 22 (14 at 40 or more, 30 between 22 and 39); 56 museums holding a find at 22, 78 at 18 (2026-09-13); 1,960 site candidates with coordinates at 15 sitelinks, 1,126 at 22 (2026-09-14)"
   rate: "the Query Service refuses heavy patterns; the run asks in fame bands and pauses between questions"
 scorecard:
   date: 2026-09-13
@@ -162,6 +162,48 @@ Baalbek (81,052), Anuradhapura, Bagan, Samarra, Ctesiphon — every one of them 
 row already. Shipwrecks (the Titanic 160, the Amoco Cadiz, the ARA San Juan) and a `lost city`
 that is a modern evacuation (Pripyat, Chernobyl) are in the tree too and are refused by class.
 
+**The site door as it was built (2026-09-14, #581 PR 2).** The measurement that settled it is
+kept in `data/cache/osm-sites/` and summarised in
+[`openstreetmap-qlever`](openstreetmap-qlever.md): of the 1,126 items at the line with
+coordinates and an English label, 885 carry at least one OSM object and 510 are on the settlement
+branch. That 79% is the observed baseline, and the run holds the mirror to a lower floor: a read
+that answers with an object for fewer than **half** of the items it asked about fails the run by
+name rather than being read as "nothing is mapped there", and its answers are dropped from the
+cache so the next run asks again. Under the rule ADR-0058 decision 4 now states, the settlement branch — the 500 of its 510
+that step 1 does not kill — comes out at 261 sites by a ruin signal, 15 by a weak signal with a site class (Angkor, Babylon, Mesa Verde),
+26 more with a weak signal and no class of their own — mostly the Aegean poleis (Rhodes, Milos,
+Chios among them), refused this way except the two that state no population, Carthage and
+Demetrias, which the weak signal now admits — 78 with no OSM object
+but a direct site class (Thebes, Karnak, Napata), 86 refused as living places and 34 refused for
+a city with no ruin on the map. The site branch adds roughly 610. The refusals worth checking by
+name after a run are Athens, Cairo, Asyut, Esna, Dendera, Rhodes, Milos, Sabratha, Syracuse,
+Tyre, Sidon, Agrigento, Side, Akkad and Pataliputra.
+
+**The known misses, and how each is actually refused.** **Syracuse** (Q13670) is the step-4 one:
+its only OSM object is relation/39169, `boundary=administrative`, so the card reads "a city
+Wikidata files under archaeological sites, with no ruin on the map (one OSM object carries it,
+and it is not a ruin)". **Tyre** (Q82070, node/803018184 `place=city`), **Sidon** (Q163490,
+node/4799206602 `place=city`), **Agrigento** (Q13678, node/67253674 `place=city`) and **Side**
+(Q152405, node/8822516201 `place=village` beside relation/15871010 `place=suburb`) are refused a
+step earlier, as living places: a town on the map, a stated population, and no site class —
+Side's `archaeological site` statement is deprecated on Wikidata (checked 2026-09-14), so
+`wdt:P31` never reads it. **None of the four carries a weak tag**, so step 4 and its lift never
+come into it. The miss they share is the shape rather than the sentence: a living city standing
+for a famous excavation. Where the dig has an item of its own the door finds it and the town's
+refusal costs nothing — Jericho is refused and Tell es-Sultan (Q2402267) admitted, Athens and the
+Acropolis of Athens (Q131013), Dendera and the Dendera Temple complex (Q735254), Xi'an and the
+Mausoleum of the First Qin Emperor (Q910180), **Agrigento and the Valle dei Templi** (Q636774,
+`archaeological park, archaeological site`, 38 sitelinks). Tyre's, Sidon's and Side's digs have no
+item to find, which is what makes those three the real losses; on the development catalogue Tyre
+has a World Heritage row of its own (as do Syracuse, through "Syracuse and the Rocky Necropolis of
+Pantalica", and Agrigento) while **Sidon and Side have none at all**, so for those two the kind
+holds nothing. **Carthage (Q6343) is not among the misses**: it carries relation/8305288 with
+`heritage=1` and no population statement, which is the weak-signal lift the final pass added, and
+Demetrias (Q1150349, relation/18138696, `heritage=2`) is the only other row of that shape in the
+pool. Bosra (Q272680) is admitted rather
+than refused — the item carries `P1435 = Q9259` (checked 2026-09-14), which lifts it over the
+20,000 people Wikidata counts there.
+
 ## What this source cannot reach
 
 - **A museum famous as an institution whose finds are not itemised, and which Wikidata types
@@ -200,7 +242,7 @@ answered by ADR-0043: every one is a Wikimedia Commons file with the credit Comm
 
 ## The runs that adopted it
 
-Six dry runs on the development stack (#581, 2026-09-13 and 2026-09-14), each writing a sync-log row and its
+Eight dry runs on the development stack (#581, 2026-09-13 and 2026-09-14), each writing a sync-log row and its
 per-object report and nothing to the catalogue:
 
 | log | duration | admitted | held | through a find | refused | treasures |
@@ -211,6 +253,62 @@ per-object report and nothing to the catalogue:
 | 117 | 10 m 15 s | 85 | 5 | 15 | 76 | 225 |
 | 118 | 10 m 16 s | 83 | 5 | 15 | 82 | 225 |
 | 119 | 10 m 13 s | 83 | 5 | 15 | 82 | 225 |
+| **121** | **16 m 35 s** | **1,013** | **5** | **13** | **239** | **225** |
+| **122** | **12 m 20 s** | **1,009** | **5** | **13** | **243** | **225** |
+
+Log 121 is the site door's first dry run on the development stack (2026-09-14, #581 PR 2): 930
+sites admitted, 523 of them with an extent from OpenStreetMap, beside 83 museums and 225
+treasures unchanged from log 119 — 1,013 rows in all, nothing written to the catalogue. **Two
+fewer museums name a find than in log 119** (13 against 15), and nothing about the rule changed:
+the live run 120 admitted Heraklion and the Villa Giulia, so at 21 sitelinks each they are now
+kept by hysteresis on their own fame rather than carried over the line by the Phaistos disc and
+the Pyrgi Tablets, and a museum admitted for itself names nothing. Their memberships still carry
+the `admitted_for` run 120 wrote; the next live run clears it. 239
+refused: 193 by the site door — 72 as living places, 58 with no ruin on the map (Lake Bled
+counted here, since its sentence names the map), and 63 by class or by name (59 shipwrecks, 3
+lost cities, the Aysén Region) — 39 by the museum door, whose rule is unchanged (fewer named than in
+log 119, because the site door now admits the parks and digs that door used to refuse by name), and 7 folds named. Named checks read as the rule predicts:
+Troy, Pompeii, Bagan, Saqqara, Angkor, Babylon, Thebes, Petra, Great Zimbabwe, Machu Picchu,
+Chichen Itza and Tassili n'Ajjer admitted; Athens, Cairo and Asyut refused as living places with
+their people counted; Populonia and Baia refused as living places with no class of a site; Rhodes
+and Sabratha refused with no ruin on the map; the Aysén Region, the Titanic, Chernobyl, Pripyat
+and Lake Bled killed by class or by name. **Syracuse is refused the same way as Rhodes and
+Sabratha** — with no ruin on the map, its one object being an administrative relation — while
+Tyre, Sidon, Agrigento and Side are refused a step earlier as living places, each with a town on
+the map and its people counted. All five are known misses of the shape, not of one rule: a living
+city standing for a famous excavation (§ *The known misses* above says which of them has a dig
+item and which has none). None of this is the World Heritage lift ADR-0058 decision 4 states for
+the natural kill — Tassili n'Ajjer is that lift's live instance and Lake Bled its casualty.
+Carthage was refused in this run and is admitted by the rule as the final pass left it, on the
+`heritage=1` object it carries with no population statement beside it.
+
+**A rule considered and refused: population at step 4.** The four New Mexico census places were
+admitted at step 4 — a direct `archaeological site` class, no ruin and no town on the map — and
+the obvious fix was to let the population statement decide there as it does at step 3. Measured
+on the pool (2026-09-14): 109 settlement-branch items reach step 4 with a direct site class, and
+**15 of them state a population** — Babylon (150,000), Pompeii (0), Karakorum, Cahokia, Tanis,
+Edessa, Samannud, Dorestad, Karnak, Hermonthis, Antinoöpolis and the four census places. A rule
+refusing a stated population at step 4 would lose Babylon, Pompeii and Karnak, which is the
+catalogue's own canon: the number on those items is the ancient city's or the modern village's
+beside the dig, and step 4 has no map to read it against. So step 4 is unchanged and
+`boundary=census` does the work instead, which refuses exactly the four rows that were the
+problem.
+
+Log 122 is the same door under the rule as it merged (2026-09-14, 11:17 UTC, 12 m 20 s — four
+minutes less than log 121, because the run stopped asking OpenStreetMap about the candidates the
+fame line had already put out): **926 sites admitted, 522 of them with an extent**, the 83 museums
+unchanged, 225 treasures, nothing written. 243 refused — **197 by the site door** (76 living
+places, 55 with no ruin on the map, 66 by class or by name), 39 by the museum door and 7 folds
+named.
+
+Against log 121, the eight rows and the one shape the final pass changed all read as intended:
+Carthage (Q6343) and Demetrias (Q1150349) enter through the weak-signal lift; Qiandao Lake
+(Q2470528) and the Lop Desert (Q620724) are refused as a reservoir and a desert; the four
+Acoma-area census places — Acomita Lake (Q342064), North Acomita Village (Q1237840),
+Skyline-Ganipa (Q2293403) and Sunrise (Q1836972) — are refused as living places on
+`boundary=census`; the Valle dei Templi (Q636774) is admitted by class while Agrigento stays
+refused as a living place; Rhodes is refused as "an island" rather than as a city; and the Nazca
+Lines carry the reserve's extent rather than the speck the ruin object traces.
 
 Log 112 is the rule without the category door: 617 entities fetched over the museum and finds
 pools. Its refusals name the museums the two signals miss (the Viking Ship Museum with three
@@ -275,5 +373,6 @@ for a curator (ADR-0025) — and with both its lines on the row (`api_config.ent
 `staySitelinks` 18 for the places, `findEnterSitelinks` 18 and `findStaySitelinks` 15 for the
 finds), read by every run and edited from the admin panel's source card. No live run has been made,
 so the kind holds no place and no reader surface draws an Archaeology place — the kinds endpoint
-lists the kind with a count of 0, and a curator's create dialog offers it; the site door lands first (ADR-0058
-decision 7), and the first live run is the maintainer's.
+lists the kind with a count of 0, and a curator's create dialog offers it. Both doors are built now
+(the site door landed on 2026-09-14, #581 PR 2), so what the kind waits on is the maintainer's first
+live run and a curator publishing what it brings (ADR-0058 decision 7).

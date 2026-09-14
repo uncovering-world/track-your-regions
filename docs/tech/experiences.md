@@ -36,7 +36,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 - `Art Museums` (priority `2`) — fills Art Museums with the works-first selection (ADR-0023); the row read "Top Art Museums", the selection rule's name, until migration 045 gave it the reader's (ADR-0045 §8, #818)
 - `Public Art & Monuments` (priority `3`) — fills Public Art & Monuments
 - `Places of worship` (priority `4`) — fills Places of worship from Wikidata through two doors, a place's own fame and the fame of a work it holds (ADR-0052, #753). Seeded by migration 050 with two things the three before it do not carry: its fame line on the row (`api_config.enterSitelinks` 22, `staySitelinks` 18, § Places of worship below) and `requires_curation = true`, so a community-edited source's first rows wait for a curator (ADR-0025)
-- `Archaeology` (priority `5`) — fills Archaeology from Wikidata, sites and museums in one list, of which only the museum door is built (ADR-0058, #581, § Archaeology below). Seeded gated by migration 056, with **two** fame lines on the row rather than one: `enterSitelinks` 22 / `staySitelinks` 18 for a place, `findEnterSitelinks` 18 / `findStaySitelinks` 15 for a find, a find carrying fewer Wikipedia articles than the museum that shows it
+- `Archaeology` (priority `5`) — fills Archaeology from Wikidata, sites and museums in one list, both doors built — museums from Wikidata and English Wikipedia, sites from Wikidata with OpenStreetMap as the second signal (ADR-0058, ADR-0059, #581, § Archaeology below). Seeded gated by migration 056, with **two** fame lines on the row rather than one: `enterSitelinks` 22 / `staySitelinks` 18 for a place, `findEnterSitelinks` 18 / `findStaySitelinks` 15 for a find, a find carrying fewer Wikipedia articles than the museum that shows it
 
 `experiences.type` is the **type within a kind** (#814; the column was called `category` until then, the word the rest of the code used for the kind and its source until #819): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, `cathedral` / `church` / `chapel` / `monastery` / `mosque` / `temple` / `shrine` / `synagogue` for a place of worship, `site` / `museum` for Archaeology, and **NULL for an art museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1), while `museum` as an Archaeology type says which of that kind's two things this one is, the excavation or the museum of its finds (ADR-0058 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A place is one row of `experiences` and each of its memberships in a kind is a row of `experience_kind_memberships` (below); a monument that is also a World Heritage point is still two places today — the Statue of Liberty is ids 382 and 11565 — and becomes one place with two memberships by #755's merge. Refusal as a curator-confirmed withdrawal of one membership (ADR-0045 decision 6) lands with #755 as well; today a refusal is the run's write on the membership, and the curator confirms or overrides it.
 
@@ -1669,29 +1669,142 @@ enumerate the museums of Greece, Turkey, Egypt, Mexico, Italy and France nearly 
 [filling-a-kind.md](filling-a-kind.md)'s (ADR-0048) and carrying no badge, as it is for every other
 kind.
 
-**One kind, two types, one door built.** `Archaeology` is kind 5 and its types are `site` and
-`museum` (ADR-0058 decision 1): a person planning Egypt wants Saqqara and the Egyptian Museum on one
-list, so the distinction is a chip inside the kind rather than two kinds. Only `museum` is written
-today — this slice is the museum door. The site door (Wikidata's classes under `archaeological site`
-outside the `human settlement` branch, with OpenStreetMap read as a second signal on the terms of
-[ADR-0059](../decisions/0059-what-the-catalogue-takes-from-openstreetmap-it-keeps-separable-and-offers-under-odbl.md))
-is the next slice, and **until a live run writes one the kind has no place to show**: the source is
-seeded gated (`requires_curation = true`, migration 056, with kind 5 and source 5 pinned) and has
-never run live — every run of record is dry — so kind 5 holds no membership, and every reader
-surface draws the kinds that have places (Discover's tree chips are per-region counts, Map mode
-groups the rows a region holds; read on screen 2026-09-13). Two places name it all the same:
-`GET /api/experiences/kinds` lists every kind an active source fills, so it answers Archaeology
-with a count of 0, and a curator's create dialog offers it — a row made by hand there would be the
-kind's first visible place. The first live run waits for the site door, because "Archaeology"
-without Pompeii is a list that claims the world and holds half of it (ADR-0045 decision 2,
-ADR-0058 decision 7). **A count below is the survey of
-2026-09-13 unless it names a run**: the survey is in the source's record, and so are the six dry
-runs that have since read the rule on the development stack — 112 before the category door, 113
-with it and with the badge and the narrowed veto (85 museums, 225 treasures), 114 the same rule
-naming its held rows, 117 the rule after the pull request's review (the same 85, name for name),
-118 with the fold settled after the verdict (83 museums, two having folded into the museum
-that houses them; 225 treasures), and 119 the last review round run once more, identical to 118 —
-each writing nothing to the catalogue. No live run has been made.
+**One kind, two types, both doors built.** `Archaeology` is kind 5 and its types are `site` and
+`museum` (ADR-0058 decision 1): a person planning Egypt wants Saqqara and the Egyptian Museum on
+one list, so the distinction is a chip inside the kind rather than two kinds. **Both are written
+by one run**, and that is not an implementation detail: the orchestrator reads absence from a
+run's item list as a withdrawal, so two runs would have each door retire the other's rows on
+every pass. `collectArchaeology` returns museums and sites in one array, and `processItem`
+dispatches on `item.type`.
+
+**The site door** (`archaeology/sites.ts`, `archaeology/siteTest.ts`) is ADR-0058 decision 4,
+narrowed by #581's second slice. The pool is Wikidata's `archaeological site` tree — 590 classes,
+1,960 items with a coordinate at the pool's floor of 15 sitelinks, measured 2026-09-14 — asked
+with the root in fame bands and the rest of the tree in batches, the worship pool's shape. The
+classes alone cannot decide anything: the tree holds Athens (through `free city`), Cairo and
+Damascus, while Troy carries `city-state, polis, Bronze Age settlement, settlement site` and no
+class that says dig. **So OpenStreetMap is the judge**, and the verdict runs in five steps — what
+the item is not (a shipwreck, a lost city, a lake or a reservoir or a desert or a mountain range
+with no ruin on it), the map's ruin, the map's town or census boundary (where a site class with
+no population statement, or a World Heritage listing of the place itself, still lifts it), the
+branch it came in on (where a weak tag on an item nobody is counted at lifts it too — Carthage),
+then the line. Refused on the map's town, the card names only what the rule read: "a living place —
+OSM maps a town here and Wikidata counts its people" where the item states a population, "a
+living place — OSM maps a town here and Wikidata gives it no class of a site" where it states
+none. The line is asked last and decides whether a refusal is *named*: 830 rows sit between
+15 and 21 sitelinks, and a village refused down there would bury Athens and Rhodes under the long
+tail.
+
+**Pompeii is the row both doors see.** English Wikipedia files it under `Archaeological museums
+in Italy`, so the museum door's category walk names it and refuses it for carrying no museum
+class; its own classes are `archaeological site, ancient city`, so the site door admits it. One
+entity is one row with one type, so the museum verdict is taken first and the site door yields —
+a guard rather than a policy, since the park veto already sends every open-air excavation the
+museum tree reaches to this door — and a row the run writes is never also reported as a refusal.
+
+**The OpenStreetMap reader** (`osm/qleverOsm.ts`, `osm/types.ts`) is kind-agnostic: it reads
+every object carrying `wikidata=<item>` with the tags that say what stands there, and which tags
+mean *ruin* is the kind's to say (`archaeology/classes.ts`). It POSTs to the QLever osm-planet
+mirror in batches of 100, pauses between them, carries the project's bot `User-Agent` (ADR-0043's
+rule), retries on the run's shared wait budget — this run now waits on three services and a
+budget per door would let it wait three times over (#886) — and times out at 120 s. **The
+geometry crosses the wire only for a ruin object or a protected area**: a city's administrative
+outline is never fetched. Answers are cached per source under the kind `osm` for a day
+(ADR-0030, ADR-0047), and `Sync without cache` bypasses it as it does for Wikidata. A batch that
+cannot be read **ends the run**: read as silence it would say "no OSM object carries this item"
+for every site in it, which refuses precisely the sites the rule exists to admit. **And so does a
+mirror that answers about almost nothing**, which no transport error reports: a rebuilt dataset,
+a renamed `osmkey:` IRI or the host moving again answers HTTP 200 with no bindings, and every
+candidate reads as unmapped. So the site door counts the share of asked items that came back with
+an object and fails the run by name below a floor of half (`OSM_ANSWER_FLOOR`; the measurement is
+885 of 1,126, or 79%) **before a single verdict is taken** — and the run drops the `osm` cache on
+the way out, since otherwise the same emptiness would be read out of our own table until it
+expired. The register
+record is [`openstreetmap-qlever`](../sources/global/openstreetmap-qlever.md), written before the
+code as ADR-0059 decision 4 requires; Overpass stays the documented fallback.
+
+**Before the map is asked, Wikidata is read twice, and one refusal runs ahead of the five steps.**
+The pool is the class questions (the root's bands, then the narrow classes), topped up **by id**
+with the rows this source already holds as sites that no class question named — retyped on
+Wikidata, or fallen below the pool's floor — so each gets a reason of its own rather than the
+sweep's silence; the museums the source holds are the museum door's to ask after, never this one's
+(`admittedExternalIds` takes the type). Then the facts (`P31`, the World Heritage listing, a
+population statement) in batches of fifty. **A row with no class under the `archaeological site`
+tree when its facts are read is refused by name** — "Wikidata no longer files it under
+archaeological sites" (`refuseRetyped`) — before OpenStreetMap is asked about it: the by-id rows
+Wikidata retyped, and the rarer row a class question named whose facts come back empty because the
+pool is cached for a day and the facts for twelve hours, and the item was merged, deleted or had
+its one site statement deprecated in between. A row the line had already put out is not named
+(`sourceLine.ts`'s rule). **And a facts batch in which every one of the rows the pool named by
+their class comes back with no class at all — and there are at least two of them — ends the run**
+— the third run-ending condition beside the two above — because every such row carries a `P31`
+under the tree by construction, and a batch reading as "no facts" would put every city in it on the
+site branch. Both halves matter: *every* is what tells a batch that failed quietly from a handful
+of items merged, deleted or deprecated on Wikidata since the pool was read (two silent rows among
+fifty are refused by name and the run goes on), and the floor of two (`SILENT_BATCH_FLOOR`) is what
+keeps a tail batch holding a single row from turning one merged item into a run that fails until
+the day-old pool cache expires — silence on a single row is evidence of nothing.
+
+**The extent.** Where OSM drew a polygon around the ruin — 516 of the 651 items with a ruin
+signal have one — the run stores it in `experiences.boundary`, the first run ever to write that
+column, with `area_km2` measured from the same geometry in the same statement so the two can
+never disagree (#763). **A designated outline first, then the most ground**, among the item's
+ruin objects and the protected areas drawn around them: an object carrying `heritage=*` is one a
+heritage body drew a line around, and among those — or among all the candidates where none is
+designated — the polygon covering the most ground is drawn (`largestByArea`, a shoelace area over
+the WKT, good for ranking and stored nowhere). The Nazca Lines are why on both counts: the ruin
+object traces one group of geoglyphs at 0.0015 km², the World Heritage zone (`heritage=1`)
+774 km², and the outer archaeological reserve — four corners nobody designated — 5,638 km² (all
+three by the writer's own expression on the dev database, 2026-09-14); the zone is what a reader is
+asking to see. Replayed on the mirror's answers for the 836 items with an extent (the same day),
+ground and text length disagree on twenty, and ground is right where they do (Sarmizegetusa Regia,
+Preah Khan, Tintern Abbey) except at Nazca, which the designation settles.
+`ST_MakeValid` alone is not enough (a polygon with a dangling spike comes
+back as a `GeometryCollection`, which will not go into a `MultiPolygon` column), so the
+expression is
+`ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_GeomFromText($n, 4326)), 3))`, with an empty
+result stored as no extent rather than a shape with no area. **The extent is not held by the gate**, and that is deliberate: an outline is what somebody
+surveyed rather than a claim about the place, so it follows the source the way a find's discovery
+place does, and `metadata.osm` — which the run owns and re-derives every pass — stays true of the
+polygon the row holds. Held, a published site would keep the first run's outline for ever while
+its provenance moved on. **Not held, and not silent**: the change set compares the outline by a
+hash of the geometry the writer stores (`BoundarySnapshot` in `changeSet.ts`; the incoming WKT is
+hashed through the statement's own `EXTENT_OF` expression, so a polygon PostGIS merely rewrote is
+no change), and a re-traced polygon is a `boundary` change record — minor, carrying the area
+before and after, filed as written even on a held row because it was — that a dry run previews and
+the sync report shows as "Extent 5.7 ha → 6.1 ha". A curator's claim on `boundary` still refuses
+the run, as it does for every column, and is reported as a curated conflict; no screen writes one
+today, and the screen that does will have to decide what becomes of `metadata.osm` beside a shape
+the run may not touch.
+A polygon over 5,000 vertices is stored whole and **simplified on read** —
+`ST_SimplifyPreserveTopology(…, 0.0002)`, about 20 m at the equator — in the single-experience
+read that already returns `boundary_geojson`. What OSM said is on the row as `metadata.osm`
+(`verdict`, `object`, `tag`, `extentFrom`, `readAt`), a key the run owns: that key, `boundary`
+and `area_km2` are the whole of the OSM-derived part of a site row, kept separable and offered
+under ODbL (ADR-0059 decisions 2 and 3).
+
+**What a reader sees.** Map mode draws the outline of whichever site is hovered, else whichever
+is selected — a 2 px line and a 15% fill in the kind's colour, under the markers so nothing
+clickable is hidden — from the detail read the open card already issues. The card and Discover's
+panel both carry `ExtentLine`: `Extent 5.7 ha · © OpenStreetMap contributors`, rendered together
+or not at all, because the credit is a licence term and a credit beside nothing credits nobody.
+Hectares below a square kilometre, square kilometres above, one decimal below ten in either unit;
+a site is something you walk across, and Troy's excavations measure 5.7 ha (Machu Picchu's 11.5),
+both read off OpenStreetMap's polygons on 2026-09-14 with the expression the writer stores them
+by.
+
+**The badge differs by door** (ADR-0045 decision 5, the world tier). A site is badged for
+belonging — being one of the world's archaeological sites is the whole claim — and a museum only
+for holding a find the world knows: `badgesAdmitted` is
+`(item) => item.type === 'site' || item.findsAboveLine > 0`. The British Museum wears it for the
+Rosetta Stone; Pompeii for being Pompeii; the Bardo, in the catalogue on its own 35 articles,
+stands in the kind in full standing without one.
+
+**The kind is still gated and still unseen.** The source is seeded `requires_curation = true`
+(migration 056) and its rows arrive `pending` for a curator. **A count below is the survey of
+2026-09-13 unless it names a run**; the source's record tables the runs. The first live run is
+the maintainer's, and ADR-0058 decision 7 is why it waited for this slice: "Archaeology" without
+Pompeii is a list that claims the world and holds half of it.
 
 **A museum is admitted for what it is, never for one find** (ADR-0058 decision 2). This is the one
 rule the kind exists to hold, and it is a product judgement before it is a query: the holders of a
@@ -1718,7 +1831,12 @@ placement through the venue graph, which already holds its row and classes. The 
   `monument` alone has tens of thousands. The floor sits below the stay line, so an admitted row
   that slipped to 17 is fetched and refused by name; and the admitted rows no class question named
   at all — retyped on Wikidata, or gone from the tree — are asked for by id afterwards in batches of
-  50, so each gets a reason of its own rather than the sweep's silence.
+  50, so each gets a reason of its own rather than the sweep's silence. Only the rows this source
+  holds as **museums**: the sites it holds are the site door's to ask after (`admittedExternalIds`
+  takes the type), since a door judging the other door's rows would admit or refuse them by a rule
+  they never entered through — Athens refused here for want of a museum class ahead of the site
+  door's own reason, or a museum the museum door stopped admitting written as a site by the site
+  door on its fame alone.
 - **The holders of a find above the finds' line** (`findJudged`), selected by the museum tier's own
   `selectTier1` on the placements as the fold decision leaves them, and restricted to venues the
   graph gives coordinates of their own. Hysteretic like
@@ -2118,11 +2236,15 @@ belongs to #603.
   rules' own lines, so a museum that folded is named once and by where it went rather than by a rule
   that ran on it before the fold was settled.
 
-**What a run keeps** — five cache kinds (`CACHED_KINDS_BY_SOURCE[5]`, ADR-0047): `classes` for this
-kind's four class trees and for the venue and work classes the shared stages ask after, `pool` for
-the museum pool and the bands and batches of the finds pool,
-`statements` for where each find is kept, `edges` for the venue graph and `entities` for its
-details, all of it asked before the first museum is written. What a wiki answers goes through no
+**What a run keeps** — six cache kinds (`CACHED_KINDS_BY_SOURCE[5]`, ADR-0047): `classes` for this
+kind's seven class trees (the museum roots, the parks, the natural-history veto, the artefacts,
+and the site door's three — `archaeological site`, `human settlement`, `shipwreck`) and for the
+venue and work classes the shared stages ask after, `pool` for the museum pool, the site pool and
+the bands and batches of the finds pool, `statements` for where each find is kept, `edges` for the
+venue graph and for each site candidate's classes, listings and populations, `entities` for their
+details, and `osm` for what OpenStreetMap maps at each site candidate — a kind of its own, a day
+long, so an admin can drop the OSM half without dropping Wikidata's and see its size beside it in
+the panel — all of it asked before the first museum is written. What a wiki answers goes through no
 cache at all. *Sync without cache*, the per-kind ages and lifetimes, *Clear* and *Fix pictures*
 (`fixArchaeologyImages`, the shared Wikidata picture repair) are all offered on the source's card.
 

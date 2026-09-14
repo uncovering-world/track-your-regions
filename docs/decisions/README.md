@@ -68,8 +68,8 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0055](0055-readership-is-read-from-monthly-dumps-and-an-unseen-country-is-unobserved.md) | Readership is read from Wikimedia's monthly dumps, and a country the data does not show is unobserved, not unread | Draft | 2026-09-11 |
 | [0056](0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A work the world reads opens a second door to the world tier | Draft | 2026-09-11 |
 | [0057](0057-a-work-famous-in-its-own-language-admits-its-museum-where-no-native-source-is-adopted.md) | A work read at home as much as a world masterpiece admits its museum to a regional tier that has no native source | Draft | 2026-09-11 |
-| [0058](0058-archaeology-is-one-kind-of-sites-and-museums.md) | Archaeology is one kind of sites and museums, and a museum joins it for what it is, not for one find | Draft | 2026-09-13 |
-| [0059](0059-what-the-catalogue-takes-from-openstreetmap-it-keeps-separable-and-offers-under-odbl.md) | What the catalogue takes from OpenStreetMap it keeps separable and offers under ODbL | Draft | 2026-09-13 |
+| [0058](0058-archaeology-is-one-kind-of-sites-and-museums.md) | Archaeology is one kind of sites and museums, and a museum joins it for what it is, not for one find | Accepted | 2026-09-13 |
+| [0059](0059-what-the-catalogue-takes-from-openstreetmap-it-keeps-separable-and-offers-under-odbl.md) | What the catalogue takes from OpenStreetMap it keeps separable and offers under ODbL | Accepted | 2026-09-13 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
