@@ -23,7 +23,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { withCache, setCacheTtl, CACHED_KINDS_BY_SOURCE } from './wikidataCache.js';
+import { withCache, setCacheTtl, CACHED_KINDS_BY_SOURCE, DEFAULT_TTL_MS } from './wikidataCache.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -225,5 +225,21 @@ describe('withCache', () => {
     expect(begin).toBeGreaterThan(-1);
     expect(lock).toBeGreaterThan(begin);
     expect(insert).toBeGreaterThan(lock);
+  });
+});
+
+describe('the OSM answers of the Archaeology run', () => {
+  it('is a kind of its own, kept for a day', () => {
+    // A day, so a dry run repeated the same day reads the cache — which is the
+    // whole shape of working on the site rule — and a run tomorrow asks again.
+    expect(DEFAULT_TTL_MS.osm).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it('is offered on the Archaeology source and on no other', () => {
+    expect(CACHED_KINDS_BY_SOURCE[5]).toContain('osm');
+    for (const [sourceId, kinds] of Object.entries(CACHED_KINDS_BY_SOURCE)) {
+      if (sourceId === '5') continue;
+      expect(kinds).not.toContain('osm');
+    }
   });
 });

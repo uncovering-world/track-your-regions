@@ -35,7 +35,7 @@ import type { SparqlBinding } from './wikidataUtils.js';
  * Named by the question rather than by the function that asks it: `classes` is
  * "which classes count as artworks", whoever wants to know.
  */
-export type CacheKind = 'classes' | 'pool' | 'statements' | 'entities' | 'edges';
+export type CacheKind = 'classes' | 'pool' | 'statements' | 'entities' | 'edges' | 'osm';
 
 /**
  * How long each kind stays fresh, and why.
@@ -59,6 +59,14 @@ export const DEFAULT_TTL_MS: Record<CacheKind, number> = {
   statements: 12 * 60 * 60 * 1000,
   entities: 6 * 60 * 60 * 1000,
   edges: 12 * 60 * 60 * 1000,
+  // What OpenStreetMap maps at an item, asked of a third-party mirror
+  // (ADR-0059 decision 4). A day, for the reason a pool is a day: OSM changes
+  // as fast as people map, which is days rather than hours, and a dry run
+  // repeated the same day — which is how the site rule was written — reads
+  // what the last one paid for rather than asking the mirror again. It is a
+  // kind of its own rather than an `entities` answer so that an admin can drop
+  // the OSM half without dropping Wikidata's, and see its size beside it.
+  osm: 24 * 60 * 60 * 1000,
 };
 
 /**
@@ -137,7 +145,13 @@ export async function setCacheTtl(
  * museum's. The archaeology run asks the museum's set outright — its own class
  * trees, a pool of museums and a pool of finds, the venue statements, the
  * details and the edges — since its finds are collected with the museum
- * import's own stages. What English Wikipedia files an article under is asked
+ * import's own stages — and one kind that is nobody else's: what
+ * OpenStreetMap maps at each site candidate, asked of the QLever mirror and
+ * kept for a day (#581, ADR-0059 decision 4). It is the same store because it
+ * is the same question about a cache — whose run asked, what was asked, when
+ * it stops being worth keeping — and the key is the source and the query text,
+ * which is as true of a SPARQL question put to a mirror of the OSM planet as
+ * of one put to Wikidata. What English Wikipedia files an article under is asked
  * of a wiki rather than of Wikidata and goes through no cache at all. The
  * UNESCO run reads that source's own API and asks
  * Wikidata directly, without going through this door, so it keeps nothing,
@@ -155,8 +169,9 @@ export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
   3: ['classes', 'pool', 'edges', 'entities'],
   // Places of worship.
   4: ['classes', 'pool', 'statements', 'entities', 'edges'],
-  // Archaeology.
-  5: ['classes', 'pool', 'statements', 'entities', 'edges'],
+  // Archaeology. The museum import's whole set, plus the one kind no other
+  // source keeps: what OpenStreetMap maps at each site candidate (#581).
+  5: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm'],
 };
 
 /** What a caller says about the question it is asking. */
