@@ -39,7 +39,7 @@ scorecard:
   access: 2
   cadence: 2
   total: 12
-  verdict: hold
+  verdict: adoptable
 status: looked-at
 issue: 799
 looked_at: 2026-09-06
@@ -82,3 +82,11 @@ and the status stand until the first connector is written, which is the site doo
 4 asks a record that has read the ODbL text, the OSMF guidelines that apply, the usage policy of
 the endpoint it reads and the tagging documentation of the keys it asks for, and this record has
 not yet quoted them.
+
+**The verdict is settled (2026-09-14).** #581 adopted the QLever osm-planet mirror for the
+Archaeology kind's site door ([`openstreetmap-qlever`](openstreetmap-qlever.md)), whose record
+quotes the policies ADR-0059 decision 4 asks for. This record's `hold` becomes `adoptable` at
+`looked-at` — the register's word for a source a sync could read and none does — and the reading
+is **not adopted, the documented fallback**: Overpass stays the second reader to write if the
+mirror goes away (#893), one adapter behind the same interface, and is a ticket rather than unused
+code. Nothing about the measurement above has changed.
