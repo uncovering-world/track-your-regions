@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { heldFieldAnsweredSql, heldFieldRefusedSql } from '../../experience/heldDecisions.js';
-import { admissionPinnedSql, iconicPinnedSql } from '../../../db/membership.js';
+import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql } from '../../../db/membership.js';
 import {
   KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, MONUMENT_CLASSES, FOUNTAIN_ROOT,
 } from '../../../services/sync/publicArt/classes.js';
@@ -278,5 +278,58 @@ describe('the name a filter cannot find', () => {
   it('says the row the way a person would', () => {
     expect(assertion.describe({ kind: 'work', id: 3122, name: 'St. John  on Patmos', field: 'name' }))
       .toBe('work 3122, "St. John  on Patmos": name is not stored as a person would type it');
+  });
+});
+
+describe('an archaeology site that is already a World Heritage row', () => {
+  const assertion = byId('archaeology-site-twin-of-a-world-heritage-row');
+  const sql = collapse(assertion.sql);
+
+  it('is a watch, because the two pins are expected until the merge', () => {
+    // #755 merges a place two kinds hold into one place with two memberships.
+    // Until then Chichen Itza, Troy and Machu Picchu are two rows on purpose,
+    // and the count is the news rather than the rows.
+    expect(assertion.kind).toBe('watch');
+  });
+
+  it('pairs a kind-5 site against a source-1 row, by distance on the ground', () => {
+    expect(sql).toContain("e.type = 'site'");
+    expect(sql).toContain('ST_DWithin(e.location::geography, w.location::geography, 100)');
+    expect(sql).toContain('w.source_id = 1');
+  });
+
+  it('prefilters on the geometry, which is the only test the index can serve', () => {
+    // A `::geography` cast hides the column from `idx_experiences_location`,
+    // and this check reads every World Heritage row for every site without a
+    // test in degrees in front of it: measured on dev, 861 ms against 40 ms for
+    // the same three rows. The prefilter is wider than 100 m everywhere the
+    // catalogue has a row (0.01° is about 1.1 km of latitude, and the
+    // northernmost row sits at 71.2°), so the exact test still decides.
+    expect(sql).toContain('ST_DWithin(e.location, w.location, 0.01)');
+    expect(sql.indexOf('ST_DWithin(e.location, w.location, 0.01)'))
+      .toBeLessThan(sql.indexOf('ST_DWithin(e.location::geography'));
+  });
+
+  it('asks the membership for the kind, never the row for its source', () => {
+    // The kind a row is shown under is its membership's since #819, and the
+    // Archaeology kind will hold a second source the day a regional tier lands.
+    expect(sql).toContain(MEMBERSHIPS);
+    expect(sql).toContain('m.kind_id = 5');
+  });
+
+  it('counts only what both kinds admit, which is what its meaning says', () => {
+    // A site a curator turned down keeps its row and its membership at
+    // 'refused' (ADR-0053), and a World Heritage row the source withdrew keeps
+    // its row too; neither is a pair waiting for the merge, and counted they
+    // would blunt the one signal the watch is for.
+    expect(sql).toContain("m.admission <> 'refused'");
+    expect(sql).toContain('wm.kind_id = 1');
+    expect(sql).toContain("wm.admission <> 'refused'");
+  });
+
+  it('names the pair and the metres between them', () => {
+    expect(assertion.describe({
+      experience_name: 'Troy', world_heritage_name: 'Archaeological Site of Troy', metres: 12,
+    })).toBe('Troy sits 12 m from the World Heritage row "Archaeological Site of Troy"');
   });
 });

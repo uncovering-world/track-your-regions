@@ -13,7 +13,9 @@
  */
 
 import { heldFieldAnsweredSql } from '../../experience/heldDecisions.js';
-import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql } from '../../../db/membership.js';
+import {
+  MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql, membershipAdmittedSql,
+} from '../../../db/membership.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 import { KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES } from '../../../services/sync/publicArt/classes.js';
 import { tidyLabelSql } from '../../../services/sync/labelFold.js';
@@ -518,9 +520,84 @@ const nameCarriesWhitespaceNobodyTyped: CatalogueAssertion = {
 };
 
 /**
+ * The same ground, twice: an archaeology site and the World Heritage row of the
+ * same place.
+ *
+ * **A watch, never a fail.** Two kinds holding one place is what the catalogue
+ * does today — the Louvre is an art museum and an archaeology museum, the
+ * Statue of Liberty a monument and a World Heritage point — and ADR-0058
+ * decision 6 says so plainly: nothing is refused for being in another kind, and
+ * the honesty owed to a traveller is that each list holds what its name says.
+ * 273 of the 1,130 world-tier site candidates already carry a World Heritage id
+ * (measured 2026-09-13), so Chichen Itza, Troy, Machu Picchu, Petra and Delphi
+ * are each two pins on purpose until #755 merges them into one place with two
+ * memberships.
+ *
+ * What the number is for is that merge. It says how much work #755 has in front
+ * of it, and it says when a run has produced more of it than expected — a site
+ * door that started admitting the *point* of every serial World Heritage site
+ * would show up here as a jump before it showed up anywhere else.
+ *
+ * A hundred metres, which is the distance the places rules already use for
+ * "the same spot" and is wide enough for two sources' idea of where an
+ * excavation's centre is. The kind is asked of the membership (#819) rather
+ * than of the row's source, because the Archaeology kind gains a second source
+ * the day its regional tier lands.
+ *
+ * **Two distance tests, and the first one is what makes this finish.** A
+ * `::geography` cast hides the column from `idx_experiences_location`, so the
+ * planner had nothing to do but read every World Heritage row for every site:
+ * measured on the dev database on 2026-09-14 against the 83 archaeology museums
+ * (the kind holds no site rows yet), the geography test alone ran a sequential
+ * scan over 1,272 rows per candidate and took 861 ms, while the same query with
+ * the degree prefilter took 40 ms on the index and answered with the same three
+ * rows. 0.01° is about 1.1 km of latitude and is wider than a hundred metres in
+ * every direction up to 84° — the catalogue's northernmost row sits at 71.2° —
+ * so it only ever lets through more than the exact test below, which decides.
+ */
+const archaeologySiteTwinOfWorldHeritage: CatalogueAssertion = {
+  id: 'archaeology-site-twin-of-a-world-heritage-row',
+  area: 'objects',
+  title: 'An archaeology site standing on the same ground as a World Heritage row',
+  kind: 'watch',
+  meaning:
+    'Expected, and the number is the news. A place two kinds hold is two rows and two pins '
+    + 'today (ADR-0058 decision 6), and 273 of the sites this kind admits carry a World '
+    + 'Heritage id of their own — Troy, Petra, Chichen Itza. This counts how many pairs are '
+    + 'waiting for the merge that makes them one place with two memberships (#755). Watch it '
+    + 'track the catalogue; a jump means a run started admitting rows it did not before.',
+  sql: `SELECT e.id AS experience_id,
+               e.name AS experience_name,
+               w.id AS world_heritage_id,
+               w.name AS world_heritage_name,
+               round(ST_Distance(e.location::geography, w.location::geography)::numeric)::int AS metres
+          FROM experiences e
+          -- Admitted on both sides, because the meaning says "the sites this
+          -- kind admits": a site a curator turned down keeps its row and its
+          -- membership at 'refused', and would otherwise go on counting as a
+          -- pair — and so would a World Heritage row the source withdrew.
+          JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.kind_id = 5
+                               AND ${membershipAdmittedSql('m')}
+          JOIN experiences w ON w.source_id = 1
+                            AND w.id <> e.id
+          JOIN ${MEMBERSHIPS} wm ON wm.experience_id = w.id AND wm.kind_id = 1
+                                AND ${membershipAdmittedSql('wm')}
+                            -- The index-served prefilter first, in degrees, and
+                            -- then the metre test that decides.
+                            AND ST_DWithin(e.location, w.location, 0.01)
+                            AND ST_DWithin(e.location::geography, w.location::geography, 100)
+         WHERE e.type = 'site'
+         ORDER BY metres, e.name`,
+  describe: row =>
+    `${text(row, 'experience_name')} sits ${count(row, 'metres')} m from the World Heritage row `
+    + `"${text(row, 'world_heritage_name')}"`,
+};
+
+/**
  * The object rules, in the order a person reads them: the fact stored twice,
  * the badge a refusal should have taken, the count of works whose makers
- * nobody has arranged, the public-art row the rule would refuse, the two
+ * nobody has arranged, the public-art row the rule would refuse, the
+ * archaeology site standing where a World Heritage row already stands, the two
  * facts every reader rests on since the place and its membership came apart,
  * then the name a filter cannot find.
  */
@@ -529,6 +606,7 @@ export const objectAssertions: CatalogueAssertion[] = [
   refusedRowWearingIconic,
   workMakersUnconfirmed,
   publicArtRowTypedABuilding,
+  archaeologySiteTwinOfWorldHeritage,
   placeWithoutMembership,
   membershipSourceDisagreesWithRow,
   nameCarriesWhitespaceNobodyTyped,

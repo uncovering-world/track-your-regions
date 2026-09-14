@@ -78,6 +78,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | objects | A row its source turned away, still badged as a must-see | invariant |
 | objects | A work names several makers in an order nobody has confirmed | watch |
 | objects | A public-art row admitted with a class the rule refuses | invariant |
+| objects | An archaeology site standing on the same ground as a World Heritage row | watch |
 | pictures | A stored picture on a host whose terms do not let us show it | invariant |
 | pictures | A picture shown with nobody credited | invariant |
 
@@ -100,7 +101,7 @@ narrowed alongside it to pictures that are actually drawn — before that, every
 row still carrying the portal's photograph read as a photograph on show needing
 a photographer, and sent an admin to a run that could not have fetched one.
 
-`work-makers-unconfirmed` is the newest watch and the one whose *kind* is the whole
+`work-makers-unconfirmed` is a watch and the first one whose *kind* is the whole
 point. A work often has more than one maker and the catalogue now stores every one
 (ADR-0040), but the source states who and not in what order: SPARQL exposes no statement
 order, and the query the pool actually sends answers in reverse of Wikidata's own. So the
@@ -121,6 +122,18 @@ Works nobody has passed are left out, since a `pending` row is invisible and the
 thing a curator does with it is decide whether it belongs at all — their makers *are*
 stored in full, the hold protecting a visible row and an arrival having nothing to
 protect.
+
+`archaeology-site-twin-of-a-world-heritage-row` is the second watch whose *kind* is the point.
+A place two kinds hold is two rows and two pins today, which ADR-0058 decision 6 states
+deliberately: nothing is refused for being in another kind, and what a traveller is owed is that
+each list holds what its name says. 273 of the 1,130 sites the Archaeology world tier draws from
+carry a World Heritage id of their own (measured 2026-09-13), so Troy, Petra, Chichen Itza and
+Delphi are each two pins until #755 merges them into one place with two memberships. The number says how much that merge has in front
+of it — and it says, before anything else would, when a run has started admitting rows it did
+not: a site door that began taking the point of every serial World Heritage site would show as a
+jump here. A hundred metres is the distance the places rules already call "the same spot"; the
+kind is asked of the membership (#819), because Archaeology gains a second source the day its
+regional tier lands.
 
 The first two are the detection half of
 `db/migrations/026-collapse-false-withdrawals.sql`, promoted from a one-shot
