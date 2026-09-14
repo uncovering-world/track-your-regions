@@ -2,10 +2,19 @@
 
 This directory contains all architectural decisions for the Track Your Regions project.
 
-ADRs are **immutable**. Only `Status` can change. To revise a decision, create a new ADR
-and mark the old one as `Superseded by ADR-XXXX` — or, when a new ADR narrows only part of
-an older one and the rest stands, `Accepted — decision N narrowed by ADR-XXXX`. Superseding
-a multi-decision ADR to revise one of them would retire the decisions that still hold.
+ADRs are **immutable once Accepted**. From then on only `Status` can change. To revise a
+decision, create a new ADR and mark the old one as `Superseded by ADR-XXXX` — or, when a new
+ADR narrows only part of an older one and the rest stands, `Accepted — decision N narrowed by
+ADR-XXXX`. Superseding a multi-decision ADR to revise one of them would retire the decisions
+that still hold.
+
+A **Draft** is a proposal under review, and its text may be revised until the pull request
+that accepts it lands: that pull request is where the wording is settled, and a note in the
+ADR says what was amended while it was Draft and why. Immutability protects a decision that
+is in force; a draft that could never be corrected before it binds anything would only teach
+authors to write ADRs after the fact. ADR-0058 decision 4 is the precedent — written as Draft
+by #888 as the rule to be decided from a measurement, finished from that measurement by #892,
+and accepted by it.
 
 ## Index
 
