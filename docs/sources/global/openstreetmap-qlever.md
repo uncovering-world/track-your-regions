@@ -155,9 +155,11 @@ enumerating anything.
 QLever is a third-party mirror and has moved host once already, from `qlever.cs.uni-freiburg.de`
 to `qlever.dev`. So: the run **fails loudly** when the endpoint is gone rather than reading its
 silence as "no OSM object carries this item" — which would turn every site into a refusal — and
-the day-long cache carries the last answers through a short outage. Overpass is the documented
-fallback ([`openstreetmap-overpass`](openstreetmap-overpass.md)), one adapter behind the same
-interface, and is filed as its own ticket rather than built unused.
+the day-long cache carries the last answers through a short outage. Overpass is the fallback
+([`openstreetmap-overpass`](openstreetmap-overpass.md) § The fallback reader), one door behind the
+same interface since #893, opened by an operator who sets `OSM_READER=overpass` — a choice by name
+rather than a switch the run makes on its own, so a day's extents never come from two sources
+under one provenance.
 
 ## The runs that adopted it
 

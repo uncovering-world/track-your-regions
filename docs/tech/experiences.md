@@ -1390,7 +1390,7 @@ stored rows the rule's question, for the rows the rule never reached.
 
 **SPARQL reliability**: All Wikidata queries use direct `wdt:P31` (instance-of) rather than `wdt:P31/wdt:P279*` (subclass traversal) to avoid timeouts on the Wikidata endpoint. Requests ask for a **55s** server-side timeout (Blazegraph `timeout`) plus a 70s client-side AbortController safety net. The service's own deadline is 60s and asking above it moves nothing — the query dies there either way, but as a *gateway* error (504, then 502 from their nginx) that says nothing about what went wrong, which is how museum run 61 failed. Under the ceiling the query engine answers instead, and five seconds of their cluster go back to the queue. Retries are bounded by **time rather than by count**: exponential backoff capped at three minutes, `Retry-After` honoured where the service sends one, and a wait budget of fifteen minutes **shared across a phase** rather than granted to each query — the collection's queries share one, and the Commons credit pass that follows gets its own, because by then the first is spent — a collection sends a few hundred, and a quarter of an hour of patience each is arithmetically hours of a run nobody is watching. The count exists as a backstop and is set high enough that the budget is what stops the loop; the old shape (four retries, 30s ceiling) gave up after about a minute, which is "the service was busy", not "the service is down". A cancelled run is noticed **inside** a wait and inside a request, not only between queries: the backoff sleeps in one-second slices and returns early, and an in-flight request is aborted — without that, Cancel sat unhonoured for as long as the current backoff, which from the panel is a button that does nothing. 1s delay between requests, one query at a time — their limit is five parallel per IP. Every collector — museums, landmarks, and the Wikipedia-link query the UNESCO run sends — passes the same three things: the wait reporter, the cancel check, and a shared `WaitBudget` — including the admin-only image-fixing pass, which used to send bare queries and so minted a fresh budget per batch. A query sent without them is a query nobody can stop and a wait nobody can see. The label service is asked for `LABEL_LANGS` everywhere (`en,mul,en-gb,…`): asked for `"en"` alone it answers with the bare QID for anything unlabelled in English, which is how the National Gallery of Art once arrived as the string `Q214867`.
 
-**What a run keeps (ADR-0030)**: the four Wikidata collectors cache what Wikidata answers, in `wikidata_query_cache`, keyed by the hash of the source and the query text — the query is the question, so a changed filter misses by construction rather than by remembering to invalidate, and one source's rows are never another's (§ Public Art's cache paragraph). Two reasons: their front end caches nothing we send, because we POST, so a class closure that has not moved in months is recomputed by their cluster on every run; and a collection that fails in its third phase used to start the next attempt at the first — run 61 threw away 1166 artwork classes it had already paid for. Every row carries its own expiry, written at fetch time, with defaults set to the rate the facts change at: class trees 7 days, work pools 1 day, venue statements and entity edges 12 hours, entity details 6 hours. Per source, and only for the kinds that source's collector describes — the public-art collector describes four (`classes`, `pool`, `edges`, `entities`; § Public Art above), the places-of-worship collector five (those four and `statements`, since it collects works as well; § Places of worship below), the archaeology collector those five and a sixth of its own, `osm` — what OpenStreetMap maps at each site candidate, asked of the QLever mirror and kept for a day (§ Archaeology below; what English Wikipedia files an article under is asked of a wiki rather than of Wikidata and is kept nowhere), the UNESCO run reads that source's own API and caches nothing. Only the source that keeps something is offered the bypass: `caches` on the sources listing is `CACHED_KINDS_BY_SOURCE[id].length > 0`, and the panel hides "Sync without cache" where it is false, rather than offering to ignore a cache that does not exist. A run started with `refreshCache` ignores the cache **in both directions** — `withCache` short-circuits before the read *and* the write, so what is kept survives with its original `fetched_at`/`expires_at` and the next ordinary run uses it again. Replacing an answer is what Clear is for; the admin panel shows each kind's age, expiry, size and lifetime, can change that lifetime (which re-dates what is already cached, from each answer's own fetch time) and can clear any of it. A cache failure never fails a run: a read that throws falls through to the source, a write that throws is logged and the answer still returned. **The write and a lifetime change serialise** on a transaction-scoped advisory lock keyed by `(source_id, kind)`, and the write reads the policy inside its own `INSERT`: without both, a row could commit carrying an expiry the panel no longer shows — a policy nothing obeys, which is decision 7 read backwards. The locked section is two database statements; the source's answer is already in hand when `writeCached` is called, so nothing waits on a network request while holding it.
+**What a run keeps (ADR-0030)**: the four Wikidata collectors cache what Wikidata answers, in `wikidata_query_cache`, keyed by the hash of the source and the query text — the query is the question, so a changed filter misses by construction rather than by remembering to invalidate, and one source's rows are never another's (§ Public Art's cache paragraph). Two reasons: their front end caches nothing we send, because we POST, so a class closure that has not moved in months is recomputed by their cluster on every run; and a collection that fails in its third phase used to start the next attempt at the first — run 61 threw away 1166 artwork classes it had already paid for. Every row carries its own expiry, written at fetch time, with defaults set to the rate the facts change at: class trees 7 days, work pools 1 day, venue statements and entity edges 12 hours, entity details 6 hours. Per source, and only for the kinds that source's collector describes — the public-art collector describes four (`classes`, `pool`, `edges`, `entities`; § Public Art above), the places-of-worship collector five (those four and `statements`, since it collects works as well; § Places of worship below), the archaeology collector those five and a sixth of its own, `osm` — what OpenStreetMap maps at each site candidate, asked of the QLever mirror or, where `OSM_READER` names it, of the public Overpass API, and kept for a day either way (§ Archaeology below; what English Wikipedia files an article under is asked of a wiki rather than of Wikidata and is kept nowhere), the UNESCO run reads that source's own API and caches nothing. Only the source that keeps something is offered the bypass: `caches` on the sources listing is `CACHED_KINDS_BY_SOURCE[id].length > 0`, and the panel hides "Sync without cache" where it is false, rather than offering to ignore a cache that does not exist. A run started with `refreshCache` ignores the cache **in both directions** — `withCache` short-circuits before the read *and* the write, so what is kept survives with its original `fetched_at`/`expires_at` and the next ordinary run uses it again. Replacing an answer is what Clear is for; the admin panel shows each kind's age, expiry, size and lifetime, can change that lifetime (which re-dates what is already cached, from each answer's own fetch time) and can clear any of it. A cache failure never fails a run: a read that throws falls through to the source, a write that throws is logged and the answer still returned. **The write and a lifetime change serialise** on a transaction-scoped advisory lock keyed by `(source_id, kind)`, and the write reads the policy inside its own `INSERT`: without both, a row could commit carrying an expiry the panel no longer shows — a policy nothing obeys, which is decision 7 read backwards. The locked section is two database statements; the source's answer is already in hand when `writeCached` is called, so nothing waits on a network request while holding it.
 
 **The broad pool is asked in fame bands, sitelinks first**: `ORDER BY DESC(?sl) LIMIT 3000` over every painting carrying an owner is the query that killed run 61, and measurement on 2026-08-21 showed why it could not be rescued by trimming — without the sort it still timed out, and stripped to two columns it came back 502. The cost is reading a sitelink count for each of half a million instances. So the question is asked the other way round: `?w wikibase:sitelinks ?sl` with Blazegraph's `hint:Query hint:optimizer "None"` and `hint:Prior hint:rangeSafe true` makes the sitelink filter an index range scan, and the class becomes a probe on what that scan found. The top band went from a gateway error to 7s. Because the scan is proportional to the width of the range (10–19 took 61s, 10–11 took 33s), the bands cut the bottom finer than the top: 100+, 50–99, 30–49, 20–29, 15–19, 12–14, 10–11. They tile the range with no gap and no overlap and cache separately, so a run that dies in the fourth band keeps the first three, and `run.step()` between bands is where a cancelled run stops. A band that fails still fails the run: the pool decides which museums the source admits (ADR-0024), and a quietly short pool would withdraw real museums while reporting success. **Narrow classes are not banded** — a class with a few thousand instances is cheap to scan directly, banding them would turn thirty affordable questions into two hundred, and they were never the query that failed.
 
@@ -1702,26 +1702,64 @@ entity is one row with one type, so the museum verdict is taken first and the si
 a guard rather than a policy, since the park veto already sends every open-air excavation the
 museum tree reaches to this door — and a row the run writes is never also reported as a refusal.
 
-**The OpenStreetMap reader** (`osm/qleverOsm.ts`, `osm/types.ts`) is kind-agnostic: it reads
+**The OpenStreetMap reader** (`osm/readOsmObjects.ts`, `osm/types.ts`) is kind-agnostic: it reads
 every object carrying `wikidata=<item>` with the tags that say what stands there, and which tags
-mean *ruin* is the kind's to say (`archaeology/classes.ts`). It POSTs to the QLever osm-planet
-mirror in batches of 100, pauses between them, carries the project's bot `User-Agent` (ADR-0043's
-rule), retries on the run's shared wait budget — this run now waits on three services and a
-budget per door would let it wait three times over (#886) — and times out at 120 s. **The
-geometry crosses the wire only for a ruin object or a protected area**: a city's administrative
-outline is never fetched. Answers are cached per source under the kind `osm` for a day
-(ADR-0030, ADR-0047), and `Sync without cache` bypasses it as it does for Wikidata. A batch that
-cannot be read **ends the run**: read as silence it would say "no OSM object carries this item"
-for every site in it, which refuses precisely the sites the rule exists to admit. **And so does a
-mirror that answers about almost nothing**, which no transport error reports: a rebuilt dataset,
-a renamed `osmkey:` IRI or the host moving again answers HTTP 200 with no bindings, and every
-candidate reads as unmapped. So the site door counts the share of asked items that came back with
-an object and fails the run by name below a floor of half (`OSM_ANSWER_FLOOR`; the measurement is
-885 of 1,126, or 79%) **before a single verdict is taken** — and the run drops the `osm` cache on
-the way out, since otherwise the same emptiness would be read out of our own table until it
-expired. The register
-record is [`openstreetmap-qlever`](../sources/global/openstreetmap-qlever.md), written before the
-code as ADR-0059 decision 4 requires; Overpass stays the documented fallback.
+mean *ruin* is the kind's to say (`archaeology/classes.ts`). It asks in batches of 100, pauses
+between them, and files every answer under one cache kind — and it does so through **one of two
+doors** (`OsmDoor`: a name, the question for one batch in the endpoint's own language, and the
+send), because the first is a third-party mirror that has moved host once and ADR-0059 asks the
+connector for a fallback (#893). **Which door a run opens is the operator's choice, by name**:
+`OSM_READER` unset or blank is the QLever osm-planet mirror (`osm/qleverOsm.ts`), `overpass` is
+the public Overpass API (`osm/overpassOsm.ts`), and any other value is refused — at boot in
+production and as a warning in development, the treatment `validateEnv` gives every insecure
+value, and in any case where the door is built, before a question is sent — a typo read as the
+default would be a run that failed on the mirror an hour later, in the middle of the outage the
+operator was working around (`osm/readerChoice.ts`). A choice rather than a fallback the run takes
+on its own, since a run that switched doors mid-outage would write a day's extents from two
+sources under one provenance, and ADR-0059 decision 2 is a promise about naming where a fact came
+from. The run log names the door it opened. Both doors carry the project's bot `User-Agent`
+(ADR-0043's rule), retry on the run's shared wait budget — this run waits on three services and a
+budget per door would let it wait three times over (#886) — and keep the same promise: **the
+geometry crosses the wire only for a ruin object or a protected area**, a city's administrative
+outline is never fetched, and each door spells that rule in its own query (`BIND(IF(…))` in the
+SPARQL, `out geom` on the `drawn` set alone in the Overpass QL), where a test reads it.
+
+**The mirror door** POSTs one SPARQL query per batch and times out at 120 s; osm2rdf has built the
+polygons already, so the WKT arrives finished. **The Overpass door** is held to the stricter
+manners the instance publishes and the register record quotes
+([`openstreetmap-overpass`](../sources/global/openstreetmap-overpass.md) § The fallback reader):
+one request at a time and never two, a five-second pause measured from the end of the last
+exchange, a `[timeout:120]` and a `[maxsize:]` of 64 MiB declared in every query — both halves
+of the instance's admission rule, where the undeclared default would claim 512 MiB for a question
+that ran under a declared 8 MiB — the thirty seconds the wiki asks for after a
+429 that names no `Retry-After` (a 504 and a 5xx double from five seconds as the mirror's do), and
+a 200 whose body carries a `remark` naming a runtime error — how Overpass reports a query it could
+not finish — read as "ask again", never as an empty map. Its question is an exact
+`nwr["wikidata"="Q…"]` per item, an index read where one regular expression over the key would
+be matched against every object on the planet carrying it. What Overpass answers is OSM as stored
+rather than finished polygons — a way's vertices, a relation's members each carrying their own —
+so `osm/overpassGeometry.ts` joins a `multipolygon`'s or a `boundary`'s outer and inner ways into
+rings, hangs each hole on the outer ring containing it, drops a ring that does not close rather
+than closing it by hand, and never joins a `site` relation into an outline nobody mapped; the
+rows it then answers are the mirror's shape, so `foldOsmRows`, the writer's `ST_GeomFromText` and
+the extent rule cannot tell the doors apart. Checked on 2026-09-14 against the polygons the mirror
+had stored on the development database: the 63 extents a probe of 100 admitted sites covered
+agree to within a tenth of a percent, the Nazca zone and the Acropolis to the fourth decimal.
+
+Answers from either door are cached per source under the kind `osm` for a day (ADR-0030,
+ADR-0047) — keyed by the query text, so the two doors never read each other's rows — and `Sync
+without cache` bypasses it as it does for Wikidata. A batch that cannot be read **ends the run**
+whichever door it went through: read as silence it would say "no OSM object carries this item"
+for every site in it, which refuses precisely the sites the rule exists to admit. **And so does
+an endpoint that answers about almost nothing**, which no transport error reports: a rebuilt
+dataset, a renamed `osmkey:` IRI or the host moving again answers HTTP 200 with no bindings, and
+every candidate reads as unmapped. So the site door counts the share of asked items that came
+back with an object and fails the run by name below a floor of half (`OSM_ANSWER_FLOOR`; the
+measurement is 885 of 1,126, or 79%) **before a single verdict is taken** — and the run drops the
+`osm` cache on the way out, since otherwise the same emptiness would be read out of our own table
+until it expired. Both register records were written before their code, as ADR-0059 decision 4
+requires: [`openstreetmap-qlever`](../sources/global/openstreetmap-qlever.md) and
+[`openstreetmap-overpass`](../sources/global/openstreetmap-overpass.md).
 
 **Before the map is asked, Wikidata is read twice, and one refusal runs ahead of the five steps.**
 The pool is the class questions (the root's bands, then the narrow classes), topped up **by id**
@@ -2308,6 +2346,7 @@ that each list holds what its name says, which the nature rule secures.
 
 - Every outbound call says who is calling through `userAgent()` (`backend/src/config/userAgent.ts`), which is the one place the header is built. The shape is the one Wikimedia's User-Agent policy states — `<client>/<version> (<contact information>)` — the version comes from `backend/package.json`, and a run asks for the `bot` marker the policy wants for automated agents, which a curator's own lookup does not carry — the marker names the traffic, not who set it going. The contact is a website and a mailbox that answer; `USER_AGENT_CONTACT` lets a deployment that is not this one publish its own. It matters more than politeness: the policy answers a caller without a working contact by blocking it "without notice", and the OSM Foundation's Nominatim policy refuses a stock agent outright, so the header is a dependency of filling the catalogue. It used to be written at each call site, which drifted into six spellings naming a repository, an account and a domain that do not exist (#864); `userAgentOneSource.test.ts` fails the gate if a second home appears
 - The source rows carry no header of their own: `experience_sources.api_config` held a `userAgent` key nothing read, and migration 053 removed it
+- The Archaeology run's door to OpenStreetMap is the operator's choice by name — `OSM_READER` unset for the QLever mirror, `overpass` for the public Overpass API, anything else refused at boot in production, warned about in development, and in any case before a question is sent (`osm/readerChoice.ts`, § Archaeology) — and the run log names the one it opened
 - SPARQL retries with exponential backoff bounded by a fifteen-minute wait budget shared across a phase (`WaitBudget`) — a collection's queries share one, and the credit pass after it gets its own, 429 + `Retry-After` header handling, 55s server-side + 70s client-side timeouts, an optional `isCancelled` hook that wakes the backoff and aborts the request in flight, and an optional `onWait` reporter so a run can say on screen that it is waiting for the source rather than looking hung (all in `sparqlQuery()`)
 - 1.5s delay between image downloads
 - `curated_fields` JSONB on `experiences` protects curator edits during sync upserts — each field is checked individually in the `ON CONFLICT` clause (implemented in `upsertExperienceRecord()`)
