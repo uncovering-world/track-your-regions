@@ -284,7 +284,7 @@ export class OsmAnswerFloorError extends Error {
     super(
       `OpenStreetMap answered for ${answered} of ${asked} site candidates `
       + `(${Math.round((answered / asked) * 100)}%), below the floor of `
-      + `${Math.round(OSM_ANSWER_FLOOR * 100)}%: the mirror is not answering about this `
+      + `${Math.round(OSM_ANSWER_FLOOR * 100)}%: OpenStreetMap is not answering about this `
       + 'catalogue, and reading that as "no ruin is mapped here" would refuse the sites '
       + 'the rule exists to admit',
     );

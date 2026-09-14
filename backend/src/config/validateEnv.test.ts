@@ -29,6 +29,16 @@ describe('collectEnvIssues', () => {
     const keys = collectEnvIssues({ ...ok, DB_PASSWORD: 'postgres', ADMIN_EMAIL: '', FRONTEND_URL: 'http://app' }).map(i => i.key);
     expect(keys).toEqual(expect.arrayContaining(['DB_PASSWORD', 'ADMIN_EMAIL', 'FRONTEND_URL']));
   });
+  it('accepts OSM_READER unset, blank or naming a door, and flags a name that is none', () => {
+    for (const value of [undefined, '', 'qlever', 'overpass']) {
+      expect(collectEnvIssues({ ...ok, OSM_READER: value }).map(i => i.key)).not.toContain('OSM_READER');
+    }
+    const issues = collectEnvIssues({ ...ok, OSM_READER: 'overpas' });
+    expect(issues.map(i => i.key)).toContain('OSM_READER');
+    // Insecure-value scope: a mistyped door is wrong in development too, where
+    // an operator is most likely to be trying the fallback out.
+    expect(issues.find(i => i.key === 'OSM_READER')?.scope).toBe('always');
+  });
   it('says nothing about USER_AGENT_CONTACT when it is unset — the built-in contact answers', () => {
     expect(collectEnvIssues(ok).map(i => i.key)).not.toContain('USER_AGENT_CONTACT');
   });
