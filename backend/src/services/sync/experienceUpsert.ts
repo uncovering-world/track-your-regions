@@ -32,6 +32,21 @@
  * is its own; a second source of one kind meeting the first's membership is
  * #628's design, not this statement's.
  *
+ * **And the extent rides with the point.** `boundary` and `area_km2` are
+ * written from one expression in one statement — the shape repaired, the
+ * polygonal parts extracted, an empty result stored as no extent at all — so
+ * the area is never a second writer's opinion of the outline beside it (#763).
+ * The column has existed since the schema's first day; the Archaeology site
+ * door is the first run to fill it (ADR-0059 decision 2). Unlike `location` it
+ * is **not** held by the gate: an outline is what somebody surveyed rather than
+ * a claim about the place, and a published row whose extent was frozen would
+ * keep the first run's polygon for ever while the run's own note of where it
+ * came from moved on. A curator's claim on the column still refuses the run.
+ * Not held, and not silent either: the diff compares the outline by a hash of
+ * the stored geometry (`BoundarySnapshot`, measured for the incoming WKT with
+ * `EXTENT_OF`), so a re-traced polygon is a `boundary` change record on a
+ * published row — filed as written, because it was — and a dry run shows it.
+ *
  * **Three follow-ups, on the same connection, before the commit**: a trusted
  * source's change retires the curator's pass on the membership, a gated
  * source's proposal points the membership at this run, and a run that
@@ -50,7 +65,7 @@ import { MEMBERSHIPS, placeVisibleSql } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
   computeChangeSet, METADATA_CLAIM_PREFIX, METADATA_SET_KEYS, SYNC_OWNED_METADATA_KEYS,
-  type ChangeSetResult, type ExperienceSnapshot,
+  type BoundarySnapshot, type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
 import { tidyLabel } from './labelFold.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
@@ -82,6 +97,24 @@ export interface ExperienceUpsertParams {
    * rule is not a work.
    */
   admittedFor?: { qid: string; label: string } | null;
+  /**
+   * The place's extent as WKT in EPSG:4326, or null for a place that has none.
+   *
+   * The first source to send one is the Archaeology run, for a site
+   * OpenStreetMap has drawn a polygon around (ADR-0059 decision 2): the column
+   * has existed since the schema's first day and no run has ever written it.
+   * WKT rather than GeoJSON because that is what the source answers with, and
+   * text rather than a parsed shape because PostGIS is where geometry is
+   * decided (ADR-0004's line, and #674's).
+   *
+   * **Omitted is null**, which is not how `location` reads: a point is required
+   * of every caller, and a collector that forgot one could not compile, while a
+   * collector that sends no extent is saying this place has none and the column
+   * is written NULL. So a run whose source gained extents and whose writer was
+   * not taught to send them clears every outline it has — which is why the two
+   * kinds of writer are one statement and this parameter has a comment.
+   */
+  boundaryWkt?: string | null;
 }
 
 export interface UpsertOutcome {
@@ -140,8 +173,54 @@ const SNAPSHOT_COLUMNS = [
   'country_codes', 'country_names', 'image_url', 'metadata',
 ] as const;
 
+/**
+ * The extent, repaired and made insertable in one expression, so the geometry
+ * and its area can never be read off two different expressions (#763) — and
+ * so the diff measures the incoming outline exactly as the statement stores it.
+ *
+ * ST_MakeValid alone is not enough: a polygon with a dangling spike comes back
+ * as a GeometryCollection, which will not go into a MultiPolygon column at
+ * all. ST_CollectionExtract(..., 3) takes the polygonal parts and leaves a
+ * multipolygon; probed on the dev database, 2026-09-14.
+ */
+const EXTENT_OF = (wktParam: string): string =>
+  `ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_GeomFromText(${wktParam}, 4326)), 3))`;
+
+/**
+ * What a snapshot SELECT reads: the columns, and the outline as the diff
+ * compares it — a hash of the stored geometry beside its area.
+ */
+function snapshotSelect(alias = ''): string {
+  const columns = SNAPSHOT_COLUMNS.map(column => alias + column).join(', ');
+  return `${columns},
+            md5(ST_AsBinary(${alias}boundary)) AS boundary_hash, ${alias}area_km2`;
+}
+
+/**
+ * The incoming outline as the statement would store it, hashed and measured
+ * by the same expression, so the diff compares like with like. No WKT, no
+ * query: most writers send none.
+ */
+async function measureExtent(
+  query: Pick<PoolClient, 'query'>,
+  wkt: string | null | undefined,
+): Promise<BoundarySnapshot | null> {
+  if (!wkt) return null;
+  const result = await query.query(
+    `SELECT md5(ST_AsBinary(geom)) AS hash, ST_Area(geom::geography) / 1000000 AS area_km2
+       FROM (SELECT ${EXTENT_OF('$1')} AS geom) AS made
+      WHERE geom IS NOT NULL AND NOT ST_IsEmpty(geom)`,
+    [wkt],
+  );
+  const row = result.rows[0] as { hash: string; area_km2: unknown } | undefined;
+  return row ? { hash: row.hash, areaKm2: row.area_km2 == null ? null : Number(row.area_km2) } : null;
+}
+
 function snapshotFromRow(row: Record<string, unknown>): ExperienceSnapshot {
   return {
+    boundary: typeof row.boundary_hash === 'string'
+      ? { hash: row.boundary_hash, areaKm2: row.area_km2 == null ? null : Number(row.area_km2) }
+      : null,
     name: (row.name as string) ?? '',
     nameLocal: (row.name_local as Record<string, string> | null) ?? null,
     description: (row.description as string | null) ?? null,
@@ -157,8 +236,12 @@ function snapshotFromRow(row: Record<string, unknown>): ExperienceSnapshot {
   };
 }
 
-function snapshotFromParams(params: ExperienceUpsertParams): ExperienceSnapshot {
+function snapshotFromParams(
+  params: ExperienceUpsertParams,
+  boundary: BoundarySnapshot | null,
+): ExperienceSnapshot {
   return {
+    boundary,
     name: params.name,
     nameLocal: params.nameLocal,
     description: params.description,
@@ -184,14 +267,14 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
   const result = await pool.query(
     `SELECT id, curated_fields, missing_since, source_membership,
             ${PREVIEW_HELD} AS was_held,
-            ${SNAPSHOT_COLUMNS.join(', ')},
+            ${snapshotSelect()},
             ST_X(location) AS lon, ST_Y(location) AS lat
      FROM experiences
      WHERE source_id = $1 AND external_id = $2`,
     [params.sourceId, params.externalId]
   );
 
-  const incoming = snapshotFromParams(params);
+  const incoming = snapshotFromParams(params, await measureExtent(pool, params.boundaryWkt));
 
   if (result.rows.length === 0) {
     return {
@@ -350,7 +433,7 @@ async function writeUnderLock(
   // so its snapshot has that publish in it.
   const stored = locked.rows.length === 0 ? null : (await client.query(
     `SELECT e.id, e.curated_fields, e.missing_since, e.source_membership,
-            ${SNAPSHOT_COLUMNS.map(column => `e.${column}`).join(', ')},
+            ${snapshotSelect('e.')},
             ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
             ${LOCKED_HELD} AS was_held
        FROM experiences e
@@ -364,15 +447,28 @@ async function writeUnderLock(
       SELECT requires_curation FROM experience_sources WHERE id = $1
     ), hold AS (
       SELECT $17::boolean AS held
+    ), made AS (
+      -- The extent, repaired and made insertable by the one expression the
+      -- diff measures the incoming outline with too (EXTENT_OF, #763).
+      SELECT ${EXTENT_OF('$19')} AS geom
+    ), extent AS (
+      -- An empty result is no extent rather than an extent of nothing: a run
+      -- that sent a line where a polygon was expected must leave the column
+      -- null, not store a shape with no area for a card to print as "0 ha".
+      SELECT CASE WHEN geom IS NULL OR ST_IsEmpty(geom) THEN NULL ELSE geom END AS geom FROM made
     ), ins AS (
       INSERT INTO experiences (
         source_id, external_id, name, name_local, description, short_description,
         type, tags, location, country_codes, country_names, image_url, metadata,
+        boundary, area_km2,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at, created_at, updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8,
         ST_SetSRID(ST_MakePoint($9, $10), 4326),
-        $11, $12, $13, $14, $15, $15, NOW(), NOW(), NOW()
+        $11, $12, $13, $14,
+        (SELECT geom FROM extent),
+        (SELECT ST_Area(geom::geography) / 1000000 FROM extent),
+        $15, $15, NOW(), NOW(), NOW()
       )
       ON CONFLICT (source_id, external_id) DO UPDATE SET
         name = CASE WHEN experiences.curated_fields ? 'name' OR ${HELD} THEN experiences.name ELSE EXCLUDED.name END,
@@ -459,6 +555,25 @@ async function writeUnderLock(
                        THEN jsonb_build_object('imageCredit', experiences.metadata -> 'imageCredit')
                        ELSE '{}'::jsonb END
         END,
+        -- The extent follows the source, through the gate. It is not a claim
+        -- about the place the way a name or a description is; it is what
+        -- somebody surveyed, the way a find's discovery place is, and a
+        -- published site whose outline was held would keep the polygon of the
+        -- first run that ever saw it for ever while metadata.osm -- which the
+        -- run owns and re-derives every pass -- went on naming the object the
+        -- shape came from. Nothing on any surface would say the two had come
+        -- apart, because an extent is not a held field and raises no card.
+        --
+        -- A curator's claim still refuses the run, as it does for every column,
+        -- and no screen writes one today: when one is built it has to decide
+        -- what becomes of metadata.osm beside a shape the run may not touch,
+        -- which is a question this statement cannot answer on its own.
+        --
+        -- The area rides with the outline in either arm, since the two are one
+        -- fact measured twice: a row keeping one and not the other would be the
+        -- split of #763 all over again.
+        boundary = CASE WHEN experiences.curated_fields ? 'boundary' THEN experiences.boundary ELSE EXCLUDED.boundary END,
+        area_km2 = CASE WHEN experiences.curated_fields ? 'boundary' THEN experiences.area_km2 ELSE EXCLUDED.area_km2 END,
         last_seen_sync_log_id = COALESCE(EXCLUDED.last_seen_sync_log_id, experiences.last_seen_sync_log_id),
         last_seen_at = NOW(),
         missing_since = NULL,
@@ -472,7 +587,7 @@ async function writeUnderLock(
         source_membership = 'present',
         updated_at = NOW()
       RETURNING id, (xmax = 0) AS inserted, curated_fields,
-                ${SNAPSHOT_COLUMNS.join(', ')},
+                ${snapshotSelect()},
                 ST_X(location) AS lon, ST_Y(location) AS lat
     ), membership AS (
       -- The place's membership in the kind this source fills (ADR-0045
@@ -529,12 +644,14 @@ async function writeUnderLock(
       [...SYNC_OWNED_METADATA_KEYS],
       held,
       params.admittedFor ? JSON.stringify(params.admittedFor) : null,
+      params.boundaryWkt ?? null,
     ]
   );
 
   const row = result.rows[0];
   const before = stored && !row.inserted ? snapshotFromRow(stored) : null;
-  const changeSet = computeChangeSet(before, snapshotFromParams(params), row.curated_fields ?? [], held);
+  const incoming = snapshotFromParams(params, await measureExtent(client, params.boundaryWkt));
+  const changeSet = computeChangeSet(before, incoming, row.curated_fields ?? [], held);
 
   // A curator's pass covered the object that was there; a changed object has not
   // been passed (ADR-0025). Resolved here rather than in SQL because the

@@ -12,6 +12,19 @@
 
 import { sameLabelSet } from './labelFold.js';
 
+/**
+ * The outline a row holds, as the diff compares it: a hash of the geometry the
+ * writer stores, and its area for the record a person reads. The hash rather
+ * than the WKT, because the stored shape is the repaired, multi-polygon form
+ * of what the collector sent (`experienceUpsert.ts` measures the incoming one
+ * with the writer's own expression), and a text comparison would report a
+ * change on every run for a polygon PostGIS merely rewrote.
+ */
+export interface BoundarySnapshot {
+  hash: string;
+  areaKm2: number | null;
+}
+
 export interface ExperienceSnapshot {
   name: string;
   nameLocal: Record<string, string> | null;
@@ -26,6 +39,12 @@ export interface ExperienceSnapshot {
   countryNames: string[] | null;
   imageUrl: string | null;
   metadata: Record<string, unknown> | null;
+  /**
+   * The extent, where the source has one (the Archaeology site door; ADR-0059
+   * decision 2). Optional because most writers and every older snapshot have
+   * none, and absent reads as none.
+   */
+  boundary?: BoundarySnapshot | null;
 }
 
 export type FieldSignificance = 'major' | 'minor';
@@ -143,6 +162,12 @@ export const SYNC_OWNED_METADATA_KEYS = [
   'artworkCount', 'totalArtworkSitelinks', 'sitelinksCount',
   'wikidataClasses', 'wikidataArtwork',
   'archaeologyNature', 'admissionNote', 'wikipediaCategories',
+  // What OpenStreetMap said about a site, and when (ADR-0059 decision 2). The
+  // run's own reading, re-derived every pass and stamped with the date it was
+  // read: a curator cannot be right about which object carried the tag, and a
+  // card asking them to approve a re-tag on somebody else's wiki would be
+  // asking about the rule rather than about the place.
+  'osm',
 ] as const;
 
 /** Whether a metadata key belongs to the run rather than to the object. */
@@ -312,6 +337,15 @@ interface RawDiff {
    * fixed in a change about something else.
    */
   protectedByClaim?: boolean;
+  /**
+   * The upsert writes this field whether or not the gate holds the row, so a
+   * held row reports its change as written — which it was — rather than as
+   * waiting on a verdict. The extent is the one such field the diff reads:
+   * an outline is what somebody surveyed, not a claim about the place
+   * (`experienceUpsert.ts`, the `boundary` arm). `tags` is written past the
+   * gate too and compared nowhere.
+   */
+  pastTheGate?: boolean;
 }
 
 function isAbsent(value: unknown): boolean {
@@ -612,6 +646,21 @@ function collectDifferences(
     });
   }
 
+  // The extent, by the hash of the geometry the writer stores: a re-traced
+  // polygon is a change and a re-read of the same one is not. The record
+  // carries the area, which is the number a person reads; the hash decides.
+  const beforeHash = before.boundary?.hash ?? null;
+  const incomingHash = incoming.boundary?.hash ?? null;
+  if (beforeHash !== incomingHash) {
+    diffs.push({
+      field: 'boundary',
+      old: before.boundary ? { areaKm2: before.boundary.areaKm2 } : null,
+      new: incoming.boundary ? { areaKm2: incoming.boundary.areaKm2 } : null,
+      significance: 'minor',
+      pastTheGate: true,
+    });
+  }
+
   diffs.push(...metadataChanges(before.metadata, incoming.metadata, curatedFields));
 
   return diffs;
@@ -673,16 +722,19 @@ export function computeChangeSet(
     // shape `FieldChange` does not declare. Listing what a reported change is
     // keeps the next internal field off the wire too, which a destructure would
     // not.
+    // A field the upsert writes past the gate is not held by it, whatever the
+    // row's gate state: filed as written, because it was (`pastTheGate`).
+    const heldBack = held && !diff.pastTheGate;
     const change: FieldChange = {
       field: diff.field,
       old: diff.old,
       new: diff.new,
       significance: diff.significance,
       curatedConflict: isProtected,
-      held: !isProtected && held,
+      held: !isProtected && heldBack,
     };
     if (isProtected) curatedConflicts.push(change);
-    else if (held) heldFields.push(change);
+    else if (heldBack) heldFields.push(change);
     else changedFields.push(change);
   }
 
