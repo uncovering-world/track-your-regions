@@ -160,14 +160,21 @@ export async function countAdmitted(sourceId: number): Promise<number> {
  * who is in. A curator's own row is excluded for the reason `UNPROTECTED`
  * spells out — its key can never appear in a source's answer.
  */
-export async function admittedExternalIds(sourceId: number): Promise<Set<string>> {
+export async function admittedExternalIds(sourceId: number, type?: string): Promise<Set<string>> {
+  // `type` narrows the set to one type within the kind, for a source whose
+  // doors each hold their own rows — the Archaeology kind's museums and its
+  // sites. Each door asks after the rows it admitted and no others: a door
+  // asked after the other door's rows would judge them by a rule they never
+  // entered through, and the museum the museum door stopped admitting would
+  // be written as a site on its fame alone.
   const result = await pool.query(
     `SELECT e.external_id
      FROM ${SOURCE_MEMBERSHIPS}
      WHERE m.source_id = $1
        AND m.admission = 'admitted'
-       AND e.is_manual = FALSE`,
-    [sourceId]
+       AND e.is_manual = FALSE
+       AND ($2::text IS NULL OR e.type = $2)`,
+    [sourceId, type ?? null]
   );
   return new Set(result.rows.map((row: { external_id: string }) => row.external_id));
 }

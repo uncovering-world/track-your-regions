@@ -3,17 +3,28 @@
  * museum pool, the finds those museums hold, and what the two signals of
  * ADR-0058 decision 2 make of each museum together.
  *
- * The world and the door are `pipelineFixture.ts`, which says which of its rows
- * are real and which are the fixture's own.
+ * And the kind's other door beside them, in the second block: the sites, which
+ * come out of the same run and the same list of items (ADR-0058 decision 1).
+ * The two meet on Pompeii and on Hadrian's Villa, which the museum door refuses
+ * and the site door admits — one entity, one row, and no refusal beside it.
+ *
+ * The world and the doors are `pipelineFixture.ts`, which says which of its
+ * rows are real and which are the fixture's own.
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { collectArchaeologyMuseums, type CollectedArchaeology } from './pipeline.js';
+import {
+  collectArchaeology,
+  type CollectedArchaeology,
+  type CollectedArchaeologyMuseum,
+} from './pipeline.js';
 import {
   answer,
   categoryDoor,
+  osmDoor,
   world,
   ARCHAEOLOGICAL_MUSEUM,
+  ARCHAEOLOGICAL_SITE,
   ART_MUSEUM,
   MUSEUM,
   NATIONAL_MUSEUM,
@@ -30,23 +41,33 @@ function collect(w: World, opts: {
   line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
 } = {}): Promise<CollectedArchaeology> {
   const door = categoryDoor(w);
-  return collectArchaeologyMuseums({
+  return collectArchaeology({
     sparql: (query: string) => Promise.resolve(answer(w, query)),
     previousPlacements: opts.previousPlacements ?? {},
-    admitted: new Set(opts.admitted ?? []),
+    admittedMuseums: new Set(opts.admitted ?? []),
+    admittedSites: new Set<string>(),
     line: opts.line ?? LINE,
     categories: door.categories,
     categoryMembers: door.categoryMembers,
+    osm: osmDoor(w).read,
   });
 }
 
-const item = (out: CollectedArchaeology, qid: string) => out.items.find((i) => i.qid === qid);
+/**
+ * The museum row of an entity, which is what every assertion in this block
+ * reads: one proposal carries the kind's two types (ADR-0058 decision 1), and a
+ * site is nobody's museum however the two doors named it.
+ */
+const item = (out: CollectedArchaeology, qid: string): CollectedArchaeologyMuseum | undefined => {
+  const found = out.items.find((i) => i.qid === qid);
+  return found && found.type === 'museum' ? found : undefined;
+};
 const reason = (out: CollectedArchaeology, qid: string) =>
   out.filtered.find((f) => f.externalId === qid)?.reason;
 const treasuresOf = (out: CollectedArchaeology, qid: string) =>
   (item(out, qid)?.treasures ?? []).map((t) => t.externalId);
 
-describe('collectArchaeologyMuseums', () => {
+describe('collectArchaeology', () => {
   it('admits the Louvre for its class and the British Museum for the category the class misses', async () => {
     const out = await collect(world());
 
@@ -111,30 +132,47 @@ describe('collectArchaeologyMuseums', () => {
     const out = await collect(world());
 
     expect(item(out, 'Q43332')).toBeUndefined();
-    expect(reason(out, 'Q43332')).toBe(
-      'no museum class on Wikidata: a site, a castle or a city in Wikipedia\'s category '
-      + '— the site door\'s',
-    );
+    // And the door it was sent to is in this same run, so what the museum rule
+    // said about it is not what a curator is shown: the site door admits it and
+    // the refusal goes with the row. The site half of this is asserted below.
+    expect(reason(out, 'Q43332')).toBeUndefined();
     // And a find that names the dig as where it stands does not excuse it. The
     // venue graph holds every entity a work's `P276` points at, refused venues
     // included, so "the graph knows it" is not one of the roads a museum comes
     // in by: the Pompeii Lakshmi is placed nowhere and Pompeii is still asked
     // whether Wikidata calls it a museum.
-    expect(out.items.some((i) => i.treasures.some((t) => t.externalId === 'Q24269542'))).toBe(false);
+    expect(out.items.some(
+      (i) => i.type === 'museum' && i.treasures.some((t) => t.externalId === 'Q24269542'),
+    )).toBe(false);
   });
 
-  it('refuses an archaeological park the shelf named, as a site rather than a museum', async () => {
+  it('writes an archaeological park the shelf named as a site, not as a museum', async () => {
     // The class gate cannot turn this one away: Wikidata files `archaeological
     // park` under `archaeological museum` and so under `museum`, so Hadrian's
     // Villa passes `isMuseumOnWikidata` and reaches the nature rule carrying a
     // museum class. The park veto is the only thing between it and a museum pin
-    // on an open-air site a traveller walks for an afternoon (#887). Named
-    // rather than dropped, because at 52 articles it is worth the site door's
-    // worklist.
+    // on an open-air site a traveller walks for an afternoon (#887) — and what
+    // that veto says is where the row belongs: "a site, not a museum". The site
+    // door is in this run now, so the sentence is carried out rather than
+    // reported, and the villa in Tivoli arrives as the excavation it is.
     const out = await collect(world());
 
     expect(item(out, 'Q272777')).toBeUndefined();
-    expect(reason(out, 'Q272777')).toBe('an archaeological park: a site, not a museum');
+    const villa = out.items.find((i) => i.qid === 'Q272777');
+    expect(villa?.type).toBe('site');
+    expect(reason(out, 'Q272777')).toBeUndefined();
+    // And it arrives with what OSM drew around it: way/152327656, the measured
+    // object, carrying two ruin signals and the outline. A row the museum door
+    // refused, admitted by the map rather than by its class alone, with an
+    // extent of its own — the one case Troy does not cover.
+    if (!villa || villa.type !== 'site') throw new Error('the villa is a site');
+    expect(villa.osm).toMatchObject({
+      verdict: 'ruin',
+      object: 'way/152327656',
+      tag: 'historic=archaeological_site',
+      extentFrom: 'way/152327656',
+    });
+    expect(villa.extentWkt).toMatch(/^POLYGON\(\(12\.77/);
   });
 
   it('says nothing about a site under the line, whose name would be one of hundreds', async () => {
@@ -176,7 +214,7 @@ describe('collectArchaeologyMuseums', () => {
     const w = world();
     const byId: string[] = [];
     const door = categoryDoor(w);
-    await collectArchaeologyMuseums({
+    await collectArchaeology({
       // The by-id pool question asked about the members, which names itself in
       // the line the panel shows (`fetchEntitiesByIds`).
       sparql: (query: string, descriptor?: { label: string }) => {
@@ -184,10 +222,12 @@ describe('collectArchaeologyMuseums', () => {
         return Promise.resolve(answer(w, query));
       },
       previousPlacements: {},
-      admitted: new Set<string>(),
+      admittedMuseums: new Set<string>(),
+      admittedSites: new Set<string>(),
       line: LINE,
       categories: door.categories,
       categoryMembers: door.categoryMembers,
+      osm: osmDoor(w).read,
     });
 
     // Seven members, three of them already known: Delphi is in the class pool,
@@ -353,7 +393,7 @@ describe('collectArchaeologyMuseums', () => {
       .toBe('not an archaeology museum by category or class (1 famous find held)');
   });
 
-  it('names no museum the rules never ran on', async () => {
+  it('names no row the rules never ran on', async () => {
     const out = await collect(world());
 
     // Only the museums the pool typed archaeological, the rows the categories
@@ -361,18 +401,21 @@ describe('collectArchaeologyMuseums', () => {
     // tail produces no refusals at all — these four and nothing else. The
     // Pio-Clementino leads: a museum that folded is reported by where it went,
     // and those lines come before the rules' own so that a folded museum is
-    // never named twice. The rest follow most famous first as the run judges
-    // them: Pompeii and Hadrian's Villa, which the shelf named and the rule
-    // turned away as sites, and the Uffizi, an art museum with one ancient
-    // statue.
+    // never named twice. Then the Uffizi, an art museum with one ancient
+    // statue; then the site door's own, most famous first — Athens, which is a
+    // city people live in, and the Titanic, which is a wreck. Pompeii and
+    // Hadrian's Villa are in neither list: the museum door refused them and the
+    // site door wrote them, and a row this run puts on the map is not also a
+    // question about whether it belongs there.
     expect(out.filtered.map((f) => f.externalId))
-      .toEqual(['Q1439912', 'Q43332', 'Q51252', 'Q272777']);
+      .toEqual(['Q1439912', 'Q51252', 'Q1524', 'Q25173']);
     // Two museums the class question named; five rows the categories asked
     // after, of which the Gold Museum's was dropped for want of an article and
-    // is counted all the same, because the run fetched it; and six finds:
-    // thirteen entities. Pompeii is not among them — the walk named it, but the
-    // venue graph already had it and no question of this run's went out for it.
-    expect(out.fetched).toBe(13);
+    // is counted all the same, because the run fetched it; six finds; and the
+    // site pool's five, four of which no other question of this run named —
+    // Hadrian's Villa is a category member and was already counted: seventeen
+    // entities. Pompeii is not fetched twice for being named twice.
+    expect(out.fetched).toBe(17);
   });
 
   it('keeps a fold onto a department held for a curator, and reports what it lost', async () => {
@@ -786,7 +829,7 @@ describe('collectArchaeologyMuseums', () => {
     const w = world();
     const facts: string[] = [];
     const door = categoryDoor(w);
-    await collectArchaeologyMuseums({
+    await collectArchaeology({
       sparql: (query: string) => {
         // The classes-and-containers question, which is the one this run sends
         // about a museum (`fetchEntityFacts`).
@@ -794,10 +837,12 @@ describe('collectArchaeologyMuseums', () => {
         return Promise.resolve(answer(w, query));
       },
       previousPlacements: {},
-      admitted: new Set<string>(),
+      admittedMuseums: new Set<string>(),
+      admittedSites: new Set<string>(),
       line: LINE,
       categories: door.categories,
       categoryMembers: door.categoryMembers,
+      osm: osmDoor(w).read,
     });
 
     // One batch, and it holds the Louvre: no find points at it, so the venue
@@ -831,13 +876,15 @@ describe('collectArchaeologyMuseums', () => {
   it('asks English Wikipedia once for the articles of the museums it judges', async () => {
     const w = world();
     const door = categoryDoor(w);
-    await collectArchaeologyMuseums({
+    await collectArchaeology({
       sparql: (query: string) => Promise.resolve(answer(w, query)),
       previousPlacements: {},
-      admitted: new Set<string>(),
+      admittedMuseums: new Set<string>(),
+      admittedSites: new Set<string>(),
       line: LINE,
       categories: door.categories,
       categoryMembers: door.categoryMembers,
+      osm: osmDoor(w).read,
     });
 
     expect(door.calls).toHaveLength(1);
@@ -904,5 +951,147 @@ describe('collectArchaeologyMuseums', () => {
     const out = await collect(world(), { previousPlacements: { Q48584: ['Q999'] } });
 
     expect(out.diff.moved).toEqual([{ work: 'Q48584', from: ['Q999'], to: ['Q6373'] }]);
+  });
+});
+
+describe('the site door, beside the museums', () => {
+  /** The run both doors come out of, with OpenStreetMap as a door of its own. */
+  const both = (w: World) => {
+    const door = categoryDoor(w);
+    const osm = osmDoor(w);
+    const run = collectArchaeology({
+      sparql: (query: string) => Promise.resolve(answer(w, query)),
+      previousPlacements: {},
+      admittedMuseums: new Set<string>(),
+      admittedSites: new Set<string>(),
+      line: LINE,
+      categories: door.categories,
+      categoryMembers: door.categoryMembers,
+      osm: osm.read,
+    });
+    return { run, osm };
+  };
+
+  it('admits a dig, refuses a city, and writes the extent OSM drew', async () => {
+    const result = await both(world()).run;
+
+    const troy = result.items.find((i) => i.qid === 'Q22647');
+    expect(troy?.type).toBe('site');
+    if (!troy || troy.type !== 'site') throw new Error('Troy must be admitted as a site');
+    // Not one of Troy's four classes says "dig" — `city-state, settlement site`
+    // is a settlement on both branches — so what admits it is the polygon
+    // somebody drew around the excavations.
+    expect(troy.osm.verdict).toBe('ruin');
+    expect(troy.osm.object).toBe('way/423938794');
+    expect(troy.osm.tag).toBe('historic=archaeological_site');
+    expect(troy.osm.extentFrom).toBe('way/423938794');
+    expect(troy.extentWkt).toMatch(/^POLYGON/);
+    expect(Number.isFinite(Date.parse(troy.osm.readAt))).toBe(true);
+
+    expect(result.items.some((i) => i.qid === 'Q1524')).toBe(false);
+    const athens = result.filtered.find((f) => f.externalId === 'Q1524');
+    expect(athens?.reason).toContain('a living place');
+
+    // And the wreck, which is in the tree and is not a place to stand.
+    const titanic = result.filtered.find((f) => f.externalId === 'Q25173');
+    expect(titanic?.reason).toBe('Wikidata types it a shipwreck');
+  });
+
+  it('reports Pompeii once, as the site it is, and not as the museum it is not', async () => {
+    const result = await both(world()).run;
+
+    const pompeii = result.items.filter((i) => i.qid === 'Q43332');
+    expect(pompeii).toHaveLength(1);
+    expect(pompeii[0].type).toBe('site');
+    // The museum door's own refusal is dropped: a row one door admits is not a
+    // refusal of the run, and a curator reading both lists would otherwise be
+    // asked about a place the same run just put on the map.
+    expect(result.filtered.some((f) => f.externalId === 'Q43332')).toBe(false);
+  });
+
+  it('asks OpenStreetMap once, about the site candidates and nothing else', async () => {
+    const { run, osm } = both(world());
+    await run;
+
+    expect(osm.calls).toHaveLength(1);
+    // The museums are not in it: a museum's nature is Wikipedia's and
+    // Wikidata's question, and asking OSM about 87 more items would be 87 more
+    // rows on somebody else's mirror for an answer nothing reads.
+    expect(osm.calls[0]).not.toContain('Q6373');
+    expect(osm.calls[0]).toContain('Q22647');
+  });
+
+  it('counts a row both doors named once, and every entity it asked about', async () => {
+    const result = await both(world()).run;
+
+    // Pompeii is one entity, however many doors named it.
+    const ids = result.items.map((i) => i.qid);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(result.fetched).toBeGreaterThanOrEqual(new Set(ids).size);
+  });
+
+  it('leaves the museums exactly as they were', async () => {
+    const result = await both(world()).run;
+
+    const museums = result.items.filter((i) => i.type === 'museum');
+    expect(museums.map((m) => m.qid)).toContain('Q6373');
+    expect(museums.map((m) => m.qid)).toContain('Q1429003');
+  });
+
+  it('yields the site door where the museum door admits the same row, and says so', async () => {
+    // The guard the measurement says never fires, run on purpose. The park veto
+    // sends every open-air excavation the museum tree reaches to the site door,
+    // so no row of the survey is admitted by both — but "no row today" is not a
+    // rule, and a row that is both a museum and a dig is one Wikidata edit
+    // away. The Bardo is given `archaeological site` beside its `museum`, which
+    // puts it in the site pool at 35 articles while its category keeps
+    // admitting it as the museum it is. One entity is one row with one type.
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const w = world();
+    w.museums.Q1429003.classes = [MUSEUM, ARCHAEOLOGICAL_SITE];
+
+    const result = await both(w).run;
+
+    const bardo = result.items.filter((i) => i.qid === 'Q1429003');
+    expect(bardo).toHaveLength(1);
+    expect(bardo[0].type).toBe('museum');
+    expect(result.filtered.some((f) => f.externalId === 'Q1429003')).toBe(false);
+    // And it is not swallowed: a row the two doors disagree about is a fact an
+    // admin reading the log should see — by name, since the point of the line
+    // is that somebody thinks about the place rather than looks an id up.
+    expect(log.mock.calls.map((call) => String(call[0]))
+      .some((line) => line.includes(
+        'Bardo National Museum (Q1429003) is admitted as a museum',
+      ))).toBe(true);
+    log.mockRestore();
+  });
+
+  it('names the sites it admitted and groups the refusals by their reason', async () => {
+    // A dry run writes nothing, so a curator reading the panel sees these
+    // nowhere else. One line per group rather than per row: a run refusing two
+    // hundred villages still reports them in three.
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await both(world()).run;
+
+    const lines = log.mock.calls.map((call) => String(call[0]));
+    // **One line says what the run admitted**, and it is the proposal's: the
+    // site door counted its own sites too, so a run printed the number twice
+    // and left a reader reconciling two lines that could not disagree.
+    expect(lines.filter((line) => line.includes('Admitted'))).toHaveLength(1);
+    const summary = lines.find((line) => line.includes('museums'));
+    expect(summary).toContain('Admitted 6 museums');
+    // Two of the three carry an outline now: Troy's excavations and the villa
+    // in Tivoli, both real objects from the measurement.
+    expect(summary).toContain('3 sites (2 with an extent)');
+    // One refusal of each kind here, so the counted noun is singular: a line a
+    // curator reads is a sentence, not a number with an `s` glued on. The
+    // groups are the tags the rule put on each refusal, and a group nothing
+    // fell into is not printed — a run says what it did.
+    expect(lines.find((line) => line.includes('sites refused:')))
+      .toContain('1 living place, 1 by class or by name');
+    expect(lines.find((line) => line.includes('living places:'))).toContain('Athens');
+    expect(lines.find((line) => line.includes('by class or by name:'))).toContain('Titanic');
+    log.mockRestore();
   });
 });

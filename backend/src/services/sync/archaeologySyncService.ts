@@ -33,7 +33,7 @@ import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { admittedExternalIds } from './admission.js';
 import { contentsLine, readSourceLine, type LinePair } from './sourceLine.js';
 import {
-  collectArchaeologyMuseums, type CollectedArchaeologyMuseum,
+  collectArchaeology, type CollectedArchaeologyMuseum,
 } from './archaeology/pipeline.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
@@ -259,8 +259,12 @@ async function fetchArchaeologyItems(
   storedCredits = await readStoredCredits(ARCHAEOLOGY_SOURCE_ID);
   storedTreasureCredits = await readStoredTreasureCredits();
   // What the source holds as admitted before the run, so the stay line of the
-  // hysteretic tier has something to hold (ADR-0023).
-  const admitted = await admittedExternalIds(ARCHAEOLOGY_SOURCE_ID);
+  // hysteretic tier has something to hold (ADR-0023) — by door, since each
+  // asks after its own rows and no others (`ArchaeologyPipelineDeps`).
+  const [admittedMuseums, admittedSites] = await Promise.all([
+    admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'museum'),
+    admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site'),
+  ]);
 
   // One patience for the whole run, spent on whichever wiki asks for it: this
   // kind reads Wikidata and English Wikipedia in the same collection, and a
@@ -268,19 +272,31 @@ async function fetchArchaeologyItems(
   // (#886).
   const waiting = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
 
-  const { items, fetched, filtered } = await collectArchaeologyMuseums({
+  const collected = await collectArchaeology({
     sparql: collectingSparql(progress, refreshCache, waiting),
     previousPlacements,
-    admitted,
+    admittedMuseums,
+    admittedSites,
     line,
     categories: categoriesDoor(progress, waiting),
     categoryMembers: categoryMembersDoor(progress, waiting),
+    // The site door's second signal. This file does not write a site yet — the
+    // reader that asks the OSM mirror, and the writer that turns a site row
+    // into an experience with an extent, arrive together in the next commit —
+    // so the run is handed a door that answers nothing and the sites are taken
+    // out of the proposal below. Never a default inside the pipeline: a run
+    // that silently read no map would refuse Troy and call it a verdict.
+    osm: () => Promise.resolve(new Map()),
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');
     },
     pause: () => delay(SPARQL_DELAY_MS),
   });
+  const { fetched, filtered } = collected;
+  const items = collected.items.filter(
+    (item): item is CollectedArchaeologyMuseum => item.type === 'museum',
+  );
 
   // Whether the run saw enough of what the catalogue holds to be believed about
   // what left it (ADR-0044) — measured here, before a single museum is written,

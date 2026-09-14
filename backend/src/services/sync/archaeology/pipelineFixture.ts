@@ -10,6 +10,23 @@
  * Wikipedia is a function the run is handed (`deps.categories`), so no category
  * is fetched here either.
  *
+ * OpenStreetMap is handed over the same way (`deps.osm`): the fixture's `osm`
+ * map is the measurement of 2026-09-14 for the four items it names — Troy's
+ * excavation polygon (way/423938794), Athens' city node (node/441183),
+ * Pompeii's locality node (node/4753980853) and Hadrian's Villa's outline
+ * (way/152327656) — each with the object id and the tags recorded that day in
+ * `data/cache/osm-sites/osm-tags.json`. The site rows' own facts were checked
+ * against `wbgetentities` on 2026-09-14, the same day the site door was built.
+ *
+ * **Pompeii is in both doors and is one row.** Its article is filed under
+ * `Archaeological museums in Italy`, so the category walk names it and the
+ * museum door refuses it for carrying no museum class; its own classes are
+ * `archaeological site, ancient city`, so the site door admits it. That is the
+ * case the run has to get right: one entity, one answer, admitted as a site and
+ * not reported as a refusal beside itself. Hadrian's Villa is the same shape
+ * through the other rule — the park veto turns it away as "a site, not a
+ * museum", and this is the door that was meant.
+ *
  * The QIDs are real and were verified with `wbgetentities` on 2026-09-13 — the
  * classes, the sitelink counts, the coordinates, the enwiki titles and the
  * statements each find carries (the Rosetta Stone is the British Museum's; the
@@ -60,6 +77,7 @@ import {
   ARTEFACT_ROOT,
   NATURAL_HISTORY_ROOT,
 } from './classes.js';
+import type { OsmObject } from '../osm/types.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
@@ -73,8 +91,14 @@ export const NATIONAL_MUSEUM = 'Q17431399'; // national museum
 export const ARCHAEOLOGICAL_MUSEUM = 'Q3329412'; // archaeological museum
 const EGYPTOLOGICAL_MUSEUM = 'Q3330834'; // egyptological museum
 export const PALACE = 'Q16560'; // palace
-const ARCHAEOLOGICAL_SITE = 'Q839954'; // archaeological site
+export const ARCHAEOLOGICAL_SITE = 'Q839954'; // archaeological site
 const ANCIENT_CITY = 'Q15661340'; // ancient city
+const SETTLEMENT_SITE = 'Q1708422'; // settlement site — under both roots
+const CITY_STATE = 'Q133442'; // city-state
+const FREE_CITY = 'Q5500203'; // free city — how Athens reaches the site tree
+const SHIPWRECK = 'Q852190'; // shipwreck
+const HUMAN_SETTLEMENT = 'Q486972'; // human settlement
+const STEAMSHIP = 'Q12859788'; // steamship — the Titanic's other class
 const SCULPTURE = 'Q860861'; // sculpture
 const STATUE = 'Q179700'; // statue
 const GROUP_OF_SCULPTURES = 'Q2293362'; // group of sculptures
@@ -128,9 +152,37 @@ interface FixtureFind {
   statements: { property: 'P195' | 'P276'; venue: string }[];
 }
 
+/** A site candidate: what the pool answers, and what the item says about itself. */
+interface FixtureSite {
+  label: string;
+  /** Every `P31` it carries. */
+  classes: string[];
+  sitelinks: number;
+  lat: number;
+  lon: number;
+  description?: string;
+  countryLabel?: string;
+  articleUrl?: string;
+  imageUrl?: string;
+  /** `P757`, or `P1435` naming World Heritage. */
+  worldHeritage?: boolean;
+  /** `P1082` — any number, 0 included. */
+  statesPopulation?: boolean;
+}
+
+/** One OSM object carrying `wikidata=<item>`, as the reader hands it over. */
+interface FixtureOsmObject {
+  ref: string;
+  tags: Record<string, string>;
+  wkt?: string;
+}
+
 export interface World {
   museums: Record<string, FixtureMuseum>;
   finds: Record<string, FixtureFind>;
+  sites: Record<string, FixtureSite>;
+  /** What OpenStreetMap maps at each item, by QID. */
+  osm: Record<string, FixtureOsmObject[]>;
   /** What `?c wdt:P279* wd:<root>` answers. A root not named here answers with itself alone. */
   trees: Record<string, string[]>;
   /** Direct `P279` children, for the finds closure. */
@@ -328,6 +380,62 @@ const WORLD: World = {
       ],
     },
   },
+  sites: {
+    // Wikidata types Troy a settlement four times over and never a dig; OSM
+    // has the excavations as a polygon. The row the site door exists for.
+    Q22647: {
+      label: 'Troy', classes: [CITY_STATE, SETTLEMENT_SITE], sitelinks: 121,
+      lat: 39.9575, lon: 26.238889, countryLabel: 'Turkey',
+      description: 'ancient city in Anatolia',
+      articleUrl: 'https://en.wikipedia.org/wiki/Troy',
+      worldHeritage: true,
+    },
+    // 288 languages, no site class, 643,452 people, and a place=city node.
+    Q1524: {
+      label: 'Athens', classes: [FREE_CITY], sitelinks: 288,
+      lat: 37.984167, lon: 23.728056, countryLabel: 'Greece',
+      articleUrl: 'https://en.wikipedia.org/wiki/Athens',
+      statesPopulation: true,
+    },
+    // In the tree, 160 languages, and not a place anybody stands in.
+    Q25173: {
+      label: 'Titanic', classes: [STEAMSHIP, SHIPWRECK], sitelinks: 160,
+      lat: 41.7325, lon: -49.946944,
+      articleUrl: 'https://en.wikipedia.org/wiki/Titanic',
+    },
+  },
+  osm: {
+    Q22647: [{
+      ref: 'way/423938794',
+      tags: {
+        historic: 'archaeological_site', archaeological_site: 'city',
+        heritage: '1', tourism: 'attraction', boundary: 'protected_area',
+      },
+      wkt: 'POLYGON((26.23 39.95,26.24 39.95,26.24 39.96,26.23 39.96,26.23 39.95))',
+    }],
+    Q1524: [{ ref: 'node/441183', tags: { place: 'city', name: 'Αθήνα' } }],
+    // The measured object of Pompeii, whose row lives under `museums` because
+    // the category walk names it: a named spot, not a town.
+    Q43332: [{ ref: 'node/4753980853', tags: { place: 'locality', name: 'Pompei Antica' } }],
+    // Hadrian's Villa as OSM really maps it: one way carrying the excavation's
+    // outline, two ruin signals at once (`historic` and `ruins=yes`) and the
+    // secondary key naming what kind of dig it is. The row matters here because
+    // it is the museum door's refusal *and* the site door's admission in one
+    // entity, and with no object it entered as a site by class alone — so the
+    // fixture never exercised a second extent beside Troy's, nor a ruin verdict
+    // on a row the other door had just turned away.
+    Q272777: [{
+      ref: 'way/152327656',
+      tags: {
+        historic: 'archaeological_site',
+        archaeological_site: 'roman_villa',
+        ruins: 'yes',
+        tourism: 'attraction',
+        name: 'Villa Adriana',
+      },
+      wkt: 'POLYGON((12.77 41.94,12.78 41.94,12.78 41.95,12.77 41.95,12.77 41.94))',
+    }],
+  },
   trees: {
     // Wikidata files `archaeological park` under `archaeological museum`, which
     // is why the park tree is walked and subtracted (`buildArchaeologyTrees`).
@@ -346,6 +454,18 @@ const WORLD: World = {
       MUSEUM, ART_MUSEUM, NATIONAL_MUSEUM, ARCHAEOLOGICAL_MUSEUM, EGYPTOLOGICAL_MUSEUM,
       ARCHAEOLOGICAL_PARK,
     ],
+    // The site door's three trees. Real edges, each asked of Wikidata on
+    // 2026-09-14: `settlement site`, `free city`, `ancient city` and
+    // `archaeological park` are under `archaeological site`; `settlement site`,
+    // `free city`, `ancient city` and `city-state` are under `human
+    // settlement` — which is precisely why the map is asked, since the two
+    // trees overlap on the classes Troy carries. `city-state` is under the
+    // settlement root alone, and `shipwreck` under the site root alone.
+    [ARCHAEOLOGICAL_SITE]: [
+      ARCHAEOLOGICAL_SITE, SETTLEMENT_SITE, FREE_CITY, ANCIENT_CITY, ARCHAEOLOGICAL_PARK, SHIPWRECK,
+    ],
+    [HUMAN_SETTLEMENT]: [HUMAN_SETTLEMENT, SETTLEMENT_SITE, CITY_STATE, FREE_CITY, ANCIENT_CITY],
+    [SHIPWRECK]: [SHIPWRECK],
     // The lost tree (#868): nothing here is under it.
     [LOST_WORK_ROOT]: [LOST_WORK_ROOT, 'Q21745157'],
   },
@@ -367,34 +487,52 @@ function bandOf(query: string): { min: number; max: number | null } {
 const inBand = (sitelinks: number, band: { min: number; max: number | null }): boolean =>
   sitelinks >= band.min && (band.max === null || sitelinks < band.max);
 
-function museumRow(qid: string, museum: FixtureMuseum): SparqlBinding {
+/** Everything the two pools may answer with, museums and sites in one map. */
+function poolEntities(w: World): [string, FixtureMuseum | FixtureSite][] {
+  return [...Object.entries(w.museums), ...Object.entries(w.sites)];
+}
+
+function entityRow(qid: string, entity: FixtureMuseum | FixtureSite): SparqlBinding {
   const row: SparqlBinding = {
     e: uri(qid),
-    eLabel: { value: museum.label },
-    sl: { value: String(museum.sitelinks) },
-    coord: { value: `Point(${museum.lon} ${museum.lat})` },
+    eLabel: { value: entity.label },
+    sl: { value: String(entity.sitelinks) },
+    coord: { value: `Point(${entity.lon} ${entity.lat})` },
   };
-  if (museum.description) row.eDescription = { value: museum.description };
-  if (museum.imageUrl) row.img = { value: museum.imageUrl };
-  if (museum.countryLabel) row.countryLabel = { value: museum.countryLabel };
-  if (museum.website) row.site = { value: museum.website };
+  if (entity.description) row.eDescription = { value: entity.description };
+  if (entity.imageUrl) row.img = { value: entity.imageUrl };
+  if (entity.countryLabel) row.countryLabel = { value: entity.countryLabel };
+  if ('website' in entity && entity.website) row.site = { value: entity.website };
   // The walk knows the article; Wikidata's row may not carry the sitelink.
-  if (museum.articleUrl && !museum.articleGoneFromWikidata) {
-    row.article = { value: museum.articleUrl };
-  }
+  const gone = 'articleGoneFromWikidata' in entity && entity.articleGoneFromWikidata;
+  if (entity.articleUrl && !gone) row.article = { value: entity.articleUrl };
   return row;
 }
 
-/** A pool of museums: by id, or by a batch of the archaeology classes. */
-function museumPoolRows(w: World, query: string, asked: string[]): SparqlBinding[] {
-  const museums = Object.entries(w.museums);
+/**
+ * A pool of entities: by id, by a batch of narrow classes, or one fame band of
+ * a broad root.
+ *
+ * One function for both doors, because both send the public-art pool's own
+ * questions and the classes they ask for are what tells the answers apart —
+ * which is exactly how the real endpoint tells them apart.
+ */
+function entityPoolRows(w: World, query: string, asked: string[]): SparqlBinding[] {
+  const entities = poolEntities(w);
   if (query.includes('VALUES ?e')) {
-    return museums.filter(([qid]) => asked.includes(qid)).map(([qid, m]) => museumRow(qid, m));
+    return entities.filter(([qid]) => asked.includes(qid)).map(([qid, e]) => entityRow(qid, e));
   }
-  if (!query.includes('VALUES ?cls')) throw new Error(`unexpected museum pool: ${query}`);
-  return museums
-    .filter(([, m]) => m.sitelinks >= POOL_MIN_SITELINKS && m.classes.some((c) => asked.includes(c)))
-    .map(([qid, m]) => museumRow(qid, m));
+  const root = /\?e wdt:P31 wd:(Q\d+)/.exec(query);
+  if (root) {
+    const band = bandOf(query);
+    return entities
+      .filter(([, e]) => e.classes.includes(root[1]) && inBand(e.sitelinks, band))
+      .map(([qid, e]) => entityRow(qid, e));
+  }
+  if (!query.includes('VALUES ?cls')) throw new Error(`unexpected pool: ${query}`);
+  return entities
+    .filter(([, e]) => e.sitelinks >= POOL_MIN_SITELINKS && e.classes.some((c) => asked.includes(c)))
+    .map(([qid, e]) => entityRow(qid, e));
 }
 
 function findRow(qid: string, find: FixtureFind, withClass: boolean): SparqlBinding {
@@ -458,7 +596,24 @@ function statementRows(w: World, asked: string[]): SparqlBinding[] {
 }
 
 const detailRows = (w: World, asked: string[]): SparqlBinding[] =>
-  asked.filter((qid) => w.museums[qid]).map((qid) => museumRow(qid, w.museums[qid]));
+  asked.filter((qid) => w.museums[qid]).map((qid) => entityRow(qid, w.museums[qid]));
+
+/** What the site rule reads off each item: classes, the listing, the population. */
+function siteFactRows(w: World, asked: string[]): SparqlBinding[] {
+  const rows: SparqlBinding[] = [];
+  for (const qid of asked) {
+    const entity = w.sites[qid] ?? w.museums[qid];
+    if (!entity) continue;
+    for (const cls of entity.classes) rows.push({ e: uri(qid), cls: uri(cls) });
+    if ('worldHeritage' in entity && entity.worldHeritage) {
+      rows.push({ e: uri(qid), whc: { value: '849' } });
+    }
+    if ('statesPopulation' in entity && entity.statesPopulation) {
+      rows.push({ e: uri(qid), pop: { value: '643452' } });
+    }
+  }
+  return rows;
+}
 
 /**
  * What an entity is and is part of. One answer serves both questions that ask
@@ -483,6 +638,8 @@ export function answer(w: World, sent: string): SparqlBinding[] {
   if (query.includes('?c wdt:P279 ?p')) {
     return asked.flatMap((p) => w.children[p] ?? []).map((c) => ({ c: uri(c) }));
   }
+  // The site facts, which are the only question binding `?whc`.
+  if (query.includes('?whc')) return siteFactRows(w, asked);
   // Before the statements question: the public-art facts question reads a
   // collection through `p:P195` too, and names `?coll` where the other does not.
   if (query.includes('?coll')) return edgeRows(w, asked);
@@ -491,7 +648,7 @@ export function answer(w: World, sent: string): SparqlBinding[] {
   if (query.includes('SELECT ?e ?cls ?parent ?loc')) return edgeRows(w, asked);
   if (query.includes('?dissolved')) return detailRows(w, asked);
   if (query.includes('SELECT ?w')) return findPoolRows(w, query, asked);
-  return museumPoolRows(w, query, asked);
+  return entityPoolRows(w, query, asked);
 }
 
 /** The enwiki title of an article URL, the other side of `enwikiTitleOf`. */
@@ -526,4 +683,23 @@ export function categoryDoor(w: World) {
     return Promise.resolve(new Map(members));
   };
   return { categories, calls, categoryMembers, walks };
+}
+
+/**
+ * OpenStreetMap as this run is handed it: one call, answering for every item it
+ * was asked about — an empty list where OSM maps nothing, never a missing key.
+ */
+export function osmDoor(w: World) {
+  const calls: string[][] = [];
+  const read = (qids: string[]): Promise<Map<string, OsmObject[]>> => {
+    calls.push([...qids]);
+    return Promise.resolve(new Map(qids.map((qid) => [qid, (w.osm[qid] ?? []).map((o) => ({
+      ref: o.ref,
+      kind: o.ref.split('/')[0] as OsmObject['kind'],
+      tags: o.tags,
+      geometryType: o.wkt ? o.wkt.slice(0, o.wkt.indexOf('(')) : null,
+      wkt: o.wkt ?? null,
+    }))])));
+  };
+  return { read, calls };
 }
