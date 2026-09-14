@@ -32,6 +32,16 @@ export const SOURCE_HIGHLIGHT = 'exp-highlight';
 export const SOURCE_HOVER = 'exp-hover';
 
 /**
+ * The outline of the place the reader is looking at, where the catalogue has
+ * one: an archaeology site's excavation boundary as OpenStreetMap drew it
+ * (ADR-0059). One place at a time — whichever is hovered, else whichever is
+ * selected — because it answers the question "how big is this, on the ground",
+ * and a map of every outline at once is a different feature (a tile layer,
+ * waiting on #755).
+ */
+export const SOURCE_EXTENT = 'exp-extent';
+
+/**
  * What every hover source starts from, and what it goes back to when the
  * pointer leaves. One collection, shared: both files that write to
  * `SOURCE_HOVER` clear it, and two identical literals are two things to keep
@@ -60,6 +70,26 @@ export function buildPointsHoverData(coords: [number, number][]): GeoJSON.Featur
 /** The single-point case, which is three of the four writers. */
 export function buildPointHoverData(coords: [number, number]): GeoJSON.FeatureCollection {
   return buildPointsHoverData([coords]);
+}
+
+/**
+ * The extent source's payload: one feature carrying the colour its pin is drawn
+ * in, so the outline and the marker read as the same object.
+ *
+ * The colour rides on the feature rather than on the layer for the reason the
+ * markers' does (#814): a paint expression keyed on a literal hangs a kind's
+ * colour on a value some other kind also carries, and the same object then
+ * reads two colours depending on where you look at it.
+ */
+export function buildExtentData(
+  boundary: GeoJSON.Geometry | null | undefined,
+  color: string,
+): GeoJSON.FeatureCollection {
+  if (!boundary) return EMPTY_FC;
+  return {
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', geometry: boundary, properties: { color } }],
+  };
 }
 
 // Layer IDs
@@ -264,5 +294,47 @@ export const highlightPointLayer: LayerProps = {
     'circle-radius': 6,
     'circle-stroke-width': 2,
     'circle-stroke-color': '#ffffff',
+  },
+};
+
+const LAYER_EXTENT_FILL = 'exp-extent-fill';
+const LAYER_EXTENT_LINE = 'exp-extent-line';
+
+/**
+ * The wash inside the outline.
+ *
+ * 15%, and the number is against a specific failure: at 30% the basemap's own
+ * place names stopped being readable inside Pompeii, and a traveller reading a
+ * site's outline is usually reading the streets under it at the same time. The
+ * fallback colour is Archaeology's amber-brown, which is the only kind with an
+ * extent today; the feature's own colour is what actually paints.
+ */
+export const extentFillLayer: LayerProps = {
+  id: LAYER_EXTENT_FILL,
+  type: 'fill',
+  source: SOURCE_EXTENT,
+  paint: {
+    'fill-color': ['coalesce', ['get', 'color'], '#B45309'],
+    'fill-opacity': 0.15,
+  },
+};
+
+/**
+ * And the outline itself, which is what actually says where the site ends.
+ *
+ * Two pixels at nine tenths opacity: the fill can be faint because the line is
+ * not, and the tenth that is left keeps a basemap label crossing the boundary
+ * legible under it. Both layers are rendered before the marker sources, so
+ * every pin and badge paints over them — MapLibre draws in the order layers are
+ * added, and an outline over a pin would hide the thing the reader clicked.
+ */
+export const extentLineLayer: LayerProps = {
+  id: LAYER_EXTENT_LINE,
+  type: 'line',
+  source: SOURCE_EXTENT,
+  paint: {
+    'line-color': ['coalesce', ['get', 'color'], '#B45309'],
+    'line-width': 2,
+    'line-opacity': 0.9,
   },
 };

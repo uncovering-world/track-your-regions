@@ -112,6 +112,27 @@ export function holdingsNoun(kindId: number | null | undefined): 'finds' | 'work
 }
 
 /**
+ * Whether this place is one the catalogue can draw an outline around: an
+ * archaeology **site**, and nothing else it holds today (ADR-0059). An
+ * archaeology *museum* is a building at an address, like every other museum,
+ * church and monument — a boundary would be its footprint, which answers no
+ * question a traveller asks.
+ *
+ * Asked *before* a read, not after one: the only way to find an extent is the
+ * single-experience read, that route sits under `publicReadLimiter` beside the
+ * reads that draw the list itself, and a map that asked it of every place the
+ * pointer crossed is how a list refuses to load itself (the note at the foot of
+ * `api/experienceCardQueries.ts`). So the kind decides, from the row already
+ * loaded, whether the question is worth asking at all.
+ */
+export function hasExtent(
+  kindId: number | null | undefined,
+  type: string | null | undefined,
+): boolean {
+  return kindId === ARCHAEOLOGY_KIND_ID && type === 'site';
+}
+
+/**
  * The vocabulary a type value belongs to, told from the value: the vocabularies
  * are closed and disjoint, so `natural` is World Heritage's and `sculpture` is
  * public art's wherever the value appears. `null` for a value no kind declares.

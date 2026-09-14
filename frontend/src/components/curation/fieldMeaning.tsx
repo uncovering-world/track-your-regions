@@ -35,6 +35,7 @@ import { creators } from '../../utils/creatorList';
 import { typeVocabularyOf } from '../../utils/experienceTypes';
 import { describeMove } from '../../utils/moveDescription';
 import { yearLabel } from '../../utils/yearLabel';
+import { extentLabel } from '../shared/ExtentLine';
 import { PictureFact } from './PictureFact';
 
 /** One field of a proposal, as the queue carries it. */
@@ -274,6 +275,14 @@ function qidLabel(value: unknown): ReactNode {
   return href ? <ExternalLink href={href}>{`${String(value)} (Wikidata)`}</ExternalLink> : String(value ?? '');
 }
 
+/** The credit ODbL asks for wherever OpenStreetMap's data is shown (ADR-0059 decision 3). */
+const OSM_CREDIT = '© OpenStreetMap contributors';
+
+/** The extent as the card says it (`ExtentLine`), off the area the change record carries. */
+function extentValueLabel(value: unknown): string {
+  return isRecord(value) && typeof value.areaKm2 === 'number' ? extentLabel(value.areaKm2) : 'none';
+}
+
 function coordinateLabel(value: unknown): string {
   if (!isRecord(value) || typeof value.lat !== 'number' || typeof value.lon !== 'number') {
     return value == null ? '' : JSON.stringify(value);
@@ -379,6 +388,25 @@ const MEANINGS: Record<string, FieldMeaning> = {
     event: true,
     // The one rule for a moved pin, shared with the correction dialog (`utils/moveDescription.ts`).
     describeChange: (before, after) => describeMove(before, after),
+  },
+  boundary: {
+    label: 'extent',
+    what: 'The outline OpenStreetMap draws around an archaeological site — the shape on the map and the area on the card, offered under ODbL with the map’s credit (ADR-0059).',
+    whenItChanges: 'Somebody re-traced the polygon on OpenStreetMap, or another object now carries the tag the rule reads. Written past the gate: an outline is what somebody surveyed, not a claim about the place — look at the shape on the map if the area moved by much.',
+    render: extentValueLabel,
+    // The hash decided the change, not the area, so two tracings can read the
+    // same in the card's units: say the outline moved rather than print a
+    // change that looks like none. And the sentence carries the map's credit
+    // itself: this row is OpenStreetMap's data on a screen that draws no map,
+    // so no attribution corner stands in for it, and a tooltip is not
+    // "visible without interaction" (ADR-0059 decision 3, `ExtentLine`).
+    describeChange: (before, after) => {
+      const [was, is] = [extentValueLabel(before), extentValueLabel(after)];
+      const said = was === is
+        ? `The outline was re-traced; the extent still reads ${is} — look at the shape on the map`
+        : `Extent ${was} → ${is}`;
+      return `${said} · ${OSM_CREDIT}.`;
+    },
   },
   countryCodes: {
     label: 'country codes',

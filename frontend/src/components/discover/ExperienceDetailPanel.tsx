@@ -42,6 +42,7 @@ import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContex
 
 import { experienceColors } from '../../utils/kindColors';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { ExtentLine } from '../shared/ExtentLine';
 import { ContentsSection } from './ContentsSection';
 import { locationLabel } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
@@ -255,6 +256,10 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
             Inscribed: {String(details.metadata.dateInscribed as string | number)}
           </Typography>
         )}
+
+        {/* The same line Map mode's card carries: one place described two ways
+            is two claims about one thing (#731's rule, one level up). */}
+        <ExtentLine areaKm2={details?.area_km2} />
 
         {/* Regions */}
         {regions.length > 0 && (

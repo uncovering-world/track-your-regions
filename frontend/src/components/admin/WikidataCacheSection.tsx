@@ -66,6 +66,10 @@ const KINDS: Record<string, { title: string; what: string }> = {
     title: 'Entity edges',
     what: 'Class and part-of links, used to resolve a room or a department back to the museum that contains it.',
   },
+  osm: {
+    title: 'OpenStreetMap objects',
+    what: 'What OpenStreetMap maps at each archaeology site candidate — the tags the site rule reads and the outline it draws — asked of the QLever mirror and kept for a day. Its own kind so the OSM half can be dropped without dropping Wikidata’s.',
+  },
 };
 
 /**
