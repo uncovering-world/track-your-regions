@@ -810,3 +810,29 @@ describe('searchExperiences region context', () => {
     expect(outerOrder).toContain('ORDER BY m.name_contains DESC, m.relevance DESC');
   });
 });
+
+describe('the extent a by-id read hands over', () => {
+  it('simplifies a polygon too large to draw, and leaves a small one alone', async () => {
+    queueQueries([]);
+    const res = makeRes();
+    await getExperience(
+      { params: { id: '281' }, user: undefined } as never,
+      res as never,
+    );
+    const sql = String(mockedQuery.mock.calls[0][0]).replace(/\s+/g, ' ');
+    // Stored whole and cut on the way out: what the catalogue holds is what OSM
+    // drew, and what a browser is asked to draw is what a browser can draw.
+    expect(sql).toContain('ST_NPoints(e.boundary) > 5000');
+    expect(sql).toContain('ST_SimplifyPreserveTopology(e.boundary, 0.0002)');
+    // And the other arm, spelled out: a polygon under the threshold is handed
+    // over exactly as it is stored. Without pinning it, a `CASE` whose ELSE
+    // simplified too — or returned NULL — would pass every assertion above
+    // while quietly redrawing the small extents, which are most of them.
+    expect(sql).toContain('ELSE e.boundary END)::json as boundary_geojson');
+    // PreserveTopology, so a simplified outline is still a valid polygon rather
+    // than a self-crossing one the renderer fills wrongly.
+    expect(sql).not.toContain('ST_Simplify(e.boundary');
+    // The area is never simplified: it is measured on what is stored.
+    expect(sql).toContain('e.area_km2');
+  });
+});

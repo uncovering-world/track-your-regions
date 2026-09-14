@@ -221,7 +221,26 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
       e.updated_at,
       ${lifecycleSelectSql()},
       ${readerPositionSql('e', '$2')},
-      ST_AsGeoJSON(e.boundary)::json as boundary_geojson,
+      -- Stored whole, cut on the way out. An OSM relation traced finely enough
+      -- can carry tens of thousands of vertices, which is a megabyte of JSON
+      -- for an outline drawn two pixels wide — so what the catalogue holds is
+      -- what OpenStreetMap drew, and what a browser is asked to draw is what a
+      -- browser can draw. 0.0002° is about 20 m at the equator: invisible at
+      -- any zoom that shows a whole site, and PreserveTopology so the result is
+      -- still a valid polygon rather than a self-crossing one.
+      --
+      -- The threshold is a count rather than a byte size because vertices are
+      -- what cost the renderer, and it is asked of the stored geometry so a
+      -- small extent is handed over untouched.
+      --
+      -- 5,000 is headroom rather than a measured ceiling. The largest outline
+      -- the site door draws in the whole world-tier pool is the Nasca and Palpa
+      -- protected zone, relation/2729059, at 1,764 vertices (counted on the dev
+      -- database on 2026-09-14), so nothing the catalogue holds today reaches
+      -- this arm at all. It is here for the relation somebody traces next year.
+      ST_AsGeoJSON(CASE WHEN ST_NPoints(e.boundary) > 5000
+                        THEN ST_SimplifyPreserveTopology(e.boundary, 0.0002)
+                        ELSE e.boundary END)::json as boundary_geojson,
       e.area_km2,
       ${rowKindSelectSql()},
       -- The source that brought the row, beside the kind it is shown under:
