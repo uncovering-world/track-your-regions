@@ -1956,12 +1956,17 @@ fourth curation state. The Hermitage's antiquities are among the world's best an
 visited as an art museum; only a person can say which this is.
 
 **`admitted_for` names the find that got the museum in**, and only where the museum's own fame did
-not: a row the place line admits is there on its own account and names nothing, while Delphi's
-membership names the Charioteer. Asked as the row's **standing** (`lineStanding`) and not as the
-enter line alone, because the place line is hysteretic too — a museum the source already admits that
-has slipped into the band between stay and enter is kept by its own fame forgiving the slip, and a
-find named there would say the catalogue holds it for a mosaic when what holds it is the 20
-languages it is written up in. It is the run's own bookkeeping, never a question for a curator.
+not: a row at or above the place line's *enter* count is there on its own account and names
+nothing, while Delphi's membership names the Charioteer and Heraklion's the Phaistos disc. Asked of
+the **enter line** and not of the row's standing (`lineStanding`), because the place line is
+hysteretic: an admitted museum at 21 *stands* in, and it could not have entered on 21 — what
+carried it in is what it holds, on its first run and on every run after. Read off the standing, the
+run named Heraklion's disc once and cleared it on the next run, since the upsert writes
+`admitted_for` from what the run brings, every run (#896). Deterministic rather than remembered, so
+the same facts name the same find whatever the run's history, and a name that was cleared comes
+back by a run. A museum in the band whose find has since fallen below the finds' stay line names
+nothing and stays on its own count, which is then truly what keeps it. It is the run's own
+bookkeeping, never a question for a curator.
 The coordinates are not asked by the verdict — the venue graph already refused a holder without
 them, and a rule asked twice can answer differently in two places — so `placementOf` refuses a pool
 row that has none, in the words every other kind uses.

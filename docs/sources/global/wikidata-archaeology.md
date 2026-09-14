@@ -242,7 +242,7 @@ answered by ADR-0043: every one is a Wikimedia Commons file with the credit Comm
 
 ## The runs that adopted it
 
-Eight dry runs on the development stack (#581, 2026-09-13 and 2026-09-14), each writing a sync-log row and its
+Nine dry runs on the development stack (#581 and #896, 2026-09-13 and 2026-09-14), each writing a sync-log row and its
 per-object report and nothing to the catalogue:
 
 | log | duration | admitted | held | through a find | refused | treasures |
@@ -255,15 +255,18 @@ per-object report and nothing to the catalogue:
 | 119 | 10 m 13 s | 83 | 5 | 15 | 82 | 225 |
 | **121** | **16 m 35 s** | **1,013** | **5** | **13** | **239** | **225** |
 | **122** | **12 m 20 s** | **1,009** | **5** | **13** | **243** | **225** |
+| 125 | 17 m 40 s | 1,010 | 5 | 16 | 243 | 226 |
 
 Log 121 is the site door's first dry run on the development stack (2026-09-14, #581 PR 2): 930
 sites admitted, 523 of them with an extent from OpenStreetMap, beside 83 museums and 225
 treasures unchanged from log 119 — 1,013 rows in all, nothing written to the catalogue. **Two
 fewer museums name a find than in log 119** (13 against 15), and nothing about the rule changed:
-the live run 120 admitted Heraklion and the Villa Giulia, so at 21 sitelinks each they are now
-kept by hysteresis on their own fame rather than carried over the line by the Phaistos disc and
-the Pyrgi Tablets, and a museum admitted for itself names nothing. Their memberships still carry
-the `admitted_for` run 120 wrote; the next live run clears it. 239
+the live run 120 admitted Heraklion and the Villa Giulia, so at 21 sitelinks each they were read
+as kept by hysteresis on their own fame rather than carried over the line by the Phaistos disc and
+the Pyrgi Tablets, and a museum admitted for itself names nothing. The next live run cleared the
+`admitted_for` run 120 had written. That reading was the defect of #896 — 21 could never have
+entered, so the find is the reason on every run — and the rule now names the find off the enter
+line (log 125 below). 239
 refused: 193 by the site door — 72 as living places, 58 with no ruin on the map (Lake Bled
 counted here, since its sentence names the map), and 63 by class or by name (59 shipwrecks, 3
 lost cities, the Aysén Region) — 39 by the museum door, whose rule is unchanged (fewer named than in
@@ -309,6 +312,11 @@ Skyline-Ganipa (Q2293403) and Sunrise (Q1836972) — are refused as living place
 `boundary=census`; the Valle dei Templi (Q636774) is admitted by class while Agrigento stays
 refused as a living place; Rhodes is refused as "an island" rather than as a city; and the Nazca
 Lines carry the reserve's extent rather than the speck the ruin object traces.
+
+Log 125 is the dry run after the fix of #896 (2026-09-14, 17 m 40 s, on the catalogue live run
+124 left): 84 museums, **16 of them for a find** — Heraklion and the Villa Giulia back, and the
+Museo de Villena (the Treasure of Villena) new that day on Wikidata's side, the run's one
+`created` — beside 926 sites, 522 with an extent, and 243 refused, unchanged from run 124.
 
 Log 112 is the rule without the category door: 617 entities fetched over the museum and finds
 pools. Its refusals name the museums the two signals miss (the Viking Ship Museum with three
