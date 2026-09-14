@@ -486,6 +486,33 @@ describe('a metadata key the run computes about its own pass', () => {
     expect(named).not.toContain('metadata.totalArtworkSitelinks');
   });
 
+  it('asks nobody about what OpenStreetMap said at a site, or when it was read', () => {
+    // `metadata.osm` is the archaeology run's own reading of the map (ADR-0059
+    // decision 2): the verdict, the object it came off, the tag, and the date.
+    // OSM's mappers re-tag constantly and the date moves on every pass, so a
+    // curator asked to approve either would be answering for the rule rather
+    // than about the place — and would be asked again next run.
+    const troy = (object: string, readAt: string) => snapshot({
+      name: 'Troy',
+      metadata: {
+        wikidataQid: 'Q22647',
+        osm: { verdict: 'ruin', object, tag: 'historic=archaeological_site', extentFrom: object, readAt },
+      },
+    });
+
+    const result = computeChangeSet(
+      troy('way/423938794', '2026-09-14T08:53:00.000Z'),
+      troy('relation/17435522', '2026-09-15T06:20:00.000Z'),
+      [],
+      HELD,
+    );
+
+    expect(result.changedFields).toEqual([]);
+    expect(result.heldFields).toEqual([]);
+    expect(result.changeType).toBe('unchanged');
+    expect(SYNC_OWNED_METADATA_KEYS).toContain('osm');
+  });
+
   it('never meets the work that did the qualifying, which is the membership\'s', () => {
     // `admittedFor` used to ride in metadata as a run-owned key (#570). Since
     // #822 it is written on the place's membership (`admitted_for`) and enters
@@ -748,5 +775,54 @@ describe('a tags change is not a change', () => {
 
     expect(result.curatedConflicts).toEqual([]);
     expect(result.changeType).toBe('unchanged');
+  });
+});
+
+describe('the extent', () => {
+  // Troy's excavation polygon as first traced (5.7 ha) and re-traced.
+  const traced = { hash: 'a-first-tracing', areaKm2: 0.0568 };
+  const retraced = { hash: 'a-second-tracing', areaKm2: 0.061 };
+
+  it('is compared by the hash of the stored geometry, and reported with its area', () => {
+    const result = computeChangeSet(
+      snapshot({ boundary: traced }), snapshot({ boundary: retraced }), [], WROTE,
+    );
+    expect(result.changedFields).toEqual([expect.objectContaining({
+      field: 'boundary', old: { areaKm2: 0.0568 }, new: { areaKm2: 0.061 }, significance: 'minor',
+    })]);
+    expect(result.changeType).toBe('updated');
+  });
+
+  it('is no change when the same polygon comes back, whatever its text was', () => {
+    const result = computeChangeSet(
+      snapshot({ boundary: traced }), snapshot({ boundary: { ...traced } }), [], WROTE,
+    );
+    expect(result.changedFields).toEqual([]);
+  });
+
+  it('is filed as written on a held row, because the upsert writes it past the gate', () => {
+    // An outline is what somebody surveyed, not a claim about the place, so
+    // the gate does not hold it; filed as held, a curator would read a value
+    // the row already shows as one waiting on their verdict.
+    const result = computeChangeSet(
+      snapshot({ boundary: traced }), snapshot({ boundary: retraced }), [], HELD,
+    );
+    expect(result.changedFields.map(f => f.field)).toEqual(['boundary']);
+    expect(result.changedFields[0].held).toBe(false);
+    expect(result.heldFields).toEqual([]);
+    expect(result.changeType).toBe('updated');
+  });
+
+  it('is a curated conflict under a claim on the column, which the upsert honours', () => {
+    const result = computeChangeSet(
+      snapshot({ boundary: traced }), snapshot({ boundary: null }), ['boundary'], WROTE,
+    );
+    expect(result.curatedConflicts.map(f => f.field)).toEqual(['boundary']);
+    expect(result.changedFields).toEqual([]);
+  });
+
+  it('reads a snapshot without the field as no extent', () => {
+    expect(computeChangeSet(snapshot(), snapshot({ boundary: null }), [], WROTE).changedFields)
+      .toEqual([]);
   });
 });

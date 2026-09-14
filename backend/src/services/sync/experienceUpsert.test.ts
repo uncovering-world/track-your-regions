@@ -172,7 +172,11 @@ function assignmentsOf(sql: string): Map<string, string> {
   for (const line of setListOf(sql).split('\n')) {
     const trimmed = line.trim();
     if (trimmed.startsWith('--')) continue;
-    const starts = /^([a-z_]+) = (.*)$/.exec(trimmed);
+    // A digit is part of a column name — `area_km2` is one — and a pattern of
+    // letters alone did not merely miss it: the line was swallowed into the
+    // expression of the assignment above, so the column read as unassigned
+    // while its neighbour's arm read as longer than it is.
+    const starts = /^([a-z_][a-z0-9_]*) = (.*)$/.exec(trimmed);
     if (starts) {
       flush();
       [, column] = starts;
@@ -642,9 +646,9 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // ignores, and the pair that disagreed would either ask about a value it had
     // just written or freeze a value nothing reports.
     expect(params[15]).toEqual([...SYNC_OWNED_METADATA_KEYS]);
-    // $16, which is what both metadata arms read it as; then the hold and the
-    // membership's work, which are this statement's own.
-    expect(params).toHaveLength(18);
+    // $16, which is what both metadata arms read it as; then the hold, the
+    // membership's work and the site's extent, which are this statement's own.
+    expect(params).toHaveLength(19);
     expect(sql).not.toContain("'artworkCount'");
   });
 
@@ -768,6 +772,11 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     for (const column of [
       'name', 'name_local', 'description', 'short_description', 'type',
       'location', 'country_codes', 'country_names', 'image_url', 'metadata',
+      // `boundary` and `area_km2` are deliberately **not** here — the extent
+      // follows the source through the gate, and the test below says why. Every
+      // other content column a run writes belongs on this list the moment it
+      // gains a writer, since this list going stale is how a column ends up
+      // unguarded while the test still passes.
     ]) {
       const arm = assigned.get(column);
       expect(arm, `${column} is not assigned`).toBeDefined();
@@ -1151,5 +1160,114 @@ describe('the credit under a picture a curator owns', () => {
 
     const metadata = /metadata = CASE[\s\S]*?END,/.exec(upsert()[0])?.[0] ?? '';
     expect(metadata).toMatch(/curated_fields \? 'image_url'[\s\S]*metadata \? 'imageCredit'[\s\S]*jsonb_build_object\('imageCredit'/);
+  });
+});
+
+describe('the extent a run writes', () => {
+  /** The upsert statement with its whitespace collapsed, for a one-line assertion. */
+  function flatUpsertSql(): string {
+    return upsert()[0].replace(/\s+/g, ' ');
+  }
+
+  it('builds a valid multipolygon in 4326, and the area from the same geometry', async () => {
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const sql = flatUpsertSql();
+    // ST_MakeValid can answer with a collection, which will not go into a
+    // MultiPolygon column; the extract is what keeps a repaired polygon
+    // insertable. Probed on the dev database on 2026-09-14: a polygon with a
+    // dangling spike came back ST_GeometryCollection from ST_MakeValid alone
+    // and ST_MultiPolygon through the extract.
+    expect(sql).toContain('ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_GeomFromText($19, 4326)), 3))');
+    // The area follows the geometry, in the same statement and off the same
+    // expression: two writers of one fact is how a region's area and its
+    // outline came apart (#763).
+    expect(sql).toContain('ST_Area(');
+    expect(sql).toContain('/ 1000000');
+    // An empty result is no extent, not an extent of nothing.
+    expect(sql).toContain('ST_IsEmpty');
+  });
+
+  it('lets the extent through the gate, and still refuses a claim on it', async () => {
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // Read as assignments, as the rest of this file reads them: what the
+    // statement does to the column, however the expression is written, rather
+    // than a line of text that happens to appear somewhere in it.
+    //
+    // **No `(SELECT held FROM hold)` in either arm**, and that is the point. An
+    // outline is what somebody surveyed, not a claim about the place: held by
+    // the gate, a published site would keep the polygon of the first run that
+    // ever saw it for ever, while `metadata.osm` — which the run owns and
+    // re-derives every pass — went on naming the object the shape came from.
+    // What says the polygon moved is the change set (the `boundary` hash, the
+    // test below), filed as written because it was.
+    const assigned = assignmentsOf(upsert()[0]);
+    expect(assigned.get('boundary')).toBe(
+      "CASE WHEN experiences.curated_fields ? 'boundary' "
+      + 'THEN experiences.boundary ELSE EXCLUDED.boundary END,',
+    );
+    // The area is covered by the claim on the outline, not by one of its own:
+    // they are one fact measured twice, and a row keeping a curator's shape
+    // beside a run's area of it would be the #763 split all over again.
+    expect(assigned.get('area_km2')).toBe(
+      "CASE WHEN experiences.curated_fields ? 'boundary' "
+      + 'THEN experiences.area_km2 ELSE EXCLUDED.area_km2 END,',
+    );
+  });
+
+  it('writes NULL where the run sends no extent, which an omitted field is', async () => {
+    // Unlike `location`, which every caller must pass: a collector that sends
+    // no outline is saying this place has none, and the column is cleared. A
+    // writer that forgot to pass one for a source that has them would clear
+    // every outline it holds.
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+    expect(upsert()[1][18]).toBeNull();
+    expect(flatUpsertSql()).toContain('ST_GeomFromText($19, 4326)');
+  });
+
+  it('sends the WKT the collector read, untouched, for a site that has one', async () => {
+    const wkt = 'POLYGON((26.23 39.95,26.24 39.95,26.24 39.96,26.23 39.96,26.23 39.95))';
+
+    await upsertExperienceRecord({ ...PARAMS, boundaryWkt: wkt }, { syncLogId: 42 });
+
+    // Text, not a parsed shape: PostGIS is where geometry is decided, and a
+    // second parser in TypeScript would be a second opinion about it (#674).
+    expect(upsert()[1][18]).toBe(wkt);
+  });
+
+  it('measures the outline it was sent with the writer\'s own expression, and files a re-traced one as written even on a held row', async () => {
+    const wkt = 'POLYGON((26.23 39.95,26.24 39.95,26.24 39.96,26.23 39.96,26.23 39.95))';
+    const stored = storedRow({ boundary_hash: 'a-first-tracing', area_km2: '0.0568', was_held: true });
+    client.query.mockImplementation(async (sql: string) => {
+      if (/INSERT INTO experiences/.test(sql)) return { rows: [writtenRow()] };
+      if (/FOR NO KEY UPDATE/.test(sql)) return { rows: [{ id: stored.id }] };
+      if (/AS was_held/.test(sql)) return { rows: [stored] };
+      if (/md5\(ST_AsBinary\(geom\)\)/.test(sql)) {
+        return { rows: [{ hash: 'a-second-tracing', area_km2: '0.061' }] };
+      }
+      return { rows: [] };
+    });
+
+    const result = await upsertExperienceRecord({ ...PARAMS, boundaryWkt: wkt }, { syncLogId: 42 });
+
+    // Like with like: the incoming WKT goes through the statement's own
+    // repair-and-extract expression before it is hashed, so a polygon PostGIS
+    // merely rewrote is not a change.
+    const measured = client.query.mock.calls.find(c => /md5\(ST_AsBinary\(geom\)\)/.test(String(c[0])));
+    expect(String(measured?.[0]).replace(/\s+/g, ' '))
+      .toContain('ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_GeomFromText($1, 4326)), 3))');
+    expect(measured?.[1]).toEqual([wkt]);
+    // Written past the gate, so reported as written — not as held, which
+    // would offer a curator a value the row already shows.
+    expect(result.changeSet.changedFields).toEqual([expect.objectContaining({
+      field: 'boundary', old: { areaKm2: 0.0568 }, new: { areaKm2: 0.061 }, held: false,
+    })]);
+    expect(result.changeSet.heldFields).toEqual([]);
+  });
+
+  it('measures nothing where the run sends no extent', async () => {
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+    expect(sentSql().some(sql => /md5\(ST_AsBinary\(geom\)\)/.test(sql))).toBe(false);
   });
 });

@@ -31,6 +31,7 @@ vi.mock('./syncUtils.js', () => ({
 }));
 vi.mock('./wikidataCache.js', () => ({
   withCache: vi.fn((door: unknown) => door),
+  clearCache: vi.fn().mockResolvedValue(0),
 }));
 vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
 vi.mock('./archaeology/pipeline.js', () => ({ collectArchaeology: vi.fn() }));
@@ -47,12 +48,21 @@ vi.mock('./wikidataUtils.js', () => ({
   // mock ever stops standing between the two.
   WIKIDATA_USER_AGENT: 'test',
   wikidataDoor: vi.fn(() => vi.fn()),
+  // Read at import time by the pool queries, which the site door pulls in since
+  // the run learned to catch its floor error (#581): a mock that omits it turns
+  // an unrelated module's top-level template string into a suite that does not
+  // load at all.
+  LABEL_LANGS: 'en',
 }));
 vi.mock('./wikipediaCategories.js', () => ({
   fetchWikipediaCategories: vi.fn().mockResolvedValue(new Map()),
 }));
 vi.mock('./wikipediaCategoryMembers.js', () => ({
   fetchCategoryMembers: vi.fn().mockResolvedValue(new Map()),
+}));
+vi.mock('./osm/qleverOsm.js', () => ({
+  qleverOsmDoor: vi.fn(() => vi.fn()),
+  readOsmObjects: vi.fn().mockResolvedValue(new Map()),
 }));
 vi.mock('./museum/treasureWriter.js', () => ({
   upsertVenueTreasures: vi.fn().mockResolvedValue({
@@ -71,11 +81,17 @@ import { orchestrateSync, type SyncServiceConfig, type SyncRunContext } from './
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { admittedExternalIds } from './admission.js';
 import {
-  collectArchaeology, type CollectedArchaeologyMuseum,
+  collectArchaeology,
+  type CollectedArchaeologyItem,
+  type CollectedArchaeologyMuseum,
 } from './archaeology/pipeline.js';
+import type { CollectedArchaeologySite } from './archaeology/proposal.js';
+import { qleverOsmDoor, readOsmObjects } from './osm/qleverOsm.js';
+import { clearCache, withCache } from './wikidataCache.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
 import { NATURE_CATEGORY } from './archaeology/classes.js';
+import { OsmAnswerFloorError } from './archaeology/sites.js';
 import { upsertVenueTreasures } from './museum/treasureWriter.js';
 import { syncArchaeology } from './archaeologySyncService.js';
 import type { ProcessedContent, SyncProgress } from './types.js';
@@ -89,6 +105,10 @@ const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn
 const mockedWriter = upsertVenueTreasures as unknown as ReturnType<typeof vi.fn>;
 const mockedUpsert = upsertExperienceRecord as unknown as ReturnType<typeof vi.fn>;
 const mockedLocation = upsertSingleLocation as unknown as ReturnType<typeof vi.fn>;
+const mockedOsmDoor = qleverOsmDoor as unknown as ReturnType<typeof vi.fn>;
+const mockedReadOsm = readOsmObjects as unknown as ReturnType<typeof vi.fn>;
+const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;
+const mockedClearCache = clearCache as unknown as ReturnType<typeof vi.fn>;
 
 /** The British Museum, which Wikidata types no archaeology and Wikipedia files as it. */
 const BRITISH_MUSEUM = 'Q6373';
@@ -141,6 +161,35 @@ function museum(overrides: Partial<CollectedArchaeologyMuseum> = {}): CollectedA
   };
 }
 
+/** Troy, which every class tree calls an archaeological site and OSM draws. */
+const TROY = 'Q22647';
+
+function site(overrides: Partial<CollectedArchaeologySite> = {}): CollectedArchaeologySite {
+  return {
+    qid: TROY,
+    label: 'Troy',
+    description: 'ancient city in Anatolia',
+    lat: 39.9575,
+    lon: 26.238889,
+    imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Troy.jpg',
+    sitelinks: 96,
+    countryLabel: 'Turkey',
+    articleUrl: 'https://en.wikipedia.org/wiki/Troy',
+    website: null,
+    type: 'site',
+    classes: ['Q839954'],
+    osm: {
+      verdict: 'ruin',
+      object: 'way/423938794',
+      tag: 'historic=archaeological_site',
+      extentFrom: 'way/423938794',
+      readAt: '2026-09-14T00:00:00.000Z',
+    },
+    extentWkt: 'POLYGON((26.23 39.95,26.24 39.95,26.24 39.96,26.23 39.96,26.23 39.95))',
+    ...overrides,
+  };
+}
+
 function progress(): SyncProgress {
   return {
     cancel: false, kind: 'sync', status: 'fetching', statusMessage: '', progress: 0, total: 0,
@@ -161,9 +210,9 @@ function lineRow(): { rows: { api_config: unknown }[] } {
 }
 
 /** The config the run hands the orchestrator, captured rather than run. */
-async function configOf(): Promise<SyncServiceConfig<CollectedArchaeologyMuseum>> {
+async function configOf(): Promise<SyncServiceConfig<CollectedArchaeologyItem>> {
   await syncArchaeology(1);
-  return mockedOrchestrate.mock.calls[0][0] as SyncServiceConfig<CollectedArchaeologyMuseum>;
+  return mockedOrchestrate.mock.calls[0][0] as SyncServiceConfig<CollectedArchaeologyItem>;
 }
 
 /**
@@ -175,8 +224,8 @@ async function configOf(): Promise<SyncServiceConfig<CollectedArchaeologyMuseum>
  * whatever an earlier test happened to leave in module state.
  */
 async function afterFetch(
-  items: CollectedArchaeologyMuseum[] = [museum()],
-): Promise<SyncServiceConfig<CollectedArchaeologyMuseum>> {
+  items: CollectedArchaeologyItem[] = [museum()],
+): Promise<SyncServiceConfig<CollectedArchaeologyItem>> {
   mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
   collected(items);
   const config = await configOf();
@@ -185,7 +234,7 @@ async function afterFetch(
 }
 
 /** A collection that admits `items`, with nothing refused and nothing moved. */
-function collected(items: CollectedArchaeologyMuseum[], fetched = 900): void {
+function collected(items: CollectedArchaeologyItem[], fetched = 900): void {
   mockedCollect.mockResolvedValueOnce({
     items, fetched, filtered: [], diff: { moved: [], gained: [], lost: [], dropped: [] },
   });
@@ -313,6 +362,48 @@ describe('what the archaeology run fetches', () => {
     await expect(deps.categories(['British Museum'])).rejects.toThrow('could not be read');
   });
 
+  it('asks OpenStreetMap through the mirror door, behind this source\'s own cache', async () => {
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+    collected([site()]);
+    const keep = { historic: ['archaeological_site'], manMade: [], boundary: [] };
+    const run = { phase: vi.fn(), step: vi.fn() };
+
+    await (await configOf()).fetchItems(progress(), []);
+    const deps = mockedCollect.mock.calls[0][0];
+    await deps.osm([TROY], keep, run);
+
+    // The pipeline is handed a function rather than the reader, and the reader
+    // is handed a send rather than the door: this file knows whether the run
+    // may remember an answer, and `readOsmObjects` knows how to ask for one.
+    expect(mockedWithCache).toHaveBeenCalledWith(
+      mockedOsmDoor.mock.results[0].value,
+      expect.objectContaining({ sourceId: 5, enabled: true }),
+    );
+    // The keep rule travels from `collectSitesByFame`, which owns it: which
+    // geometries are worth the wire is the kind's line through OSM's keys, and
+    // a door that chose its own would have the mirror send the administrative
+    // outline of every city in the pool.
+    expect(mockedReadOsm).toHaveBeenCalledWith(
+      expect.any(Function), [TROY], keep, run,
+    );
+  });
+
+  it('lets a batch OpenStreetMap could not answer end the run', async () => {
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+    collected([site()]);
+    mockedReadOsm.mockRejectedValueOnce(new Error('[OSM] the mirror is not answering'));
+
+    await (await configOf()).fetchItems(progress(), []);
+    const deps = mockedCollect.mock.calls[0][0];
+
+    // Swallowed, a lost answer says "no OSM object carries this item" for every
+    // site in the batch — which refuses precisely the sites the rule exists to
+    // admit — on a run whose log said success.
+    await expect(
+      deps.osm([TROY], { historic: [], manMade: [], boundary: [] }, { phase: vi.fn(), step: vi.fn() }),
+    ).rejects.toThrow('not answering');
+  });
+
   it('measures the finds floor over what it read before writing, and answers with the verdict', async () => {
     mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: STORED });
     // One of the ten offered finds placed again.
@@ -328,6 +419,27 @@ describe('what the archaeology run fetches', () => {
     );
   });
 
+  it('measures the finds floor over the museums alone, never over the sites', async () => {
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: STORED });
+    // One museum placing one of the ten offered finds, beside two sites, which
+    // hold none: what was dug up at Troy is in a museum somewhere else.
+    collected([
+      museum({ treasures: [rosetta({ externalId: 'Q1000', name: 'Q1000' })] }),
+      site(),
+      site({ qid: 'Q43332', label: 'Ephesus' }),
+    ]);
+
+    const result = await (await configOf()).fetchItems(progress(), []);
+
+    // The floor is a question about museums and their finds (ADR-0044).
+    // Counting the sites would compare what the catalogue offers at the
+    // museums against a list of rows with nothing inside them, and read the
+    // difference as finds that had left.
+    expect(result.withdrawalSkippedReason).toContain('at the 1 museums it admits');
+    // And the sites are still written: the proposal is both doors' (ADR-0058).
+    expect(result.items).toHaveLength(3);
+  });
+
   it('vouches for a run that placed the finds again', async () => {
     mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: STORED });
     collected([museum({ treasures: STORED.map(({ work }) => rosetta({
@@ -337,6 +449,30 @@ describe('what the archaeology run fetches', () => {
     const result = await (await configOf()).fetchItems(progress(), []);
 
     expect(result.withdrawalSkippedReason).toBeNull();
+  });
+
+  it('drops the cached OSM answers when the mirror answered about almost nothing', async () => {
+    // The site door fails the run rather than reading an empty answer as "no
+    // ruin is mapped here" — and the answers are kept for a day, so a run that
+    // did not forget them would fail again tomorrow morning for a reason that
+    // had already gone away. Only the `osm` kind: what Wikidata said is still
+    // true.
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+    mockedClearCache.mockClear();
+    mockedCollect.mockRejectedValueOnce(new OsmAnswerFloorError(1126, 3));
+
+    await expect((await configOf()).fetchItems(progress(), []))
+      .rejects.toThrow(OsmAnswerFloorError);
+    expect(mockedClearCache).toHaveBeenCalledWith(5, 'osm');
+  });
+
+  it('keeps the cache when the run fails for any other reason', async () => {
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+    mockedClearCache.mockClear();
+    mockedCollect.mockRejectedValueOnce(new Error('Sync cancelled'));
+
+    await expect((await configOf()).fetchItems(progress(), [])).rejects.toThrow('Sync cancelled');
+    expect(mockedClearCache).not.toHaveBeenCalled();
   });
 });
 
@@ -373,6 +509,55 @@ describe('what the archaeology run writes', () => {
       website: 'https://www.britishmuseum.org/',
       wikipediaUrl: 'https://en.wikipedia.org/wiki/British_Museum',
     });
+  });
+
+  it('writes the site with the outline OpenStreetMap drew, and what OSM said about it', async () => {
+    wrote();
+
+    await (await afterFetch([site()])).processItem(site(), progress(), writing());
+
+    const params = mockedUpsert.mock.calls[0][0];
+    expect(params).toMatchObject({
+      sourceId: 5,
+      externalId: TROY,
+      name: 'Troy',
+      // The kind's other type, and the word a reader filters by (#814).
+      type: 'site',
+      tags: ['archaeology', 'site'],
+      countryNames: ['Turkey'],
+      // Text, as the source answered: PostGIS is where geometry is decided.
+      boundaryWkt: 'POLYGON((26.23 39.95,26.24 39.95,26.24 39.96,26.23 39.96,26.23 39.95))',
+      // A site enters on its own fame and is admitted for nothing else
+      // (ADR-0058 decision 4).
+      admittedFor: null,
+    });
+    // The reading kept whole and separable, the object and the tag beside the
+    // verdict, so what the run read off somebody else's map stays nameable
+    // (ADR-0059 decision 2).
+    expect(params.metadata.osm).toEqual(site().osm);
+    expect(params.metadata).toMatchObject({
+      wikidataQid: TROY,
+      wikidataClasses: ['Q839954'],
+      sitelinksCount: 96,
+      wikipediaUrl: 'https://en.wikipedia.org/wiki/Troy',
+    });
+    // No finds: what was dug up here is in a museum somewhere else, and a site
+    // says so by having nothing to list.
+    expect(mockedWriter).not.toHaveBeenCalled();
+  });
+
+  it('sends no extent for a site OpenStreetMap maps as a point', async () => {
+    wrote();
+
+    await (await afterFetch([site()])).processItem(
+      site({ extentWkt: null, osm: { ...site().osm, extentFrom: null } }),
+      progress(),
+      writing(),
+    );
+
+    // Null rather than an empty shape: most sites are a point on the map, and
+    // a card printing "0 ha" for one would be stating a measurement nobody made.
+    expect(mockedUpsert.mock.calls[0][0].boundaryWkt).toBeNull();
   });
 
   it('carries a held museum\'s question to its card', async () => {
@@ -499,6 +684,15 @@ describe('what the archaeology run tells the orchestrator', () => {
     expect(config.recomputesMembership).toBe(true);
     expect(config.getItemName(museum())).toBe('British Museum');
     expect(config.getItemId(museum())).toBe(BRITISH_MUSEUM);
+  });
+
+  it('badges every site, for belonging to the kind at all', async () => {
+    const badges = (await configOf()).badgesAdmitted as (item: CollectedArchaeologyItem) => boolean;
+
+    // A site is admitted for being one of the world's archaeological sites,
+    // which is exactly what the badge says (ADR-0045 decision 5): Pompeii is
+    // badged for being Pompeii. The museum door's rule is the one below.
+    expect(badges(site())).toBe(true);
   });
 
   it('badges the museum that holds a famous find, and not the one admitted for what it is', async () => {
