@@ -14,7 +14,7 @@
  * `fetchItems`'s answer and the arguments `processItem` hands the two writers.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn() },
@@ -63,6 +63,9 @@ vi.mock('./wikipediaCategoryMembers.js', () => ({
 vi.mock('./osm/qleverOsm.js', () => ({
   qleverOsmDoor: vi.fn(() => ({ name: 'qlever', question: vi.fn(), send: vi.fn() })),
 }));
+vi.mock('./osm/overpassOsm.js', () => ({
+  overpassOsmDoor: vi.fn(() => ({ name: 'overpass', question: vi.fn(), send: vi.fn() })),
+}));
 vi.mock('./osm/readOsmObjects.js', () => ({
   readOsmObjects: vi.fn().mockResolvedValue(new Map()),
 }));
@@ -89,6 +92,7 @@ import {
 } from './archaeology/pipeline.js';
 import type { CollectedArchaeologySite } from './archaeology/proposal.js';
 import { qleverOsmDoor } from './osm/qleverOsm.js';
+import { overpassOsmDoor } from './osm/overpassOsm.js';
 import { readOsmObjects } from './osm/readOsmObjects.js';
 import { clearCache, withCache } from './wikidataCache.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
@@ -109,6 +113,7 @@ const mockedWriter = upsertVenueTreasures as unknown as ReturnType<typeof vi.fn>
 const mockedUpsert = upsertExperienceRecord as unknown as ReturnType<typeof vi.fn>;
 const mockedLocation = upsertSingleLocation as unknown as ReturnType<typeof vi.fn>;
 const mockedOsmDoor = qleverOsmDoor as unknown as ReturnType<typeof vi.fn>;
+const mockedOverpassDoor = overpassOsmDoor as unknown as ReturnType<typeof vi.fn>;
 const mockedReadOsm = readOsmObjects as unknown as ReturnType<typeof vi.fn>;
 const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;
 const mockedClearCache = clearCache as unknown as ReturnType<typeof vi.fn>;
@@ -424,6 +429,71 @@ describe('what the archaeology run fetches', () => {
     await expect(
       deps.osm([TROY], { historic: [], manMade: [], boundary: [] }, { phase: vi.fn(), step: vi.fn() }),
     ).rejects.toThrow('not answering');
+  });
+
+  describe('which door OpenStreetMap is read through', () => {
+    afterEach(() => { vi.unstubAllEnvs(); });
+
+    it('is the mirror unless the environment says otherwise, and the run log says which', async () => {
+      vi.stubEnv('OSM_READER', '');
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+      collected([site()]);
+
+      await (await configOf()).fetchItems(progress(), []);
+
+      expect(mockedOsmDoor).toHaveBeenCalledTimes(1);
+      expect(mockedOverpassDoor).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        '[Archaeology Sync] OpenStreetMap is read through the QLever osm-planet mirror (qlever)',
+      );
+      log.mockRestore();
+    });
+
+    it('is Overpass when named, behind the same cache, and the run log says so', async () => {
+      vi.stubEnv('OSM_READER', 'overpass');
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+      collected([site()]);
+      const cached = cachedOsmSend();
+      const keep = { historic: ['archaeological_site'], manMade: [], boundary: [] };
+      const run = { phase: vi.fn(), step: vi.fn() };
+
+      await (await configOf()).fetchItems(progress(), []);
+      const deps = mockedCollect.mock.calls[0][0];
+      await deps.osm([TROY], keep, run);
+
+      expect(mockedOsmDoor).not.toHaveBeenCalled();
+      const door = mockedOverpassDoor.mock.results[0].value as { send: unknown };
+      // The same cache kind and the same floor above it: nothing past the door
+      // learns which one answered.
+      expect(mockedWithCache).toHaveBeenCalledWith(
+        door.send, expect.objectContaining({ sourceId: 5, enabled: true }),
+      );
+      expect(mockedReadOsm).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'overpass', send: cached }), [TROY], keep, run,
+      );
+      expect(log).toHaveBeenCalledWith(
+        '[Archaeology Sync] OpenStreetMap is read through the public Overpass API (overpass)',
+      );
+      log.mockRestore();
+    });
+
+    it('refuses a name that is no door before a single question is sent', async () => {
+      vi.stubEnv('OSM_READER', 'overpas');
+      mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+      // No `collected(...)` here on purpose: the run must never reach the
+      // collector, and a queued once-answer nobody consumed would leak into
+      // the next test.
+
+      // A typo read as the default would be a run that failed on the mirror
+      // an hour later, in the middle of the outage the operator was working
+      // around.
+      await expect((await configOf()).fetchItems(progress(), [])).rejects.toThrow(/OSM_READER names no reader/);
+      expect(mockedCollect).not.toHaveBeenCalled();
+      expect(mockedOsmDoor).not.toHaveBeenCalled();
+      expect(mockedOverpassDoor).not.toHaveBeenCalled();
+    });
   });
 
   it('measures the finds floor over what it read before writing, and answers with the verdict', async () => {

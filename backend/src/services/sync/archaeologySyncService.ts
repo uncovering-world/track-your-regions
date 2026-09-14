@@ -47,7 +47,9 @@ import {
   type CollectedArchaeologyMuseum,
 } from './archaeology/pipeline.js';
 import { qleverOsmDoor } from './osm/qleverOsm.js';
-import { readOsmObjects } from './osm/readOsmObjects.js';
+import { overpassOsmDoor } from './osm/overpassOsm.js';
+import { readOsmObjects, type OsmDoor } from './osm/readOsmObjects.js';
+import { OSM_READER_VARIABLE, parseOsmReaderName } from './osm/readerChoice.js';
 import { OsmAnswerFloorError, type OsmReader } from './archaeology/sites.js';
 // One item at a time, once the run has decided: the writers and what they were
 // told about this pass (`archaeology/writer.ts`).
@@ -164,15 +166,27 @@ function categoryMembersDoor(
   });
 }
 
+/** The door in the run log's words, with the name the variable takes beside it. */
+function describeDoor(door: OsmDoor): string {
+  return door.name === 'overpass'
+    ? 'the public Overpass API (overpass)'
+    : 'the QLever osm-planet mirror (qlever)';
+}
+
 /**
- * What OpenStreetMap maps at each site candidate, asked through the QLever
- * mirror and kept like every other answer this run pays for.
+ * What OpenStreetMap maps at each site candidate, asked through the door the
+ * environment names — the QLever mirror unless `OSM_READER` says `overpass`
+ * (`osm/readerChoice.ts`) — and kept like every other answer this run pays for.
+ * The run log names the door once, here, so a report can be read beside the
+ * outage that made somebody switch.
  *
  * **A batch that cannot be read ends the run**, for the reason the Wikipedia
  * readers end it: read as silence, a lost answer says "no OSM object carries
  * this item" for every site in it, which refuses precisely the sites the rule
  * exists to admit. The error travels out of the collection, the orchestrator
- * marks the run failed, and not a row is written.
+ * marks the run failed, and not a row is written. So does a name the
+ * variable holds that is no door at all: `parseOsmReaderName` throws before
+ * a question is sent, rather than reading a typo as the default.
  *
  * The wait budget is the run's, shared with Wikidata and Wikipedia (#886): this
  * run now waits on three services, and a budget per door is a run that waits
@@ -180,12 +194,16 @@ function categoryMembersDoor(
  *
  * Which geometries are worth the wire is not decided here. `collectSitesByFame`
  * hands the keep rule in (`OSM_KEEP_WKT`), because it is the kind's line
- * through OSM's keys rather than a property of how the mirror is asked.
+ * through OSM's keys rather than a property of how either door is asked.
  */
 function osmDoor(
   progress: SyncProgress, refreshCache: boolean, budget: WaitBudget,
 ): OsmReader {
-  const door = qleverOsmDoor(progress, budget, LOG_PREFIX);
+  const reader = parseOsmReaderName(process.env[OSM_READER_VARIABLE]);
+  const door: OsmDoor = reader === 'overpass'
+    ? overpassOsmDoor(progress, budget, LOG_PREFIX)
+    : qleverOsmDoor(progress, budget, LOG_PREFIX);
+  console.log(`${LOG_PREFIX} OpenStreetMap is read through ${describeDoor(door)}`);
   const send = withCache(door.send, {
     sourceId: ARCHAEOLOGY_SOURCE_ID,
     enabled: !refreshCache,

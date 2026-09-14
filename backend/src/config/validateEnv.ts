@@ -1,4 +1,7 @@
 import { isUsableContact } from './userAgent.js';
+import {
+  isOsmReaderName, OSM_READER_NAMES, OSM_READER_VARIABLE,
+} from '../services/sync/osm/readerChoice.js';
 
 export interface RawEnv {
   NODE_ENV?: string;
@@ -7,6 +10,7 @@ export interface RawEnv {
   ADMIN_EMAIL?: string;
   FRONTEND_URL?: string;
   USER_AGENT_CONTACT?: string;
+  OSM_READER?: string;
 }
 
 /**
@@ -61,6 +65,19 @@ export function collectEnvIssues(env: RawEnv): EnvIssue[] {
       key: 'USER_AGENT_CONTACT',
       message:
         'must be a contact a stranger can act on and a header may carry: a website, an email address, or a wiki user — printable Latin-1 only',
+      scope: 'always',
+    });
+  }
+  // The door a run reads OpenStreetMap through, by name. Blank is the mirror;
+  // a name the catalogue does not have is refused here and again where the
+  // door is built (`parseOsmReaderName`), so an operator who mistyped it in
+  // the middle of an outage learns at boot rather than from a run that then
+  // failed on the mirror. The rule is the reader module's; this only asks it.
+  const reader = (env.OSM_READER ?? '').trim();
+  if (reader !== '' && !isOsmReaderName(reader)) {
+    issues.push({
+      key: OSM_READER_VARIABLE,
+      message: `must be one of ${OSM_READER_NAMES.join(', ')}, or unset for the QLever mirror`,
       scope: 'always',
     });
   }
