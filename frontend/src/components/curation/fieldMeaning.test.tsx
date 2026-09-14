@@ -300,6 +300,22 @@ describe('what a change means, in one line', () => {
       .toBe('Moved 500 m east.');
   });
 
+  it('says an extent in the card\'s own units, and names none where a row had none', () => {
+    // Troy's excavation polygon, re-traced from 5.7 ha; the record carries the
+    // area, and the hash that decided the change is nobody's to read.
+    expect(fieldLabel('boundary')).toBe('extent');
+    // The credit rides on the sentence: a review card draws no map, so no
+    // attribution corner answers for OpenStreetMap's data on it.
+    expect(change('boundary', { areaKm2: 0.056761 }, { areaKm2: 0.061 }))
+      .toBe('Extent 5.7 ha → 6.1 ha · © OpenStreetMap contributors.');
+    expect(change('boundary', null, { areaKm2: 0.056761 }))
+      .toBe('Extent none → 5.7 ha · © OpenStreetMap contributors.');
+    // Two tracings that round to the same hectares: the hash said the outline
+    // moved, and a line reading "5.7 ha → 5.7 ha" would hide it.
+    expect(change('boundary', { areaKm2: 0.0568 }, { areaKm2: 0.0571 }))
+      .toBe('The outline was re-traced; the extent still reads 5.7 ha — look at the shape on the map · © OpenStreetMap contributors.');
+  });
+
   it('tells a spelling change of a country from a change of country', () => {
     const names = { field: 'countryNames', old: ['United States of America'], new: ['United States'] };
     expect(change('countryNames', names.old, names.new, { proposed: [names] }))

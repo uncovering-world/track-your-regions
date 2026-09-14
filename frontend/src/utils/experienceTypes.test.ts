@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { typeOptionsFor, typeVocabularyOf } from './experienceTypes';
+import { hasExtent, typeOptionsFor, typeVocabularyOf } from './experienceTypes';
 
 const WORLD_HERITAGE = 1;
 const ART_MUSEUMS = 2;
@@ -75,5 +75,23 @@ describe('typeVocabularyOf', () => {
     expect(typeVocabularyOf('art')).toBeNull();
     expect(typeVocabularyOf(null)).toBeNull();
     expect(typeVocabularyOf(7)).toBeNull();
+  });
+});
+
+describe('hasExtent', () => {
+  it('is the dig alone: a site has an outline, the museum beside it has an address', () => {
+    expect(hasExtent(ARCHAEOLOGY, 'site')).toBe(true);
+    expect(hasExtent(ARCHAEOLOGY, 'museum')).toBe(false);
+  });
+
+  it('is false for every other kind, whatever it is typed', () => {
+    // The map asks this *before* reading a place, so a yes here is a request
+    // issued. A kind that never has an extent must never cost one.
+    expect(hasExtent(ART_MUSEUMS, null)).toBe(false);
+    expect(hasExtent(PUBLIC_ART, 'monument')).toBe(false);
+    expect(hasExtent(PLACES_OF_WORSHIP, 'cathedral')).toBe(false);
+    expect(hasExtent(WORLD_HERITAGE, 'cultural')).toBe(false);
+    expect(hasExtent(null, 'site')).toBe(false);
+    expect(hasExtent(undefined, undefined)).toBe(false);
   });
 });

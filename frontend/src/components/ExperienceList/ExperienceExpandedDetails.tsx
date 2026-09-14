@@ -41,6 +41,7 @@ import {
 } from '../../api/experiences';
 import { experienceContentsQuery, experienceDetailsQuery } from '../../api/experienceCardQueries';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { ExtentLine } from '../shared/ExtentLine';
 import { ArtworksList } from './ArtworksList';
 import { VisitedStatusButton } from './VisitedStatusButton';
 import { computeVisitedStatus } from './utils';
@@ -316,6 +317,10 @@ function ExperienceExpandedDetailsComponent({
           Inscribed: {String(details.metadata.dateInscribed as string | number)}
         </Typography>
       )}
+
+      {/* How much ground it covers, and whose map says so (ADR-0059). Rendered
+          from the detail read the card already issues. */}
+      <ExtentLine areaKm2={details?.area_km2} />
 
       {/* Museum description */}
       {details?.description && !experience.short_description && (

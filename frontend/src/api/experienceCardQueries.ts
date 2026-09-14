@@ -10,8 +10,9 @@
  *
  * So a card is not opened until they have answered — `useExperienceCardReady`
  * waits for both, and the row shows a spinner where its chevron was, which moves
- * nothing. They are deliberately *not* warmed on hover; the note above the
- * definitions below says why.
+ * nothing. They are deliberately *not* warmed on hover, with one narrow
+ * exception; the note above the definitions below says why, and what the
+ * exception has to satisfy.
  *
  * Sharing the definitions is the point of this file: the card and the readiness
  * gate must read the same keys, or the gate would wait on one request while the
@@ -43,3 +44,13 @@ export const experienceContentsQuery = (id: number) => ({
 // requests per row a reader pauses over is how a list refuses to load itself.
 // `useExperienceCardReady` waits for them on open instead, which costs the reader
 // about 150 ms of spinner and costs the list nothing.
+//
+// One caller reads on hover, and only on the terms that rule implies:
+// `useExtentLayer` asks `experienceDetailsQuery` for the boundary the map draws
+// around an Archaeology **site**, because a site's extent exists nowhere else.
+// It is not a prefetch of the card and not a general warm — it fires for a row
+// `hasExtent()` says can have an outline (kind 5, type `site`, off the loaded
+// row, no request) and only once the pointer has rested 150 ms, so a swept list
+// asks nothing and a museum, a monument or a church asks nothing ever. Anything
+// else that wants to read on hover has to clear the same bar: a rule that rules
+// most rows out before the request, and a pause that rules out the sweep.

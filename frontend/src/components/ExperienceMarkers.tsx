@@ -3,7 +3,10 @@
  *
  * Uses react-map-gl's declarative <Source> and <Layer> components.
  *
- * 3 GeoJSON sources:
+ * 4 GeoJSON sources:
+ *   exp-extent    — the outline of the place the reader is hovering or has
+ *                   selected, where the catalogue holds one (an archaeology
+ *                   site's, from OpenStreetMap); painted under the markers
  *   exp-markers   — a marker per in-region place, or one folded marker for an
  *                   object the reader folded, or one stand-in marker for an
  *                   object whose places the batch does not hold; drives the
@@ -26,11 +29,14 @@ import { useMap, Source, Layer } from 'react-map-gl/maplibre';
 import * as maplibregl from 'maplibre-gl';
 import { buildExperienceMarkers, representablePlaces } from './experienceMarkers/buildMarkers';
 import {
-  SOURCE_MARKERS, SOURCE_HIGHLIGHT, SOURCE_HOVER, EMPTY_FC, buildPointHoverData, buildPointsHoverData,
+  SOURCE_MARKERS, SOURCE_HIGHLIGHT, SOURCE_HOVER, SOURCE_EXTENT,
+  EMPTY_FC, buildPointHoverData, buildPointsHoverData,
   heatmapLayer, markerLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
   hoverGlowLayer, hoverRingLayer, highlightRingLayer, highlightPointLayer,
+  extentFillLayer, extentLineLayer,
 } from './experienceMarkers/layers';
 import { useMarkerInteractions } from './experienceMarkers/useMarkerInteractions';
+import { useExtentLayer } from './experienceMarkers/useExtentLayer';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../hooks/useHoverContext';
 import { useRegionLocations } from '../hooks/useRegionLocations';
@@ -143,6 +149,18 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       experiences, locationsByExperience, expandedKindNames, collapsedExperienceIds),
     [experiences, locationsByExperience, expandedKindNames, collapsedExperienceIds],
   );
+
+  // The outline of whichever place the reader is looking at, written straight
+  // to its source: this component is the map's sources and layers, so a hover
+  // that re-rendered it would rebuild all of them on every mouse move. The
+  // loaded row goes with it, because the kind decides whether a hover is worth
+  // a request at all — see the hook's own note.
+  const { extentDataRef } = useExtentLayer({
+    mapRef,
+    hoverStore,
+    selectedExperienceId,
+    placeOf: getExperienceById,
+  });
 
   // Keep a ref so map callbacks can access the latest markers
   const markersRef = useRef(markers);
@@ -393,6 +411,14 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
   return (
     <>
+      {/* The selected or hovered place's extent, under everything: MapLibre
+          paints in the order layers are added, and an outline over a pin would
+          hide the thing the reader clicked. */}
+      <Source id={SOURCE_EXTENT} type="geojson" data={extentDataRef.current}>
+        <Layer {...extentFillLayer} />
+        <Layer {...extentLineLayer} />
+      </Source>
+
       {/* Main markers source — heatmap below the threshold, markers above it */}
       <Source
         id={SOURCE_MARKERS}
