@@ -1,7 +1,7 @@
 # ADR-0058: Archaeology is one kind of sites and museums, and a museum joins it for what it is, not for one find
 
 **Date:** 2026-09-13
-**Status:** Draft
+**Status:** Accepted
 
 ---
 
@@ -112,17 +112,119 @@ hoard, papyrus, viking ship), or an item with a discovery place, or an object of
 skeletons, individual animals, minerals, gems and meteorites are natural history and are not
 finds.
 
-**4. A site is admitted through a class that is under `archaeological site` and not under
-`human settlement`.** `archaeological site` itself, `Ancient Greek archaeological site`,
-`settlement site`, `tell`, `necropolis`, ruins; never `ancient city`, `Roman city`, `polis` or
-`free city` — the branch through which living cities, historical polities (Constantinople,
-Classical Athens) and inhabited islands typed `polis` (Milos, Ios) enter the tree. Shipwrecks
-and a `lost city` that is a modern evacuation are refused by class. OpenStreetMap is read as a
-second signal on the terms of ADR-0059: an item OSM maps as `historic=archaeological_site`
-is a site whatever branch it entered by (Troy, which Wikidata types only as a settlement,
-returns this way); an item OSM maps as `place=city|town|village` is a living place and is
-refused; OSM's polygon is the site's extent where OSM has one. A population statement is not a
-rule.
+**4. A site is admitted through the `archaeological site` tree, with OpenStreetMap as the judge
+where the classes cannot decide.** The pool is every item under `archaeological site` (Q839954)
+with a coordinate and the places' fame line; the branch — whether one of the item's own classes
+is under `human settlement` (Q486972) — decides what silence means, not what admission means. The
+tree holds living cities (Athens enters it through `free city`, Cairo and Damascus likewise),
+historical polities and inhabited islands typed `polis`, and the classes alone cannot tell them
+from Troy, which Wikidata types `city-state, polis, Bronze Age settlement, settlement site` and
+never as a dig.
+
+So OpenStreetMap is read as a second signal on the terms of ADR-0059, and the rule is, in order:
+
+1. **Refused by class or by name.** A shipwreck and its subclasses (58 in the pool, the Titanic
+   among them) — an archaeological site, and not a place anybody stands in. A `lost city` unless
+   the item also carries a direct site class, which takes Pripyat, Chernobyl and Thinis and
+   leaves Al-Hirah. A lake, a reservoir, a desert or a mountain range with no ruin mapped on it
+   and no World Heritage listing of its own, which takes Lake Bled, Qiandao Lake — whose dig, Shi
+   Cheng, is thirty metres under the water a dam put there — and the Lop Desert, and leaves
+   Tassili n'Ajjer and Tadrart Acacus. And one row by name, the Aysén Region of Chile, mis-typed
+   on Wikidata as an archaeological site.
+2. **OSM says ruin → a site**, whatever branch the item came in on: any object carrying
+   `historic` in {`archaeological_site`, `ruins`, `tomb`, `castle`, `fort`, `monument`,
+   `temple`, `citywalls`, `fortification`, `theatre`, `aqueduct`, `bridge`}, or `ruins=*`, or
+   `archaeological_site=*`, or `man_made` in {`mound`, `tell`, `geoglyph`}. Troy, Petra, Palmyra,
+   Byblos and Cyrene enter here — the last four being a living town beside the ruins with both
+   mapped, where the ruin is what a traveller goes for. **`roman_road` and `memorial` are
+   deliberately not in the set**: each decided a handful of rows in the measured pool and decided
+   them wrongly — `roman_road` is Watling Street and the Via Flaminia, and a 430 km road is not a
+   place a traveller stands in, while `memorial` is one row, the Lop Desert, whose only mapped
+   object is a modern marker.
+3. **OSM says a living place and nothing says ruin** — any object carrying `place` in {`city`,
+   `town`, `village`, `hamlet`, `suburb`, `quarter`, `neighbourhood`, `borough`, `municipality`},
+   or `boundary=census`, which is the outline a statistical office drew around a population it
+   counts (the pool's four New Mexico census places — Acomita Lake, North Acomita Village,
+   Skyline-Ganipa, Sunrise — are mapped `place=locality` with it and carry `archaeological site`
+   besides) — **then a site only if** the item is a World Heritage site itself (`P757`, or `P1435` =
+   Q9259) **or** carries a direct `P31` in the site classes (`archaeological site`, `tell`,
+   `necropolis`, `ruins`, `settlement site`, `archaeological park`, `Ancient Egyptian
+   archaeological site`, `Ancient Greek archaeological site`, `Paleolithic site`, `prehistoric
+   necropolis`, `tumulus`, `ancient monument`) **and states no population** (`P1082` absent);
+   otherwise refused by name. The card names only what the rule read: "a living place — OSM maps
+   a town here and Wikidata counts its people" where the item states a population, "a living
+   place — OSM maps a town here and Wikidata gives it no class of a site" where it states none —
+   never a number the rule never checked. Bagan, Anuradhapura, Baalbek, Saqqara, Dahshur, Cumae
+   and Bosra enter — Bosra (Q272680) on the World Heritage listing its own item carries,
+   `P1435 = Q9259`, checked on 2026-09-14; the measurement's facts file had recorded no
+   designation for it, and run 121 admitted it. Athens, Cairo, Asyut, Esna and Dendera are
+   refused, and Dendera's temple complex and Meidum's pyramid are separate items on the site
+   branch that enter on their own. `place=locality` (Pompeii, Sounion, Capernaum) and `place=island` (Rhodes,
+   Samos) are **not** living-place signals: one names a spot, the other an island.
+4. **Neither signal** — a weak tag (`heritage=*`, `boundary=protected_area|national_park`,
+   `tourism=attraction`), an object with nothing of interest on it, or no OSM object at all: on
+   the site branch, a site by class; on the settlement branch, a site with a direct site class, a
+   World Heritage listing of its own, **or a weak tag on an item Wikidata counts no people for**,
+   else refused by name. Angkor, Babylon, Thebes, Karnak and Olduvai Gorge enter by a class
+   already on the item. The last clause is Carthage's (Q6343: `city-state, ancient city,
+   emporium`, no site class, no population statement, one object — relation/8305288 — carrying
+   `heritage=1`), and the measured pool holds exactly two rows of that shape: Carthage and
+   Demetrias (Q1150349, relation/18138696, `heritage=2`, no population), both real sites. Rhodes,
+   Milos, Akkad, Pataliputra and Sabratha are refused this way, and Sabratha's World Heritage row
+   stands on its own; so is **Syracuse** (Q13670), whose only object is relation/39169,
+   `boundary=administrative` — an outline of a comune is not a ruin, and the refusal says so with
+   the map's own count: "one OSM object carries it, and it is not a ruin". Where the map maps an
+   island the sentence says **island** rather than city, which 17 of the 60 rows it is written
+   for are (Rhodes, Samos, Chios, Ithaca …).
+
+   **The other known misses are refused a step earlier, as living places.** Tyre (Q82070,
+   node/803018184 `place=city`), Sidon (Q163490, node/4799206602 `place=city`) and Agrigento
+   (Q13678, node/67253674 `place=city`) carry a town on the map, no site class that `wdt:P31`
+   reads, and a stated population; Side (Q152405) is the same with node/8822516201 `place=village`
+   and relation/15871010 `place=suburb`, and its `archaeological site` statement is **deprecated**
+   on Wikidata (checked 2026-09-14), so the class door never sees it. Not one of the four carries
+   a weak tag at all: the card reads the living-place sentence, not step 4's. What they have in
+   common is the miss itself — a living city standing for a famous excavation that has no item of
+   its own in the pool — and it is only a miss where the dig is unnamed: Agrigento's Valle dei
+   Templi (Q636774, `archaeological park, archaeological site`, 38 sitelinks) *is* in the pool and
+   is admitted by class, so Agrigento loses nothing, while Tyre's and Sidon's digs have no item to
+   find. Each refusal is a curator's to return from the kept-out card.
+5. Then the fame line, hysteretic, as it is decided for every kind — and it decides whether a
+   refusal is *named*: 830 of this pool's rows sit between 15 and 21 sitelinks, and naming a
+   village down there would bury the refusals a curator has to read.
+
+**A population statement is not the living-place rule.** It is the last word in the one narrow
+dispute of step 3 — OSM says town, Wikidata says site — and nowhere else: Pompeii states a
+population of 0 and is admitted without the number ever being read. Of the 86 settlement-branch
+items with only a living-place object, 6 are World Heritage sites themselves, 8 more state no
+population, and the other 20 are counted towns (Asyut 562k, Esna 463k, Ajloun 190k, Dendera 53k).
+Bosra, counted at 20k, is in that measured bucket and is admitted all the same: the facts file
+recorded no designation for it, and the item carries `P1435 = Q9259` (checked 2026-09-14).
+
+**OSM's polygon is the site's extent**, where OSM has one: among the item's ruin objects and the
+protected areas drawn around them, **a designated one first — an object carrying `heritage=*`, the
+line a heritage body drew — and among those, or among all of them where none is designated, the
+one covering the most ground**. Not the ruin object first, because at the Nazca Lines the ruin
+object traces one group of geoglyphs at 0.0015 km² while the World Heritage zone around the whole
+desert of lines (`heritage=1`) measures 774 km² (both by the writer's own expression, 2026-09-14),
+and the speck is not what a reader is asking to see; not the most ground alone, because the outer
+archaeological reserve there is a four-corner box of 5,638 km² that nobody designated; and by
+ground rather than by how finely a polygon is traced, because replayed on the mirror's answers for
+the 836 items with an extent (2026-09-14) the two disagree on twenty and the finer tracing is the
+smaller shape where they do — Sarmizegetusa Regia's castle speck against its site, a hundred times
+the ground; Preah Khan's central temple against its enclosure. At
+Petra the ruin object *is* the park. It is
+stored in `experiences.boundary` with its area beside it and its provenance on the row (ADR-0059
+decision 2); 516 of the 651 items with a ruin signal have a polygon on the ruin object itself. The
+extent follows the source through the gate rather than being held with a gated row's other
+columns: an outline is what somebody surveyed, and a published site whose extent was frozen would
+keep the first run's polygon for ever while the run's own note of where it came from moved on.
+
+*Amended in place on 2026-09-14 (#581 PR 2), while this ADR was Draft: the signal sets, the
+population tie-break, the kill lists, the census boundary, the weak-signal lift and the choice of
+extent are what the measurement of that day and the dry runs on it settled. The shape of the
+decision — the site tree, the settlement branch, OSM as the second signal, a population statement
+that is not a rule — is unchanged.*
 
 **5. Two lines on the source row, not one, and not 22 by inheritance.** `enterSitelinks` /
 `staySitelinks` for places (sites and museums) and `findEnterSitelinks` / `findStaySitelinks`

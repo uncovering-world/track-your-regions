@@ -167,5 +167,6 @@ or above the place line, 27 of them carrying no museum class) are counted agains
 the subcategories those 60 nest, which is why it reads more. The numbers of both runs
 are in [`wikidata-archaeology`](wikidata-archaeology.md), which is where the source row and its
 lines are recorded; this record holds only what the category door itself contributed. No live run
-has been made, so the kind holds no place a reader can be shown; its site door lands first
-(ADR-0058 decision 7).
+has been made, so the kind holds no place a reader can be shown. The site door landed with #581's
+second slice on 2026-09-14, so both halves of the kind are built and what it waits on is the
+maintainer's first live run and a curator publishing what it brings (ADR-0058 decision 7).

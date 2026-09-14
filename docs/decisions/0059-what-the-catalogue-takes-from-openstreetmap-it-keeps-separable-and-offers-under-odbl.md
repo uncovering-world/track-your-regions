@@ -1,7 +1,7 @@
 # ADR-0059: What the catalogue takes from OpenStreetMap it keeps separable and offers under ODbL
 
 **Date:** 2026-09-13
-**Status:** Draft
+**Status:** Accepted
 
 ---
 
@@ -100,6 +100,14 @@ beyond the query.** That was already the rules' reading and it stands.
 - Third-party mirrors (QLever's OSM planet) can change their endpoint or terms; the Overpass
   public instances are rate-limited and were unreliable on the day this was measured. The
   connector needs a fallback and a cache, as the Wikidata one has.
+
+*Accepted on 2026-09-14 (#581 PR 2): the first connector exists, written from the register record
+decision 4 asks for (`docs/sources/global/openstreetmap-qlever.md`), and every one of the four
+obligations has a place in the code. The provenance is `metadata.osm` on the row, carrying the
+object, the tag and the date; the OSM-derived part of a kind-5 site row is that key, `boundary`
+and `area_km2` and nothing else; the credit is `ExtentLine`, which renders the extent and
+"© OpenStreetMap contributors" together or renders nothing; and the reader carries the
+`User-Agent`, the rate and the cache the decision asks of every connector.*
 
 ## References
 
