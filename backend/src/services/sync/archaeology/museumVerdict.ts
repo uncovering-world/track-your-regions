@@ -283,15 +283,22 @@ function judgeOne(
       // A find is what got it in only where the museum's own fame did not
       // (ADR-0058 decision 2), and then the card names the most famous of them.
       //
-      // Asked as the standing and not as the enter line alone, because the place
-      // line is hysteretic too: a museum the source already admits that has
-      // slipped into the band between stay and enter is kept by its *own* fame
-      // forgiving the slip, not by anything it holds, and naming a find there
-      // would tell a curator the Zeugma Mosaic Museum is in the catalogue for a
-      // mosaic when what keeps it is the 20 languages it is written up in.
-      admittedFor: lineStanding(row.sitelinks, ctx.admitted.has(qid), ctx.line) === 'in'
-        ? undefined
-        : famous[0],
+      // Asked of the enter line alone, and not of the row's standing: the place
+      // line is hysteretic, so an admitted museum at 21 *stands* in — and it
+      // could not have entered on 21, since the line to enter is 22. What
+      // carried Heraklion in was the Phaistos disc, and on the next run the disc
+      // is still what a museum below the enter line is in the catalogue for.
+      // Read off the standing, the run named the disc once and cleared it on
+      // every run after (#896): the museum's own count forgiving a slip was
+      // read as its reason, and the upsert writes what the run brings.
+      //
+      // Deterministic rather than remembered: the same facts name the same find
+      // whether this is the museum's first run or its tenth, so a name the bug
+      // already cleared comes back by a run and not by hand. And a museum in
+      // the band whose find has fallen below the finds' stay line names nothing
+      // — `famous` is empty — and stays on its own count, which is then truly
+      // what keeps it.
+      admittedFor: row.sitelinks >= ctx.line.enterSitelinks ? undefined : famous[0],
       findFacts: ctx.findFacts,
     }),
   };

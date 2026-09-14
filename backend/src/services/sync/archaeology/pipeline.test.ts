@@ -920,31 +920,57 @@ describe('collectArchaeology', () => {
     expect(reason(unknown, 'Q19675')).toBeUndefined();
   });
 
-  it('names no find for a museum its own hysteresis kept, and names one where it did not', async () => {
+  it('names the find for a museum below the enter line on every run, not only its first', async () => {
     // The Zeugma Mosaic Museum at 20 articles sits in the band between the place
     // line's stay (18) and enter (22), holding the Pompeii Lakshmi at 19 — above
-    // the finds' enter line of 18. Two runs, two different reasons it is here.
+    // the finds' enter line of 18. It could not enter on 20: the Lakshmi is what
+    // carries it, on the run that admits it and on every run after.
     const held = (w: World) => {
       w.finds.Q24269542.statements = [{ property: 'P195', venue: 'Q196982' }];
       return w;
     };
-
-    // Already admitted: what keeps it is its own 20 languages, the place line
-    // forgiving the slip exactly as it forgives the Louvre's in the test above.
-    // Naming a find here would tell a curator the museum is in the catalogue for
-    // a mosaic when nothing it holds is what kept it.
-    const kept = await collect(held(world()), { admitted: ['Q196982'] });
-    expect(item(kept, 'Q196982')).toMatchObject({ sitelinks: 20, findsAboveLine: 1 });
-    expect(item(kept, 'Q196982')?.admittedFor).toBeUndefined();
+    const named = { qid: 'Q24269542', label: 'Pompeii Lakshmi' };
 
     // Never admitted: 20 is below the enter line with no standing to forgive it,
     // so the find is what carries it over and the card says so (ADR-0058
     // decision 2).
     const carried = await collect(held(world()));
-    expect(item(carried, 'Q196982')).toMatchObject({
-      sitelinks: 20,
-      admittedFor: { qid: 'Q24269542', label: 'Pompeii Lakshmi' },
+    expect(item(carried, 'Q196982')).toMatchObject({ sitelinks: 20, admittedFor: named });
+
+    // Already admitted: the place line forgives the slip to 20, and the museum
+    // would stand without the find — but 20 could never have got it in, and the
+    // find is still above its line. Read off the standing, the run named the
+    // Lakshmi once and cleared it on every run after; Heraklion lost the
+    // Phaistos disc that way at 21 (#896).
+    const kept = await collect(held(world()), { admitted: ['Q196982'] });
+    expect(item(kept, 'Q196982')).toMatchObject({
+      sitelinks: 20, findsAboveLine: 1, admittedFor: named,
     });
+
+    // And with the find itself in its own band — 16, below the finds' enter
+    // line of 18 and above their stay line of 15 — the admitted museum still
+    // names it: the find is read at the hysteretic finds' line, as the door
+    // reads it, and only the badge asks the enter line (`findsAboveLine`).
+    const slipped = held(world());
+    slipped.finds.Q24269542.sitelinks = 16;
+    const both = await collect(slipped, { admitted: ['Q196982'] });
+    expect(item(both, 'Q196982')).toMatchObject({
+      sitelinks: 20, findsAboveLine: 0, admittedFor: named,
+    });
+  });
+
+  it("names nothing for a museum in the band whose find has fallen below the finds' line", async () => {
+    // The mirror: the Lakshmi at 14 is below the finds' stay line of 15 and
+    // under the pool's own floor, so it is no reason at all. The museum stays on
+    // its own 20 articles — the place line forgiving the slip — and that is now
+    // truly what keeps it, so the card names no find.
+    const w = world();
+    w.finds.Q24269542.statements = [{ property: 'P195', venue: 'Q196982' }];
+    w.finds.Q24269542.sitelinks = 14;
+
+    const kept = await collect(w, { admitted: ['Q196982'] });
+    expect(item(kept, 'Q196982')).toMatchObject({ sitelinks: 20, findsAboveLine: 0 });
+    expect(item(kept, 'Q196982')?.admittedFor).toBeUndefined();
   });
 
   it('says where the finds it writes have moved since the last run', async () => {
