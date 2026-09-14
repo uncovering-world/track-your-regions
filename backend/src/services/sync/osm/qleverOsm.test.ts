@@ -1,5 +1,5 @@
 /**
- * The OSM door on a fake transport: what it sends, how it waits, and what it
+ * The mirror door on a fake transport: what it sends, how it waits, and what it
  * refuses to fetch.
  *
  * The query text is asserted rather than the rows alone, because the WKT rule
@@ -8,29 +8,16 @@
  * while breaking the policy the register record commits to.
  */
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import {
-  OSM_BATCH, OSM_ENDPOINT, osmBatchQuery, qleverOsmDoor, readOsmObjects, type KeepWkt,
-} from './qleverOsm.js';
-import type { OsmObject } from './types.js';
+import { OSM_ENDPOINT, osmBatchQuery, qleverOsmDoor } from './qleverOsm.js';
+import type { KeepWkt } from './types.js';
 import { WaitBudget } from '../sourceRetry.js';
 import { userAgent } from '../../../config/userAgent.js';
-import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
 const KEEP: KeepWkt = {
   historic: ['archaeological_site', 'ruins'],
   manMade: ['tell'],
   boundary: ['protected_area', 'national_park'],
-};
-
-const runner = () => {
-  const phases: string[] = [];
-  let steps = 0;
-  return {
-    run: { phase: (m: string) => { phases.push(m); }, step: async () => { steps += 1; } },
-    phases,
-    stepCount: () => steps,
-  };
 };
 
 describe('osmBatchQuery', () => {
@@ -73,66 +60,6 @@ describe('osmBatchQuery', () => {
   });
 });
 
-describe('readOsmObjects', () => {
-  it('asks in batches of a hundred, pausing before each, and reports the batch', async () => {
-    const asked: string[][] = [];
-    const send = vi.fn<SparqlFn>(async (query: string) => {
-      asked.push([...query.matchAll(/"(Q\d+)"/g)].map((m) => m[1]));
-      return [] as SparqlBinding[];
-    });
-    const qids = Array.from({ length: OSM_BATCH + 5 }, (_, i) => `Q${i + 1}`);
-    const { run, phases, stepCount } = runner();
-
-    const answer = await readOsmObjects(send, qids, KEEP, run);
-
-    expect(send).toHaveBeenCalledTimes(2);
-    expect(asked[0]).toHaveLength(OSM_BATCH);
-    expect(asked[1]).toHaveLength(5);
-    expect(stepCount()).toBe(2);
-    expect(phases).toEqual([
-      'Asking OpenStreetMap what it maps at each site (batch 1/2)...',
-      'Asking OpenStreetMap what it maps at each site (batch 2/2)...',
-    ]);
-    // Every item asked about has an entry: an empty list is "OSM maps nothing
-    // carrying this item", and absence would be "nobody asked".
-    expect(answer.size).toBe(OSM_BATCH + 5);
-    expect(answer.get('Q1')).toEqual([]);
-  });
-
-  it('files the answer under the cache kind of its own, with a label a person reads', async () => {
-    const send = vi.fn<SparqlFn>(async () => [] as SparqlBinding[]);
-    const { run } = runner();
-    await readOsmObjects(send, ['Q22647'], KEEP, run);
-    expect(send.mock.calls[0][1]).toEqual({
-      kind: 'osm', label: 'OSM objects of 1 item',
-    });
-  });
-
-  it('groups what came back under the item that was asked about', async () => {
-    const send = async (): Promise<SparqlBinding[]> => [{
-      q: { value: 'Q22647' },
-      s: { value: 'https://www.openstreetmap.org/way/423938794' },
-      type: { value: 'https://www.openstreetmap.org/way' },
-      geomType: { value: 'POLYGON((26.' },
-      wkt: { value: 'POLYGON((26.2 39.9,26.3 39.9,26.3 40.0,26.2 39.9))' },
-      historic: { value: 'archaeological_site' },
-    }];
-    const { run } = runner();
-    const answer = await readOsmObjects(send, ['Q22647', 'Q1524'], KEEP, run);
-    const troy = answer.get('Q22647') as OsmObject[];
-    expect(troy[0].ref).toBe('way/423938794');
-    expect(troy[0].tags.historic).toBe('archaeological_site');
-    expect(answer.get('Q1524')).toEqual([]);
-  });
-
-  it('asks nothing at all where the caller has no items', async () => {
-    const send = vi.fn<SparqlFn>(async () => [] as SparqlBinding[]);
-    const { run } = runner();
-    expect(await readOsmObjects(send, [], KEEP, run)).toEqual(new Map());
-    expect(send).not.toHaveBeenCalled();
-  });
-});
-
 describe('qleverOsmDoor', () => {
   afterEach(() => { vi.useRealTimers(); });
 
@@ -158,11 +85,17 @@ describe('qleverOsmDoor', () => {
     return outcome.value as T;
   }
 
+  it('is the mirror by name, and phrases its question in SPARQL', () => {
+    const door = qleverOsmDoor({ cancel: false, statusMessage: '' }, new WaitBudget(60000));
+    expect(door.name).toBe('qlever');
+    expect(door.question(['Q22647'], KEEP)).toBe(osmBatchQuery(['Q22647'], KEEP));
+  });
+
   it('POSTs, says what it is, and asks for SPARQL JSON', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => answer([]));
     const progress = { cancel: false, statusMessage: '' };
     const door = qleverOsmDoor(progress, new WaitBudget(60000), '[T]', { fetchImpl });
-    await door('SELECT * WHERE {}');
+    await door.send('SELECT * WHERE {}');
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
@@ -195,7 +128,7 @@ describe('qleverOsmDoor', () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
 
-    const rows = await runWithTimers(door('SELECT * WHERE {}'));
+    const rows = await runWithTimers(door.send('SELECT * WHERE {}'));
 
     expect(rows).toHaveLength(1);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
@@ -211,6 +144,6 @@ describe('qleverOsmDoor', () => {
     const door = qleverOsmDoor({ cancel: false, statusMessage: '' }, new WaitBudget(60000), '[T]', {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
-    await expect(door('SELECT * WHERE {}')).rejects.toThrow(/OpenStreetMap .*400/);
+    await expect(door.send('SELECT * WHERE {}')).rejects.toThrow(/OpenStreetMap .*400/);
   });
 });

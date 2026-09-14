@@ -46,7 +46,8 @@ import {
   type CollectedArchaeologyItem,
   type CollectedArchaeologyMuseum,
 } from './archaeology/pipeline.js';
-import { qleverOsmDoor, readOsmObjects } from './osm/qleverOsm.js';
+import { qleverOsmDoor } from './osm/qleverOsm.js';
+import { readOsmObjects } from './osm/readOsmObjects.js';
 import { OsmAnswerFloorError, type OsmReader } from './archaeology/sites.js';
 // One item at a time, once the run has decided: the writers and what they were
 // told about this pass (`archaeology/writer.ts`).
@@ -184,14 +185,15 @@ function categoryMembersDoor(
 function osmDoor(
   progress: SyncProgress, refreshCache: boolean, budget: WaitBudget,
 ): OsmReader {
-  const send = withCache(qleverOsmDoor(progress, budget, LOG_PREFIX), {
+  const door = qleverOsmDoor(progress, budget, LOG_PREFIX);
+  const send = withCache(door.send, {
     sourceId: ARCHAEOLOGY_SOURCE_ID,
     enabled: !refreshCache,
     onHit: (descriptor, rows) => {
       progress.statusMessage = `${descriptor.label}: ${rows} rows, from cache`;
     },
   });
-  return (qids, keep, run) => readOsmObjects(send, qids, keep, run);
+  return (qids, keep, run) => readOsmObjects({ ...door, send }, qids, keep, run);
 }
 
 // =============================================================================

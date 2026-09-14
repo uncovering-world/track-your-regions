@@ -1,6 +1,6 @@
 /**
- * The door to OpenStreetMap: the QLever osm-planet mirror, asked one batch of
- * Wikidata items at a time.
+ * The first door to OpenStreetMap: the QLever osm-planet mirror, asked one
+ * batch of Wikidata items at a time in SPARQL.
  *
  * The manners are the register record's
  * (`docs/sources/global/openstreetmap-qlever.md`) and are not decoration. The
@@ -15,37 +15,22 @@
  * carries, and the readership measurement has already met the Action API's 414
  * for the same reason.
  *
- * **A lost answer is never read as a fact**, and it takes two guards to mean
- * it. The whole point of asking OSM is to tell a ruin from a living town, so a
- * batch that came back empty because the mirror moved house would turn every
- * site in it into "no OSM object carries this item" and refuse the ones the
- * rule is there to admit. A batch that cannot be *read* throws here — the run
- * fails and nothing is written, the shape the Wikipedia category readers took
- * for the same reason (#887). But a mirror can also answer HTTP 200 with no
- * bindings at all, which this module cannot tell from a genuine "nothing is
- * mapped there": a renamed `osmkey:` IRI, a rebuilt dataset, the host moving
- * again. Only the caller knows how much silence is too much, so the second
- * guard is the site door's — `collectSitesByFame` counts the share of asked
- * items that came back with an object and fails the run below a floor
- * (`OSM_ANSWER_FLOOR`), before a single verdict is taken.
+ * What the mirror answers is read by `readOsmObjects`, which is also where a
+ * lost answer is kept from becoming a fact; the second door (`overpassOsm.ts`)
+ * is the same shape on the public Overpass API.
  */
 
-import {
-  withRetries, abortOn, exponentialBackoff, backoffFromRetryAfter, RetrySignal, WaitBudget,
-  type SourceWait,
-} from '../sourceRetry.js';
-import { chunk, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
+import { withRetries, abortOn, WaitBudget, type SourceWait } from '../sourceRetry.js';
 import { isQid, waitMessage, type SparqlBinding } from '../wikidataUtils.js';
 import { userAgent } from '../../../config/userAgent.js';
-import { foldOsmRows, OSM_TAG_KEYS, type OsmObject } from './types.js';
+import type { OsmDoor } from './readOsmObjects.js';
+import { classifyOsmError, OSM_MAX_RETRIES, refuseOrRetry } from './retry.js';
+import { assertTagValues, OSM_TAG_KEYS, type KeepWkt } from './types.js';
 
 export const OSM_ENDPOINT = 'https://qlever.dev/api/osm-planet';
 
 /** What every OSM read tells the mirror it is. Built once (#864), never spelled at a call site. */
 const OSM_USER_AGENT = userAgent({ bot: true });
-
-/** Items per question. A hundred answered in a few seconds across the whole measurement. */
-export const OSM_BATCH = 100;
 
 /**
  * How long one question may take.
@@ -56,31 +41,12 @@ export const OSM_BATCH = 100;
  */
 const OSM_TIMEOUT_MS = 120000;
 
-const OSM_MAX_RETRIES = 4;
-const OSM_BACKOFF_CEILING_MS = 60000;
+const RETRY_LABEL = 'OSM';
 
 const LOG_PREFIX_DEFAULT = '[OSM]';
 
-/** Which objects the query may send a geometry for; the kind decides the values. */
-export interface KeepWkt {
-  /** `historic` values that mean a ruin. */
-  historic: string[];
-  /** `man_made` values that mean one. */
-  manMade: string[];
-  /** `boundary` values worth an extent — a protected area, never an administrative one. */
-  boundary: string[];
-}
-
-/** A tag value may be spliced into SPARQL only if it is one. */
-const TAG_VALUE = /^[a-z0-9_:-]+$/;
-
 function literals(values: string[]): string {
-  for (const value of values) {
-    if (!TAG_VALUE.test(value)) {
-      throw new Error(`${value} is not an OSM tag value this reader will ask for`);
-    }
-  }
-  return values.map((value) => `"${value}"`).join(', ');
+  return assertTagValues(values).map((value) => `"${value}"`).join(', ');
 }
 
 /**
@@ -127,35 +93,6 @@ ${optionals}
 }`;
 }
 
-async function handleHttpError(response: Response, attempt: number): Promise<never> {
-  const text = await response.text();
-  if (attempt < OSM_MAX_RETRIES && (response.status >= 500 || response.status === 429)) {
-    const retryAfter = Number(response.headers.get('retry-after'));
-    throw new RetrySignal(
-      backoffFromRetryAfter(retryAfter, attempt, OSM_BACKOFF_CEILING_MS),
-      `OSM ${response.status}`,
-    );
-  }
-  throw new Error(`OpenStreetMap answered ${response.status}: ${text.substring(0, 300)}`);
-}
-
-/**
- * What is worth another attempt: a timeout and a dropped connection, plus the
- * statuses above. A body that will not parse is not — a mirror answering HTML
- * answers HTML again a minute later.
- */
-function classify(error: unknown, attempt: number, retries: number): RetrySignal | Error {
-  if (error instanceof RetrySignal) return error;
-  const isAbort = error instanceof Error && error.name === 'AbortError';
-  if (attempt < retries && (isAbort || error instanceof TypeError)) {
-    return new RetrySignal(
-      exponentialBackoff(attempt, OSM_BACKOFF_CEILING_MS),
-      isAbort ? 'OSM timeout' : 'OSM network error',
-    );
-  }
-  return error instanceof Error ? error : new Error(String(error));
-}
-
 async function askQlever(
   query: string,
   options: { userAgent: string; isCancelled?: () => boolean; fetchImpl?: typeof fetch },
@@ -173,7 +110,7 @@ async function askQlever(
       body: new URLSearchParams({ query }),
       signal,
     });
-    if (!response.ok) await handleHttpError(response, attempt);
+    if (!response.ok) await refuseOrRetry(response, attempt, { label: RETRY_LABEL });
     let body: { results?: { bindings?: SparqlBinding[] } };
     try {
       body = await response.json() as { results?: { bindings?: SparqlBinding[] } };
@@ -201,8 +138,8 @@ export function qleverOsmDoor(
   budget: WaitBudget,
   logPrefix: string = LOG_PREFIX_DEFAULT,
   options: { fetchImpl?: typeof fetch } = {},
-): (query: string) => Promise<SparqlBinding[]> {
-  return (query) => withRetries(
+): OsmDoor {
+  const send = (query: string): Promise<SparqlBinding[]> => withRetries(
     (attempt) => askQlever(query, {
       userAgent: OSM_USER_AGENT,
       isCancelled: () => progress.cancel,
@@ -216,38 +153,8 @@ export function qleverOsmDoor(
       onWait: (wait: SourceWait) => {
         progress.statusMessage = waitMessage('OpenStreetMap', wait, budget);
       },
-      classify,
+      classify: (error, attempt, retries) => classifyOsmError(error, attempt, retries, RETRY_LABEL),
     },
   );
-}
-
-/**
- * Every object carrying `wikidata=<item>`, for each of a list of items.
- *
- * `send` rather than the door itself, so the caller composes the cache over it
- * (`withCache`) exactly as the Wikidata collectors do: this module knows how to
- * ask, and the run knows whether it is allowed to remember.
- */
-export async function readOsmObjects(
-  send: SparqlFn,
-  qids: string[],
-  keep: KeepWkt,
-  run: Pick<QueryRunner, 'phase' | 'step'>,
-): Promise<Map<string, OsmObject[]>> {
-  const out = new Map<string, OsmObject[]>();
-  const asked = [...new Set(qids.filter(isQid))];
-  if (!asked.length) return out;
-  for (const qid of asked) out.set(qid, []);
-
-  const batches = chunk(asked, OSM_BATCH);
-  for (let i = 0; i < batches.length; i++) {
-    run.phase(`Asking OpenStreetMap what it maps at each site (batch ${i + 1}/${batches.length})...`);
-    await run.step();
-    const rows = await send(osmBatchQuery(batches[i], keep), {
-      kind: 'osm',
-      label: `OSM objects of ${batches[i].length} item${batches[i].length === 1 ? '' : 's'}`,
-    });
-    foldOsmRows(rows, out);
-  }
-  return out;
+  return { name: 'qlever', question: osmBatchQuery, send };
 }

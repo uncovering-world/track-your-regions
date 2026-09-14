@@ -46,6 +46,40 @@ export const OSM_TAG_KEYS = [
   'tourism', 'boundary', 'man_made', 'natural', 'name',
 ] as const;
 
+/**
+ * Which objects a question may send a geometry for; the kind decides the
+ * values, and every reader spells the same rule in its own language
+ * (`qleverOsm.ts`, `overpassOsm.ts`).
+ */
+export interface KeepWkt {
+  /** `historic` values that mean a ruin. */
+  historic: string[];
+  /** `man_made` values that mean one. */
+  manMade: string[];
+  /** `boundary` values worth an extent — a protected area, never an administrative one. */
+  boundary: string[];
+}
+
+/** A tag value may be spliced into a query only if it is one. */
+const TAG_VALUE = /^[a-z0-9_:-]+$/;
+
+/**
+ * The values, once each is known to be a plain tag value.
+ *
+ * Every reader splices these into query text — a SPARQL `IN` list, an
+ * Overpass regular expression — so the one thing checked here is that no
+ * value can close a string or mean anything to a parser: lowercase letters,
+ * digits, `_`, `:` and `-`, which is what OSM tag values are.
+ */
+export function assertTagValues(values: string[]): string[] {
+  for (const value of values) {
+    if (!TAG_VALUE.test(value)) {
+      throw new Error(`${value} is not an OSM tag value this reader will ask for`);
+    }
+  }
+  return values;
+}
+
 const OBJECT_URI = /^https:\/\/www\.openstreetmap\.org\/(node|way|relation)\/(\d+)$/;
 
 /**
