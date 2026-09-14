@@ -155,7 +155,7 @@ Docs live in `docs/` with this structure:
 
 ```
 docs/
-├── decisions/        ← Architecture Decision Records (immutable)
+├── decisions/        ← Architecture Decision Records (immutable once Accepted)
 ├── inbox/            ← unsorted docs awaiting categorization
 ├── security/         ← OWASP ASVS security profile, checklist, audit reports
 ├── sources/          ← the register of sources looked at for filling a kind (a source is a record before it is code, ADR-0048)
@@ -182,7 +182,7 @@ When working on this codebase, keep docs in sync:
 
 ### Architecture Decision Records (ADRs)
 
-ADRs live in `docs/decisions/`. They are **immutable** — only `Status` can change. Never delete an ADR; mark it `Superseded by ADR-XXXX` and create a new one. When the new ADR narrows only part of an older one and the rest stands, mark it `Accepted — decision N narrowed by ADR-XXXX` instead: superseding a multi-decision ADR to revise one of them retires the decisions that still hold.
+ADRs live in `docs/decisions/`. They are **immutable once Accepted** — from then on only `Status` can change; a Draft may still be revised until the pull request that accepts it lands, with a note in the ADR saying what was amended and why (`docs/decisions/README.md`). Never delete an ADR; mark it `Superseded by ADR-XXXX` and create a new one. When the new ADR narrows only part of an older one and the rest stands, mark it `Accepted — decision N narrowed by ADR-XXXX` instead: superseding a multi-decision ADR to revise one of them retires the decisions that still hold.
 
 **When to create an ADR** — before implementing any change that involves:
 - Choosing a library, framework, or external service

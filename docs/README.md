@@ -5,7 +5,7 @@
 ```
 docs/
 ├── README.md              ← this file
-├── decisions/             ← Architecture Decision Records (immutable)
+├── decisions/             ← Architecture Decision Records (immutable once Accepted)
 ├── inbox/                 ← unsorted docs awaiting categorization
 ├── security/              ← OWASP ASVS security profile, checklist, audit reports
 ├── sources/               ← the register of sources looked at for filling a kind (one record each)
