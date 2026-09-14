@@ -16,8 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildArchaeologyTrees, OSM_KEEP_WKT, SITE_ROOT } from './classes.js';
 import { collectSitesByFame, OsmAnswerFloorError } from './sites.js';
-import type { KeepWkt } from '../osm/qleverOsm.js';
-import type { OsmObject } from '../osm/types.js';
+import type { KeepWkt, OsmObject } from '../osm/types.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
 const uri = (qid: string) => ({ value: `http://www.wikidata.org/entity/${qid}` });

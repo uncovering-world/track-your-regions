@@ -28,8 +28,7 @@ import {
   type SiteRefusalGroup,
 } from './siteTest.js';
 import { OSM_KEEP_WKT, SITE_ROOT, type ArchaeologyTrees } from './classes.js';
-import type { KeepWkt } from '../osm/qleverOsm.js';
-import type { OsmObject } from '../osm/types.js';
+import type { KeepWkt, OsmObject } from '../osm/types.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncOrchestrator.js';
 

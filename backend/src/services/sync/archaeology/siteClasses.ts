@@ -19,7 +19,7 @@
  * anything: `siteTest.ts` does that.
  */
 
-import type { KeepWkt } from '../osm/qleverOsm.js';
+import type { KeepWkt } from '../osm/types.js';
 
 /**
  * Under the museum tree, and a site rather than a museum.

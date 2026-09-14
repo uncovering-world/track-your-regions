@@ -61,7 +61,9 @@ vi.mock('./wikipediaCategoryMembers.js', () => ({
   fetchCategoryMembers: vi.fn().mockResolvedValue(new Map()),
 }));
 vi.mock('./osm/qleverOsm.js', () => ({
-  qleverOsmDoor: vi.fn(() => vi.fn()),
+  qleverOsmDoor: vi.fn(() => ({ name: 'qlever', question: vi.fn(), send: vi.fn() })),
+}));
+vi.mock('./osm/readOsmObjects.js', () => ({
   readOsmObjects: vi.fn().mockResolvedValue(new Map()),
 }));
 vi.mock('./museum/treasureWriter.js', () => ({
@@ -86,7 +88,8 @@ import {
   type CollectedArchaeologyMuseum,
 } from './archaeology/pipeline.js';
 import type { CollectedArchaeologySite } from './archaeology/proposal.js';
-import { qleverOsmDoor, readOsmObjects } from './osm/qleverOsm.js';
+import { qleverOsmDoor } from './osm/qleverOsm.js';
+import { readOsmObjects } from './osm/readOsmObjects.js';
 import { clearCache, withCache } from './wikidataCache.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
@@ -362,9 +365,25 @@ describe('what the archaeology run fetches', () => {
     await expect(deps.categories(['British Museum'])).rejects.toThrow('could not be read');
   });
 
+  /**
+   * A send the cache mock returns for the OSM door and nothing else, so an
+   * assertion on it fails if the door's own send bypassed the cache. The
+   * mock's default hands a door back unchanged, which the Wikidata door
+   * (`collectingSparql`, composed first) relies on and which would let the
+   * bypass pass unnoticed.
+   */
+  function cachedOsmSend(): ReturnType<typeof vi.fn> {
+    const cached = vi.fn();
+    mockedWithCache
+      .mockImplementationOnce((door: unknown) => door)
+      .mockImplementationOnce(() => cached);
+    return cached;
+  }
+
   it('asks OpenStreetMap through the mirror door, behind this source\'s own cache', async () => {
     mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
     collected([site()]);
+    const cached = cachedOsmSend();
     const keep = { historic: ['archaeological_site'], manMade: [], boundary: [] };
     const run = { phase: vi.fn(), step: vi.fn() };
 
@@ -373,10 +392,12 @@ describe('what the archaeology run fetches', () => {
     await deps.osm([TROY], keep, run);
 
     // The pipeline is handed a function rather than the reader, and the reader
-    // is handed a send rather than the door: this file knows whether the run
-    // may remember an answer, and `readOsmObjects` knows how to ask for one.
+    // is handed the door with the cache composed over its send: this file
+    // knows whether the run may remember an answer, and `readOsmObjects` knows
+    // how to ask for one.
+    const door = mockedOsmDoor.mock.results[0].value as { send: unknown };
     expect(mockedWithCache).toHaveBeenCalledWith(
-      mockedOsmDoor.mock.results[0].value,
+      door.send,
       expect.objectContaining({ sourceId: 5, enabled: true }),
     );
     // The keep rule travels from `collectSitesByFame`, which owns it: which
@@ -384,7 +405,8 @@ describe('what the archaeology run fetches', () => {
     // a door that chose its own would have the mirror send the administrative
     // outline of every city in the pool.
     expect(mockedReadOsm).toHaveBeenCalledWith(
-      expect.any(Function), [TROY], keep, run,
+      expect.objectContaining({ name: 'qlever', send: cached }),
+      [TROY], keep, run,
     );
   });
 
