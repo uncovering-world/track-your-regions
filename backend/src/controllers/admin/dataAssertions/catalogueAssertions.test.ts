@@ -41,17 +41,20 @@ describe('the catalogue assertions as a set', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('holds exactly three watches, each a count that is expected to be non-zero', () => {
+  it('holds exactly four watches, each a count that is expected to be non-zero', () => {
     // ADR-0022 makes the first a count: a traveller who stood somewhere stood
     // there. The second is #668's anchor rule: a scattered territory's box centre
     // is open water, legitimately, so its rows are a number to watch rather than
     // debt to answer for. The third is ADR-0040's: the source says who made a work
     // and not in what order, so a work whose order nobody has confirmed is a
-    // decision outstanding rather than a row that is wrong.
+    // decision outstanding rather than a row that is wrong. The fourth is
+    // ADR-0058 decision 6's: a place two kinds hold is two rows and two pins on
+    // purpose until #755 merges them, so a site standing where a World Heritage
+    // row already stands is expected, not debt.
     const watches = catalogueAssertions.filter(a => a.kind === 'watch').map(a => a.id);
     expect(watches).toEqual([
       'visits-on-places-no-reader-is-shown', 'anchor-far-from-its-region',
-      'work-makers-unconfirmed',
+      'work-makers-unconfirmed', 'archaeology-site-twin-of-a-world-heritage-row',
     ]);
   });
 
