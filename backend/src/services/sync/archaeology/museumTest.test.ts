@@ -83,7 +83,13 @@ describe('isMuseumOnWikidata', () => {
       { qid: 'Q43332', classes: ['Q839954', 'Q15661340'], categories: [], ...at(40.75, 14.49) },
       museumClasses,
     )).toBe(false);
-    expect(NOT_A_MUSEUM).toContain('the site door');
+    // And the sentence claims nothing about where the row went: the site door
+    // judges Wikidata's `archaeological site` tree, and a row outside it — Chaco
+    // Culture National Historical Park, in dry run 121 — is judged by neither
+    // door. Saying "the site door's" of that row was a promise nobody kept.
+    expect(NOT_A_MUSEUM).toContain('not this door\'s');
+    expect(NOT_A_MUSEUM).toContain('The site door judges what Wikidata files under '
+      + 'archaeological sites');
   });
 });
 

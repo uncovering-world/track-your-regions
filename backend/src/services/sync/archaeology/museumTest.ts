@@ -139,11 +139,19 @@ export function museumNature(facts: MuseumFacts, trees: ArchaeologyTrees): Museu
 }
 
 /**
- * The sentence a row refused at the category door carries, and the door it is
- * sent to instead.
+ * The sentence a row refused at the category door carries, and what it does
+ * *not* claim.
+ *
+ * It used to end "the site door's", and for a row like Chaco Culture National
+ * Historical Park (dry run 121) that was a promise nobody kept: the site door
+ * judges what Wikidata files under `archaeological site`, Chaco is not in that
+ * tree, and no door had it. So the sentence says what is true — this is not
+ * this door's row — and names what the other door's pool actually is, leaving a
+ * curator to see for themselves whether it turned up there.
  */
 export const NOT_A_MUSEUM = 'no museum class on Wikidata: a site, a castle or a city in '
-  + 'Wikipedia\'s category — the site door\'s';
+  + 'Wikipedia\'s category — not this door\'s. The site door judges what Wikidata files '
+  + 'under archaeological sites';
 
 /**
  * Whether Wikidata calls this place a museum at all — the one thing a row the

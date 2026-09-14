@@ -14,16 +14,49 @@
  * asked of Wikidata with them, and what the answers decide, are their own
  * modules, so that the question "which classes does this kind read?" has one
  * place to be answered and the reasons live beside the answer.
+ *
+ * **The site door's lists live in `siteClasses.ts`** and are re-exported below
+ * (#581 PR 2). The two doors share nothing but the kind they fill, and the file
+ * had grown past the length anybody reads at once; the re-export is so that the
+ * split costs a caller nothing — one module still answers "which classes does
+ * this kind read?" — while the reasons for a ruin tag and the reasons for a
+ * museum category stop sitting in one scroll.
  */
+
+import {
+  SETTLEMENT_ROOT,
+  SHIPWRECK_ROOT,
+  SITE_ROOT,
+  ARCHAEOLOGICAL_PARK,
+} from './siteClasses.js';
+
+export {
+  ARCHAEOLOGICAL_PARK,
+  SITE_ROOT,
+  SETTLEMENT_ROOT,
+  SHIPWRECK_ROOT,
+  WORLD_HERITAGE_DESIGNATION,
+  RUIN_HISTORIC,
+  RUIN_KEYS,
+  RUIN_MAN_MADE,
+  PROTECTED_BOUNDARY,
+  CENSUS_BOUNDARY,
+  LIVING_PLACE,
+  SITE_CLASSES,
+  SITE_KILL_CLASSES,
+  SITE_KILL_UNLESS_SITE,
+  SITE_KILL_NATURAL,
+  SITE_KILL_BY_NAME,
+  OSM_KEEP_WKT,
+} from './siteClasses.js';
 
 /**
  * What a reader filters an archaeology place by (ADR-0058 decision 1).
  *
  * One kind with two types, because a traveller into archaeology wants Pompeii
- * and the Naples museum in one list. Both words are spelled here from the
- * start, though this slice fills only `museum`: the site door is its own
- * slice, and a type the writers already know about is one nobody has to widen
- * a union for later.
+ * and the Naples museum in one list. Both words were spelled here from the
+ * first slice, which filled only `museum`, so that the writers already knew
+ * about the type the site door would bring (#581 PR 2 built that door).
  */
 export type ArchaeologyType = 'site' | 'museum';
 
@@ -50,28 +83,6 @@ export const MUSEUM_ROOTS: Record<string, string> = {
   Q3329412: 'archaeological museum',
   Q3330834: 'egyptological museum',
 };
-
-/**
- * Under the museum tree, and a site rather than a museum.
- *
- * Wikidata files `archaeological park` under `archaeological museum` as well
- * as under `archaeological site`, so the museum closure reaches it and the
- * survey had to subtract it to count museums at all. An open-air excavation
- * with a ticket office is somewhere you walk around, not a building of
- * display cases, and ADR-0058 decision 2 says plainly that the parks the
- * museum tree reaches are sites. Taken out of the museum set by
- * `buildArchaeologyTrees` so that the subtraction happens once; the site door
- * admits it on its own terms (decision 4).
- *
- * **The subtraction is of this class's tree, not of this class.** `Fudoki no
- * oka` (Q11665453) is Japan's word for an archaeological park with a museum on
- * it, and Wikidata files it under this root (checked 2026-09-13): a row typed
- * only *Fudoki no oka* carries no `archaeological park` class of its own, so
- * deleting the one QID would leave it in the museum set and admit a park as a
- * museum. The park closure is fetched like the other three and every class of
- * it comes out.
- */
-export const ARCHAEOLOGICAL_PARK = 'Q3363945';
 
 /**
  * Natural history: a veto, walked as a tree.
@@ -322,6 +333,12 @@ export interface ArchaeologyTrees {
   naturalHistory: ReadonlySet<string>;
   /** Every class that makes an object something dug up (`ARTEFACT_ROOT`). */
   artefact: ReadonlySet<string>;
+  /** Every class under `archaeological site`: the site pool's own tree (`SITE_ROOT`). */
+  site: ReadonlySet<string>;
+  /** Every class under `human settlement`: which branch a candidate came in on. */
+  settlement: ReadonlySet<string>;
+  /** Every class under `shipwreck`: the one class refused outright. */
+  shipwreck: ReadonlySet<string>;
 }
 
 /**
@@ -348,12 +365,20 @@ export interface ArchaeologyTrees {
  * `Fudoki no oka` whose English article carries `Archaeological museums in
  * Japan` would walk in through the category. The rule that refuses it has to be
  * able to ask whether a class is a park, so the answer is a set it can read.
+ *
+ * Seven trees now, not four: the site pool's own tree, the settlement branch it
+ * is read against, and the one class refused outright (#581 PR 2). The last
+ * three are optional, because the museum door reads none of them and a test of
+ * it should not have to state them.
  */
 export function buildArchaeologyTrees(fetched: {
   museum: string[];
   park: string[];
   naturalHistory: string[];
   artefact: string[];
+  site?: string[];
+  settlement?: string[];
+  shipwreck?: string[];
 }): ArchaeologyTrees {
   const museum = new Set([...fetched.museum, ...Object.keys(MUSEUM_ROOTS)]);
   const park = new Set([...fetched.park, ARCHAEOLOGICAL_PARK]);
@@ -363,5 +388,13 @@ export function buildArchaeologyTrees(fetched: {
     park,
     naturalHistory: new Set([...fetched.naturalHistory, NATURAL_HISTORY_ROOT]),
     artefact: new Set([...fetched.artefact, ARTEFACT_ROOT]),
+    // Each floored by its own root, for the reason the four above are: a
+    // closure that refused a hop, or a fetch that came back short, must not
+    // turn a row typed with the root itself into a row the rule cannot name.
+    // The three are optional so that a caller judging only museums — every
+    // test of the museum door — need not state a site tree it never reads.
+    site: new Set([...(fetched.site ?? []), SITE_ROOT]),
+    settlement: new Set([...(fetched.settlement ?? []), SETTLEMENT_ROOT]),
+    shipwreck: new Set([...(fetched.shipwreck ?? []), SHIPWRECK_ROOT]),
   };
 }
