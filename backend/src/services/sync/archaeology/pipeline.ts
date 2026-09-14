@@ -41,17 +41,30 @@
  * archaeology museum is (`museumTest.ts`), what a find is (`finds.ts`), which
  * classes count (`classes.ts`), what is known about a candidate (`museums.ts`),
  * or where a find is placed (`museum/placement.ts`).
+ *
+ * **The verdict itself is `museumVerdict.ts`** (#581's final pass), which is
+ * where this file was split: the rule over one candidate, the row a museum
+ * becomes, and the same asked of a whole pass. What is left here is the
+ * collection and the union — what is fetched, in what order, which folds
+ * survive, and how the two doors' answers are joined — and the seam holds
+ * because nothing in the verdict reads Wikidata.
+ *
+ * **And the kind's other door is here too** (ADR-0058 decision 1): the sites,
+ * collected by `sites.ts` over their own pool with OpenStreetMap as the second
+ * signal, and returned in the same list of items. One collector and one
+ * proposal, not two runs, because the orchestrator reads absence from that list
+ * as a withdrawal — two runs would have each door retire the other's rows on
+ * every pass. What a site row looks like, and what the run says at the end, are
+ * `proposal.ts`.
  */
 
 import { diffPlacements, type PlacementDiff } from '../museum/placementDiff.js';
 import { museumRule } from '../museum/venueTest.js';
 import { applyFolds, survivorOf } from '../museum/venueGraph.js';
 import type { Fold } from '../museum/venueFolds.js';
-import { fetchMuseumClasses, type PoolWork } from '../museum/queries.js';
+import { fetchMuseumClasses } from '../museum/queries.js';
 import {
   collectWorks,
-  heldBy,
-  toContent,
   type WorksCollection,
   type WorksCollectorOptions,
 } from '../museum/worksCollector.js';
@@ -62,77 +75,36 @@ import { findsCollectorOptions, type FindFacts } from './finds.js';
 import {
   candidatesOf,
   factsOf,
-  findJudged,
-  findsHeldBy,
-  placementOf,
   readCategories,
   readClasses,
   readMembers,
   rowsOf,
-  type MuseumRow,
 } from './museums.js';
+import { museumNature } from './museumTest.js';
+// The verdict over one candidate and over a whole pass, with the row a museum
+// becomes: everything that is decided once the fetching is done
+// (`museumVerdict.ts`, split out at this file's own seam).
 import {
-  isMuseumOnWikidata,
-  museumNature,
-  museumVerdict,
-  NOT_A_MUSEUM,
-  type MuseumFacts,
-  type MuseumNature,
-  type MuseumNatureOrVeto,
-} from './museumTest.js';
-import type { ArchaeologyTrees } from './classes.js';
-import { contentsLine, lineStanding, type LinePair, type SourceLine } from '../sourceLine.js';
+  isThisKind,
+  judgeAllMuseums,
+  type CollectedArchaeologyMuseum,
+  type MuseumJudging,
+} from './museumVerdict.js';
+export type { CollectedArchaeologyMuseum } from './museumVerdict.js';
+import { collectSitesByFame, type OsmReader } from './sites.js';
+import { reportProposal, uniteDoors, type CollectedArchaeologySite } from './proposal.js';
+import { contentsLine, type SourceLine } from '../sourceLine.js';
 import type { ClosureOptions } from '../classClosure.js';
 import type { FilteredEntity } from '../syncOrchestrator.js';
-import type { ProcessedContent } from '../types.js';
 
 const LOG_PREFIX = '[Archaeology Sync]';
 const FACT_BATCH = 50;
 
-export interface CollectedArchaeologyMuseum {
-  qid: string;
-  label: string;
-  description: string | null;
-  lat: number;
-  lon: number;
-  imageUrl: string | null;
-  sitelinks: number;
-  countryLabel: string | null;
-  articleUrl: string | null;
-  website: string | null;
-  /** This kind's other type is the site (ADR-0058 decision 1), which is another door. */
-  type: 'museum';
-  classes: string[];
-  /** What English Wikipedia files the article under; empty where it has none. */
-  categories: string[];
-  nature: 'archaeological' | 'department';
-  /** The signal the nature was read off, so the card can say why. */
-  natureWhy: string;
-  /** Present on a held row: the question the card shows a curator. */
-  admissionNote: string | null;
-  /** What it holds that the world knows, with where each was dug up. */
-  treasures: ProcessedContent[];
-  /**
-   * How many of those finds are at or above the finds' **enter** line, kept
-   * rather than left to be worked out again from `treasures` and a line this
-   * item does not carry.
-   *
-   * It is what says whether the museum holds a masterpiece, and the badge is
-   * the masterpiece (ADR-0045 decision 5): the run badges a museum with one and
-   * leaves the Bardo, in the catalogue on its own 35 articles, in the kind
-   * without a badge. Not `treasures.length`: a museum arrives with everything
-   * it holds, however famous. And not the count the *verdict* was taken on,
-   * which forgives a slip to the stay line so an admitted museum does not fall
-   * out — the badge grants nothing for a slip, because the same enter line
-   * decides each find's own flag where the treasures are written (`judgeOne`).
-   */
-  findsAboveLine: number;
-  /** The most famous find it holds, where a find is what carried it over the line. */
-  admittedFor?: { qid: string; label: string };
-}
+/** What this run proposes: the kind's two types, in one list (ADR-0058 decision 1). */
+export type CollectedArchaeologyItem = CollectedArchaeologyMuseum | CollectedArchaeologySite;
 
 export interface CollectedArchaeology {
-  items: CollectedArchaeologyMuseum[];
+  items: CollectedArchaeologyItem[];
   /**
    * Distinct entities this run named, which is what the panel shows as
    * *fetched*. Exactly three sets, deduplicated because a row two doors named is
@@ -160,8 +132,16 @@ export interface ArchaeologyPipelineDeps {
   sparql: SparqlFn;
   /** Where the previous run left each find, so this run can say what it moved. */
   previousPlacements: Record<string, string[]>;
-  /** What the source holds as admitted before the run, so the stay line has something to hold. */
-  admitted: ReadonlySet<string>;
+  /**
+   * What the source holds as admitted before the run, so the stay line has
+   * something to hold — split by door, because one source fills both. Each
+   * door asks after its own rows and judges its own rows: the museum door
+   * asked after the sites would refuse Athens as "no museum class" ahead of the
+   * site door's own reason, and the site door asked after the museums would
+   * write a museum the museum door stopped admitting as a site.
+   */
+  admittedMuseums: ReadonlySet<string>;
+  admittedSites: ReadonlySet<string>;
   /** The two lines the source row states: one for places, one for finds (`sourceLine.ts`). */
   line: SourceLine;
   /**
@@ -177,6 +157,12 @@ export interface ArchaeologyPipelineDeps {
    * asks no wiki anything.
    */
   categoryMembers: () => Promise<Map<string, string>>;
+  /**
+   * What OpenStreetMap maps at each site candidate. A function for the reason
+   * `categories` is one: this pipeline neither knows how OSM is asked nor needs
+   * it to be asked at all in a test.
+   */
+  osm: OsmReader;
   onPhase?: (message: string) => void;
   /** Throws to abandon the run; called before every query. */
   checkCancel?: () => void;
@@ -242,19 +228,6 @@ function collectFinds(
     closure: deps.closure,
   });
 }
-
-/** A nature this kind admits: one of the two answers that carry a reason. */
-type AdmittedNature = Extract<MuseumNature, { why: string }>;
-
-/**
- * Whether a nature is one this kind admits at all: not a veto, and not nothing.
- *
- * A department counts. The Hermitage and the Vatican Museums arrive **held**
- * rather than refused (ADR-0058 decision 2) — a question for a curator, not a
- * museum kept out — and a held survivor is the name on the ticket all the same.
- */
-const isThisKind = (nature: MuseumNatureOrVeto): nature is AdmittedNature =>
-  !('veto' in nature) && nature.nature !== 'none';
 
 // =============================================================================
 // The folds
@@ -390,212 +363,16 @@ function foldedAway(works: WorksCollection): Map<string, FilteredEntity> {
 // What the run hands back
 // =============================================================================
 
-/** A find as this kind stores it: the museum import's treasure, saying where it was dug up. */
-const treasureOf = (find: PoolWork, facts: Map<string, FindFacts>): ProcessedContent => ({
-  ...toContent(find),
-  foundAt: facts.get(find.qid)?.discoveryPlace ?? null,
-});
-
-/** What this run has decided before it can judge one museum against the rule. */
-interface Judging {
-  trees: ArchaeologyTrees;
-  facts: (qid: string) => MuseumFacts;
-  /**
-   * Whether English Wikipedia's categories named this museum, and so whether
-   * Wikidata has to call it a museum too (`isMuseumOnWikidata`). Asked of every
-   * member and not only of those nothing else knows: the venue graph holds
-   * every entity a work points at, refused venues included, so a dig one find
-   * names in situ is in it exactly as a museum is. What another road really did
-   * vouch for passes the gate by construction (`CategoryMembers`).
-   */
-  namedByCategory: (qid: string) => boolean;
-  /** What a museum may be, as the museum import's own closure answers. */
-  museumClasses: ReadonlySet<string>;
-  /**
-   * What each museum holds, most famous first (`heldBy`) — everything a find's
-   * statements place there, whatever the holder cap says. This is the card: the
-   * treasures the run writes under the museum.
-   */
-  held: Map<string, PoolWork[]>;
-  /**
-   * The same map with the holder cap applied (`findsHeldBy`) — what each museum
-   * is *credited* with, which is what the three counts below are read off.
-   *
-   * Two maps and not one, as the art import keeps two (`buildItems` lists
-   * `heldBy` while `tier.museums` admits): a hoard split between Athens and
-   * London is a real thing to go and see in both, and dropping it from both
-   * cards would tell a traveller less than the source knows. What the cap
-   * settles is only whether one of them may be admitted or badged *for* it.
-   */
-  credited: Map<string, PoolWork[]>;
-  findFacts: Map<string, FindFacts>;
-  admitted: ReadonlySet<string>;
-  line: SourceLine;
-  findLine: LinePair;
-}
-
-function itemOf(input: {
-  qid: string;
-  row: MuseumRow;
-  at: { lat: number; lon: number };
-  facts: MuseumFacts;
-  nature: AdmittedNature;
-  note: string | null;
-  finds: PoolWork[];
-  findsAboveLine: number;
-  admittedFor: PoolWork | undefined;
-  findFacts: Map<string, FindFacts>;
-}): CollectedArchaeologyMuseum {
-  const { qid, row, at, facts, nature, note, finds, findsAboveLine, admittedFor, findFacts } = input;
-  return {
-    qid,
-    label: row.label,
-    description: row.description,
-    lat: at.lat,
-    lon: at.lon,
-    imageUrl: row.imageUrl,
-    sitelinks: row.sitelinks,
-    countryLabel: row.countryLabel,
-    articleUrl: row.articleUrl,
-    website: row.website,
-    type: 'museum',
-    classes: facts.classes,
-    categories: facts.categories,
-    nature: nature.nature,
-    natureWhy: nature.why,
-    admissionNote: note,
-    treasures: finds.map((find) => treasureOf(find, findFacts)),
-    findsAboveLine,
-    admittedFor: admittedFor ? { qid: admittedFor.qid, label: admittedFor.label } : undefined,
-  };
-}
-
-/**
- * One museum's fate: admitted, refused by name, or nothing at all — the last
- * being `museumVerdict`'s `out`, a museum nobody has heard of that the source
- * never admitted, on which no rule ran. Naming those would bury the refusals a
- * curator has to read under the long tail.
- */
-function judgeOne(
-  qid: string,
-  row: MuseumRow,
-  ctx: Judging,
-): { item: CollectedArchaeologyMuseum } | { refusal: FilteredEntity } | null {
-  const facts = ctx.facts(qid);
-  const refusal = (reason: string) => ({ refusal: { externalId: qid, name: row.label, reason } });
-
-  // What walked in through the editorial shelf is asked whether Wikidata calls
-  // it a museum at all: Wikipedia files Pompeii, Sforza Castle and Chichén
-  // Itzá under `Archaeological museums in …`, and nothing else in the rule
-  // refuses them.
-  //
-  // Named only where the world has heard of it, which is `lineStanding`'s
-  // answer and no second rule: the 27 sites at or above the place line are a
-  // worklist the site door will want (ADR-0058 decision 4), while a country's
-  // whole archaeology named one row at a time is the long tail that buries the
-  // refusals a curator reads — a report nobody finishes is the same silence in
-  // a louder voice. An admitted row reaches this gate like any other: the pool
-  // carries what the source already admits and the category names it again, so
-  // a classless row that has slipped is held to the stay line exactly as the
-  // verdict below holds every other, and `fell` names it with its number — a
-  // row that leaves the catalogue leaves it with a reason.
-  if (ctx.namedByCategory(qid) && !isMuseumOnWikidata(facts, ctx.museumClasses)) {
-    const standing = lineStanding(row.sitelinks, ctx.admitted.has(qid), ctx.line);
-    return standing === 'out' ? null : refusal(NOT_A_MUSEUM);
-  }
-
-  const nature = museumNature(facts, ctx.trees);
-  // **The cap binds what a museum is credited with, never what its card lists.**
-  // Everything the finds place here is listed and written as this museum's
-  // treasures, as the art import lists `heldBy` whatever `selectTier1` did with
-  // it: a group of sculptures split between Athens and London is worth seeing in
-  // both rooms. The three counts come off `credited` instead — the door's
-  // `famous`, the badge's `aboveEnter`, and the `admittedFor` a museum below the
-  // place line is carried in by — because a find claimed by more venues than the
-  // cap allows admits none of them through `findJudged`, and a museum that
-  // arrived by its class or its category must not be admitted and badged for the
-  // very find the same run says admits nobody.
-  const finds = ctx.held.get(qid) ?? [];
-  const credited = ctx.credited.get(qid) ?? [];
-  // The find door is hysteretic too: a museum the source already admits keeps
-  // its find while the find is above the finds' *stay* line, so Delphi does not
-  // fall out the first time the Charioteer slips from 18 articles to 17.
-  const above = ctx.admitted.has(qid) ? ctx.findLine.staySitelinks : ctx.findLine.enterSitelinks;
-  const famous = credited.filter((find) => find.sitelinks >= above);
-  // And the badge counts at the *enter* line, hysteresis or none. Two
-  // questions, two numbers: whether the museum stays is the door's, and it
-  // forgives a slip; whether it wears the must-see badge is the masterpiece's,
-  // and the same enter line decides the find's own flag in the treasure writer.
-  // Counted hysteretically, an admitted museum would be badged for a find at 16
-  // that the writer leaves unbadged — a museum marked must-see for a work shown
-  // without the mark, which ADR-0045 decision 5 and ADR-0023 decision 2 forbid
-  // between them.
-  //
-  // The band the other way is accepted as under-badging: a find that slips from
-  // 18 to 16 keeps its own flag (the writer's stay line holds it) while the
-  // museum stops counting it, so the museum can stand unbadged beside a badged
-  // find. That way round misses a badge; the other claims one the catalogue
-  // cannot show.
-  const aboveEnter = credited.filter(
-    (find) => find.sitelinks >= ctx.findLine.enterSitelinks,
-  ).length;
-
-  const verdict = museumVerdict({
-    facts,
-    sitelinks: row.sitelinks,
-    findsForTheDoor: famous.length,
-    nature,
-    admitted: ctx.admitted,
-    line: ctx.line,
-  });
-  if (!verdict.pass) return 'out' in verdict ? null : refusal(verdict.reason);
-  const at = placementOf(row);
-  if ('reason' in at) return refusal(at.reason);
-  // Unreachable: `museumVerdict` refuses a veto and a `none` above. The check is
-  // how the compiler learns what the verdict already decided.
-  if (!isThisKind(nature)) return null;
-
-  return {
-    item: itemOf({
-      qid,
-      row,
-      at,
-      facts,
-      nature,
-      note: verdict.held ? verdict.note : null,
-      finds,
-      // The badge's count, not the door's: the verdict above was taken on the
-      // hysteretic one, and this is the one the treasure writer will read of
-      // each find (ADR-0045 decision 5). Carried rather than worked out again
-      // from the treasures, which arrive without a line to measure against.
-      findsAboveLine: aboveEnter,
-      // A find is what got it in only where the museum's own fame did not
-      // (ADR-0058 decision 2), and then the card names the most famous of them.
-      //
-      // Asked as the standing and not as the enter line alone, because the place
-      // line is hysteretic too: a museum the source already admits that has
-      // slipped into the band between stay and enter is kept by its *own* fame
-      // forgiving the slip, not by anything it holds, and naming a find there
-      // would tell a curator the Zeugma Mosaic Museum is in the catalogue for a
-      // mosaic when what keeps it is the 20 languages it is written up in.
-      admittedFor: lineStanding(row.sitelinks, ctx.admitted.has(qid), ctx.line) === 'in'
-        ? undefined
-        : famous[0],
-      findFacts: ctx.findFacts,
-    }),
-  };
-}
-
 // =============================================================================
 // The pipeline
 // =============================================================================
 
-export async function collectArchaeologyMuseums(
+export async function collectArchaeology(
   deps: ArchaeologyPipelineDeps,
 ): Promise<CollectedArchaeology> {
   const run = makeRun(deps);
   const trees = await fetchArchaeologyTrees(run);
-  const pool = await collectMuseumPool(run, trees, deps.admitted);
+  const pool = await collectMuseumPool(run, trees, deps.admittedMuseums);
 
   // Asked here, beside the pool it stands next to, though the ids it answers
   // with cannot be looked up until the venue graph exists: the two doors of one
@@ -623,73 +400,29 @@ export async function collectArchaeologyMuseums(
   const natureOf = (qid: string) => museumNature(factsOf(qid, rows, classes, categories), trees);
 
   /**
-   * The whole verdict over one set of placements: who is judged, what each
-   * museum holds and is credited with, and what the rule made of it.
-   *
-   * A function because it is asked twice on a run where a fold is dropped
-   * (below). Nothing in it reads Wikidata — the rows, the classes, the
-   * categories and the finds were all read above — so a second pass is a second
-   * walk over maps this run already holds.
+   * What every pass of the verdict reads: the rows, the classes, the
+   * categories and the finds this run has already fetched. Handed to
+   * `judgeAllMuseums` with the placements of the pass being judged — twice,
+   * where a fold is dropped — and nothing in it is read from Wikidata again.
    */
-  const judgeAll = (w: WorksCollection) => {
-    // The listing and the credit, off the same placements: the card shows every
-    // find placed here, the counts see only the finds the cap places (`Judging`).
-    const ctx: Judging = {
-      trees,
-      facts: (qid) => factsOf(qid, rows, classes, categories),
-      namedByCategory: (qid) => members.judged.has(qid),
-      museumClasses,
-      held: heldBy(w.pool, w.afterFolds),
-      credited: findsHeldBy(w, w.afterFolds),
-      findFacts: reader.facts,
-      admitted: deps.admitted,
-      line: deps.line,
-      findLine,
-    };
-    const judged = [
-      ...new Set([
-        ...pool.keys(),
-        ...members.judged,
-        ...findJudged(w, w.afterFolds, findLine, deps.admitted),
-      ]),
-    ].sort((a, b) => (rows.get(b)?.sitelinks ?? 0) - (rows.get(a)?.sitelinks ?? 0));
-
-    const judgedItems: CollectedArchaeologyMuseum[] = [];
-    const judgedRefusals: FilteredEntity[] = [];
-    for (const qid of judged) {
-      const row = rows.get(qid);
-      if (!row) {
-        // Unreachable, and `candidatesOf` is what makes it so — provably, now.
-        // Everything this loop judges comes from the pool, the category walk, or
-        // a find's holders under whichever fold set the round is judging. A
-        // holder's qid is a value of `applyFolds(works.placed, folds)`, and
-        // `applyFolds` maps each venue to itself or to its fold's survivor, so
-        // every holder under *any* fold set is a value of `works.placed` or a
-        // survivor of a fold — and the candidate set is exactly those two plus
-        // the pool, the members and the fold sources.
-        //
-        // It used to be read off the holders at the two extreme fold sets
-        // instead, which is not the same set: the holder cap counts a find's
-        // venue list and a kept fold merges two venues into one, so a partial
-        // set can name a venue neither extreme does (#888 wave 8).
-        //
-        // Said out loud rather than dropped — a museum that vanished between two
-        // stages of one run is a defect, not a verdict.
-        judgedRefusals.push({ externalId: qid, name: qid, reason: `no row to judge: ${qid}` });
-        continue;
-      }
-      const judgement = judgeOne(qid, row, ctx);
-      if (judgement && 'item' in judgement) judgedItems.push(judgement.item);
-      if (judgement && 'refusal' in judgement) judgedRefusals.push(judgement.refusal);
-    }
-    return { items: judgedItems, refused: judgedRefusals };
+  const judging: MuseumJudging = {
+    trees,
+    facts: (qid) => factsOf(qid, rows, classes, categories),
+    rows,
+    named: [...pool.keys(), ...members.judged],
+    namedByCategory: (qid) => members.judged.has(qid),
+    museumClasses,
+    findFacts: reader.facts,
+    admitted: deps.admittedMuseums,
+    line: deps.line,
+    findLine,
   };
 
   // A fold may only hand a museum's finds to a museum this kind admits — asked
   // here as the survivor's nature, which is all that can be known before the
   // rule has run.
   let works = foldsOntoAdmitted(collected, (qid) => isThisKind(natureOf(qid)));
-  let verdict = judgeAll(works);
+  let verdict = judgeAllMuseums(works, judging);
   // And asked again against the museums the run really writes, which is the
   // whole of the rule: a survivor can be archaeological by class or category and
   // still be a row no verdict ever admits, and the finds handed to it would be
@@ -714,7 +447,7 @@ export async function collectArchaeologyMuseums(
     const kept = keepFoldsOntoJudged(works, new Set(verdict.items.map((item) => item.qid)));
     if (!kept) break;
     works = kept;
-    verdict = judgeAll(works);
+    verdict = judgeAllMuseums(works, judging);
   }
   // A museum that folded into a survivor this run writes is that survivor's, and
   // is not a second row beside it: it leaves the items whatever its own fame
@@ -722,6 +455,12 @@ export async function collectArchaeologyMuseums(
   const folded = foldedAway(works);
   const items = verdict.items.filter((item) => !folded.has(item.qid));
   const refused = verdict.refused;
+
+  // The kind's other door, run after the museums and over its own pool
+  // (ADR-0058 decision 1). One collector and one proposal, because the
+  // orchestrator's sweep reads absence from `items` as a withdrawal: two runs
+  // would have each door retire the other's rows on every pass.
+  const sites = await collectSitesByFame(run, trees, deps.admittedSites, deps.line, deps.osm);
 
   // What the run will actually write: a find is stored as a treasure of a museum
   // this run admits, so the diff is measured against what the database will hold.
@@ -731,50 +470,39 @@ export async function collectArchaeologyMuseums(
     current[qid] = (works.afterFolds[qid] ?? []).filter((venue) => admitted.has(venue));
   }
 
-  // One line each, never two. The fold's own line comes first, so a museum that
-  // folded is reported by where it went rather than by a rule that ran on it
-  // before the fold was settled.
-  //
-  // Nothing guards against a *written* museum turning up here, because nothing
-  // can any more: `judgeOne` answers with an item or a refusal and never both,
-  // and a museum that folded has already left the items above. Worship's version
-  // of this loop checks the admitted set as well, and that check used to be here
-  // too — kept while a folded museum could still be admitted, and dead since it
-  // cannot.
-  const filtered = new Map<string, FilteredEntity>();
-  for (const entry of [...folded.values(), ...refused]) {
-    if (filtered.has(entry.externalId)) continue;
-    filtered.set(entry.externalId, entry);
-  }
+  // The two doors into one proposal: one row per entity, and one refusal list
+  // without a row this run writes in it (`proposal.ts` states both rules).
+  // Nothing guards against a *written museum* turning up among the museum
+  // refusals, because nothing can: `judgeOne` answers with an item or a refusal
+  // and never both, and a museum that folded has already left the items above.
+  const union = uniteDoors({
+    museums: items,
+    sites: sites.sites,
+    museumRefusals: [...folded.values(), ...refused],
+    siteRefusals: sites.filtered,
+  });
 
-  const treasures = Object.values(current).filter((placed) => placed.length).length;
-  const heldNames = items.filter((item) => item.admissionNote).map((item) => item.label);
-  const forFind = items.flatMap((item) => (
-    item.admittedFor ? [`${item.label} (${item.admittedFor.label})`] : []
-  ));
-  console.log(
-    `${LOG_PREFIX} Admitted ${items.length} museums `
-    + `(${heldNames.length} held for a curator, `
-    + `${forFind.length} for a find they hold); `
-    + `${filtered.size} refused, ${treasures} treasures to write`,
-  );
-  // The two counts above, named. A dry run writes nothing, so these two lists
-  // exist nowhere but this log: counted alone, neither the museums held for a
-  // curator nor the museums a find carried over the line can be read back, and
-  // they are exactly the rows ADR-0058 decision 2 is judged on — the open
-  // questions a curator would be asked, and the museums admitted for what they
-  // hold rather than for their own fame. One line each rather than one per
-  // museum, so a run admitting eighty-five still reports them in two.
-  if (heldNames.length) console.log(`${LOG_PREFIX} held: ${heldNames.join(', ')}`);
-  if (forFind.length) console.log(`${LOG_PREFIX} for a find: ${forFind.join(', ')}`);
+  reportProposal({
+    museums: items.length,
+    held: items.filter((item) => item.admissionNote).map((item) => item.label),
+    forFind: items.flatMap((item) => (
+      item.admittedFor ? [`${item.label} (${item.admittedFor.label})`] : []
+    )),
+    sites: union.siteItems,
+    refused: union.filtered.length,
+    treasures: Object.values(current).filter((placed) => placed.length).length,
+    siteRefusals: union.siteRefusals,
+  });
   return {
-    items,
+    items: union.items,
     // Distinct: a row two doors named is one entity fetched, not two. The
     // members are counted from what the by-id question *answered*, not from
     // what the pool kept — a row dropped for want of an English article was
     // fetched all the same, and a run reports what it asked the source for.
-    fetched: new Set([...pool.keys(), ...works.pool.keys(), ...members.fetched]).size,
-    filtered: [...filtered.values()],
+    fetched: new Set([
+      ...pool.keys(), ...works.pool.keys(), ...members.fetched, ...sites.fetched,
+    ]).size,
+    filtered: union.filtered,
     diff: diffPlacements(deps.previousPlacements, current),
   };
 }

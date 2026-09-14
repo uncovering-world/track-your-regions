@@ -33,7 +33,7 @@ vi.mock('./wikidataCache.js', () => ({
   withCache: vi.fn((door: unknown) => door),
 }));
 vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
-vi.mock('./archaeology/pipeline.js', () => ({ collectArchaeologyMuseums: vi.fn() }));
+vi.mock('./archaeology/pipeline.js', () => ({ collectArchaeology: vi.fn() }));
 vi.mock('./museum/pipeline.js', () => ({ collectTier1Museums: vi.fn() }));
 vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn() }));
 vi.mock('./admission.js', () => ({ admittedExternalIds: vi.fn().mockResolvedValue(new Set()) }));
@@ -71,7 +71,7 @@ import { orchestrateSync, type SyncServiceConfig, type SyncRunContext } from './
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { admittedExternalIds } from './admission.js';
 import {
-  collectArchaeologyMuseums, type CollectedArchaeologyMuseum,
+  collectArchaeology, type CollectedArchaeologyMuseum,
 } from './archaeology/pipeline.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
@@ -82,7 +82,7 @@ import type { ProcessedContent, SyncProgress } from './types.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedOrchestrate = orchestrateSync as unknown as ReturnType<typeof vi.fn>;
-const mockedCollect = collectArchaeologyMuseums as unknown as ReturnType<typeof vi.fn>;
+const mockedCollect = collectArchaeology as unknown as ReturnType<typeof vi.fn>;
 const mockedCategories = fetchWikipediaCategories as unknown as ReturnType<typeof vi.fn>;
 const mockedMembers = fetchCategoryMembers as unknown as ReturnType<typeof vi.fn>;
 const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn>;
@@ -241,8 +241,12 @@ describe('what the archaeology run fetches', () => {
       staySitelinks: 18,
       find: { enterSitelinks: 18, staySitelinks: 15 },
     });
-    // What the source already admits, so the stay line has something to hold.
-    expect(deps.admitted).toEqual(new Set([BRITISH_MUSEUM]));
+    // What the source already admits, so the stay line has something to hold —
+    // asked by door, so neither judges the other's rows.
+    expect(mockedAdmitted).toHaveBeenCalledWith(5, 'museum');
+    expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site');
+    expect(deps.admittedMuseums).toEqual(new Set([BRITISH_MUSEUM]));
+    expect(deps.admittedSites).toEqual(new Set([BRITISH_MUSEUM]));
     expect(result.fetchedCount).toBe(900);
   });
 

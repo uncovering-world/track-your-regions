@@ -348,6 +348,19 @@ describe('admittedExternalIds', () => {
     expect(ids).toEqual(new Set(['Q337179', 'Q79961']));
     expect(lastSql()).toContain("admission = 'admitted'");
     expect(lastSql()).toContain('is_manual = FALSE');
-    expect(mockedQuery.mock.calls[0][1]).toEqual([3]);
+    expect(mockedQuery.mock.calls[0][1]).toEqual([3, null]);
+  });
+
+  it('narrows to one type within the kind when a door asks after its own rows', async () => {
+    // One source fills the Archaeology kind's two doors; the museum door asks
+    // after its museums and the site door after its sites, and neither judges
+    // the other's rows by a rule they never entered through.
+    mockedQuery.mockResolvedValue({ rows: [{ external_id: 'Q22647' }] });
+
+    const ids = await admittedExternalIds(5, 'site');
+
+    expect(ids).toEqual(new Set(['Q22647']));
+    expect(lastSql()).toContain('e.type = $2');
+    expect(mockedQuery.mock.calls[0][1]).toEqual([5, 'site']);
   });
 });
