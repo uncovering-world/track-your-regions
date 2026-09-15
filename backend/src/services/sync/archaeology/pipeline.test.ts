@@ -407,15 +407,24 @@ describe('collectArchaeology', () => {
     // Hadrian's Villa are in neither list: the museum door refused them and the
     // site door wrote them, and a row this run puts on the map is not also a
     // question about whether it belongs there.
+    // The Vorderasiatisches Museum is the second fold (#890): it folds into the
+    // Pergamon, and a folded museum is reported once, by where it went.
     expect(out.filtered.map((f) => f.externalId))
-      .toEqual(['Q1439912', 'Q51252', 'Q1524', 'Q25173']);
+      .toEqual(['Q1439912', 'Q542084', 'Q51252', 'Q1524', 'Q25173']);
     // Two museums the class question named; five rows the categories asked
     // after, of which the Gold Museum's was dropped for want of an article and
     // is counted all the same, because the run fetched it; six finds; and the
     // site pool's five, four of which no other question of this run named —
     // Hadrian's Villa is a category member and was already counted: seventeen
-    // entities. Pompeii is not fetched twice for being named twice.
-    expect(out.fetched).toBe(17);
+    // entities. Pompeii is not fetched twice for being named twice. Then the
+    // Pergamon's world (#890): the Victory stele in the finds pool, the two
+    // finds the venue-side read kept at the Pergamon and the one object it
+    // refused, the two altars of the second round and the attack both museums
+    // name — twenty-four. The Pergamon Museum itself is not counted twice: the
+    // stele's department is `P361` the museum, so the venue graph already held
+    // it when the category members were asked after; the Museum of the Second
+    // Round is a row of the graph and no pool's, so it is not counted at all.
+    expect(out.fetched).toBe(24);
   });
 
   it('keeps a fold onto a department held for a curator, and reports what it lost', async () => {
@@ -694,8 +703,12 @@ describe('collectArchaeology', () => {
     // the same run has just refused, sending a curator to a museum the
     // catalogue does not hold.
     foldLinesNameWrittenMuseums(out);
-    expect(out.filtered.map((f) => f.reason).filter((r) => r.startsWith('folded into')))
-      .toEqual([]);
+    // Exactly one fold stands, the Vorderasiatisches Museum's into the
+    // Pergamon, whatever the Vatican does (#890): asserted by name, so a
+    // second fold into the Pergamon could not hide behind the first.
+    expect(out.filtered.filter((f) => f.reason.startsWith('folded into')).map((f) => f.externalId))
+      .toEqual(['Q542084']);
+    expect(reason(out, 'Q542084')).toContain('folded into Pergamon Museum');
     // The fold dropped in the last round, so the museum stands on its own 30
     // articles and keeps the find it held.
     expect(item(out, 'Q3330142')).toMatchObject({ sitelinks: 30 });
@@ -736,8 +749,12 @@ describe('collectArchaeology', () => {
 
     expect(item(out, 'Q182955')).toBeUndefined();
     // No fold line survives, so nothing points at the container.
-    expect(out.filtered.map((f) => f.reason).filter((r) => r.startsWith('folded into')))
-      .toEqual([]);
+    // Exactly one fold stands, the Vorderasiatisches Museum's into the
+    // Pergamon, whatever the Vatican does (#890): asserted by name, so a
+    // second fold into the Pergamon could not hide behind the first.
+    expect(out.filtered.filter((f) => f.reason.startsWith('folded into')).map((f) => f.externalId))
+      .toEqual(['Q542084']);
+    expect(reason(out, 'Q542084')).toContain('folded into Pergamon Museum');
     foldLinesNameWrittenMuseums(out);
     // A contested find admits nobody, here as anywhere: the two departments have
     // it back and neither is carried over the line by it.
@@ -891,14 +908,15 @@ describe('collectArchaeology', () => {
     expect([...door.calls[0]].sort()).toEqual([
       'Bardo National Museum (Tunis)', 'British Museum', 'Delphi Archaeological Museum',
       "Hadrian's Villa", 'Hermitage Museum', 'Louvre', 'Makthar (archaeological site)',
-      'Pompeii', 'Uffizi', 'Vatican Museums', 'Zeugma Mosaic Museum',
+      'Pergamon Museum', 'Pompeii', 'Uffizi', 'Vatican Museums', 'Zeugma Mosaic Museum',
     ]);
     // The walk is one question for the whole run, and the categories of the
     // museums it named are read with everyone else's: a member is a candidate,
-    // and what the rule reads off it is the article's own list. Seven are named
-    // and one of them — the Gold Museum, whose row carries no article — is not
-    // asked about, because there is no title to ask under.
-    expect(door.walks).toEqual([8]);
+    // and what the rule reads off it is the article's own list. Eight are named
+    // (the Pergamon Museum among them since #890) and one of them — the Gold
+    // Museum, whose row carries no article — is not asked about, because there
+    // is no title to ask under.
+    expect(door.walks).toEqual([9]);
   });
 
   it('keeps an admitted museum that slipped to the stay band and refuses one below it by name', async () => {
@@ -977,6 +995,132 @@ describe('collectArchaeology', () => {
     const out = await collect(world(), { previousPlacements: { Q48584: ['Q999'] } });
 
     expect(out.diff.moved).toEqual([{ work: 'Q48584', from: ['Q999'], to: ['Q6373'] }]);
+  });
+});
+
+describe('what an admitted museum holds, read from its own side (#890)', () => {
+  it('lists the Ishtar Gate and the Pergamon Altar on the Pergamon, which no class ever named', async () => {
+    const out = await collect(world());
+
+    // Admitted for what it is — the category — and in the catalogue before this
+    // read, holding one pool find through the department that folds into it.
+    const pergamon = item(out, 'Q157298');
+    expect(pergamon).toMatchObject({ nature: 'archaeological', natureWhy: 'category: Archaeological museums in Berlin' });
+    expect(reason(out, 'Q542084')).toContain('folded into Pergamon Museum');
+
+    // The stele from the pool; the Altar by its discovery place, read at the
+    // Pergamon itself; the Ishtar Gate by its date, read at the Vorderasiatisches
+    // Museum — a fold source, asked beside its survivor because the Gate's
+    // collection statement names the department and not the museum.
+    expect(treasuresOf(out, 'Q157298').sort()).toEqual(['Q158058', 'Q258695', 'Q26082']);
+    const altar = pergamon?.treasures.find((t) => t.externalId === 'Q158058');
+    expect(altar).toMatchObject({
+      name: 'Pergamon Altar', treasureType: 'altar', foundAt: { qid: 'Q18986', label: 'Pergamon' },
+    });
+    const gate = pergamon?.treasures.find((t) => t.externalId === 'Q26082');
+    // Typed by the lowest-numbered of its classes, deterministically: `arch`
+    // (Q12277) before `city gate` (Q82117), whatever order the answer arrived in.
+    expect(gate).toMatchObject({ name: 'Ishtar Gate', treasureType: 'arch', year: -575, foundAt: null });
+
+    // And the badge follows: two finds above the finds' enter line of 18, where
+    // the pool alone left the museum with none — a museum a traveller visits
+    // for the Gate and the Altar is a must-see for them (ADR-0045 decision 5).
+    expect(pergamon?.findsAboveLine).toBe(2);
+    // Admitted on its own 61 articles, so it names no find as its reason.
+    expect(pergamon?.admittedFor).toBeUndefined();
+  });
+
+  it('reports what a museum holds that is not a find, with its classes, and marks nothing', async () => {
+    const out = await collect(world());
+
+    // The 2015 attack is located in the Bardo: read, refused by the find rule,
+    // and named with the class a person would need to see — never a row of the
+    // source, so never a refusal of the Bardo, which stands admitted.
+    expect(out.refusedContents).toContainEqual({
+      externalId: 'Q19613356',
+      name: 'Bardo National Museum attack',
+      reason: 'not a find by its classes: mass murder (Q750215) — held by Bardo National Museum',
+    });
+    // Two refusals in all: this one, and the attack two museums name (the
+    // second-round case below); nothing the run writes is among them.
+    expect(out.refusedContents.map((r) => r.externalId).sort()).toEqual(['Q19613356', 'Q900813']);
+    expect(out.filtered.map((f) => f.externalId)).not.toContain('Q19613356');
+    expect(item(out, 'Q1429003')).toBeDefined();
+    expect(treasuresOf(out, 'Q1429003')).toEqual([]);
+  });
+
+  it('reads again the museum an object it read carried over the line', async () => {
+    const w = world();
+    const sent: string[] = [];
+    const door = categoryDoor(w);
+    const out = await collectArchaeology({
+      sparql: (query: string) => { sent.push(query); return Promise.resolve(answer(w, query)); },
+      previousPlacements: {},
+      admittedMuseums: new Set(),
+      admittedSites: new Set<string>(),
+      line: LINE,
+      categories: door.categories,
+      categoryMembers: door.categoryMembers,
+      osm: osmDoor(w).read,
+    });
+
+    // The Altar of Two Museums is read at the Pergamon, where it stands, and
+    // names the Museum of the Second Round as its owner — which the placement
+    // rule follows, ownership before location where the two disagree, so the
+    // altar is the second museum's and not the Pergamon's. No pool, no
+    // category and no pool find reaches that museum, and the verdict admits it
+    // for the altar — below the place line, above the finds' line.
+    const second = item(out, 'Q900810');
+    expect(second).toMatchObject({ label: 'Museum of the Second Round', nature: 'archaeological' });
+    expect(second?.admittedFor).toEqual({ qid: 'Q900811', label: 'Altar of Two Museums' });
+    // And its own case is read in a second round: the altar only it holds,
+    // below the finds' line, is on its card, as a pool find would have been.
+    expect(treasuresOf(out, 'Q900810').sort()).toEqual(['Q900811', 'Q900812']);
+    expect(treasuresOf(out, 'Q157298')).not.toContain('Q900811');
+    // Two rounds of holdings questions, the second asking only the new museum.
+    const holdings = sent.filter((q) => q.includes('VALUES ?venue'));
+    expect(holdings).toHaveLength(2);
+    expect(holdings[1]).toContain('wd:Q900810');
+    expect(holdings[1]).not.toContain('wd:Q157298');
+    // A refusal met in both rounds is named once, with both holders: the
+    // attack both museums' statements name is fetched by id in the first
+    // round only, its second holder recorded from the holdings question alone.
+    expect(out.refusedContents.filter((r) => r.externalId === 'Q19613356')).toHaveLength(1);
+    const twice = out.refusedContents.filter((r) => r.externalId === 'Q900813');
+    expect(twice).toHaveLength(1);
+    expect(twice[0].reason).toBe(
+      'not a find by its classes: mass murder (Q750215) — held by Pergamon Museum, Museum of the Second Round',
+    );
+    const byId = sent.filter((q) => q.includes('OPTIONAL { ?w wdt:P31 ?cls }') && q.includes('wd:Q900813'));
+    expect(byId).toHaveLength(1);
+  });
+
+  it('reads the holdings of every admitted survivor and its fold sources, at the pool\'s floor', async () => {
+    const w = world();
+    const sent: string[] = [];
+    const door = categoryDoor(w);
+    await collectArchaeology({
+      sparql: (query: string) => { sent.push(query); return Promise.resolve(answer(w, query)); },
+      previousPlacements: {},
+      admittedMuseums: new Set(),
+      admittedSites: new Set<string>(),
+      line: LINE,
+      categories: door.categories,
+      categoryMembers: door.categoryMembers,
+      osm: osmDoor(w).read,
+    });
+    const holdings = sent.filter((q) => q.includes('VALUES ?venue'));
+    // Two rounds: the museums the first verdict admits, then the one an
+    // object of the first round carried over the line.
+    expect(holdings).toHaveLength(2);
+    // The survivors the verdict admits, and the museums folded into them; not
+    // the Uffizi, which the rule refuses, and not a site.
+    for (const asked of ['Q157298', 'Q542084', 'Q6373', 'Q182955', 'Q1439912', 'Q1429003']) {
+      expect(holdings[0]).toContain(`wd:${asked}`);
+    }
+    expect(holdings[0]).not.toContain('wd:Q51252');
+    expect(holdings[0]).not.toContain('wd:Q22647');
+    expect(holdings[0]).toContain('FILTER(?sl >= 10)');
   });
 });
 
@@ -1106,7 +1250,10 @@ describe('the site door, beside the museums', () => {
     // and left a reader reconciling two lines that could not disagree.
     expect(lines.filter((line) => line.includes('Admitted'))).toHaveLength(1);
     const summary = lines.find((line) => line.includes('museums'));
-    expect(summary).toContain('Admitted 6 museums');
+    // Eight: the six the museum door held before #890, the Pergamon Museum,
+    // whose Ishtar Gate and Altar are what the venue-side read is for, and the
+    // museum an object read at the Pergamon carried over the line.
+    expect(summary).toContain('Admitted 8 museums');
     // Two of the three carry an outline now: Troy's excavations and the villa
     // in Tivoli, both real objects from the measurement.
     expect(summary).toContain('3 sites (2 with an extent)');

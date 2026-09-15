@@ -105,6 +105,11 @@ const GROUP_OF_SCULPTURES = 'Q2293362'; // group of sculptures
 const STELE = 'Q178743'; // stele
 const BILINGUAL_INSCRIPTION = 'Q861809'; // bilingual inscription
 const VENUS_FIGURINE = 'Q248726'; // Venus figurine
+// The classes the venue-side read meets (#890), verified with wbgetentities on 2026-09-15.
+export const ALTAR = 'Q101687'; // altar
+export const CITY_GATE = 'Q82117'; // city gate
+export const ARCH = 'Q12277'; // arch
+export const MASS_MURDER = 'Q750215'; // mass murder
 
 interface FixtureMuseum {
   label: string;
@@ -147,6 +152,12 @@ interface FixtureFind {
   year?: number;
   /** Every `P31` the item carries, as the find facts answer. */
   classes?: string[];
+  /**
+   * The labels of the classes beyond `cls`, as the venue-side by-id question
+   * answers them (#890); a class named nowhere is labelled by its id, which is
+   * what the label service does for a class with no name in the fallback chain.
+   */
+  classLabels?: Record<string, string>;
   /** `P189`, with the name a reader sees. */
   discovery?: { qid: string; label: string };
   statements: { property: 'P195' | 'P276'; venue: string }[];
@@ -335,6 +346,36 @@ const WORLD: World = {
       articleUrl: 'https://en.wikipedia.org/wiki/Vatican_Museums',
       categories: ['Museums of ancient Greece', 'Museums of ancient Rome'],
     },
+    // The museum the venue-side read exists for (#890): `art museum, museum`
+    // on Wikidata, `Archaeological museums in Berlin` on its article, and the
+    // two things it is visited for — the Ishtar Gate and the Pergamon Altar —
+    // in no class the finds pool asks. Real, checked with wbgetentities on
+    // 2026-09-15 (the article's category is the survey's of 2026-09-13).
+    Q157298: {
+      label: 'Pergamon Museum', classes: [ART_MUSEUM, MUSEUM], sitelinks: 61,
+      lat: 52.521, lon: 13.396, countryLabel: 'Germany',
+      articleUrl: 'https://en.wikipedia.org/wiki/Pergamon_Museum',
+      categories: ['Archaeological museums in Berlin', 'Art museums and galleries in Berlin'],
+      inNatureCategories: true,
+    },
+    // Its Near Eastern department, 60 m away and `P361` the Pergamon: a
+    // `museum` with no English article, holding one pool find (the Victory
+    // stele) — which is what makes it a venue that received a work, and so a
+    // fold into the Pergamon. The Ishtar Gate's collection is this row, not the
+    // Pergamon's, so a read of the survivor alone would never find it.
+    Q542084: {
+      label: 'Vorderasiatisches Museum Berlin', classes: [MUSEUM], sitelinks: 14,
+      lat: 52.52069, lon: 13.39681, countryLabel: 'Germany', parents: ['Q157298'],
+    },
+    // This fixture's own: an archaeological museum below the place line that
+    // no class pool names above the floor, no category names, and no pool find
+    // carries — reached only because an object read at the Pergamon names it
+    // as a second holder. The verdict then admits it for that object, and the
+    // read has to come back for what else it holds (#890, the second round).
+    Q900810: {
+      label: 'Museum of the Second Round', classes: [ARCHAEOLOGICAL_MUSEUM], sitelinks: 14,
+      lat: 52.51, lon: 13.40, countryLabel: 'Germany',
+    },
   },
   finds: {
     Q48584: {
@@ -378,6 +419,74 @@ const WORLD: World = {
       statements: [
         { property: 'P195', venue: 'Q1439912' }, { property: 'P276', venue: 'Q1439912' },
       ],
+    },
+    // The Vorderasiatisches Museum's one pool find: a stele, dug up at Zincirli
+    // (every statement real, wbgetentities 2026-09-15). It is what makes that
+    // row a venue that received a work, and so a fold into the Pergamon. 13
+    // sitelinks on the real row and 16 here: this fixture's class pool is
+    // floored at the places' 15 (`POOL_MIN_SITELINKS` of the public-art
+    // questions) where the real finds pool is floored at 10, and the case is
+    // about the fold, not about the floor.
+    Q258695: {
+      label: 'Victory stele of Esarhaddon', sitelinks: 16, cls: STELE, clsLabel: 'stele',
+      year: -670, classes: [STELE],
+      discovery: { qid: 'Q1039186', label: 'Zincirli Höyük' },
+      statements: [{ property: 'P195', venue: 'Q542084' }, { property: 'P276', venue: 'Q542084' }],
+    },
+    // What the venue-side read is for (#890). Neither is in any class the
+    // finds pool asks — `cls` is what a `VALUES ?cls` batch would match, and
+    // no batch asks for a city gate or an altar — so neither is ever a pool
+    // row; both are real, with the statements Wikidata holds on 2026-09-15.
+    //
+    // The Ishtar Gate: `city gate` and `arch`, made in 575 BC, no discovery
+    // place, its collection the Vorderasiatisches Museum — a find by its date,
+    // reached only because the fold source is read beside its survivor.
+    Q26082: {
+      label: 'Ishtar Gate', sitelinks: 55, cls: CITY_GATE, clsLabel: 'city gate',
+      year: -575, classes: [CITY_GATE, ARCH], classLabels: { [ARCH]: 'arch' },
+      statements: [{ property: 'P195', venue: 'Q542084' }],
+    },
+    // The Pergamon Altar: an `altar` dug up at Pergamon, standing in the
+    // Pergamon Museum — a find by its discovery place.
+    Q158058: {
+      label: 'Pergamon Altar', sitelinks: 38, cls: ALTAR, clsLabel: 'altar',
+      classes: [ALTAR],
+      discovery: { qid: 'Q18986', label: 'Pergamon' },
+      statements: [{ property: 'P276', venue: 'Q157298' }],
+    },
+    // And what else a museum's `P276` names: the 2015 attack, `mass murder`,
+    // located in the Bardo — the one item Wikidata places there at 10 sitelinks
+    // or more (the source record says so). Refused, and reported with its class.
+    Q19613356: {
+      label: 'Bardo National Museum attack', sitelinks: 30, cls: MASS_MURDER, clsLabel: 'mass murder',
+      classes: [MASS_MURDER],
+      statements: [{ property: 'P276', venue: 'Q1429003' }],
+    },
+    // This fixture's own, for the second round (#890): an altar dug up
+    // somewhere, standing in the Pergamon and owned by the Museum of the
+    // Second Round — read at the Pergamon, placed at both under the cap, and
+    // what carries the second museum over the line …
+    Q900811: {
+      label: 'Altar of Two Museums', sitelinks: 20, cls: ALTAR, clsLabel: 'altar',
+      classes: [ALTAR],
+      discovery: { qid: 'Q18986', label: 'Pergamon' },
+      statements: [{ property: 'P276', venue: 'Q157298' }, { property: 'P195', venue: 'Q900810' }],
+    },
+    // … whose own case then holds one more find, below the finds' line and
+    // above the pool's floor, that only a read of that museum can find.
+    Q900812: {
+      label: 'Altar of the Second Round', sitelinks: 12, cls: ALTAR, clsLabel: 'altar',
+      classes: [ALTAR],
+      discovery: { qid: 'Q18986', label: 'Pergamon' },
+      statements: [{ property: 'P276', venue: 'Q900810' }],
+    },
+    // And one object both museums' statements name that is no find at all:
+    // met at the Pergamon in the first round and at the second museum in the
+    // second, it is fetched and refused once and reported with both holders.
+    Q900813: {
+      label: 'Attack at Two Museums', sitelinks: 19, cls: MASS_MURDER, clsLabel: 'mass murder',
+      classes: [MASS_MURDER],
+      statements: [{ property: 'P276', venue: 'Q157298' }, { property: 'P276', venue: 'Q900810' }],
     },
   },
   sites: {
@@ -579,6 +688,40 @@ function findFactRows(w: World, asked: string[]): SparqlBinding[] {
   return rows;
 }
 
+/**
+ * What a batch of venues holds at the floor the question names (#890): one
+ * row per statement of a find at or above it naming one of them.
+ */
+function holdingRows(w: World, venues: string[], floor: number): SparqlBinding[] {
+  const rows: SparqlBinding[] = [];
+  for (const [qid, find] of Object.entries(w.finds)) {
+    if (find.sitelinks < floor) continue;
+    for (const statement of find.statements) {
+      if (!venues.includes(statement.venue)) continue;
+      rows.push({
+        w: uri(qid),
+        sl: { value: String(find.sitelinks) },
+        venue: uri(statement.venue),
+        rel: { value: statement.property },
+        rank: { value: RANK },
+      });
+    }
+  }
+  return rows;
+}
+
+/** What each find of a batch is, by id: the pool's columns, one row per class it carries. */
+function findByIdRows(w: World, asked: string[]): SparqlBinding[] {
+  return asked.filter((qid) => w.finds[qid]).flatMap((qid) => {
+    const find = w.finds[qid];
+    return (find.classes ?? [find.cls]).map((cls) => ({
+      ...findRow(qid, find, false),
+      cls: uri(cls),
+      clsLabel: { value: cls === find.cls ? find.clsLabel : find.classLabels?.[cls] ?? cls },
+    }));
+  });
+}
+
 /** The venue statements of a batch: what each of its finds says about where it is. */
 function statementRows(w: World, asked: string[]): SparqlBinding[] {
   const rows: SparqlBinding[] = [];
@@ -644,6 +787,11 @@ export function answer(w: World, sent: string): SparqlBinding[] {
   // collection through `p:P195` too, and names `?coll` where the other does not.
   if (query.includes('?coll')) return edgeRows(w, asked);
   if (query.includes('?disc')) return findFactRows(w, asked);
+  // The venue-side read (#890): what a batch of venues holds — asked before the
+  // statements question, which the same `p:P195` is in — and what each object
+  // found that way is, by id.
+  if (query.includes('VALUES ?venue')) return holdingRows(w, asked, bandOf(query).min);
+  if (query.includes('OPTIONAL { ?w wdt:P31 ?cls }')) return findByIdRows(w, asked);
   if (query.includes('p:P195')) return statementRows(w, asked);
   if (query.includes('SELECT ?e ?cls ?parent ?loc')) return edgeRows(w, asked);
   if (query.includes('?dissolved')) return detailRows(w, asked);

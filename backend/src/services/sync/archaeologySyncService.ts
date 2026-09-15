@@ -281,7 +281,7 @@ async function fetchArchaeologyItems(
   // (#886).
   const waiting = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
 
-  const { items, fetched, filtered } = await collectWithTheMirrorHeldToAccount({
+  const { items, fetched, filtered, refusedContents } = await collectWithTheMirrorHeldToAccount({
     sparql: collectingSparql(progress, refreshCache, waiting),
     previousPlacements,
     admittedMuseums,
@@ -364,7 +364,7 @@ async function fetchArchaeologyItems(
     imageCredits, storedCredits, storedTreasureCredits, placedThisRun, findsLine,
   });
 
-  return { items, fetchedCount: fetched, filtered, withdrawalSkippedReason };
+  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason };
 }
 
 // =============================================================================
