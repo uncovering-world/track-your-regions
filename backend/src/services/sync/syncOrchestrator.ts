@@ -54,6 +54,17 @@ export interface FetchResult<T> {
   fetchedCount: number;
   filtered?: FilteredEntity[];
   /**
+   * Objects an admitted row holds that the kind's rule turned down — what the
+   * venue-side read refused (#890, `museum/venueSide.ts`): the film in an art
+   * museum's collection, the conclave a cathedral's `P276` names. Reported on
+   * the run's changeset as `filtered` rows, so a person reads which classes
+   * the pool never asked for, and **never marked**: `filtered` is matched
+   * against the source's own rows by external id, and an object is not a row
+   * of the source — a relic that is also a chapel of the same kind would have
+   * its place refused for a verdict taken on the object.
+   */
+  refusedContents?: FilteredEntity[];
+  /**
    * Why this run may not withdraw the contents it stopped seeing, or absent
    * when it may.
    *
@@ -795,6 +806,17 @@ export async function orchestrateSync<T>(
     // can make less true (ADR-0024).
     const refusedRows = await markRefused(sourceId, filtered ?? [], dryRun);
     recordFilteredEntities(filtered ?? [], progress, changes, refusedRows);
+    // An object a row holds is reported the same way and marked nowhere: it
+    // is not a row of this source, whatever id it shares with one. And named
+    // once: a chapel the fame door refused that an admitted basilica's `P276`
+    // names is in both lists, and two rows for one entity would count it
+    // twice — every producer keeps that rule inside its own list, and this is
+    // where the two lists meet.
+    const named = new Set((filtered ?? []).map((entity) => entity.externalId));
+    recordFilteredEntities(
+      (fetched.refusedContents ?? []).filter((entity) => !named.has(entity.externalId)),
+      progress, changes,
+    );
 
     // Both sides of the coverage ratio are measured against the table as it
     // stood before this run touched it. Counting afterwards would fold in the
