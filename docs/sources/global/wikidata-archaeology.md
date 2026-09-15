@@ -204,6 +204,40 @@ pool. Bosra (Q272680) is admitted rather
 than refused — the item carries `P1435 = Q9259` (checked 2026-09-14), which lifts it over the
 20,000 people Wikidata counts there.
 
+## What the admitted museums hold, read from their side (2026-09-15, #890)
+
+The finds pool is collected by class, and two of the four roads into a find are not classes (a
+discovery place, a date before AD 500), so an object an admitted museum holds could keep a pool row
+and never get one. Measured over the 83 museums the development catalogue admitted, through the
+live query service, by every current `P195` or `P276` statement naming one of them (no end time,
+not deprecated), against what the catalogue already links there; raw answers under
+`data/cache/890-venue-side/`:
+
+| | at 10 sitelinks or more | at 15 or more |
+|---|---|---|
+| objects the 83 museums hold | 468 | 252 |
+| linked at no museum that holds them | 274 | 134 |
+| no treasure of any kind | 115 | 49 |
+
+The difference between the last two rows is the art run's treasures — the Louvre's, the Vatican's and
+the Hermitage's paintings and frescoes, which are no finds. Among the objects that are no treasure at
+all: the Pergamon Altar (`altar`, dug up at Pergamon, 38 sitelinks), the Library of Ashurbanipal
+(`library`, 51), the Benin Bronzes (`group of sculptures`, 38, undated and with no find spot), the
+Oxyrhynchus Papyri (`manuscript collection`, 29, with one), Xochipilli (`Aztec deity`, 29), and the
+2015 attack the Bardo's `P276` names (`mass murder`, 30). The Ishtar Gate (55) is not in this count
+at all: its collection statement names the Vorderasiatisches Museum, which is not an admitted row
+but folds into the Pergamon — which is why the read asks the fold sources beside their survivors.
+The read keeps what `findReason` keeps (the Altar by its find spot, the Gate by its date, the
+Papyri by their find spot) and reports the rest with their classes, named at or above the finds'
+stay line; the class list that would widen the pool is #891's.
+
+**The question had to be measured into shape.** One question carrying the objects' classes,
+discovery places and inceptions beside the label service answered 502 and 504 for twenty venues
+holding the Louvre; split into a holdings question and a by-id question it answers — and only
+written venue-first (`?st ps:P195 ?venue` before `?w p:P195 ?st`) under `hint:optimizer "None"`:
+left to the planner, or written work-first, one venue timed out at 65 s, while fifty of these museums
+answer in 12 s (683 rows) venue-first.
+
 ## What this source cannot reach
 
 - **A museum famous as an institution whose finds are not itemised, and which Wikidata types
@@ -256,6 +290,10 @@ per-object report and nothing to the catalogue:
 | **121** | **16 m 35 s** | **1,013** | **5** | **13** | **239** | **225** |
 | **122** | **12 m 20 s** | **1,009** | **5** | **13** | **243** | **225** |
 | 125 | 17 m 40 s | 1,010 | 5 | 16 | 243 | 226 |
+| 126 | 14 m 00 s | 1,010 | 5 | 16 | 243 + 125 objects | 252 |
+| 127 (live) | 12 m 56 s | 1,010 | 5 | 16 | 243 + 125 objects | 252 |
+| 128 (live) | 14 m 08 s | 1,010 | 5 | 16 | 243 + 125 objects | 248 |
+| **129 (live)** | **13 m 50 s** | **1,010** | **5** | **16** | **243 + 125 objects** | **250** |
 
 Log 121 is the site door's first dry run on the development stack (2026-09-14, #581 PR 2): 930
 sites admitted, 523 of them with an extent from OpenStreetMap, beside 83 museums and 225
@@ -318,6 +356,33 @@ Log 125 is the dry run after the fix of #896 (2026-09-14, 17 m 40 s, on the cata
 Museo de Villena (the Treasure of Villena) new that day on Wikidata's side, the run's one
 `created` — beside 926 sites, 522 with an extent, and 243 refused, unchanged from run 124.
 
+Logs 126 and 127 are the venue-side read (#890, 2026-09-15): the same 84 museums and 926 sites,
+and for the first time what the admitted museums hold read from their own side. The read asked
+91 venues — the 84 museums and 7 folded into them — and found 481 objects at 10 sitelinks or more,
+200 of them already in the finds pool; it kept **26 as finds** and refused 255, 125 of them at the
+finds' stay line or above and so named on the changeset with their classes. The 26 are what the
+class pool could not reach: the Ishtar Gate and the Pergamon Altar at the Pergamon, the Burney
+Relief, the Lycurgus Cup, Lindow Man, the Nereid Monument and the Tomb of Nebamun at the British
+Museum, the Warka Vase at the National Museum of Iraq, the Pazyryk carpet at the Hermitage,
+Tutankhamun's trumpets and his meteoric-iron dagger at the Egyptian Museum, the Oxyrhynchus Papyri
+at three museums, the Ardagh Hoard, the Copper Scroll, the Isaiah scroll, the Tarkhan dress, the
+Huldremose Woman, the Tjängvide image stone, the Pitsa panels, the Temple of Ellesyia at the Museo
+Egizio, the bee pendant at Heraklion. Log 126 is the dry run; log 127 is the live run that wrote
+them — 20 museums gained 27 links, the Pergamon two, and the Pergamon Museum wears the badge for
+them. Two of the 26 were wrong, and the run said so by name: the Bendegó meteorite, typed `iron
+meteorite` — a subclass the flat natural-history veto never named — with a find spot in Bahia, and
+"Gupta art", an art movement with an inception of 450 and no class at all, kept by the date road.
+A classless item is no find since that day, and the veto is walked as trees — six of its eight
+roots: log 128, which walked all eight, withdrew the Gebelein predynastic mummies and Clonycavan
+Man, because Wikidata files `mummy` under both `skeleton` and `individual animal`, and those two
+are matched flat as they always were. Log 128 also left the meteorite's link standing at the Museu
+Nacional, whose only link it was: a museum offering nothing used to have nothing compared, and
+now has every link marked, floor permitting. Log 129 is the live run under both rules, and the run
+of record for the read: 24 finds kept from the venue's side, the two mummies returned to their
+museums, the meteorite's link marked at the Museu Nacional and "Gupta art"'s at the National
+Museum, 250 treasures placed, and the Pergamon Museum holding the Ishtar Gate and the Pergamon
+Altar beside its three pool finds, badged for them.
+
 Log 112 is the rule without the category door: 617 entities fetched over the museum and finds
 pools. Its refusals name the museums the two signals miss (the Viking Ship Museum with three
 finds, the Drents Museum with two) and the natural-history veto as it then stood.
@@ -379,8 +444,8 @@ The source is `experience_sources` row 5, *Archaeology*, filling the kind of the
 by migration 056 with `requires_curation = true` — a community-edited source's first arrival waits
 for a curator (ADR-0025) — and with both its lines on the row (`api_config.enterSitelinks` 22 and
 `staySitelinks` 18 for the places, `findEnterSitelinks` 18 and `findStaySitelinks` 15 for the
-finds), read by every run and edited from the admin panel's source card. No live run has been made,
-so the kind holds no place and no reader surface draws an Archaeology place — the kinds endpoint
-lists the kind with a count of 0, and a curator's create dialog offers it. Both doors are built now
-(the site door landed on 2026-09-14, #581 PR 2), so what the kind waits on is the maintainer's first
-live run and a curator publishing what it brings (ADR-0058 decision 7).
+finds), read by every run and edited from the admin panel's source card. The live runs on the development
+stack (120 and 124 for #581 and #896, 127 to 129 for #890) have written the kind there, gated: its
+rows wait for a curator, and no reader surface draws an Archaeology place until one publishes them
+(ADR-0058 decision 7). Both doors are built (the site door landed on 2026-09-14, #581 PR 2), and
+what the admitted museums hold is read from their own side as well (#890, 2026-09-15).

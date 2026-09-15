@@ -1137,6 +1137,64 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   holds a work that clears the threshold, and a work held by more than 2 venues (`MAX_HOLDERS`)
   admits none of them — Hokusai's *Great Wave* survives in on the order of a hundred impressions,
   and holding one is not what makes a top art museum
+- **What an admitted museum holds is read from the museum's side too** (#890,
+  `museum/venueSide.ts`, the one stage shared by the three kinds that hold works — Places of worship
+  and Archaeology describe their own use of it in their sections). The pool is class-first: classes
+  are asked, then where what was collected is kept, so an object at an admitted venue that carries
+  no class the pool asks for never reaches the kind's rule, however famous. Once admission is
+  settled, the run asks the other question of every venue it admits **and of every venue folded
+  into one** — the Ishtar Gate's collection statement names the Vorderasiatisches Museum, which
+  folds into the Pergamon, and a read of the survivor alone would miss the one object the read
+  exists for: *what does Wikidata say this venue holds, by a current `P195` or `P276` statement*
+  (carrying no end time, not deprecated — the rule a work's own statements are read under), at the
+  pool's floor of 10 sitelinks and never a venue whole. Fifty venues to a question
+  (`fetchVenueHoldings`, `venueSideQueries.ts`), and the question is **venue-first under
+  Blazegraph's `optimizer "None"`**, the way the banded pool is asked (ADR-0030 decision 8): written
+  work-first, or left to the planner, the same question timed out for *one* venue (65 s, 504) because
+  the join started at every `P195` statement on Wikidata; venue-first, fifty of the archaeology
+  kind's museums answer in 12 s (measured 2026-09-15). What the pool already holds is skipped — the
+  pool's decision stands, kept or refused. Then what each new object *is*, by id
+  (`fetchWorksByIds`: the pool's own columns and every `P31` with its label, parsed by the pool's own
+  rule, fifty to a question), the kind's `workFacts` where it has one, and the same `keep` the pool
+  ran — with the venue as a known fact. This kind keeps everything its pool collects, so its keep is
+  the pool's own vocabulary (`askedClasses` on the collection: the closure, the pinned and the extra
+  classes): an object typed first by a class the closure never reached and carrying a closure class
+  beside it is kept and typed by that class; one carrying none is refused. What is kept has its venue
+  statements read, the venue graph extended for the venues they name (`extendVenueGraph` — an
+  admitted museum that entered by its class and holds no pool work is in no graph yet), is placed by
+  `placeArtwork` and the lost tree exactly as a pool work is, and is merged into the collection, so
+  the writer, the works floor (ADR-0044) and the gate never learn which road an object came in on.
+  The tier is not asked again: a museum is admitted for a work the pool knows, and a venue-side
+  object is listed on the card of a museum already admitted. Its type is the kind's own class where
+  it carries one, else the lowest-numbered class the pool asked for, else the lowest-numbered of its
+  own — deterministic where an answer's row order is not, since a type that changed with the
+  planner's mood would report an update on every run to a word nobody chose; a curator's correction
+  stands (#731). **What is refused is reported, not lost**: each refusal goes onto the run's changeset
+  as a `filtered` row carrying the object's classes and its holder — `not a work of art by its
+  classes: film (Q11424) — held by Museum of Modern Art` — through `FetchResult.refusedContents`,
+  which the orchestrator records and **never marks**: `filtered` entries are matched against the
+  source's own rows by external id (`markRefused`), and an object is not a row of the source — a
+  relic that is also a chapel of the worship kind would otherwise have its place refused for a
+  verdict taken on the object. **And so is what the read kept and the kind then wrote nowhere**
+  (`keptElsewhere`): a kept object is not a written one — its statements can resolve to a venue the
+  kind refuses or to nothing, and nobody can see a lost one — and each such object is named with
+  the reason the placement gave (`nobody can see it: lost painting`, `its own statements place it
+  at no admitted museum`). Never a row the run itself admits, the rule every kind's `filtered`
+  already keeps: an object that is also a museum the run writes is not reported against it. A refusal is *named* only at or above the kind's contents line
+  (`reportFloor`: `ICONIC_RELEASE` here, the finds' stay line for Archaeology, the source's stay
+  line for Places of worship) and counted below it — the report exists for a person to read which
+  classes the pool never asked for, and every film in MoMA's collection named would bury the Karun
+  Treasure. That class list is #891's; this read is what shows it the classes. Measured on the
+  development catalogue's 124 admitted art museums on 2026-09-15 (raw answers kept under
+  `data/cache/890-venue-side/`): they hold **1,853 objects at 10 sitelinks or more (1,064 at 15)**,
+  of which 676 (477) are linked at no venue that holds them and 643 (458) are no treasure of any
+  kind — nearly all of them MoMA's films and video games (*Minecraft* at 156 sitelinks, *Snow White*
+  at 121, *Toy Story* at 116, *Pulp Fiction* at 107), with the Très Riches Heures (`illuminated
+  manuscript`), the Blue Qur'an and the design chairs among the handful of real objects. `work of
+  art` on Wikidata is no rule to keep those by: its `P279*` tree holds 186,720 classes, `film`
+  among them and `hoard` and `chair` not (measured the same day). Each run says what the read did
+  in its log — venues, objects held, already in the pool, kept, refused and named — and the two
+  questions are cached as `statements` and `pool` answers of the source that asked (ADR-0047)
 - Prints a diff (moved / gained / lost / dropped) of this run's placements against what
   `experience_treasures` currently holds, before writing anything — during design this caught
   second-order regressions (a corroboration fix that silently routed a work to the wrong museum,
@@ -1505,6 +1563,38 @@ The two sets are then unioned:
 `door` on the collected item reads `place`, `work` or `both`, a place admitted for its own fame
 lists the treasures it holds too, and a row this run admits is never also reported as a refusal,
 whichever door refused it.
+
+**What an admitted place holds is read from the place's side too** (#890). Once both doors have
+answered, the run asks of every admitted place — and of every chapel folded into one — what Wikidata
+places inside it by a current `P195` or `P276` statement at the pool's floor: the museum import's
+shared stage (`museum/venueSide.ts`; § Art Museums describes it once), judged by this kind's treasure
+vocabulary — the art closure, the pinned classes and the five treasure trees — so a relic filed first
+under a class no root reaches and carrying `relic` beside it is kept, typed `relic`, and hangs where
+the pool would have hung it. The three rules of door two are then asked of the merged collection
+exactly as they were of the pool (`ourWorks` in `worship/works.ts`, door two's own rules over a
+placed work, runs twice, and its log line says which pass it is): a
+museum wins, a place is never a treasure, and nobody can see a lost one. For the place rule the
+second pass reads every class the by-id answer carried beside the places pool's: below that
+pool's floor of 15, a chapel tomb at 12 sitelinks standing in St Peter's is a chapel only there,
+and it is written as nobody's treasure. The doors themselves are not
+asked again — a place is admitted for its fame or for a work the pool knows. Measured on the 1,078
+admitted places of the development catalogue on 2026-09-15: **226 objects at 10 sitelinks or more
+(125 at 15)**, of which 161 (83) are linked at no place that holds them and 149 (77) are no treasure
+at all — and nearly all of those are not things a traveller looks at but things that happened there:
+the conclaves in the Sistine Chapel (nine at the pool's floor, the 2025 one at 48 sitelinks), the
+coronations and royal weddings at Westminster Abbey, the 2019 fire at Notre-Dame, the Grand Mosque
+Seizure, the Battle of the Alamo. The objects among them are the known misses the source record
+already names — the Black Stone (`stone, heirloom`), the kiswah (`parament`), the Hereford Mappa
+Mundi, the Codex Calixtinus, the Coronation Chair (`ceremonial chair`) — and the Horses of Saint Mark
+(`group of sculptures`, at St Mark's). Each is refused with its classes on the run's changeset as a
+`filtered` row, named at or above the source's stay line (`contentsLine`, 18) and counted below it,
+and marked as a refusal of nothing: a treasure's id is not a place's, whatever it shares with one.
+What the read kept by class and this door's own rules then wrote nowhere is named beside them,
+with the rule that turned it away — `the museum that holds it wins`, `a place of worship itself,
+not a treasure`, `nobody can see it: …`, or `its own statements place it at no admitted place` —
+and never a row this run admits, the rule `filtered` keeps for the places: a chapel inside a
+basilica whose `P276` names it carries a worship class the vocabulary refuses, and is a row the
+run writes, not an object it turned down. The class list that would keep the objects is #891's.
 
 **Types.** Eight words a reader filters by, read from the class trees in the precedence of
 `TYPE_ROOTS` — `cathedral`, `monastery`, `mosque`, `synagogue`, `chapel`, `church`, `shrine`,
@@ -2074,12 +2164,72 @@ taken whole. That last way in is for the ancient sculpture that carries no disco
 own and makes Naples and the Vatican worth an archaeology traveller's day — the Doryphoros, the
 Laocoön, the Alexander Mosaic — and for the two classes no other root reaches, the Bull-leaping
 fresco at Heraklion and the François Vase in Florence. Against all four stands one veto, `NOT_A_FIND`: fossil, skeleton,
-individual animal, mineral, diamond, meteorite, coprolite, gemstone. **The pool is class-driven**:
+individual animal, mineral, diamond, meteorite, coprolite, gemstone — six of them walked as trees and
+two matched flat, for the reasons the venue-side read paragraph below gives (#890) — and before any
+road is asked, an item with no class at all is no find. **The pool is class-driven**:
 it is the shared works collector's (`museum/worksCollector.ts`) under this kind's roots and extra
-classes, with the rule above as its `keep`, so a diamond or a tyrannosaur reaches the rule only
-through a class that collected it and is then refused by name — the discovery place is a reason to
-keep a work the pool already holds, not a door into the pool. The site veto of the venue rule stays
+classes, with the rule above as its `keep`, so a diamond or a tyrannosaur reaches the rule through a
+class that collected it and is then refused by name — the discovery place is a reason to keep a
+work the pool already holds, not a door into the pool. The read of what each admitted museum holds
+(#890, below) is the second way into the same rule, and the one that meets an `iron meteorite`. The site veto of the venue rule stays
 **on**, where the places of worship switch it off: a park is not a venue for this kind.
+
+**What an admitted museum holds is read from the museum's side too** (#890). The finds pool is
+class-first, and two of the four roads into a find are not classes: a discovery place, and a date
+before AD 500 on an object of the ancient-art roots. So the Pergamon Altar (`altar`, dug up at
+Pergamon) and the Ishtar Gate (`city gate`, `arch`, 575 BC) could keep a pool row and could never get
+one, and on dry run 120 the Pergamon Museum arrived with the Market Gate of Miletus, the Kilamuwa
+Stela and the Victory stele of Esarhaddon and neither of the two things it is visited for. Once the
+verdict has settled (`judgeToAFixedPoint` in `archaeology/museumHoldings.ts` — the museum door's second half, split out of the pipeline with the rounds below — the fold decision and the verdict asked of each other until
+neither moves), the run asks of every museum it admits — **and of every museum folded into one**,
+which is where the Ishtar Gate is: its collection statement names the Vorderasiatisches Museum, 60 m
+from the Pergamon and `P361` it, and a read of the survivor alone would never find it — what Wikidata
+places there by a current `P195` or `P276` statement at the pool's floor (`museum/venueSide.ts`, the
+shared stage § Art Museums describes), reads what each new object is (its classes, and through this
+kind's own `workFacts` its discovery place), and hands it to `findReason`: the Altar is kept as *found
+at Pergamon*, the Gate as *made before AD 500*, each typed by its own class — `altar`; `arch`, the
+lowest-numbered of the Gate's two, deterministically, since a type that changed with the answer's row
+order would report an update to nobody's word on every run, and a curator's correction stands (#731).
+What is kept is placed as a pool find is and merged, and **the verdict is asked once more** over the
+merged placements, because what a museum holds is what it is badged and, below the place line,
+admitted for: the Pergamon wears the badge for the Gate and the Altar where the pool alone left it
+none. An object read here can name a museum no pool find named; it gets a row from the extended graph,
+its classes off it and its categories from Wikipedia (one more call, for the few there are), and
+reaches the verdict like any holder — **and the read is asked again of whatever the new verdict
+admits that no round has read**, until a round admits nothing new: a museum an object carried over
+the line has its own case read in the same run, and the rounds are one read for the report, each
+object named once. It terminates because the set of museums read only grows. What is refused is
+reported on the changeset with its classes, and so is what the rule kept and the run still writes
+nowhere — a find whose statements resolve to no admitted museum, or one nobody can see — with that
+reason; a row the run writes is never among them. Named at or above the finds'
+stay line and counted below it — the Louvre's paintings refused as not finds would otherwise bury the
+Library of Ashurbanipal (`library`, no discovery place, 51 sitelinks), which is the real miss the read
+shows and the class list (#891) is for; the run's summary line says how many the read kept and
+refused, and names what it kept. Measured on the 83 admitted museums of the development catalogue on
+2026-09-15: **468 objects at 10 sitelinks or more (252 at 15)**, 274 (134) linked at no museum that
+holds them, 115 (49) no treasure at all — the Pergamon Altar, the Library of Ashurbanipal, the Benin
+Bronzes (`group of sculptures`, undated and with no find spot, so refused by the rule as ADR-0058's
+consequences foresaw), the Oxyrhynchus Papyri (`manuscript collection` with a find spot, kept), the
+Bardo attack (`mass murder`, located in the Bardo), and the paintings and frescoes of the Louvre, the
+Vatican and the Hermitage, which are the art run's treasures and no finds. **Dry run 126 and live
+run 127** (2026-09-15) read 91 venues — the 84 admitted museums and the 7 folded into them — and
+kept 26 finds the class pool could not reach (the source record names them); 20 museums gained 27
+links, the Pergamon its two, and wears the badge for them. Two of the 26 were wrong and the run
+named them: the Bendegó meteorite, typed `iron meteorite`, a subclass the flat `NOT_A_FIND` list
+never named, and "Gupta art", an item with no class at all kept by the date road. So **six of the
+eight natural-history roots are walked as trees** (`NOT_A_FIND_WALKED`, six more class questions
+in `fetchArchaeologyTrees`, each floored with its root) and **an item with no class is no find**
+before any road is asked — the pool never met either shape, because the pool is collected by
+class. Not all eight: live run 128 walked them all and withdrew the Gebelein predynastic mummies
+from the British Museum and Clonycavan Man from the National Museum of Ireland, because Wikidata
+files `mummy` under both `skeleton` and `individual animal`; those two stay matched flat, which is
+what the veto was measured on (Sue and Lucy carry them directly). Run 128 showed one more thing
+the read makes possible: the Museu Nacional's only link was the meteorite, and once the run
+refused it the museum offered nothing — which `reconcileLinks` used to read as nothing to compare
+rather than everything to withdraw, so the meteorite stayed a pending find. An empty offer now
+marks the museum's links like any other, floor permitting (ADR-0044 decision 4 as written): a
+museum the run wrote and offered nothing at is an answer, not a short run. Run 129 is the live run
+under both rules.
 
 **Where a find was dug up is stored on it.** `foundAt` — the discovery place's QID and the label a
 reader would see, read as a statement that still holds (best-ranked, no end time) and single-valued,
