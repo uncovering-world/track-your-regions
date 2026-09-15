@@ -23,7 +23,7 @@ vi.mock('../../db/index.js', () => ({
 import { pool } from '../../db/index.js';
 import { getExperienceTreasures, markTreasureViewed } from './experienceTreasureController.js';
 import {
-  experienceOfferedToReaderSql, hidePendingSql, hideRefusedSql, linkedForReaderSql,
+  experienceOfferedToReaderSql, hideLostSql, hidePendingSql, hideRefusedSql, linkedForReaderSql,
 } from './experienceLifecycle.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -99,6 +99,37 @@ describe('getExperienceTreasures gate', () => {
     expect(res.json.mock.calls[0][0].treasures[0]).toMatchObject({
       found_at: { qid: 'Q3077898', label: 'Fort Julien' },
     });
+  });
+
+  it('names the site row a find spot points at, as a reader may open it', async () => {
+    // "found at Mycenae" is a way to Mycenae where the catalogue holds the site
+    // (#894): the row by the same Wikidata id, of the type only a site has,
+    // offered to a reader and still standing — with the regions that name it
+    // to a reader, the list every link from one card to another is built from
+    // (ADR-0042). Null keeps the words: a find dug up in a city, a region, or
+    // a place no site door has written still says where.
+    const find = {
+      id: 3452, external_id: 'Q1126741', name: 'Mask of Agamemnon',
+      artists: [], artists_curated: false, year: -1600,
+      found_at: { qid: 'Q131594', label: 'Mycenae' },
+      found_at_site: { id: 14730, name: 'Mycenae', kind_id: 5,
+        regions: [{ id: 6922, name: 'Peloponnese', world_view_id: 5, world_view_name: 'Administrative' }] },
+    };
+    mockedQuery.mockResolvedValueOnce({ rows: [find] });
+    const res = makeRes();
+
+    await getExperienceTreasures({ params: { id: '14551' } } as never, res as never);
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql).toMatch(/WHERE site\.type = 'site'\s+AND site\.external_id = t\.metadata->'foundAt'->>'qid'/);
+    expect(sql).toContain(experienceOfferedToReaderSql('site'));
+    expect(sql).toContain(hideLostSql('site'));
+    expect(sql).toMatch(/WHERE er\.experience_id = site\.id/);
+    expect(sql).toMatch(/ORDER BY r\.geom_area_km2 ASC NULLS LAST, r\.id/);
+    // The alias too, since the row below is the mock's: a projection renamed
+    // or dropped would leave every predicate in place and the field off the wire.
+    expect(sql).toMatch(/LIMIT 1\) AS found_at_site/);
+    expect(res.json.mock.calls[0][0].treasures[0].found_at_site).toEqual(find.found_at_site);
   });
 
   it('hides a link the source stopped placing here, for a curator as for anyone', async () => {
