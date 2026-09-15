@@ -117,13 +117,21 @@ describe('reconcileLinks', () => {
     expect(delta.withdrawn).toEqual([]);
   });
 
-  it('sends nothing for a museum with no works, rather than an empty ANY', async () => {
-    // Not a shape the pipeline produces — a museum is admitted for a work it
-    // holds — and the one reading that is never destructive.
-    expect(await reconcileLinks(EXPERIENCE_ID, {
-      offered: [], placedElsewhere: ['Q12418'], withdraw: true,
-    })).toEqual({ returned: [], withdrawn: [] });
-    expect(mockedConnect).not.toHaveBeenCalled();
+  it('marks every link of a museum the run offers nothing at, floor permitting (#890)', async () => {
+    // The shape exists since the venue-side read: a museum admitted for what
+    // it is, holding only what that read found, and the next run refusing it
+    // — the Bendegó meteorite at the Museu Nacional. An empty offer used to
+    // be read as nothing to compare, and the meteorite stayed a pending find.
+    const client = makeClient();
+    await reconcileLinks(EXPERIENCE_ID, { offered: [], placedElsewhere: [], withdraw: true });
+    const statements = sent(client);
+    expect(statements.some(s => s.includes(MARK))).toBe(true);
+    expect(statements.some(s => s.includes(RESTORE))).toBe(true);
+
+    // And still nothing below the floor.
+    const held = makeClient();
+    await reconcileLinks(EXPERIENCE_ID, { offered: [], placedElsewhere: [], withdraw: false });
+    expect(sent(held).some(s => s.includes(MARK))).toBe(false);
   });
 });
 
