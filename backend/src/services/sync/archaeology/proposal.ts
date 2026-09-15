@@ -207,8 +207,14 @@ export function reportProposal(proposal: {
   treasures: number;
   /** The site door's refusals, after the rows the run writes have been taken out. */
   siteRefusals: SiteRefusal[];
+  /**
+   * What the venue-side read brought (#890): the finds it kept, by name, and
+   * how many objects it refused — the refusals themselves are on the run's
+   * changeset, with their classes.
+   */
+  venueSide: { kept: string[]; refused: number };
 }): void {
-  const { museums, held, forFind, sites, refused, treasures, siteRefusals } = proposal;
+  const { museums, held, forFind, sites, refused, treasures, siteRefusals, venueSide } = proposal;
   const extents = sites.filter((item) => item.extentWkt).length;
   console.log(
     `${LOG_PREFIX} Admitted ${museums} museums `
@@ -219,6 +225,11 @@ export function reportProposal(proposal: {
   );
   if (held.length) console.log(`${LOG_PREFIX} held: ${held.join(', ')}`);
   if (forFind.length) console.log(`${LOG_PREFIX} for a find: ${forFind.join(', ')}`);
+  console.log(
+    `${LOG_PREFIX} from the venue's side: ${venueSide.kept.length} finds kept, `
+    + `${venueSide.refused} objects refused`
+    + (venueSide.kept.length ? ` — ${venueSide.kept.join(', ')}` : ''),
+  );
   if (!siteRefusals.length) return;
 
   // Grouped by the tag the rule put on each refusal, never by words in the

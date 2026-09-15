@@ -352,9 +352,14 @@ export async function readCategories(
     const title = enwikiTitleOf(row.articleUrl);
     if (title) titles.set(qid, title);
   }
-  run.phase('Reading what English Wikipedia says these museums are about...');
-  await run.step();
-  const answered = await ask([...new Set(titles.values())]);
+  // Nothing to ask where no row carries an article — a museum the venue-side
+  // read brought in without one (#890) is judged by its class alone, and a
+  // question with no titles in it is a request the wiki need not see.
+  const answered = titles.size === 0 ? new Map<string, string[]>() : await (async () => {
+    run.phase('Reading what English Wikipedia says these museums are about...');
+    await run.step();
+    return ask([...new Set(titles.values())]);
+  })();
 
   const categories = new Map<string, string[]>();
   for (const qid of rows.keys()) {
