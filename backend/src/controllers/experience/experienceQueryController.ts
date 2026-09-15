@@ -14,6 +14,7 @@ import { KINDS, MEMBERSHIPS, rowKindJoinSql, rowKindSelectSql } from '../../db/m
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
+import { readerRegionsJsonSql } from './readerRegions.js';
 import { dangerSelectSql, withDangerFields } from './experienceDanger.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
@@ -486,47 +487,9 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
       m.relevance,
       -- Where this object can be opened. Published world views only: an
       -- unpublished one is not a place to send a reader, and this route carries
-      -- no session, so "visible" can mean nothing else here.
-      COALESCE((
-        SELECT json_agg(json_build_object(
-                 'id', r.id,
-                 'name', r.name,
-                 'world_view_id', r.world_view_id,
-                 'world_view_name', wv.name)
-               -- Most specific first: an object hangs on the whole chain that
-               -- holds it, and the Rijksmuseum is in Europe as truly as it is
-               -- in Noord-Holland. The caller opens exactly one of these, so
-               -- the smallest is the one that frames the object rather than the
-               -- continent. Area rather than a walk up parent_region_id: the
-               -- question is which is the smaller place, and a region whose
-               -- geometry has not been computed sorts last rather than first.
-               ORDER BY r.geom_area_km2 ASC NULLS LAST, r.id)
-        FROM experience_regions er
-        JOIN regions r ON r.id = er.region_id
-        JOIN world_views wv ON wv.id = r.world_view_id
-        WHERE er.experience_id = m.id
-          AND wv.is_active = true
-          AND wv.is_public = true
-          -- Named to a reader only where a point they may see put the object
-          -- there (#521), for the reason the by-id read gives: this list is a
-          -- claim the caller acts on — it opens a card at one of these regions
-          -- — so it has to name the regions whose own lists will hold it.
-          AND ${readerRegionMembershipSql('er.experience_id')}
-          -- And not a pair a curator turned down. A rejection leaves the
-          -- membership row standing (curationController.ts upserts into
-          -- experience_rejections and deletes nothing), while every
-          -- region-facing read drops the pair -- the region list and its count
-          -- through experienceRegionQuery.ts's rejectionFilter, region-counts
-          -- through the join below. Without this the row would be a link to a
-          -- region whose own list answers without the card, and the address
-          -- would quietly drop the /e/ segment on arrival: the dead click
-          -- ADR-0042 says a row never gives. The by-id read carries the same
-          -- gap and it is informational there; here the array is the click.
-          AND NOT EXISTS (
-            SELECT 1 FROM experience_rejections rej
-            WHERE rej.experience_id = er.experience_id
-              AND rej.region_id = er.region_id)
-      ), '[]'::json) as regions
+      -- no session, so "visible" can mean nothing else here. The list is the
+      -- one every link from one card to another sends (readerRegions.ts).
+      ${readerRegionsJsonSql('m.id')} as regions
     FROM matches m
     -- A join does not carry the CTE's order.
     ORDER BY m.name_contains DESC, m.relevance DESC
