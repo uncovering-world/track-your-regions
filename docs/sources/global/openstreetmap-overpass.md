@@ -26,8 +26,8 @@ access:
   mode: api
   format: "Overpass QL, JSON"
   cadence: continuous
-  volume: "as the reader: 253 objects, 740 kB, for 94 of 100 admitted site items in one query (2026-09-14); as the enumerator: Paris 146, Florence 110, Berlin 247, Kraków 89, Lima 109 (box), Tbilisi 43, Tallinn 67, Estonia 350"
-  rate: "overpass-api.de's own guidance, quoted below: about 10,000 queries and 1 GB a day for a one-off, a hundredth of that for regular use; two slots per address, 429 when both are taken, 504 when the declared run time and memory would take more than half of what is left; no parallel scripts; a 30 s pause after a 429. This connector sends one batch of 100 items at a time, never two at once, five seconds apart, declares a 120 s timeout, fetches a geometry only for a ruin or a protected area, and caches every answer for a day"
+  volume: "as the reader: 253 objects, 740 kB, for 94 of 100 admitted site items in one query (2026-09-14); as the enumerator: Paris 146, Florence 110, Berlin 247, Kraków 89, Lima 109 (box), Tbilisi 43, Tallinn 67, Estonia 350; as the site pool's second entrance: eight questions a run, tags only — the same list asked as one question was 43,759 elements and 16 MB (2026-09-15)"
+  rate: "overpass-api.de's own guidance, quoted below: about 10,000 queries and 1 GB a day for a one-off, a hundredth of that for regular use; two slots per address, 429 when both are taken, 504 when the declared run time and memory would take more than half of what is left; no parallel scripts; a 30 s pause after a 429. This connector sends one batch of 100 items at a time, never two at once, five seconds apart, declares a 120 s timeout, fetches a geometry only for a ruin or a protected area, and caches every answer for a day; the site pool's enumeration is eight exact-match questions a run, one at a time with the same pause, each declaring 600 s and fetching no geometry, cached the same day"
 scorecard:
   date: 2026-09-14
   completeness: 2
@@ -41,8 +41,8 @@ scorecard:
   total: 14
   verdict: adoptable
 status: adopted
-issue: 893
-looked_at: 2026-09-14
+issue: 895
+looked_at: 2026-09-15
 ---
 
 # OpenStreetMap through Overpass
@@ -167,10 +167,18 @@ only:
 - The same 100-item question ran to completion under a declared `[maxsize:8388608]` (8 MiB),
   in 5.2 s with the same 253 objects, which is what the connector's declared 64 MiB is eight
   times of.
-- A regular run at the pool's floor is about 1,126 items, so twelve questions: under the hundred
-  a day the wiki asks of regular use. What keeps the download under its ten megabytes is the
-  geometry rule — a city's administrative outline never crosses the wire — and the day's cache,
-  which is why a dry run repeated the same afternoon sends nothing at all.
+- A regular run asks the per-item read about every candidate at the line, the second entrance's
+  rows included: 1,471 items on dry run 137 (2026-09-15), so fifteen questions — under the
+  hundred a day the wiki asks of regular use — answered in 1.7 MB of tags and outlines between
+  them. What keeps that read's download under ten megabytes is the geometry rule — a city's
+  administrative outline never crosses the wire — and the day's cache, which is why a dry run
+  repeated the same afternoon sends nothing at all.
+  The site pool's enumeration (#895, below) does not fit that line: eight more questions, still
+  under the hundred, but about 16 MB of tags between them, so a run through this door is some
+  17.7 MB on the day it asks — past the wiki's regular-use figure. What makes that acceptable is
+  that this door is the configured fallback and not the default (ADR-0059 decision 4: the mirror
+  answers the same list in seconds and a few megabytes), every answer is cached a day, and the
+  one-off allowance the wiki states is a gigabyte.
 
 An exact-match union rather than one `~"^(Q1|Q2|…)$"` regular expression over the key: the
 regular expression is matched against every object carrying `wikidata=*` on the planet, and the
@@ -180,10 +188,11 @@ union is an index read per item.
 
 What the policy asks, answered in the code (`backend/src/services/sync/osm/overpassOsm.ts`):
 one request at a time — the reader is sequential by construction and a run never opens a second
-— with a pause between requests measured from the end of the last one; a `[timeout:120]` and a
+— with a pause between requests measured from the end of the last one; a `[timeout:120]` on a
+batch and a `[timeout:600]` on each of the enumeration's eight questions (#895, below), and a
 `[maxsize:]` of 64 MiB declared in every query — both halves of the admission rule quoted above,
-where the undeclared default would claim 512 MiB — and a client-side deadline just past the run
-time; the project's own `User-Agent`
+where the undeclared default would claim 512 MiB — and a client-side deadline just past the
+declared run time; the project's own `User-Agent`
 with the bot marker (`userAgent()`, ADR-0043's rule, #864); a 429 waited out for what
 `Retry-After` says, else the thirty seconds the wiki asks for, and a 504 or a 5xx on the doubling
 backoff, all on the run's shared wait budget (#886); a 200 whose body carries a `remark` naming a
@@ -200,3 +209,28 @@ door reads OSM. The total is 14, the verdict `adoptable`, and the status `adopte
 reader of the Archaeology site door, chosen by configuration, adopted by #893 and reading through
 the same `experience_sources` row (id 5) the kind's run writes from. The enumerator reading is
 unchanged: a source of *rows* for no kind, and the yardstick § 7.4 describes.
+
+## The enumeration through this door (2026-09-15, #895)
+
+The site pool's second entrance (ADR-0060) is eight more questions in this language, **one per
+selector and each an exact match**: `nwr["historic"="archaeological_site"]["wikidata"]`,
+`nwr["historic"="ruins"]["wikidata"]`, `nwr["archaeological_site"]["archaeological_site"!="no"]["wikidata"]`,
+`nwr["ruins"]["ruins"!="no"]["wikidata"]`, and the same four with `["wikipedia"][!"wikidata"]` —
+`out tags` and never `out geom`, and `ruins=no` left out as the mirror's form leaves it out. Two things the first live attempt through this door taught, on dry run
+134: a regular expression over the value (`historic~"^(archaeological_site|ruins)$"`) is a scan
+of every `historic` object on the planet and timed out at that line after the declared 120 s,
+where an exact value is an index read; and even the exact form answered as one question ran
+past 300 s in its print phase (43,759 elements, 16 MB), while one selector alone answered in
+131 s (26,767 elements, 9.6 MB) against the batch budget of 120 s. So each selector is its own
+question under a budget of its own, `[timeout:600]`, declared as the batch budget is, and asked
+one at a time with the door's five-second pause between them. **The two doors answer the same
+list.** Folded by object, the eight answers dry run 137 cached (2026-09-15) hold 43,759
+objects — 41,707 carrying an item (39,257 items) and 2,052 carrying only an article — against
+the mirror's one answer the same day, 66,417 rows folding to 43,190 objects (41,163 with an
+item, 38,753 items, 2,027 article-only); 43,066 objects are in both — 41,066 of the
+item-carrying ones and 2,000 of the article-only ones, joined by the article — and the rest is
+the mirror's snapshot against Overpass's live data (693 objects only Overpass has, 641 of them
+carrying an item; 124 only the mirror, 97 with an item), the same selector rule and the same
+fold. Through the mirror the same
+enumeration is one question answered in seconds; this door is the fallback the record promises
+and pays for it in minutes.

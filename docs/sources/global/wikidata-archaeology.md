@@ -26,7 +26,7 @@ access:
   mode: api
   format: "SPARQL (the Query Service for the run, banded; QLever for the measurements)"
   cadence: continuous
-  volume: "1130 sites at 22 sitelinks with coordinates; 44 museums typed archaeological at 22 (14 at 40 or more, 30 between 22 and 39); 56 museums holding a find at 22, 78 at 18 (2026-09-13); 1,960 site candidates with coordinates at 15 sitelinks, 1,126 at 22 (2026-09-14)"
+  volume: "1130 sites at 22 sitelinks with coordinates; 44 museums typed archaeological at 22 (14 at 40 or more, 30 between 22 and 39); 56 museums holding a find at 22, 78 at 18 (2026-09-13); 1,960 site candidates with coordinates at 15 sitelinks, 1,126 at 22 (2026-09-14); 38,753 items OpenStreetMap tags as digs or ruins, 774 at 22, 210 of them in no class under the tree (2026-09-15)"
   rate: "the Query Service refuses heavy patterns; the run asks in fame bands and pauses between questions"
 scorecard:
   date: 2026-09-13
@@ -41,8 +41,8 @@ scorecard:
   total: 16
   verdict: adoptable
 status: adopted
-issue: 581
-looked_at: 2026-09-13
+issue: 895
+looked_at: 2026-09-15
 ---
 
 # Wikidata, read for the whole world through three doors
@@ -238,6 +238,46 @@ written venue-first (`?st ps:P195 ?venue` before `?w p:P195 ?st`) under `hint:op
 left to the planner, or written work-first, one venue timed out at 65 s, while fifty of these museums
 answer in 12 s (683 rows) venue-first.
 
+## The site pool's second entrance (2026-09-15, #895)
+
+**What the class tree never sees.** Of the ten places #895 named, three were in the tree all
+along (Yinxu, Mỹ Sơn, the Valle dei Templi — site rows on the development catalogue); seven
+were not: Ajanta Caves (`grotto`, `artificial cave`, `temple`, 83 sitelinks), Mount Nemrut
+(`mountain`, 61), Sanchi (`compound`, 54), the historical parks of Sukhothai (37) and Ayutthaya
+(43) (`historical park of Thailand`), Jerash (`city`, 54) and Vergina (`human settlement`, 47).
+The last two share a shape: the dig is its own item, well typed and **below the line** — Gerasa
+(Q56072866, `archaeological site`, 12 sitelinks), Aigai (Q16963755, `archaeological site`, 14,
+carrying P757 = 780) — and the fame is the town's.
+
+**What was tried, with the numbers** (the data is in `data/cache/895-site-doors/`):
+
+| entrance | at the line, not in the tree | what it is |
+|---|---|---|
+| English Wikipedia `Archaeological sites by country`, walked as the museum shelf is | 432 of 905 | Istanbul, Tbilisi, Yerevan, Sanaa, Thessaloniki — the living city shelved beside the dig; with OSM's ruin required, 26, a third of them castles and Ashdod ([`wikipedia-archaeological-sites-categories`](wikipedia-archaeological-sites-categories.md)) |
+| a World Heritage listing (P757 naming a catalogue row) | 48 in the tree below the line; 586 outside it | 17 of the 48 within three kilometres of a site this kind admits (Delphi, Knossos, Carthage); outside the tree OSM's wide ruin set admits the Taj Mahal and the Alhambra, the strict set 33 with a quarter living temples — every one a twin of a row held already |
+| iDAI.gazetteer, GeoNames, Pleiades (P1584), DARE (P1936) | see the records | gazetteers of ancient *places* hold Rome, Athens and Istanbul; GeoNames' `ANS`/`RUIN` on the item's own feature names four of 586 ([`idai-gazetteer`](idai-gazetteer.md), [`geonames`](geonames.md)) |
+| a famous town's below-line dig (`P131`/`P276`/`P361` to an item at 22) | 3,996 digs | Rome carries 325 of them |
+| Wikidata designations (P1435) by share of holders in the tree | 26 | only `archaeological site in Greece` and `scheduled monument` pass 30 %; their famous non-tree holders are monasteries and castles |
+| the finds' own discovery places (`foundAt` on 103 treasures) | 41 | Mexico, Egypt, Rome, Malta, Anatolia — a find is found in a country or a town |
+| **OpenStreetMap's own list**: every object tagged `historic=archaeological_site`, `archaeological_site=*`, `historic=ruins` or `ruins=*` (a `no` value left out) carrying a `wikidata` tag | **210 of 774** (38,753 items, 41,163 objects from 63,630 rows — one question through the QLever mirror, which read the measurement; the Overpass door asks the same list as eight exact questions, dry runs 134–135 below) | municipalities the mapper linked from a ruin (Potenza, Alcalá de Henares, eighteen comuni), living cities (Ashdod), destroyed buildings (the Hanging Gardens, the Colossus, Whitehall), castles under `ruins=yes`, a bombed airport, living temples tagged as digs (Konark) — **and about forty real sites**: Ajanta, Delos, Sigiriya, Jerash, Lagash, Kilwa Kisiwani, Gobustan, Chaco Culture, the Ziggurat of Ur, Elephanta, Alta, Zvartnots, Qalhat, Dmanisi, Eleusis, the Temple of Kukulcan, Silbury Hill, Spiennes, Kanheri, Beit Guvrin, the Thracian tombs, the Hồ citadel, the Alpine pile dwellings, Brattahlíð, Vergina, the Great Wall of Gorgan |
+| … and the objects carrying a `wikipedia` tag and no `wikidata` tag — 2,027 in the run's form, of which the probe resolved the 1,085 under `historic=archaeological_site` | 39 of 94 (843 items resolved) | Nemrut (`tr:Nemrut Dağı` on the tumulus), Gamzigrad, the Orkhon inscriptions, and French and Italian communes |
+
+The OpenStreetMap list — both rows: the objects carrying a `wikidata` tag, and the objects
+carrying only a `wikipedia` tag, resolved to their items through that wiki's own API — is the
+entrance ADR-0060 adopts, with Wikidata's classes as the vetoes that make the map's word
+judgeable — a population statement (unless World Heritage itself or
+the English category's vote), `destroyed building or structure`, the artefact tree, and a
+`ruins` tag alone on a fortification, a palace, a place of worship or a museum. Under those
+vetoes on the 210: 125 enter, 53 are monuments in ruins, 24 living places, 8 destroyed.
+
+**The misses this decision keeps, by name:** Sanchi (the Great Stupa is a way with a name and
+nothing else in OSM; the item sits on the village node), the historical parks of Sukhothai
+and Ayutthaya (their OSM objects carry `ref:whc` and no item), Gerasa and Aigai as items
+(below the line; their towns enter instead — Jerash by the category's vote, Vergina on the
+`historic=archaeological_site` its village item carries). Their honest home is the regional
+tier (#881): Turkey's ören yerleri, India's ticketed monuments, Thailand's historical parks,
+each with a fame signal of its own.
+
 ## What this source cannot reach
 
 - **A museum famous as an institution whose finds are not itemised, and which Wikidata types
@@ -262,6 +302,9 @@ answer in 12 s (683 rows) venue-first.
   museums is already a record here (`museums/pe-museos-cultura.md`).
 - **A site Wikidata holds only as the living town** (Babylon, Baalbek): reached through World
   Heritage, not through this source.
+- **A site no class under `archaeological site` names** (Ajanta, Nemrut, Sigiriya, Delos): reached
+  through OpenStreetMap's own list of digs since #895 (ADR-0060), never through this source alone;
+  and one neither names — Sanchi, the Thai historical parks — through nothing yet.
 - **A find in a natural history museum**: the Venus of Willendorf (Naturhistorisches Museum
   Wien), the Venus of Lespugue (Musée de l'Homme, typed `museum`), Lucy (the National Museum of
   Ethiopia). The natural-history class is a veto for this kind by product decision (2026-09-13:
@@ -294,6 +337,8 @@ per-object report and nothing to the catalogue:
 | 127 (live) | 12 m 56 s | 1,010 | 5 | 16 | 243 + 125 objects | 252 |
 | 128 (live) | 14 m 08 s | 1,010 | 5 | 16 | 243 + 125 objects | 248 |
 | **129 (live)** | **13 m 50 s** | **1,010** | **5** | **16** | **243 + 125 objects** | **250** |
+| 136 (`OSM_READER=overpass`) | 35 m 39 s | 1,115 | 3 | 16 | 579 + 125 objects | 250 |
+| **137 (`OSM_READER=overpass`)** | **16 m 20 s** | **1,103** | **3** | **16** | **551 + 125 objects** | **250** |
 
 Log 121 is the site door's first dry run on the development stack (2026-09-14, #581 PR 2): 930
 sites admitted, 523 of them with an extent from OpenStreetMap, beside 83 museums and 225
@@ -449,3 +494,32 @@ stack (120 and 124 for #581 and #896, 127 to 129 for #890) have written the kind
 rows wait for a curator, and no reader surface draws an Archaeology place until one publishes them
 (ADR-0058 decision 7). Both doors are built (the site door landed on 2026-09-14, #581 PR 2), and
 what the admitted museums hold is read from their own side as well (#890, 2026-09-15).
+
+**Dry runs 131–137 are the second entrance's** (#895, 2026-09-15). Four died on the way to the
+first that finished, each for a reason now written into the code: 131 to a restart of the dev
+backend (the Python gates' container relabels the tree and the watcher restarts), 132 to
+`yue.wikipedia.org` answering a redirect that turned the POST into a bodiless GET (the transport
+now follows a same-site redirect as a POST), 133 to the QLever mirror timing out on every
+geometry join that afternoon (a probe of three items with tiny outlines took 213 s), 134 and
+135 to Overpass — a value regex over `historic` is a planet-wide scan, and one exact-match
+question for the whole enumeration ran past 300 s while the door hung up at 130 (the enumeration
+is now eight exact questions under a declared 600 s, and the door waits what the question
+declares). **136 is the first that finished**, through Overpass: 40,572 items the map names,
+39,587 in no class under the tree, 601 at the pool's floor; 1,536 tagged articles resolved to
+1,468 items over 50 wikis; 105 rows created beside the 1,010 of run 129 — Ajanta, Delos,
+Sigiriya, Lagash, Nemrut, Jerash, Elephanta, Gobustan, Chaco Culture, Kilwa Kisiwani, the
+Ziggurat of Ur, Zvartnots, Qalhat, Silbury Hill, Spiennes, the Thracian tombs among them — and
+beside them Azovstal, the Kakhovka dam, Berghof, a concentration camp, a massacre and a council
+with a coordinate, two Loire châteaux, and 43 placeless refusals naming a person, a class or an
+event the mapper's tag pointed at. **137** is the same run under the flat not-a-place list, the
+château beside the monument trees, and silence for a placeless row the tree never vouched for:
+93 created, 551 refused by name (123 of them living places the map alone calls a dig, 11 not a
+place to stand in), 0 placeless. What 137 still creates that a curator will turn down: the
+cathedrals of Reims, Palermo and Monreale and four living Hindu temples under
+`historic=archaeological_site`, the Dome of the Rock, Wolf's Lair and Prora under `ruins`,
+Jantar Mantar and Ashdod by the category's vote — some fourteen cards against about seventy
+digs. A fifteenth 137 created will not come again: Antuco, a Chilean town Wikidata counts no
+people in, reached from Fuerte Ballenar's node through `es:Antuco#Historia`, a tag naming a
+section of the town's article; a section tag names no candidate since that run (`articleOf`,
+ADR-0060 decision 1: the object is a part of what the article is about, and 229 of the run's
+2,027 article-only objects carry one).

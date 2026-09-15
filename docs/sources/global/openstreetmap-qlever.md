@@ -26,8 +26,8 @@ access:
   mode: api
   format: "SPARQL (osm2rdf's RDF of the OSM planet), JSON results"
   cadence: continuous
-  volume: "1,544 objects carrying `wikidata=<item>` for 885 of the 1,126 world-tier site candidates (2026-09-14); 20 queries of 100 items for the pool at its floor"
-  rate: "no published numeric limit; the usage page asks a heavy user to run their own endpoint. This connector sends one batch of 100 at a time, pauses a second between batches, and caches every answer for a day"
+  volume: "1,544 objects carrying `wikidata=<item>` for 885 of the 1,126 world-tier site candidates (2026-09-14); fifteen questions of 100 items for every candidate at the line, the second entrance's rows included (1,471 items on dry run 137); one question a run for the enumeration — 63,630 rows folding to 41,163 objects tagged as a dig or as ruins carrying an item, 38,753 items, beside the objects carrying only an article (2026-09-15)"
+  rate: "no published numeric limit; the usage page asks a heavy user to run their own endpoint. This connector sends one batch of 100 at a time, pauses a second between batches, and caches every answer for a day; the site pool's enumeration is one more question a run, planet-wide over the dig tags and answered without a geometry, cached the same day"
 scorecard:
   date: 2026-09-14
   completeness: 2
@@ -41,8 +41,8 @@ scorecard:
   total: 14
   verdict: adoptable
 status: adopted
-issue: 581
-looked_at: 2026-09-14
+issue: 895
+looked_at: 2026-09-15
 ---
 
 # OpenStreetMap through the QLever osm-planet mirror
@@ -139,6 +139,30 @@ site` (Q839954) with 22 sitelinks or more, a coordinate and an English label.
   651 items with a ruin signal carry a polygon on the ruin object itself.
 - Tried and dropped: "the item's node lies inside a mapped ruin polygon" (`ogc:sfContains`) —
   true for Pompeii only; Bagan's and Anuradhapura's nodes are not inside one.
+
+## The enumeration (2026-09-15, #895)
+
+The site pool's second entrance (ADR-0060) asks this mirror one more question a run: every
+object tagged `historic=archaeological_site`, `historic=ruins`, `archaeological_site=*` or
+`ruins=*` (`ruins=no` left out) that carries a `wikidata` tag, or a `wikipedia` tag and no
+`wikidata` tag — the tags and the names, **never the geometry**. Measured: 66,417 rows
+(an object once per key it matches) — 63,630 of them the objects carrying an item, folding to
+41,163 objects naming 38,753 items, and the other 2,787 the 2,027 objects carrying only an article (1,532 articles; the probe that resolved them read the 1,085
+under `historic=archaeological_site` alone). With `geo:asWKT` in the
+question the same rows took minutes and timed out under load; without it they answer in
+seconds, which is why the enumeration and the per-item read are two questions — the outline
+is fetched only for what the rule admits, as before. The rows are appended rather than spread into the batch (a spread is one argument per row,
+and Node ends a call at about 124,000 of them), so the whole planet's answer folds however far
+the map grows. It is asked under a budget of its own,
+540 s — past the batch's two minutes as the Overpass door's 600 s is, and inside the mirror's own
+ten-minute deadline so the cut stays ours — declared on the question's first line in a comment
+the mirror ignores (`questionBudgetMs`), and a body that deadline cuts mid-stream is retried as a timeout
+rather than read as an answer that is not JSON — what the afternoon of 2026-09-15 (a probe of
+three items in 213 s) would otherwise have made of it. The answer is cached a day under the run's
+`osm` kind like every batch, and one that comes back with no dig at all ends the run
+(`readOsmDigs`) and drops that day's cached OSM answers, for the reason an empty batch does —
+the emptiness is filed by the time it is read, and a run that kept it would fail the same way
+until the row expired.
 
 ## How the scorecard was read
 
