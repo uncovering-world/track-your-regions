@@ -443,7 +443,51 @@ export interface ExperienceTreasure {
    * maker, not a find spot.
    */
   found_at?: { qid: string; label: string } | null;
+  /**
+   * The site row that spot names, where the catalogue holds one a reader may
+   * open (#894) — so "found at Mycenae" is a way to Mycenae. Null where the spot
+   * is a city, a region or a place no site door has written; the words stay.
+   */
+  found_at_site?: LinkedPlace | null;
   sitelinks_count: number;
+}
+
+/**
+ * A place another card names, with what a link to it is built from: the
+ * regions that name it to a reader, in published world views, smallest first —
+ * the search read's list (ADR-0042). `openableRegion` picks the one in the
+ * world view the reader is in; none there, and the name is words.
+ */
+export interface LinkedPlace {
+  id: number;
+  name: string;
+  /** The kind the place is shown under — what Discover's address needs to open its list. */
+  kind_id: number | null;
+  regions: ExperienceRegionRef[];
+}
+
+/**
+ * One find dug up at a site (#894): a museum's treasure whose discovery place
+ * is the site, and every museum a reader may be sent to that shows it.
+ */
+export interface SiteFind {
+  id: number;
+  external_id: string;
+  name: string;
+  treasure_type: string;
+  year: number | null;
+  image_url: string | null;
+  image_credit?: ImageCredit | null;
+  is_iconic: boolean;
+  sitelinks_count: number;
+  /** One entry per building, never empty: a find nobody can go and see is not listed. */
+  shown_at: LinkedPlace[];
+}
+
+export interface SiteFindsResponse {
+  experienceId: number;
+  finds: SiteFind[];
+  total: number;
 }
 
 export interface ExperienceTreasuresResponse {
@@ -467,6 +511,16 @@ export async function fetchExperienceTreasures(
   experienceId: number
 ): Promise<ExperienceTreasuresResponse> {
   return authFetchJson<ExperienceTreasuresResponse>(`${API_URL}/api/experiences/${experienceId}/treasures`);
+}
+
+/**
+ * The finds dug up at a site and where they are shown (#894). Asked of a site
+ * only — `hasExtent` says which rows are one — since the answer is empty for
+ * everything else and the route sits under the same limiter as the reads that
+ * draw the list.
+ */
+export async function fetchSiteFinds(experienceId: number): Promise<SiteFindsResponse> {
+  return authFetchJson<SiteFindsResponse>(`${API_URL}/api/experiences/${experienceId}/finds`);
 }
 
 /**

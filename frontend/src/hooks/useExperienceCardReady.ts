@@ -28,7 +28,7 @@
 
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { experienceContentsQuery, experienceDetailsQuery } from '../api/experienceCardQueries';
+import { experienceContentsQuery, experienceDetailsQuery, siteFindsQuery } from '../api/experienceCardQueries';
 import { cardImageUrl, isImageSettled, preloadImage } from '../utils/imagePreload';
 
 /** How long a card may wait for its parts before opening incomplete. */
@@ -46,11 +46,23 @@ export function useExperienceCardReady(
    * looks complete and then grows a list of points.
    */
   locationsSettled = true,
+  /**
+   * Whether this row is a site, whose card has a fifth part: the finds dug up
+   * there and where they are shown (#894). Decided off the loaded row
+   * (`hasExtent`), never by asking — the read exists for sites alone, and a
+   * card that opened before it answered would grow a list of finds under the
+   * reader, which is the shuffle this hook exists to prevent.
+   */
+  asksFinds = false,
 ): boolean {
   // Same keys the card itself reads, so this starts the requests rather than
   // duplicating them, and the card finds them done.
   const details = useQuery({ ...experienceDetailsQuery(experienceId), enabled });
   const contents = useQuery({ ...experienceContentsQuery(experienceId), enabled });
+  const finds = useQuery({ ...siteFindsQuery(experienceId), enabled: enabled && asksFinds });
+  // A query never asked is pending for ever in TanStack's vocabulary, so the
+  // question is asked only of a row that asks it.
+  const findsSettled = !asksFinds || !finds.isPending;
 
   const imageUrl = cardImageUrl(rawImageUrl);
 
@@ -91,5 +103,5 @@ export function useExperienceCardReady(
 
   if (!enabled) return false;
   if (capReached) return true;
-  return !details.isPending && !contents.isPending && imageSettled && locationsSettled;
+  return !details.isPending && !contents.isPending && findsSettled && imageSettled && locationsSettled;
 }

@@ -168,6 +168,34 @@ describe('useExperienceCardReady', () => {
     expect(result.current).toBe(false);
   });
 
+  it('waits for a site\u2019s finds, and never asks them of a museum', () => {
+    // A site's card has a fifth part — the finds dug up there (#894) — that
+    // arrives by its own read. Opened before it answered, the card would grow a
+    // list under the reader, which is the shuffle this hook exists to prevent.
+    // A museum never asks: the read exists for sites alone, and an unasked
+    // query is pending for ever in TanStack's vocabulary.
+    preloaded.add('thumb:pic.jpg');
+    const { result: museum } = renderHook(
+      () => useExperienceCardReady(EXPERIENCE_ID, 'pic.jpg', true, true, false),
+      { wrapper: harness(clientWithCachedQueries()) },
+    );
+    expect(museum.current).toBe(true);
+
+    const { result: siteWaiting } = renderHook(
+      () => useExperienceCardReady(EXPERIENCE_ID, 'pic.jpg', true, true, true),
+      { wrapper: harness(clientWithCachedQueries()) },
+    );
+    expect(siteWaiting.current).toBe(false);
+
+    const answered = clientWithCachedQueries();
+    answered.setQueryData(['site-finds', EXPERIENCE_ID], { finds: [], total: 0 });
+    const { result: siteAnswered } = renderHook(
+      () => useExperienceCardReady(EXPERIENCE_ID, 'pic.jpg', true, true, true),
+      { wrapper: harness(answered) },
+    );
+    expect(siteAnswered.current).toBe(true);
+  });
+
   it('opens anyway once the cap runs out, so a hung request cannot trap a row', () => {
     const { result } = renderHook(
       () => useExperienceCardReady(EXPERIENCE_ID, 'pic.jpg', true),
