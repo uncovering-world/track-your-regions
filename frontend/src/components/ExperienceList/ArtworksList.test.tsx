@@ -184,9 +184,14 @@ describe('a work whose picture does not arrive', () => {
     const frame = container.querySelector('img')!.parentElement!;
 
     fireEvent.mouseEnter(frame);
-    expect(setArtworkPreview).toHaveBeenLastCalledWith(expect.objectContaining({
+    // The 500 px copy, sized once from the stored value: `toThumbnailUrl`
+    // appends its width unconditionally, so sizing the 48 px answer again
+    // would hand the overlay `?width=120?width=500` — which the extraction
+    // of `WorkThumbnail` did for one review round (#894).
+    expect(setArtworkPreview).toHaveBeenLastCalledWith({
+      url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Mesha%20stele.jpg?width=500',
       credit: expect.objectContaining({ author: 'Mbzt' }),
-    }));
+    });
 
     // The failure arrives while the pointer is still on the row — the ordering
     // `loading="lazy"` makes ordinary, since the request often starts at hover.

@@ -7,6 +7,7 @@ import { useViewedTreasures } from '../../hooks/useVisitedExperiences';
 import type { ExperienceTreasure } from '../../api/experiences';
 import type { ArtworkPreview } from '../../hooks/useExperienceContext';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { WorkThumbnail } from '../shared/WorkThumbnail';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/workClaims';
@@ -35,8 +36,7 @@ function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArt
   const [failed, setFailed] = useState(false);
   // The normalised URL, not the stored one, decides whether there is a picture:
   // `toThumbnailUrl` answers with an empty string for a host we do not trust, and
-  // `src=""` is not "no image" — the browser resolves it against the page and
-  // draws a broken thumbnail in a 48×48 frame. The same rule `ObjectContext` and
+  // `WorkThumbnail` draws nothing for that. The same rule `ObjectContext` and
   // `WorksPreview` state; it guards the next source rather than this one, since
   // every treasure image stored today is a Commons `Special:FilePath` URL.
   const url = content.image_url ? toThumbnailUrl(content.image_url) : '';
@@ -74,49 +74,18 @@ function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArt
           sx={{ p: 0.25, flexShrink: 0, '&.Mui-checked': { color: VISITED_GREEN } }}
         />
       )}
-      {/* The frame is hung on the URL and not on whether the picture arrived, so
-          that a failure cannot unmount the element carrying `onMouseLeave` — which
-          would leave the map's overlay painted open with nothing to close it. Only
-          the `<img>` and the credit answer to `failed`. */}
-      {url && (
-        <Box
-          sx={{
-            width: 48,
-            height: 48,
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: 'grey.100',
-            borderRadius: 0.5,
-            cursor: failed ? 'default' : 'pointer',
-            opacity: isViewed ? 0.5 : 1,
-          }}
-          // The credit travels with the picture: the overlay is drawn on the map,
-          // which has no work in scope to look one up from. Not offered at all once
-          // the thumbnail has failed — the larger copy is the same file.
-          onMouseEnter={failed ? undefined : () => setArtworkPreview({
-            url: toThumbnailUrl(content.image_url!, 500),
-            credit: content.image_credit,
-          })}
-          // Unconditional, including after a failure: clearing a preview that is
-          // not open costs nothing, and this is the only thing that closes one.
-          onMouseLeave={() => setArtworkPreview(null)}
-        >
-          {!failed && (
-            <Box
-              component="img"
-              src={url}
-              alt={content.name}
-              loading="lazy"
-              sx={{ maxWidth: 48, maxHeight: 48, objectFit: 'contain', borderRadius: 0.5 }}
-              // State rather than `style.display = 'none'`: hiding the element left
-              // the credit below it standing under a picture that is not there.
-              onError={() => setFailed(true)}
-            />
-          )}
-        </Box>
-      )}
+      <WorkThumbnail
+        url={url}
+        // From the stored value, not from `url`: sizing an answer again
+        // double-sizes it (the note on `previewUrl`).
+        previewUrl={content.image_url ? toThumbnailUrl(content.image_url, 500) : ''}
+        alt={content.name}
+        credit={content.image_credit}
+        failed={failed}
+        onFailed={() => setFailed(true)}
+        onPreview={setArtworkPreview}
+        dim={isViewed}
+      />
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography
           variant="body2"
