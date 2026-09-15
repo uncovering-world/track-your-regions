@@ -3,10 +3,17 @@
  *
  * `worship/places.ts`'s shape — a banded pool of what the admitting classes
  * name, the facts about each candidate, the rule, and then the fame line — with
- * one step of its own: **one read of OpenStreetMap, after the pool is known**.
- * The order is the whole of the cost. A question per candidate would be 1,960
- * requests to somebody else's mirror; one question per hundred is twenty, and
- * the answers are kept for a day (ADR-0030, ADR-0047).
+ * two steps of its own, both reads of OpenStreetMap. **The first feeds the
+ * pool** (#895, ADR-0060, `siteEntrance.ts`): the map's own list of digs, asked
+ * once a run — one question through the mirror, eight through Overpass — and
+ * then Wikidata for the sitelinks of what the classes did not name, five
+ * hundred to a question, some eighty questions at the measured pool. **The
+ * second comes after the pool is known**: what the map carries under each
+ * candidate at the line, its own rows included, one question per hundred —
+ * fifteen questions over 1,471 items on dry run 137 (2026-09-15), where a
+ * question per candidate would be as many requests to somebody else's mirror.
+ * The order is the whole of the cost, and every answer is kept for a day
+ * (ADR-0030, ADR-0047).
  *
  * Nothing here decides what a site is: that is `siteTest.ts`, over the sets
  * `classes.ts` composes and the objects `osm/` reads. This file is the wiring.
@@ -20,6 +27,8 @@ import {
   type PoolEntity,
 } from '../publicArt/queries.js';
 import { fetchSiteFacts, type SiteFactsRow } from './queries.js';
+import { categoryVotes, collectOsmEntrance, withNamed, type SiteEntrance } from './siteEntrance.js';
+export type { SiteEntrance } from './siteEntrance.js';
 import {
   siteExtent,
   siteVerdict,
@@ -29,6 +38,7 @@ import {
 } from './siteTest.js';
 import { OSM_KEEP_WKT, SITE_ROOT, type ArchaeologyTrees } from './classes.js';
 import type { KeepWkt, OsmObject } from '../osm/types.js';
+import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncOrchestrator.js';
 
@@ -65,6 +75,11 @@ export interface SiteCandidate {
   osm: OsmSignal & { extentFrom: string | null; readAt: string };
   /** The extent's WKT in EPSG:4326, or null where OSM gave none. */
   extentWkt: string | null;
+  /**
+   * What the card says of a row the tree did not vouch for — which signal
+   * carried it in (#895). Absent on a row admitted by class.
+   */
+  note?: string;
 }
 
 /**
@@ -110,7 +125,17 @@ async function collectPool(
   run: QueryRunner,
   trees: ArchaeologyTrees,
   admitted: ReadonlySet<string>,
-): Promise<{ pool: Map<string, PoolEntity>; byId: Set<string> }> {
+  entrance: SiteEntrance,
+): Promise<{
+  pool: Map<string, PoolEntity>;
+  byId: Set<string>;
+  /** The rows only OpenStreetMap named (#895): vouched for by a tag, not a class. */
+  byOsm: Set<string>;
+  /** The objects that named each item, article-carried ones included. */
+  named: Map<string, OsmObject[]>;
+  /** The items only an article reached: no dig carries their tag, though another object may. */
+  byArticleOnly: Set<string>;
+}> {
   const pool = new Map<string, PoolEntity>();
   for (const entity of await fetchBroadPool(run, SITE_POOL_ROOT)) pool.set(entity.qid, entity);
 
@@ -124,6 +149,8 @@ async function collectPool(
     }
   }
 
+  const { byOsm, named, byArticleOnly } = await collectOsmEntrance(run, pool, admitted, entrance);
+
   const missing = [...admitted].filter((qid) => !pool.has(qid));
   const missingBatches = chunk(missing, FACT_BATCH);
   for (let i = 0; i < missingBatches.length; i++) {
@@ -136,7 +163,7 @@ async function collectPool(
       pool.set(entity.qid, entity);
     }
   }
-  return { pool, byId: new Set(missing) };
+  return { pool, byId: new Set(missing), byOsm, named, byArticleOnly };
 }
 
 /**
@@ -160,12 +187,19 @@ function refuseRetyped(
   trees: ArchaeologyTrees,
   admitted: ReadonlySet<string>,
   line: SourceLine,
+  named: ReadonlyMap<string, OsmObject[]>,
 ): { retyped: Set<string>; filtered: SiteRefusal[] } {
   const filtered: SiteRefusal[] = [];
   const retyped = new Set<string>();
   for (const entity of candidates) {
     const classes = facts.get(entity.qid)?.classes ?? [];
     if (classes.some((cls) => trees.site.has(cls))) continue;
+    // A row OpenStreetMap names is judged by the map's word, with Wikidata's
+    // classes as what can contradict it (#895) — whichever question named it
+    // first: a class-pool row whose one site statement was deprecated since
+    // the pool was read, and whose excavation the map still tags, is the
+    // second entrance's to judge, and the sentence below would be false of it.
+    if ((named.get(entity.qid)?.length ?? 0) > 0) continue;
     retyped.add(entity.qid);
     // `out` is the long tail the source never admitted and the line never let
     // in — no rule ran on it, so no refusal names it (`sourceLine.ts`). Only an
@@ -174,7 +208,11 @@ function refuseRetyped(
     filtered.push({
       externalId: entity.qid,
       name: entity.label,
-      reason: 'Wikidata no longer files it under archaeological sites',
+      // True of both shapes an admitted row can arrive in here: one the
+      // classes once vouched for and Wikidata has retyped, and one the map
+      // once named and no longer does (#895) — a row the map still names
+      // never reaches this line.
+      reason: 'no class under archaeological sites on Wikidata, and no OpenStreetMap object tagged as a dig carries it',
       group: 'class-or-name',
     });
   }
@@ -185,12 +223,17 @@ function refuseRetyped(
  * What each candidate is, in batches of fifty: the classes and the two disputed
  * facts.
  *
- * **A batch that answered nothing is not read as "no facts".** Every row a
- * class question named carries a `P31` under the tree — that is how it was
- * named — so a batch whose vouched rows *all* come back without a class is a
- * batch that failed quietly, and a rule reading their empty classes would put
- * every city in it on the site branch and admit it at step 4. The run fails by
- * name instead. One silent row in an otherwise answered batch is an item
+ * **A batch that answered nothing is not read as "no facts".** Every row the
+ * pool vouched for — by a class question, or by the map (#895) — is an item
+ * that answers *something*: a class-named row carries a `P31` under the tree,
+ * which is how it was named, and a map-named row carries no such class by its
+ * shape but has classes, a listing or a population all the same, and every
+ * veto the second entrance reads is read off those. So a batch whose vouched
+ * rows *all* come back with none of the three is a batch that failed quietly,
+ * and a rule reading their empty facts would put every city in it on the site
+ * branch and admit it at step 4 — or, on the entrance's rows, let a comune or
+ * a business in on the map's note with nothing left to veto it. The run fails
+ * by name instead. One silent row in an otherwise answered batch is an item
  * Wikidata changed between the two reads, and `refuseRetyped` names it — and
  * so is the one row of a batch that holds only one: silence on a single row is
  * evidence of nothing, and a tail batch of one (a pool size ending in 1) would
@@ -212,11 +255,15 @@ async function collectFacts(
     const answered = await fetchSiteFacts(run.sparql, batches[i]);
     for (const [qid, row] of answered) facts.set(qid, row);
     const named = batches[i].filter(vouched);
-    const silent = named.every((qid) => (answered.get(qid)?.classes.length ?? 0) === 0);
+    const saidNothing = (qid: string): boolean => {
+      const row = answered.get(qid);
+      return !row || (row.classes.length === 0 && !row.worldHeritage && !row.statesPopulation);
+    };
+    const silent = named.every(saidNothing);
     if (named.length >= SILENT_BATCH_FLOOR && silent) {
       throw new Error(
-        `The facts read answered nothing about any of the ${named.length} rows the pool named by `
-        + `their class in batch ${i + 1}/${batches.length} (${named.slice(0, 3).join(', ')}…); `
+        `The facts read answered nothing about any of the ${named.length} rows the pool vouched for `
+        + `by a class question or by the map in batch ${i + 1}/${batches.length} (${named.slice(0, 3).join(', ')}…); `
         + 'a batch that answers nothing is not read as "no facts"',
       );
     }
@@ -274,22 +321,75 @@ const emptyFacts = (): SiteFactsRow => ({
 const OSM_ANSWER_FLOOR = 0.5;
 
 /**
- * A read that came back too empty to judge anything by.
+ * The per-item read that came back too empty to judge anything by — the shape
+ * of `OsmEmptyAnswerError` the run's boundary drops the cached answers on.
  *
- * Its own class so the run can tell it from a transport failure and do the one
- * thing a transport failure does not need: forget what it just cached.
+ * `measured` is the share the floor is read over: every candidate asked about
+ * except those the enumeration reached through an article alone, whose silence
+ * says nothing either way because no dig carries their tag (#895).
  */
-export class OsmAnswerFloorError extends Error {
-  constructor(public readonly asked: number, public readonly answered: number) {
+export class OsmAnswerFloorError extends OsmEmptyAnswerError {
+  constructor(public readonly measured: number, public readonly answered: number) {
     super(
-      `OpenStreetMap answered for ${answered} of ${asked} site candidates `
-      + `(${Math.round((answered / asked) * 100)}%), below the floor of `
+      `OpenStreetMap answered for ${answered} of ${measured} site candidates it can answer `
+      + `about (${Math.round((answered / measured) * 100)}%), below the floor of `
       + `${Math.round(OSM_ANSWER_FLOOR * 100)}%: OpenStreetMap is not answering about this `
       + 'catalogue, and reading that as "no ruin is mapped here" would refuse the sites '
       + 'the rule exists to admit',
     );
     this.name = 'OsmAnswerFloorError';
   }
+}
+
+/**
+ * One candidate through the rule: the row the run would write, the refusal a
+ * curator reads, or nothing — `out` is the long tail nobody has heard of, and
+ * no rule is reported on it, for the reason `sourceLine.ts` states for every
+ * kind.
+ */
+function judgeCandidate(
+  entity: PoolEntity,
+  input: {
+    facts: SiteFactsRow;
+    objects: OsmObject[];
+    namedByCategory: boolean;
+    /** Whether only the map named it (`byOsm`), and no class question did. */
+    osmOnly: boolean;
+    trees: ArchaeologyTrees;
+    admitted: ReadonlySet<string>;
+    line: SourceLine;
+    readAt: string;
+  },
+): SiteCandidate | SiteRefusal | null {
+  const { objects, trees, admitted, line, readAt } = input;
+  const verdict = siteVerdict({
+    facts: {
+      ...siteFactsOf(entity, input.facts),
+      ...(input.namedByCategory ? { namedByCategory: true } : {}),
+    },
+    objects, trees, admitted, line,
+  });
+  if (!verdict.pass) {
+    if ('out' in verdict) return null;
+    return { externalId: entity.qid, name: entity.label, reason: verdict.reason, group: verdict.group };
+  }
+  const at = placementOf(entity);
+  if ('reason' in at) {
+    // A row only the map named that has no coordinate claimed no place — a
+    // mapper's tag naming a person, a class, an event — and is out, never
+    // refused: dry run 136 named 43 such rows, "tumulus" and "Nikola Tesla"
+    // among them. An admitted row that lost its coordinate is still named.
+    if (input.osmOnly && !admitted.has(entity.qid)) return null;
+    return { externalId: entity.qid, name: entity.label, reason: at.reason, group: 'placeless' };
+  }
+  const extent = siteExtent(objects);
+  return {
+    entity,
+    classes: input.facts.classes,
+    osm: { ...verdict.osm, readAt },
+    extentWkt: extent ? extent.wkt : null,
+    ...(verdict.note ? { note: verdict.note } : {}),
+  };
 }
 
 /**
@@ -312,12 +412,20 @@ export async function collectSitesByFame(
   admitted: ReadonlySet<string>,
   line: SourceLine,
   osm: OsmReader,
+  entrance: SiteEntrance,
 ): Promise<SitesByFame> {
-  const { pool, byId } = await collectPool(run, trees, admitted);
+  const { pool, byId, byOsm, named, byArticleOnly } = await collectPool(run, trees, admitted, entrance);
   const qids = [...pool.keys()];
+  // Vouched for by a class question or by the map: a row asked for by id
+  // vouches for nothing but the id. A row the map named carries no class
+  // under the tree by its shape, but an item answers *something* — a class,
+  // a listing, a population — and every veto the second entrance reads is
+  // read off those facts, so a batch of such rows that answers nothing is
+  // the same quiet failure, with a comune walking in on the map's note.
   const facts = await collectFacts(run, qids, (qid) => !byId.has(qid));
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
-  const { retyped, filtered } = refuseRetyped(candidates, facts, trees, admitted, line);
+  const { retyped, filtered } = refuseRetyped(candidates, facts, trees, admitted, line, named);
+  const namedByCategory = await categoryVotes(run, candidates, facts, trees, named, line, admitted, entrance);
 
   // **Only the candidates the line would let speak.** `siteVerdict` answers
   // `out` for every row below the line that the source does not already admit,
@@ -343,45 +451,48 @@ export async function collectSitesByFame(
   // some 261 rows the ruin signal admits — and the sweep would then withdraw
   // them. So the share that came back with an object is counted before any
   // verdict is taken, and a run below the floor fails with its own name on it.
-  const answered = asked.filter((qid) => (objects.get(qid)?.length ?? 0) > 0).length;
-  if (asked.length > 0 && answered / asked.length < OSM_ANSWER_FLOOR) {
-    throw new OsmAnswerFloorError(asked.length, answered);
+  // Measured on the rows the read can be expected to answer about. An item
+  // under `byItem` carries the `wikidata` tag on a dig, so the read answers
+  // about it or is silent for the reason the floor exists. An item the
+  // enumeration reached through an article alone may carry the tag on some
+  // other object or on none — Nemrut's peak node carries the item while its
+  // tumulus carries the article — so its silence is evidence neither way,
+  // and it is counted on neither side (#895).
+  const measured = asked.filter((qid) => !byArticleOnly.has(qid));
+  const answered = measured.filter((qid) => (objects.get(qid)?.length ?? 0) > 0).length;
+  if (measured.length > 0 && answered / measured.length < OSM_ANSWER_FLOOR) {
+    throw new OsmAnswerFloorError(measured.length, answered);
   }
 
   const sites = new Map<string, SiteCandidate>();
   for (const entity of candidates) {
     if (retyped.has(entity.qid)) continue;
-    const mapped = objects.get(entity.qid) ?? [];
-    const verdict = siteVerdict({
-      facts: siteFactsOf(entity, facts.get(entity.qid) ?? emptyFacts()),
-      objects: mapped,
-      trees,
-      admitted,
-      line,
+    const row = facts.get(entity.qid) ?? emptyFacts();
+    // What the map carries under the item — and, where the map's word is what
+    // the rule reads, what named it: the per-item read asks by the `wikidata`
+    // tag and never sees the object that carried only an article, so the
+    // enumeration's objects are merged in by ref. The map's word is read for
+    // a row with no class under the tree, whichever question named it first
+    // (`refuseRetyped` and `categoryVotes` draw the same line): a row the map
+    // alone vouched for, and a pool row whose site class has since gone —
+    // dropped in silence otherwise, since the read never saw its node. A row
+    // that carries a site class is judged as ADR-0058 decision 4 judges it, on
+    // the objects that carry its item: a ruin node in the Agora whose
+    // `wikipedia` tag names Athens would otherwise be the first ruin tag step
+    // 2 finds and the city a dig, past the vetoes that exist for that mapping.
+    const mapsWord = byOsm.has(entity.qid) || !row.classes.some((cls) => trees.site.has(cls));
+    const judged = judgeCandidate(entity, {
+      facts: row,
+      objects: mapsWord
+        ? withNamed(objects.get(entity.qid) ?? [], named.get(entity.qid) ?? [])
+        : objects.get(entity.qid) ?? [],
+      namedByCategory: namedByCategory.has(entity.qid),
+      osmOnly: byOsm.has(entity.qid),
+      trees, admitted, line, readAt,
     });
-    if (!verdict.pass) {
-      // `out` is the long tail nobody has heard of: no rule is reported on it,
-      // for the reason `sourceLine.ts` states for every kind.
-      if ('out' in verdict) continue;
-      filtered.push({
-        externalId: entity.qid, name: entity.label, reason: verdict.reason, group: verdict.group,
-      });
-      continue;
-    }
-    const at = placementOf(entity);
-    if ('reason' in at) {
-      filtered.push({
-        externalId: entity.qid, name: entity.label, reason: at.reason, group: 'placeless',
-      });
-      continue;
-    }
-    const extent = siteExtent(mapped);
-    sites.set(entity.qid, {
-      entity,
-      classes: facts.get(entity.qid)?.classes ?? [],
-      osm: { ...verdict.osm, readAt },
-      extentWkt: extent ? extent.wkt : null,
-    });
+    if (judged === null) continue;
+    if ('group' in judged) filtered.push(judged);
+    else sites.set(entity.qid, judged);
   }
 
   // What the run admitted is said once, by `reportProposal`, where the museums

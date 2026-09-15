@@ -289,6 +289,12 @@ async function processSite(
     // Kept separable, with the object, the tag and the date beside the value
     // (ADR-0059 decision 2). Nothing else on this row comes from OSM.
     osm: item.osm,
+    // The question a row the tree did not vouch for asks a curator (#895),
+    // under the museum row's key so the card reads both the same way — and
+    // null, never absent, on a row with none: the upsert's held arm merges
+    // only the keys the run sent, so a key dropped would leave the last
+    // run's note standing on a site whose item has since gained a class.
+    admissionNote: item.admissionNote ?? null,
     ...creditPatch(item.qid, item.imageUrl),
   };
 

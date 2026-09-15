@@ -48,15 +48,16 @@ import {
 } from './archaeology/pipeline.js';
 import { qleverOsmDoor } from './osm/qleverOsm.js';
 import { overpassOsmDoor } from './osm/overpassOsm.js';
-import { readOsmObjects, type OsmDoor } from './osm/readOsmObjects.js';
+import { OsmEmptyAnswerError, readOsmDigs, readOsmObjects, type OsmDoor } from './osm/readOsmObjects.js';
 import { OSM_READER_VARIABLE, parseOsmReaderName } from './osm/readerChoice.js';
-import { OsmAnswerFloorError, type OsmReader } from './archaeology/sites.js';
+import type { OsmReader, SiteEntrance } from './archaeology/sites.js';
 // One item at a time, once the run has decided: the writers and what they were
 // told about this pass (`archaeology/writer.ts`).
 import { processItem, rememberRun } from './archaeology/writer.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
+import { resolveWikipediaArticles } from './wikipediaArticles.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
-import { NATURE_CATEGORY, NATURE_CATEGORY_ROOT } from './archaeology/classes.js';
+import { NATURE_CATEGORY, NATURE_CATEGORY_ROOT, OSM_DIG_TAGS } from './archaeology/classes.js';
 // The museum run's reader, taking the source as an argument since the day the
 // floor was written: "where the catalogue offers each work" is the same
 // question for any kind that hangs treasures off a venue, and asking it twice
@@ -174,31 +175,48 @@ function describeDoor(door: OsmDoor): string {
 }
 
 /**
- * What OpenStreetMap maps at each site candidate, asked through the door the
- * environment names — the QLever mirror unless `OSM_READER` says `overpass`
- * (`osm/readerChoice.ts`) — and kept like every other answer this run pays for.
- * The run log names the door once, here, so a report can be read beside the
- * outage that made somebody switch.
- *
- * **A batch that cannot be read ends the run**, for the reason the Wikipedia
- * readers end it: read as silence, a lost answer says "no OSM object carries
- * this item" for every site in it, which refuses precisely the sites the rule
- * exists to admit. The error travels out of the collection, the orchestrator
- * marks the run failed, and not a row is written. So does a name the
- * variable holds that is no door at all: `parseOsmReaderName` throws before
- * a question is sent, rather than reading a typo as the default.
- *
- * The wait budget is the run's, shared with Wikidata and Wikipedia (#886): this
- * run now waits on three services, and a budget per door is a run that waits
- * three times the number any one of them was held to.
+ * What OpenStreetMap maps at each site candidate, through the door
+ * `cachedOsmDoor` built. **A batch that cannot be read ends the run**, for
+ * the reason the Wikipedia readers end it: read as silence, a lost answer
+ * says "no OSM object carries this item" for every site in it, which refuses
+ * precisely the sites the rule exists to admit. The error travels out of the
+ * collection, the orchestrator marks the run failed, and not a row is written.
  *
  * Which geometries are worth the wire is not decided here. `collectSitesByFame`
  * hands the keep rule in (`OSM_KEEP_WKT`), because it is the kind's line
  * through OSM's keys rather than a property of how either door is asked.
  */
-function osmDoor(
+function osmDoor(door: OsmDoor): OsmReader {
+  return (qids, keep, run) => readOsmObjects(door, qids, keep, run);
+}
+
+/**
+ * The site pool's second entrance (#895): every object OpenStreetMap tags as
+ * a dig or as ruins, through the same door as the per-item read and kept a
+ * day like it — asked once a run, and an answer with nothing in it ends
+ * the run rather than reading as "the map holds no dig" (`readOsmDigs`).
+ */
+function osmDigsDoor(door: OsmDoor): SiteEntrance['digs'] {
+  return (run) => readOsmDigs(door, OSM_DIG_TAGS, run);
+}
+
+/**
+ * The door the environment names — the QLever mirror unless `OSM_READER` says
+ * `overpass` (`osm/readerChoice.ts`) — with the run's cache composed over its
+ * `send`, so every answer is kept like every other this run pays for. Built
+ * once a run and handed to both reads, so the two questions cannot go through
+ * different doors, and the run log names the door once, here, so a report can
+ * be read beside the outage that made somebody switch. A name the variable
+ * holds that is no door at all ends the run before a question is sent:
+ * `parseOsmReaderName` throws rather than reading a typo as the default.
+ *
+ * The wait budget is the run's, shared with Wikidata and Wikipedia (#886): this
+ * run waits on three services, and a budget per door is a run that waits
+ * three times the number any one of them was held to.
+ */
+function cachedOsmDoor(
   progress: SyncProgress, refreshCache: boolean, budget: WaitBudget,
-): OsmReader {
+): OsmDoor {
   const reader = parseOsmReaderName(process.env[OSM_READER_VARIABLE]);
   const door: OsmDoor = reader === 'overpass'
     ? overpassOsmDoor(progress, budget, LOG_PREFIX)
@@ -211,7 +229,24 @@ function osmDoor(
       progress.statusMessage = `${descriptor.label}: ${rows} rows, from cache`;
     },
   });
-  return (qids, keep, run) => readOsmObjects({ ...door, send }, qids, keep, run);
+  return { ...door, send };
+}
+
+/**
+ * Which item a `wikipedia=lang:Title` tag is about, through that wiki's own
+ * API (#895) — the category client's transport and patience, on the wiki the
+ * tag names, drawn from the run's one budget.
+ */
+function articlesDoor(
+  progress: SyncProgress, budget: WaitBudget,
+): SiteEntrance['resolveArticles'] {
+  return (tags) => resolveWikipediaArticles(tags, {
+    userAgent: WIKIDATA_USER_AGENT,
+    isCancelled: () => progress.cancel,
+    pause: () => delay(SPARQL_DELAY_MS),
+    budget,
+    onWait: (wait) => { progress.statusMessage = waitMessage('Wikipedia', wait, budget); },
+  });
 }
 
 // =============================================================================
@@ -223,11 +258,13 @@ function osmDoor(
  * about almost nothing has its answers dropped**.
  *
  * `collectSitesByFame` fails the run when too few of the candidates it asked
- * about came back with an OSM object at all, because an empty answer read as a
+ * about came back with an OSM object at all, and `readOsmDigs` when the map's
+ * own list of digs came back with none, because an empty answer read as a
  * fact refuses the sites the rule exists to admit. The answers are cached for a
  * day (ADR-0030), so without this the next run — and every run until tomorrow —
  * would read the same emptiness out of our own table and fail for a reason that
- * has nothing to do with the mirror any more. Clearing is this file's to do
+ * has nothing to do with the mirror any more. Both throw `OsmEmptyAnswerError`,
+ * which is what this arm reads. Clearing is this file's to do
  * because the cache is this run's (`ARCHAEOLOGY_SOURCE_ID`), and only the `osm`
  * kind is dropped: what Wikidata answered is still true.
  *
@@ -240,7 +277,7 @@ async function collectWithTheMirrorHeldToAccount(
   try {
     return await collectArchaeology(deps);
   } catch (error) {
-    if (error instanceof OsmAnswerFloorError) {
+    if (error instanceof OsmEmptyAnswerError) {
       const dropped = await clearCache(ARCHAEOLOGY_SOURCE_ID, 'osm');
       console.warn(
         `${LOG_PREFIX} ${error.message}; dropped ${dropped} cached OSM answer`
@@ -280,9 +317,13 @@ async function fetchArchaeologyItems(
   // budget per door is a run that can wait twice as long as either number says
   // (#886).
   const waiting = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
+  // Both doors built once, Wikidata's first: each composes the run's cache
+  // over its send, and the two reads of OpenStreetMap share one door.
+  const sparql = collectingSparql(progress, refreshCache, waiting);
+  const osmThisRun = cachedOsmDoor(progress, refreshCache, waiting);
 
   const { items, fetched, filtered, refusedContents } = await collectWithTheMirrorHeldToAccount({
-    sparql: collectingSparql(progress, refreshCache, waiting),
+    sparql,
     previousPlacements,
     admittedMuseums,
     admittedSites,
@@ -291,7 +332,9 @@ async function fetchArchaeologyItems(
     categoryMembers: categoryMembersDoor(progress, waiting),
     // The site door's second signal. Never a default inside the pipeline: a run
     // that silently read no map would refuse Troy and call it a verdict.
-    osm: osmDoor(progress, refreshCache, waiting),
+    osm: osmDoor(osmThisRun),
+    osmDigs: osmDigsDoor(osmThisRun),
+    resolveArticles: articlesDoor(progress, waiting),
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');

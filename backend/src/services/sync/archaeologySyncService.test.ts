@@ -66,7 +66,8 @@ vi.mock('./osm/qleverOsm.js', () => ({
 vi.mock('./osm/overpassOsm.js', () => ({
   overpassOsmDoor: vi.fn(() => ({ name: 'overpass', question: vi.fn(), send: vi.fn() })),
 }));
-vi.mock('./osm/readOsmObjects.js', () => ({
+vi.mock('./osm/readOsmObjects.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./osm/readOsmObjects.js')>()),
   readOsmObjects: vi.fn().mockResolvedValue(new Map()),
 }));
 vi.mock('./museum/treasureWriter.js', () => ({
@@ -99,6 +100,7 @@ import { fetchWikipediaCategories } from './wikipediaCategories.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
 import { NATURE_CATEGORY } from './archaeology/classes.js';
 import { OsmAnswerFloorError } from './archaeology/sites.js';
+import { OsmEmptyEnumerationError } from './osm/readOsmObjects.js';
 import { upsertVenueTreasures } from './museum/treasureWriter.js';
 import { syncArchaeology } from './archaeologySyncService.js';
 import type { ProcessedContent, SyncProgress } from './types.js';
@@ -555,6 +557,18 @@ describe('what the archaeology run fetches', () => {
 
     await expect((await configOf()).fetchItems(progress(), []))
       .rejects.toThrow(OsmAnswerFloorError);
+    expect(mockedClearCache).toHaveBeenCalledWith(5, 'osm');
+  });
+
+  it('drops the cached OSM answers when the enumeration of digs came back empty', async () => {
+    // The empty enumeration is cached like any other answer, so without this
+    // the site door would re-read the silence and fail again for a day.
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+    mockedClearCache.mockClear();
+    mockedCollect.mockRejectedValueOnce(new OsmEmptyEnumerationError());
+
+    await expect((await configOf()).fetchItems(progress(), []))
+      .rejects.toThrow(OsmEmptyEnumerationError);
     expect(mockedClearCache).toHaveBeenCalledWith(5, 'osm');
   });
 

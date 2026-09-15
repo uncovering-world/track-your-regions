@@ -63,10 +63,13 @@ export function ObjectPreview({ experienceId }: { experienceId: number }) {
   // it. A source that cannot decide by its rule writes down what it saw and
   // holds the row rather than guessing (ADR-0058): an art museum with an
   // antiquities department is a judgement about how much of the exposition is
-  // archaeology, and no classes on Wikidata answer that. Held without the note
-  // on screen, the card names a museum and gives no reason it is in the queue,
-  // so the curator has to rediscover the question before answering it. Above
-  // the facts, because it is why the facts are being read.
+  // archaeology, and no classes on Wikidata answer that. The site door writes
+  // the same key the other way round (ADR-0060 decision 2): a row it admitted
+  // on OpenStreetMap's word alone, with no class of a site on the item, says
+  // which object and tag vouched for it. Without the note on screen the card
+  // names a museum or a town and gives no reason it is in the queue, so the
+  // curator has to rediscover the question before answering it. Above the
+  // facts, because it is why the facts are being read.
   const note = typeof data.metadata?.admissionNote === 'string'
     ? data.metadata.admissionNote.trim()
     : '';
