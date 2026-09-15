@@ -35,7 +35,7 @@ Unauthenticated endpoints serving the main UI. Applied to all `optionalAuth` and
 
 **Files using this limiter:**
 - `worldViewRoutes.ts` — all `optionalAuth` GET routes (regions, geometries, members, hull params)
-- `experienceRoutes.ts` — `GET /kinds`, `GET /region-counts`, `GET /by-region/:id`, `GET /`, `GET /:id`, `GET /:id/locations`, `GET /:id/treasures`
+- `experienceRoutes.ts` — `GET /kinds`, `GET /region-counts`, `GET /by-region/:id`, `GET /`, `GET /:id`, `GET /:id/locations`, `GET /:id/treasures`, `GET /:id/finds`
 
 ### 4. Authenticated user (generous)
 
