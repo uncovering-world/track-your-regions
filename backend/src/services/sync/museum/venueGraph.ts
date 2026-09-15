@@ -36,6 +36,12 @@ const FACT_BATCH = 50;
 
 export interface VenueGraph {
   details: Map<string, EntityDetails>;
+  /**
+   * Every entity's classes, parents and locations as fetched — what `facts`,
+   * `parents` and `locations` read. On the graph so that `extendVenueGraph`
+   * can go on from where the walk stopped rather than from nothing.
+   */
+  edges: Map<string, EntityEdges>;
   facts: (qid: string) => VenueFacts | undefined;
   parents: (qid: string) => string[];
   /** What an entity is located in (`P276`) — a candidate for its door, never walked for a venue. */
@@ -102,6 +108,49 @@ export async function loadVenueGraph(
 ): Promise<VenueGraph> {
   const details = new Map<string, EntityDetails>();
   const edges = new Map<string, EntityEdges>();
+  await walk(run, seeds, rule, details, edges);
+  console.log(`${LOG_PREFIX} Venue candidates: ${details.size} entities`);
+  return graphOver(details, edges);
+}
+
+/**
+ * The same graph with more entities in it: the walk above from `seeds`, over
+ * the maps the graph already holds, fetching only what it does not know.
+ *
+ * For the venue-side read (#890, `venueSide.ts`): an object an admitted venue
+ * holds can name a venue no pool work ever pointed at — the admitted venue
+ * itself, where it entered by its class or its category and holds no pool
+ * work — and placing the object needs that venue's facts and parents exactly as
+ * placing a pool work does. A new graph object, because `ancestors` memoises
+ * over what it has seen; the maps are shared, so a resolver made over the old
+ * graph still answers about the entities it knew.
+ *
+ * Every seed is walked, known or not. A seed the earlier walk fetched at its
+ * last hop is in `edges` with none of its parents — the walk exits after its
+ * last fetch without expanding it — and a statement venue that landed there
+ * needs `VENUE_HOPS` of `P361` from itself to resolve. The walk fetches only
+ * what `edges` lacks, so a known seed costs map lookups and no query.
+ */
+export async function extendVenueGraph(
+  run: QueryRunner,
+  graph: VenueGraph,
+  seeds: string[],
+  rule: VenueRule,
+): Promise<VenueGraph> {
+  if (!seeds.length) return graph;
+  await walk(run, unique(seeds), rule, graph.details, graph.edges);
+  console.log(`${LOG_PREFIX} Venue candidates: ${graph.details.size} entities after the venue-side read`);
+  return graphOver(graph.details, graph.edges);
+}
+
+/** The walk itself: `VENUE_HOPS` of `P361` from the seeds, and `P276` one hop from a venue-class entity. */
+async function walk(
+  run: QueryRunner,
+  seeds: string[],
+  rule: VenueRule,
+  details: Map<string, EntityDetails>,
+  edges: Map<string, EntityEdges>,
+): Promise<void> {
   const nextOf = (qid: string): string[] => {
     const found = edges.get(qid);
     if (!found) return [];
@@ -124,9 +173,21 @@ export async function loadVenueGraph(
         edges.set(qid, row);
       }
     }
-    frontier = todo.flatMap(nextOf);
+    // Every node of the frontier is expanded, fetched now or known before: a
+    // walk that goes on from where an earlier one stopped (`extendVenueGraph`)
+    // reaches nodes the first walk fetched at its last hop and never expanded,
+    // and stopping there would leave a `P361` path unwalked and a venue-side
+    // object unresolved. A node expanded twice costs nothing — its parents
+    // are already in `edges`, and only what is not there is fetched.
+    frontier = unique(frontier.flatMap(nextOf));
   }
+}
 
+/** The graph's readers over the two maps. */
+function graphOver(
+  details: Map<string, EntityDetails>,
+  edges: Map<string, EntityEdges>,
+): VenueGraph {
   const parents = (qid: string) => edges.get(qid)?.parents ?? [];
   const locations = (qid: string) => edges.get(qid)?.locations ?? [];
   const facts = (qid: string): VenueFacts | undefined => {
@@ -140,8 +201,7 @@ export async function loadVenueGraph(
       dissolved: row.dissolved,
     };
   };
-  console.log(`${LOG_PREFIX} Venue candidates: ${details.size} entities`);
-  return { details, facts, parents, locations, ancestors: makeAncestors(parents) };
+  return { details, edges, facts, parents, locations, ancestors: makeAncestors(parents) };
 }
 
 /** The verdict on a QID a work named, memoised — and the venue it stands for, if any. */

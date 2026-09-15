@@ -48,6 +48,12 @@ interface FixtureWork {
   year?: number;
   /** `venue: UNKNOWN` is a statement whose value is Wikidata's *unknown value* (#868). */
   statements: { property: 'P195' | 'P276'; venue: string; rank?: 'preferred' | 'normal' }[];
+  /**
+   * Every `P31` the item carries, as the venue-side by-id question answers
+   * (#890); `cls` alone where absent. A class no museum root reaches keeps the
+   * work out of the pool, which is what makes it a venue-side object at all.
+   */
+  classes?: { qid: string; label: string }[];
 }
 
 /** The venue of a statement whose value is unknown. */
@@ -70,6 +76,10 @@ export const LONG_LABEL = 'Anthropomorphic wooden cult figurines of Central and 
 const UNLABELLED_CLASS = 'Q900999';
 /** A relic — one of a kind that admits a place of worship rather than a museum (#753). */
 const RELIC = 'Q187616';
+/** A real class: `film` (Q11424). What MoMA's collection statements mostly name (#890). */
+export const FILM = 'Q11424';
+/** This fixture's own: a class no museum root reaches, so a work typed by it is in no pool (#890). */
+export const SIDE_CLASS = 'Q900990';
 
 const ENTITIES: Record<string, FixtureEntity> = {
   // The Louvre and the two entities the Mona Lisa actually names: a curatorial department
@@ -345,6 +355,53 @@ export const WORKS: Record<string, FixtureWork> = {
     broadRoot: PAINTING,
     statements: [{ property: 'P195', venue: UNKNOWN }, { property: 'P276', venue: 'Q333906' }],
   },
+
+  // What the venue-side read (#890) finds and the class pool never asks for.
+  // Each is typed by a class no museum root reaches (`cls`), so no `VALUES
+  // ?cls` batch answers with it and it is in no pool; the by-id question
+  // answers with every class it carries (`classes`).
+  //
+  // A film in the Louvre's collection — MoMA's film collection is what the
+  // measurement of 2026-09-14 found held by art museums and not a treasure
+  // (452 of 1,004 objects), and `film` (Q11424) is a real class. Refused, and
+  // reported with its classes.
+  Q900950: {
+    label: 'Film in the Collection', sitelinks: 30, cls: FILM, clsLabel: 'film',
+    classes: [{ qid: FILM, label: 'film' }],
+    statements: [{ property: 'P195', venue: 'Q19675' }],
+  },
+  // A fresco the pool missed: collected under a class outside the closure, and
+  // carrying `fresco` beside it — the shape of an object whose first class is
+  // not the pool's word for it. Kept by the pool's own vocabulary, and typed by
+  // it: a reader sees `fresco`, not the class the by-id question happened to
+  // list first.
+  Q900951: {
+    label: 'Fresco Nobody Asked For', sitelinks: 24, cls: SIDE_CLASS, clsLabel: 'wall decoration',
+    classes: [{ qid: SIDE_CLASS, label: 'wall decoration' }, { qid: FRESCO, label: 'fresco' }],
+    statements: [{ property: 'P276', venue: 'Q19675' }],
+  },
+  // Held by the Galleria Palatina, which folds into Palazzo Pitti: read because
+  // the fold source is asked beside its survivor, and placed at the survivor.
+  Q900952: {
+    label: 'Fresco in the Galleria', sitelinks: 20, cls: SIDE_CLASS, clsLabel: 'wall decoration',
+    classes: [{ qid: SIDE_CLASS, label: 'wall decoration' }, { qid: FRESCO, label: 'fresco' }],
+    statements: [{ property: 'P195', venue: 'Q866498' }],
+  },
+  // A lost painting the Louvre still lists: kept by its class, placed nowhere.
+  Q900953: {
+    label: 'Lost Fresco of the Louvre', sitelinks: 22, cls: SIDE_CLASS, clsLabel: 'wall decoration',
+    classes: [
+      { qid: SIDE_CLASS, label: 'wall decoration' }, { qid: FRESCO, label: 'fresco' },
+      { qid: LOST_PAINTING, label: 'lost painting' },
+    ],
+    statements: [{ property: 'P195', venue: 'Q19675' }],
+  },
+  // Below the floor: the holdings question never answers with it.
+  Q900954: {
+    label: 'Obscure Fresco', sitelinks: 3, cls: SIDE_CLASS, clsLabel: 'wall decoration',
+    classes: [{ qid: SIDE_CLASS, label: 'wall decoration' }, { qid: FRESCO, label: 'fresco' }],
+    statements: [{ property: 'P276', venue: 'Q19675' }],
+  },
 };
 
 /**
@@ -458,6 +515,38 @@ function bandOf(query: string): { min: number; max: number | null } {
   return { min: Number(open[1]), max: null };
 }
 
+/**
+ * What a batch of venues holds at the floor the question names (#890): one
+ * row per current statement of a work at or above it naming one of them.
+ */
+function holdingRows(venues: string[], floor: number): SparqlBinding[] {
+  const rows: SparqlBinding[] = [];
+  for (const [qid, work] of Object.entries(WORKS)) {
+    if (work.sitelinks < floor) continue;
+    for (const s of work.statements) {
+      if (s.venue === UNKNOWN || !venues.includes(s.venue)) continue;
+      rows.push({
+        w: uri(qid),
+        sl: { value: String(work.sitelinks) },
+        venue: uri(s.venue),
+        rel: { value: s.property },
+        rank: { value: `${RANK}${s.rank === 'preferred' ? 'Preferred' : 'Normal'}Rank` },
+      });
+    }
+  }
+  return rows;
+}
+
+/** What each work of a batch is, by id: the pool's columns, one row per class (and per maker). */
+function detailByIdRows(qids: string[]): SparqlBinding[] {
+  return qids.filter((q) => WORKS[q]).flatMap((qid) => {
+    const work = WORKS[qid];
+    const classes = work.classes ?? [{ qid: work.cls, label: work.clsLabel }];
+    return classes.flatMap((cls) =>
+      poolRows(qid, { ...work, cls: cls.qid }, cls.label));
+  });
+}
+
 /** Answers on the shape of the query, so the pipeline is free to reorder its calls. */
 export function makeSparql() {
   return vi.fn(async (query: string): Promise<SparqlBinding[]> => {
@@ -468,6 +557,10 @@ export function makeSparql() {
     if (query.includes('?c wdt:P279 ?p')) {
       return qids.flatMap((q) => SUBCLASSES[q] ?? []).map((c) => ({ c: uri(c) }));
     }
+    // The venue-side read (#890): what a batch of venues holds, asked before the
+    // statements question, which the same `p:P195` is in.
+    if (query.includes('VALUES ?venue')) return holdingRows(qids, bandOf(query).min);
+    if (query.includes('OPTIONAL { ?w wdt:P31 ?cls }')) return detailByIdRows(qids);
     if (query.includes('p:P195')) return statementRows(qids);
     if (query.includes('?e wdt:P31 ?cls')) return edgeRows(qids);
     if (query.includes('?e wdt:P625 ?coord')) return detailRows(qids);

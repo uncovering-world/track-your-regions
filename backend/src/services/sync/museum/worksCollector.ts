@@ -236,6 +236,23 @@ export interface WorksCollection {
   unseen: Record<string, UnseenWork>;
   folds: Record<string, Fold>;
   afterFolds: Record<string, string[]>;
+  /**
+   * Every class the pool asked for: the closure, the pinned classes and the
+   * extra ones. What the venue-side read (`venueSide.ts`, #890) keeps of an
+   * admitted venue's holdings for a kind with no `keep` of its own — the
+   * pool's own vocabulary, asked of an object the class questions never
+   * reached.
+   */
+  askedClasses: ReadonlySet<string>;
+  /** The lost tree (`LOST_WORK_ROOT`), for the same read to ask of an object's own classes. */
+  lostClasses: ReadonlySet<string>;
+  /**
+   * The pool works the kind's `keep` turned down, by id. The pool's decision
+   * stands, kept or refused: the venue-side read skips these as it skips what
+   * the pool kept, rather than re-fetching a painting the find rule already
+   * refused and naming it twice on the report.
+   */
+  refusedByKeep: ReadonlySet<string>;
 }
 
 export interface UnseenWork {
@@ -344,20 +361,25 @@ async function keepOurs(
   run: QueryRunner,
   pool: Map<string, PoolWork>,
   opts: WorksCollectorOptions,
-): Promise<void> {
-  if (!opts.workFacts && !opts.keep) return;
+): Promise<Set<string>> {
+  const refused = new Set<string>();
+  if (!opts.workFacts && !opts.keep) return refused;
   const facts = opts.workFacts
     ? await opts.workFacts(run, [...pool.keys()])
     : new Map<string, WorkFacts>();
   const keep = opts.keep;
-  if (!keep) return;
+  if (!keep) return refused;
   const collected = pool.size;
   for (const [qid, work] of pool) {
-    if (!keep(work, facts.get(qid))) pool.delete(qid);
+    if (!keep(work, facts.get(qid))) {
+      pool.delete(qid);
+      refused.add(qid);
+    }
   }
   console.log(
     `${opts.logPrefix} Kept ${pool.size} of ${collected} pool works as ${opts.noun.works}`,
   );
+  return refused;
 }
 
 async function collectStatements(
@@ -393,7 +415,7 @@ async function collectLost(
   run: QueryRunner,
   pool: Map<string, PoolWork>,
   opts: WorksCollectorOptions,
-): Promise<Map<string, string>> {
+): Promise<{ lost: Map<string, string>; tree: ReadonlySet<string> }> {
   run.phase(`Asking which ${opts.noun.works} no longer exist...`);
   await run.step();
   const tree = await fetchClassTree(run.sparql, LOST_WORK_ROOT, 'lost artwork classes');
@@ -404,7 +426,10 @@ async function collectLost(
   for (const work of await fetchClassPool(run.sparql, [...tree])) {
     if (pool.has(work.qid)) lost.set(work.qid, work.type);
   }
-  return lost;
+  // The tree travels with the answer: the venue-side read asks it of an
+  // object's own classes, since that object was never in the class pool the
+  // question above is intersected with.
+  return { lost, tree };
 }
 
 /**
@@ -438,7 +463,12 @@ function placeWorks(
   return { placed, unseen };
 }
 
-function unseenReason(
+/**
+ * Why a work is placed nowhere, or null where it can be seen. Exported for the
+ * venue-side read, which places an object it kept by the rule a pool work is
+ * placed by — the lost class it hands in is read off the object's own classes.
+ */
+export function unseenReason(
   qid: string,
   statements: RawStatement[],
   lost: ReadonlyMap<string, string>,
@@ -485,9 +515,9 @@ export function toContent(work: PoolWork): ProcessedContent {
 export async function collectWorks(run: QueryRunner, opts: WorksCollectorOptions): Promise<WorksCollection> {
   const classes = await artworkClassesOf(run, opts);
   const pool = await collectPool(run, classes.all, opts);
-  await keepOurs(run, pool, opts);
+  const refusedByKeep = await keepOurs(run, pool, opts);
   const statements = await collectStatements(run, [...pool.keys()]);
-  const lost = await collectLost(run, pool, opts);
+  const { lost, tree: lostClasses } = await collectLost(run, pool, opts);
   // An unknown value names no venue to load.
   const seeds = unique(
     [...statements.values()].flat().map((s) => s.venue).filter((v): v is string => v !== null),
@@ -503,6 +533,11 @@ export async function collectWorks(run: QueryRunner, opts: WorksCollectorOptions
     + `(${unseenCount - lostCount} of unknown whereabouts, ${lostCount} lost or destroyed)`,
   );
   const folds = foldVenues(placed, graph, opts.rule);
-  return { pool, statements, graph, editionClasses: classes.edition, resolver, placed, unseen, folds,
-    afterFolds: applyFolds(placed, folds) };
+  return {
+    pool, statements, graph, editionClasses: classes.edition, resolver, placed, unseen, folds,
+    afterFolds: applyFolds(placed, folds),
+    askedClasses: new Set([...classes.all, ...Object.keys(opts.extraClasses ?? {})]),
+    lostClasses,
+    refusedByKeep,
+  };
 }
