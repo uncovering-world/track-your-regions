@@ -1,6 +1,7 @@
 /**
- * The first door to OpenStreetMap: the QLever osm-planet mirror, asked one
- * batch of Wikidata items at a time in SPARQL.
+ * The first door to OpenStreetMap: the QLever osm-planet mirror, asked in
+ * SPARQL — one batch of Wikidata items at a time for the per-item read, and
+ * the whole planet's digs in one question for the enumeration (#895).
  *
  * The manners are the register record's
  * (`docs/sources/global/openstreetmap-qlever.md`) and are not decoration. The
@@ -25,7 +26,7 @@ import { isQid, waitMessage, type SparqlBinding } from '../wikidataUtils.js';
 import { userAgent } from '../../../config/userAgent.js';
 import type { OsmDoor } from './readOsmObjects.js';
 import { classifyOsmError, OSM_MAX_RETRIES, refuseOrRetry } from './retry.js';
-import { assertTagValues, OSM_TAG_KEYS, type KeepWkt } from './types.js';
+import { assertTagValues, OSM_TAG_KEYS, type DigTags, type KeepWkt } from './types.js';
 
 export const OSM_ENDPOINT = 'https://qlever.dev/api/osm-planet';
 
@@ -33,13 +34,36 @@ export const OSM_ENDPOINT = 'https://qlever.dev/api/osm-planet';
 const OSM_USER_AGENT = userAgent({ bot: true });
 
 /**
- * How long one question may take.
+ * How long one batch may take.
  *
  * QLever's own deadline is ten minutes or more, so this is ours rather than
  * theirs: two minutes is far past the slowest batch measured (about eight
  * seconds) and short of a socket that will never close.
  */
-const OSM_TIMEOUT_MS = 120000;
+export const OSM_TIMEOUT_MS = 120000;
+
+/**
+ * How long the enumeration may take (#895): the heaviest question the mirror
+ * is asked — 66,417 rows, answered in seconds on an ordinary day and in
+ * minutes on the afternoon of 2026-09-15, when a probe of three items took
+ * 213 s. Under the batch's budget it would be cut and the run ended. Nine
+ * minutes, where the Overpass door declares 600 s for the same list
+ * (`OVERPASS_ENUMERATION_TIMEOUT_S`): inside the mirror's own ten-minute
+ * deadline, so the cut is still ours — an abort retried as a timeout — and
+ * never theirs, which would arrive as a 200 with no bindings and end the
+ * run naming the wrong cause.
+ */
+export const OSM_ENUMERATION_TIMEOUT_MS = 540000;
+
+/**
+ * A question's budget, declared in the question itself the way an Overpass
+ * question declares its `[timeout:…]`: a first-line SPARQL comment the mirror
+ * ignores, `# timeout: 540s`. A question declaring none waits the batch's.
+ */
+export function questionBudgetMs(query: string): number {
+  const declared = /^# timeout: (\d+)s\n/.exec(query);
+  return declared ? Number(declared[1]) * 1000 : OSM_TIMEOUT_MS;
+}
 
 const RETRY_LABEL = 'OSM';
 
@@ -93,12 +117,42 @@ ${optionals}
 }`;
 }
 
+/**
+ * The enumeration (#895): every object tagged as a dig or as ruins that
+ * carries an item or an article — names, never outlines. One question a run
+ * (the mirror answers it whole; `osm/overpassOsm.ts` cannot and splits),
+ * 66,417 rows on 2026-09-15, answered in seconds without the geometry and in
+ * minutes with it, which is why `geo:asWKT` is not here: the per-item read
+ * fetches the outline of what the rule admits, and only that.
+ *
+ * `ruins=no` is a mapper saying the opposite and is left out; every other
+ * value of the key — `yes`, a type, a date — says ruins.
+ */
+export function osmDigsQueries(tags: DigTags): string[] {
+  const historic = literals(tags.historic);
+  const keys = assertTagValues(tags.keys);
+  const byKey = keys.map((key) => `  { ?s osmkey:${key} ?${key} . FILTER(?${key} != "no") }`);
+  const columns = keys.map((key) => `?${key}`).join(' ');
+  return [`# timeout: ${OSM_ENUMERATION_TIMEOUT_MS / 1000}s
+PREFIX osmkey: <https://www.openstreetmap.org/wiki/Key:>
+SELECT ?q ?wp ?s ?historic ${columns} ?name WHERE {
+  {
+  { ?s osmkey:historic ?historic . FILTER(?historic IN (${historic})) }
+${byKey.map((clause) => `  UNION\n${clause}`).join('\n')}
+  }
+  OPTIONAL { ?s osmkey:wikidata ?q }
+  OPTIONAL { ?s osmkey:wikipedia ?wp }
+  OPTIONAL { ?s osmkey:name ?name }
+  FILTER(BOUND(?q) || BOUND(?wp))
+}`];
+}
+
 async function askQlever(
   query: string,
   options: { userAgent: string; isCancelled?: () => boolean; fetchImpl?: typeof fetch },
   attempt: number,
 ): Promise<SparqlBinding[]> {
-  const { signal, release } = abortOn(OSM_TIMEOUT_MS, options.isCancelled);
+  const { signal, release } = abortOn(questionBudgetMs(query), options.isCancelled);
   try {
     const response = await (options.fetchImpl ?? fetch)(OSM_ENDPOINT, {
       method: 'POST',
@@ -114,7 +168,10 @@ async function askQlever(
     let body: { results?: { bindings?: SparqlBinding[] } };
     try {
       body = await response.json() as { results?: { bindings?: SparqlBinding[] } };
-    } catch {
+    } catch (error) {
+      // A body cut mid-stream by the door's own deadline is a timeout, and is
+      // retried as one; only a whole answer that is not JSON is that.
+      if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) throw error;
       throw new Error('OpenStreetMap answered with something that is not JSON');
     }
     const bindings = body.results?.bindings;
@@ -156,5 +213,5 @@ export function qleverOsmDoor(
       classify: (error, attempt, retries) => classifyOsmError(error, attempt, retries, RETRY_LABEL),
     },
   );
-  return { name: 'qlever', question: osmBatchQuery, send };
+  return { name: 'qlever', question: osmBatchQuery, digsQuestions: osmDigsQueries, send };
 }

@@ -1,13 +1,17 @@
 /**
- * The second door to OpenStreetMap: the public Overpass API, asked one batch
- * of Wikidata items at a time in Overpass QL.
+ * The second door to OpenStreetMap: the public Overpass API, asked in Overpass
+ * QL — one batch of Wikidata items at a time for the per-item read, and the
+ * planet's digs as eight exact-match questions for the enumeration (#895),
+ * since this instance cannot answer that list whole.
  *
  * The fallback the QLever record names and ADR-0059 asks for: a mirror can
  * move house, and a run that read its silence as "no ruin is mapped here"
- * would refuse the sites the rule exists to admit. This door answers the
- * same question in the same shape — rows `foldOsmRows` reads — so nothing
- * above `readOsmObjects` learns which door it went through: the site door's
- * floor, the run's cache and the writer's extent are the same either way.
+ * would refuse the sites the rule exists to admit. This door answers the same
+ * questions in the same shapes — rows `foldOsmRows` reads for the per-item
+ * answer, rows `foldOsmDigRows` reads for the enumeration, the article-only
+ * ones included — so nothing above `readOsmObjects` learns which door it went
+ * through: the site door's floor, the run's cache and the writer's extent are
+ * the same either way.
  *
  * The manners are the register record's
  * (`docs/sources/global/openstreetmap-overpass.md` § The fallback reader) and
@@ -33,7 +37,7 @@ import type { OsmDoor } from './readOsmObjects.js';
 import {
   classifyOsmError, OSM_BACKOFF_CEILING_MS, OSM_MAX_RETRIES, refuseOrRetry,
 } from './retry.js';
-import { assertTagValues, OSM_TAG_KEYS, type KeepWkt } from './types.js';
+import { assertTagValues, OSM_TAG_KEYS, type DigTags, type KeepWkt } from './types.js';
 
 export const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
 
@@ -51,6 +55,21 @@ export const OVERPASS_QUERY_TIMEOUT_S = 120;
 
 /** Ours, just past theirs: a socket that outlives the declared run time is one that will never close. */
 const OVERPASS_TIMEOUT_MS = (OVERPASS_QUERY_TIMEOUT_S + 10) * 1000;
+
+/**
+ * How long the door waits for one question: what the question itself
+ * declares, plus ten seconds for the answer to travel.
+ *
+ * Read off the query text rather than fixed, because the door sends two
+ * kinds of question under two budgets — a batch at 120 s and the
+ * enumeration at 600 s (#895) — and a door that hung up at the batch's
+ * margin cut the enumeration's 9.6 MB body mid-stream on dry run 135, which
+ * parsed as "not JSON". A question declaring no budget waits the batch's.
+ */
+export function declaredTimeoutMs(query: string): number {
+  const declared = /\[timeout:(\d+)\]/.exec(query);
+  return declared ? (Number(declared[1]) + 10) * 1000 : OVERPASS_TIMEOUT_MS;
+}
 
 /**
  * The memory every question declares, in bytes — the other half of the same
@@ -125,15 +144,57 @@ ${drawn}
 }
 
 /**
+ * How long one enumeration question may run, declared to the instance.
+ *
+ * The enumeration is a heavier question than a batch and says so: one
+ * selector alone — `historic=archaeological_site` with an item, 26,767
+ * objects and 9.6 MB of tags — ran past the batch budget of 120 s in its
+ * print phase on 2026-09-15 (131 s), where the whole set as one question
+ * ran past 300 s. Ten minutes is far past one selector's measured cost and
+ * still a bound the instance is told about rather than left to guess.
+ */
+export const OVERPASS_ENUMERATION_TIMEOUT_S = 600;
+
+/**
+ * The enumeration (#895) in this language: every object tagged as a dig or
+ * as ruins carrying an item, and every one carrying an article and no item,
+ * `out tags` and never `out geom` — **one question per selector**, and each
+ * an exact match.
+ *
+ * Exact and not a regular expression, because `historic~"^(a|b)$"` is a scan
+ * of every `historic` object on the planet and timed out at that line
+ * (2026-09-15), where `historic="a"` is an index read. One selector per
+ * question, because even the exact form answered whole ran past 300 s in
+ * its print phase, and a selector on its own fits the enumeration's declared
+ * budget. Eight questions a run, one at a time with the door's pause between
+ * them: the register record's manners for this instance.
+ */
+export function overpassDigsQueries(tags: DigTags): string[] {
+  const historic = assertTagValues(tags.historic).map((value) => `["historic"="${value}"]`);
+  // A key's presence names a dig or ruins, except where the mapper wrote the
+  // opposite: `ruins=no` is left out, as the mirror's `FILTER(?ruins != "no")` leaves it out.
+  const keys = assertTagValues(tags.keys).map((key) => `["${key}"]["${key}"!="no"]`);
+  const selectors = [...historic, ...keys];
+  const links = ['["wikidata"]', '["wikipedia"][!"wikidata"]'];
+  return links.flatMap((link) => selectors.map((selector) => (
+    `[out:json][timeout:${OVERPASS_ENUMERATION_TIMEOUT_S}][maxsize:${OVERPASS_QUERY_MAXSIZE_B}];
+nwr${selector}${link};
+out tags;`
+  )));
+}
+
+/**
  * An Overpass answer as the rows the mirror would have sent.
  *
  * One row per element: the item it carries, the object as the URI
  * `osmRefOf` reads, the geometry's type word, the WKT where the query's own
  * rule sent a geometry and the empty string where it did not — which is the
  * mirror's spelling of "no geometry, not an empty one" — and every tag the
- * reader asks for that the object carries. An element with no `wikidata` tag
- * cannot be here (the query asks by it), and one that somehow is has no item
- * to be filed under and is dropped by `foldOsmRows`.
+ * reader asks for that the object carries. The per-item read asks by the
+ * `wikidata` tag, so an element without one has no item to be filed under
+ * and `foldOsmRows` drops it; the enumeration's four `["wikipedia"][!"wikidata"]`
+ * questions send exactly such elements (Nemrut's tumulus), and `foldOsmDigRows`
+ * files them under the article the `wp` column carries (#895).
  */
 export function rowsOf(elements: OverpassElement[]): SparqlBinding[] {
   return elements.map((element) => {
@@ -141,6 +202,9 @@ export function rowsOf(elements: OverpassElement[]): SparqlBinding[] {
     const geometry = geometryOf(element);
     const row: SparqlBinding = {
       q: tags.wikidata ? { value: tags.wikidata } : undefined,
+      // The article, for the enumeration's rows about an object carrying no
+      // item (#895); the per-item read never sees one, since it asks by item.
+      wp: tags.wikipedia ? { value: tags.wikipedia } : undefined,
       s: { value: `https://www.openstreetmap.org/${element.type}/${element.id}` },
       type: { value: `https://www.openstreetmap.org/${element.type}` },
       geomType: geometry.type ? { value: geometry.type } : undefined,
@@ -176,7 +240,7 @@ async function askOverpass(
   options: { userAgent: string; isCancelled?: () => boolean; fetchImpl?: typeof fetch },
   attempt: number,
 ): Promise<SparqlBinding[]> {
-  const { signal, release } = abortOn(OVERPASS_TIMEOUT_MS, options.isCancelled);
+  const { signal, release } = abortOn(declaredTimeoutMs(query), options.isCancelled);
   try {
     const response = await (options.fetchImpl ?? fetch)(OVERPASS_ENDPOINT, {
       method: 'POST',
@@ -194,7 +258,10 @@ async function askOverpass(
     let body: { elements?: OverpassElement[]; remark?: string };
     try {
       body = await response.json() as { elements?: OverpassElement[]; remark?: string };
-    } catch {
+    } catch (error) {
+      // A body cut mid-stream by the door's own deadline is a timeout, and is
+      // retried as one; only a whole answer that is not JSON is that.
+      if (signal.aborted) throw error;
       throw new Error('OpenStreetMap answered with something that is not JSON');
     }
     if (body.remark && RUNTIME_ERROR.test(body.remark)) {
@@ -258,5 +325,5 @@ export function overpassOsmDoor(
       lastAnsweredAt = now();
     }
   };
-  return { name: 'overpass', question: overpassBatchQuery, send };
+  return { name: 'overpass', question: overpassBatchQuery, digsQuestions: overpassDigsQueries, send };
 }

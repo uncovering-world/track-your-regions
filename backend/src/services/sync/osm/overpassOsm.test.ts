@@ -10,10 +10,11 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   OVERPASS_ENDPOINT, OVERPASS_PAUSE_MS, OVERPASS_RATE_LIMIT_PAUSE_MS, OVERPASS_QUERY_MAXSIZE_B,
-  OVERPASS_QUERY_TIMEOUT_S, overpassBatchQuery, overpassOsmDoor, rowsOf,
+  OVERPASS_QUERY_TIMEOUT_S, OVERPASS_ENUMERATION_TIMEOUT_S, declaredTimeoutMs, overpassBatchQuery, overpassDigsQueries,
+  overpassOsmDoor, rowsOf,
 } from './overpassOsm.js';
 import type { OverpassElement } from './overpassGeometry.js';
-import { foldOsmRows, type KeepWkt, type OsmObject } from './types.js';
+import { foldOsmRows, type DigTags, type KeepWkt, type OsmObject } from './types.js';
 import { WaitBudget } from '../sourceRetry.js';
 import { userAgent } from '../../../config/userAgent.js';
 
@@ -283,5 +284,61 @@ describe('overpassOsmDoor', () => {
     }) as unknown as Response);
     const door = overpassOsmDoor(progress(), new WaitBudget(60000), '[T]', { fetchImpl });
     await expect(door.send('q')).rejects.toThrow(/without any elements/);
+  });
+});
+
+describe('overpassDigsQueries', () => {
+  const DIGS: DigTags = { historic: ['archaeological_site', 'ruins'], keys: ['archaeological_site', 'ruins'] };
+
+  it('asks one exact-match question per selector, tags only, under the enumeration\'s own budget', () => {
+    // A regular expression over `historic` is a scan of every historic
+    // object on the planet and timed out at line 4 (2026-09-15); an exact
+    // value is an index read. And one selector alone — 26,767 objects,
+    // 9.6 MB of tags — ran past the batch budget of 120 s in its print
+    // phase, so the enumeration declares a budget of its own and is asked
+    // one selector at a time.
+    const queries = overpassDigsQueries(DIGS);
+    expect(queries).toHaveLength(8);
+    for (const query of queries) {
+      expect(query).toContain(`[timeout:${OVERPASS_ENUMERATION_TIMEOUT_S}][maxsize:${OVERPASS_QUERY_MAXSIZE_B}]`);
+      expect(query).toContain('out tags;');
+      expect(query).not.toContain('out geom');
+      expect(query).not.toContain('~');
+    }
+    expect(queries[0]).toContain('nwr["historic"="archaeological_site"]["wikidata"];');
+    expect(queries[1]).toContain('nwr["historic"="ruins"]["wikidata"];');
+    // A key's presence names a dig or ruins, except where the mapper wrote
+    // the opposite: `ruins=no` is left out, as the mirror's form leaves it out.
+    expect(queries[2]).toContain('nwr["archaeological_site"]["archaeological_site"!="no"]["wikidata"];');
+    expect(queries[3]).toContain('nwr["ruins"]["ruins"!="no"]["wikidata"];');
+    expect(queries[4]).toContain('nwr["historic"="archaeological_site"]["wikipedia"][!"wikidata"];');
+    expect(queries[7]).toContain('nwr["ruins"]["ruins"!="no"]["wikipedia"][!"wikidata"];');
+  });
+});
+
+describe('rowsOf, for an object carrying only an article', () => {
+  it('carries the article so the enumeration can file the object under it', () => {
+    const tumulus: OverpassElement = {
+      type: 'way', id: 1069114387, tags: { historic: 'archaeological_site', wikipedia: 'tr:Nemrut Dağı' },
+    };
+    const [row] = rowsOf([tumulus]);
+    expect(row.q).toBeUndefined();
+    expect(row.wp?.value).toBe('tr:Nemrut Dağı');
+  });
+});
+
+describe('declaredTimeoutMs', () => {
+  it('waits as long as the question itself declares, plus the door\'s margin', () => {
+    // Dry run 135 (2026-09-15): the enumeration declares 600 s and answers in
+    // about two minutes, and a door that hung up at the batch's 130 s cut the
+    // 9.6 MB body mid-stream — which parsed as "not JSON".
+    expect(declaredTimeoutMs(overpassDigsQueries({ historic: ['ruins'], keys: [] })[0]))
+      .toBe((OVERPASS_ENUMERATION_TIMEOUT_S + 10) * 1000);
+    expect(declaredTimeoutMs(overpassBatchQuery(['Q22647'], KEEP)))
+      .toBe((OVERPASS_QUERY_TIMEOUT_S + 10) * 1000);
+  });
+
+  it('falls back to the batch budget for a question that declares none', () => {
+    expect(declaredTimeoutMs('[out:json];nwr["wikidata"="Q1"];out tags;')).toBe((OVERPASS_QUERY_TIMEOUT_S + 10) * 1000);
   });
 });
