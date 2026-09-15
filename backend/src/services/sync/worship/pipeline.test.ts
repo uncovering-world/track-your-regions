@@ -57,6 +57,9 @@ const RELIC_OF_JESUS = 'Q1087471'; // relic associated with Jesus
 const TOMB = 'Q381885'; // tomb
 const SHRINE = 'Q697295'; // shrine
 const PAPAL_PALACE = 'Q83400038'; // palace of the Popes
+const CONCLAVE = 'Q186431'; // conclave — what the Sistine Chapel's `P276` names most (#890)
+/** This fixture's own: a class no treasure root reaches, so a work typed by it is in no pool (#890). */
+const SACRED_OBJECT = 'Q900991';
 
 interface FixturePlace {
   label: string;
@@ -83,6 +86,12 @@ interface FixtureWork {
   broadRoot?: string;
   artists?: string[];
   statements: { property: 'P195' | 'P276'; venue: string }[];
+  /**
+   * Every `P31` it carries, as the venue-side by-id question answers (#890);
+   * `cls` alone where absent. A `cls` no treasure root reaches keeps the work
+   * out of the pool, which is what makes it a venue-side object at all.
+   */
+  classes?: { qid: string; label: string }[];
 }
 
 interface World {
@@ -209,6 +218,41 @@ const WORLD: World = {
       label: 'The Crucifixion of Saint Peter', sitelinks: 22, cls: FRESCO, clsLabel: 'fresco',
       artists: ['Michelangelo'],
       statements: [{ property: 'P276', venue: 'Q1034868' }],
+    },
+    // What the venue-side read finds (#890). The 2025 conclave is real: a
+    // `conclave` located in the Sistine Chapel, 48 sitelinks (wbgetentities,
+    // 2026-09-15) — the shape of most of what a church's `P276` names, and
+    // refused with its class on the report. The reliquary-shaped object is
+    // this fixture's own: typed first by a class no treasure root reaches, and
+    // carrying `relic` beside it, so the class pool never asks for it and the
+    // venue-side read keeps it by the pool's own vocabulary, typed `relic`.
+    Q133999044: {
+      label: '2025 conclave', sitelinks: 48, cls: CONCLAVE, clsLabel: 'conclave',
+      classes: [{ qid: CONCLAVE, label: 'conclave' }],
+      statements: [{ property: 'P276', venue: 'Q2943' }],
+    },
+    Q900990: {
+      label: 'Relic Nobody Asked For', sitelinks: 20, cls: SACRED_OBJECT, clsLabel: 'sacred object',
+      classes: [{ qid: SACRED_OBJECT, label: 'sacred object' }, { qid: RELIC, label: 'relic' }],
+      statements: [{ property: 'P276', venue: 'Q12512' }],
+    },
+    // The same shape, owned by the Vatican Museums and standing in St Peter's:
+    // kept by class, and then the museum wins — reported, not lost.
+    Q900993: {
+      label: 'Relic the Museum Owns', sitelinks: 21, cls: SACRED_OBJECT, clsLabel: 'sacred object',
+      classes: [{ qid: SACRED_OBJECT, label: 'sacred object' }, { qid: RELIC, label: 'relic' }],
+      statements: [{ property: 'P195', venue: 'Q182955' }, { property: 'P276', venue: 'Q12512' }],
+    },
+    // This fixture's own, in the band only the venue-side read sees — above
+    // its floor of 10 and below the places pool's 15: a tomb that is also a
+    // chapel, standing in St Peter's. The read keeps it by `tomb`, and only
+    // its by-id answer knows it is a chapel; a place is nobody's treasure.
+    Q900994: {
+      label: 'Chapel Tomb Below the Places Floor', sitelinks: 12, cls: SACRED_OBJECT, clsLabel: 'sacred object',
+      classes: [
+        { qid: SACRED_OBJECT, label: 'sacred object' }, { qid: TOMB, label: 'tomb' }, { qid: CHAPEL, label: 'chapel' },
+      ],
+      statements: [{ property: 'P276', venue: 'Q12512' }],
     },
     // The same entity as the place above. Wikidata places it by `P131` Hebron
     // and nothing else, so the location below is this case's own hypothesis —
@@ -359,6 +403,38 @@ const edgeRows = (w: World, asked: string[]): SparqlBinding[] =>
     ];
   });
 
+/**
+ * What a batch of venues holds at the floor the question names (#890): one
+ * row per statement of a work at or above it naming one of them.
+ */
+function holdingRows(w: World, venues: string[], floor: number): SparqlBinding[] {
+  const rows: SparqlBinding[] = [];
+  for (const [qid, work] of Object.entries(w.works)) {
+    if (work.sitelinks < floor) continue;
+    for (const statement of work.statements) {
+      if (!venues.includes(statement.venue)) continue;
+      rows.push({
+        w: uri(qid),
+        sl: { value: String(work.sitelinks) },
+        venue: uri(statement.venue),
+        rel: { value: statement.property },
+        rank: { value: RANK },
+      });
+    }
+  }
+  return rows;
+}
+
+/** What each work of a batch is, by id: the pool's columns, one row per class (and per maker). */
+function workByIdRows(w: World, asked: string[]): SparqlBinding[] {
+  return asked.filter((qid) => w.works[qid]).flatMap((qid) => {
+    const work = w.works[qid];
+    const classes = work.classes ?? [{ qid: work.cls, label: work.clsLabel }];
+    return classes.flatMap((cls) =>
+      workRows(qid, { ...work, cls: cls.qid, clsLabel: cls.label }, true));
+  });
+}
+
 function answer(w: World, sent: string): SparqlBinding[] {
   const query = sent.trimStart();
   const asked = askedFor(query);
@@ -370,6 +446,11 @@ function answer(w: World, sent: string): SparqlBinding[] {
   // Before the statements question: the public-art facts question reads a
   // collection through `p:P195` too, and names `?coll` where the other does not.
   if (query.includes('?coll')) return edgeRows(w, asked);
+  // The venue-side read (#890): what a batch of venues holds — asked before the
+  // statements question, which the same `p:P195` is in — and what each object
+  // found that way is, by id.
+  if (query.includes('VALUES ?venue')) return holdingRows(w, asked, bandOf(query).min);
+  if (query.includes('OPTIONAL { ?w wdt:P31 ?cls }')) return workByIdRows(w, asked);
   if (query.includes('p:P195')) return statementRows(w, asked);
   if (query.includes('SELECT ?e ?cls ?parent ?loc')) return edgeRows(w, asked);
   if (query.includes('?dissolved')) return detailRows(w, asked);
@@ -409,7 +490,9 @@ describe('collectPlacesOfWorship', () => {
       sitelinks: 129,
       admittedFor: { qid: 'Q235242', label: 'Pietà' },
     });
-    expect(worksOf(out, 'Q12512')).toEqual(['Q235242']);
+    // The Pietà from the pool, and the relic the venue-side read found in St
+    // Peter's own statements that no class question asked for (#890).
+    expect(worksOf(out, 'Q12512')).toEqual(['Q235242', 'Q900990']);
     expect(item(out, 'Q12512')?.artworks[0]).toMatchObject({
       name: 'Pietà', treasureType: 'sculpture', artists: ['Michelangelo'],
     });
@@ -539,8 +622,11 @@ describe('collectPlacesOfWorship', () => {
     expect(item(out, 'Q172077')).toMatchObject({ door: 'place' });
     expect(worksOf(out, 'Q172077')).toEqual([]);
     // And a row both pools named is one entity fetched: 14 places at the pool's
-    // floor and 9 works, of which only the Cavern is in both.
-    expect(out.fetched).toBe(22);
+    // floor and 9 works, of which only the Cavern is in both — plus the four
+    // objects the admitted places hold that no class asked for (#890): the
+    // conclave refused, the relic kept, the relic the museum wins and the
+    // chapel tomb that is a place, each fetched all the same.
+    expect(out.fetched).toBe(26);
   });
 
   it('admits the Parthenon, which Wikidata also calls an archaeological site', async () => {
@@ -591,5 +677,52 @@ describe('collectPlacesOfWorship', () => {
     const out = await collect(world(), { previousPlacements: { Q235242: ['Q999'] } });
 
     expect(out.diff.moved).toEqual([{ work: 'Q235242', from: ['Q999'], to: ['Q12512'] }]);
+  });
+
+  it('reads what each admitted place holds, keeps a relic no class asked for, and reports the rest (#890)', async () => {
+    const out = await collect(world());
+
+    // Kept by the treasure vocabulary — `relic` is among its classes — and
+    // typed by it, though the class it is filed under first is one no pool
+    // question would ever ask.
+    const relic = item(out, 'Q12512')?.artworks.find((a) => a.externalId === 'Q900990');
+    expect(relic).toMatchObject({ name: 'Relic Nobody Asked For', treasureType: 'relic' });
+    // St Peter's is in for its own fame and the Pietà; a relic read from its
+    // own side does not change what admitted it.
+    expect(item(out, 'Q12512')?.admittedFor).toEqual({ qid: 'Q235242', label: 'Pietà' });
+
+    // The conclave is what a chapel's `P276` mostly names: refused with its
+    // class on the changeset, and no refusal of the chapel, which stands. And
+    // the relic the Vatican Museums own is kept by class and then handed to
+    // the museum by this door's own rule — reported with that reason, not
+    // lost between the two.
+    expect(out.refusedContents).toEqual([
+      {
+        externalId: 'Q133999044',
+        name: '2025 conclave',
+        reason: 'not a treasure by its classes: conclave (Q186431) — held by Sistine Chapel',
+      },
+      {
+        externalId: 'Q900993',
+        name: 'Relic the Museum Owns',
+        reason: "the museum that holds it wins — held by St. Peter's Basilica",
+      },
+    ]);
+    expect(worksOf(out, 'Q12512')).not.toContain('Q900993');
+    expect(out.filtered.map((f) => f.externalId)).not.toContain('Q133999044');
+    expect(item(out, 'Q2943')).toMatchObject({ door: 'place' });
+    expect(worksOf(out, 'Q2943')).toEqual([]);
+  });
+
+  it('does not write a place the venue-side read brought as a treasure, whatever it was typed (#890)', async () => {
+    const out = await collect(world());
+
+    // The chapel tomb stands in St Peter's at 12 sitelinks: below the places
+    // pool's floor, so only its by-id answer says it is a chapel. Kept by
+    // `tomb`, it is a place all the same — written nowhere, and being under
+    // the contents line it is not reported either; it simply is not a treasure.
+    expect(worksOf(out, 'Q12512')).toEqual(['Q235242', 'Q900990']);
+    expect(out.refusedContents.map((r) => r.externalId)).not.toContain('Q900994');
+    expect(item(out, 'Q900994')).toBeUndefined();
   });
 });

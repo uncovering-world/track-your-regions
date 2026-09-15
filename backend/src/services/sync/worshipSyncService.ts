@@ -187,7 +187,7 @@ async function fetchWorshipItems(
   // hysteretic tier has something to hold (ADR-0023).
   const admitted = await admittedExternalIds(WORSHIP_SOURCE_ID);
 
-  const { items, fetched, filtered } = await collectPlacesOfWorship({
+  const { items, fetched, filtered, refusedContents } = await collectPlacesOfWorship({
     sparql: collectingSparql(progress, refreshCache),
     previousPlacements,
     admitted,
@@ -245,7 +245,7 @@ async function fetchWorshipItems(
     pause: () => delay(SPARQL_DELAY_MS),
   });
 
-  return { items, fetchedCount: fetched, filtered, withdrawalSkippedReason };
+  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason };
 }
 
 // =============================================================================
