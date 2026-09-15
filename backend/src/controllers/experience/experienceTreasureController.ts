@@ -6,11 +6,13 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
+import { rowKindJoinSql } from '../../db/membership.js';
 import {
-  hideRefusedSql, hidePendingSql, linkedForReaderSql, offeredLinkSql, offeredLocationSql,
-  publishedContentSql, venueCountSql,
+  experienceOfferedToReaderSql, hideLostSql, hideRefusedSql, hidePendingSql, linkedForReaderSql,
+  offeredLinkSql, offeredLocationSql, publishedContentSql, venueCountSql,
 } from './experienceLifecycle.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
+import { readerRegionsJsonSql } from './readerRegions.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
@@ -55,7 +57,24 @@ export async function getExperienceTreasures(req: AuthenticatedRequest, res: Res
       -- Rashid the run stores from its discovery place -- and a row naming
       -- only the museum tells a traveller the smaller half. Null on every
       -- work no run wrote it for — a painting has a maker, not a find spot.
-      t.metadata->'foundAt' AS found_at
+      t.metadata->'foundAt' AS found_at,
+      -- And the site row that spot names, where the catalogue holds one, so
+      -- "found at Mycenae" is a way to Mycenae rather than a name (#894): the
+      -- Archaeology site with that Wikidata id, if a reader may open it, with
+      -- the regions that name it to a reader — the list a link is built from
+      -- (readerRegions.ts). Null where the spot is a city, a region, or a
+      -- place no site door has written, and the row keeps the words.
+      (SELECT json_build_object(
+                'id', site.id, 'name', site.name, 'kind_id', sk.id,
+                'regions', ${readerRegionsJsonSql('site.id')})
+         FROM experiences site
+         ${rowKindJoinSql('site', 'sm', 'sk')}
+        WHERE site.type = 'site'
+          AND site.external_id = t.metadata->'foundAt'->>'qid'
+          AND ${experienceOfferedToReaderSql('site')}
+          AND ${hideLostSql('site')}
+        ORDER BY site.id
+        LIMIT 1) AS found_at_site
     FROM treasures t
     JOIN experience_treasures et ON t.id = et.treasure_id
     JOIN experiences e ON e.id = et.experience_id
