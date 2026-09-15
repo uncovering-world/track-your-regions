@@ -120,6 +120,32 @@ out on that test read the other way**: nobody enters the Duomo to see the Leanin
 not one of the cathedral's things to look at but a visit of its own kind, which the catalogue does
 not carry yet (ADR-0052 decision 4).
 
+## What the admitted places hold, read from their side (2026-09-15, #890)
+
+The treasures are collected by class, so an object a church's own statements place inside it that
+carries no treasure class never reaches the rule. Measured over the 1,078 places the development
+catalogue admits, through the live query service, by every current `P195` or `P276` statement naming
+one of them (no end time, not deprecated), against what the catalogue already links there; raw
+answers under `data/cache/890-venue-side/`:
+
+| | at 10 sitelinks or more | at 15 or more |
+|---|---|---|
+| objects the 1,078 places hold | 226 | 125 |
+| linked at no place that holds them | 161 | 83 |
+| no treasure of any kind | 149 | 77 |
+
+Nearly all of the last row is not a thing a traveller looks at but a thing that happened there:
+conclaves in the Sistine Chapel (nine at the floor; the 2025 one at 48 sitelinks), coronations and
+royal weddings at Westminster Abbey, the 2019 fire at Notre-Dame (62), the Grand Mosque Seizure (37),
+the Battle of the Alamo (52), the Second Council of Lyon (43). The objects among them are the known
+misses below — the Black Stone (`stone, heirloom`, 66), the kiswah (`parament`, 30), the Zamzam Well
+(`water well`, 67), the Hereford Mappa Mundi (`mappa mundi`, 24), the Codex Calixtinus (`codex`,
+21), the Coronation Chair (`ceremonial chair`, 21), the Codex Aureus of Lorsch (`illuminated
+manuscript`, 21) — and the Horses of Saint Mark (`group of sculptures`, 33, at St Mark's). The run
+reads every one, keeps what carries a class the pool asks for, and reports the rest with their
+classes on its changeset, named at or above the source's stay line (18) and counted below it; the
+class list that would keep the objects is #891's.
+
 ## What this source cannot reach
 
 - **The Western Wall (84 sitelinks) and the Kaaba (133)** carry no class under the worship tree:
