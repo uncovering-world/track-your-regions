@@ -130,8 +130,14 @@ export const POOL_BANDS: Band[] = [
   { min: POOL_MIN_SITELINKS, max: 12 },
 ];
 
-/** Everything about a work that is not why it was collected. */
-const POOL_DETAILS = `
+/**
+ * Everything about a work that is not why it was collected.
+ *
+ * Exported for the one other question that asks it of a work — the venue-side
+ * read's by-id question (`venueSideQueries.ts`, #890), which answers about an
+ * object no class named and has to say the same things about it as a pool row.
+ */
+export const POOL_DETAILS = `
       OPTIONAL { ?w wdt:P18 ?img }
       OPTIONAL { ?w wdt:P170 ?creator . FILTER(STRSTARTS(STR(?creator), "${ENTITY_PREFIX}Q")) }
       OPTIONAL { ?w wdt:P571 ?inception }
@@ -239,8 +245,11 @@ function addCreator(into: PoolWork, seen: Set<string>, row: SparqlBinding): void
  * OPTIONALs cross-multiply and any of their rows answers the question asked,
  * while `P170` is the one column where a second row is a second fact rather
  * than a repetition (#720).
+ *
+ * Exported for the venue-side read's by-id question (`venueSideQueries.ts`),
+ * whose answer has the pool's own columns and is parsed by the pool's own rule.
  */
-function parsePool(rows: SparqlBinding[], fallbackType: string, fallbackQid: string | null = null): PoolWork[] {
+export function parsePool(rows: SparqlBinding[], fallbackType: string, fallbackQid: string | null = null): PoolWork[] {
   const works = new Map<string, PoolWork>();
   const seenCreators = new Map<string, Set<string>>();
   for (const row of rows) {
