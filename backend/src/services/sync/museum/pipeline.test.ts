@@ -15,7 +15,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { collectTier1Museums } from './pipeline.js';
 import { fetchBroadPool, fetchClassPool, POOL_BANDS } from './queries.js';
-import { WORKS, makeSparql, MUSEUM_CLASSES, MUSEUM_REACHABLE, PAINTING, LONG_LABEL, uri } from './pipelineFixture.js';
+import {
+  WORKS, makeSparql, MUSEUM_CLASSES, MUSEUM_REACHABLE, PAINTING, LONG_LABEL, FILM, SIDE_CLASS, uri,
+} from './pipelineFixture.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
@@ -37,7 +39,21 @@ describe('collectTier1Museums', () => {
     const louvre = out.items.find((i) => i.qid === 'Q19675')!;
     expect(louvre.admittedFor).toEqual({ qid: 'Q12418', label: 'Mona Lisa' });
     expect(louvre.details?.museumLabel).toBe('Louvre Museum');
-    expect(louvre.artworks.map((a) => a.externalId)).toEqual(['Q12418']);
+    // The Mona Lisa from the pool, and the fresco the venue-side read found in
+    // the Louvre's own statements that no class question asked for (#890).
+    expect(louvre.artworks.map((a) => a.externalId)).toEqual(['Q12418', 'Q900951']);
+    // What the read refused is reported with its classes, and so is what it
+    // kept and the run still writes nowhere — the lost fresco the Louvre lists.
+    expect(out.refusedContents).toEqual([
+      {
+        externalId: 'Q900950', name: 'Film in the Collection',
+        reason: 'not a work of art by its classes: film (Q11424) — held by Louvre Museum',
+      },
+      {
+        externalId: 'Q900953', name: 'Lost Fresco of the Louvre',
+        reason: 'nobody can see it: lost painting — held by Louvre Museum',
+      },
+    ]);
     expect(louvre.artworks[0]).toMatchObject({
       name: 'Mona Lisa', treasureType: 'painting', artists: ['Leonardo da Vinci'], year: 1503,
     });
@@ -46,7 +62,12 @@ describe('collectTier1Museums', () => {
     // a future tomb): the count comes from what the rule reaches, not from the fixture's size.
     const museumReachable = Object.values(WORKS)
       .filter((w) => w.broadRoot !== undefined || MUSEUM_REACHABLE.has(w.cls));
-    expect(out.fetched).toBe(museumReachable.length);
+    // Plus what the admitted museums hold that no class reached (#890): the
+    // objects the venue-side read asked about, kept (three frescoes) or refused
+    // (the film) — each was fetched, whichever way the rule answered.
+    const venueSide = Object.values(WORKS).filter((w) => w.cls === SIDE_CLASS || w.cls === FILM)
+      .filter((w) => w.sitelinks >= 10);
+    expect(out.fetched).toBe(museumReachable.length + venueSide.length);
   });
 
   it('hands a work with two makers to the writer with both of them, in the source\'s order', async () => {
@@ -197,7 +218,9 @@ describe('collectTier1Museums', () => {
     // only because the collection's own `P276` is followed — and it is the palace, better known
     // and five metres away, that a traveller buys a ticket to (#781).
     const pitti = out.items.find((i) => i.qid === 'Q29286');
-    expect(pitti?.artworks.map((a) => a.externalId)).toEqual(['Q948034']);
+    // La velata from the pool, and the fresco the Galleria's own statements
+    // hold — read because the fold source is asked beside its survivor (#890).
+    expect(pitti?.artworks.map((a) => a.externalId)).toEqual(['Q948034', 'Q900952']);
     expect(pitti?.admittedFor).toEqual({ qid: 'Q948034', label: 'La velata' });
     expect(out.items.map((i) => i.qid)).not.toContain('Q866498');
 
