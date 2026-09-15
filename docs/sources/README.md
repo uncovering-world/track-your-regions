@@ -27,6 +27,9 @@ docs/sources/
     ├── wikidata-places-of-worship.md
     ├── wikidata-archaeology.md
     ├── wikipedia-archaeological-museum-categories.md
+    ├── wikipedia-archaeological-sites-categories.md
+    ├── idai-gazetteer.md
+    ├── geonames.md
     └── …
 ```
 

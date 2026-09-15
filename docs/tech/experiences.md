@@ -1819,7 +1819,8 @@ polygons already, so the WKT arrives finished. **The Overpass door** is held to 
 manners the instance publishes and the register record quotes
 ([`openstreetmap-overpass`](../sources/global/openstreetmap-overpass.md) § The fallback reader):
 one request at a time and never two, a five-second pause measured from the end of the last
-exchange, a `[timeout:120]` and a `[maxsize:]` of 64 MiB declared in every query — both halves
+exchange, a `[timeout:120]` on a batch and a `[timeout:600]` on each of the enumeration's eight
+questions, and a `[maxsize:]` of 64 MiB declared in every query — both halves
 of the instance's admission rule, where the undeclared default would claim 512 MiB for a question
 that ran under a declared 8 MiB — the thirty seconds the wiki asks for after a
 429 that names no `Retry-After` (a 504 and a 5xx double from five seconds as the mirror's do), and
@@ -1843,9 +1844,13 @@ whichever door it went through: read as silence it would say "no OSM object carr
 for every site in it, which refuses precisely the sites the rule exists to admit. **And so does
 an endpoint that answers about almost nothing**, which no transport error reports: a rebuilt
 dataset, a renamed `osmkey:` IRI or the host moving again answers HTTP 200 with no bindings, and
-every candidate reads as unmapped. So the site door counts the share of asked items that came
-back with an object and fails the run by name below a floor of half (`OSM_ANSWER_FLOOR`; the
-measurement is 885 of 1,126, or 79%) **before a single verdict is taken** — and the run drops the
+every candidate reads as unmapped. So the site door counts the share that came back with an
+object and fails the run by name below a floor of half (`OSM_ANSWER_FLOOR`; the measurement is
+885 of 1,126, or 79%) **before a single verdict is taken**. The share is read over the
+candidates the read can answer about: a row the enumeration reached through an article alone
+carries no `wikidata` tag on any dig, so the read may legitimately have nothing to say about it
+and it is counted on neither side (`byArticleOnly`, #895) — the exclusion narrows what the floor
+is measured over, never what it catches — and the run drops the
 `osm` cache on the way out, since otherwise the same emptiness would be read out of our own table
 until it expired. Both register records were written before their code, as ADR-0059 decision 4
 requires: [`openstreetmap-qlever`](../sources/global/openstreetmap-qlever.md) and
@@ -1858,20 +1863,80 @@ Wikidata, or fallen below the pool's floor — so each gets a reason of its own 
 sweep's silence; the museums the source holds are the museum door's to ask after, never this one's
 (`admittedExternalIds` takes the type). Then the facts (`P31`, the World Heritage listing, a
 population statement) in batches of fifty. **A row with no class under the `archaeological site`
-tree when its facts are read is refused by name** — "Wikidata no longer files it under
-archaeological sites" (`refuseRetyped`) — before OpenStreetMap is asked about it: the by-id rows
-Wikidata retyped, and the rarer row a class question named whose facts come back empty because the
-pool is cached for a day and the facts for twelve hours, and the item was merged, deleted or had
-its one site statement deprecated in between. A row the line had already put out is not named
-(`sourceLine.ts`'s rule). **And a facts batch in which every one of the rows the pool named by
-their class comes back with no class at all — and there are at least two of them — ends the run**
-— the third run-ending condition beside the two above — because every such row carries a `P31`
-under the tree by construction, and a batch reading as "no facts" would put every city in it on the
-site branch. Both halves matter: *every* is what tells a batch that failed quietly from a handful
+tree when its facts are read, that no OpenStreetMap object tagged as a dig carries, is refused by
+name** — "no class under archaeological sites on Wikidata, and no OpenStreetMap object tagged as a
+dig carries it" (`refuseRetyped`) — before the per-item read is sent: the by-id rows Wikidata
+retyped, the row the map once named and no longer does, and the rarer row a class question named
+whose facts come back empty because the pool is cached for a day and the facts for twelve hours,
+and the item was merged, deleted or had its one site statement deprecated in between. A row with
+no class that the map still names is not refused here: it is judged by the map's word, whichever
+question named it first (#895, below). A row the line had already put out is not named
+(`sourceLine.ts`'s rule). **And a facts batch in which every row the pool vouched for — by a
+class question or by the map, every row but the by-id ones — comes back with no class, no
+listing and no population — and there are at least two of them — ends the run** — the third
+run-ending condition beside the two above — because a class-named row carries a `P31` under the
+tree by construction and a map-named row, which carries none, still answers a listing or a
+population where it has one; the entrance's rows arrive in batches of their own, and a batch
+reading as "no facts" would put every city in it on the site branch or walk a comune in on the
+map's note. Both halves matter: *every* is what tells a batch that failed quietly from a handful
 of items merged, deleted or deprecated on Wikidata since the pool was read (two silent rows among
 fifty are refused by name and the run goes on), and the floor of two (`SILENT_BATCH_FLOOR`) is what
 keeps a tail batch holding a single row from turning one merged item into a run that fails until
 the day-old pool cache expires — silence on a single row is evidence of nothing.
+
+**The pool has a second entrance: what the map itself calls a dig** (#895, ADR-0060;
+`archaeology/siteEntrance.ts`). The class tree never sees Ajanta (`grotto`, `temple`), Nemrut
+(`mountain`) or Jerash (`city`), so beside it the run reads OpenStreetMap's own list: every
+object tagged `historic=archaeological_site`, `archaeological_site=*`, `historic=ruins` or
+`ruins=*` — a `no` value left out, the mapper saying the opposite — that carries a `wikidata`
+tag — 63,630 rows, 41,163 objects naming 38,753 items on 2026-09-15 —
+in **one question** to the mirror, or eight to Overpass — one exact-match selector at a time —
+each under a budget of its own on either door (nine minutes for the mirror's question, inside
+its own deadline; a declared 600 s per Overpass selector), since a planet-wide tag read does
+not fit a batch's two minutes on a slow afternoon and a value regex is a scan of every
+`historic` object (dry runs 134 and 135) —
+(`readOsmDigs`, tags only, never a geometry; an answer with no dig at all ends the run and drops the cached OSM answers, as the per-item floor does), plus the 2,027 such objects carrying a
+`wikipedia` tag and no item (1,532 articles), resolved to their items through the wiki each
+tag names (`wikipediaArticles.ts`: Nemrut's tumulus is `tr:Nemrut Dağı`; a tag naming a section,
+`es:Antuco#Historia` on a fort's node, is left out — a section is a part of what the article
+is about, and the town's item is not what the mapper linked). Wikidata is then asked only
+**how many articles** each item the tree did not already name has, five hundred to a question
+(`fetchSitelinksByIds`), and for the full row only of those at the pool's floor
+(`POOL_MIN_SITELINKS`, 15, below the place line so that an admitted row that slipped under it
+still arrives to be refused by name: 601 of 39,587 on dry run 136) — the measurement counted
+774 at the place line, 210 of them in no class under the tree — so the tens of thousands below
+the floor cost one number each. **One rule judges both entrances.** A candidate the tree named is judged as
+before; a candidate only the map named has no site class, so `siteVerdict` reads the map's word
+as its step-2 signal and Wikidata's classes as what can contradict it (`osmNamedVerdict`): a
+`destroyed building or structure` (the Hanging Gardens) is nothing to stand in; a class under
+`archaeological artefact` (the Venus of Willendorf, mapped at its find spot) is a find, not a
+place; a class on the flat list `OSM_ONLY_NOT_A_PLACE` — a business (Azovstal), a power
+station, a country house, a camp, a massacre or a council with a coordinate, a national library, a
+concert hall, a disambiguation page, each read off what dry run 136 would have created — is
+not a place to stand in; a `ruins` tag alone cannot carry a fortification, a palace, a château,
+a structure of worship or a museum past the door (Devín, Bodiam, the Tower of David, the
+Château de Blois — a monument in ruins is another kind's row), where
+`historic=archaeological_site` on the same item can (Tintagel, the Thracian Tomb of Kazanlak);
+and **a population statement is the living-place rule here** — a comune of
+Italy stands on no settlement branch and states its people all the same, and eighteen of them
+arrive on a ruin the mapper linked to the town's article (Potenza, Alcalá de Henares) —
+outweighed only by the place being World Heritage itself (Delos) or by **English Wikipedia's
+second vote**: the candidate's own article's categories, read as the museum door reads a
+museum's and never as a walk, with `Archaeological sites in …` on it lifting the veto (Jerash,
+Lagash, Kilwa Kisiwani, Qalhat, Písac; Ashdod is the measured false positive). What survives
+enters with the question on its card, under the museum row's key: "no class of a site on
+Wikidata; OpenStreetMap maps an archaeological site here (historic=archaeological_site on
+way/115567314)" — `metadata.admissionNote`, read by the review card already. A row only the map
+named that the map no longer names, or that has no coordinate — a mapper's tag naming a
+person, a class, an event — is `out`, never refused; an admitted row that neither the classes
+nor the map name any more, or that lost its coordinate, is refused by name, in words true of
+both shapes. Three more
+class trees are walked for the vetoes (fortification, palace, structure of worship), cheap and
+cached. Measured on the 210: 125 enter — Ajanta, Delos, Sigiriya, Jerash, Lagash, Kilwa
+Kisiwani, Gobustan, Chaco Culture, the Ziggurat of Ur, Elephanta, Alta, Zvartnots, Qalhat,
+Dmanisi, Eleusis, Nemrut among them — 53 are monuments in ruins, 24 living places, 8 destroyed.
+What the source record names as still unreached — Sanchi, the Thai historical parks — is a
+curator's row or the regional tier's (#881).
 
 **The extent.** Where OSM drew a polygon around the ruin — 516 of the 651 items with a ruin
 signal have one — the run stores it in `experiences.boundary`, the first run ever to write that
@@ -2461,8 +2526,12 @@ belongs to #603.
   that ran on it before the fold was settled.
 
 **What a run keeps** — six cache kinds (`CACHED_KINDS_BY_SOURCE[5]`, ADR-0047): `classes` for this
-kind's seven class trees (the museum roots, the parks, the natural-history veto, the artefacts,
-and the site door's three — `archaeological site`, `human settlement`, `shipwreck`) and for the
+kind's eleven class trees (the museum roots, the parks, the natural-history veto, the artefacts,
+the natural-history trees that say what is no find, walked from six roots (#890), the site
+door's three —
+`archaeological site`, `human settlement`, `shipwreck` — and the map entrance's three a `ruins`
+tag alone cannot carry a candidate past — a fortification, a palace, a structure of worship,
+#895) and for the
 venue and work classes the shared stages ask after, `pool` for the museum pool, the site pool and
 the bands and batches of the finds pool, `statements` for where each find is kept, `edges` for the
 venue graph and for each site candidate's classes, listings and populations, `entities` for their
