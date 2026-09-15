@@ -17,6 +17,16 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ExperienceTreasure } from '../../api/experiences';
+// The link a find spot becomes (#894) reads the world view and writes the
+// address; the one case that uses it renders inside a router.
+vi.mock('../../hooks/useNavigation', () => ({
+  useNavigation: () => ({
+    selectedWorldView: { id: 5, name: 'Administrative', isDefault: false },
+    isCustomWorldView: true,
+  }),
+}));
+
+import { MemoryRouter } from 'react-router';
 import { ContentTile } from './ContentTile';
 
 /** The Mesha Stele at the Louvre: a CC BY-SA photograph, so the credit is owed. */
@@ -152,5 +162,28 @@ describe('a work in the contents grid', () => {
     renderTile();
 
     expect(screen.queryByText(/found at/)).not.toBeInTheDocument();
+  });
+
+  it('makes the spot a way to the site where the catalogue holds it, as the map\'s row does', () => {
+    render(
+      <MemoryRouter initialEntries={['/discover/wv/5/r/6918-attica/e/14551-athens?kind=5']}>
+        <ContentTile
+          content={work({
+            name: 'Mask of Agamemnon', external_id: 'Q1126741',
+            found_at: { qid: 'Q131594', label: 'Mycenae' },
+            found_at_site: {
+              id: 14730, name: 'Mycenae', kind_id: 5,
+              regions: [{ id: 6922, name: 'Peloponnese', world_view_id: 5, world_view_name: 'Administrative' }],
+            },
+          })}
+          isViewed={false}
+          isAuthenticated={false}
+          onToggleViewed={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/found at/)).toHaveTextContent('found at Mycenae');
+    expect(screen.getByRole('button', { name: 'Mycenae' })).toBeInTheDocument();
   });
 });

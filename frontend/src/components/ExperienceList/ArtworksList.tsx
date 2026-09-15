@@ -8,6 +8,7 @@ import type { ExperienceTreasure } from '../../api/experiences';
 import type { ArtworkPreview } from '../../hooks/useExperienceContext';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { WorkThumbnail } from '../shared/WorkThumbnail';
+import { PlaceLink } from '../shared/PlaceLink';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/workClaims';
@@ -115,7 +116,12 @@ function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArt
             usually leaves empty. */}
         {content.found_at?.label && (
           <Typography variant="caption" color="text.secondary" display="block" noWrap>
-            found at {content.found_at.label}
+            {/* A way to the site where the catalogue holds it (#894); its
+                name where it does not — a city, a region, a spot no site
+                door has written. */}
+            found at {content.found_at_site
+              ? <PlaceLink place={content.found_at_site} />
+              : content.found_at.label}
           </Typography>
         )}
         {/* `redundantWith` because the line above already names the makers, and
