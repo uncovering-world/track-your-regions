@@ -1,7 +1,9 @@
 /**
- * What this kind's three questions make of an answer: the class trees with the
+ * What this kind's own questions make of an answer: the class trees with the
  * parks taken out of the museum set, the classes and discovery place of a batch
- * of finds, and a museum pool that asks after the admitted rows no class named.
+ * of finds, a museum pool that asks after the admitted rows no class named, the
+ * facts a site candidate is judged on, and how many articles each item the map
+ * named has (#895).
  *
  * The stub door answers on the *shape* of the question rather than on the order
  * the calls arrive in, as `worship/pipeline.test.ts` does: this module sends
@@ -11,16 +13,20 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  collectMuseumPool, fetchArchaeologyTrees, fetchFindFacts, fetchSiteFacts,
+  collectMuseumPool, fetchArchaeologyTrees, fetchFindFacts, fetchSiteFacts, fetchSitelinksByIds,
+  SITELINKS_BATCH,
 } from './queries.js';
 import {
   ARCHAEOLOGICAL_PARK,
   ARTEFACT_ROOT,
+  FORTIFICATION_ROOT,
   NATURAL_HISTORY_ROOT,
   NOT_A_FIND_WALKED,
+  PALACE_ROOT,
   SETTLEMENT_ROOT,
   SHIPWRECK_ROOT,
   SITE_ROOT,
+  WORSHIP_STRUCTURE_ROOT,
   buildArchaeologyTrees,
 } from './classes.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
@@ -112,6 +118,11 @@ describe('fetchArchaeologyTrees', () => {
     [SITE_ROOT]: [SITE_ROOT, 'Q1708422'],
     [SETTLEMENT_ROOT]: [SETTLEMENT_ROOT, 'Q1708422'],
     [SHIPWRECK_ROOT]: [SHIPWRECK_ROOT],
+    // The OSM-only vetoes' trees (#895): `quadrangular castle` under `castle`
+    // under `fortification`; `Catholic cathedral` under `structure of worship`.
+    [FORTIFICATION_ROOT]: [FORTIFICATION_ROOT, 'Q23413', 'Q92107'],
+    [PALACE_ROOT]: [PALACE_ROOT],
+    [WORSHIP_STRUCTURE_ROOT]: [WORSHIP_STRUCTURE_ROOT, 'Q56242215'],
   };
 
   const door = (query: string): SparqlBinding[] => {
@@ -120,7 +131,7 @@ describe('fetchArchaeologyTrees', () => {
     return (TREES[root[1]] ?? []).map((cls) => ({ c: ref(cls) }));
   };
 
-  it('walks the seven trees, and every park class comes out of the museum set', async () => {
+  it('walks the eleven trees, and every park class comes out of the museum set', async () => {
     const { run, phases, sent, stepsBefore } = runnerOver(door);
     const trees = await fetchArchaeologyTrees(run);
 
@@ -131,6 +142,7 @@ describe('fetchArchaeologyTrees', () => {
       'Q3329412', 'Q3330834', ARCHAEOLOGICAL_PARK, NATURAL_HISTORY_ROOT, ARTEFACT_ROOT,
       ...Object.keys(NOT_A_FIND_WALKED),
       SITE_ROOT, SETTLEMENT_ROOT, SHIPWRECK_ROOT,
+      FORTIFICATION_ROOT, PALACE_ROOT, WORSHIP_STRUCTURE_ROOT,
     ]);
     // The six by name, so a root that came back — or one that went missing —
     // fails here rather than passing on the production list's own word.
@@ -140,7 +152,7 @@ describe('fetchArchaeologyTrees', () => {
     for (const flat of ['Q7881', 'Q26401003']) {
       expect(sent.some((query) => askedFor(query)[0] === flat)).toBe(false);
     }
-    expect(stepsBefore).toEqual(Array.from({ length: 14 }, (_, i) => i + 1));
+    expect(stepsBefore).toEqual(Array.from({ length: 17 }, (_, i) => i + 1));
     expect(phases).toEqual([
       'Reading what an archaeology museum is...',
       'Reading what an archaeological park is...',
@@ -150,6 +162,9 @@ describe('fetchArchaeologyTrees', () => {
       'Reading what an archaeological site is...',
       'Reading what a human settlement is...',
       'Reading what a shipwreck is...',
+      'Reading what a fortification is...',
+      'Reading what a palace is...',
+      'Reading what a structure of worship is...',
     ]);
     expect(trees.notAFind.has('Q60186')).toBe(true);
 
@@ -165,6 +180,41 @@ describe('fetchArchaeologyTrees', () => {
     expect(trees.site.has('Q1708422')).toBe(true);
     expect(trees.settlement.has('Q1708422')).toBe(true);
     expect([...trees.shipwreck]).toEqual([SHIPWRECK_ROOT]);
+    expect(trees.fortification.has('Q92107')).toBe(true);
+    expect([...trees.palace]).toEqual([PALACE_ROOT]);
+    expect(trees.worship.has('Q56242215')).toBe(true);
+  });
+});
+
+describe('fetchSitelinksByIds', () => {
+  it('answers the sitelink count of every item that has one, five hundred to a question', async () => {
+    const sent: string[] = [];
+    const sparql: SparqlFn = (query) => {
+      sent.push(query);
+      const asked = askedFor(query);
+      return Promise.resolve(asked.filter((qid) => qid !== 'Q999999999').map((qid) => ({
+        e: ref(qid), sl: { value: String(asked.indexOf(qid) + 1) },
+      })));
+    };
+    const qids = Array.from({ length: SITELINKS_BATCH + 1 }, (_, i) => `Q${i + 1}`);
+    const sitelinks = await fetchSitelinksByIds(sparql, [...qids, 'Q999999999']);
+
+    expect(sent).toHaveLength(2);
+    expect(askedFor(sent[0])).toHaveLength(SITELINKS_BATCH);
+    expect(sent[0]).toContain('wikibase:sitelinks');
+    // Only the count: the pool details are asked later, of the few above the floor.
+    expect(sent[0]).not.toContain('P625');
+    expect(sitelinks.get('Q1')).toBe(1);
+    expect(sitelinks.get(`Q${SITELINKS_BATCH}`)).toBe(SITELINKS_BATCH);
+    // An item the door did not answer for — deleted, merged — is absent, never zero.
+    expect(sitelinks.has('Q999999999')).toBe(false);
+  });
+
+  it('asks nothing where there is nothing to ask about', async () => {
+    let asked = 0;
+    const sparql: SparqlFn = () => { asked += 1; return Promise.resolve([]); };
+    expect(await fetchSitelinksByIds(sparql, [])).toEqual(new Map());
+    expect(asked).toBe(0);
   });
 });
 
