@@ -101,7 +101,7 @@ import {
   type MuseumJudging,
 } from './museumVerdict.js';
 export type { CollectedArchaeologyMuseum } from './museumVerdict.js';
-import { collectSitesByFame, type OsmReader } from './sites.js';
+import { collectSitesByFame, type OsmReader, type SiteEntrance } from './sites.js';
 import { reportProposal, uniteDoors, type CollectedArchaeologySite } from './proposal.js';
 import { contentsLine, type SourceLine } from '../sourceLine.js';
 import type { ClosureOptions } from '../classClosure.js';
@@ -179,6 +179,13 @@ export interface ArchaeologyPipelineDeps {
    * it to be asked at all in a test.
    */
   osm: OsmReader;
+  /**
+   * The site pool's second entrance (#895): every object OpenStreetMap tags
+   * as a dig or as ruins, and the wiki that says which item a tagged article
+   * is about. Functions for the reason `osm` is one.
+   */
+  osmDigs: SiteEntrance['digs'];
+  resolveArticles: SiteEntrance['resolveArticles'];
   onPhase?: (message: string) => void;
   /** Throws to abandon the run; called before every query. */
   checkCancel?: () => void;
@@ -419,7 +426,11 @@ export async function collectArchaeology(
   // (ADR-0058 decision 1). One collector and one proposal, because the
   // orchestrator's sweep reads absence from `items` as a withdrawal: two runs
   // would have each door retire the other's rows on every pass.
-  const sites = await collectSitesByFame(run, trees, deps.admittedSites, deps.line, deps.osm);
+  const sites = await collectSitesByFame(run, trees, deps.admittedSites, deps.line, deps.osm, {
+    digs: deps.osmDigs,
+    resolveArticles: deps.resolveArticles,
+    categories: deps.categories,
+  });
 
   // What the run will actually write: a find is stored as a treasure of a museum
   // this run admits, so the diff is measured against what the database will hold.

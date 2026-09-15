@@ -45,6 +45,11 @@ export interface CollectedArchaeologySite {
   };
   /** The extent's WKT in EPSG:4326, or null where OSM gave none. */
   extentWkt: string | null;
+  /**
+   * What the card says of a row the tree did not vouch for — which signal
+   * carried it in (#895); the museum row's key, read by the card already.
+   */
+  admissionNote?: string;
 }
 
 /** A candidate the site door admitted, as the run will write it. */
@@ -67,6 +72,7 @@ function siteItemOf(qid: string, site: SiteCandidate): CollectedArchaeologySite 
     classes: site.classes,
     osm: site.osm,
     extentWkt: site.extentWkt,
+    ...(site.note ? { admissionNote: site.note } : {}),
   };
 }
 

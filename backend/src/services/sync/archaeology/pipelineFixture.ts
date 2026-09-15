@@ -199,6 +199,10 @@ export interface World {
   sites: Record<string, FixtureSite>;
   /** What OpenStreetMap maps at each item, by QID. */
   osm: Record<string, FixtureOsmObject[]>;
+  /** What the enumeration answers (#895): by item and by `lang:Title`. Nothing unless a test says so. */
+  osmDigs?: { byItem: Record<string, FixtureOsmObject[]>; byArticle: Record<string, FixtureOsmObject[]> };
+  /** `lang:Title` → item, for the articles the enumeration carried. */
+  articles?: Record<string, string>;
   /** What `?c wdt:P279* wd:<root>` answers. A root not named here answers with itself alone. */
   trees: Record<string, string[]>;
   /** Direct `P279` children, for the finds closure. */
@@ -816,6 +820,12 @@ export function answer(w: World, sent: string): SparqlBinding[] {
   if (query.includes('SELECT ?e ?cls ?parent ?loc')) return edgeRows(w, asked);
   if (query.includes('?dissolved')) return detailRows(w, asked);
   if (query.includes('SELECT ?w')) return findPoolRows(w, query, asked);
+  // The second entrance's count (#895): one number per item, nothing else.
+  if (/SELECT \?e \?sl WHERE/.test(query)) {
+    return poolEntities(w)
+      .filter(([qid]) => asked.includes(qid))
+      .map(([qid, e]) => ({ e: uri(qid), sl: { value: String(e.sitelinks) } }));
+  }
   return entityPoolRows(w, query, asked);
 }
 
@@ -859,15 +869,25 @@ export function categoryDoor(w: World) {
  */
 export function osmDoor(w: World) {
   const calls: string[][] = [];
+  const objectOf = (o: FixtureOsmObject): OsmObject => ({
+    ref: o.ref,
+    kind: o.ref.split('/')[0] as OsmObject['kind'],
+    tags: o.tags,
+    geometryType: o.wkt ? o.wkt.slice(0, o.wkt.indexOf('(')) : null,
+    wkt: o.wkt ?? null,
+  });
   const read = (qids: string[]): Promise<Map<string, OsmObject[]>> => {
     calls.push([...qids]);
-    return Promise.resolve(new Map(qids.map((qid) => [qid, (w.osm[qid] ?? []).map((o) => ({
-      ref: o.ref,
-      kind: o.ref.split('/')[0] as OsmObject['kind'],
-      tags: o.tags,
-      geometryType: o.wkt ? o.wkt.slice(0, o.wkt.indexOf('(')) : null,
-      wkt: o.wkt ?? null,
-    }))])));
+    return Promise.resolve(new Map(qids.map((qid) => [qid, (w.osm[qid] ?? []).map(objectOf)])));
   };
-  return { read, calls };
+  const asMap = (objects: Record<string, FixtureOsmObject[]>) =>
+    new Map(Object.entries(objects).map(([key, list]) => [key, list.map(objectOf)]));
+  const digs = () => Promise.resolve({
+    byItem: asMap(w.osmDigs?.byItem ?? {}),
+    byArticle: asMap(w.osmDigs?.byArticle ?? {}),
+  });
+  const resolveArticles = (tags: string[]) => Promise.resolve(
+    new Map(tags.flatMap((tag) => (w.articles?.[tag] ? [[tag, w.articles[tag]] as const] : []))),
+  );
+  return { read, digs, resolveArticles, calls };
 }

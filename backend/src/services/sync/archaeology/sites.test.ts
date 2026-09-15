@@ -15,8 +15,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildArchaeologyTrees, OSM_KEEP_WKT, SITE_ROOT } from './classes.js';
-import { collectSitesByFame, OsmAnswerFloorError } from './sites.js';
-import type { KeepWkt, OsmObject } from '../osm/types.js';
+import { collectSitesByFame, OsmAnswerFloorError, type SiteEntrance } from './sites.js';
+import type { KeepWkt, OsmDigs, OsmObject } from '../osm/types.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
 const uri = (qid: string) => ({ value: `http://www.wikidata.org/entity/${qid}` });
@@ -38,13 +38,23 @@ const TREES = buildArchaeologyTrees({
 });
 
 /** Troy, Athens and Pompeii as the pool answers for them (`wd-sites.json`). */
-const POOL: Record<string, { label: string; sitelinks: number; lat: number; lon: number }> = {
+const POOL: Record<string, { label: string; sitelinks: number; lat: number | null; lon: number | null; article?: string }> = {
   Q22647: { label: 'Troy', sitelinks: 121, lat: 39.9575, lon: 26.238889 },
   Q1524: { label: 'Athens', sitelinks: 288, lat: 37.984167, lon: 23.728056 },
   Q43332: { label: 'Pompeii', sitelinks: 122, lat: 40.750556, lon: 14.489722 },
   // Not a site at all: what the source admits through its other door
   // (`wbgetentities`, 2026-09-14: 109 sitelinks, `museum`, `art museum`).
   Q6373: { label: 'British Museum', sitelinks: 109, lat: 51.51944, lon: -0.12694 },
+  // The second entrance's rows (#895, `wbgetentities` 2026-09-15): no class
+  // under the tree on any of them. Gerasa is under it and below the floor.
+  Q184427: { label: 'Ajanta Caves', sitelinks: 83, lat: 20.55342, lon: 75.70047 },
+  Q207917: { label: 'Mount Nemrut', sitelinks: 61, lat: 37.98074, lon: 38.74083 },
+  Q3543: { label: 'Potenza', sitelinks: 106, lat: 40.63333, lon: 15.8, article: 'https://en.wikipedia.org/wiki/Potenza' },
+  Q31565: { label: 'Jerash', sitelinks: 54, lat: 32.27228, lon: 35.8914, article: 'https://en.wikipedia.org/wiki/Jerash' },
+  Q56072866: { label: 'Gerasa', sitelinks: 12, lat: 32.2808, lon: 35.8993 },
+  // A mapper's `wikidata` tag on a ruin that names a person: no coordinate,
+  // no place (`wbgetentities` 2026-09-15, 159 sitelinks, class human).
+  Q43347: { label: 'Rumi', sitelinks: 159, lat: null, lon: null },
 };
 
 /** Their `P31`s, in full: not one of Troy's says "dig", and none of Athens' does. */
@@ -53,13 +63,19 @@ const CLASSES: Record<string, string[]> = {
   Q1524: ['Q1549591', 'Q51929311', 'Q200250', 'Q5500203'],
   Q43332: ['Q839954', 'Q15661340'],
   Q6373: ['Q33506', 'Q207694'],
+  Q184427: ['Q1131329', 'Q88778578', 'Q44539'],
+  Q207917: ['Q8502'],
+  Q3543: ['Q515', 'Q747074'],
+  Q31565: ['Q515'],
+  Q56072866: ['Q15661340', 'Q839954'],
+  Q43347: ['Q5'],
 };
 
-/** `P757`: Troy is World Heritage 849 itself. */
-const WORLD_HERITAGE = new Set(['Q22647']);
+/** `P757`: Troy is World Heritage 849 itself, Ajanta 242, Nemrut 448. */
+const WORLD_HERITAGE = new Set(['Q22647', 'Q184427', 'Q207917']);
 
-/** `P1082`: Athens counts 643,452 people and Pompeii counts 0 — both say so. */
-const POPULATION = new Set(['Q1524', 'Q43332']);
+/** `P1082`: Athens counts 643,452 people and Pompeii counts 0 — both say so; so do Potenza and Jerash. */
+const POPULATION = new Set(['Q1524', 'Q43332', 'Q3543', 'Q31565']);
 
 function poolRow(qid: string): SparqlBinding {
   const row = POOL[qid];
@@ -67,7 +83,8 @@ function poolRow(qid: string): SparqlBinding {
     e: uri(qid),
     eLabel: { value: row.label },
     sl: { value: String(row.sitelinks) },
-    coord: { value: `Point(${row.lon} ${row.lat})` },
+    ...(row.lat !== null && row.lon !== null ? { coord: { value: `Point(${row.lon} ${row.lat})` } } : {}),
+    ...(row.article ? { article: { value: row.article } } : {}),
   };
 }
 
@@ -83,6 +100,14 @@ function factRows(query: string): SparqlBinding[] {
 function door(query: string): SparqlBinding[] {
   if (/wdt:P279\* wd:/.test(query)) throw new Error('the trees are fetched elsewhere');
   if (query.includes('?whc')) return factRows(query);
+
+  // The sitelinks question of the second entrance: a count per item, nothing else.
+  if (/SELECT \?e \?sl WHERE/.test(query)) {
+    return [...query.matchAll(/wd:(Q\d+)/g)]
+      .map((m) => m[1])
+      .filter((qid) => qid in POOL)
+      .map((qid) => ({ e: uri(qid), sl: { value: String(POOL[qid].sitelinks) } }));
+  }
 
   // A batch asked for by id: whatever the pool holds under those ids, whatever
   // their classes — a question by id vouches for nothing but the id.
@@ -172,10 +197,17 @@ const osmReader = (seen: OsmCall[], mapped: Record<string, OsmObject[]> = OSM) =
     return new Map(qids.map((qid) => [qid, mapped[qid] ?? []]));
   };
 
+/** The second entrance with nothing on it: what the class-pool tests run against. */
+const NO_ENTRANCE: SiteEntrance = {
+  digs: async () => ({ byItem: new Map(), byArticle: new Map() }),
+  resolveArticles: async () => new Map(),
+  categories: async () => new Map(),
+};
+
 describe('collectSitesByFame', () => {
   it('admits the dig, refuses the city, and says which object decided each', async () => {
     const { run } = runner();
-    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]));
+    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
 
     expect([...answer.sites.keys()].sort()).toEqual(['Q22647', 'Q43332']);
     const troy = answer.sites.get('Q22647')!;
@@ -203,7 +235,7 @@ describe('collectSitesByFame', () => {
   it('reads OpenStreetMap once, after the pool is known, about every candidate', async () => {
     const { run } = runner();
     const asked: OsmCall[] = [];
-    await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader(asked));
+    await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader(asked), NO_ENTRANCE);
     expect(asked).toHaveLength(1);
     expect([...asked[0].qids].sort()).toEqual(['Q1524', 'Q22647', 'Q43332']);
   });
@@ -211,7 +243,7 @@ describe('collectSitesByFame', () => {
   it('asks the reader for this kind\'s geometries and no others', async () => {
     const { run } = runner();
     const asked: OsmCall[] = [];
-    await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader(asked));
+    await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader(asked), NO_ENTRANCE);
     // Without it the reader would fetch the administrative outline of every
     // city in the pool — megabytes of geometry this kind never draws.
     expect(asked[0].keep).toBe(OSM_KEEP_WKT);
@@ -224,7 +256,7 @@ describe('collectSitesByFame', () => {
     // settlement branch with no site class of its own, it is a city. Judged
     // with a defaulted `settlementBranch: false` it would be admitted.
     const answer = await collectSitesByFame(
-      run, TREES, new Set<string>(), LINE, osmReader([], { ...OSM, Q1524: [] }),
+      run, TREES, new Set<string>(), LINE, osmReader([], { ...OSM, Q1524: [] }), NO_ENTRANCE,
     );
     expect(answer.sites.has('Q1524')).toBe(false);
     const athens = answer.filtered.find((row) => row.externalId === 'Q1524')!;
@@ -232,9 +264,56 @@ describe('collectSitesByFame', () => {
     expect(athens.reason).toContain('no OSM object carries this item');
   });
 
+  it('gives a tree-named row no signal from an object that carried only an article', async () => {
+    // Athens is in the pool by class and refused as a city on its own node.
+    // Let one `historic=ruins` node in the Agora carry `wikipedia=en:Athens`
+    // and no item: the enumeration names Athens by it, and merged into the
+    // per-item read's answer it would be the first ruin tag `siteSignal`
+    // finds and Athens would be written as a dig with no note. The map's
+    // objects are a row's signal only where the map is what vouched for it.
+    const { run } = runner();
+    const digs: OsmDigs = {
+      byItem: new Map(),
+      byArticle: new Map([['en:Athens', [{
+        ref: 'node/9', kind: 'node', tags: { historic: 'ruins', name: 'Stoa of Attalos' }, geometryType: null, wkt: null,
+      }]]]),
+    };
+    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]), {
+      ...NO_ENTRANCE, digs: async () => digs, resolveArticles: async () => new Map([['en:Athens', 'Q1524']]),
+    });
+    expect(answer.sites.has('Q1524')).toBe(false);
+    const athens = answer.filtered.find((row) => row.externalId === 'Q1524')!;
+    expect(athens.reason).toContain('a living place');
+  });
+
+  it('judges a pool row whose classes vanished on the object that carried only an article', async () => {
+    // The same Agora node, and Athens with its site class gone: nothing lets a
+    // ruin tag short-circuit any more, so the map's word is read through the
+    // vetoes — and the row is refused by name as a living place, not dropped
+    // in silence because the per-item read never saw the node.
+    const { run } = runner();
+    const gone = {
+      ...run,
+      sparql: async (query: string) => door(query)
+        .filter((row) => !(query.includes('?whc') && row.e?.value.endsWith('/Q1524') && row.cls)),
+    };
+    const digs: OsmDigs = {
+      byItem: new Map(),
+      byArticle: new Map([['en:Athens', [{
+        ref: 'node/9', kind: 'node', tags: { historic: 'ruins', name: 'Stoa of Attalos' }, geometryType: null, wkt: null,
+      }]]]),
+    };
+    const answer = await collectSitesByFame(gone, TREES, new Set<string>(), LINE, osmReader([]), {
+      ...NO_ENTRANCE, digs: async () => digs, resolveArticles: async () => new Map([['en:Athens', 'Q1524']]),
+    });
+    expect(answer.sites.has('Q1524')).toBe(false);
+    const athens = answer.filtered.find((row) => row.externalId === 'Q1524');
+    expect(athens?.reason).toContain('only OpenStreetMap maps ruins here (historic=ruins on node/9)');
+  });
+
   it('counts every entity it named as fetched, refused and admitted alike', async () => {
     const { run } = runner();
-    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]));
+    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
     expect([...answer.fetched].sort()).toEqual(['Q1524', 'Q22647', 'Q43332']);
   });
 
@@ -248,7 +327,7 @@ describe('collectSitesByFame', () => {
     const { run } = runner();
     const asked: OsmCall[] = [];
     await collectSitesByFame(
-      run, TREES, new Set<string>(), { enterSitelinks: 200, staySitelinks: 150 }, osmReader(asked),
+      run, TREES, new Set<string>(), { enterSitelinks: 200, staySitelinks: 150 }, osmReader(asked), NO_ENTRANCE,
     );
     expect(asked).toHaveLength(1);
     expect(asked[0].qids).toEqual(['Q1524']);
@@ -261,7 +340,7 @@ describe('collectSitesByFame', () => {
     const { run } = runner();
     const asked: OsmCall[] = [];
     await collectSitesByFame(
-      run, TREES, new Set(['Q22647']), { enterSitelinks: 200, staySitelinks: 100 }, osmReader(asked),
+      run, TREES, new Set(['Q22647']), { enterSitelinks: 200, staySitelinks: 100 }, osmReader(asked), NO_ENTRANCE,
     );
     expect([...asked[0].qids].sort()).toEqual(['Q1524', 'Q22647']);
   });
@@ -275,10 +354,12 @@ describe('collectSitesByFame', () => {
     // half of that share.
     const { run } = runner();
     const empty = async (qids: string[]) => new Map(qids.map((qid) => [qid, []]));
-    await expect(collectSitesByFame(run, TREES, new Set<string>(), LINE, empty))
+    await expect(collectSitesByFame(run, TREES, new Set<string>(), LINE, empty, NO_ENTRANCE))
       .rejects.toThrow(OsmAnswerFloorError);
-    await expect(collectSitesByFame(run, TREES, new Set<string>(), LINE, empty))
-      .rejects.toThrow(/answered for 0 of 3 site candidates \(0%\), below the floor of 50%/);
+    await expect(collectSitesByFame(run, TREES, new Set<string>(), LINE, empty, NO_ENTRANCE))
+      .rejects.toThrow(
+        /answered for 0 of 3 site candidates it can answer about \(0%\), below the floor of 50%/,
+      );
   });
 
   it('reads an ordinary share of silence as silence', async () => {
@@ -287,7 +368,7 @@ describe('collectSitesByFame', () => {
     // mapping, and Athens is refused on the branch rather than on the read.
     const { run } = runner();
     const answer = await collectSitesByFame(
-      run, TREES, new Set<string>(), LINE, osmReader([], { ...OSM, Q1524: [] }),
+      run, TREES, new Set<string>(), LINE, osmReader([], { ...OSM, Q1524: [] }), NO_ENTRANCE,
     );
     expect(answer.sites.has('Q22647')).toBe(true);
     expect(answer.filtered.map((row) => row.externalId)).toContain('Q1524');
@@ -295,14 +376,14 @@ describe('collectSitesByFame', () => {
 
   it('tags each refusal with the answer it came from, for the run to group by', async () => {
     const { run } = runner();
-    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]));
+    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
     expect(answer.filtered.map((row) => [row.externalId, row.group])).toEqual([['Q1524', 'living']]);
   });
 
   it('asks after an admitted row the pool no longer names', async () => {
     const { run } = runner();
     const answer = await collectSitesByFame(
-      run, TREES, new Set(['Q999999']), LINE, osmReader([]),
+      run, TREES, new Set(['Q999999']), LINE, osmReader([]), NO_ENTRANCE,
     );
     // Wikidata answers nothing about it, so nothing is admitted and nothing
     // crashes: a row asked for by id that has vanished is simply not in the pool.
@@ -316,12 +397,12 @@ describe('collectSitesByFame', () => {
     // its 109 sitelinks and be written as a site.
     const seen: OsmCall[] = [];
     const { run } = runner();
-    const answer = await collectSitesByFame(run, TREES, new Set(['Q6373']), LINE, osmReader(seen));
+    const answer = await collectSitesByFame(run, TREES, new Set(['Q6373']), LINE, osmReader(seen), NO_ENTRANCE);
     expect(answer.sites.has('Q6373')).toBe(false);
     expect(answer.filtered.find((row) => row.externalId === 'Q6373')).toEqual({
       externalId: 'Q6373',
       name: 'British Museum',
-      reason: 'Wikidata no longer files it under archaeological sites',
+      reason: 'no class under archaeological sites on Wikidata, and no OpenStreetMap object tagged as a dig carries it',
       group: 'class-or-name',
     });
     expect(seen.flatMap((call) => call.qids)).not.toContain('Q6373');
@@ -337,7 +418,7 @@ describe('collectSitesByFame', () => {
       ...run,
       sparql: async (query: string) => (query.includes('?whc') ? [] : door(query)),
     };
-    await expect(collectSitesByFame(silent, TREES, new Set<string>(), LINE, osmReader([])))
+    await expect(collectSitesByFame(silent, TREES, new Set<string>(), LINE, osmReader([]), NO_ENTRANCE))
       .rejects.toThrow(/answered nothing about any of the 3 rows/);
   });
 
@@ -353,12 +434,12 @@ describe('collectSitesByFame', () => {
       sparql: async (query: string) => door(query)
         .filter((row) => !(query.includes('?whc') && row.e?.value.endsWith('/Q22647'))),
     };
-    const answer = await collectSitesByFame(merged, TREES, new Set<string>(), LINE, osmReader(seen));
+    const answer = await collectSitesByFame(merged, TREES, new Set<string>(), LINE, osmReader(seen), NO_ENTRANCE);
     expect(answer.sites.has('Q43332')).toBe(true);
     expect(answer.filtered.find((row) => row.externalId === 'Q22647')).toEqual({
       externalId: 'Q22647',
       name: 'Troy',
-      reason: 'Wikidata no longer files it under archaeological sites',
+      reason: 'no class under archaeological sites on Wikidata, and no OpenStreetMap object tagged as a dig carries it',
       group: 'class-or-name',
     });
     expect(seen.flatMap((call) => call.qids)).not.toContain('Q22647');
@@ -377,7 +458,7 @@ describe('collectSitesByFame', () => {
           : Boolean(row.e?.value.endsWith('/Q1524'))
       )),
     };
-    const answer = await collectSitesByFame(alone, TREES, new Set<string>(), LINE, osmReader([]));
+    const answer = await collectSitesByFame(alone, TREES, new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
     expect(answer.filtered.map((row) => [row.externalId, row.group]))
       .toEqual([['Q1524', 'class-or-name']]);
   });
@@ -395,8 +476,268 @@ describe('collectSitesByFame', () => {
         .filter((row) => !(query.includes('?whc') && row.e?.value.endsWith('/Q22647'))),
     };
     const raised = { enterSitelinks: 130, staySitelinks: 125 };
-    const answer = await collectSitesByFame(merged, TREES, new Set<string>(), raised, osmReader(seen));
+    const answer = await collectSitesByFame(merged, TREES, new Set<string>(), raised, osmReader(seen), NO_ENTRANCE);
     expect(answer.filtered.map((row) => row.externalId)).not.toContain('Q22647');
     expect(seen.flatMap((call) => call.qids)).not.toContain('Q22647');
+  });
+});
+
+/**
+ * The second entrance (#895): what OpenStreetMap tags as a dig or as ruins,
+ * resolved, counted, and judged by the one rule. Rows and objects are real
+ * (2026-09-15, `data/cache/895-site-doors/`).
+ */
+describe('the OpenStreetMap entrance', () => {
+  const obj = (ref: string, tags: Record<string, string>): OsmObject => ({
+    ref, kind: ref.split('/')[0] as OsmObject['kind'], tags, geometryType: null, wkt: null,
+  });
+  /** What the enumeration answered: three items, one article, and Troy again. */
+  const DIGS: OsmDigs = {
+    byItem: new Map([
+      ['Q184427', [obj('way/115567314', { historic: 'archaeological_site', name: 'Ajanta Caves' })]],
+      ['Q3543', [obj('node/1687849903', { historic: 'archaeological_site', name: 'Potentia' })]],
+      ['Q56072866', [obj('way/28969503', { historic: 'archaeological_site', archaeological_site: 'city' })]],
+      ['Q22647', [obj('way/423938794', { historic: 'archaeological_site' })]],
+      ['Q43347', [obj('node/9', { historic: 'ruins', name: 'Mevlana' })]],
+    ]),
+    byArticle: new Map([
+      ['tr:Nemrut Dağı', [obj('way/1069114387', { historic: 'archaeological_site', name: 'Nemrut Dağı Tümülüsü' })]],
+      ['de:Nirgendwo', [obj('node/1', { historic: 'ruins' })]],
+    ]),
+  };
+  /** What the map carries under the items themselves: Nemrut's peak and its heritage zone, Potenza's town. */
+  const MAPPED: Record<string, OsmObject[]> = {
+    ...OSM,
+    Q184427: [],
+    Q207917: [
+      obj('node/75969654', { name: 'Nemrut Dağı' }),
+      { ...obj('way/974945296', { heritage: '1', boundary: 'protected_area' }), geometryType: 'POLYGON', wkt: 'POLYGON((38.7 37.9,38.8 37.9,38.8 38.0,38.7 37.9))' },
+    ],
+    Q3543: [obj('node/1687849903', { place: 'city', name: 'Potenza' })],
+    Q31565: [obj('node/250367730', { place: 'city', name: 'Jerash' })],
+  };
+  function entrance(over: Partial<SiteEntrance> = {}) {
+    const asked: string[][] = [];
+    const doors: SiteEntrance = {
+      digs: async () => DIGS,
+      resolveArticles: async (tags) => {
+        asked.push([...tags]);
+        return new Map([['tr:Nemrut Dağı', 'Q207917']]);
+      },
+      categories: async (titles) => new Map(titles.map((title) => [title, [`Comuni of ${title}`]])),
+      ...over,
+    };
+    return { doors, articlesAsked: asked };
+  }
+
+  it('admits what the map names and the classes do not contradict, and says so on each card', async () => {
+    const { run, phases } = runner();
+    const seen: OsmCall[] = [];
+    const { doors, articlesAsked } = entrance();
+    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader(seen, MAPPED), doors);
+
+    // Ajanta on the enumeration's object alone: the per-item read carried nothing.
+    const ajanta = answer.sites.get('Q184427')!;
+    expect(ajanta.osm.object).toBe('way/115567314');
+    expect(ajanta.note).toBe(
+      'no class of a site on Wikidata; OpenStreetMap maps an archaeological site here '
+      + '(historic=archaeological_site on way/115567314)',
+    );
+    // Nemrut through the article the tumulus carried, merged with the item's own objects.
+    expect(articlesAsked).toEqual([['tr:Nemrut Dağı', 'de:Nirgendwo']]);
+    const nemrut = answer.sites.get('Q207917')!;
+    expect(nemrut.osm.object).toBe('way/1069114387');
+    // The extent is the heritage zone the item carries, as at Nazca; the
+    // tumulus way that named it came without a geometry.
+    expect(nemrut.osm.extentFrom).toBe('way/974945296');
+    // Potenza: the town the mapper linked, refused by name.
+    expect(answer.filtered.find((row) => row.externalId === 'Q3543')).toMatchObject({ name: 'Potenza', group: 'living' });
+    // Troy came in by class and is not a second row.
+    expect(answer.sites.get('Q22647')?.note).toBeUndefined();
+    // Rumi: the map's tag names a person with no coordinate. Nothing claimed
+    // a place, so nothing is refused — silence, not a card (dry run 136
+    // named 43 such rows, "tumulus" and "Nikola Tesla" among them).
+    expect(answer.sites.has('Q43347')).toBe(false);
+    expect(answer.filtered.map((row) => row.externalId)).not.toContain('Q43347');
+    expect(phases).toContain('Asking Wikidata how many articles each dig OpenStreetMap maps has (batch 1/1)...');
+  });
+
+  it('counts the sitelinks of every item only the map named, and asks the pool about those at the floor', async () => {
+    const { run } = runner();
+    const sent: string[] = [];
+    const counting = { ...run, sparql: async (query: string) => { sent.push(query); return door(query); } };
+    const answer = await collectSitesByFame(counting, TREES, new Set<string>(), LINE, osmReader([], MAPPED), entrance().doors);
+
+    const sitelinks = sent.filter((q) => /SELECT \?e \?sl WHERE/.test(q));
+    expect(sitelinks).toHaveLength(1);
+    expect([...sitelinks[0].matchAll(/wd:(Q\d+)/g)].map((m) => m[1]).sort())
+      .toEqual(['Q184427', 'Q207917', 'Q3543', 'Q43347', 'Q56072866']);
+    // Gerasa at 12 sitelinks is below the pool's floor: never asked about, never fetched.
+    const byId = sent.filter((q) => /VALUES \?e \{/.test(q) && !/\?sl WHERE/.test(q) && !q.includes('?whc'));
+    expect(byId.flatMap((q) => [...q.matchAll(/wd:(Q\d+)/g)].map((m) => m[1])).sort())
+      .toEqual(['Q184427', 'Q207917', 'Q3543', 'Q43347']);
+    expect(answer.fetched.has('Q56072866')).toBe(false);
+    expect(answer.fetched.has('Q184427')).toBe(true);
+  });
+
+  it('gives a living place the map named English Wikipedia\'s second vote', async () => {
+    const { run } = runner();
+    const titlesAsked: string[][] = [];
+    const digs: OsmDigs = {
+      byItem: new Map([['Q31565', [obj('way/28969503', { historic: 'archaeological_site', archaeological_site: 'city' })]]]),
+      byArticle: new Map(),
+    };
+    const { doors } = entrance({
+      digs: async () => digs,
+      categories: async (titles) => {
+        titlesAsked.push([...titles]);
+        return new Map([['Jerash', ['Archaeological sites in Jordan', 'Roman towns and cities in Jordan']]]);
+      },
+    });
+    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([], MAPPED), doors);
+    expect(titlesAsked).toEqual([['Jerash']]);
+    expect(answer.sites.get('Q31565')?.note).toContain('English Wikipedia files it under its archaeological sites');
+  });
+});
+
+describe('the OpenStreetMap entrance, on the rows the class pool named', () => {
+  const obj = (ref: string, tags: Record<string, string>): OsmObject => ({
+    ref, kind: ref.split('/')[0] as OsmObject['kind'], tags, geometryType: null, wkt: null,
+  });
+  const troyDig: OsmDigs = {
+    byItem: new Map([['Q22647', [obj('way/423938794', { historic: 'archaeological_site' })]]]),
+    byArticle: new Map(),
+  };
+  const naming: SiteEntrance = { ...NO_ENTRANCE, digs: async () => troyDig };
+
+  it('judges a pool row whose classes vanished by the map\'s word, rather than refusing it as retyped', async () => {
+    // Troy named by a class question, its facts back with no class at all —
+    // merged, or its one statement deprecated — and OpenStreetMap still tags
+    // its excavation. The map names it, so the second entrance judges it;
+    // "no OSM object tagged as a dig carries it" would be false.
+    const { run } = runner();
+    const merged = {
+      ...run,
+      sparql: async (query: string) => door(query)
+        .filter((row) => !(query.includes('?whc') && row.e?.value.endsWith('/Q22647'))),
+    };
+    const answer = await collectSitesByFame(merged, TREES, new Set<string>(), LINE, osmReader([]), naming);
+    expect(answer.filtered.map((row) => row.externalId)).not.toContain('Q22647');
+    expect(answer.sites.get('Q22647')?.note).toContain('OpenStreetMap maps an archaeological site here');
+  });
+
+  it('asks English Wikipedia\'s vote of a pool row the map names, when its classes vanished', async () => {
+    // Athens with its classes gone and OSM tagging a dig under its item: a
+    // living place the map names, whichever question named it first — the
+    // vote is asked, and the row is admitted on it as a map-only row would be.
+    // The Agora way carries the item, so the per-item read answers with it,
+    // as the real read does; with the site class gone the enumeration's
+    // objects are merged in as well, which the test on the article-carried
+    // node pins. What this one pins is the vote.
+    const { run } = runner();
+    const titlesAsked: string[][] = [];
+    const agora = obj('way/1', { historic: 'archaeological_site', name: 'Ancient Agora' });
+    const digs: OsmDigs = { byItem: new Map([['Q1524', [agora]]]), byArticle: new Map() };
+    const reader = osmReader([], { ...OSM, Q1524: [...OSM.Q1524, agora] });
+    const withArticle = {
+      ...run,
+      sparql: async (query: string) => door(query)
+        .filter((row) => !(query.includes('?whc') && row.e?.value.endsWith('/Q1524') && row.cls))
+        .map((row) => (row.eLabel && row.e?.value.endsWith('/Q1524')
+          ? { ...row, article: { value: 'https://en.wikipedia.org/wiki/Athens' } } : row)),
+    };
+    const answer = await collectSitesByFame(withArticle, TREES, new Set<string>(), LINE, reader, {
+      ...NO_ENTRANCE,
+      digs: async () => digs,
+      categories: async (titles) => {
+        titlesAsked.push([...titles]);
+        return new Map([['Athens', ['Archaeological sites in Attica']]]);
+      },
+    });
+    expect(titlesAsked).toEqual([['Athens']]);
+    expect(answer.sites.get('Q1524')?.note).toContain('English Wikipedia files it under its archaeological sites');
+  });
+
+  it('keeps a row reached through an article alone out of the floor, and in the pool', async () => {
+    // The per-item read asks by the `wikidata` tag with no tag filter, and an
+    // item the enumeration reached through an article only may or may not
+    // carry the tag elsewhere — Nemrut's peak node carries the item while its
+    // tumulus carries the article — so its silence is evidence neither way.
+    // Nemrut here with no per-item object, beside Troy, Athens and Pompeii
+    // answered by the per-item read: in the pool, and not on the floor's count.
+    const { run } = runner();
+    const digs: OsmDigs = {
+      byItem: new Map(),
+      byArticle: new Map([['tr:Nemrut Dağı', [obj('way/1069114387', { historic: 'archaeological_site' })]]]),
+    };
+    const reader = async (qids: string[]) => new Map(qids.map((qid) => [qid, OSM[qid] ?? []]));
+    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, reader, {
+      ...NO_ENTRANCE, digs: async () => digs, resolveArticles: async () => new Map([['tr:Nemrut Dağı', 'Q207917']]),
+    });
+    expect(answer.sites.has('Q207917')).toBe(true);
+  });
+
+  it('lets no article-reached row vouch for a silent per-item read', async () => {
+    // Troy, Athens and Pompeii carry the tag and the read is silent about all
+    // three; Nemrut, Ajanta and Jerash were reached through articles alone.
+    // Counted as answered, the three would hold the share at half and the
+    // silence would pass; they are counted on neither side, and it fails.
+    const { run } = runner();
+    const silent = async (qids: string[]) => new Map(qids.map((qid) => [qid, [] as OsmObject[]]));
+    const digs: OsmDigs = {
+      byItem: new Map(),
+      byArticle: new Map([
+        ['tr:Nemrut Dağı', [obj('way/1069114387', { historic: 'archaeological_site' })]],
+        ['en:Ajanta Caves', [obj('way/115567314', { historic: 'archaeological_site' })]],
+        ['en:Jerash', [obj('way/28969503', { historic: 'archaeological_site' })]],
+      ]),
+    };
+    const resolveArticles = async () => new Map([
+      ['tr:Nemrut Dağı', 'Q207917'], ['en:Ajanta Caves', 'Q184427'], ['en:Jerash', 'Q31565'],
+    ]);
+    await expect(collectSitesByFame(run, TREES, new Set<string>(), LINE, silent, { ...NO_ENTRANCE, digs: async () => digs, resolveArticles }))
+      .rejects.toThrow(OsmAnswerFloorError);
+  });
+
+  it('still fails the run when the per-item read is silent about rows that carry the tag', async () => {
+    // An item under `byItem` carries a `wikidata` tag by construction, so
+    // the per-item read should answer about it; its silence is what the
+    // floor exists to catch, and the enumeration's own objects must not mask it.
+    const { run } = runner();
+    const silent = async (qids: string[]) => new Map(qids.map((qid) => [qid, [] as OsmObject[]]));
+    const digs: OsmDigs = {
+      byItem: new Map([
+        ['Q22647', [obj('way/423938794', { historic: 'archaeological_site' })]],
+        ['Q43332', [obj('node/4753980853', { historic: 'archaeological_site' })]],
+      ]),
+      byArticle: new Map(),
+    };
+    await expect(collectSitesByFame(run, TREES, new Set<string>(), LINE, silent, { ...NO_ENTRANCE, digs: async () => digs }))
+      .rejects.toThrow(OsmAnswerFloorError);
+  });
+
+  it('fails the run when a facts batch answers nothing about the rows the map named', async () => {
+    // The entrance's rows land in batches of their own, and a batch of them
+    // that comes back empty is a batch that failed quietly: with no classes,
+    // no listing and no population, not one veto can fire and a comune or a
+    // business walks in with the map's note on it.
+    const { run } = runner();
+    const digs: OsmDigs = {
+      byItem: new Map([
+        ['Q184427', [obj('way/115567314', { historic: 'archaeological_site' })]],
+        ['Q3543', [obj('node/1687849903', { historic: 'archaeological_site' })]],
+      ]),
+      byArticle: new Map(),
+    };
+    // A pool of the entrance's rows alone — the class questions answer
+    // nothing this time — whose facts batch comes back empty.
+    const silentAboutThem = {
+      ...run,
+      sparql: async (query: string) => door(query)
+        .filter((row) => !/\/(Q22647|Q1524|Q43332)$/.test(row.e?.value ?? ''))
+        .filter((row) => !(query.includes('?whc') && /\/(Q184427|Q3543)$/.test(row.e?.value ?? ''))),
+    };
+    await expect(collectSitesByFame(silentAboutThem, TREES, new Set<string>(), LINE, osmReader([]), { ...NO_ENTRANCE, digs: async () => digs }))
+      .rejects.toThrow(/answered nothing about any of the/);
   });
 });

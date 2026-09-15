@@ -50,6 +50,8 @@ function collect(w: World, opts: {
     categories: door.categories,
     categoryMembers: door.categoryMembers,
     osm: osmDoor(w).read,
+    osmDigs: osmDoor(w).digs,
+    resolveArticles: osmDoor(w).resolveArticles,
   });
 }
 
@@ -228,6 +230,8 @@ describe('collectArchaeology', () => {
       categories: door.categories,
       categoryMembers: door.categoryMembers,
       osm: osmDoor(w).read,
+    osmDigs: osmDoor(w).digs,
+    resolveArticles: osmDoor(w).resolveArticles,
     });
 
     // Seven members, three of them already known: Delphi is in the class pool,
@@ -861,6 +865,8 @@ describe('collectArchaeology', () => {
       categories: door.categories,
       categoryMembers: door.categoryMembers,
       osm: osmDoor(w).read,
+    osmDigs: osmDoor(w).digs,
+    resolveArticles: osmDoor(w).resolveArticles,
     });
 
     // One batch, and it holds the Louvre: no find points at it, so the venue
@@ -903,6 +909,8 @@ describe('collectArchaeology', () => {
       categories: door.categories,
       categoryMembers: door.categoryMembers,
       osm: osmDoor(w).read,
+    osmDigs: osmDoor(w).digs,
+    resolveArticles: osmDoor(w).resolveArticles,
     });
 
     expect(door.calls).toHaveLength(1);
@@ -1073,6 +1081,8 @@ describe('what an admitted museum holds, read from its own side (#890)', () => {
       categories: door.categories,
       categoryMembers: door.categoryMembers,
       osm: osmDoor(w).read,
+    osmDigs: osmDoor(w).digs,
+    resolveArticles: osmDoor(w).resolveArticles,
     });
 
     // The Altar of Two Museums is read at the Pergamon, where it stands, and
@@ -1119,6 +1129,8 @@ describe('what an admitted museum holds, read from its own side (#890)', () => {
       categories: door.categories,
       categoryMembers: door.categoryMembers,
       osm: osmDoor(w).read,
+    osmDigs: osmDoor(w).digs,
+    resolveArticles: osmDoor(w).resolveArticles,
     });
     const holdings = sent.filter((q) => q.includes('VALUES ?venue'));
     // Two rounds: the museums the first verdict admits, then the one an
@@ -1149,6 +1161,8 @@ describe('the site door, beside the museums', () => {
       categories: door.categories,
       categoryMembers: door.categoryMembers,
       osm: osm.read,
+      osmDigs: osm.digs,
+      resolveArticles: osm.resolveArticles,
     });
     return { run, osm };
   };
@@ -1277,5 +1291,33 @@ describe('the site door, beside the museums', () => {
     expect(lines.find((line) => line.includes('living places:'))).toContain('Athens');
     expect(lines.find((line) => line.includes('by class or by name:'))).toContain('Titanic');
     log.mockRestore();
+  });
+});
+
+describe('the site pool\'s second entrance, through the whole run', () => {
+  it('writes a row only OpenStreetMap named with the question its card asks (#895)', async () => {
+    // Ajanta Caves (Q184427, `wbgetentities` 2026-09-15): grotto / artificial
+    // cave / temple, 83 sitelinks, World Heritage 242, no class under the
+    // tree — and way/115567314 tagged historic=archaeological_site.
+    const w = world();
+    w.sites.Q184427 = {
+      label: 'Ajanta Caves', classes: ['Q1131329', 'Q88778578', 'Q44539'], sitelinks: 83,
+      lat: 20.55342, lon: 75.70047, worldHeritage: true, countryLabel: 'India',
+      articleUrl: 'https://en.wikipedia.org/wiki/Ajanta_Caves',
+    };
+    w.osmDigs = {
+      byItem: { Q184427: [{ ref: 'way/115567314', tags: { historic: 'archaeological_site', name: 'Ajanta Caves' } }] },
+      byArticle: {},
+    };
+    const { items } = await collect(w);
+    const ajanta = items.find((item) => item.qid === 'Q184427');
+    expect(ajanta?.type).toBe('site');
+    expect(ajanta && 'admissionNote' in ajanta ? ajanta.admissionNote : undefined).toBe(
+      'no class of a site on Wikidata; OpenStreetMap maps an archaeological site here '
+      + '(historic=archaeological_site on way/115567314)',
+    );
+    // Pompeii, admitted by class, carries no such question.
+    const pompeii = items.find((item) => item.qid === 'Q43332');
+    expect(pompeii && 'admissionNote' in pompeii ? pompeii.admissionNote : undefined).toBeUndefined();
   });
 });

@@ -153,7 +153,10 @@ const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
  * constantly, and each re-filing would be a card asking a curator to approve a
  * category list nobody displays. `archaeologyNature` is which of the two
  * answers that reading produced, and `admissionNote` the sentence the rule
- * wrote for the curator screen about a held row. All three are re-derived from
+ * wrote for the curator screen — about a museum it held because its rule
+ * could not decide, or (#895, ADR-0060 decision 2) about a site it admitted
+ * on the map's word alone, with no class of a site on the item to vouch for
+ * it. All three are re-derived from
  * live Wikidata and Wikipedia on every pass, so a stored copy is never what
  * decides anything — and a question a run answers again every time it runs is
  * not a question to put to a person.
