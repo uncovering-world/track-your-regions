@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fetchWikipediaCategories, enwikiTitleOf } from './wikipediaCategories.js';
+import { askWikipediaOnce, fetchWikipediaCategories, enwikiTitleOf } from './wikipediaCategories.js';
 import { WaitBudget, type SourceWait } from './sourceRetry.js';
 
 const answer = (pages: Record<string, string[]>) => async () => new Response(JSON.stringify({
@@ -318,5 +318,40 @@ describe('enwikiTitleOf', () => {
   it('reads an article a row holds without the s, which isStorableHttpUrl allows', () => {
     expect(enwikiTitleOf('http://en.wikipedia.org/wiki/Pergamon_Museum')).toBe('Pergamon Museum');
     expect(enwikiTitleOf('ftp://en.wikipedia.org/wiki/Pergamon_Museum')).toBeNull();
+  });
+});
+
+describe('askWikipediaOnce, on a wiki that answers from another host', () => {
+  it('re-sends the POST to the host the redirect names, body and all', async () => {
+    // What yue.wikipedia.org answered on 2026-09-15: a 301 to zh-yue, which a
+    // transparent redirect turns into a GET with no body, and the API answers
+    // that with a page. The tag names the wiki by the code the mapper chose,
+    // and the code is an alias of the host.
+    const calls: { url: string; method: string | undefined; body: string }[] = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input);
+      calls.push({ url, method: init?.method, body: String(init?.body) });
+      if (url.startsWith('https://yue.')) {
+        return new Response(null, { status: 301, headers: { location: 'https://zh-yue.wikipedia.org/w/api.php' } });
+      }
+      return new Response(JSON.stringify({ query: { pages: [{ pageid: 1, title: 'Test', pageprops: { wikibase_item: 'Q1' } }] } }), { status: 200 });
+    };
+    const answer = await askWikipediaOnce(
+      { action: 'query', titles: 'Test' },
+      { userAgent: 'test', fetchImpl, endpoint: 'https://yue.wikipedia.org/w/api.php' },
+      new WaitBudget(1000), 'a test',
+    );
+    expect(answer.query?.pages).toHaveLength(1);
+    expect(calls.map((c) => c.url)).toEqual(['https://yue.wikipedia.org/w/api.php', 'https://zh-yue.wikipedia.org/w/api.php']);
+    expect(calls[1].method).toBe('POST');
+    expect(calls[1].body).toBe(calls[0].body);
+  });
+
+  it('refuses to follow a redirect off Wikipedia', async () => {
+    const fetchImpl: typeof fetch = async () => new Response(null, { status: 302, headers: { location: 'https://example.com/api' } });
+    await expect(askWikipediaOnce(
+      { action: 'query' }, { userAgent: 'test', fetchImpl, endpoint: 'https://yue.wikipedia.org/w/api.php' },
+      new WaitBudget(1000), 'a test',
+    )).rejects.toThrow(/redirect.*example\.com/);
   });
 });

@@ -120,6 +120,13 @@ export interface CategoryOptions {
   budget?: WaitBudget;
   /** The door, for the test; defaults to global fetch. */
   fetchImpl?: typeof fetch;
+  /**
+   * Which wiki to ask; English Wikipedia unless a caller names another. The
+   * article resolver (`wikipediaArticles.ts`, #895) asks the wiki an
+   * OpenStreetMap tag names — `tr:` for Nemrut's tumulus — through this same
+   * transport, and every other caller reads the English categories.
+   */
+  endpoint?: string;
 }
 
 async function handleHttpError(response: Response, attempt: number): Promise<never> {
@@ -186,22 +193,53 @@ function failOnApiError(answer: CategoryAnswer, attempt: number): void {
   throw new Error(`Wikipedia API said ${code ?? 'no'}: ${info ?? 'no reason given'}`);
 }
 
+/** A redirect's target, when it is another Wikipedia host; a refusal when it is not. */
+function redirectedWikipedia(response: Response, from: string): string | null {
+  if (![301, 302, 307, 308].includes(response.status)) return null;
+  const location = response.headers.get('location');
+  if (!location) throw new Error(`Wikipedia answered ${response.status} with no location`);
+  const target = new URL(location, from);
+  if (!target.hostname.endsWith('.wikipedia.org')) {
+    throw new Error(`Wikipedia answered with a redirect to ${target.hostname}, which is not Wikipedia`);
+  }
+  return target.toString();
+}
+
+/**
+ * One POST, with a redirect to another Wikipedia host followed **as a POST**.
+ *
+ * A wiki's code is not always its host: `yue.wikipedia.org` answers 301 to
+ * `zh-yue.wikipedia.org` (2026-09-15), and a transparent redirect turns the
+ * POST into a GET with no body, which the API answers with a page rather
+ * than JSON. So the redirect is taken by hand, once, and only onto another
+ * `*.wikipedia.org` host — a redirect anywhere else is refused by name.
+ */
+async function postWikipedia(
+  endpoint: string, body: URLSearchParams, options: CategoryOptions, signal: AbortSignal,
+): Promise<Response> {
+  const send = (url: string) => (options.fetchImpl ?? fetch)(url, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': options.userAgent,
+    },
+    body,
+    signal,
+    redirect: 'manual',
+  });
+  const first = await send(endpoint);
+  const target = redirectedWikipedia(first, endpoint);
+  return target ? send(target) : first;
+}
+
 async function askWikipedia(
   params: Record<string, string>, options: CategoryOptions, attempt: number,
 ): Promise<CategoryAnswer> {
   const body = new URLSearchParams(params);
   const { signal, release } = abortOn(CATEGORY_TIMEOUT_MS, options.isCancelled);
   try {
-    const response = await (options.fetchImpl ?? fetch)(ENWIKI_API, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': options.userAgent,
-      },
-      body,
-      signal,
-    });
+    const response = await postWikipedia(options.endpoint ?? ENWIKI_API, body, options, signal);
     if (!response.ok) await handleHttpError(response, attempt);
     let answer: CategoryAnswer;
     try {
@@ -287,8 +325,12 @@ export function pagesOf(answer: CategoryAnswer): CategoryPage[] {
  * redirect joins any two names for one museum. The API then answers once, and
  * a map holding a single name would leave the other title looking like a
  * museum with no categories, which is a museum this kind refuses.
+ *
+ * Exported for the article resolver (`wikipediaArticles.ts`, #895), which
+ * walks the same hops back for the same reason: two tags that normalise
+ * together are two objects, and both are filed under the item.
  */
-function askedTitles(titles: string[], answer: CategoryAnswer): Map<string, string[]> {
+export function askedTitles(titles: string[], answer: CategoryAnswer): Map<string, string[]> {
   const asked = new Map(titles.map((title) => [title, [title]]));
   for (const hop of [...(answer.query?.normalized ?? []), ...(answer.query?.redirects ?? [])]) {
     const original = asked.get(hop.from);
