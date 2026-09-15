@@ -381,8 +381,11 @@ export interface ArchaeologyTrees {
   shipwreck: ReadonlySet<string>;
   /**
    * The three trees a `ruins=*` tag alone cannot carry a candidate past
-   * (`RUINS_ONLY_VETO_ROOTS` in `siteClasses.ts`, #895): a fortification, a
-   * palace, a structure of worship. Read only of a candidate OpenStreetMap
+   * (`FORTIFICATION_ROOT`, `PALACE_ROOT`, `WORSHIP_STRUCTURE_ROOT` in
+   * `siteClasses.ts`, #895): a fortification, a palace, a structure of
+   * worship — read beside the museum tree and the flat
+   * `RUINS_ONLY_MONUMENT_CLASSES` in `osmOnlyVeto` (`siteTest.ts`), the one
+   * place the four are read together, and only of a candidate OpenStreetMap
    * named and the site tree did not.
    */
   fortification: ReadonlySet<string>;
@@ -391,7 +394,7 @@ export interface ArchaeologyTrees {
 }
 
 /**
- * Compose the three sets the rules read from what the run fetched and what is
+ * Compose the sets the rules read from what the run fetched and what is
  * pinned here, so that the joining is written once. Pure: the pipeline hands
  * over the closures, this floors them and takes the parks out.
  *
@@ -415,22 +418,24 @@ export interface ArchaeologyTrees {
  * Japan` would walk in through the category. The rule that refuses it has to be
  * able to ask whether a class is a park, so the answer is a set it can read.
  *
- * Seven trees now, not four: the site pool's own tree, the settlement branch it
- * is read against, and the one class refused outright (#581 PR 2). The last
- * three are optional, because the museum door reads none of them and a test of
- * it should not have to state them.
+ * Eleven trees now, not four. The site door added its own tree, the
+ * settlement branch it is read against, and the one class refused outright
+ * (#581 PR 2); the works read added the natural-history trees (#890); the
+ * map's entrance added the three a `ruins` tag alone cannot carry a candidate
+ * past (#895). Those seven are optional, because the museum door reads none
+ * of them and a test of it should not have to state them.
  */
 export function buildArchaeologyTrees(fetched: {
   museum: string[];
   park: string[];
   naturalHistory: string[];
   artefact: string[];
-  /** The six walked natural-history trees (#890); floored with all eight roots below. Optional for the reason the site door's three are. */
+  /** The six walked natural-history trees (#890); floored with all eight roots below. Optional for the reason above. */
   notAFind?: string[];
   site?: string[];
   settlement?: string[];
   shipwreck?: string[];
-  /** The OSM-only vetoes' trees (#895), optional for the same reason. */
+  /** The OSM-only vetoes' trees (#895), optional for the reason above. */
   fortification?: string[];
   palace?: string[];
   worship?: string[];
@@ -444,11 +449,12 @@ export function buildArchaeologyTrees(fetched: {
     naturalHistory: new Set([...fetched.naturalHistory, NATURAL_HISTORY_ROOT]),
     artefact: new Set([...fetched.artefact, ARTEFACT_ROOT]),
     notAFind: new Set([...(fetched.notAFind ?? []), ...Object.keys(NOT_A_FIND)]),
-    // Each floored by its own root, for the reason the four above are: a
+    // Each floored by its own root, for the reason the five above are: a
     // closure that refused a hop, or a fetch that came back short, must not
     // turn a row typed with the root itself into a row the rule cannot name.
-    // The three are optional so that a caller judging only museums — every
-    // test of the museum door — need not state a site tree it never reads.
+    // The six below are optional, as `notAFind` above is, so that a caller
+    // judging only museums — every test of the museum door — need not state
+    // a tree it never reads.
     site: new Set([...(fetched.site ?? []), SITE_ROOT]),
     settlement: new Set([...(fetched.settlement ?? []), SETTLEMENT_ROOT]),
     shipwreck: new Set([...(fetched.shipwreck ?? []), SHIPWRECK_ROOT]),

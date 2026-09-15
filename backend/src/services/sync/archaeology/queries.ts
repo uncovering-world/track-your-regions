@@ -1,13 +1,16 @@
 /**
- * The three questions this kind asks that no other collector already asks.
+ * The questions this kind asks that no other collector already asks.
  *
  * Everything else it needs is a question some other import already sends: the
- * pool of places and the facts about them are the public-art questions, generic
- * over `P31` (`publicArt/queries.ts`); the pool of works, the venue statements
- * and the venue graph are the museum's, through the shared works collector. What
- * is particular to a kind whose subject is both a building and what is inside it
- * is which classes make an archaeology museum, which of them are really parks,
- * and where an object in a case was dug up.
+ * banded pool of places is the public-art question, generic over `P31`
+ * (`publicArt/queries.ts`); the pool of works, the venue statements and the
+ * venue graph are the museum's, through the shared works collector. What is
+ * particular to a kind whose subject is both a building and what is inside it
+ * is which classes the rules read as trees, where an object in a case was dug
+ * up, the museum pool with its site-tree subtraction, the facts a site
+ * candidate is judged on, and — for the items the map named and the classes
+ * did not (#895) — how many articles each has, asked before anything else
+ * about it is.
  *
  * Nothing here decides anything: what an archaeology museum is, is
  * `museumTest.ts` over the sets `classes.ts` composes, and what a find is, is
@@ -31,13 +34,16 @@ import {
 import {
   ARCHAEOLOGICAL_PARK,
   ARTEFACT_ROOT,
+  FORTIFICATION_ROOT,
   MUSEUM_ROOTS,
   NATURAL_HISTORY_ROOT,
   NOT_A_FIND_WALKED,
+  PALACE_ROOT,
   SETTLEMENT_ROOT,
   SHIPWRECK_ROOT,
   SITE_ROOT,
   WORLD_HERITAGE_DESIGNATION,
+  WORSHIP_STRUCTURE_ROOT,
   buildArchaeologyTrees,
   type ArchaeologyTrees,
 } from './classes.js';
@@ -47,13 +53,18 @@ const CLASS_BATCH = 25;
 const ID_BATCH = 50;
 
 /**
- * The seven class trees the rules read: what an archaeology museum is, which of
- * those classes are parks, what vetoes a museum, what was dug up, what an
- * archaeological site is, what a human settlement is, and what a shipwreck is.
+ * The eleven class trees the rules read: what an archaeology museum is, which
+ * of those classes are parks, what vetoes a museum, what was dug up, what is
+ * no find at all (the natural-history trees, #890), what an archaeological
+ * site is, what a human settlement is, what a shipwreck is, and — the last
+ * three, the map entrance's (#895) — what a fortification, a palace and a
+ * structure of worship are, which a `ruins` tag alone cannot carry a
+ * candidate past.
  *
- * The last three are the site door's (#581 PR 2). Measured on 2026-09-14: 590
- * classes under `archaeological site`, 2,720 under `human settlement`, 4 under
- * `shipwreck` — all three cheap, because the traversal is in class space.
+ * The site, settlement and shipwreck trees are the site door's (#581 PR 2).
+ * Measured on 2026-09-14: 590 classes under `archaeological site`, 2,720 under
+ * `human settlement`, 4 under `shipwreck` — all cheap, because the traversal
+ * is in class space.
  *
  * A tree each rather than one walk, because each answers a different question
  * and two of them are subtractions from the others. The museum roots are walked
@@ -116,6 +127,21 @@ export async function fetchArchaeologyTrees(run: QueryRunner): Promise<Archaeolo
   await run.step();
   const shipwreck = await fetchClassTree(run.sparql, SHIPWRECK_ROOT, 'shipwreck classes');
 
+  // The three trees the OSM-only vetoes read (#895): what a `ruins=*` tag
+  // alone cannot carry past — a castle, a palace, a church in ruins is a
+  // monument, and another kind's row or nobody's.
+  run.phase('Reading what a fortification is...');
+  await run.step();
+  const fortification = await fetchClassTree(run.sparql, FORTIFICATION_ROOT, 'fortification classes');
+
+  run.phase('Reading what a palace is...');
+  await run.step();
+  const palace = await fetchClassTree(run.sparql, PALACE_ROOT, 'palace classes');
+
+  run.phase('Reading what a structure of worship is...');
+  await run.step();
+  const worship = await fetchClassTree(run.sparql, WORSHIP_STRUCTURE_ROOT, 'structure of worship classes');
+
   return buildArchaeologyTrees({
     museum,
     park: [...park],
@@ -125,7 +151,48 @@ export async function fetchArchaeologyTrees(run: QueryRunner): Promise<Archaeolo
     site: [...site],
     settlement: [...settlement],
     shipwreck: [...shipwreck],
+    fortification: [...fortification],
+    palace: [...palace],
+    worship: [...worship],
   });
+}
+
+/**
+ * Items to a sitelinks question. Five hundred `VALUES` answer in about a
+ * second on the Query Service — the question binds one number per item and
+ * nothing else — where the pool's own question, with its picture, article and
+ * country, is asked fifty at a time.
+ */
+export const SITELINKS_BATCH = 500;
+
+/**
+ * How many Wikipedias hold an article about each item, and nothing else: the
+ * question the OSM entrance asks of its tens of thousands of items before it
+ * asks the pool's question of the few hundred at the floor (#895).
+ *
+ * An item the door does not answer for — deleted, merged into another — is
+ * absent, never zero: a count of zero would be a fact about the world, and
+ * absence is the caller's to read as "not this run".
+ */
+export async function fetchSitelinksByIds(
+  sparql: SparqlFn,
+  qids: string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const asked = [...new Set(qids.filter(isQid))];
+  for (const batch of chunk(asked, SITELINKS_BATCH)) {
+    const rows = await sparql(`
+    SELECT ?e ?sl WHERE {
+      VALUES ?e { ${values(batch)} }
+      ?e wikibase:sitelinks ?sl .
+    }`, { kind: 'edges', label: `sitelinks of ${batch.length} items` });
+    for (const row of rows) {
+      const qid = extractQid(row.e?.value ?? '');
+      const sitelinks = parseInt(row.sl?.value ?? '', 10);
+      if (isQid(qid) && Number.isFinite(sitelinks)) out.set(qid, sitelinks);
+    }
+  }
+  return out;
 }
 
 /**
