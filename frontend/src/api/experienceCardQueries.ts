@@ -19,7 +19,7 @@
  * card issued another, and nothing in a type checker would catch the drift.
  */
 
-import { fetchExperience, fetchExperienceTreasures } from './experiences';
+import { fetchExperience, fetchExperienceTreasures, fetchSiteFinds } from './experiences';
 
 /** Five minutes, matching the card's own reads. */
 const CARD_STALE_TIME_MS = 300000;
@@ -35,6 +35,18 @@ export const experienceDetailsQuery = (id: number) => ({
 export const experienceContentsQuery = (id: number) => ({
   queryKey: ['experience-contents', id] as const,
   queryFn: () => fetchExperienceTreasures(id),
+  staleTime: CARD_STALE_TIME_MS,
+});
+
+/**
+ * What was dug up at a site and where it is shown — the third part of a
+ * site's card, and only a site's (#894). Issued for a row `hasExtent()` says is
+ * one, off the loaded row and before any read, for the reason the note at the
+ * foot of this file gives; a museum, a monument or a church never asks.
+ */
+export const siteFindsQuery = (id: number) => ({
+  queryKey: ['site-finds', id] as const,
+  queryFn: () => fetchSiteFinds(id),
   staleTime: CARD_STALE_TIME_MS,
 });
 

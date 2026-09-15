@@ -21,6 +21,7 @@ import type {
 import { LifecycleChip } from '../shared/LifecycleChip';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 import { experienceColor } from '../../utils/kindColors';
+import { hasExtent } from '../../utils/experienceTypes';
 import { preloadCardImage } from '../../utils/imagePreload';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
 import { subscribeToHoverTarget, useHoverActions } from '../../hooks/useHoverContext';
@@ -169,7 +170,10 @@ function ExperienceListItemComponent({
   }, []);
   // False until the card's size is decided. A hovered row shortens that wait to
   // whatever its two queries take, having already fetched the picture below.
-  const cardReady = useExperienceCardReady(experience.id, experience.image_url, isSelected, locationsResolved);
+  const cardReady = useExperienceCardReady(
+    experience.id, experience.image_url, isSelected, locationsResolved,
+    hasExtent(experience.kind_id, experience.type),
+  );
 
   const cardOpen = isSelected && cardReady;
   useLayoutEffect(() => {
