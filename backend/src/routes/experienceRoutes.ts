@@ -16,6 +16,7 @@ import {
   searchExperiences,
   getExperienceLocations,
   getExperienceTreasures,
+  getSiteFinds,
   rejectExperience,
   unrejectExperience,
   assignExperienceToRegion,
@@ -318,5 +319,9 @@ router.get('/:id/locations', publicReadLimiter, validate(idParamSchema, 'params'
 // curator or admin reaching a gated museum from the queue sees its unread
 // treasures too — see getExperienceTreasures/maySeeUnreadExperience, ADR-0025)
 router.get('/:id/treasures', publicReadLimiter, validate(idParamSchema, 'params'), optionalAuth, getExperienceTreasures);
+// The finds dug up at a site and the museums that show them (#894). No
+// optionalAuth: like /search, it names only what a reader may open and answers
+// the same to everyone, so it is not a caller-shaped read.
+router.get('/:id/finds', publicReadLimiter, validate(idParamSchema, 'params'), getSiteFinds);
 
 export default router;
