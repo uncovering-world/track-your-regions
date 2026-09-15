@@ -27,6 +27,9 @@ import {
   fetchExperienceTreasures,
   type Experience,
 } from '../../api/experiences';
+import { siteFindsQuery } from '../../api/experienceCardQueries';
+import { hasExtent } from '../../utils/experienceTypes';
+import { SiteFinds } from '../shared/SiteFinds';
 import { useAuth } from '../../hooks/useAuth';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { WorkPreviewDialog } from '../shared/WorkPreviewDialog';
@@ -83,6 +86,14 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
     queryKey: ['experience-contents', experience.id],
     queryFn: () => fetchExperienceTreasures(experience.id),
     staleTime: 300000,
+  });
+
+  // The finds dug up here, for a site alone (#894) — the same read, the same
+  // key and the same rule as the map's card, so one site is not described two
+  // ways.
+  const { data: findsData } = useQuery({
+    ...siteFindsQuery(experience.id),
+    enabled: hasExtent(experience.kind_id, experience.type),
   });
 
   // Visited state
@@ -337,6 +348,12 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
               {visitedIds.has(experience.id) ? 'Visited' : 'Mark Visited'}
             </Button>
           </Box>
+        )}
+
+        {/* What was dug up here and where a traveller sees it; no overlay on
+            this surface, so the thumbnail is a picture and nothing more. */}
+        {findsData && findsData.finds.length > 0 && (
+          <SiteFinds finds={findsData.finds} total={findsData.total} />
         )}
 
         {/* Contents / Artworks section */}

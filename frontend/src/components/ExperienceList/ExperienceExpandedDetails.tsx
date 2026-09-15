@@ -39,15 +39,17 @@ import {
   type ExperienceTreasure,
   type VisitedStatus,
 } from '../../api/experiences';
-import { experienceContentsQuery, experienceDetailsQuery } from '../../api/experienceCardQueries';
+import { experienceContentsQuery, experienceDetailsQuery, siteFindsQuery } from '../../api/experienceCardQueries';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
 import { ArtworksList } from './ArtworksList';
+import { SiteFindsList } from './SiteFindsList';
 import { VisitedStatusButton } from './VisitedStatusButton';
 import { computeVisitedStatus } from './utils';
 import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
 import { experienceColors } from '../../utils/kindColors';
+import { hasExtent } from '../../utils/experienceTypes';
 
 export interface ExperienceExpandedDetailsProps {
   experience: Experience;
@@ -106,6 +108,13 @@ function ExperienceExpandedDetailsComponent({
   // this renders they are in cache; issuing them here is what starts them.
   const { data: details } = useQuery(experienceDetailsQuery(experience.id));
   const { data: contentsData } = useQuery(experienceContentsQuery(experience.id));
+  // The third, for a site alone (#894): the finds dug up here and where they
+  // are shown. Decided off the row, before any read, and waited on by the same
+  // gate, so the list is in the card the frame it opens.
+  const { data: findsData } = useQuery({
+    ...siteFindsQuery(experience.id),
+    enabled: hasExtent(experience.kind_id, experience.type),
+  });
 
   // Use batch locations from parent + global isLocationVisited
   const totalLocations = locations?.length ?? (experience.location_count ?? 0);
@@ -327,6 +336,12 @@ function ExperienceExpandedDetailsComponent({
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           {details.description}
         </Typography>
+      )}
+
+      {/* What was dug up here and where a traveller sees it — a site's
+          counterpart of the works list below, which a site never has. */}
+      {findsData && findsData.finds.length > 0 && (
+        <SiteFindsList finds={findsData.finds} total={findsData.total} />
       )}
 
       {/* Artworks / Contents list */}
