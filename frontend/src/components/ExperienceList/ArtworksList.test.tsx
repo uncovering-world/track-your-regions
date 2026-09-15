@@ -46,6 +46,16 @@ vi.mock('../../hooks/useVisitedExperiences', () => ({
   }),
 }));
 
+// The link a find spot becomes (#894) reads the world view and writes the
+// address; the test cases that use it render inside a router.
+vi.mock('../../hooks/useNavigation', () => ({
+  useNavigation: () => ({
+    selectedWorldView: { id: 5, name: 'Administrative', isDefault: false },
+    isCustomWorldView: true,
+  }),
+}));
+
+import { MemoryRouter } from 'react-router';
 import { ArtworksList } from './ArtworksList';
 
 /** The Mesha Stele at the Louvre: a photograph under CC BY-SA, so the credit is owed. */
@@ -159,6 +169,31 @@ describe('a work that was dug up somewhere', () => {
     renderList([work({ name: 'Mona Lisa', artists: ['Leonardo da Vinci'] })]);
 
     expect(screen.queryByText(/found at/)).not.toBeInTheDocument();
+  });
+
+  it('makes the spot a way to the site where the catalogue holds it', () => {
+    // "found at Mycenae" opens Mycenae's card where the reader's world view
+    // places the site (#894); Fort Julien above stays words, since no site row
+    // carries that id.
+    render(
+      <MemoryRouter initialEntries={['/wv/5/r/6918-attica/e/14551-athens']}>
+        <ArtworksList
+          contents={[work({
+            name: 'Mask of Agamemnon', external_id: 'Q1126741', image_url: null,
+            found_at: { qid: 'Q131594', label: 'Mycenae' },
+            found_at_site: {
+              id: 14730, name: 'Mycenae', kind_id: 5,
+              regions: [{ id: 6922, name: 'Peloponnese', world_view_id: 5, world_view_name: 'Administrative' }],
+            },
+          })]}
+          total={1}
+          experienceId={14551}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/found at/)).toHaveTextContent('found at Mycenae');
+    expect(screen.getByRole('button', { name: 'Mycenae' })).toBeInTheDocument();
   });
 });
 

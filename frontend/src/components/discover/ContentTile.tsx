@@ -5,6 +5,7 @@ import EditNoteIcon from '@mui/icons-material/EditNote';
 import type { ExperienceTreasure } from '../../api/experiences';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 import { creditLabel, ImageCreditLine } from '../shared/ImageCreditLine';
+import { PlaceLink } from '../shared/PlaceLink';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { VISITED_GREEN } from '../../utils/kindColors';
@@ -220,7 +221,11 @@ export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed
           noWrap
           sx={{ fontSize: '0.6rem', mt: 0.25 }}
         >
-          found at {content.found_at.label}
+          {/* A way to the site where the catalogue holds it (#894), as on the
+              map's row; its name where it does not. */}
+          found at {content.found_at_site
+            ? <PlaceLink place={content.found_at_site} />
+            : content.found_at.label}
         </Typography>
       )}
       {thumbUrl && <ImageCreditLine credit={content.image_credit} redundantWith={content.artists} />}
