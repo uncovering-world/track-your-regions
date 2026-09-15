@@ -225,6 +225,24 @@ export const ANCIENT_CUTOFF_YEAR = 500;
  * Refused whatever else the item carries, in the shape `WORSHIP_KILL_CLASSES`
  * uses: a diamond in a museum case is still a diamond, and the vault it sits
  * in is not an archaeology museum for holding it.
+ *
+ * **Six of the eight are walked as trees** (#890, `NOT_A_FIND_WALKED`). The
+ * pool never met a subclass, because the pool is collected by this kind's
+ * own classes; the venue-side read meets whatever a museum's statements name,
+ * and the Bendegó meteorite is typed `iron meteorite` (Q827989, a subclass of
+ * `meteorite`) with a discovery place in Bahia — kept as a find by the flat
+ * list on live run 127, which is a meteorite in an archaeology museum's case
+ * described as something somebody dug up. Each walked root is asked by
+ * `fetchArchaeologyTrees` and floored with itself in `buildArchaeologyTrees`,
+ * as every other tree of this kind is.
+ *
+ * **`skeleton` and `individual animal` are matched flat and never walked.**
+ * Wikidata files `mummy` (Q43616) under both (checked 2026-09-15), and live
+ * run 128, which walked all eight, withdrew the Gebelein predynastic mummies
+ * from the British Museum and Clonycavan Man from the National Museum of
+ * Ireland — the canon of what a traveller enters those rooms to see. Sue is
+ * typed `skeleton` and `individual animal` directly, and Lucy `individual
+ * animal`, so the flat match is what the veto was measured on.
  */
 export const NOT_A_FIND: Record<string, string> = {
   Q40614: 'fossil',
@@ -236,6 +254,11 @@ export const NOT_A_FIND: Record<string, string> = {
   Q544041: 'coprolite',
   Q83437: 'gemstone',
 };
+
+/** The roots of `NOT_A_FIND` whose trees are walked: the objects, never the two Wikidata files a mummy under. */
+export const NOT_A_FIND_WALKED: Record<string, string> = Object.fromEntries(
+  Object.entries(NOT_A_FIND).filter(([qid]) => qid !== 'Q7881' && qid !== 'Q26401003'),
+);
 
 /**
  * The English Wikipedia category that says what a museum is *about*.
@@ -333,6 +356,8 @@ export interface ArchaeologyTrees {
   naturalHistory: ReadonlySet<string>;
   /** Every class that makes an object something dug up (`ARTEFACT_ROOT`). */
   artefact: ReadonlySet<string>;
+  /** Every class that makes an object natural history and no find (`NOT_A_FIND`, walked). */
+  notAFind: ReadonlySet<string>;
   /** Every class under `archaeological site`: the site pool's own tree (`SITE_ROOT`). */
   site: ReadonlySet<string>;
   /** Every class under `human settlement`: which branch a candidate came in on. */
@@ -376,6 +401,8 @@ export function buildArchaeologyTrees(fetched: {
   park: string[];
   naturalHistory: string[];
   artefact: string[];
+  /** The six walked natural-history trees (#890); floored with all eight roots below. Optional for the reason the site door's three are. */
+  notAFind?: string[];
   site?: string[];
   settlement?: string[];
   shipwreck?: string[];
@@ -388,6 +415,7 @@ export function buildArchaeologyTrees(fetched: {
     park,
     naturalHistory: new Set([...fetched.naturalHistory, NATURAL_HISTORY_ROOT]),
     artefact: new Set([...fetched.artefact, ARTEFACT_ROOT]),
+    notAFind: new Set([...(fetched.notAFind ?? []), ...Object.keys(NOT_A_FIND)]),
     // Each floored by its own root, for the reason the four above are: a
     // closure that refused a hop, or a fetch that came back short, must not
     // turn a row typed with the root itself into a row the rule cannot name.

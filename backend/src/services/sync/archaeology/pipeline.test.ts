@@ -418,13 +418,14 @@ describe('collectArchaeology', () => {
     // Hadrian's Villa is a category member and was already counted: seventeen
     // entities. Pompeii is not fetched twice for being named twice. Then the
     // Pergamon's world (#890): the Victory stele in the finds pool, the two
-    // finds the venue-side read kept at the Pergamon and the one object it
-    // refused, the two altars of the second round and the attack both museums
-    // name — twenty-four. The Pergamon Museum itself is not counted twice: the
+    // finds the venue-side read kept at the Pergamon and the two objects it
+    // refused there — the attack, and the one Wikidata does not type — the two
+    // altars of the second round and the attack both museums name —
+    // twenty-five. The Pergamon Museum itself is not counted twice: the
     // stele's department is `P361` the museum, so the venue graph already held
     // it when the category members were asked after; the Museum of the Second
     // Round is a row of the graph and no pool's, so it is not counted at all.
-    expect(out.fetched).toBe(24);
+    expect(out.fetched).toBe(25);
   });
 
   it('keeps a fold onto a department held for a curator, and reports what it lost', async () => {
@@ -1041,9 +1042,19 @@ describe('what an admitted museum holds, read from its own side (#890)', () => {
       name: 'Bardo National Museum attack',
       reason: 'not a find by its classes: mass murder (Q750215) — held by Bardo National Museum',
     });
-    // Two refusals in all: this one, and the attack two museums name (the
+    // An item Wikidata does not type at all is read the same way and refused
+    // for that — with a date the finds rule would otherwise have taken — and
+    // the report says so, since there is no class to name.
+    expect(out.refusedContents).toContainEqual({
+      externalId: 'Q900814',
+      name: 'Untyped Object of the Pergamon',
+      reason: 'not a find by its classes: no class at all — held by Pergamon Museum',
+    });
+    expect(treasuresOf(out, 'Q157298')).not.toContain('Q900814');
+    // Three refusals in all: these two, and the attack two museums name (the
     // second-round case below); nothing the run writes is among them.
-    expect(out.refusedContents.map((r) => r.externalId).sort()).toEqual(['Q19613356', 'Q900813']);
+    expect(out.refusedContents.map((r) => r.externalId).sort())
+      .toEqual(['Q19613356', 'Q900813', 'Q900814']);
     expect(out.filtered.map((f) => f.externalId)).not.toContain('Q19613356');
     expect(item(out, 'Q1429003')).toBeDefined();
     expect(treasuresOf(out, 'Q1429003')).toEqual([]);

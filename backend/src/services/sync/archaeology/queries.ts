@@ -33,6 +33,7 @@ import {
   ARTEFACT_ROOT,
   MUSEUM_ROOTS,
   NATURAL_HISTORY_ROOT,
+  NOT_A_FIND_WALKED,
   SETTLEMENT_ROOT,
   SHIPWRECK_ROOT,
   SITE_ROOT,
@@ -93,6 +94,16 @@ export async function fetchArchaeologyTrees(run: QueryRunner): Promise<Archaeolo
   await run.step();
   const artefact = await fetchClassTree(run.sparql, ARTEFACT_ROOT, 'archaeological artefact classes');
 
+  // The natural-history veto, walked root by root (#890): the venue-side read
+  // meets `iron meteorite`, which the flat list never named. Six roots and not
+  // eight — `classes.ts` says which two a mummy sits under.
+  run.phase('Reading what natural history is...');
+  const notAFind: string[] = [];
+  for (const [root, label] of Object.entries(NOT_A_FIND_WALKED)) {
+    await run.step();
+    notAFind.push(...(await fetchClassTree(run.sparql, root, `${label} classes`)));
+  }
+
   run.phase('Reading what an archaeological site is...');
   await run.step();
   const site = await fetchClassTree(run.sparql, SITE_ROOT, 'archaeological site classes');
@@ -110,6 +121,7 @@ export async function fetchArchaeologyTrees(run: QueryRunner): Promise<Archaeolo
     park: [...park],
     naturalHistory: [...naturalHistory],
     artefact: [...artefact],
+    notAFind,
     site: [...site],
     settlement: [...settlement],
     shipwreck: [...shipwreck],
