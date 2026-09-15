@@ -30,11 +30,10 @@
  * work hangs (`museum/placement.ts`).
  */
 
-import { placeArtwork } from '../museum/placement.js';
 import { selectTier1, type Tier1Result } from '../museum/tier1.js';
 import { diffPlacements, type PlacementDiff } from '../museum/placementDiff.js';
-import { museumRule, type VenueRule } from '../museum/venueTest.js';
-import { applyFolds, makeResolver, survivorOf, type VenueGraph } from '../museum/venueGraph.js';
+import type { VenueRule } from '../museum/venueTest.js';
+import { applyFolds, survivorOf, type VenueGraph } from '../museum/venueGraph.js';
 import type { Fold } from '../museum/venueFolds.js';
 import { fetchMuseumClasses, type PoolWork } from '../museum/queries.js';
 import {
@@ -47,14 +46,21 @@ import {
   MUSEUM_PINNED_EDITION_CLASSES,
   EDITION_ROOT,
   type WorksCollection,
+  type WorksCollectorOptions,
 } from '../museum/worksCollector.js';
+import {
+  holdingReason, keptElsewhere, readVenueSide, refusedHoldingReason,
+} from '../museum/venueSide.js';
 import { fetchWorshipTrees, fetchTreasureClasses } from './queries.js';
+// Door two's own rules over the works — which are this kind's, why one is not,
+// which places a fold took out — split out at the seam the review of #890 named.
+import { foldLosses, ourWorks, whyNotOurs } from './works.js';
 import { collectPlacesByFame, type PlaceCandidate } from './places.js';
 import { worshipVerdict } from './worshipTest.js';
 import type { WorshipTrees, WorshipType } from './classes.js';
-import type { SourceLine } from '../sourceLine.js';
+import { contentsLine, type SourceLine } from '../sourceLine.js';
 import type { ClosureOptions } from '../classClosure.js';
-import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
+import { unique, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
 import type { FilteredEntity } from '../syncOrchestrator.js';
 import type { ProcessedContent } from '../types.js';
 
@@ -86,10 +92,16 @@ export interface CollectedPlaceOfWorship {
 
 export interface CollectedWorship {
   items: CollectedPlaceOfWorship[];
-  /** Distinct entities the two pools named: places by class, and works. */
+  /** Distinct entities the two pools named: places by class, and works — and what the admitted places hold besides (#890). */
   fetched: number;
 
   filtered: FilteredEntity[];
+  /**
+   * The objects the admitted places hold that the treasure vocabulary refused
+   * — a conclave, a wedding, an attack a church's `P276` names — each with
+   * its classes (#890). Reported, never marked (`FetchResult`).
+   */
+  refusedContents: FilteredEntity[];
   diff: PlacementDiff;
 }
 
@@ -129,79 +141,6 @@ function makeRun(deps: WorshipPipelineDeps): QueryRunner {
 // =============================================================================
 // Door two: the works
 // =============================================================================
-
-/**
- * The works this kind may open a door with: the placed ones that still exist
- * and that no museum claims.
- *
- * **Museum wins.** Both rules read the same statements, and a work whose owner
- * or location the museum rule resolves is one the museum import already writes
- * — the Creation of Adam (P195 Vatican Museums, P276 Sistine Chapel) among
- * them. Asked of the raw statements rather than of this run's placements,
- * because the question is what the museum rule *would* make of the work, not
- * what the worship rule made of it.
- *
- * **A lost work opens nothing.** The Statue of Zeus at Olympia is one of the
- * seven wonders and has not existed for sixteen centuries; its temple stands on
- * its own fame or not at all. The shared collector already placed it nowhere
- * (`unseen`), so it never reaches this loop; the count is for the log line.
- */
-function ourWorks(
-  works: WorksCollection,
-  museumClasses: ReadonlySet<string>,
-  trees: WorshipTrees,
-  placeClasses: Map<string, string[]>,
-): Record<string, string[]> {
-  const museums = makeResolver(works.graph, museumRule(museumClasses));
-  const ours: Record<string, string[]> = {};
-  const lost = Object.keys(works.unseen).length;
-  let places = 0;
-  let museumsWon = 0;
-  for (const [qid, venues] of Object.entries(works.afterFolds)) {
-    if (!venues.length) continue;
-    const work = works.pool.get(qid);
-    if (!work) continue;
-    if (isItselfAPlace(qid, work, trees, placeClasses)) { places++; continue; }
-    const atAMuseum = placeArtwork(
-      works.statements.get(qid) ?? [], museums.resolve, works.graph.ancestors,
-    );
-    if (atAMuseum.length) { museumsWon++; continue; }
-    ours[qid] = venues;
-  }
-  console.log(
-    `${LOG_PREFIX} Works placed in a place of worship: ${Object.keys(ours).length}; `
-    + `${museumsWon} left to the museum that holds them, ${places} places in their own right, `
-    + `${lost} that nobody can see`,
-  );
-  return ours;
-}
-
-/**
- * A work that is itself a place of worship is a place, never a treasure.
- *
- * The two doors read overlapping class lists: 13 classes lie in both the
- * treasure trees and the worship tree (measured on the run's own cached trees,
- * 2026-09-09 — imamzadeh, chapel tomb, temple-tomb, heroön, Keramat and the
- * Japanese memorial towers, kuyō-tō and banreitō among them). Without this, the
- * Cavern of the Patriarchs — a mosque and a synagogue that the tomb tree also
- * collects — would be admitted as a place at one door and written as somebody's
- * treasure at the other.
- *
- * Two sources for what the row is. The works pool carries one class — the one
- * the work was collected under — and the Cavern arrives there as a tomb; the
- * places pool carries every `P31` of every entity it named, which is where its
- * mosque class is. A row too obscure for the places pool (below its floor, or
- * named by no class question) is judged on its collected class alone.
- */
-function isItselfAPlace(
-  qid: string,
-  work: PoolWork,
-  trees: WorshipTrees,
-  placeClasses: Map<string, string[]>,
-): boolean {
-  const own = [...(placeClasses.get(qid) ?? []), ...(work.typeQid ? [work.typeQid] : [])];
-  return own.some((cls) => trees.worship.has(cls));
-}
 
 /**
  * Which venues a work admits as places: the tier's holders that this kind's own
@@ -295,29 +234,6 @@ function foldsOntoAdmitted(
   return { ...works, folds, afterFolds: applyFolds(works.placed, folds) };
 }
 
-/**
- * A venue that received a work of ours and then folded into another is a place
- * the run proposed and no longer does, so it is reported as a loss with the
- * reason the fold rule gave. A fold of a venue that held nothing is not
- * reported — a line about it would count a loss the catalogue did not have.
- */
-function foldLosses(works: WorksCollection, ours: Record<string, string[]>): FilteredEntity[] {
-  // Measured on the works that are still ours after the museum, the lost and
-  // the place filters: a venue whose only work went to the museum that owns it
-  // lost this run nothing, and a line about it would count a loss that is not
-  // one. Their pre-fold placements, because the question is which venue
-  // received a work and then folded away.
-  const received = new Set(Object.keys(ours).flatMap((qid) => works.placed[qid] ?? []));
-  const nameOf = (qid: string) => works.graph.details.get(qid)?.label ?? qid;
-  return Object.entries(works.folds)
-    .filter(([qid]) => received.has(qid))
-    .map(([qid, fold]) => ({
-      externalId: qid,
-      name: nameOf(qid),
-      reason: `folded into ${nameOf(fold.into)} — ${fold.why}, ${fold.metres} m away`,
-    }));
-}
-
 // =============================================================================
 // What the run hands back
 // =============================================================================
@@ -383,7 +299,7 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   // The veto that keeps a church from being called a museum is off: here the
   // church is the venue, and the noun is what a refusal will be named with.
   const rule: VenueRule = { classes: trees.worship, siteVeto: false, noun: 'place of worship' };
-  const collected = await collectWorks(run, {
+  const options: WorksCollectorOptions = {
     broadRoots: MUSEUM_BROAD_ROOTS,
     wholeRoots: MUSEUM_WHOLE_ROOTS,
     pinned: MUSEUM_PINNED_CLASSES,
@@ -394,16 +310,17 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
     rule,
     closure: deps.closure,
     logPrefix: LOG_PREFIX,
-  });
+  };
+  const collected = await collectWorks(run, options);
   // A fold may only hand a chapel's works to a place this kind could admit.
-  const works = foldsOntoAdmitted(collected, new Set(byFame.places.keys()), trees);
+  let works = foldsOntoAdmitted(collected, new Set(byFame.places.keys()), trees);
 
   run.phase('Deciding which places their treasures admit...');
-  const ours = ourWorks(works, museumClasses, trees, byFame.classesOf);
+  const oursFromThePool = ourWorks(works, museumClasses, trees, byFame.classesOf, 'from the pool');
   const tier = selectTier1([...works.pool.values()].map((work) => ({
     qid: work.qid,
     sitelinks: work.sitelinks,
-    venues: ours[work.qid] ?? [],
+    venues: oursFromThePool[work.qid] ?? [],
     multipleMedium: work.typeQid !== null && works.editionClasses.has(work.typeQid),
   })), { threshold: deps.line.enterSitelinks });
   const { venues, refused } = admitVenues(tier, works.graph, trees);
@@ -413,6 +330,29 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   // fame lists what it holds too — so the diff is measured against the same
   // thing the database will hold.
   const admitted = new Set([...byFame.places.keys(), ...venues.keys()]);
+
+  // What the admitted places hold that no class question asked for (#890),
+  // read once admission is settled and judged by the treasure vocabulary. The
+  // doors are not asked again — a place is admitted for its fame or for a work
+  // the pool knows — and the three rules of this door are asked of what came
+  // back exactly as they were of the pool: a museum wins, a place is never a
+  // treasure, and nobody can see a lost one.
+  const side = await readVenueSide(run, works, options, {
+    admitted,
+    // Named where a treasure of this kind would keep its badge — the line the
+    // source states, which `contentsLine` hands the writer too (#883).
+    reportFloor: contentsLine(deps.line).staySitelinks,
+  });
+  works = side.collection;
+  // A row the read brought is judged on every class it carries, as a row of
+  // the places pool is: below that pool's floor, the by-id answer is the only
+  // thing that knows a chapel tomb at 12 sitelinks is a chapel — and a chapel
+  // is a place, never St Peter's treasure, however it was typed.
+  const classesOf = new Map(byFame.classesOf);
+  for (const [qid, classes] of side.classes) {
+    classesOf.set(qid, unique([...(classesOf.get(qid) ?? []), ...classes.map((c) => c.qid)]));
+  }
+  const ours = ourWorks(works, museumClasses, trees, classesOf, 'with the venue-side read');
   const current: Record<string, string[]> = {};
   for (const qid of works.pool.keys()) {
     current[qid] = (ours[qid] ?? []).filter((venue) => admitted.has(venue));
@@ -449,12 +389,36 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
     + `${items.filter((i) => i.door !== 'place').length} for what they hold; `
     + `${filtered.size} refused, ${treasures} treasures to write`,
   );
+  const nameOf = (qid: string) =>
+    byFame.places.get(qid)?.entity.label ?? works.graph.details.get(qid)?.label ?? qid;
+  // What the read kept by class and this door's own rules then wrote nowhere:
+  // a museum's, a place itself, nobody can see it, or placed at no admitted
+  // place. Named with the rule that turned it away, beside what the vocabulary
+  // refused — and never a row this run admits, the rule `add` keeps above.
+  const elsewhere = keptElsewhere(side, current).map((refusal) => ({
+    externalId: refusal.qid,
+    name: refusal.label,
+    reason: holdingReason(refusal, whyNotOurs(refusal.qid, works, ours, trees, classesOf), nameOf),
+  }));
+  const refusedContents = [
+    ...side.reported.map((refusal) => ({
+      externalId: refusal.qid,
+      name: refusal.label,
+      reason: refusedHoldingReason(refusal, WORSHIP_NOUN, nameOf),
+    })),
+    ...elsewhere,
+  ].filter((entry) => !admitted.has(entry.externalId));
+
   return {
     items,
     // Distinct: a row both pools named — a tower that is a place and a
-    // treasure, a tomb that is both — is one entity fetched, not two.
-    fetched: new Set([...byFame.classesOf.keys(), ...works.pool.keys()]).size,
+    // treasure, a tomb that is both — is one entity fetched, not two. What the
+    // admitted places hold besides was fetched too, kept or refused.
+    fetched: new Set([
+      ...byFame.classesOf.keys(), ...works.pool.keys(), ...side.refused.map((r) => r.qid),
+    ]).size,
     filtered: [...filtered.values()],
+    refusedContents,
     diff: diffPlacements(deps.previousPlacements, current),
   };
 }
