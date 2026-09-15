@@ -60,6 +60,27 @@ export interface KeepWkt {
   boundary: string[];
 }
 
+/**
+ * The tags that name a dig or ruins, for the enumeration (#895): which
+ * `historic` values, and which keys by their presence. The kind decides the
+ * values (`archaeology/siteClasses.ts`), as it does for `KeepWkt`.
+ */
+export interface DigTags {
+  historic: string[];
+  keys: string[];
+}
+
+/**
+ * What the enumeration answers: every object tagged as a dig or as ruins,
+ * filed under the item its `wikidata` tag names — or, where it carries only a
+ * `wikipedia` tag, under that article as `lang:Title`, for the caller to
+ * resolve. An object carrying both is filed under the item alone.
+ */
+export interface OsmDigs {
+  byItem: Map<string, OsmObject[]>;
+  byArticle: Map<string, OsmObject[]>;
+}
+
 /** A tag value may be spliced into a query only if it is one. */
 const TAG_VALUE = /^[a-z0-9_:-]+$/;
 
@@ -165,6 +186,41 @@ export function foldOsmRows(rows: SparqlBinding[], into: Map<string, OsmObject[]
     const wkt = row.wkt?.value;
     if (wkt && object.wkt === null) object.wkt = wkt;
   }
+}
+
+/** One object of an answer, found under its key or started there. */
+function objectUnder(into: Map<string, OsmObject[]>, key: string, named: { ref: string; kind: OsmKind }): OsmObject {
+  const objects = into.get(key) ?? [];
+  if (!into.has(key)) into.set(key, objects);
+  let object = objects.find((o) => o.ref === named.ref);
+  if (!object) {
+    object = { ref: named.ref, kind: named.kind, tags: {}, geometryType: null, wkt: null };
+    objects.push(object);
+  }
+  return object;
+}
+
+/**
+ * The enumeration's rows folded by what each object carries: the item under
+ * `?q`, else the article under `?wp` (#895). A row naming neither is dropped —
+ * there is nothing to file it by. Rows about one object merge as
+ * `foldOsmRows` merges them, first value of each key wins; the geometry is
+ * never asked for here, so none is read.
+ */
+export function foldOsmDigRows(rows: SparqlBinding[]): OsmDigs {
+  const digs: OsmDigs = { byItem: new Map(), byArticle: new Map() };
+  for (const row of rows) {
+    const named = osmRefOf(row.s?.value ?? '');
+    if (!named) continue;
+    const qid = row.q?.value;
+    const article = row.wp?.value;
+    if (!qid && !article) continue;
+    const object = qid
+      ? objectUnder(digs.byItem, qid, named)
+      : objectUnder(digs.byArticle, article as string, named);
+    mergeTags(row, object.tags);
+  }
+  return digs;
 }
 
 /**
