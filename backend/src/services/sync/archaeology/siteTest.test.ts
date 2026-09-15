@@ -621,3 +621,286 @@ describe('what the final pass of #581 changed', () => {
     expect(siteSignal([object('way/1', { historic: 'roman_road' })]).verdict).toBe('none');
   });
 });
+
+/**
+ * The second entrance (#895): a candidate OpenStreetMap named and the class
+ * tree did not — no `P31` under `archaeological site` at all. Every row below
+ * is real, read on 2026-09-15 off `data/cache/895-site-doors/` (the OSM-first
+ * pool, `osm-first-facts.json`, `osm-first-objects.json`) and confirmed with
+ * `wbgetentities` the same day.
+ */
+describe('a candidate only OpenStreetMap named', () => {
+  // The trees the vetoes read, floored by their roots inside
+  // `buildArchaeologyTrees`: `quadrangular castle` (Q92107) and `castle ruin`
+  // (Q17715832) sit under `castle` (Q23413) under `fortification` (Q57821);
+  // `Catholic cathedral` (Q56242215) and `temple` (Q44539) under `structure of
+  // worship` (Q1370598); `archaeological find` (Q10855061) under
+  // `archaeological artefact` (Q220659). Checked 2026-09-15.
+  const OSM_TREES = buildArchaeologyTrees({
+    museum: [], park: [], naturalHistory: [], artefact: ['Q10855061'],
+    site: ['Q839954'],
+    settlement: ['Q486972', 'Q515', 'Q1549591'],
+    shipwreck: [SHIPWRECK_ROOT],
+    fortification: ['Q57821', 'Q23413', 'Q92107', 'Q17715832'],
+    palace: ['Q16560'],
+    worship: ['Q1370598', 'Q56242215', 'Q44539'],
+  });
+  const osmVerdict = (f: SiteFacts, objects: OsmObject[]) =>
+    siteVerdict({ facts: f, objects, trees: OSM_TREES, admitted: new Set<string>(), line: LINE });
+
+  it('admits Ajanta on the map\'s word alone, and says so on the card', () => {
+    // Q184427, 83 sitelinks, classes grotto / artificial cave / temple — a
+    // place of worship to Wikidata, a dig to nobody — and way/115567314
+    // tagged historic=archaeological_site.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q184427', classes: ['Q1131329', 'Q88778578', 'Q44539'], sitelinks: 83, worldHeritage: true }),
+      [object('way/115567314', { historic: 'archaeological_site', tourism: 'attraction', name: 'Ajanta Caves' }, POLYGON)],
+    );
+    expect(verdict.pass).toBe(true);
+    if (!verdict.pass) return;
+    expect(verdict.osm.tag).toBe('historic=archaeological_site');
+    expect(verdict.note).toBe(
+      'no class of a site on Wikidata; OpenStreetMap maps an archaeological site here '
+      + '(historic=archaeological_site on way/115567314)',
+    );
+  });
+
+  it('admits Nemrut through the object that carried its article, not its item', () => {
+    // Q207917, 61 sitelinks, class mountain. The objects carrying the item are
+    // a peak node and a heritage=1 boundary; the ruin object carries only
+    // wikipedia=tr:Nemrut Dağı, and the pool resolved it. Merged, the ruin is
+    // what decides.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q207917', classes: ['Q8502'], sitelinks: 61, worldHeritage: true }),
+      [
+        object('node/75969654', { name: 'Nemrut Dağı' }),
+        object('way/974945296', { heritage: '1', boundary: 'protected_area', name: 'Nemrut Dağı' }, POLYGON),
+        object('way/1069114387', { historic: 'archaeological_site', name: 'Nemrut Dağı Tümülüsü' }),
+      ],
+    );
+    expect(verdict.pass).toBe(true);
+    if (!verdict.pass) return;
+    expect(verdict.osm.object).toBe('way/1069114387');
+  });
+
+  it('refuses Potenza: a town whose ruin the mapper linked to the town', () => {
+    // Q3543, 106 sitelinks, classes city / comune of Italy, a population
+    // statement, and node/1687849903 tagged historic=archaeological_site.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q3543', classes: ['Q515', 'Q747074'], sitelinks: 106, statesPopulation: true }),
+      [object('node/1687849903', { historic: 'archaeological_site', name: 'Potentia' })],
+    );
+    expect(verdict.pass).toBe(false);
+    if (verdict.pass || 'out' in verdict) throw new Error('Potenza must be refused by name');
+    expect(verdict.group).toBe('living');
+    expect(verdict.reason).toBe(
+      'a living place — Wikidata counts its people and gives it no class of a site; '
+      + 'only OpenStreetMap maps an archaeological site here (historic=archaeological_site on node/1687849903)',
+    );
+  });
+
+  it('names the ruins tag when that is what the map said of a living place', () => {
+    // The card says what the mapper wrote: a town under `historic=ruins` was
+    // not called a dig by anyone.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q3543', classes: ['Q515'], sitelinks: 106, statesPopulation: true }),
+      [object('way/1', { historic: 'ruins', name: 'Potentia' })],
+    );
+    if (verdict.pass || 'out' in verdict) throw new Error('a counted town must be refused by name');
+    expect(verdict.group).toBe('living');
+    expect(verdict.reason).toBe(
+      'a living place — Wikidata counts its people and gives it no class of a site; '
+      + 'only OpenStreetMap maps ruins here (historic=ruins on way/1)',
+    );
+  });
+
+  it('admits Jerash on English Wikipedia\'s second vote', () => {
+    // Q31565, 54 sitelinks, class city, a population statement — the same
+    // shape as Potenza — but its article sits under `Archaeological sites in
+    // Jordan`, and the mapped object says archaeological_site=city.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q31565', classes: ['Q515'], sitelinks: 54, statesPopulation: true, namedByCategory: true }),
+      [
+        object('way/28969503', { historic: 'archaeological_site', archaeological_site: 'city', name: 'Jerash' }, POLYGON),
+        object('node/250367730', { place: 'city', name: 'Jerash' }),
+      ],
+    );
+    expect(verdict.pass).toBe(true);
+    if (!verdict.pass) return;
+    expect(verdict.note).toContain('English Wikipedia files it under its archaeological sites');
+  });
+
+  it('admits Delos: a population statement is outweighed by the listing itself', () => {
+    // Q173148, 80 sitelinks, classes island / World Heritage Site / human
+    // settlement, a population statement, World Heritage 530, and
+    // way/125611041 tagged historic=archaeological_site.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q173148', classes: ['Q23442', 'Q9259', 'Q486972'], sitelinks: 80, statesPopulation: true, worldHeritage: true }),
+      [object('way/125611041', { historic: 'archaeological_site', name: 'Δήλος' }, POLYGON)],
+    );
+    expect(verdict.pass).toBe(true);
+  });
+
+  it('refuses the Hanging Gardens: nothing left to stand in', () => {
+    // Q41931, 99 sitelinks, classes hanging garden / Wonder of the Ancient
+    // World / destroyed building or structure, and a historic=ruins node.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q41931', classes: ['Q2332212', 'Q66108498', 'Q19860854'], sitelinks: 99 }),
+      [object('node/4623538420', { historic: 'ruins', name: 'Hanging Gardens of Babylon' })],
+    );
+    expect(verdict.pass).toBe(false);
+    if (verdict.pass || 'out' in verdict) throw new Error('the Hanging Gardens must be refused by name');
+    expect(verdict.group).toBe('class-or-name');
+    expect(verdict.reason).toBe('Wikidata files it as a destroyed building or structure, and gives it no class of a site');
+  });
+
+  it('refuses the Venus of Willendorf: a find is not a site', () => {
+    // Q131397, 67 sitelinks, classes sculpture / archaeological find / Venus
+    // figurine, with the find spot as its coordinate and a
+    // historic=archaeological_site node on it.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q131397', classes: ['Q860861', 'Q10855061', 'Q248726'], sitelinks: 67 }),
+      [object('node/2547106017', { historic: 'archaeological_site', name: 'Venus von Willendorf' })],
+    );
+    expect(verdict.pass).toBe(false);
+    if (verdict.pass || 'out' in verdict) throw new Error('the Venus must be refused by name');
+    expect(verdict.reason).toBe('a find, not a place: Wikidata files it under archaeological artefacts');
+  });
+
+  it('refuses Devín Castle: ruins=yes on a castle is a condition, not a dig', () => {
+    // Q830976, 34 sitelinks, classes castle / castle ruin, and a ruins=yes
+    // way. `historic=archaeological_site` would have carried it in.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q830976', classes: ['Q23413', 'Q17715832'], sitelinks: 34 }),
+      [object('way/23745380', { historic: 'castle', ruins: 'yes', name: 'Hrad Devín' }, POLYGON)],
+    );
+    expect(verdict.pass).toBe(false);
+    if (verdict.pass || 'out' in verdict) throw new Error('Devín must be refused by name');
+    expect(verdict.reason).toBe(
+      'Wikidata files it as a fortification, and OpenStreetMap says only that it is in ruins (ruins=yes on way/23745380)',
+    );
+  });
+
+  it('admits Sigiriya: ruins on a settlement nobody is counted at', () => {
+    // Q272153, 62 sitelinks, class human settlement, no population statement,
+    // World Heritage 202, and a way tagged historic=ruins + ruins=yes.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q272153', classes: ['Q486972'], sitelinks: 62, worldHeritage: true }),
+      [object('way/196493741', { historic: 'ruins', ruins: 'yes', name: 'Sigiriya' }, POLYGON)],
+    );
+    expect(verdict.pass).toBe(true);
+  });
+
+  it('says nothing about a row below the line', () => {
+    const verdict = osmVerdict(
+      facts({ qid: 'Q3543', classes: ['Q515', 'Q747074'], sitelinks: 12, statesPopulation: true }),
+      [object('node/1687849903', { historic: 'archaeological_site' })],
+    );
+    expect(verdict).toEqual({ pass: false, out: true });
+  });
+});
+
+/**
+ * What dry run 136 (2026-09-15, through Overpass) would have created beside
+ * the digs, and the three vetoes it taught. Every row real, `wbgetentities`
+ * the same day.
+ */
+describe('a candidate only OpenStreetMap named, after dry run 136', () => {
+  const OSM_TREES = buildArchaeologyTrees({
+    museum: [], park: [], naturalHistory: [], artefact: [],
+    site: ['Q839954'], settlement: ['Q486972'], shipwreck: [SHIPWRECK_ROOT],
+    fortification: ['Q57821', 'Q23413'], palace: ['Q16560'], worship: ['Q1370598'],
+  });
+  const osmVerdict = (f: SiteFacts, objects: OsmObject[]) =>
+    siteVerdict({ facts: f, objects, trees: OSM_TREES, admitted: new Set<string>(), line: LINE });
+
+  it('refuses Azovstal: a business whose plant lies in ruins is not a place to stand in', () => {
+    // Q4058442, 37 sitelinks, class business, ruins=yes on the works.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q4058442', classes: ['Q4830453'], sitelinks: 37 }),
+      [object('way/24868143', { ruins: 'yes', name: 'Азовсталь' }, POLYGON)],
+    );
+    expect(verdict.pass).toBe(false);
+    if (verdict.pass || 'out' in verdict) throw new Error('Azovstal must be refused by name');
+    expect(verdict.reason).toBe('not a place to stand in: Wikidata files it as a business');
+  });
+
+  it('refuses the National Library of Serbia: a living institution whose old building is the ruin', () => {
+    // Q945496, 35 sitelinks, classes national library, academic publisher,
+    // cultural institution (`wbgetentities` 2026-09-15); the bombed 1941
+    // building on Kosančićev Venac is tagged historic=ruins. The publisher
+    // class is left out here so that the library class alone is what refuses
+    // it: with both on the row, the sentence quotes whichever the item lists
+    // first, and the verdict is the same.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q945496', classes: ['Q22806', 'Q3152824'], sitelinks: 35 }),
+      [object('way/1', { historic: 'ruins', name: 'Народна библиотека Србије' }, POLYGON)],
+    );
+    expect(verdict.pass).toBe(false);
+    if (verdict.pass || 'out' in verdict) throw new Error('the library must be refused by name');
+    expect(verdict.reason).toBe('not a place to stand in: Wikidata files it as a national library');
+  });
+
+  it('refuses the First Council of Nicaea: an event with a coordinate is not a dig', () => {
+    // Q133331, 85 sitelinks, class ecumenical council, and a node tagged
+    // historic=archaeological_site where the basilica stood.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q133331', classes: ['Q51645'], sitelinks: 85 }),
+      [object('node/4270000000', { historic: 'archaeological_site', name: 'Council of Nicaea' })],
+    );
+    expect(verdict.pass).toBe(false);
+    if (verdict.pass || 'out' in verdict) throw new Error('the council must be refused by name');
+    expect(verdict.reason).toBe('not a place to stand in: Wikidata files it as an ecumenical council');
+  });
+
+  it('refuses the Château de Blois: a château in ruins is a monument, and no tree holds it', () => {
+    // Q4055, class château (Q751876) — under manor house, not under
+    // fortification or palace — with ruins=* on one of its objects.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q4055', classes: ['Q751876'], sitelinks: 41 }),
+      [object('way/4650000000', { historic: 'castle', ruins: 'yes', name: 'Château de Blois' }, POLYGON)],
+    );
+    expect(verdict.pass).toBe(false);
+    if (verdict.pass || 'out' in verdict) throw new Error('Blois must be refused by name');
+    expect(verdict.reason).toBe(
+      'Wikidata files it as a château, and OpenStreetMap says only that it is in ruins (ruins=yes on way/4650000000)',
+    );
+  });
+});
+
+describe('a ruins key whose value says no', () => {
+  const OSM_TREES = buildArchaeologyTrees({
+    museum: [], park: [], naturalHistory: [], artefact: [],
+    site: ['Q839954'], settlement: ['Q486972'], shipwreck: [SHIPWRECK_ROOT],
+  });
+
+  it('is not a ruin to the signal', () => {
+    // The enumerations leave `ruins=no` out; the per-item read never did, and
+    // both readers see the same objects.
+    expect(siteSignal([object('way/1', { ruins: 'no', name: 'Restored' })]).verdict).toBe('none');
+    expect(siteSignal([object('way/2', { historic: 'ruins', ruins: 'no' })]).verdict).toBe('ruin');
+  });
+
+  it('never names a row only the map named, whatever order the objects come in', () => {
+    // A candidate that entered on a `ruins=yes` way, whose item a second
+    // object carries with `ruins=no`: the per-item read's object comes first
+    // in the merge, and the card must not read "maps ruins here (ruins=no …)".
+    const verdict = siteVerdict({
+      facts: facts({ qid: 'Q272153', classes: ['Q486972'], sitelinks: 62, worldHeritage: true }),
+      objects: [
+        object('node/1', { ruins: 'no', name: 'Sigiriya village' }),
+        object('way/196493741', { ruins: 'yes', name: 'Sigiriya' }, POLYGON),
+      ],
+      trees: OSM_TREES, admitted: new Set<string>(), line: LINE,
+    });
+    expect(verdict.pass).toBe(true);
+    if (!verdict.pass) return;
+    expect(verdict.note).toContain('(ruins=yes on way/196493741)');
+    // And with only the `no` object the map names nothing: out, not a card.
+    expect(siteVerdict({
+      facts: facts({ qid: 'Q272153', classes: ['Q486972'], sitelinks: 62 }),
+      objects: [object('node/1', { ruins: 'no' })],
+      trees: OSM_TREES, admitted: new Set<string>(), line: LINE,
+    })).toEqual({ pass: false, out: true });
+  });
+});

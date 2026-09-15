@@ -61,8 +61,8 @@ describe('overpassBatchQuery', () => {
     expect(query).toContain(
       '(\n'
       + '  nwr.asked["historic"~"^(archaeological_site|ruins)$"];\n'
-      + '  nwr.asked["ruins"];\n'
-      + '  nwr.asked["archaeological_site"];\n'
+      + '  nwr.asked["ruins"]["ruins"!="no"];\n'
+      + '  nwr.asked["archaeological_site"]["archaeological_site"!="no"];\n'
       + '  nwr.asked["man_made"~"^(tell)$"];\n'
       + '  nwr.asked["boundary"~"^(protected_area|national_park)$"];\n'
       + ')->.drawn;',
