@@ -208,6 +208,7 @@ async function fetchMuseumItems(
   items: CollectedMuseum[];
   fetchedCount: number;
   filtered: FilteredEntity[];
+  refusedContents: FilteredEntity[];
   withdrawalSkippedReason: string | null;
 }> {
   const previousPlacements = await readPreviousPlacements(MUSEUM_SOURCE_ID);
@@ -215,7 +216,7 @@ async function fetchMuseumItems(
   storedCredits = await readStoredCredits(MUSEUM_SOURCE_ID);
   storedTreasureCredits = await readStoredTreasureCredits();
 
-  const { items, fetched, filtered } = await collectTier1Museums({
+  const { items, fetched, filtered, refusedContents } = await collectTier1Museums({
     // The reporting door for the long half: everything in `collectTier1Museums`
     // runs before the first museum is written, which is where a wait is
     // invisible — and where an answer is worth keeping, since a collection that
@@ -285,7 +286,7 @@ async function fetchMuseumItems(
     pause: () => delay(SPARQL_DELAY_MS),
   });
 
-  return { items, fetchedCount: fetched, filtered, withdrawalSkippedReason };
+  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason };
 }
 
 // =============================================================================

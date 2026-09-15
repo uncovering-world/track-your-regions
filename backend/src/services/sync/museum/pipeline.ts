@@ -13,7 +13,7 @@
  * admitted venue is worth a visit, and the wiring that composes the two halves.
  */
 
-import { selectTier1, ICONIC_SITELINKS, type Tier1Result } from './tier1.js';
+import { selectTier1, ICONIC_SITELINKS, ICONIC_RELEASE, type Tier1Result } from './tier1.js';
 import { diffPlacements, type PlacementDiff } from './placementDiff.js';
 import { artVerdict, isSculptural, EDITORIAL_OUT } from './artTest.js';
 import { museumRule, type VenueRule } from './venueTest.js';
@@ -30,7 +30,9 @@ import {
   MUSEUM_PINNED_EDITION_CLASSES,
   EDITION_ROOT,
   type UnseenWork,
+  type WorksCollectorOptions,
 } from './worksCollector.js';
+import { holdingReason, keptElsewhere, readVenueSide, refusedHoldingReason } from './venueSide.js';
 import { fetchMuseumClasses, type PoolWork, type RawStatement } from './queries.js';
 import type { ClosureOptions } from '../classClosure.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
@@ -60,6 +62,11 @@ export interface PipelineResult {
   items: CollectedMuseum[];
   fetched: number;
   filtered: FilteredEntity[];
+  /**
+   * The objects the admitted museums hold that the pool's vocabulary refused,
+   * each with its classes (#890) — reported, never marked (`FetchResult`).
+   */
+  refusedContents: FilteredEntity[];
   diff: PlacementDiff;
 }
 
@@ -337,35 +344,52 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
   }
 
   const rule = museumRule(museumClasses);
-  const { pool, statements, graph, editionClasses, resolver, placed, unseen, folds, afterFolds } =
-    await collectWorks(run, {
-      broadRoots: MUSEUM_BROAD_ROOTS,
-      wholeRoots: MUSEUM_WHOLE_ROOTS,
-      pinned: MUSEUM_PINNED_CLASSES,
-      pinnedEditionClasses: MUSEUM_PINNED_EDITION_CLASSES,
-      editionRoot: EDITION_ROOT,
-      noun: MUSEUM_NOUN,
-      rule,
-      closure: deps.closure,
-      logPrefix: LOG_PREFIX,
-    });
+  const options: WorksCollectorOptions = {
+    broadRoots: MUSEUM_BROAD_ROOTS,
+    wholeRoots: MUSEUM_WHOLE_ROOTS,
+    pinned: MUSEUM_PINNED_CLASSES,
+    pinnedEditionClasses: MUSEUM_PINNED_EDITION_CLASSES,
+    editionRoot: EDITION_ROOT,
+    noun: MUSEUM_NOUN,
+    rule,
+    closure: deps.closure,
+    logPrefix: LOG_PREFIX,
+  };
+  const collected = await collectWorks(run, options);
 
   run.phase('Asking whether each venue is an art museum...');
-  const { placements: afterArtTest, rejected: notArt } = applyArtTest(pool, afterFolds, graph);
+  const { placements: afterArtTest, rejected: notArt } =
+    applyArtTest(collected.pool, collected.afterFolds, collected.graph);
 
-  const tier = selectTier1([...pool.values()].map((work) => ({
+  const tier = selectTier1([...collected.pool.values()].map((work) => ({
     qid: work.qid,
     sitelinks: work.sitelinks,
     venues: afterArtTest[work.qid] ?? [],
-    multipleMedium: work.typeQid !== null && editionClasses.has(work.typeQid),
+    multipleMedium: work.typeQid !== null && collected.editionClasses.has(work.typeQid),
   })));
+  const admitted = new Set(tier.museums.keys());
+
+  // What the admitted museums hold that no class question asked for (#890),
+  // read once admission is settled and judged by the pool's own vocabulary.
+  // The tier is not asked again: a museum is admitted for a work the pool
+  // knows, and an object found from the venue's side is listed on its card.
+  const side = await readVenueSide(run, collected, options, {
+    admitted,
+    // Named where a work of this kind would keep its badge: what the museums
+    // hold below that is the long tail of every collection on Wikidata.
+    reportFloor: ICONIC_RELEASE,
+  });
+  const { pool, statements, graph, editionClasses, resolver, placed, unseen, folds, afterFolds } =
+    side.collection;
 
   // What the run will actually write: a work is only stored as a treasure of a museum this run
-  // admits, so the diff has to be measured against the same thing the database will hold.
-  const admitted = new Set(tier.museums.keys());
+  // admits, so the diff has to be measured against the same thing the database will hold. An
+  // object read from the venue's side was never put to the art test — its placements are the
+  // folded ones — and the same filter keeps it to the museums the test admitted.
   const current: Record<string, string[]> = {};
   for (const qid of pool.keys()) {
-    current[qid] = (afterArtTest[qid] ?? []).filter((venue) => admitted.has(venue));
+    const venues = afterArtTest[qid] ?? afterFolds[qid] ?? [];
+    current[qid] = venues.filter((venue) => admitted.has(venue));
   }
 
   const items = buildItems(tier, pool, current, graph);
@@ -386,10 +410,41 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
   console.log(
     `${LOG_PREFIX} Admitted ${items.length} museums; ${Object.keys(folds).length} folds, `
     + `${tier.homeless.length} iconic works with no venue, ${tier.shared.length} held too widely, `
-    + `${Object.keys(unseen).length} works nobody can see`,
+    + `${Object.keys(unseen).length} works nobody can see, `
+    + `${side.kept.size} works read from the venue's side`,
   );
   logUnseen(unseen, nameOf);
   logDiff(diff, nameOf);
 
-  return { items, fetched: pool.size, filtered: [...filtered.values()], diff };
+  // What the read kept and the run still writes nowhere: a fresco whose own
+  // statements resolve to a church, or to nothing. Reported beside what the
+  // vocabulary refused, with the reason the placement gave.
+  const elsewhere = keptElsewhere(side, current).map((refusal) => ({
+    externalId: refusal.qid,
+    name: refusal.label,
+    reason: holdingReason(refusal, unseen[refusal.qid]
+      ? `nobody can see it: ${unseen[refusal.qid].reason}`
+      : 'its own statements place it at no admitted museum', nameOf),
+  }));
+  // A row this run admits is never also a refusal, whichever question refused
+  // it — the rule every kind's `filtered` already keeps, kept here too for an
+  // object that is also a museum the run writes.
+  const refusedContents = [
+    ...side.reported.map((refusal) => ({
+      externalId: refusal.qid,
+      name: refusal.label,
+      reason: refusedHoldingReason(refusal, MUSEUM_NOUN, nameOf),
+    })),
+    ...elsewhere,
+  ].filter((entry) => !admitted.has(entry.externalId));
+
+  return {
+    items,
+    // Every object the run asked the source about: the pool, and what the
+    // venues hold that the pool never asked for, kept or refused.
+    fetched: pool.size + side.refused.length,
+    filtered: [...filtered.values()],
+    refusedContents,
+    diff,
+  };
 }
