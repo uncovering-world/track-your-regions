@@ -17,6 +17,7 @@ import {
   ARCHAEOLOGICAL_PARK,
   ARTEFACT_ROOT,
   NATURAL_HISTORY_ROOT,
+  NOT_A_FIND_WALKED,
   SETTLEMENT_ROOT,
   SHIPWRECK_ROOT,
   SITE_ROOT,
@@ -123,20 +124,34 @@ describe('fetchArchaeologyTrees', () => {
     const { run, phases, sent, stepsBefore } = runnerOver(door);
     const trees = await fetchArchaeologyTrees(run);
 
+    // The natural-history veto is walked root by root too (#890): six small
+    // trees between the artefacts and the site door's three — never
+    // `skeleton` or `individual animal`, which Wikidata files a mummy under.
     expect(sent.map((query) => askedFor(query)[0])).toEqual([
       'Q3329412', 'Q3330834', ARCHAEOLOGICAL_PARK, NATURAL_HISTORY_ROOT, ARTEFACT_ROOT,
+      ...Object.keys(NOT_A_FIND_WALKED),
       SITE_ROOT, SETTLEMENT_ROOT, SHIPWRECK_ROOT,
     ]);
-    expect(stepsBefore).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    // The six by name, so a root that came back — or one that went missing —
+    // fails here rather than passing on the production list's own word.
+    expect([...Object.keys(NOT_A_FIND_WALKED)].sort()).toEqual(
+      ['Q40614', 'Q7946', 'Q5283', 'Q60186', 'Q544041', 'Q83437'].sort(),
+    );
+    for (const flat of ['Q7881', 'Q26401003']) {
+      expect(sent.some((query) => askedFor(query)[0] === flat)).toBe(false);
+    }
+    expect(stepsBefore).toEqual(Array.from({ length: 14 }, (_, i) => i + 1));
     expect(phases).toEqual([
       'Reading what an archaeology museum is...',
       'Reading what an archaeological park is...',
       'Reading what a natural history museum is...',
       'Reading what an archaeological artefact is...',
+      'Reading what natural history is...',
       'Reading what an archaeological site is...',
       'Reading what a human settlement is...',
       'Reading what a shipwreck is...',
     ]);
+    expect(trees.notAFind.has('Q60186')).toBe(true);
 
     expect([...trees.museum].sort()).toEqual(['Q3329412', 'Q3330834']);
     // Not the class alone: a row typed only `Fudoki no oka` is a park too.

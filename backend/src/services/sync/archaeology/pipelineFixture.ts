@@ -144,9 +144,14 @@ interface FixtureMuseum {
 interface FixtureFind {
   label: string;
   sitelinks: number;
-  /** The narrow class a `VALUES ?cls` batch matches it under, with the label that batch returns. */
-  cls: string;
-  clsLabel: string;
+  /**
+   * The narrow class a `VALUES ?cls` batch matches it under, with the label
+   * that batch returns. Absent — with `classes: []` — for an item that carries
+   * no class at all, which no pool question can name and only a venue's own
+   * side brings (#890).
+   */
+  cls?: string;
+  clsLabel?: string;
   /** The broad root whose fame bands answer with it. Those rows bind no class. */
   broadRoot?: string;
   year?: number;
@@ -488,6 +493,14 @@ const WORLD: World = {
       classes: [MASS_MURDER],
       statements: [{ property: 'P276', venue: 'Q157298' }, { property: 'P276', venue: 'Q900810' }],
     },
+    // And what the Pergamon's `P276` names that Wikidata does not type at
+    // all — the shape of "Gupta art" in the live run (#890, run 127): no `P31`,
+    // a date the finds rule would have taken, and nothing the rule can call a
+    // find. Refused, and reported as carrying no class.
+    Q900814: {
+      label: 'Untyped Object of the Pergamon', sitelinks: 20, classes: [], year: 400,
+      statements: [{ property: 'P276', venue: 'Q157298' }],
+    },
   },
   sites: {
     // Wikidata types Troy a settlement four times over and never a dig; OSM
@@ -648,9 +661,9 @@ function findRow(qid: string, find: FixtureFind, withClass: boolean): SparqlBind
   const row: SparqlBinding = {
     w: uri(qid), wLabel: { value: find.label }, sl: { value: String(find.sitelinks) },
   };
-  if (withClass) {
+  if (withClass && find.cls !== undefined) {
     row.cls = uri(find.cls);
-    row.clsLabel = { value: find.clsLabel };
+    row.clsLabel = { value: find.clsLabel ?? find.cls };
   }
   if (find.year !== undefined) row.year = { value: String(find.year) };
   return row;
@@ -660,7 +673,8 @@ function findRow(qid: string, find: FixtureFind, withClass: boolean): SparqlBind
 function findPoolRows(w: World, query: string, asked: string[]): SparqlBinding[] {
   const finds = Object.entries(w.finds);
   if (query.includes('VALUES ?cls')) {
-    return finds.filter(([, f]) => asked.includes(f.cls) && f.sitelinks >= POOL_MIN_SITELINKS)
+    return finds
+      .filter(([, f]) => f.cls !== undefined && asked.includes(f.cls) && f.sitelinks >= POOL_MIN_SITELINKS)
       .map(([qid, f]) => findRow(qid, f, true));
   }
   const root = /\?w wdt:P31 wd:(Q\d+)/.exec(query);
@@ -710,14 +724,20 @@ function holdingRows(w: World, venues: string[], floor: number): SparqlBinding[]
   return rows;
 }
 
-/** What each find of a batch is, by id: the pool's columns, one row per class it carries. */
+/**
+ * What each find of a batch is, by id: the pool's columns, one row per class
+ * it carries — and one row binding no class for an item that carries none,
+ * which is what the question's `OPTIONAL { ?w wdt:P31 ?cls }` answers with.
+ */
 function findByIdRows(w: World, asked: string[]): SparqlBinding[] {
   return asked.filter((qid) => w.finds[qid]).flatMap((qid) => {
     const find = w.finds[qid];
-    return (find.classes ?? [find.cls]).map((cls) => ({
+    const classes = find.classes ?? (find.cls === undefined ? [] : [find.cls]);
+    if (!classes.length) return [findRow(qid, find, false)];
+    return classes.map((cls) => ({
       ...findRow(qid, find, false),
       cls: uri(cls),
-      clsLabel: { value: cls === find.cls ? find.clsLabel : find.classLabels?.[cls] ?? cls },
+      clsLabel: { value: (cls === find.cls ? find.clsLabel : undefined) ?? find.classLabels?.[cls] ?? cls },
     }));
   });
 }

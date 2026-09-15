@@ -51,4 +51,38 @@ describe('findReason', () => {
   it('a find class on the pool row alone is enough when the facts did not arrive', () => {
     expect(findReason(work({ qid: 'Q5', type: 'hoard', typeQid: 'Q164099' }), undefined, trees)).toBe('hoard');
   });
+  it('the Bendegó meteorite: an iron meteorite with a find spot is natural history by the walked tree (#890)', () => {
+    // Q4035016, typed `iron meteorite` (Q827989, a subclass of `meteorite`,
+    // checked 2026-09-15) and dug up in Bahia: the flat list never named the
+    // subclass, and live run 127 wrote it as a find of the Museu Nacional.
+    const walked = buildArchaeologyTrees({
+      museum: [], park: [], naturalHistory: [], artefact: [], notAFind: ['Q60186', 'Q827989'],
+    });
+    const meteorite = work({ qid: 'Q4035016', label: 'Bendegó meteorite', type: 'iron meteorite', typeQid: 'Q827989' });
+    const facts = { classes: ['Q827989'], discoveryPlace: { qid: 'Q40430', label: 'Bahia' } };
+    expect(findReason(meteorite, facts, walked)).toBeNull();
+    // The roots floor the tree: a bare `meteorite` is refused even where the
+    // walk answered with nothing.
+    expect(findReason(work({ type: 'meteorite', typeQid: 'Q60186' }), { classes: ['Q60186'], discoveryPlace: facts.discoveryPlace }, trees)).toBeNull();
+  });
+  it('the Gebelein mummies: a mummy is a find, though Wikidata files it under skeleton', () => {
+    // Q746243, typed `mummy` (Q43616) and nothing else, no discovery place on
+    // the item (checked 2026-09-15): the artefact tree is its road in. `mummy`
+    // is under both `skeleton` and `individual animal` on Wikidata's P279*,
+    // and live run 128, which walked all eight veto roots, withdrew it from
+    // the British Museum — so those two are matched flat and never walked.
+    const walked = buildArchaeologyTrees({
+      museum: [], park: [], naturalHistory: [], artefact: ['Q220659', 'Q43616'],
+      notAFind: ['Q40614', 'Q7946', 'Q5283', 'Q60186', 'Q827989', 'Q544041', 'Q83437'],
+    });
+    expect(findReason(work({ qid: 'Q746243', label: 'Gebelein predynastic mummies', type: 'mummy', typeQid: 'Q43616' }),
+      { classes: ['Q43616'], discoveryPlace: null }, walked)).toBe('archaeological artefact');
+  });
+  it('an item with no class at all is not a find, whatever its date or its collection (#890)', () => {
+    // Q283562, "Gupta art": an art movement with an inception of 450, a
+    // collection statement and no `P31` — which the venue-side read handed to
+    // this rule, and the date road kept.
+    expect(findReason(work({ qid: 'Q283562', label: 'Gupta art', year: 450, type: 'object', typeQid: null }),
+      { classes: [], discoveryPlace: null }, trees)).toBeNull();
+  });
 });

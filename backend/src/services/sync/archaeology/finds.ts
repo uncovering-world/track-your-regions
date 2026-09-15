@@ -17,10 +17,12 @@
  *    ancient sculpture and mosaics the art museums' own roots already hold and
  *    that carry no discovery place of their own.
  *
- * Against all four stands one veto: natural history (`NOT_A_FIND`). The Hope
+ * Against all four stands one veto: natural history (`NOT_A_FIND`, walked as
+ * trees since #890 — the Bendegó meteorite is an `iron meteorite`). The Hope
  * Diamond and Sue the tyrannosaur both come in through a discovery place and
  * neither was dug up by an archaeologist, so the veto is read first and
- * refuses the row whatever else it carries.
+ * refuses the row whatever else it carries. And before any road, an item with
+ * no class at all is nothing this rule can call a find.
  *
  * The pool itself is the shared works collector's (`museum/worksCollector.ts`),
  * given this kind's roots and this rule as its `keep`: the art pool is
@@ -35,7 +37,6 @@ import {
   ANCIENT_ART_WHOLE,
   ANCIENT_CUTOFF_YEAR,
   FIND_CLASSES,
-  NOT_A_FIND,
   type ArchaeologyTrees,
 } from './classes.js';
 import { EDITION_ROOT, type WorkFacts, type WorksCollectorOptions } from '../museum/worksCollector.js';
@@ -80,7 +81,14 @@ export function findReason(
   trees: ArchaeologyTrees,
 ): string | null {
   const classes = classesOf(work, facts);
-  if (classes.some((cls) => NOT_A_FIND[cls])) return null;
+  // An item with no class at all is not an object Wikidata describes: "Gupta
+  // art" is an art movement with an inception of 450 and a collection, and no
+  // `P31`, and the venue-side read handed it to this rule (#890, run 127).
+  // The pool never met one, since the pool is collected by class.
+  if (classes.length === 0) return null;
+  // The veto reads the walked trees: the Bendegó meteorite is an `iron
+  // meteorite`, which the eight roots alone never named (run 127).
+  if (classes.some((cls) => trees.notAFind.has(cls))) return null;
   if (classes.some((cls) => trees.artefact.has(cls))) return 'archaeological artefact';
   const found = classes.find((cls) => FIND_CLASSES[cls]);
   if (found) return FIND_CLASSES[found];
