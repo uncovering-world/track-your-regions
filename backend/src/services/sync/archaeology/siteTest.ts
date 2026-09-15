@@ -26,9 +26,11 @@
  */
 
 import {
-  CENSUS_BOUNDARY, LIVING_PLACE, PROTECTED_BOUNDARY, RUIN_HISTORIC, RUIN_KEYS, RUIN_MAN_MADE,
-  SHIPWRECK_ROOT, SITE_CLASSES, SITE_KILL_BY_NAME, SITE_KILL_CLASSES, SITE_KILL_NATURAL,
-  SITE_KILL_UNLESS_SITE, type ArchaeologyTrees,
+  CENSUS_BOUNDARY, DESTROYED_CLASS, LIVING_PLACE, OSM_DIG_HISTORIC, OSM_DIG_KEY,
+  OSM_ONLY_NOT_A_PLACE, OSM_RUINS_HISTORIC, OSM_RUINS_KEY, PROTECTED_BOUNDARY, RUIN_HISTORIC,
+  RUIN_KEYS, RUIN_MAN_MADE, RUINS_ONLY_MONUMENT_CLASSES, SHIPWRECK_ROOT, SITE_CLASSES,
+  SITE_KILL_BY_NAME, SITE_KILL_CLASSES, SITE_KILL_NATURAL, SITE_KILL_UNLESS_SITE,
+  type ArchaeologyTrees,
 } from './classes.js';
 import { largestByArea, wktIsPolygonal, type OsmObject } from '../osm/types.js';
 import { belowLineReason, lineStanding, type LinePair, type LineStanding } from '../sourceLine.js';
@@ -43,6 +45,13 @@ export interface SiteFacts {
   /** Whether the item states a population (`P1082`) — any number, 0 included. */
   statesPopulation: boolean;
   sitelinks: number;
+  /**
+   * Whether English Wikipedia files the item's article under `Archaeological
+   * sites in …` — the second vote a living place OpenStreetMap named gets
+   * (#895). Read only of such candidates; a candidate the tree vouches for
+   * never needs it, so a caller judging one may leave it out.
+   */
+  namedByCategory?: boolean;
 }
 
 /**
@@ -80,16 +89,37 @@ export interface OsmSignal {
 }
 
 export type SiteVerdict =
-  | { pass: true; type: 'site'; osm: OsmSignal & { extentFrom: string | null } }
+  | {
+    pass: true;
+    type: 'site';
+    osm: OsmSignal & { extentFrom: string | null };
+    /**
+     * What a curator reads on the card of a row the tree did not vouch for:
+     * which signal carried it in (#895). Absent on a row admitted by class.
+     */
+    note?: string;
+  }
   | { pass: false; reason: string; group: SiteRefusalGroup }
   | { pass: false; out: true };
+
+/**
+ * The value of a key whose presence says something, unless the mapper wrote
+ * the opposite: `ruins=no` is a statement that the thing is *not* in ruins,
+ * and both enumerations leave it out (`FILTER(?ruins != "no")`,
+ * `["ruins"!="no"]`) — but the per-item read carries every value, and both
+ * readers below see the same objects, so the rule says it once here.
+ */
+function saidOf(object: OsmObject, key: string): string | null {
+  const value = object.tags[key];
+  return value && value !== 'no' ? value : null;
+}
 
 /** The ruin tag of one object, spelled as `key=value`, or null. */
 function ruinTagOf(object: OsmObject): string | null {
   const historic = object.tags.historic;
   if (historic && RUIN_HISTORIC.has(historic)) return `historic=${historic}`;
   for (const key of RUIN_KEYS) {
-    const value = object.tags[key];
+    const value = saidOf(object, key);
     if (value) return `${key}=${value}`;
   }
   const manMade = object.tags.man_made;
@@ -321,6 +351,134 @@ function admit(
   return { pass: true, type: 'site', osm: { ...signal, extentFrom: extent ? extent.ref : null } };
 }
 
+/** How one object names the thing: as a dig, as ruins, or not at all. */
+function digTagOf(object: OsmObject): { tag: string; names: 'dig' | 'ruins' } | null {
+  const historic = object.tags.historic;
+  if (historic && OSM_DIG_HISTORIC.has(historic)) return { tag: `historic=${historic}`, names: 'dig' };
+  const dig = saidOf(object, OSM_DIG_KEY);
+  if (dig) return { tag: `${OSM_DIG_KEY}=${dig}`, names: 'dig' };
+  if (historic && OSM_RUINS_HISTORIC.has(historic)) return { tag: `historic=${historic}`, names: 'ruins' };
+  const ruins = saidOf(object, OSM_RUINS_KEY);
+  if (ruins) return { tag: `${OSM_RUINS_KEY}=${ruins}`, names: 'ruins' };
+  return null;
+}
+
+/** What OpenStreetMap says the thing is: the strongest word over all of its objects. */
+interface OsmNaming { object: OsmObject; tag: string; names: 'dig' | 'ruins' }
+
+/**
+ * The object that named a candidate the tree did not vouch for, a dig before
+ * ruins: `historic=archaeological_site` is a statement about what stands
+ * there, `ruins=yes` about its condition, and the vetoes read the two apart.
+ */
+function osmNaming(objects: OsmObject[]): OsmNaming | null {
+  let ruins: OsmNaming | null = null;
+  for (const object of objects) {
+    const named = digTagOf(object);
+    if (!named) continue;
+    if (named.names === 'dig') return { object, ...named };
+    ruins ??= { object, ...named };
+  }
+  return ruins;
+}
+
+/**
+ * What refuses a candidate only OpenStreetMap named, or null (#895).
+ *
+ * Four vetoes, each read off the item's own classes, because the map's word
+ * is all the row has and Wikidata is where the mapper's slip shows: a ruin
+ * node carrying the item of a building that no longer exists (the Hanging
+ * Gardens), of the find rather than the find spot (the Venus of Willendorf),
+ * of something that is not a place to stand in at all (`OSM_ONLY_NOT_A_PLACE`:
+ * Azovstal's works, a national library, a council), or `ruins=yes` on a
+ * castle, a palace, a church or a museum that is a monument in ruins and
+ * another kind's row or nobody's (Devín, Bodiam, the Tower of David). `historic=archaeological_site` on the same item is the
+ * mapper saying otherwise and is not vetoed by a class: Tintagel Castle and the
+ * Thracian Tomb of Kazanlak come in.
+ */
+function osmOnlyVeto(facts: SiteFacts, naming: OsmNaming, trees: ArchaeologyTrees): string | null {
+  if (facts.classes.includes(DESTROYED_CLASS)) {
+    return 'Wikidata files it as a destroyed building or structure, and gives it no class of a site';
+  }
+  if (facts.classes.some((cls) => trees.artefact.has(cls))) {
+    return 'a find, not a place: Wikidata files it under archaeological artefacts';
+  }
+  const notAPlace = firstIn(facts.classes, OSM_ONLY_NOT_A_PLACE);
+  if (notAPlace) {
+    return `not a place to stand in: Wikidata files it as ${OSM_ONLY_NOT_A_PLACE[notAPlace]}`;
+  }
+  if (naming.names === 'ruins') {
+    const monument = [
+      [trees.fortification, 'a fortification'],
+      [trees.palace, 'a palace'],
+      [trees.worship, 'a place of worship'],
+      [trees.museum, 'a museum'],
+    ] as const;
+    const flat = firstIn(facts.classes, RUINS_ONLY_MONUMENT_CLASSES);
+    const what = monument.find(([tree]) => facts.classes.some((cls) => tree.has(cls)))?.[1]
+      ?? (flat ? RUINS_ONLY_MONUMENT_CLASSES[flat] : undefined);
+    if (what) {
+      return `Wikidata files it as ${what}, and OpenStreetMap says only that it is in ruins `
+        + `(${naming.tag} on ${naming.object.ref})`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The verdict on a candidate OpenStreetMap named and the class tree did not
+ * — the pool's second entrance (#895, ADR-0060).
+ *
+ * The map's word is the step-2 signal by construction, so what is asked here
+ * is whether Wikidata's classes contradict it: the four vetoes above, then
+ * the living place. **A population statement is the living-place rule here**,
+ * where for a row the tree vouches for it is the last word in one narrow
+ * dispute: a comune of Italy or a Spanish municipality is on no settlement
+ * branch and states its people all the same, and eighteen of them arrive on a
+ * ruin object the mapper linked to the town's article (Potenza, Alcalá de
+ * Henares). Two things outweigh it — the place being World Heritage itself
+ * (Delos, counted at a handful of people), and English Wikipedia filing the
+ * article under its archaeological sites (Jerash, Lagash, Kilwa Kisiwani,
+ * Qalhat, Písac) — and the card says which carried it.
+ *
+ * A row nothing on the map names any more — the per-item read no longer
+ * answers with the object that put it in the pool — is `out`, never refused:
+ * it claimed nothing, and the sweep decides an admitted row's fate.
+ */
+function osmNamedVerdict(
+  facts: SiteFacts,
+  objects: OsmObject[],
+  trees: ArchaeologyTrees,
+  stands: LineStanding,
+  line: LinePair,
+  refuse: (reason: string, group: SiteRefusalGroup) => SiteVerdict,
+): SiteVerdict {
+  const naming = osmNaming(objects);
+  if (!naming) return { pass: false, out: true };
+
+  const veto = osmOnlyVeto(facts, naming, trees);
+  if (veto) return refuse(veto, 'class-or-name');
+
+  // What the mapper wrote, as the card quotes it: a town under `historic=ruins`
+  // was not called a dig by anyone.
+  const mapped = `${naming.names === 'dig' ? 'an archaeological site' : 'ruins'} here `
+    + `(${naming.tag} on ${naming.object.ref})`;
+  const vouched = facts.worldHeritage || facts.namedByCategory === true;
+  if (facts.statesPopulation && !vouched) {
+    return refuse(
+      `a living place — Wikidata counts its people and gives it no class of a site; only OpenStreetMap maps ${mapped}`,
+      'living',
+    );
+  }
+
+  const signal: OsmSignal = { verdict: 'ruin', object: naming.object.ref, tag: naming.tag };
+  const admitted = admit(signal, objects, stands, facts, line);
+  if (!admitted.pass) return admitted;
+  const note = `no class of a site on Wikidata; OpenStreetMap maps ${mapped}`
+    + (facts.namedByCategory ? '; English Wikipedia files it under its archaeological sites' : '');
+  return { ...admitted, note };
+}
+
 /**
  * The whole verdict on one candidate: in, refused by name, or simply out.
  *
@@ -345,16 +503,24 @@ export function siteVerdict(input: {
   const refuse = (reason: string, group: SiteRefusalGroup): SiteVerdict =>
     (stands === 'out' ? { pass: false, out: true } : { pass: false, reason, group });
 
+  // 1. What the item is not.
+  const kill = killed(facts, signal, trees);
+  if (kill) return refuse(kill, 'class-or-name');
+
+  // The second entrance (#895): no class under `archaeological site` on the
+  // item — the pool named it off an OpenStreetMap object tagged as a dig or
+  // as ruins — so the map's word stands in for the class, and Wikidata's
+  // classes are read as what can contradict it.
+  if (!facts.classes.some((cls) => trees.site.has(cls))) {
+    return osmNamedVerdict(facts, objects, trees, stands, line, refuse);
+  }
+
   // Which branch the item came in on is a question about the class tree — is
   // any of its `P31`s under `human settlement` — so it is answered here, off
   // the trees the rule already holds, rather than handed in. Handed in, it is a
   // boolean a caller can forget: a defaulted `false` reaches step 4 as if
   // Wikidata had called Athens a dig.
   const settlementBranch = facts.classes.some((cls) => trees.settlement.has(cls));
-
-  // 1. What the item is not.
-  const kill = killed(facts, signal, trees);
-  if (kill) return refuse(kill, 'class-or-name');
 
   // 2. The map says a ruin stands here. Whatever branch the item came in on,
   //    and whatever Wikidata's classes call it.

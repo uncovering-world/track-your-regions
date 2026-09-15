@@ -28,6 +28,9 @@ import {
   SHIPWRECK_ROOT,
   SITE_ROOT,
   ARCHAEOLOGICAL_PARK,
+  FORTIFICATION_ROOT,
+  PALACE_ROOT,
+  WORSHIP_STRUCTURE_ROOT,
 } from './siteClasses.js';
 
 export {
@@ -35,6 +38,18 @@ export {
   SITE_ROOT,
   SETTLEMENT_ROOT,
   SHIPWRECK_ROOT,
+  FORTIFICATION_ROOT,
+  PALACE_ROOT,
+  WORSHIP_STRUCTURE_ROOT,
+  DESTROYED_CLASS,
+  OSM_DIG_HISTORIC,
+  OSM_RUINS_HISTORIC,
+  OSM_DIG_KEY,
+  OSM_RUINS_KEY,
+  OSM_DIG_TAGS,
+  OSM_ONLY_NOT_A_PLACE,
+  RUINS_ONLY_MONUMENT_CLASSES,
+  SITE_CATEGORY,
   WORLD_HERITAGE_DESIGNATION,
   RUIN_HISTORIC,
   RUIN_KEYS,
@@ -364,6 +379,15 @@ export interface ArchaeologyTrees {
   settlement: ReadonlySet<string>;
   /** Every class under `shipwreck`: the one class refused outright. */
   shipwreck: ReadonlySet<string>;
+  /**
+   * The three trees a `ruins=*` tag alone cannot carry a candidate past
+   * (`RUINS_ONLY_VETO_ROOTS` in `siteClasses.ts`, #895): a fortification, a
+   * palace, a structure of worship. Read only of a candidate OpenStreetMap
+   * named and the site tree did not.
+   */
+  fortification: ReadonlySet<string>;
+  palace: ReadonlySet<string>;
+  worship: ReadonlySet<string>;
 }
 
 /**
@@ -406,6 +430,10 @@ export function buildArchaeologyTrees(fetched: {
   site?: string[];
   settlement?: string[];
   shipwreck?: string[];
+  /** The OSM-only vetoes' trees (#895), optional for the same reason. */
+  fortification?: string[];
+  palace?: string[];
+  worship?: string[];
 }): ArchaeologyTrees {
   const museum = new Set([...fetched.museum, ...Object.keys(MUSEUM_ROOTS)]);
   const park = new Set([...fetched.park, ARCHAEOLOGICAL_PARK]);
@@ -424,5 +452,8 @@ export function buildArchaeologyTrees(fetched: {
     site: new Set([...(fetched.site ?? []), SITE_ROOT]),
     settlement: new Set([...(fetched.settlement ?? []), SETTLEMENT_ROOT]),
     shipwreck: new Set([...(fetched.shipwreck ?? []), SHIPWRECK_ROOT]),
+    fortification: new Set([...(fetched.fortification ?? []), FORTIFICATION_ROOT]),
+    palace: new Set([...(fetched.palace ?? []), PALACE_ROOT]),
+    worship: new Set([...(fetched.worship ?? []), WORSHIP_STRUCTURE_ROOT]),
   };
 }

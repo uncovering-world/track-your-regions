@@ -98,8 +98,11 @@ export function osmBatchQuery(qids: string[], keep: KeepWkt): string {
   const columns = OSM_TAG_KEYS.map((key) => `?${key}`).join(' ');
   const keepWkt = [
     `COALESCE(?historic, "") IN (${literals(keep.historic)})`,
-    'BOUND(?ruins)',
-    'BOUND(?archaeological_site)',
+    // A key's presence says ruin — unless the value is `no`, the mapper saying
+    // the opposite, which `saidOf` reads as nothing: an outline kept for it
+    // would cross the wire and be dropped by `siteExtent`.
+    '(BOUND(?ruins) && ?ruins != "no")',
+    '(BOUND(?archaeological_site) && ?archaeological_site != "no")',
     `COALESCE(?man_made, "") IN (${literals(keep.manMade)})`,
     `COALESCE(?boundary, "") IN (${literals(keep.boundary)})`,
   ].join(' || ');

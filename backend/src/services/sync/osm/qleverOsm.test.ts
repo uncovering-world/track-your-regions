@@ -38,7 +38,7 @@ describe('osmBatchQuery', () => {
     // what this asserts, and `place` cannot appear in it.
     expect(query).toContain(
       'BIND(IF(COALESCE(?historic, "") IN ("archaeological_site", "ruins")'
-      + ' || BOUND(?ruins) || BOUND(?archaeological_site)'
+      + ' || (BOUND(?ruins) && ?ruins != "no") || (BOUND(?archaeological_site) && ?archaeological_site != "no")'
       + ' || COALESCE(?man_made, "") IN ("tell")'
       + ' || COALESCE(?boundary, "") IN ("protected_area", "national_park")'
       + ', STR(?anyWkt), "") AS ?wkt)',

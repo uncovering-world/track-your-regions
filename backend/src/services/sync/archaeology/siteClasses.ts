@@ -19,7 +19,7 @@
  * anything: `siteTest.ts` does that.
  */
 
-import type { KeepWkt } from '../osm/types.js';
+import type { DigTags, KeepWkt } from '../osm/types.js';
 
 /**
  * Under the museum tree, and a site rather than a museum.
@@ -120,7 +120,11 @@ export const RUIN_HISTORIC: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Keys whose mere presence says a ruin, whatever the value.
+ * Keys whose presence says a ruin, whatever the value — except `no`, which is
+ * the mapper saying the opposite (`saidOf` in `siteTest.ts`). Both
+ * enumerations leave a `no` out, and the rule reads the per-item objects the
+ * same way, so a `ruins=no` is no step-2 signal for a class-pool row either
+ * (`ruinTagOf`), not only no naming for the map's entrance.
  *
  * `ruins=*` is on 96 of the measured items and `archaeological_site=*` on 190 —
  * the secondary key the tagging wiki documents for
@@ -292,6 +296,126 @@ export const SITE_KILL_NATURAL: Record<string, string> = {
 export const SITE_KILL_BY_NAME: Record<string, string> = {
   Q2181: 'the Aysén Region of Chile, mis-typed on Wikidata as an archaeological site',
 };
+
+/**
+ * The OSM tags that *name a dig* — the second entrance to the pool (#895).
+ *
+ * `historic=archaeological_site` and its secondary key `archaeological_site=*`
+ * are the mapper's statement about what the thing is; `historic=ruins` and
+ * `ruins=*` are a statement about its condition, and the rule reads the two
+ * differently for a candidate the class tree does not vouch for
+ * (`osmOnlyVeto` in `siteTest.ts`, over `FORTIFICATION_ROOT`, `PALACE_ROOT`,
+ * `WORSHIP_STRUCTURE_ROOT`, the museum tree and
+ * `RUINS_ONLY_MONUMENT_CLASSES`). Measured on 2026-09-15 over every
+ * object carrying one of these and a `wikidata` tag: 63,630 rows, 41,163
+ * objects, 38,753 items, 774 at the place line, 210 of them in no class under
+ * `archaeological site`.
+ */
+export const OSM_DIG_HISTORIC: ReadonlySet<string> = new Set(['archaeological_site']);
+export const OSM_RUINS_HISTORIC: ReadonlySet<string> = new Set(['ruins']);
+export const OSM_DIG_KEY = 'archaeological_site';
+export const OSM_RUINS_KEY = 'ruins';
+
+/**
+ * Nothing left to stand in: `destroyed building or structure` (Q19860854).
+ *
+ * The Hanging Gardens of Babylon (99 sitelinks), the Colossus of Rhodes, the
+ * Lighthouse of Alexandria and the Palace of Whitehall each carry a
+ * `historic=ruins` node on the spot and this class on the item — a place that
+ * *was*, which OpenStreetMap marks and a traveller cannot visit. Read only of
+ * a candidate the tree did not vouch for: an item Wikidata also files under
+ * archaeological sites is a dig whatever else it once was.
+ */
+export const DESTROYED_CLASS = 'Q19860854';
+
+/**
+ * The trees a `ruins=*` tag alone cannot carry a candidate past: a
+ * fortification (Q57821 — castles, forts, citadels), a palace (Q16560), a
+ * structure of worship (Q1370598, the same root the places of worship walk),
+ * and the museum tree the museum door already holds.
+ *
+ * Measured on the 210 OSM-only candidates at the line (2026-09-15): fifty-three
+ * carry only a `ruins` tag and one of these classes — Bodiam, Devín, Rochester
+ * and Kenilworth castles, the Transfiguration Cathedral, St Nicholas in
+ * Hamburg, the Tower of David — a monument in ruins, which is another kind's
+ * row or nobody's, never a dig. `historic=archaeological_site` on the same
+ * item is the mapper saying otherwise, and is read as such: Tintagel Castle
+ * (`archaeological_site=fortification`) and the Thracian Tomb of Kazanlak
+ * (`tomb`, `museum`, `archaeological_site=tumulus`) come in.
+ */
+export const FORTIFICATION_ROOT = 'Q57821';
+export const PALACE_ROOT = 'Q16560';
+export const WORSHIP_STRUCTURE_ROOT = 'Q1370598';
+
+/**
+ * A monument in ruins that no tree above holds: `château` (Q751876) sits
+ * under `manor house`, not under fortification or palace, and the Château
+ * de Blois and the Château de Valençay arrived on dry run 136 (2026-09-15)
+ * on a `ruins=*` tag. Read beside the trees, for a `ruins` tag alone.
+ */
+export const RUINS_ONLY_MONUMENT_CLASSES: Record<string, string> = {
+  Q751876: 'a château',
+};
+
+/**
+ * Not a place to stand in, whatever tag the map put on it: the classes of
+ * what dry run 136 (2026-09-15) would have created beside the digs, read off
+ * the rows by name — a steelworks (Azovstal), a dam, a country house
+ * (Berghof), a camp, a massacre and a council with a coordinate, a national
+ * library — never `library` itself, which Pergamum's, Celsus' and Hadrian's
+ * carry and are digs — a concert hall, a hospital, a disambiguation page
+ * (Sela). The map's word
+ * was `ruins=yes` on most and `historic=archaeological_site` on some, and
+ * the item says what the thing is; the sentence quotes the item.
+ *
+ * Flat, matched against the item's own `P31`s, for the reason
+ * `SITE_KILL_NATURAL` is: a closure under `organization` or `occurrence`
+ * would refuse rows nobody measured. A row this list misses is one card for
+ * a curator, and one more label here.
+ */
+export const OSM_ONLY_NOT_A_PLACE: Record<string, string> = {
+  Q4830453: 'a business',
+  Q6881511: 'an enterprise',
+  Q891723: 'a public company',
+  Q15911738: 'a hydroelectric power station',
+  Q159719: 'a power station',
+  Q16884952: 'a country house',
+  Q152081: 'a concentration camp',
+  Q328468: 'a Nazi concentration camp',
+  Q3199915: 'a massacre',
+  Q124612203: 'a massacre of civilians',
+  Q51645: 'an ecumenical council',
+  Q96888669: 'an academic publisher',
+  Q22806: 'a national library',
+  Q7540126: 'a headquarters',
+  Q1060829: 'a concert hall',
+  Q1076486: 'a sports venue',
+  Q16917: 'a hospital',
+  Q3932025: 'a Hellenistic kingdom',
+  Q4167410: 'a Wikimedia disambiguation page',
+};
+
+/**
+ * The enumeration's tags in the shape the reader takes them (`osm/types.ts`):
+ * the two `historic` values and the two keys above, composed once here
+ * because they are this kind's line through OSM's keys, as `OSM_KEEP_WKT` is.
+ */
+export const OSM_DIG_TAGS: DigTags = {
+  historic: [...OSM_DIG_HISTORIC, ...OSM_RUINS_HISTORIC],
+  keys: [OSM_DIG_KEY, OSM_RUINS_KEY],
+};
+
+/**
+ * English Wikipedia's shelf of digs, read as the second vote for a living
+ * place the map named (#895): the article's own categories, as the museum
+ * door reads a museum's, never a walk. The trailing space is the museum
+ * rule's: a bare `Archaeological sites` is a parent category, not a filing.
+ *
+ * Measured 2026-09-15: the walk of `Archaeological sites by country` holds
+ * 9,440 articles, and at the place line the editors shelve Istanbul, Tbilisi
+ * and Yerevan beside the digs — which is why it is a vote and not a door.
+ */
+export const SITE_CATEGORY = /^Archaeological sites (in|of) /;
 
 /**
  * Which OSM objects the reader may fetch a geometry for, in the shape the

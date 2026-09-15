@@ -6,7 +6,7 @@ import {
   ARCHAEOLOGICAL_PARK, SITE_ROOT, SETTLEMENT_ROOT, SHIPWRECK_ROOT, RUIN_HISTORIC,
   RUIN_KEYS, LIVING_PLACE, PROTECTED_BOUNDARY, SITE_CLASSES, SITE_KILL_CLASSES,
   SITE_KILL_UNLESS_SITE, SITE_KILL_NATURAL, SITE_KILL_BY_NAME, OSM_KEEP_WKT,
-  CENSUS_BOUNDARY,
+  CENSUS_BOUNDARY, FORTIFICATION_ROOT, PALACE_ROOT, WORSHIP_STRUCTURE_ROOT,
 } from './classes.js';
 
 describe('archaeology classes', () => {
@@ -23,16 +23,21 @@ describe('archaeology classes', () => {
     expect(NOT_A_FIND.Q40614).toMatch(/fossil/);
     expect(FIND_CLASSES.Q40614).toBeUndefined();
   });
-  it('builds the trees as sets, and floors the three the site door reads', () => {
+  it('builds the trees as sets, and floors the six a museum-only caller never states', () => {
     const trees = buildArchaeologyTrees({
       museum: ['Q3329412'], park: [], naturalHistory: ['Q1970365'], artefact: ['Q220659'],
     });
     expect(trees.museum.has('Q3329412')).toBe(true);
     // Optional on the way in, floored on the way out: a museum-only caller
-    // states no site tree and still gets one it can ask.
+    // states no site tree and still gets one it can ask. Every one of them,
+    // because an unfloored set is a rule that cannot name what it reads — an
+    // empty `fortification` walks Bodiam under `ruins=yes` in as a dig.
     expect(trees.site.has(SITE_ROOT)).toBe(true);
     expect(trees.settlement.has(SETTLEMENT_ROOT)).toBe(true);
     expect(trees.shipwreck.has(SHIPWRECK_ROOT)).toBe(true);
+    expect(trees.fortification.has(FORTIFICATION_ROOT)).toBe(true);
+    expect(trees.palace.has(PALACE_ROOT)).toBe(true);
+    expect(trees.worship.has(WORSHIP_STRUCTURE_ROOT)).toBe(true);
   });
 
   it('names the site door\'s signals as the measurement found them', () => {
@@ -68,15 +73,17 @@ describe('archaeology classes', () => {
   });
 
   it('fetches a geometry for every key that says ruin, the reader and the list agreeing', () => {
-    // The query spells `BOUND(?ruins)` and `BOUND(?archaeological_site)` by
-    // hand (`osm/qleverOsm.ts`), because a key's *presence* is the signal and
-    // there is no value list to match. A key added to `RUIN_KEYS` and forgotten
-    // there would name a ruin whose outline never crosses the wire — the rule
-    // would admit the site and the map would draw nothing.
+    // The query spells `BOUND(?ruins) && ?ruins != "no"` and the same for
+    // `archaeological_site` by hand (`osm/qleverOsm.ts`), because a key's
+    // *presence* is the signal — unless the mapper wrote `no`, the one value
+    // `saidOf` reads as the opposite, whose outline nothing downstream can
+    // use — and there is no value list to match. A key added to `RUIN_KEYS`
+    // and forgotten there would name a ruin whose outline never crosses the
+    // wire — the rule would admit the site and the map would draw nothing.
     const query = osmBatchQuery(['Q22647'], OSM_KEEP_WKT);
     for (const key of RUIN_KEYS) {
       expect(query, `${key} decides a ruin but its geometry is never asked for`)
-        .toContain(`BOUND(?${key})`);
+        .toContain(`(BOUND(?${key}) && ?${key} != "no")`);
     }
   });
 

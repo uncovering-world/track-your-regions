@@ -114,10 +114,11 @@ function anyOf(key: string, values: string[]): string | null {
  * over the key, because the expression is matched against every object on
  * the planet carrying `wikidata=*` and the exact match is an index read. The
  * `drawn` set is the geometry rule spelled in this language: a ruin by its
- * `historic` value, by the presence of `ruins` or `archaeological_site`, by
- * its `man_made` value, or a protected area by its `boundary` value — the
- * same five clauses the mirror's `BIND(IF(…))` carries — and it is the only
- * set answered with `out geom`.
+ * `historic` value, by the presence of `ruins` or `archaeological_site` with
+ * a value other than `no` (the mapper saying the opposite, which `saidOf`
+ * reads as nothing), by its `man_made` value, or a protected area by its
+ * `boundary` value — the same five clauses the mirror's `BIND(IF(…))` carries
+ * — and it is the only set answered with `out geom`.
  */
 export function overpassBatchQuery(qids: string[], keep: KeepWkt): string {
   for (const qid of qids) {
@@ -126,8 +127,8 @@ export function overpassBatchQuery(qids: string[], keep: KeepWkt): string {
   const asked = qids.map((qid) => `  nwr["wikidata"="${qid}"];`).join('\n');
   const drawn = [
     anyOf('historic', keep.historic),
-    'nwr.asked["ruins"];',
-    'nwr.asked["archaeological_site"];',
+    'nwr.asked["ruins"]["ruins"!="no"];',
+    'nwr.asked["archaeological_site"]["archaeological_site"!="no"];',
     anyOf('man_made', keep.manMade),
     anyOf('boundary', keep.boundary),
   ].filter((clause): clause is string => clause !== null).map((clause) => `  ${clause}`).join('\n');
