@@ -165,16 +165,22 @@ async function mark(
 /**
  * The museum's other links, reconciled against what the run offered here.
  *
- * Empty offered list: an admitted museum with no works is not a shape the
- * pipeline produces (a museum is admitted for a work it holds), and is read as
- * nothing to compare rather than everything to withdraw.
+ * An empty offered list is compared like any other, and marks every link
+ * the museum holds — floor permitting, as always. It used to be read as
+ * "nothing to compare", on the ground that an admitted museum with no works
+ * was not a shape the pipeline produces. It is one now (#890): a museum
+ * admitted for what it is holds only what the venue-side read found, and
+ * when the next run refuses that object — the Bendegó meteorite at the
+ * Museu Nacional, live run 128 — the museum offers nothing and the stale
+ * link has to go, or a meteorite stays a pending find of an archaeology
+ * museum for as long as nothing else arrives there. The floor (ADR-0044)
+ * is what guards a short run; a museum the run wrote and offered nothing at
+ * is not a short run but an answer.
  */
 export async function reconcileLinks(
   experienceId: number,
   { offered, placedElsewhere, withdraw }: LinkReconciliation,
 ): Promise<LinkDelta> {
-  if (offered.length === 0) return { returned: [], withdrawn: [] };
-
   const client = await pool.connect();
   let unusable: Error | undefined;
   try {
