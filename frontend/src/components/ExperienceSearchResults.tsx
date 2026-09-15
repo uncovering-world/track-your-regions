@@ -25,28 +25,13 @@
 import { Box, List, ListItem, ListItemButton, ListItemText, ListSubheader, Typography } from '@mui/material';
 import type { ExperienceRegionRef, ExperienceSearchResult } from '../api/experiences';
 import { LifecycleChip } from './shared/LifecycleChip';
+import { openableRegion } from '../utils/openableRegion';
 
 interface ExperienceSearchResultsProps {
   results: ExperienceSearchResult[];
   /** The world view the reader is in, or null where it is the default one. */
   worldViewId: number | null;
   onSelect: (result: ExperienceSearchResult, region: ExperienceRegionRef) => void;
-}
-
-/**
- * Where this row would open, or null when it cannot be opened from here.
- *
- * The regions arrive most specific first, so the first one in the reader's own
- * world view is the smallest place that holds the object — Noord-Holland rather
- * than Europe. The default world view is never a match: it owns no regions, its
- * map is the administrative tree, and an address under it names no region.
- */
-export function openableRegion(
-  result: ExperienceSearchResult,
-  worldViewId: number | null,
-): ExperienceRegionRef | null {
-  if (worldViewId === null) return null;
-  return result.regions.find((region) => region.world_view_id === worldViewId) ?? null;
 }
 
 /** Why a row is not a link, for a reader who can see it is not one. */
@@ -68,7 +53,9 @@ export function ExperienceSearchResults({ results, worldViewId, onSelect }: Expe
       subheader={<ListSubheader disableSticky sx={{ lineHeight: '28px' }}>Experiences</ListSubheader>}
     >
       {results.map((result) => {
-        const region = openableRegion(result, worldViewId);
+        // Where this row would open, by the one rule every link from one card
+        // to another shares (`openableRegion`, ADR-0042 decision 4).
+        const region = openableRegion(result.regions, worldViewId);
         const body = (
           <ListItemText
             disableTypography
