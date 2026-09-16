@@ -16,6 +16,8 @@
  * marker layers and the Discover pages.
  */
 
+import type { ExpressionSpecification } from 'maplibre-gl';
+
 export interface KindColorSet {
   /** Primary/border color */
   primary: string;
@@ -99,6 +101,43 @@ export function experienceColor(
   type: string | null | undefined,
 ): string {
   return experienceColors(kindId, type).primary;
+}
+
+/**
+ * The same rule as a MapLibre expression, for a layer whose features carry the
+ * kind and the type rather than a colour (#910).
+ *
+ * The map's region markers are built in JavaScript, so each one is given
+ * `experienceColor`'s answer as a property. The world layer's features come out
+ * of a vector tile, and what decides their colour has to be something MapLibre
+ * can evaluate — but writing the palette into the tile function would put a
+ * second answer to "what colour is a monument" in SQL, which is the failure
+ * #814 was: a museum's blue hung on a literal every museum row carried, and the
+ * same object read two colours depending on where you looked at it. So the
+ * expression is *generated* from the two tables above, and
+ * `kindColors.test.ts` evaluates it against `experienceColor` for every pair.
+ *
+ * Typed through a cast for the reason `clusterRadiusExpression` is: the style
+ * spec's types cannot describe a `case` or a `match` whose arms are computed,
+ * and writing the colours out again here is the duplication this exists to
+ * remove.
+ */
+export function kindColorExpression(): ExpressionSpecification {
+  const byKind = [
+    'match', ['coalesce', ['get', 'kindId'], -1],
+    ...Object.entries(KIND_COLORS).flatMap(([id, set]) => [Number(id), set.primary]),
+    UNKNOWN.primary,
+  ];
+  // Type first, kind second — `experienceColors`' own order, and the reason it
+  // has one: World Heritage's three types are told apart on the map, and every
+  // other kind is one colour.
+  const expr = [
+    'case',
+    ...Object.entries(TYPE_COLORS).flatMap(
+      ([type, set]) => [['==', ['get', 'type'], type], set.primary]),
+    byKind,
+  ];
+  return expr as unknown as ExpressionSpecification;
 }
 
 // =============================================================================

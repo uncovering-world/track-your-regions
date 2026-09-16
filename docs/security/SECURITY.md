@@ -254,10 +254,11 @@ The Python service has a smaller surface than the Node backend but introduces ne
   removed 27 table sources including every column of `experiences` — but `functions: true` still
   auto-discovers and publishes every compatible **function** in the database on its own public
   port (`ports:` in `docker-compose.yml`) with no authentication, so a hidden world view's
-  geometry stays fetchable by tile id regardless of `is_public`. Five of the six published sources
-  now take an id and answer a request that names none with an empty tile; the sixth,
+  geometry stays fetchable by tile id regardless of `is_public`. Five of the seven published
+  sources now take an id and answer a request that names none with an empty tile; the sixth,
   `tile_gadm_root_divisions`, takes none by design and draws the root GADM divisions for every
-  caller alike. But the five do not all take the *world view's* id, so what a caller has to know
+  caller alike, and the seventh is the points source below. But the five do not all take the
+  *world view's* id, so what a caller has to know
   differs by source. The three that answer for one world view take its id: `tile_region_islands`
   since #660 (the one the map itself drew unscoped), `tile_world_view_root_regions` and
   `tile_world_view_all_leaf_regions` since #662; until then both filtered on
@@ -272,12 +273,13 @@ The Python service has a smaller surface than the Node backend but introduces ne
   it exactly as it governs any other world view and `is_default` carries no visibility meaning of
   its own, which is what makes that a reachable state rather than a hypothetical one
   (`docs/tech/world-views.md` § The default World View). Requiring the parameter narrows this
-  gap; the ids are small integers, and of the six sources
-  only three answer for a named world view at all — two take a different id and one takes none —
+  gap; the ids are small integers, and of the seven sources
+  only three answer for a named world view at all — two take a different id and two take none —
   so it does not close it. That set is discovered, not
-  enumerated: it currently resolves to the six `tile_*` functions in `martin/README.md` § Function
+  enumerated: it currently resolves to the seven `tile_*` functions in `martin/README.md`
+  § Function
   Sources, and a newly added compatible function would be published the same way, with no edit to
-  `martin/config.yaml`. A Martin-level `postgres.functions` allowlist could pin those six
+  `martin/config.yaml`. A Martin-level `postgres.functions` allowlist could pin those seven
   explicitly, but building one now would be work the fix below throws away: once Martin sits
   behind an authorizing proxy, the proxy decides access per request and a function-name allowlist
   is redundant. The fix is the pattern already used for cv-python below: drop the `ports:` mapping
@@ -319,6 +321,25 @@ The Python service has a smaller surface than the Node backend but introduces ne
   substituting for an id whose world view actually has regions inside the tile chosen — the same
   caveat `docs/tech/performance.md` carries for the probe's defaults. Two `204`s otherwise read as
   a deploy that did not land, when what they are is an empty tile for a scope with nothing in it.
+- **The tile server now publishes catalogue rows, not only geometry, and under no rate limit.**
+  `tile_experience_points` (#910) is the seventh function source and the first whose features
+  carry data rather than shapes: from zoom 4 each point carries its object's id and name, the
+  place's id and name, the kind id and the type. What it answers is bounded by the four
+  reader-facing predicates written into the function itself — the source still offers the point
+  and it still stands, a curator has passed it, the object still stands, and some membership of
+  it is both admitted and passed (`db/membership.ts`, `experienceLifecycle.ts`) — so nothing
+  reaches a stranger that `GET /api/experiences/by-region/:id` and `GET /api/experiences/search`
+  do not already answer anonymously. The new part is the absence of `publicReadLimiter`: those
+  REST reads are rate-limited per IP and Martin's port is not, so the published catalogue can be
+  enumerated from tiles as fast as Postgres will answer — and the tile that holds the whole world
+  costs 160 ms of it (measured on the development catalogue, 8 830 points). That is a scraping and
+  a capacity cost rather than a disclosure — the data is the catalogue this product exists to
+  publish, and the region sources on the same port already carry heavier tiles — and the
+  authorizing proxy above is what would put the same limiter in front of both. Two things follow for anyone
+  editing that function: a predicate dropped there is a publication, not a rendering bug, and a
+  property added there is published to everyone the moment the function is replaced.
+  `backend/src/db/tileScopeGuards.test.ts` pins the four predicates against the fragments the
+  REST reads compose, which is the only thing standing between the two spellings.
 - cv-python uses `print()` rather than structured `logging`. Acceptable at L2 (no auth/authz events to log), but follow up with a logging adapter once the audit/observability story expands.
 - Python dev tooling (`mypy`, `pytest`, `bandit`) lives in `cv-python/requirements-dev.txt` and requires a venv at `cv-python/.venv` for the local gates — not tools on PATH, which the npm scripts never reach: each one invokes `.venv/bin/<tool>` by path, and `scripts/require-py-tools.sh` now fails the gate outright when they are absent rather than letting it read as environment noise. CI covers both shapes across two jobs: the checks job builds the same venv with `npm run setup:py:dev`, and the Python test job installs into the runner's own interpreter with `actions/setup-python` + pip.
 - **Accepted advisory (June 2026):** `torch 2.12.0` — [GHSA-rrmf-rvhw-rf47](https://github.com/advisories/GHSA-rrmf-rvhw-rf47), low severity, memory corruption in `torch.jit.script`. No patched release exists (range `<= 2.12.0`, no fix version). torch is not a direct dependency — it is pulled transitively by `easyocr`, which uses it only for internal model inference; nothing in cv-python calls `torch.jit.script`, let alone on untrusted input. Suppressed via `--ignore-vuln` in the `security:py:deps` npm script; **remove the ignore once a fixed torch release ships.**

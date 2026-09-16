@@ -399,6 +399,50 @@ them. The 135.2 kB worker chunk maplibre-gl 6 loads is downloaded too, and
 does not appear here: Lighthouse's resource summary does not see a worker's
 own fetch.
 
+### What the world layer cost the map root — 2026-09-16
+
+The map root draws the catalogue itself before any region is chosen (#910,
+[ADR-0061](../decisions/0061-the-catalogues-points-are-a-tile-layer-of-their-own.md)),
+and that is the first time this page paints a heatmap. Measured as a
+controlled pair — the same laptop, the same database, the same afternoon,
+the branch and `main` each built and audited by `npm run perf:local`'s
+Lighthouse step:
+
+| | `main` | with the world layer |
+|---|---|---|
+| `/wv/5` score | 58 | 58 |
+| `/wv/5` LCP | 1 861 ms | 1 565 ms |
+| `/wv/5` TBT | **1 351 ms** | **2 388 ms** |
+| `/wv/5` TTI | 3 427 ms | 4 532 ms |
+| `/discover/wv/5` TBT | 656 ms | 735 ms |
+
+**Every byte budget still passes** — the layer's tiles are 19.3 kB gzipped
+for the z1 one the page opens on, which is why the gate does not move — and
+the timings are `warn` here by design. Discover is the control: it draws no
+world layer and did not move.
+
+The cost is about **a second of blocking on the first screen**, and it is
+the heatmap rather than the bytes or the query: 8 830 points arrive in four
+tiles the worker parses off the main thread, and what is left is MapLibre
+drawing a viewport-sized heat framebuffer each frame while the page loads,
+on a 2016 laptop's integrated GPU. Fewer points would not fix it — the blur
+passes are sized by the viewport, not by the point count — so reducing it
+means drawing something other than a heatmap at world zoom, which is a
+change to the feature rather than a tuning of it. Recorded here rather than
+budgeted away; #915 carries the question.
+
+The probe's two new rows, from the same run:
+
+| Endpoint | wire bytes | enc | p50 | p95 | max |
+|----------|-----------|-----|-----|-----|-----|
+| `tile_experience_points/1/1/0` (the north-east quadrant — the heaviest of the four z1 tiles the map opens on, 80.6 kB raw against 23.6, 4.0 and 3.9 for the others) | 19.3 kB | gzip | 90 ms | 153 ms | 189 ms |
+| `tile_experience_points/4/8/5` (the densest tile that carries names) | 65.7 kB | gzip | 66 ms | 73 ms | 78 ms |
+
+The rest of that run's table is not reproduced: the database has grown
+since the 2026-08-25 baseline above — the by-region read is 270.7 kB and
+367 ms p50 against 142.0 kB and 110 ms — and that is the catalogue moving,
+not this change.
+
 The first run on real data found three things the fixture could not show,
 each filed with its numbers. Two are settled: every backend response went
 out uncompressed (#650), and the map root read every leaf region in the

@@ -112,7 +112,7 @@ public port, to nobody.
 
 Check what Martin actually serves against the running server rather than trust
 this doc — `functions: true` auto-discovers every compatible function in the
-database, so the catalog isn't a fixed list. It currently holds the six
+database, so the catalog isn't a fixed list. It currently holds the seven
 function sources below; a new compatible function added to the schema is
 published the same way, with no edit to `config.yaml`:
 
@@ -130,6 +130,7 @@ curl -s localhost:3000/catalog | jq '.tiles | keys'
 | `/tile_gadm_root_divisions/{z}/{x}/{y}` | - | Root GADM divisions |
 | `/tile_gadm_subdivisions/{z}/{x}/{y}` | `parent_id` (required) | GADM subdivisions of a parent |
 | `/tile_region_islands/{z}/{x}/{y}` | `world_view_id` (required), `parent_id` (optional) | Real island boundaries for archipelagos |
+| `/tile_experience_points/{z}/{x}/{y}` | `kind_id` (optional) | Every reader-visible place of the catalogue, for the world map of a kind (#910) |
 
 **Required** means the function answers a request that omits the parameter with
 an empty tile — HTTP 204 — rather than dropping the filter and answering with
@@ -139,7 +140,15 @@ what `\df+` shows; and in the table above. `tileScopeGuards.test.ts` holds all
 three to each other, this table included — a row edited here without the
 function moving with it fails that test. A source that takes no parameter
 (`/tile_gadm_root_divisions`) draws the same thing for every caller by
-definition. Until #662 the two world-view sources were the exception: they
+definition.
+
+A **malformed** value — `?world_view_id=abc`, or a parameter written with nothing
+after the `=` — is a third case, and only `/tile_experience_points` answers it
+properly today: an empty tile, since naming a scope that cannot exist is not the
+same request as naming none and must not widen to everything. The five older
+sources that take a parameter cast without a guard and answer a 500 carrying the
+Postgres message — `/tile_gadm_root_divisions` reads none, so it has nothing to
+cast; #918 brings the five into line. Until #662 the two world-view sources were the exception: they
 filtered on `p_world_view_id IS NULL OR …`, so a request naming no world view
 answered with all of them at once.
 
