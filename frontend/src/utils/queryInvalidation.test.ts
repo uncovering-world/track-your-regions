@@ -187,4 +187,32 @@ describe('invalidateAfterBatchPublication', () => {
     expect(client.getQueryState(['experiences', 'by-region', 7, false])?.isInvalidated).toBe(true);
     expect(client.getQueryState(['discover-experiences'])?.isInvalidated).toBe(true);
   });
+
+  it('clears the map\'s world layer, whichever kind, tier, fold or box it was drawn under', () => {
+    // The layer's key carries none of the things a curator's verdict names, so
+    // the reach is the prefix. This is the behaviour the layer stopped being a
+    // tile source for: Martin cached a tile under its URL with no headers and
+    // no way in, and a place marked lost was measured still drawn until the
+    // server restarted.
+    const client = new QueryClient();
+    const overview = ['world-points', null, 'overview', false, null];
+    const boxed = ['world-points', 1, 'markers', true, { west: 0, south: 40, east: 8, north: 48 }];
+    client.setQueryData(overview, { count: 8830 });
+    client.setQueryData(boxed, { count: 497 });
+
+    invalidateExperiences(client, { experienceId: 1614 });
+
+    expect(client.getQueryState(overview)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(boxed)?.isInvalidated).toBe(true);
+  });
+
+  it('clears it for a write that names nothing at all, since a batch changes it too', () => {
+    const client = new QueryClient();
+    const overview = ['world-points', null, 'overview', false, null];
+    client.setQueryData(overview, { count: 8830 });
+
+    invalidateExperiences(client);
+
+    expect(client.getQueryState(overview)?.isInvalidated).toBe(true);
+  });
 });

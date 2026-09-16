@@ -10,7 +10,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { TYPE_COLORS, experienceColor, experienceColors, kindColor, shortKindName } from './kindColors';
+import {
+  TYPE_COLORS, experienceColor, experienceColors, kindColor, kindColorExpression, shortKindName,
+} from './kindColors';
 
 /** The source rows `db/init/01-schema.sql` seeds. */
 const WORLD_HERITAGE = 1;
@@ -118,6 +120,76 @@ describe('experienceColors', () => {
     expect(experienceColor(ARCHAEOLOGY, 'museum')).not.toBe(experienceColor(ART_MUSEUMS, null));
     // Nor the neutral a kind this file does not know falls to.
     expect(experienceColor(ARCHAEOLOGY, null)).not.toBe(experienceColors(99, null).primary);
+  });
+});
+
+/**
+ * Just enough of MapLibre's expression language to answer this one expression,
+ * so the parity below is an evaluation rather than a comparison of shapes.
+ *
+ * Five forms, which is all `kindColorExpression` builds: `case`, `match`, `==`,
+ * `coalesce` and `get`. Anything else throws rather than quietly answering, so
+ * a form added to the expression fails here instead of being skipped.
+ */
+type Feature = Record<string, unknown>;
+
+/** `case`: condition, value, …, fallback. */
+function evaluateCase(args: unknown[], feature: Feature): unknown {
+  for (let i = 0; i + 1 < args.length; i += 2) {
+    if (evaluate(args[i], feature) === true) return evaluate(args[i + 1], feature);
+  }
+  return evaluate(args[args.length - 1], feature);
+}
+
+/** `match`: input, label, value, …, fallback. Labels are compared as written. */
+function evaluateMatch(args: unknown[], feature: Feature): unknown {
+  const input = evaluate(args[0], feature);
+  for (let i = 1; i + 1 < args.length; i += 2) {
+    if (args[i] === input) return evaluate(args[i + 1], feature);
+  }
+  return evaluate(args[args.length - 1], feature);
+}
+
+/** `coalesce`: the first operand that is neither null nor missing. */
+function evaluateCoalesce(args: unknown[], feature: Feature): unknown {
+  for (const arg of args) {
+    const value = evaluate(arg, feature);
+    if (value !== undefined && value !== null) return value;
+  }
+  return null;
+}
+
+function evaluate(expr: unknown, feature: Feature): unknown {
+  if (!Array.isArray(expr)) return expr;
+  const [op, ...args] = expr as [string, ...unknown[]];
+  if (op === 'get') return feature[args[0] as string];
+  if (op === '==') return evaluate(args[0], feature) === evaluate(args[1], feature);
+  if (op === 'coalesce') return evaluateCoalesce(args, feature);
+  if (op === 'case') return evaluateCase(args, feature);
+  if (op === 'match') return evaluateMatch(args, feature);
+  throw new Error(`the evaluator does not know "${op}"`);
+}
+
+describe('kindColorExpression', () => {
+  /**
+   * Every pair a tile feature can carry: the five seeded kinds, a kind this
+   * file does not know, and a feature whose kind is missing altogether —
+   * against the three World Heritage types, the type values other kinds
+   * actually store, and no type at all.
+   */
+  const kinds = [WORLD_HERITAGE, ART_MUSEUMS, PUBLIC_ART, PLACES_OF_WORSHIP, ARCHAEOLOGY, 99, null];
+  const types = ['cultural', 'natural', 'mixed', 'site', 'museum', 'monument', 'sculpture', null];
+  const pairs = kinds.flatMap(kindId => types.map(type => ({ kindId, type })));
+
+  it.each(pairs)('draws {kindId: $kindId, type: $type} as experienceColor does', ({ kindId, type }) => {
+    // The world layer's features carry the kind and the type and never a
+    // colour, so MapLibre picks it. That it picks the same one the region
+    // markers are given as a property is the whole promise of generating the
+    // expression from the tables rather than writing a palette twice (#814).
+    const feature: Record<string, unknown> = {};
+    if (kindId !== null) feature.kindId = kindId;
+    if (type !== null) feature.type = type;
+    expect(evaluate(kindColorExpression(), feature)).toBe(experienceColor(kindId, type));
   });
 });
 
