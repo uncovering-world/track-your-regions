@@ -13,6 +13,24 @@ Level 3 requirements are tracked but optional for now.
 - **Data sensitivity**: User travel history, visited regions, location preferences
 - **APIs**:
   - REST API (Express). Public read endpoint: `GET /api/world-views/regions/:regionId/members/descendant-geometries` (optionalAuth, publicReadLimiter)
+  - REST API. `GET /api/experiences/points` (#910, ADR-0061) is the widest anonymous read the
+    product has: one request answers every reader-visible place of the catalogue — 8 830
+    coordinates today, or their names, kinds and types when a box narrows it. No
+    `optionalAuth`, because like `/search` and `/:id/finds` it names only what any reader may
+    open and answers the same to everyone, so there is no caller-shaped body to keep out of a
+    cache. What bounds it is `publicReadLimiter` — a per-IP ceiling a deployment sets,
+    `RATE_LIMIT_PUBLIC_READ_MAX`, defaulting to 60/min rather than fixed at it — a 20 000-row cap on the
+    read itself — `bbox` is optional on both tiers, and a limiter bounds how often a stranger
+    asks rather than what each ask costs — and the four reader-facing predicates every other
+    reader-facing read composes (`db/membership.ts`,
+    `controllers/experience/experienceLifecycle.ts`), each negative-tested against live rows.
+    A read that hits the cap says `truncated: true` rather than answering with part of the
+    world in silence.
+    It makes the published catalogue cheaper to enumerate than paging `GET /api/experiences`
+    did, which is a scraping and capacity cost rather than a disclosure: the data is what this
+    product exists to publish. It is deliberately *not* a Martin tile source, which would have
+    put the same rows on an unauthenticated port with no limiter at all — see § Known Gaps on
+    the tile server, and ADR-0061 for the rest of why.
   - Internal CV microservice (FastAPI, Python 3.12, port 8000). Routes: `POST /pipeline/phase1`, `/pipeline/phase2`, `/pipeline/match`, `/pipeline/respond/{review_id}`, `GET /health`. **Internal-only** — reachable only from the Node backend over the Docker bridge network; no CORSMiddleware; not exposed externally
 - **File handling**: Server-side image downloads from Wikimedia (Node side; the World Heritage portal's photographs are no longer read, ADR-0043). cv-python accepts curator-submitted map images via multipart upload (`UploadFile`) for the OCR/clustering pipeline; it processes the bytes in memory, never writes them to disk under user-controlled names
 - **Frontend**: MapLibre GL (WebGL) map rendering, SPA with React + MUI

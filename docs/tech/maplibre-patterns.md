@@ -124,6 +124,79 @@ This applies to ALL paint expressions that match by region/division ID. The patt
 
 Note: `region_id` and `division_id` are separate properties (not used as `feature_id_name`) and ARE available via `['get', 'region_id']`.
 
+## A layer in the style costs what the viewport costs, not what the source holds
+
+A layer put in the style before its data is not free, and a heatmap is the
+expensive case: its blur passes are sized by the **viewport**, not by how many
+features are in the source, so an empty heatmap costs what a full one does.
+Adding a layer to a live style is a synchronous style update and a repaint, and
+react-map-gl adds them one at a time.
+
+Measured on a world view holding **three** experiences (#910, CI's fixture lane):
+mounting a `geojson` source and four layers on the component's first render and
+filling them when the read landed put the shell's total blocking time at 320 ms
+against a 300 ms budget calibrated at 0–128 ms. Mounting nothing until there is
+something to draw brought it to **162 ms**. Three points cannot cost 158 ms;
+carrying the layers can.
+
+Two consequences worth keeping:
+
+- **Return `null` until the source has features**, rather than mounting over an
+  empty collection. That also unmounts the layers when an answer comes back
+  empty, which is the same statement rather than an exception.
+- **Deferring does not help — only drawing less does.** Total blocking time is
+  measured from first paint to interactive, so work moved to an idle callback
+  inside that window still counts. What helped was removing a pass that drew
+  nothing, not moving one that drew something.
+
+## Where a feature's id comes from, and the two ways it goes wrong
+
+`map.setFeatureState` and `['feature-state', …]` are keyed on the feature's
+**own** id — `feature.id`. A `geojson` feature can carry a top-level `id`, as
+the world layer's builder in `api/worldPoints.ts` sets for markers. Both
+`geojson` and `vector` sources can use `promoteId` to lift a named property
+into that id: the four sources using it in `RegionMapVT.tsx` are `vector`
+sources. `discover/discoverMapLayers.ts` deliberately omits `promoteId` for
+its GeoJSON points because their object-id property repeats across places.
+
+The two failures are opposite and are easy to mix up:
+
+- **No id at all** — `['feature-state', …]` reads `null` for every feature and
+  `setFeatureState` with an undefined id errors. Nothing highlights, everywhere.
+- **An id that repeats** — every feature carrying it keys the same state, so one
+  write highlights all of them. `discoverMapLayers.ts` carries the measured
+  account: `promoteId` from `properties.id` was one id per *object*, and once a
+  place became a feature that id repeated across every place of an object, so
+  "the first feature-state written here would be shared by forty pins".
+
+So a symptom scoped to one object is a repeating id, not a missing one. Reach for
+`promoteId` only where the property it lifts is unique per feature, which after
+#558 means the *place's* id rather than the object's.
+
+Vector tiles can also carry an id assigned by the server. See § Feature ID
+expressions above: `ST_AsMVT`'s `feature_id_name` *removes* the named column
+from `properties`. This differs from the client-side promotion used by the
+four vector sources in `RegionMapVT.tsx`.
+
+## What may claim a pointer, and what may only be listed
+
+`queryRenderedFeatures` answers with whatever the named layers drew, and it knows
+nothing about whether the caller can *use* those features. Where two handlers ask
+about the same layers — one deciding the gesture belongs to this source, another
+deciding it can build something from the feature — they have to ask the **same**
+question of a feature, or the first claims a gesture the second cannot answer.
+
+The failure has a shape worth recognising (#910): a tier that carries coordinates
+and no properties drew pins through a layer listed as interactive, so the click
+was claimed and suppressed the region underneath while nothing answered it — a
+dead click that also blocked what was behind it. The fix is one predicate both
+sides read, in the module that builds the features, rather than the same test
+spelled in each handler.
+
+Related: § Overlapping interactive layers for which layers to name at all, and
+§ One listener per registration for the `getLayer` check that makes naming a
+sometimes-absent layer safe.
+
 ## Feature state and multiple sources
 
 ### The pattern

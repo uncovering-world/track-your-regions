@@ -13,6 +13,7 @@ implemented, and the rules that keep it honest. The decision behind it is
 | `/wv/5` | Map, world view 5 |
 | `/wv/5/r/6737-europe` | Map, region 6737 selected |
 | `/wv/5/r/6737-europe/e/1234-stonehenge` | Map, that region, card 1234 open in the explore panel |
+| `/wv/5?kind=5` | Map, no region: that kind's places across the whole world |
 | `/discover` | Discover, the default world view |
 | `/discover/wv/5` | Discover, world view 5, the tree at its root |
 | `/discover/wv/5/r/7100-malta` | Discover, the tree standing at Malta |
@@ -27,8 +28,19 @@ Two rules decide where a piece of state goes:
 - **Navigational identity is a path segment** — the world view, the region, the
   open card. Each names a resource, and a path is what a copied link is expected
   to mean.
-- **View state the visitor set deliberately is a query parameter** — today only
-  Discover's open kind, `?kind=` (spelled `?cat=` until #819; the old spelling is still read, never written). A filter does not identify a resource.
+- **View state the visitor set deliberately is a query parameter** — today the
+  kind, `?kind=` (spelled `?cat=` until #819; the old spelling is still read, never written,
+  and only in Discover, which is the only surface that ever wrote it). A filter does not
+  identify a resource.
+
+**The two modes ask for the kind at opposite ends of the tree**, and `namesAKind` in
+`appUrl.ts` is the one rule both the parse and the build read. A Discover card opens inside
+its kind's list, and that list is a list *of a region*, so the kind is meaningful exactly
+where a region is named. On the map the kind names what the **world layer** draws (#910) —
+every place of one kind across the whole world — and that layer exists only while no region
+is selected: choosing one hands the map back to that region's own markers. So
+`/discover/wv/5/r/7100-malta?kind=1` and `/wv/5?kind=5` are both canonical, and
+`/wv/5/r/6737-europe?kind=5` is not: the kind is dropped there, in both directions.
 
 `r` is *the region in question*. In Discover with a kind's list open it is the
 region whose list it is, and the tree stands at its parent — which is exactly
@@ -83,7 +95,7 @@ what exists, and nothing personal goes in a URL.
 | A world view that is hidden or gone | The existing world-view reconciliation replaces it; the region and card go with it |
 | A region that 404s, or belongs to another world view | → the world view alone (`/wv/5`) |
 | A card the region's list does not hold — hidden, rejected, elsewhere, of another kind | The `e` segment is dropped, once the list has answered |
-| A kind nobody knows | `?kind=` is dropped, once the kinds have answered |
+| A kind nobody knows | `?kind=` is dropped, once the kinds have answered — in Discover by `useDiscoverExperiences`, on the map by `useWorldLayer` |
 | A segment that does not parse | Read as absent, and canonicalised away |
 
 "Once the list has answered" is load-bearing in both rows, and it means a
@@ -216,6 +228,7 @@ open the page a named `row` is *on* is issue #843.
 | `frontend/src/hooks/useNavigation.tsx` | The world view: reads it from the address, writes it with `push` / `replace` / `none` per case |
 | `frontend/src/hooks/useExperienceContext.tsx` | Map mode's open card, derived from the address, and the arrival the list focuses |
 | `frontend/src/hooks/useDiscoverExperiences.ts` | Discover's level, kind and card, all derived from the shared region and the address |
+| `frontend/src/components/regionMap/useWorldLayer.ts` | The map's world layer: whether it is drawn, the kind it draws (from the address, degraded there), and the fold, which is deliberately not in the address |
 | `frontend/src/components/Header.tsx` | Carries the place across Map ↔ Discover |
 
 Nothing else reads `useSearchParams` or calls `navigate` for app state. The

@@ -476,6 +476,171 @@ Three readings of that table:
   measurement and should be re-verified against the probe before any
   further work on it starts.
 
+### What the world layer cost the map root — 2026-09-16
+
+The map root draws the catalogue itself before any region is chosen (#910,
+[ADR-0061](../decisions/0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md)),
+and that is the first time this page paints a heatmap. Measured as a controlled
+pair — the same laptop, the same database, the same hour, `main` and the branch
+each built and audited by `npm run perf:local`, back to back, medians of three:
+
+| `/wv/5` | `main` | with the world layer |
+|---|---|---|
+| score | 56 | 58 |
+| LCP | 1 649 ms | 1 519 ms |
+| TBT | **2 188 ms** | **2 675 ms** |
+| TTI | 4 437 ms | 4 877 ms |
+| total bytes | 1 204 454 B | 1 247 172 B (budget 1 255 000) |
+| requests | 39 | 43 (budget 60) |
+| `/discover/wv/5` TBT (the control) | 863 ms | 658 ms |
+
+Discover is the control: it draws no world layer, so nothing the branch adds can
+reach it — and it moved 205 ms in the *opposite* direction, 863 → 658 ms. That is
+what this lane's noise looks like from the side, and it is the reason the spread
+below is quoted rather than the difference alone.
+
+**Every *error* budget passes — bytes and request count — and the two timing
+lines do not: 2 675 ms against a 1 200 ms `warn` and 4 877 ms against a 3 500 ms
+one**, which is what puts them in § Known breaches rather than in the gate. The
++42 718 B accounts for itself:
+
+| what grew | bytes |
+|---|---|
+| the overview read and its CORS preflight | 38 352 |
+| the kinds the chips are drawn from, and its preflight | 1 491 |
+| the entry chunk — 886 352 B gzipped against `main`'s 883 596 | 2 756 |
+| unaccounted | 119 |
+
+The 119 B sits inside the lane's own per-run spread on this number (1 247 172,
+1 247 571 and 1 248 090 across the three runs — 918 B), so it is noise rather
+than a component left out. That leaves 7 828 B of the total-size budget unspent,
+which was not true on the first pass: see the two decimals below.
+
+**Two honest gaps in this table, and the second is the one to read.**
+
+An earlier build measured 2 911 ms TBT, before the coordinates were cut to two
+decimals and the badge layers were gated on the fold. This one measures 2 675 ms.
+That 236 ms sits inside a lane whose own spread is over a thousand, so it is
+**not** claimed as a saving: those two changes were made for the byte budget and
+for a regression, and neither is measurable through this noise.
+
+**And this pair predates the mounting gate below.** It was taken before the
+layer stopped putting its sources and layers into the style ahead of any data —
+the change the fixture lane forced, which the runner priced at 158 ms. That cost
+was being paid here too: the dev stack's overview read is a network round trip,
+so the style carried a heatmap and three more layers with nothing in them for
+the whole of that window on this page as well. So **2 675 ms is a figure for a
+build that no longer exists**, and the layer's remaining cost on this page is
+unmeasured rather than measured — the number is left standing, named as stale,
+because re-running a pair whose spread is over a second would buy a different
+number rather than a better one. This file's own rule is that a figure from
+another day is not comparable; the same holds for a figure from another build,
+and #915 is where the question continues, so its entry below says so too.
+
+**Read the TBT figures with their spread.** `main`'s three runs were 1 907,
+2 188 and 3 017 ms — a range of 1 110 ms, comparable to the 487 ms difference
+being measured. This laptop is also slower today than it was for the 2026-09-09
+baseline above, where the same page measured 1 683 ms: the pair is valid because
+both halves were measured within the hour, and a figure from another day is not
+comparable to either.
+
+**The cost is the layer, not the transport, and not the bytes.** Three
+hypotheses were measured and two of them died:
+
+- *The JSON route costs what the tile route did not — parse and build on the
+  main thread.* Measured, in the browser, on the real 8 830-point answer:
+  `JSON.parse` of the columnar body 0.8 ms, building the `FeatureCollection`
+  2.8 ms, the structured clone `setData` pays to reach MapLibre's worker
+  36.4 ms — **40 ms in total**, against a 487 ms difference. Handing MapLibre a
+  URL so its worker fetches and parses the GeoJSON itself would buy those 40 ms
+  and cost 13.1 kB on the wire (60.7 kB against 47.6 for the same points as
+  GeoJSON, brotli q4 — the framing compresses away) plus a cache-busting
+  mechanism of the kind ADR-0061 rejected. Not done.
+- *It scales with the number of points.* Measured by switching the kind chips on
+  a page already up, which changes only the data volume: 8 830 points and 271
+  produced **no main-thread task over 50 ms either way**. The heatmap's blur
+  passes are sized by the viewport, not by the point count.
+- *It is the heatmap.* Not disproved, and the same layer over a Martin tile
+  source was measured costing the same order on the branch that PR #916 holds —
+  a different transport, the same cost. What remains is MapLibre drawing a
+  viewport-sized heat framebuffer each frame while the page loads, on a 2016
+  laptop's integrated GPU. Reducing it means drawing something other than a
+  heatmap at world zoom, which is a change to the feature rather than a tuning
+  of it. #915 carries that question, now with these three results in it.
+
+**Two things were fixed rather than recorded**, and both came out of this pair:
+
+- **The overview's coordinates are two decimals, not three.** Three put the
+  first screen 2 930 B over the total-size budget. Two is 1 113 m at the
+  equator, against a screen pixel of 78 km at zoom 1 and 6.9 km at zoom 4.5,
+  where this tier hands over to the pins — a seventieth of a pixel at the
+  opening and a sixth of one at the handover. It is worth 10.4 kB of the
+  overview's 47.6, which is what puts the page back inside the budget with
+  7 828 B to spare, so **no budget was raised**. One decimal was measured too
+  (26.5 kB, another 10.7 off) and refused: 11 km is 1.6 pixels at zoom 4.5,
+  which is visible jitter in the last half-zoom before the pins arrive.
+- **The count badge's two layers are mounted only while the reader has folded.**
+  Their own filter would already hide them — an unfolded answer carries no
+  `locationCount` — but a layer with a filter that matches nothing is still a
+  layer the style walks per tile and per frame, and unfolded is the state the
+  map opens in. Too small to see through this lane's noise, which is why it is
+  filed as restoring what the first build did rather than as a measured saving.
+
+**The fixture lane found what the local pair could not.** CI's
+`Performance (Lighthouse)` job runs the same audit against the isolated test
+stack, whose world view holds **three** experiences, and it failed on
+`total-blocking-time`: 320 ms against a 300 ms budget calibrated at 0-128 ms on
+that runner. Three points cannot cost 200 ms, so the cost is not the data — this
+is the same conclusion the controlled pair reached, measured on a page with
+almost nothing on it, which is the cleaner instrument.
+
+What it was: the layer mounted both sources and every layer on its first render,
+over an empty collection, and filled them when the read landed. So for the whole
+of the page's load the style carried a heatmap, a circle layer and two hover
+layers with no features in them — and a layer added to a live style is a
+synchronous style update and a repaint, react-map-gl adds them one at a time,
+and a heatmap's blur passes are sized by the viewport rather than by what is in
+the source. Nothing now goes into the style until there is something to draw.
+
+**The runner priced it, because this laptop cannot.** The fixture lane here
+measures 1 033-2 092 ms of blocking time on that same page, and fails the
+runner-calibrated budget on `/discover/wv/9001` too, where no world layer is
+drawn at all — so a change worth tens of milliseconds is invisible from here in
+either direction. On the runner, where the budget was calibrated:
+
+| `/wv/9001` on the CI runner | layers over an empty source | nothing in the style until there is data |
+|---|---|---|
+| total blocking time | **320 ms** (budget 300 — failed) | **162 ms** |
+| time to interactive | — | 2 307 ms (budget 2 500) |
+| score | 0.78 (its own `warn` line, ≥ 0.80) | 0.88 |
+
+**158 ms, or 49.4 per cent of it — just under half rather than over**, and every
+budget met, warn lines included. The runner's own baseline
+before this branch was 0-128 ms, so what the world layer still costs the shell
+is on the order of 40 ms rather than 200 — and painting an empty heatmap was
+most of what the fixture was measuring. Recorded here because the first version
+of this note said the change could not be priced locally and therefore stood on
+its reasoning alone; that was the honest thing to write before the runner
+answered, and this is the honest thing to write after.
+
+**What was left alone, deliberately.** The two hover layers are also unusable on
+the first screen — nothing can be under the pointer before the reader moves it —
+but mounting them on first hover costs a re-render exactly where the hover path
+exists to avoid one, and a ring that misses the first pin. It is a candidate on
+#915 rather than a change made blind.
+
+The three probe rows the lane now carries for this endpoint were not captured on
+this pair: the Lighthouse step's first pass failed the byte budget and stopped
+the run before the probe, and the pass that met every budget was the one taken
+for this table. What the endpoint answers, measured directly with `curl` against
+the dev stack at HEAD, after the coordinates were cut to two decimals: 37.2 kB
+on the wire for the overview of every kind, 18.2 kB folded, 26.0 kB for World
+Heritage and 7.2 kB for World Heritage folded, 102.7 kB for the widest marker box
+a reader can ask for and 32.8 kB for a central-European one; 36–90 ms per read in
+Postgres. The overview figures are all smaller than the ones quoted further up
+this section, which were taken at three decimals — the marker ones are
+unchanged, since only the overview tier was cut. They belong in the next full run's table.
+
 ## Budgets and the ratchet rule
 
 | Budget | Level | Value | Set from |
@@ -560,6 +725,16 @@ Filed, and linked here so the baseline is read with them in mind:
   on the backend side; the probe's row for `tile_world_view_root_regions/3/4/2`
   is its number.
 - #560 — island specks survive simplification and bloat cold tiles.
+- #915 — the map root's first screen blocks longer for the world layer (#910).
+  The controlled pair above measured 2 188 → 2 675 ms, **on a build that
+  predates the mounting gate** that the fixture lane then forced and the runner
+  priced at 158 ms; what the layer costs this page now is therefore unmeasured,
+  and the first thing #915 needs is a fresh pair rather than that number. Three
+  hypotheses were tested on the old build and hold regardless of it. It is not the bytes, not the transport, and not the number of
+  points. What is left is the heatmap's viewport-sized framebuffer, which the
+  same layer cost over a vector tile source too, so it is a question about
+  drawing a heatmap at world zoom rather than about this endpoint. Every byte
+  budget passes, and `total-blocking-time` is a line `main` already fails.
 - #557 — closed by ADR-0043: every picture a run writes is a Commons file,
   sized by Wikimedia's own CDN through `Special:FilePath?width=`, where four in
   five used to be the World Heritage portal's originals of up to 40 MB behind a
