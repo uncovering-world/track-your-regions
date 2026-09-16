@@ -31,6 +31,17 @@ export function invalidateExperiences(
   queryClient.invalidateQueries({ queryKey: ['discover-experiences'] });
   queryClient.invalidateQueries({ queryKey: ['discover-region-counts'] });
   queryClient.invalidateQueries({ queryKey: ['experiences'] });
+  // The map's world layer (#910), unscoped on purpose: it is keyed on the kind,
+  // the tier, the fold and the box, and a curator's verdict is not. Any of the
+  // writes that reach this helper can change what it draws — a refused
+  // arrival, a lost place, a withdrawn point — and there is no region in that
+  // key to narrow by.
+  //
+  // This is the whole reason the layer reads an endpoint rather than a tile
+  // source. Martin kept an in-process cache under the tile URL with no headers
+  // and no way in: a place marked lost was measured still being drawn until the
+  // server restarted. One line here is what that cost.
+  queryClient.invalidateQueries({ queryKey: ['world-points'] });
   if (opts?.experienceId) {
     queryClient.invalidateQueries({ queryKey: ['experience', opts.experienceId] });
     queryClient.invalidateQueries({ queryKey: ['curation-log', opts.experienceId] });

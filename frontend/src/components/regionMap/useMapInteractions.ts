@@ -9,6 +9,8 @@ import { useRegionHoverActions } from '../../hooks/useRegionHover';
 import { useExperienceContext } from '../../hooks/useExperienceContext';
 import { fetchDivision } from '../../api';
 import { smartFitBounds } from '../../utils/mapUtils';
+import { WORLD_MARKER_LAYERS } from '../experienceMarkers/worldPointLayers';
+import { isAnswerablePin } from '../../api/worldPoints';
 import type { Region } from '../../types';
 
 interface ClickMeta {
@@ -93,6 +95,33 @@ interface UseMapInteractionsOptions {
   }>;
   viewingRegionId: 'all-leaf' | number;
   contextLayerCount: number;
+}
+
+/**
+ * Whether the pointer is over a pin of the world layer rather than over the
+ * region under it.
+ *
+ * The same preference the context layers get, for the same reason and applied
+ * in both handlers (`docs/tech/development-guide.md` § MapLibre Gotchas): a pin
+ * answers for its own click — it opens the object — and for its own hover, with
+ * a popup and a preview card, so a region selection or the region tooltip on
+ * top of that would be the map answering one gesture twice.
+ *
+ * Asked of the map rather than read off `event.features`, and the reason is the
+ * badge layers: they exist only while the reader has folded, so listing them in
+ * `interactiveLayerIds` would name layers the style does not hold and make
+ * every query fire an error — while leaving them out would let a click on a
+ * badge fall through to the region under it.
+ */
+function onAWorldPoint(map: MapRef | null, at: MapLayerMouseEvent['point']): boolean {
+  if (!map) return false;
+  const drawn = WORLD_MARKER_LAYERS.filter(id => map.getMap().getLayer(id));
+  // Through `isAnswerablePin`, not spelled here: the other side of this
+  // agreement is `useWorldPointInteractions`, which decides whether it can
+  // build a card from the same feature, and the two files never import each
+  // other. Spelled twice, they drifted — see that predicate's docblock.
+  return drawn.length > 0 && map.queryRenderedFeatures(at, { layers: drawn })
+    .some(feature => isAnswerablePin(feature.properties));
 }
 
 export function useMapInteractions({
@@ -217,6 +246,7 @@ export function useMapInteractions({
 
     const features = event.features;
     if (!features || features.length === 0) return;
+    if (onAWorldPoint(mapRef.current, event.point)) return;
 
     // Prefer main tile features (region-fill, region-hull) over context layer
     // features when both exist at the click point. Context layers cover entire
@@ -282,6 +312,13 @@ export function useMapInteractions({
     }
 
     const features = event.features;
+    if (onAWorldPoint(mapRef.current, event.point)) {
+      // The pin's own handler sets the cursor and draws the ring; what has to
+      // go is the region tooltip, which would otherwise name the continent the
+      // reader is pointing at a museum in.
+      setHoveredRegionId(null);
+      return;
+    }
     if (features && features.length > 0) {
       // Prefer main tile features over context layers (same logic as click handler).
       // Context layers cover entire ancestor areas, so without this preference
