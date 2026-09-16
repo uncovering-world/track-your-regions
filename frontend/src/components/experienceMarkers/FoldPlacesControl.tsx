@@ -8,9 +8,10 @@
  * means "select this object", which is the one meaning it cannot lose.
  *
  * So the ask lives on the object the map is already about — the selected one.
- * It appears only for an object with more than one place, because folding one
- * place into one pin is not a question, and it says which way the click goes
- * rather than naming a state.
+ * It says which way the click goes rather than naming a state.
+ *
+ * The chip is `FoldChip`, shared with the world layer's own fold (#910); what
+ * is per-object is only what it says.
  *
  * It is deliberately not the hover card: that follows the pointer and is built
  * with `pointerEvents: 'none'`, so nothing on it can be clicked.
@@ -23,25 +24,28 @@ import { useExperienceContext } from '../../hooks/useExperienceContext';
 import { representablePlaces } from './buildMarkers';
 import { useRegionLocations } from '../../hooks/useRegionLocations';
 
-interface FoldPlacesControlProps {
-  /** How many places the object draws when unfolded; under two, nothing renders. */
-  places: number;
+interface FoldChipProps {
   folded: boolean;
+  /** What the chip says, which is what the click will do. */
+  label: string;
   onToggle: () => void;
 }
 
 /**
- * The control itself, given its answer rather than finding it: Map mode and
- * Discover hold their folds separately (see `useCollapsedExperiences`) and read
- * places through different paths, and both want the same chip in the same place.
+ * The chip itself, wherever the map offers a fold.
+ *
+ * Two surfaces ask for one: an object selected in a region (below), and the
+ * world layer, which folds every object at once (#910). They differ in what
+ * they can say — one knows the count, the other is about the whole map — so the
+ * label is given rather than derived, and everything else about the control is
+ * shared: a reader who learns the chip in one place meets the same chip in the
+ * other.
  */
-export function FoldPlacesControl({ places, folded, onToggle }: FoldPlacesControlProps) {
-  if (places < 2) return null;
-
+export function FoldChip({ folded, label, onToggle }: FoldChipProps) {
   return (
     <Chip
       icon={folded ? <PlaceIcon fontSize="small" /> : <LayersClearIcon fontSize="small" />}
-      label={folded ? `Show all ${places} places` : 'Show as one pin'}
+      label={label}
       size="small"
       color="primary"
       onClick={onToggle}
@@ -66,6 +70,32 @@ export function FoldPlacesControl({ places, folded, onToggle }: FoldPlacesContro
         boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
         '&:hover': { backgroundColor: 'rgba(255,255,255,1)' },
       }}
+    />
+  );
+}
+
+interface FoldPlacesControlProps {
+  /** How many places the object draws when unfolded; under two, nothing renders. */
+  places: number;
+  folded: boolean;
+  onToggle: () => void;
+}
+
+/**
+ * The per-object form, given its answer rather than finding it: Map mode and
+ * Discover hold their folds separately (see `useCollapsedExperiences`) and read
+ * places through different paths, and both want the same chip in the same place.
+ *
+ * It appears only for an object with more than one place, because folding one
+ * place into one pin is not a question.
+ */
+export function FoldPlacesControl({ places, folded, onToggle }: FoldPlacesControlProps) {
+  if (places < 2) return null;
+  return (
+    <FoldChip
+      folded={folded}
+      label={folded ? `Show all ${places} places` : 'Show as one pin'}
+      onToggle={onToggle}
     />
   );
 }

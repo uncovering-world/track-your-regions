@@ -10,10 +10,29 @@
 
 import type { LayerProps } from 'react-map-gl/maplibre';
 
+/**
+ * The three shapes of layer this file declares, named so that a definition can
+ * be *spread* into another one. `LayerProps` is a union over every layer type,
+ * and spreading a value typed as the union loses the discriminant, so the world
+ * layer — which is these layers over a vector source (`worldPointLayers.ts`) —
+ * could not be built from them without restating their paint.
+ */
+type CircleLayerProps = Extract<LayerProps, { type: 'circle' }>;
+type HeatmapLayerProps = Extract<LayerProps, { type: 'heatmap' }>;
+type SymbolLayerProps = Extract<LayerProps, { type: 'symbol' }>;
+
 export const SOURCE_MARKERS = 'exp-markers';
 const LAYER_HEAT = 'exp-heatmap';
-/** Below this, density; from it, individual markers. */
-const HEATMAP_MAX_ZOOM = 5;
+/**
+ * Below this, density; from it, individual markers.
+ *
+ * Exported because the world layer draws the same two ways at the same two
+ * zooms (#910) — and because the tile function that feeds it decides from the
+ * floor of the fade band below which zoom a feature is worth a name at all;
+ * `backend/src/db/tileScopeGuards.test.ts` reads both constants out of this
+ * file and holds the SQL to them.
+ */
+export const HEATMAP_MAX_ZOOM = 5;
 
 /**
  * Where the markers start fading in — the same zoom at which the heat starts
@@ -26,7 +45,7 @@ const HEATMAP_MAX_ZOOM = 5;
  * markers at all — a one-sided fade with a dip in it. Both layers now span the
  * band and ramp their opacity across it in opposite directions.
  */
-const MARKER_FADE_START = HEATMAP_MAX_ZOOM - 0.5;
+export const MARKER_FADE_START = HEATMAP_MAX_ZOOM - 0.5;
 
 export const SOURCE_HIGHLIGHT = 'exp-highlight';
 export const SOURCE_HOVER = 'exp-hover';
@@ -119,7 +138,7 @@ export const LAYER_HIGHLIGHT_POINT = 'exp-highlight-point';
  * the heat would be computed from cluster centroids. With `cluster` off, the
  * one source serves both this and the individual markers above the threshold.
  */
-export const heatmapLayer: LayerProps = {
+export const heatmapLayer: HeatmapLayerProps = {
   id: LAYER_HEAT,
   type: 'heatmap',
   source: SOURCE_MARKERS,
@@ -183,7 +202,7 @@ export const heatmapLayer: LayerProps = {
  * for every feature it would ever see — a filter that selected nothing and read
  * as if clustering were still in play.
  */
-export const markerLayer: LayerProps = {
+export const markerLayer: CircleLayerProps = {
   id: LAYER_MARKERS,
   minzoom: MARKER_FADE_START,
   type: 'circle',
@@ -204,7 +223,7 @@ export const markerLayer: LayerProps = {
   },
 };
 
-export const markerCountBadgeBgLayer: LayerProps = {
+export const markerCountBadgeBgLayer: CircleLayerProps = {
   id: LAYER_MARKER_COUNT_BADGE_BG,
   minzoom: MARKER_FADE_START,
   type: 'circle',
@@ -224,7 +243,7 @@ export const markerCountBadgeBgLayer: LayerProps = {
   },
 };
 
-export const markerCountBadgeTextLayer: LayerProps = {
+export const markerCountBadgeTextLayer: SymbolLayerProps = {
   id: LAYER_MARKER_COUNT_BADGE_TEXT,
   minzoom: MARKER_FADE_START,
   type: 'symbol',
@@ -247,7 +266,7 @@ export const markerCountBadgeTextLayer: LayerProps = {
   },
 };
 
-export const hoverGlowLayer: LayerProps = {
+export const hoverGlowLayer: CircleLayerProps = {
   id: LAYER_HOVER_GLOW,
   type: 'circle',
   source: SOURCE_HOVER,
@@ -259,7 +278,7 @@ export const hoverGlowLayer: LayerProps = {
   },
 };
 
-export const hoverRingLayer: LayerProps = {
+export const hoverRingLayer: CircleLayerProps = {
   id: LAYER_HOVER_RING,
   type: 'circle',
   source: SOURCE_HOVER,

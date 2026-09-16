@@ -351,6 +351,40 @@ describe('the catalogue points source publishes only what a reader may see', () 
     expect(flattened('tile_experience_points')).toContain(fragment.replace(/\s+/g, ' '));
   });
 
+  it('carries the place\u2019s id where the drawing side looks for it', () => {
+    // The six region sources pass `'id'` to `ST_AsMVT` as the feature id, and
+    // PostGIS then strips that column from the properties. This one does not:
+    // it carries `locationId` as an ordinary property, because a point needs no
+    // feature state and a second copy of the id is bytes on the densest tile.
+    //
+    // Which makes the two halves a contract. Written with the feature id and
+    // read off `feature.id`, the reader got `undefined` for every pin and fell
+    // back to keying the hover by the *object* — so the ring and the popup
+    // stayed on the first of the Rock Art of the Mediterranean Basin's 734
+    // shelters while the pointer crossed the rest, which is the exact failure
+    // `useMarkerInteractions` records for a region's markers.
+    const body = flattened('tile_experience_points');
+    expect(body, 'the tile emits the place id as a property').toContain('AS "locationId"');
+    expect(body, 'and passes no feature_id_name, which would strip it')
+      .toContain("ST_AsMVT(tile, 'points', 4096, 'geom')");
+
+    // Comments stripped before the second assertion: the note next to that
+    // line says "a property, not `feature.id`", and a guard that read its own
+    // explanation as the thing it forbids would fail on the fix.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+    const reader = readFileSync(
+      fileURLToPath(new URL(
+        '../../../frontend/src/components/experienceMarkers/useWorldPointInteractions.ts',
+        import.meta.url)),
+      'utf8',
+    );
+    const code = reader.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'the drawing side reads it off the properties')
+      .toContain('feature.properties?.locationId');
+    expect(code, 'and never off a feature id this source does not set')
+      .not.toMatch(/\bfeatures?\[\d*\]?\.id\b|\bfeature\.id\b/);
+  });
+
   it('carries a pin only where the drawing side can use one', () => {
     // A feature carries its name, its kind and its fold above this zoom and
     // nothing but a point and that fold below it, which is 112 kB against
@@ -361,6 +395,7 @@ describe('the catalogue points source publishes only what a reader may see', () 
     // rather than restated, the way `urlSafety.test.ts` reads the hosts a
     // picture may come from: no import crosses the boundary, and only this
     // test tree can read files.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
     const layers = readFileSync(
       fileURLToPath(new URL(
         '../../../frontend/src/components/experienceMarkers/layers.ts', import.meta.url)),

@@ -23,6 +23,8 @@ export function useTileUrls(
   viewingParentId: 'root' | number,
   breadcrumbs?: BreadcrumbEntry[],
   hasSubregions?: boolean,
+  /** The kind the world layer draws, or null for every kind at once (#910). */
+  worldKindId?: number | null,
 ) {
   const {
     selectedWorldView,
@@ -118,5 +120,27 @@ export function useTileUrls(
     return layers;
   }, [isCustomWorldView, selectedWorldViewId, breadcrumbs, hasSubregions, tileVersion]);
 
-  return { tileUrl, islandTileUrl, rootRegionsBorderUrl, contextLayers };
+  /**
+   * The catalogue's points, for the world layer (#910).
+   *
+   * The one source here that names no world view, and deliberately: a place
+   * belongs to the catalogue rather than to a lens, which is also what puts the
+   * places no region holds (#470) on a map at all. There is nothing for a scope
+   * to protect either — the function answers only what a reader-facing read
+   * answers, and says so in its own body (`db/init/01-schema.sql`).
+   *
+   * Omitted rather than emptied when every kind is wanted, and the reason is
+   * worth keeping because the obvious "simplification" here is
+   * `kind_id=${worldKindId ?? ''}`. The function answers a value it cannot read
+   * with an **empty tile** (`db/init/01-schema.sql`), so emitting the parameter
+   * with nothing after it would draw nothing at all — silently, and where every
+   * kind was meant. Naming no kind and naming an unreadable one are two
+   * different requests, and only one of them is this one.
+   */
+  const worldPointsUrl = useMemo(() => {
+    const kindParam = worldKindId == null ? '' : `kind_id=${worldKindId}&`;
+    return `${MARTIN_URL}/tile_experience_points/{z}/{x}/{y}?${kindParam}_v=${tileVersion}`;
+  }, [worldKindId, tileVersion]);
+
+  return { tileUrl, islandTileUrl, rootRegionsBorderUrl, contextLayers, worldPointsUrl };
 }

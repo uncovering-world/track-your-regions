@@ -404,3 +404,50 @@ describe('useTileUrls — islandTileUrl', () => {
     expect(result.current.islandTileUrl).toContain('_v=42');
   });
 });
+
+describe('useTileUrls — the catalogue\'s points', () => {
+  it('names the kind the world layer draws', () => {
+    mockNavigation.selectedWorldViewId = 2;
+    mockNavigation.isCustomWorldView = true;
+
+    const { result } = renderHook(() => useTileUrls('all-leaf', 'root', undefined, false, 5));
+
+    expect(result.current.worldPointsUrl).toContain('tile_experience_points');
+    expect(scope(result.current.worldPointsUrl).get('kind_id')).toBe('5');
+  });
+
+  it('omits the kind entirely for every kind at once', () => {
+    mockNavigation.selectedWorldViewId = 2;
+    mockNavigation.isCustomWorldView = true;
+
+    const { result } = renderHook(() => useTileUrls('all-leaf', 'root', undefined, false, null));
+
+    // Not `kind_id=`: the tile function reads a value it cannot parse as "no
+    // such kind" and answers an empty tile, so emitting the parameter empty
+    // would draw nothing where every kind was meant.
+    expect(result.current.worldPointsUrl).not.toContain('kind_id');
+    expect(scope(result.current.worldPointsUrl).get('kind_id')).toBeNull();
+  });
+
+  it('names no world view, which is the one source that should not', () => {
+    mockNavigation.selectedWorldViewId = 2;
+    mockNavigation.isCustomWorldView = true;
+
+    const { result } = renderHook(() => useTileUrls('all-leaf', 'root', undefined, false, 1));
+
+    // A place belongs to the catalogue rather than to a lens: scoping this to a
+    // world view would take the places no region holds (#470) off the map, which
+    // is one of the things the layer exists to fix.
+    expect(scope(result.current.worldPointsUrl).get('world_view_id')).toBeNull();
+  });
+
+  it('carries the tile version, so invalidating the cache reaches the points too', () => {
+    mockNavigation.selectedWorldViewId = 2;
+    mockNavigation.isCustomWorldView = true;
+    mockNavigation.tileVersion = 42;
+
+    const { result } = renderHook(() => useTileUrls('all-leaf', 'root', undefined, false, null));
+
+    expect(scope(result.current.worldPointsUrl).get('_v')).toBe('42');
+  });
+});
