@@ -6,6 +6,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
+import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import {
   hideLostSql, hideRefusedSql, hidePendingSql, lifecycleSelectSql, includeLost,
   offeredLocationSql, publishedContentSql, readerPositionSql, readerRegionMembershipSql,
@@ -71,49 +72,42 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
     conditions.push(`e.name ILIKE $${paramIndex++}`);
     params.push(`%${String(query.search)}%`);
   }
-  if (query.bbox) {
-    const [west, south, east, north] = String(query.bbox).split(',').map(Number);
-    if ([west, south, east, north].every(n => !isNaN(n))) {
-      // A box asks where an object is, and this catalogue answers that with
-      // places: region membership is derived from `experience_location_regions`
-      // rather than from the object's own coordinate, and ADR-0028 says the same
-      // of a pin. So the box matches a place this caller may see, and falls back
-      // to the object's own coordinate only where no such place exists -- which
-      // is `readerPositionSql`'s COALESCE asked as a filter instead of a column.
-      //
-      // Matching the anchor was the contradiction: 222 objects have one that is
-      // not any of their places, so a box around 144.97,-15.65 matched Wet
-      // Tropics of Queensland and answered with a pin 191 km away at Lake
-      // Barrin, while a box drawn around Lake Barrin -- the part a reader is
-      // actually shown -- did not match it at all.
-      //
-      // What one coordinate per row still cannot say: a serial site matched on a
-      // part inside the box is answered with the part nearest its anchor, which
-      // can be outside it -- four of the 47 objects an Alps-sized box holds, the
-      // starkest being the Ancient and Primeval Beech Forests, matched on a part
-      // in the Alps and answered at 22.19, 48.92 in the Carpathians. Drawing
-      // every part is #558's question, not a filter's.
-      const [w, s, e, n] = [paramIndex++, paramIndex++, paramIndex++, paramIndex++];
-      // `west > east` is a box drawn across the antimeridian, the convention
-      // `focus_bbox` already uses (CLAUDE.md § Antimeridian Handling). One
-      // envelope cannot hold it: `ST_MakeEnvelope(170, -10, -170, 10)` does not
-      // fail, it silently normalises to xmin -170 / xmax 170 — the whole planet
-      // *except* the strip asked for. Measured on the catalogue: that box matches
-      // 290 places between 10°S and 10°N where one is truly in it. So the two
-      // halves are drawn as two envelopes, meeting at the line.
-      const envelopes = west > east
-        ? [`ST_MakeEnvelope($${w}, $${s}, 180, $${n}, 4326)`,
-          `ST_MakeEnvelope(-180, $${s}, $${e}, $${n}, 4326)`]
-        : [`ST_MakeEnvelope($${w}, $${s}, $${e}, $${n}, 4326)`];
-      const inBox = (column: string) =>
-        envelopes.map(envelope => `ST_Intersects(${column}, ${envelope})`).join(' OR ');
-      const visiblePlaces = `SELECT 1 FROM experience_locations el
-        WHERE el.experience_id = e.id
-          AND ${offeredLocationSql()} AND ${publishedContentSql('el')}`;
-      conditions.push(`(EXISTS (${visiblePlaces} AND (${inBox('el.location')}))
-        OR (NOT EXISTS (${visiblePlaces}) AND (${inBox('e.location')})))`);
-      params.push(west, south, east, north);
-    }
+  const box = parseBbox(query.bbox);
+  if (box) {
+    // A box asks where an object is, and this catalogue answers that with
+    // places: region membership is derived from `experience_location_regions`
+    // rather than from the object's own coordinate, and ADR-0028 says the same
+    // of a pin. So the box matches a place this caller may see, and falls back
+    // to the object's own coordinate only where no such place exists -- which
+    // is `readerPositionSql`'s COALESCE asked as a filter instead of a column.
+    //
+    // Matching the anchor was the contradiction: 222 objects have one that is
+    // not any of their places, so a box around 144.97,-15.65 matched Wet
+    // Tropics of Queensland and answered with a pin 191 km away at Lake
+    // Barrin, while a box drawn around Lake Barrin -- the part a reader is
+    // actually shown -- did not match it at all.
+    //
+    // What one coordinate per row still cannot say: a serial site matched on a
+    // part inside the box is answered with the part nearest its anchor, which
+    // can be outside it -- four of the 47 objects an Alps-sized box holds, the
+    // starkest being the Ancient and Primeval Beech Forests, matched on a part
+    // in the Alps and answered at 22.19, 48.92 in the Carpathians. Drawing
+    // every part is #558's question, not a filter's.
+    // The antimeridian half of a box is `bboxEnvelopes.ts`'s rule, shared
+    // with the world layer's points read (#910) rather than spelled twice:
+    // `west > east` is a box drawn across the line, and one envelope
+    // silently normalises it into the whole planet except the strip asked
+    // for. That module carries the measurement.
+    const at = {
+      west: paramIndex++, south: paramIndex++, east: paramIndex++, north: paramIndex++,
+    };
+    const inBox = (column: string) => bboxIntersectsSql(column, box, at);
+    const visiblePlaces = `SELECT 1 FROM experience_locations el
+      WHERE el.experience_id = e.id
+        AND ${offeredLocationSql()} AND ${publishedContentSql('el')}`;
+    conditions.push(`(EXISTS (${visiblePlaces} AND (${inBox('el.location')}))
+      OR (NOT EXISTS (${visiblePlaces}) AND (${inBox('e.location')})))`);
+    params.push(box.west, box.south, box.east, box.north);
   }
   return { conditions, params };
 }
