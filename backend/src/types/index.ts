@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseBbox } from '../db/bboxEnvelopes.js';
 import { foldLabel, tidyLabel } from '../services/sync/labelFold.js';
 import {
   isStorableHttpUrl,
@@ -328,6 +329,45 @@ export const experienceListQuerySchema = z.object({
   includeLost: booleanStringSchema,
   limit: z.coerce.number().int().min(1).max(5000).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+/**
+ * The map's world layer (#910): which kind, which box, how much of each point.
+ *
+ * `bbox` is a string here and parsed in one place (`db/bboxEnvelopes.ts`),
+ * because the interesting half of a box is the antimeridian rule rather than
+ * its syntax, and that rule already has an owner. 100 characters is the same
+ * ceiling `experienceListQuerySchema` gives the same parameter.
+ *
+ * `detail` and `folded` are named rather than inferred: `validate()` replaces
+ * req.query with what Zod parsed and strips whatever it does not name, so a
+ * parameter missing here is a parameter the handler never sees — which is the
+ * note `experiencesByRegionQuerySchema` below carries for `includeLost`, and
+ * the same mistake would silently pin this endpoint to its overview tier.
+ */
+export const worldPointsQuerySchema = z.object({
+  // Bounded to int4 like `reviewQueueQuerySchema`'s ids above, and measured
+  // rather than assumed: `experience_kinds.id` is an integer column, so
+  // `?kindId=99999999999` is a perfectly good positive integer to Zod and an
+  // out-of-range error from Postgres, which this endpoint then answered as a
+  // 500 carrying the database's own message. A kind id that cannot exist is a
+  // bad request, and the 400 is also what stops the message getting out. The
+  // same shape a tile function had to catch as `numeric_value_out_of_range`
+  // (#918); here the schema is the guard.
+  kindId: z.coerce.number().int().positive().max(2147483647).optional(),
+  // west,south,east,north. Refused rather than dropped when it is not that:
+  // the map's read is a viewport, and a box nobody can parse must not quietly
+  // widen it to the whole catalogue — the argument the tile source made for a
+  // malformed kind id, applied to the parameter that decides how much of the
+  // world is answered. 100 characters is the ceiling `experienceListQuerySchema`
+  // gives the same parameter, which drops it instead because its answer is
+  // bounded by a `limit` and this one is not.
+  bbox: z.string().max(100)
+    .refine(value => parseBbox(value) !== null,
+      { message: 'bbox must be four numbers: west,south,east,north' })
+    .optional(),
+  detail: z.enum(['overview', 'markers']).default('overview'),
+  folded: booleanStringSchema,
 });
 
 export const experiencesByRegionQuerySchema = z.object({

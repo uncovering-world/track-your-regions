@@ -17,6 +17,7 @@ import {
   getExperienceLocations,
   getExperienceTreasures,
   getSiteFinds,
+  getWorldPoints,
   rejectExperience,
   unrejectExperience,
   assignExperienceToRegion,
@@ -54,6 +55,7 @@ import {
   experiencesByRegionQuerySchema,
   experienceRegionCountsQuerySchema,
   experienceLocationsQuerySchema,
+  worldPointsQuerySchema,
   regionLocationsQuerySchema,
   idParamSchema,
   sourceIdParamSchema,
@@ -93,6 +95,17 @@ router.get('/search', searchLimiter, validate(experienceSearchQuerySchema, 'quer
 
 // List the kinds a traveller browses by (#819)
 router.get('/kinds', publicReadLimiter, listKinds);
+
+// The catalogue's places across the whole world, before a region is chosen
+// (#910). Above `/:id` for the reason the review routes are: a one-segment
+// literal path must not be read as an id.
+//
+// No optionalAuth, and that is the whole scope of the endpoint rather than an
+// omission: like `/search` and `/:id/finds`, it names only what any reader may
+// open and answers the same to everyone. The curator relaxation of ADR-0025
+// stops at the three by-id reads, so there is no caller-shaped answer here to
+// widen — which is also why this read may be cached and shared.
+router.get('/points', publicReadLimiter, validate(worldPointsQuerySchema, 'query'), getWorldPoints);
 
 // Get experience counts per region per kind (for Discover page tree)
 router.get('/region-counts', publicReadLimiter, validate(experienceRegionCountsQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('worldViewIdQuery'), getExperienceRegionCounts);
