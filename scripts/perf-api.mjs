@@ -97,6 +97,18 @@ const TILE_TARGETS = [
   { name: 'tile: region subregions z5', url: `${MARTIN}/tile_region_subregions/5/16/10?parent_id=${REGION}` },
   { name: 'tile: all leaf regions z3', url: `${MARTIN}/tile_world_view_all_leaf_regions/3/4/2?world_view_id=${WORLD_VIEW}` },
   { name: 'tile: GADM root divisions z3', url: `${MARTIN}/tile_gadm_root_divisions/3/4/2` },
+  // The world layer's own source (#910). Two tiles, because what one costs is
+  // decided by two different things.
+  //
+  // The map opens at zoom 1, so what a visitor downloads on arrival is four z1
+  // tiles, and this is the heaviest of them — measured, not assumed: 80.6 kB
+  // against 23.6 for the north-west quadrant and under 4 for each southern one.
+  // `1/1/0` is the north-east quadrant, lon 0..180 and lat 0..85: Europe east
+  // of Greenwich, Asia, North Africa and the Middle East. Not the z0 tile,
+  // which holds the whole world and is asked for only by a reader who zooms
+  // all the way back out.
+  { name: 'tile: catalogue points z1 (north-east quadrant, the heaviest tile the map opens on)', url: `${MARTIN}/tile_experience_points/1/1/0` },
+  { name: 'tile: catalogue points z4 Europe', url: `${MARTIN}/tile_experience_points/4/8/5` },
 ].map((target) => ({ ...target, bustCache: true }));
 
 if (!Number.isInteger(RUNS) || RUNS < 1) {

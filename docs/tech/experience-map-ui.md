@@ -2,6 +2,9 @@
 
 This document describes how experience markers work in both map surfaces:
 
+- The world layer: `frontend/src/components/WorldExperiencePoints.tsx` — what Map Mode draws
+  before a region is chosen, from a tile source rather than from a region's read
+  (§ The world layer, below)
 - Map Mode: `frontend/src/components/RegionMapVT.tsx` + `frontend/src/components/ExperienceMarkers.tsx`
   (the sources, the layers and the list→map hover), with every MapLibre listener on the markers —
   the popup, the hover ring, the click that folds or selects — in
@@ -162,6 +165,86 @@ The handover is a cross-fade, not a threshold. `minzoom` cannot express one — 
 Removing clustering removed the only asynchronous path in the hover: `getClusterLeaves` was what made an answer arrive after the pointer had moved on, and the ownership-token machinery existed solely to discard those stale answers. A list hover now paints the ring on the marker's own point directly — `updateHoverFromList` takes no map handle at all, which also removed a guard that had started skipping the "clear the ring" branch whenever the map was not ready yet.
 
 Discover Mode still uses clustering (cluster circles, count labels, fold badge, hover ring, selected-location highlights) with a dedicated map instance and imperative MapLibre event wiring — the heatmap is Map Mode only. Its clusters count **places** since #558: measured on the same set as above — UNESCO in Europe — 467 objects draw the same 3463 points, the largest clusters reading 843 over central Europe and 526 over the Balkans. What a cluster label counts is rendered features rather than places represented, which are the same number until a reader folds something: a folded object contributes one feature to the cluster while its own badge still says how many places it stands for. A cluster of one-point-per-object counted sites; a cluster of places counts what a reader zooming in is about to be shown.
+
+## The world layer: a kind's places before a region is chosen
+
+With no region selected the map used to be empty — markers and the heatmap are built from a
+region's own read, so there was nothing to draw — and the places that belong to no region at
+all (#470) were on no map anywhere. `WorldExperiencePoints` draws the catalogue itself
+(#910, [ADR-0061](../decisions/0061-the-catalogues-points-are-a-tile-layer-of-their-own.md)):
+every reader-visible place of one kind, or of all kinds, across the whole world.
+
+**It is a read of points, not of objects.** The catalogue's 3 755 published objects stand at
+8 830 places a traveller can be sent to, and a serial World Heritage site is one row and
+hundreds of them. `GET /api/experiences` caps a page at 1 000 rows and answers objects, so
+the layer reads `tile_experience_points` through Martin instead — the mechanism the region
+polygons already use, with the reader's four questions written into the function itself,
+because Martin serves it unauthenticated (`docs/security/SECURITY.md` § Known Gaps).
+
+| | a region's markers | the world layer |
+|---|---|---|
+| where the features come from | `useRegionLocations`, one batch per region | `tile_experience_points`, one tile per z/x/y |
+| what decides the colour | `experienceColor`, per marker, as a property | `kindColorExpression`, the same rule as a MapLibre expression |
+| the fold | per object, held per region (`useCollapsedExperiences`) | the whole map at once, a filter on the tile's `main` |
+| the hover card | name, place, kind, picture and credit | name, place, kind — no picture, so no credit |
+| a click | selects the object in the list | opens it where this world view holds it (ADR-0042) |
+
+**What is shared is the paint**, spread from `layers.ts` rather than restated
+(`worldPointLayers.ts`): the heatmap's radius and palette, the marker's size, and the
+cross-fade between them at `MARKER_FADE_START` → `HEATMAP_MAX_ZOOM`. Two point layers on one
+map that disagreed about any of those would read as two different things being shown.
+
+**One number is not shared, and could not be.** `heatmap-intensity` scales density before
+the colour ramp reads it, and the two layers look at different amounts of world: a region's
+map is zoomed to that region, and this one holds the whole catalogue on one screen. At the
+region layer's overview value Europe came out a single flat amber mass from Ireland to the
+Caucasus — the saturation the note beside that property warns of, arrived at from the other
+direction. The world layer's overview is driven about twenty times softer, which is the
+factor the density is over by (about a hundred points fall inside one 16 px kernel over Italy
+at zoom 1, and the ramp clamps above one), and climbs back to meet the region layer's value
+where the markers fade in.
+
+**The fold is one filter, and it reaches the heat.** The tile flags each object's *reader
+position* — the place nearest its own published point, ADR-0028 decision 2, which is where a
+region's folded pin already sits — and folding is `['has', 'main']` on the marker layer and
+on the heatmap alike. It reaches the heat because that is where the distortion shows first:
+the Rock Art of the Mediterranean Basin is one site and 734 rock shelters, and unfolded they
+saturate eastern Spain from Valencia to the Pyrenees at zoom 4, long before a pin is drawn.
+The ramp does **not** change with the fold: folded, World Heritage draws 1 272 points instead
+of 6 347 and comes out about five times fainter, and that faintness is the answer rather than
+a fault — compensating would need a different factor per kind (5 for World Heritage, 2.3
+across all kinds, 1 for the art museums, every one of which is a single place) and would make
+the two pictures incomparable.
+
+**Which kind is on the map is in the address** (`?kind=`, [addresses.md](addresses.md)), so a
+link to the world map of Archaeology opens on Archaeology; the fold is not, because it is a
+way of looking at what is on the screen rather than a place. Both controls are
+`WorldLayerControls`, and they are one **band**: the kind chips, each in the colour its pins
+are drawn in, and the fold chip beside them, wrapping with them. Not the top-centre slot the
+per-object fold floats in — that slot is free only while a region's card holds the top-left
+corner, which is exactly what this layer does not have. Floated here, the centred chip
+crossed the kind chips on any map pane under about 873 px and, at the higher z-index, took
+the click with it; a row that wraps has no width at which its own members overlap. The two
+folds are never on screen together anyway, because choosing a region is what ends this
+layer.
+
+**A click is a way in rather than a selection**, because there is no list to select into. It
+asks the object's own read which regions will hold it and opens it at the smallest one in the
+world view already open — `openableRegion`, the rule the search and every card-to-card link
+follow (ADR-0042) — so the address it writes is one whose list actually holds the card. An
+object no region of this world view holds, which is the state of the places #470 is about, is
+flown to instead, so no pin on this map is a dead click.
+
+**The region under a pin stands aside for it**, in the click handler and in the hover handler
+alike: `onAWorldPoint` asks the map what is under the point, and `useMapInteractions` returns
+without selecting a region or naming one in the tooltip. It asks the map rather than reading
+`event.features` because the badge layers exist only while the reader has folded, so listing
+them as interactive would name layers the style does not hold.
+
+**The layer is drawn in a custom world view with no region selected, and nowhere else.** The
+default world view owns no regions — its map is the administrative tree — so every pin on it
+would be one `openableRegion` could not answer, and ADR-0042 refuses to answer a click by
+writing another world view's address.
 
 ## Interaction behavior
 
