@@ -27,7 +27,9 @@ import { useExperienceContext } from '../hooks/useExperienceContext';
 import { HoverPreviewCard } from './regionMap/HoverPreviewCard';
 import { HoveredRegionTooltip } from './regionMap/HoveredRegionTooltip';
 import { ExperienceMarkers } from './ExperienceMarkers';
+import { WorldExperiencePoints } from './WorldExperiencePoints';
 import { SelectedObjectFoldControl } from './experienceMarkers/FoldPlacesControl';
+import { WorldLayerControls } from './regionMap/WorldLayerControls';
 import { MapUnavailable } from './shared/MapUnavailable';
 import { ArtworkPreviewOverlay } from './regionMap/ArtworkPreviewOverlay';
 import { isWebGLAvailable } from '../utils/webgl';
@@ -36,6 +38,7 @@ import { useRegionMetadata } from './regionMap/useRegionMetadata';
 import { useTileUrls } from './regionMap/useTileUrls';
 import { useMapFeatureState } from './regionMap/useMapFeatureState';
 import { useMapInteractions } from './regionMap/useMapInteractions';
+import { useWorldLayer } from './regionMap/useWorldLayer';
 import {
   hullFillPaint,
   hullOutlinePaint,
@@ -48,6 +51,29 @@ import {
   rootRegionBorderPaint,
   type ExploringParams,
 } from './regionMap/layerStyles';
+
+/**
+ * Which level the map is drawing: the selected thing's own children where it
+ * has them, its siblings where it is a leaf, and the root otherwise.
+ *
+ * Module scope so that the component reads as what it renders. They were two
+ * if/else chains inside it, and the map has enough branches of its own.
+ */
+function divisionLevel(
+  division: { id: number; hasChildren?: boolean; parentId?: number | null } | null,
+): number | 'root' {
+  if (!division) return 'root';
+  if (division.hasChildren) return division.id;
+  return division.parentId ?? 'root';
+}
+
+function regionLevel(
+  region: { id: number; hasSubregions?: boolean; parentRegionId?: number | null } | null,
+): number | 'all-leaf' {
+  if (!region) return 'all-leaf';
+  if (region.hasSubregions === true) return region.id;
+  return region.parentRegionId ?? 'all-leaf';
+}
 
 // Layer source name in Martin tiles
 const REGIONS_SOURCE_LAYER = 'regions';
@@ -74,17 +100,8 @@ export function RegionMapVT() {
   // Check if in exploration mode (right panel open with experiences)
   const { artworkPreview, isExploring, setViewBounds } = useExperienceContext();
 
-  // Determine what parent we're viewing subdivisions of (GADM)
-  let viewingParentId: number | 'root';
-  if (!selectedDivision) viewingParentId = 'root';
-  else if (selectedDivision.hasChildren) viewingParentId = selectedDivision.id;
-  else viewingParentId = selectedDivision.parentId ?? 'root';
-
-  // For custom world views, determine what region we're viewing
-  let viewingRegionId: number | 'all-leaf';
-  if (!selectedRegion) viewingRegionId = 'all-leaf';
-  else if (selectedRegion.hasSubregions === true) viewingRegionId = selectedRegion.id;
-  else viewingRegionId = selectedRegion.parentRegionId ?? 'all-leaf';
+  const viewingParentId = divisionLevel(selectedDivision);
+  const viewingRegionId = regionLevel(selectedRegion);
 
   // Exploration params for outline paint styling
   const exploringParams: ExploringParams | undefined = isExploring
@@ -96,6 +113,9 @@ export function RegionMapVT() {
 
   // Extracted hooks
   const { metadata, metadataLoading, metadataById } = useRegionMetadata(viewingRegionId, viewingParentId);
+
+  // The catalogue's own points, drawn while no region is selected (#910).
+  const world = useWorldLayer();
   const { tileUrl, islandTileUrl, rootRegionsBorderUrl, contextLayers } = useTileUrls(
     viewingRegionId,
     viewingParentId,
@@ -423,6 +443,15 @@ export function RegionMapVT() {
             regionId={selectedRegion.id}
           />
         )}
+
+        {/* And the whole catalogue, while no region is selected (#910) */}
+        {world.active && (
+          <WorldExperiencePoints
+            kindId={world.kindId}
+            folded={world.folded}
+            kindNameOf={world.kindNameOf}
+          />
+        )}
       </Map>
 
       {/* Hovered region tooltip - hidden when exploring. Its own subscriber to
@@ -444,10 +473,13 @@ export function RegionMapVT() {
         <SelectedObjectFoldControl regionId={selectedRegion.id} />
       )}
 
+      {/* Which kind the world layer draws, and whether it is folded (#910) */}
+      {world.active && <WorldLayerControls world={world} />}
+
       {/* Experience/location hover preview (explore mode). Its own subscriber to
           the hover context, so a mouse move over a list of places does not
           re-render this map — see the component. */}
-      {isExploring && <HoverPreviewCard mapRef={mapRef} mapLoaded={mapLoaded} />}
+      {(isExploring || world.active) && <HoverPreviewCard mapRef={mapRef} mapLoaded={mapLoaded} />}
 
       {/* Current region info */}
       {selectedRegion && (

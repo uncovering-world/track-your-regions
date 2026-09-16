@@ -5,12 +5,14 @@
  *   /wv/5                                   map, world view 5
  *   /wv/5/r/6737-europe                     map, region 6737 selected
  *   /wv/5/r/6737-europe/e/1234-stonehenge   map, card 1234 open in the explore panel
+ *   /wv/5?kind=5                            map, no region: that kind across the world
  *   /discover[/wv/5[/r/7120-france[/e/9]]][?kind=1]
  *
  * What names a resource — the world view, the region, the open card — is a
  * path segment, because it must survive being pasted into another browser.
- * View state a visitor set deliberately is a query parameter; today that is
- * Discover's kind alone. Ids decide and slugs decorate: a segment is digits
+ * View state a visitor set deliberately is a query parameter; today that is the
+ * kind — Discover's open list, and what the map's world layer draws where no
+ * region is selected (`namesAKind`). Ids decide and slugs decorate: a segment is digits
  * followed by `-` or its end, and whatever follows that `-` is ignored — so a
  * renamed region keeps every link that was ever shared, and `useAppAddress`
  * rewrites the slug in place once the name is known. Deliberately stricter than
@@ -35,7 +37,11 @@ export interface AppAddress {
   regionId: number | null;
   /** Only meaningful under a region; dropped by `buildAppUrl` without one. */
   experienceId: number | null;
-  /** Discover's open kind list; ignored on the map. */
+  /**
+   * Discover's open kind list, under a region; on the map, what the world
+   * layer draws while no region is selected (#910). `namesAKind` is the rule,
+   * and the kind is dropped wherever it does not hold.
+   */
   kindId: number | null;
 }
 
@@ -43,6 +49,22 @@ export interface AppAddress {
 const NOT_A_PLACE = ['account', 'admin', 'review', 'auth', 'verify-email'];
 
 const SLUG_MAX = 60;
+
+/**
+ * Whether `?kind=` says anything at this address — the one rule the parse and
+ * the build both read, so the parameter cannot be written where it would not be
+ * read back.
+ *
+ * The two modes ask for it at opposite ends of the tree. A Discover card opens
+ * inside its kind's list, which is a list *of a region*, so the kind is
+ * meaningful exactly where a region is named. On the map a kind names what the
+ * **world** layer draws (#910) — every place of one kind across the whole
+ * world, or of all kinds — and that layer exists only while no region is
+ * selected: choosing one hands the map back to that region's own markers.
+ */
+function namesAKind(mode: AppMode, regionId: number | null): boolean {
+  return mode === 'discover' ? regionId !== null : regionId === null;
+}
 
 /**
  * A positive integer, or null. Segments and parameters are untrusted text:
@@ -113,10 +135,11 @@ export function parseAppUrl(pathname: string, search: string): AppAddress | null
     }
   }
 
-  // `cat` is the parameter's spelling until #819; a link shared before it still opens the list.
-  const kindId = mode === 'discover' && regionId !== null
-    ? readId(params.get('kind') ?? params.get('cat'))
-    : null;
+  // `cat` is Discover's spelling of the parameter until #819; a link shared
+  // before it still opens the list. The map's world layer is younger than the
+  // rename, so no address has ever carried `?cat=` to it.
+  const legacyKind = mode === 'discover' ? params.get('cat') : null;
+  const kindId = namesAKind(mode, regionId) ? readId(params.get('kind') ?? legacyKind) : null;
 
   return { mode, worldViewId, regionId, experienceId, kindId };
 }
@@ -145,7 +168,10 @@ export function buildAppUrl(
   }
 
   const path = `/${parts.join('/')}`;
-  const query = address.mode === 'discover' && regionId !== null && address.kindId !== null
+  // `regionId`, not `address.regionId`: a region the path did not write — one
+  // named under the default world view, which writes no `wv` segment — is not
+  // in the address, so the kind is read back as the world layer's.
+  const query = namesAKind(address.mode, regionId) && address.kindId !== null
     ? `?kind=${address.kindId}`
     : '';
   return `${path}${query}`;
