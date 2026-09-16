@@ -67,7 +67,13 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
     const placeBottom = point.y < canvas.clientHeight / 2;
     return {
       ...(placeLeft ? { left: 16 } : { right: 16 }),
-      ...(placeBottom ? { bottom: 16 } : { top: 86 }),
+      // 86 is the region card's own height plus a margin, and it is the
+      // fallback rather than the rule: the map's top-left chrome publishes how
+      // far down it reaches (`--tyr-map-chrome-bottom`, set by the world
+      // layer's control band, which wraps to three rows and reaches 96), so the
+      // card clears whatever is actually there instead of a number that was
+      // true of one of them.
+      ...(placeBottom ? { bottom: 16 } : { top: 'calc(var(--tyr-map-chrome-bottom, 78px) + 8px)' }),
     };
   }, [hoverPreview, mapLoaded, mapRef]);
 

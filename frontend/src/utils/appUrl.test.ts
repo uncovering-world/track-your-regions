@@ -18,8 +18,9 @@ const MAP_ROOT: AppAddress = { mode: 'map', worldViewId: null, regionId: null, e
 /**
  * One grammar for every address the app writes and reads (#644). The path
  * carries what names a resource — the world view, the region, the open card —
- * and the query carries view state a visitor set deliberately: today only
- * Discover's kind. Slugs decorate; ids decide.
+ * and the query carries view state a visitor set deliberately: the kind, which
+ * Discover reads under a region and the map reads where there is none.
+ * Slugs decorate; ids decide.
  */
 describe('parseAppUrl', () => {
   it('reads the map root as the default world view with nothing selected', () => {
@@ -73,8 +74,25 @@ describe('parseAppUrl', () => {
     expect(parseAppUrl('/wv/7', '?wv=5')).toEqual({ ...MAP_ROOT, worldViewId: 7 });
   });
 
-  it('ignores a kind outside Discover', () => {
+  it('reads the map\u2019s world layer: a kind, and no region under it', () => {
+    // The map asks for a kind at the opposite end of the tree from Discover
+    // (#910): the world layer draws a kind across the whole world, and it
+    // exists only while no region is selected.
+    expect(parseAppUrl('/wv/5', '?kind=5')).toEqual({ ...MAP_ROOT, worldViewId: 5, kindId: 5 });
+    expect(parseAppUrl('/', '?kind=5')).toEqual({ ...MAP_ROOT, kindId: 5 });
+  });
+
+  it('ignores a kind where it names nothing', () => {
+    // On the map a region has its own markers, and the world layer is gone.
     expect(parseAppUrl('/wv/5/r/1', '?kind=2')).toEqual({ ...MAP_ROOT, worldViewId: 5, regionId: 1 });
+    // In Discover the kind is a list of a region, so it needs one.
+    expect(parseAppUrl('/discover/wv/5', '?kind=2')).toEqual({ ...MAP_ROOT, mode: 'discover', worldViewId: 5 });
+  });
+
+  it('reads the pre-#819 spelling only where it was ever written', () => {
+    // `cat` was Discover's parameter; the map's world layer is younger than the
+    // rename and no link has ever carried `?cat=` to it.
+    expect(parseAppUrl('/wv/5', '?cat=5')).toEqual({ ...MAP_ROOT, worldViewId: 5 });
   });
 
   it('ignores a kind that does not parse', () => {
@@ -107,9 +125,15 @@ describe('buildAppUrl', () => {
     expect(buildAppUrl({ ...MAP_ROOT, mode: 'discover' })).toBe('/discover');
   });
 
-  it('drops what cannot stand alone: an experience without a region, a kind outside Discover', () => {
+  it('writes the map\u2019s world layer as the kind beside the world view', () => {
+    expect(buildAppUrl({ ...MAP_ROOT, worldViewId: 5, kindId: 5 })).toBe('/wv/5?kind=5');
+    expect(buildAppUrl({ ...MAP_ROOT, kindId: 5 })).toBe('/?kind=5');
+  });
+
+  it('drops what cannot stand alone: an experience without a region, a kind where it names nothing', () => {
     expect(buildAppUrl({ ...MAP_ROOT, worldViewId: 5, experienceId: 1234 })).toBe('/wv/5');
     expect(buildAppUrl({ ...MAP_ROOT, worldViewId: 5, regionId: 1, kindId: 2 })).toBe('/wv/5/r/1');
+    expect(buildAppUrl({ ...MAP_ROOT, mode: 'discover', worldViewId: 5, kindId: 2 })).toBe('/discover/wv/5');
   });
 
   it('writes nothing for a name whose slug is empty', () => {
@@ -124,6 +148,8 @@ describe('an address survives the round trip', () => {
     { ...MAP_ROOT, worldViewId: 5 },
     { ...MAP_ROOT, worldViewId: 5, regionId: 6737 },
     { ...MAP_ROOT, worldViewId: 5, regionId: 6737, experienceId: 1234 },
+    { ...MAP_ROOT, kindId: 5 },
+    { ...MAP_ROOT, worldViewId: 5, kindId: 5 },
     { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120 },
     { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120, kindId: 1 },
     { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: 1234, kindId: 1 },

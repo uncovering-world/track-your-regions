@@ -29,6 +29,16 @@ interface FoldChipProps {
   /** What the chip says, which is what the click will do. */
   label: string;
   onToggle: () => void;
+  /**
+   * Sit in the caller's own layout instead of floating at the top centre.
+   *
+   * The floating position belongs to the *per-object* fold: it is about the
+   * object the map is already about, so it hovers over the map near it. The
+   * world layer's fold is one of that layer's own controls, next to the kind
+   * chips, and floating it put it across them on any map pane under about
+   * 873 px — covering the very control that decides what is drawn.
+   */
+  inline?: boolean;
 }
 
 /**
@@ -41,7 +51,7 @@ interface FoldChipProps {
  * shared: a reader who learns the chip in one place meets the same chip in the
  * other.
  */
-export function FoldChip({ folded, label, onToggle }: FoldChipProps) {
+export function FoldChip({ folded, label, onToggle, inline = false }: FoldChipProps) {
   return (
     <Chip
       icon={folded ? <PlaceIcon fontSize="small" /> : <LayersClearIcon fontSize="small" />}
@@ -50,19 +60,23 @@ export function FoldChip({ folded, label, onToggle }: FoldChipProps) {
       color="primary"
       onClick={onToggle}
       sx={{
-        // Top centre, because both surfaces put the experience hover card in the
-        // bottom-left corner at the same z-index and later in DOM order — Map
-        // mode whenever the hovered point is in the top-right quadrant, Discover
-        // always. The card is `pointerEvents: 'none'`, so the click still landed;
-        // the control was simply invisible while a marker was hovered, which is
-        // most of the time a reader is deciding to fold something. Nothing else
-        // sits at the top centre: the region card is top-left, the zoom controls
-        // top-right.
-        position: 'absolute',
-        top: 12,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 3,
+        // Floating: top centre, because both surfaces put the experience hover
+        // card in the bottom-left corner at the same z-index and later in DOM
+        // order — Map mode whenever the hovered point is in the top-right
+        // quadrant, Discover always. The card is `pointerEvents: 'none'`, so the
+        // click still landed; the control was simply invisible while a marker
+        // was hovered, which is most of the time a reader is deciding to fold
+        // something. Nothing else sits at the top centre *while an object is
+        // selected*, which is the only time this form is drawn: the region card
+        // is top-left, the zoom controls top-right. The world layer's own
+        // controls do sit there, which is why that one is `inline`.
+        ...(inline ? {} : {
+          position: 'absolute',
+          top: 12,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 3,
+        }),
         cursor: 'pointer',
         backgroundColor: 'rgba(255,255,255,0.97)',
         color: 'text.primary',
