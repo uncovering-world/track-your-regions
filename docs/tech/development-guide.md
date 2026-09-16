@@ -234,19 +234,26 @@ components/
 │   ├── useListScrollAnchor.ts ← every movement of the list
 │   ├── inView.ts
 │   └── utils.ts
-├── ExperienceMarkers.tsx     ← the markers themselves: sources, layers, list→map hover
+├── ExperienceMarkers.tsx     ← a region's markers: sources, layers, list→map hover
+├── WorldExperiencePoints.tsx ← the catalogue's own points, before a region is chosen
 ├── experienceMarkers/        ← what came out of ExperienceMarkers: the pins and the pointer
 │   ├── buildMarkers.ts       ← one marker per place a reader may go to
-│   ├── FoldPlacesControl.tsx
+│   ├── FoldPlacesControl.tsx ← the fold chip, floating for one object and inline for the world
 │   ├── layers.ts
+│   ├── useExtentLayer.ts     ← the outline of the place being looked at (ADR-0059)
+│   ├── worldPointLayers.ts   ← the world layer's own: the region layer's paint over its read
+│   ├── worldPointsView.ts    ← which tier and how much world the viewport asks for
+│   ├── useWorldPointInteractions.ts ← a world pin's popup, ring and way in
 │   └── useMarkerInteractions.ts ← the map's own listeners: popup, ring, click
 ├── regionMap/                ← what came out of RegionMapVT: its hooks, and what it draws over the map
 │   ├── ArtworkPreviewOverlay.tsx ← the work under the pointer, at a size worth looking at
 │   ├── HoverPreviewCard.tsx  ← names what the pointer is over, over the map
 │   ├── HoveredRegionTooltip.tsx ← names the region under the pointer; its own store subscriber
+│   ├── WorldLayerControls.tsx ← which kind the world map draws, and whether it is folded
 │   ├── layerStyles.ts
 │   ├── useRegionMetadata.ts
 │   ├── useTileUrls.ts
+│   ├── useWorldLayer.ts      ← whether the world layer draws, its kind, its fold
 │   ├── useMapFeatureState.ts
 │   └── useMapInteractions.ts
 ├── shared/                   ← reusable across features (see shared-frontend-patterns.md)
