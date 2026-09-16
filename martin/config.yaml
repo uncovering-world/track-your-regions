@@ -20,10 +20,16 @@ postgres:
 
   # `functions: true` auto-discovers every compatible function in the
   # database and publishes a tile source for it — this is not a curated
-  # list. Today that resolves to the six `tile_*` functions the map draws
+  # list. Today that resolves to the seven `tile_*` functions the map draws
   # from (see martin/README.md § Function Sources for the current list, and
   # db/init/01-schema.sql for their definitions); a new compatible function
   # added later is published the same way, with no edit to this config.
+  #
+  # Six of them answer with shapes — a world view's regions, GADM's divisions,
+  # an archipelago's islands. The seventh, `tile_experience_points`, answers
+  # with the catalogue's own places and carries their names (#910, ADR-0061),
+  # which is why `docs/security/SECURITY.md` § Known Gaps discusses it apart
+  # from the rest.
   #
   # Table auto-publication served 27 sources nobody reads — every column of
   # `experiences` (including `created_by` and `status`), `experience_locations`,

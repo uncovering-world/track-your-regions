@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import {
+  hideLostSql, offeredLocationSql, publishedContentSql,
+} from '../controllers/experience/experienceLifecycle.js';
+import { placeOfferedSql, rowKindJoinSql } from './membership.js';
 
 /**
  * A tile function that answers for one scope must be given that scope.
@@ -97,6 +101,43 @@ const TILE_SOURCES: Record<string, TileSource> = {
       parent_id: 'p_parent_id IS NULL OR r.parent_region_id = p_parent_id',
     },
   },
+  // The one source that answers about the catalogue rather than about a world
+  // view's shapes (#910), and the only one with nothing to scope: a place
+  // belongs to the catalogue, not to a lens, so naming no kind is the world of
+  // every kind rather than a missing scope. What bounds it instead is the four
+  // reader-facing predicates, held below.
+  tile_experience_points: {
+    required: [],
+    optional: ['kind_id'],
+    filters: { kind_id: 'p_kind_id IS NULL OR m.kind_id = p_kind_id' },
+  },
+};
+
+/**
+ * The reader-facing predicates `tile_experience_points` has to carry, composed
+ * from the fragments the REST reads compose rather than written out here.
+ *
+ * Martin serves that function on an unauthenticated port, so a predicate
+ * dropped from it is a publication rather than a rendering bug: a point a
+ * source has withdrawn, a point or an arrival no curator has passed, a
+ * demolished site, an object every kind's rule turned down. The REST reads ask
+ * those four questions through `experienceLifecycle.ts` and `membership.ts`;
+ * raw SQL in the schema file cannot import them, and this is what keeps the
+ * second spelling equal to the first.
+ *
+ * `rowKindJoinSql` is taken up to its second join: the tile carries the kind's
+ * id and not its name, so only the half that decides *which* membership is the
+ * row's own applies — and that half is what makes `kind_id` mean on the map
+ * what it means in a region's list.
+ */
+const READER_PREDICATES: Record<string, string> = {
+  'the source still offers the point, and it still stands': offeredLocationSql('el'),
+  'a curator has passed the point': publishedContentSql('el'),
+  'the object still stands': hideLostSql('e'),
+  'some membership of the object is admitted and passed': placeOfferedSql('e'),
+  "the kind is the row's own": rowKindJoinSql('e', 'm', 'k')
+    .split('LEFT JOIN experience_kinds')[0]
+    .trim(),
 };
 
 /** The body of one `CREATE OR REPLACE FUNCTION …` block, between `AS $$` and `$$;`. */
@@ -298,4 +339,64 @@ describe('tile function scope guards', () => {
       }
     },
   );
+});
+
+/** A body with its comments gone and its whitespace flattened, so the fragments match as text. */
+function flattened(name: string): string {
+  return functionBody(name).replace(/--[^\n]*/g, '').replace(/\s+/g, ' ');
+}
+
+describe('the catalogue points source publishes only what a reader may see', () => {
+  it.each(Object.entries(READER_PREDICATES))('asks that %s', (_question, fragment) => {
+    expect(flattened('tile_experience_points')).toContain(fragment.replace(/\s+/g, ' '));
+  });
+
+  it('carries a pin only where the drawing side can use one', () => {
+    // A feature carries its name, its kind and its fold above this zoom and
+    // nothing but a point and that fold below it, which is 112 kB against
+    // 583 kB on the tile that holds the whole world. The threshold is not free to choose: markers
+    // fade in from MARKER_FADE_START, and MapLibre serves a fractional zoom
+    // from the integer tile below it, so a threshold above that band's floor
+    // fades in pins with no colour and no name. Read from the drawing side
+    // rather than restated, the way `urlSafety.test.ts` reads the hosts a
+    // picture may come from: no import crosses the boundary, and only this
+    // test tree can read files.
+    const layers = readFileSync(
+      fileURLToPath(new URL(
+        '../../../frontend/src/components/experienceMarkers/layers.ts', import.meta.url)),
+      'utf8',
+    );
+    const maxZoom = /const HEATMAP_MAX_ZOOM = ([\d.]+);/.exec(layers);
+    const fadeBand = /const MARKER_FADE_START = HEATMAP_MAX_ZOOM - ([\d.]+);/.exec(layers);
+    expect(maxZoom, 'the drawing side declares HEATMAP_MAX_ZOOM').not.toBeNull();
+    expect(fadeBand, 'the drawing side derives MARKER_FADE_START from it').not.toBeNull();
+
+    const firstLabelled = Math.floor(Number(maxZoom![1]) - Number(fadeBand![1]));
+    expect(flattened('tile_experience_points')).toContain(`labelled := z >= ${firstLabelled};`);
+  });
+
+  it('answers a value that is not a kind id with an empty tile, not an error', () => {
+    // Martin serves this on its own port, so the parameter is whatever a
+    // stranger typed, and what the cast raises comes back as a 500 carrying the
+    // Postgres message. Both of the cast's classes are named, because they are
+    // different values of wrong and only one is obvious: `abc`, `1.5` and the
+    // empty string raise 22P02, while `99999999999` — a perfectly good integer
+    // that does not fit — raises 22003 from `pg_strtoint32_safe`. The first
+    // version of this guard caught only 22P02 and left that one answering 500.
+    //
+    // Named rather than `WHEN others`, which would answer an empty tile for a
+    // cancelled query too, so this holds the conditions rather than the shape.
+    const body = flattened('tile_experience_points');
+    expect(body, 'the cast is guarded at all').toContain('EXCEPTION WHEN');
+    for (const condition of ['invalid_text_representation', 'numeric_value_out_of_range']) {
+      expect(body, `${condition} is not caught`).toContain(condition);
+    }
+    expect(body, 'a blanket handler would swallow more than a bad parameter')
+      .not.toContain('WHEN others');
+    // And what the handler *does*, not only what it catches: a handler that
+    // re-raised would leave every assertion above green while the endpoint went
+    // back to answering 500, which is the whole of what this guard is for.
+    expect(body, 'the handler answers with an empty tile')
+      .toMatch(/EXCEPTION WHEN [^;]*THEN RETURN '';/);
+  });
 });
