@@ -30,10 +30,13 @@ import { isWebGLAvailable } from '../../utils/webgl';
 import { plural } from '../../utils/plural';
 import { frameGeoJson } from '../../utils/mapUtils';
 
-// Inlined here instead of importing from ImportTreeDialogs — that module
-// re-imports GapDivisionTree + GapContextMap from this file, so sharing the
-// constant via import would form a circular dependency.
-const COVERAGE_MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+/**
+ * The basemap every map of the import screen's coverage draws on, shared with
+ * `CoverageCompareDialog.tsx`. It used to be copied there, because the file
+ * that held it imported this one's rows and the import would have been
+ * circular; the dialogs that reach back are their own files now (#933).
+ */
+export const COVERAGE_MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
 /** Shadow create_region row — rendered as a synthetic child in the flat list */
 export function ShadowCreateRow({ shadow, depth, onApproveShadow, onRejectShadow, isMutating }: {

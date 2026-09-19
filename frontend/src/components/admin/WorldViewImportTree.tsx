@@ -40,10 +40,11 @@ import { type ShadowInsertion } from './treeNodeShared';
 import { TreeNodeRow } from './TreeNodeRow';
 import { useTreeMutations, type MapPickerState } from './useTreeMutations';
 import {
-  ManualFixDialog, RemoveRegionDialog, CoverageCompareDialog,
-  RenameRegionDialog, ReparentRegionDialog, AddChildDialog,
-  AISuggestChildrenDialog, DivisionSearchDialog, GapAnalysisDialog,
+  ManualFixDialog, RemoveRegionDialog, RenameRegionDialog, ReparentRegionDialog,
+  AddChildDialog, AISuggestChildrenDialog, DivisionSearchDialog,
 } from './ImportTreeDialogs';
+import { CoverageCompareDialog } from './CoverageCompareDialog';
+import { GapAnalysisDialog } from './GapAnalysisDialog';
 import { ShadowCreateRow, NavControls } from './GapAnalysis';
 import { useCvMatchPipeline } from './useCvMatchPipeline';
 import { useNavigationState } from './useNavigationState';
