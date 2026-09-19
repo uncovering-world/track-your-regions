@@ -390,7 +390,7 @@ All API calls live in `frontend/src/api/`. Use `authFetchJson()` from `fetchUtil
 The one deliberate exception is `changePassword` (`api/auth.ts`): its endpoint answers a wrong *current password* with 401, and `authFetchJson` reads every 401 as an expired token — so the shared path would rotate the refresh family on each wrong attempt and eventually sign the user out under the sentence saying the session is fine. It builds its request by hand and takes its token from `requireFreshToken()`. The reasoning is in [authentication.md](authentication.md) § Password Security; do not "clean it up" back onto the shared path. Other hand-built authenticated calls (`getCurrentUser`, the two `image-proxy` fetches) record no reason and are debt, not precedent.
 
 When adding a new endpoint:
-1. Add the function in the appropriate `api/*.ts` file.
+1. Add the function in the appropriate `api/*.ts` file — the module of the caller it serves, which a URL's prefix does not decide. Everything under `/api/experiences` is three modules: `experiences.ts` for what a reader's screens ask of the catalogue, `reviewQueue.ts` for the review queue's calls (`/api/experiences/review/…`) and `curation.ts` for a curator's writes on one object (#933).
 2. Add/update the TypeScript types in the same file.
 3. Use the API function in a hook or component — never call `fetch` directly from components.
 
