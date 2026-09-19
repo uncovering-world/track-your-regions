@@ -1,11 +1,11 @@
 /**
  * Tests for the review page itself: the list its address names, and how the page pages it.
  *
- * The cards are `ReviewQueue.test.tsx`'s claim — what a curator can answer, and what they
- * are told afterwards. What is pinned here is everything around them, which ADR-0051 moved
- * out of the page's own state: the filters go out with the query because they are in the
- * URL, the selected row comes back into the URL, one cursor pages the whole union, and a
- * run's batch can be put aside.
+ * The cards are the `ReviewQueue*.test.tsx` files' claim — what a curator can answer, and
+ * what they are told afterwards. What is pinned here is everything around them, which
+ * ADR-0051 moved out of the page's own state: the filters go out with the query because
+ * they are in the URL, the selected row comes back into the URL, one cursor pages the whole
+ * union, and a run's batch can be put aside.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
