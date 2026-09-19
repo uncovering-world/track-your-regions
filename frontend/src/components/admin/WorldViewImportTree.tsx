@@ -39,6 +39,10 @@ import { SmartFlattenPreviewDialog } from './SmartFlattenPreviewDialog';
 import { type ShadowInsertion } from './treeNodeShared';
 import { TreeNodeRow } from './TreeNodeRow';
 import { useTreeMutations, type MapPickerState } from './useTreeMutations';
+import { useImportTreeRowHandlers } from './useImportTreeRowHandlers';
+import {
+  findNodeById, findNodeName as findNodeNameIn, duplicateSourceUrls, parentRegionMaps,
+} from './importTreeUtils';
 import {
   ManualFixDialog, RemoveRegionDialog, RenameRegionDialog, ReparentRegionDialog,
   AddChildDialog, AISuggestChildrenDialog, DivisionSearchDialog,
@@ -120,7 +124,6 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     }
   }, [coverageRefetching, lastMutatedRegionId]);
 
-
   // Compute the set of ancestor IDs for the last mutated region
   const coverageDirtyIds = useMemo<ReadonlySet<number>>(() => {
     if (!coverageRefetching || lastMutatedRegionId == null || !tree) return new Set();
@@ -156,15 +159,10 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
   });
 
   const {
-    acceptMutation, rejectMutation, rejectRemainingMutation, acceptAndRejectRestMutation,
-    acceptAllMutation, acceptSelectedMutation, acceptSelectedRejectRestMutation, rejectSelectedMutation, onAcceptTransfer,
-    dbSearchOneMutation, aiMatchOneMutation, geocodeMatchMutation, geoshapeMatchMutation, pointMatchMutation,
-    resetMatchMutation, clearMembersMutation, dismissMutation, pruneMutation, syncMutation, groupingMutation, mergeMutation,
-    smartFlattenMutation, removeMutation, collapseToParentMutation, autoResolveMutation, simplifyHierarchyMutation, simplifyChildrenMutation, overlapCheckMutation, undoMutation,
-    selectMapMutation, manualFixMutation, addChildMutation,
-    dismissWarningsMutation, renameMutation, reparentMutation,
-    renamingRegionId, reparentingRegionId,
-    geocodeProgress, undoSnackbar, setUndoSnackbar,
+    acceptAllMutation, onAcceptTransfer, smartFlattenMutation, removeMutation,
+    simplifyHierarchyMutation, simplifyChildrenMutation, overlapCheckMutation, undoMutation,
+    selectMapMutation, manualFixMutation, addChildMutation, renameMutation, reparentMutation,
+    renamingRegionId, reparentingRegionId, geocodeProgress, undoSnackbar, setUndoSnackbar,
     isMutating, invalidateTree,
   } = mutations;
 
@@ -224,16 +222,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
   }, [simplifyChildrenMutation]);
 
   const handleCheckOverlap = useCallback((regionId: number) => {
-    // Find node in tree for name/mapUrl
-    function findNode(nodes: MatchTreeNode[], id: number): MatchTreeNode | null {
-      for (const n of nodes) {
-        if (n.id === id) return n;
-        const found = findNode(n.children, id);
-        if (found) return found;
-      }
-      return null;
-    }
-    const node = tree ? findNode(tree, regionId) : null;
+    // The node itself, for the name and map the dialog shows.
+    const node = tree ? findNodeById(tree, regionId) : null;
     overlapCheckMutation.mutate(regionId, {
       onSuccess: (data) => {
         if (data.overlaps.length === 0) {
@@ -278,114 +268,16 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     );
   }, [worldViewId, tree]);
 
-  // Handler bundle for TreeNodeRow, extracted to reduce complexity of the render
-  // virtualization map callback below. Each handler is a narrow wrapper around a
-  // mutation so the JSX doesn't inline dozens of arrow functions.
-  const handleAccept = useCallback((regionId: number, divisionId: number) => {
-    setLastMutatedRegionId(regionId);
-    acceptMutation.mutate({ regionId, divisionId });
-  }, [acceptMutation]);
-
-  const handleAcceptAndRejectRest = useCallback((regionId: number, divisionId: number) => {
-    setLastMutatedRegionId(regionId);
-    acceptAndRejectRestMutation.mutate({ regionId, divisionId });
-  }, [acceptAndRejectRestMutation]);
-
-  const handleReject = useCallback((regionId: number, divisionId: number) => {
-    rejectMutation.mutate({ regionId, divisionId });
-  }, [rejectMutation]);
-
-  const handleDBSearch = useCallback((regionId: number) => dbSearchOneMutation.mutate(regionId), [dbSearchOneMutation]);
-  const handleAIMatch = useCallback((regionId: number) => aiMatchOneMutation.mutate(regionId), [aiMatchOneMutation]);
-  const handleDismissChildren = useCallback((regionId: number) => dismissMutation.mutate(regionId), [dismissMutation]);
-  const handleSync = useCallback((regionId: number) => syncMutation.mutate(regionId), [syncMutation]);
-  const handleHandleAsGrouping = useCallback((regionId: number) => {
-    setLastMutatedRegionId(regionId);
-    groupingMutation.mutate(regionId);
-  }, [groupingMutation]);
-  const handleGeocodeMatch = useCallback((regionId: number) => geocodeMatchMutation.mutate(regionId), [geocodeMatchMutation]);
-  const handleGeoshapeMatch = useCallback((regionId: number, scopeAncestorId?: number) =>
-    geoshapeMatchMutation.mutate({ regionId, scopeAncestorId }), [geoshapeMatchMutation]);
-  const handlePointMatch = useCallback((regionId: number, scopeAncestorId?: number) =>
-    pointMatchMutation.mutate({ regionId, scopeAncestorId }), [pointMatchMutation]);
-  const handleResetMatch = useCallback((regionId: number) => resetMatchMutation.mutate(regionId), [resetMatchMutation]);
-  const handleRejectRemaining = useCallback((regionId: number) => rejectRemainingMutation.mutate(regionId), [rejectRemainingMutation]);
-
-  const handleAcceptAll = useCallback((assignments: Array<{ regionId: number; divisionId: number }>) => {
-    if (assignments[0]) setLastMutatedRegionId(assignments[0].regionId);
-    acceptAllMutation.mutate(assignments);
-  }, [acceptAllMutation]);
-
-  const handleAcceptSelected = useCallback((regionId: number, divisionIds: number[]) => {
-    setLastMutatedRegionId(regionId);
-    acceptSelectedMutation.mutate({ regionId, divisionIds });
-  }, [acceptSelectedMutation]);
-
-  const handleAcceptSelectedRejectRest = useCallback((regionId: number, divisionIds: number[]) => {
-    setLastMutatedRegionId(regionId);
-    acceptSelectedRejectRestMutation.mutate({ regionId, divisionIds });
-  }, [acceptSelectedRejectRestMutation]);
-
-  const handleRejectSelected = useCallback((regionId: number, divisionIds: number[]) => {
-    rejectSelectedMutation.mutate({ regionId, divisionIds });
-  }, [rejectSelectedMutation]);
-
-  const handleMergeChild = useCallback((regionId: number) => mergeMutation.mutate(regionId), [mergeMutation]);
-  const handleDismissHierarchyWarnings = useCallback((regionId: number) => dismissWarningsMutation.mutate(regionId), [dismissWarningsMutation]);
-  const handleCollapseToParent = useCallback((regionId: number) => collapseToParentMutation.mutate(regionId), [collapseToParentMutation]);
-  const handleAutoResolve = useCallback((regionId: number) => autoResolveMutation.mutate(regionId), [autoResolveMutation]);
-  const handleReviewSubtree = useCallback((regionId: number) => dialogs.handleReview(regionId), [dialogs]);
-
-  const handleRename = useCallback((regionId: number, currentName: string) => {
-    dialogs.setRenameDialog({ regionId, currentName, newName: currentName });
-  }, [dialogs]);
-
-  const handleReparent = useCallback((regionId: number) => {
-    const region = dialogs.flatRegionList.find(r => r.id === regionId);
-    dialogs.setReparentDialog({ regionId, regionName: region?.name ?? '', selectedParentId: null });
-  }, [dialogs]);
-
-  const handlePruneToLeaves = useCallback((regionId: number) => pruneMutation.mutate(regionId), [pruneMutation]);
-  const handleClearMembers = useCallback((regionId: number) => clearMembersMutation.mutate(regionId), [clearMembersMutation]);
-
-  // Compute pending region IDs for each mutation via a single memo, so the
-  // JSX below doesn't need to inline dozens of ternaries (and the enclosing
-  // component function stays under the cognitive-complexity cap).
-  const pendingIds = useMemo(() => {
-    const simple = <V,>(m: { isPending: boolean; variables?: V }): V | null =>
-      (m.isPending ? (m.variables ?? null) : null);
-    const nested = <V,>(m: { isPending: boolean; variables?: { regionId?: V } }): V | null =>
-      (m.isPending ? (m.variables?.regionId ?? null) : null);
-    return {
-      mergingRegionId: simple(mergeMutation),
-      flatteningRegionId: dialogs.flattenPreviewLoading ?? simple(smartFlattenMutation),
-      removingRegionId: nested(removeMutation),
-      collapsingRegionId: simple(collapseToParentMutation),
-      autoResolvingRegionId: simple(autoResolveMutation),
-      reviewingRegionId: dialogs.reviewLoading?.key.startsWith('region-')
-        ? Number(dialogs.reviewLoading.key.replace('region-', ''))
-        : null,
-      pruningRegionId: simple(pruneMutation),
-      clearingMembersRegionId: simple(clearMembersMutation),
-      simplifyingRegionId: simple(simplifyHierarchyMutation),
-      simplifyingChildrenRegionId: simple(simplifyChildrenMutation),
-      checkingOverlapRegionId: simple(overlapCheckMutation),
-      dbSearchingRegionId: simple(dbSearchOneMutation),
-      aiMatchingRegionId: simple(aiMatchOneMutation),
-      dismissingRegionId: simple(dismissMutation),
-      syncingRegionId: simple(syncMutation),
-      groupingRegionId: simple(groupingMutation),
-      geocodeMatchingRegionId: simple(geocodeMatchMutation),
-      geoshapeMatchingRegionId: nested(geoshapeMatchMutation),
-      pointMatchingRegionId: nested(pointMatchMutation),
-    };
-  }, [
-    mergeMutation, smartFlattenMutation, removeMutation, collapseToParentMutation,
-    autoResolveMutation, pruneMutation, clearMembersMutation, simplifyHierarchyMutation,
-    simplifyChildrenMutation, overlapCheckMutation, dbSearchOneMutation, aiMatchOneMutation,
-    dismissMutation, syncMutation, groupingMutation, geocodeMatchMutation,
-    geoshapeMatchMutation, pointMatchMutation, dialogs.flattenPreviewLoading, dialogs.reviewLoading,
-  ]);
+  const {
+    handleAIMatch, handleAccept, handleAcceptAll, handleAcceptAndRejectRest,
+    handleAcceptSelected, handleAcceptSelectedRejectRest, handleAutoResolve, handleClearMembers,
+    handleCollapseToParent, handleDBSearch, handleDismissChildren, handleDismissHierarchyWarnings,
+    handleGeocodeMatch, handleGeoshapeMatch, handleHandleAsGrouping, handleMergeChild,
+    handlePointMatch, handlePruneToLeaves, handleReject, handleRejectRemaining,
+    handleRejectSelected, handleRename, handleReparent, handleResetMatch,
+    handleReviewSubtree, handleSync,
+    pendingIds,
+  } = useImportTreeRowHandlers(mutations, dialogs, setLastMutatedRegionId);
 
   const handleContentResize = useCallback(() => {
     // Re-measure visible items after DOM update (don't use virtualizer.measure()
@@ -399,18 +291,9 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     requestAnimationFrame(performMeasurements);
   }, [nav]);
 
-  const findNodeName = useCallback((regionId: number): string => {
-    if (!tree) return '';
-    const walk = (nodes: MatchTreeNode[]): string => {
-      for (const n of nodes) {
-        if (n.id === regionId) return n.name;
-        const found = walk(n.children);
-        if (found) return found;
-      }
-      return '';
-    };
-    return walk(tree);
-  }, [tree]);
+  const findNodeName = useCallback(
+    (regionId: number): string => (tree ? findNodeNameIn(tree, regionId) : ''), [tree],
+  );
 
   const handleManualFix = useCallback((regionId: number, needsManualFix: boolean) => {
     if (needsManualFix) {
@@ -447,56 +330,13 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     invalidateTree(parentId);
   }, [dialogs, buildSuggestChildrenActionPromise, invalidateTree]);
 
-  // Compute which sourceUrls appear on multiple nodes (duplicates)
-  // and which are already synced (same matchStatus and same division set)
-  const { duplicateUrls, syncedUrls } = useMemo(() => {
-    if (!tree) return { duplicateUrls: new Set<string>(), syncedUrls: new Set<string>() };
-    const urlNodes = new Map<string, MatchTreeNode[]>();
-    function walk(nodes: MatchTreeNode[]) {
-      for (const node of nodes) {
-        if (node.sourceUrl) {
-          const existing = urlNodes.get(node.sourceUrl);
-          if (existing) existing.push(node);
-          else urlNodes.set(node.sourceUrl, [node]);
-        }
-        walk(node.children);
-      }
-    }
-    walk(tree);
-    const dups = new Set<string>();
-    const synced = new Set<string>();
-    for (const [url, nodes] of urlNodes) {
-      if (nodes.length > 1) {
-        dups.add(url);
-        // Check if all instances have the same matchStatus and same set of divisionIds
-        const refStatus = nodes[0].matchStatus;
-        const refDivs = nodes[0].assignedDivisions.map(d => d.divisionId).sort((a, b) => a - b).join(',');
-        const allSame = nodes.every(n =>
-          n.matchStatus === refStatus &&
-          n.assignedDivisions.map(d => d.divisionId).sort((a, b) => a - b).join(',') === refDivs,
-        );
-        if (allSame) synced.add(url);
-      }
-    }
-    return { duplicateUrls: dups, syncedUrls: synced };
-  }, [tree]);
+  const { duplicateUrls, syncedUrls } = useMemo(
+    () => duplicateSourceUrls(tree ?? []), [tree],
+  );
 
-  // Build maps from node ID -> direct parent's regionMapUrl and name (for fallback in preview)
-  const { parentRegionMapUrlById, parentRegionMapNameById } = useMemo(() => {
-    const urlMap = new Map<number, string>();
-    const nameMap = new Map<number, string>();
-    if (!tree) return { parentRegionMapUrlById: urlMap, parentRegionMapNameById: nameMap };
-    function walk(nodes: MatchTreeNode[], parentMapUrl: string | null, parentMapName: string | null) {
-      for (const node of nodes) {
-        if (parentMapUrl) urlMap.set(node.id, parentMapUrl);
-        if (parentMapName) nameMap.set(node.id, parentMapName);
-        // Only pass THIS node's own map to children — don't propagate inherited ancestor maps
-        walk(node.children, node.regionMapUrl ?? null, node.regionMapUrl ? node.name : null);
-      }
-    }
-    walk(tree, null, null);
-    return { parentRegionMapUrlById: urlMap, parentRegionMapNameById: nameMap };
-  }, [tree]);
+  const { urlById: parentRegionMapUrlById, nameById: parentRegionMapNameById } = useMemo(
+    () => parentRegionMaps(tree ?? []), [tree],
+  );
 
   // Render nav-source toolbar: either NavControls (when active) or a count button.
   // Extracted to keep the component body's cognitive complexity under the cap.

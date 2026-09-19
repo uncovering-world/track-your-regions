@@ -19,6 +19,7 @@ import {
 } from '../../api/admin/worldViewImport';
 import type { SpatialAnomaly } from '../../api/admin/wvImportTreeOps';
 import type { AdjacencyEdge, BorderPath } from '../../api/admin/wvImportCvMatch';
+import { findNodeById } from './importTreeUtils';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -410,16 +411,8 @@ export function useCvMatchPipeline(
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Find tree node to get the original region map URL
-    const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
-      for (const n of nodes) {
-        if (n.id === regionId) return n;
-        const found = findNode(n.children);
-        if (found) return found;
-      }
-      return null;
-    };
-    const node = tree ? findNode(tree) : null;
+    // The tree's node, for the original region map URL.
+    const node = tree ? findNodeById(tree, regionId) : null;
 
     // Pre-populate childRegions from tree so they're available during cluster review
     const childRegions = node?.children?.map(c => ({ id: c.id, name: c.name })) ?? [];

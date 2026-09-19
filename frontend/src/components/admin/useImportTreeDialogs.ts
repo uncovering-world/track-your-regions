@@ -20,28 +20,7 @@ import {
 import { searchDivisions } from '../../api/divisions';
 import { runHierarchyReview } from '../../api/admin/ai';
 import { type StoredReport } from './AIReviewDrawer';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Recursively find a node by ID in the tree */
-function findNodeById(nodes: MatchTreeNode[], id: number): MatchTreeNode | null {
-  for (const n of nodes) {
-    if (n.id === id) return n;
-    const found = findNodeById(n.children, id);
-    if (found) return found;
-  }
-  return null;
-}
-
-/** Recursively find a node's name by ID */
-function findNameById(nodes: MatchTreeNode[], id: number): string {
-  for (const n of nodes) {
-    if (n.id === id) return n.name;
-    const found = findNameById(n.children, id);
-    if (found) return found;
-  }
-  return '';
-}
+import { findNodeById, findNodeName } from './importTreeUtils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -235,7 +214,7 @@ export function useImportTreeDialogs(
   const [aiSuggestingRegionId, setAISuggestingRegionId] = useState<number | null>(null);
 
   const handleAISuggestChildren = useCallback(async (regionId: number) => {
-    const regionName = tree ? findNameById(tree, regionId) || 'Region' : 'Region';
+    const regionName = tree ? findNodeName(tree, regionId) || 'Region' : 'Region';
     setAISuggestingRegionId(regionId);
     try {
       const result = await apiAISuggestChildren(worldViewId, regionId);
@@ -265,7 +244,7 @@ export function useImportTreeDialogs(
   const [divSearchLoading, setDivSearchLoading] = useState(false);
 
   const handleManualDivisionSearch = useCallback((regionId: number) => {
-    const regionName = tree ? findNameById(tree, regionId) || 'Region' : 'Region';
+    const regionName = tree ? findNodeName(tree, regionId) || 'Region' : 'Region';
     setDivisionSearchDialog({ regionId, regionName });
     setDivSearchQuery('');
     setDivSearchResults([]);
@@ -310,7 +289,7 @@ export function useImportTreeDialogs(
   const [coverageCompare, setCoverageCompare] = useState<CoverageCompareState | null>(null);
 
   const handleCoverageClick = useCallback((regionId: number) => {
-    const name = tree ? findNameById(tree, regionId) || '' : '';
+    const name = tree ? findNodeName(tree, regionId) || '' : '';
     setCoverageCompare({ regionId, regionName: name, worldViewId, loading: true, parentGeometry: null, childrenGeometry: null, geoshapeGeometry: null });
 
     getCoverageGeometry(worldViewId, regionId).then(data => {
@@ -345,7 +324,7 @@ export function useImportTreeDialogs(
   const [flattenPreviewLoading, setFlattenPreviewLoading] = useState<number | null>(null);
 
   const handleSmartFlatten = useCallback(async (regionId: number) => {
-    const regionName = tree ? findNameById(tree, regionId) || 'Region' : 'Region';
+    const regionName = tree ? findNodeName(tree, regionId) || 'Region' : 'Region';
     setFlattenPreviewLoading(regionId);
     try {
       const data = await smartFlattenPreview(worldViewId, regionId);
