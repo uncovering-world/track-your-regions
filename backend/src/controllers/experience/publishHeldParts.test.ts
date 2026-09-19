@@ -6,7 +6,8 @@
  * see and recorded in the changeset's contents record. Its own file beside
  * `publishController.test.ts`, which had reached the length the lint draws the
  * line at; the client and the helpers are shared through
- * `publishController.fixtures.ts`, so the two files describe one server.
+ * `publishController.fixtures.ts`, so every file testing publishing describes
+ * one server.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

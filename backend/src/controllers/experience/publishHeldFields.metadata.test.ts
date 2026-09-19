@@ -16,7 +16,8 @@
  * `publishController.test.ts`, which had reached the length the lint draws the
  * line at, and beside `publishHeldParts.test.ts`, which left for the same
  * reason; the client and the helpers are shared through
- * `publishController.fixtures.ts`, so the three files describe one server.
+ * `publishController.fixtures.ts`, so every file testing publishing describes
+ * one server.
  *
  * The rule worth pinning hardest is the credit's (#722): it is the credit of
  * the *stored picture*. On 1413 of the 1414 cards that hold one there is no

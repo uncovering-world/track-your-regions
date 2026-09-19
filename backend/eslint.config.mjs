@@ -163,7 +163,6 @@ export default [
       'src/types/index.ts',
       // Test files over the line: split by the surface under test when touched.
       'src/services/sync/syncOrchestrator.test.ts',
-      'src/controllers/experience/publishController.test.ts',
       'src/services/sync/locationWriter.test.ts',
     ],
     rules: {
