@@ -141,3 +141,76 @@ export function flattenVisibleTree(
   for (const root of nodes) walk(root, 0, false);
   return result;
 }
+
+/** The node with this id, wherever it sits, or `null` when the tree has none. */
+export function findNodeById(nodes: MatchTreeNode[], regionId: number): MatchTreeNode | null {
+  for (const n of nodes) {
+    if (n.id === regionId) return n;
+    const found = findNodeById(n.children, regionId);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The name of the node with this id, or `''` when the tree does not hold it. */
+export function findNodeName(nodes: MatchTreeNode[], regionId: number): string {
+  return findNodeById(nodes, regionId)?.name ?? '';
+}
+
+/**
+ * Which source URLs more than one node carries, and which of those the nodes
+ * agree about — same match status and the same set of divisions — so a row can
+ * say "duplicate" and "already synced" apart.
+ */
+export function duplicateSourceUrls(nodes: MatchTreeNode[]): {
+  duplicateUrls: Set<string>; syncedUrls: Set<string>;
+} {
+  const urlNodes = new Map<string, MatchTreeNode[]>();
+  function walk(level: MatchTreeNode[]) {
+    for (const node of level) {
+      if (node.sourceUrl) {
+        const existing = urlNodes.get(node.sourceUrl);
+        if (existing) existing.push(node);
+        else urlNodes.set(node.sourceUrl, [node]);
+      }
+      walk(node.children);
+    }
+  }
+  walk(nodes);
+  const duplicateUrls = new Set<string>();
+  const syncedUrls = new Set<string>();
+  for (const [url, carriers] of urlNodes) {
+    if (carriers.length > 1) {
+      duplicateUrls.add(url);
+      const refStatus = carriers[0].matchStatus;
+      const refDivs = carriers[0].assignedDivisions.map(d => d.divisionId).sort((a, b) => a - b).join(',');
+      const allSame = carriers.every(n =>
+        n.matchStatus === refStatus &&
+        n.assignedDivisions.map(d => d.divisionId).sort((a, b) => a - b).join(',') === refDivs,
+      );
+      if (allSame) syncedUrls.add(url);
+    }
+  }
+  return { duplicateUrls, syncedUrls };
+}
+
+/**
+ * Each node's *direct* parent's region map and its name, for the preview to
+ * fall back on. Only the parent's own map is passed down — an inherited
+ * ancestor map is not this node's fallback.
+ */
+export function parentRegionMaps(nodes: MatchTreeNode[]): {
+  urlById: Map<number, string>; nameById: Map<number, string>;
+} {
+  const urlById = new Map<number, string>();
+  const nameById = new Map<number, string>();
+  function walk(level: MatchTreeNode[], parentMapUrl: string | null, parentMapName: string | null) {
+    for (const node of level) {
+      if (parentMapUrl) urlById.set(node.id, parentMapUrl);
+      if (parentMapName) nameById.set(node.id, parentMapName);
+      walk(node.children, node.regionMapUrl ?? null, node.regionMapUrl ? node.name : null);
+    }
+  }
+  walk(nodes, null, null);
+  return { urlById, nameById };
+}
