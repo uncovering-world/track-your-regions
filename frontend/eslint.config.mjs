@@ -122,9 +122,8 @@ export default [
   // A later block wins for the files it names, which is why this one is last.
   {
     files: [
-      // The admin's world-view import screens and the custom subdivision
+      // The admin's world-view import screen and the custom subdivision
       // dialog's map tab: dense JSX that predates the ceiling.
-      'src/components/admin/ImportTreeDialogs.tsx',
       'src/components/admin/WorldViewImportTree.tsx',
       'src/components/admin/CvGeoPreviewSection.tsx',
       'src/components/WorldViewEditor/components/dialogs/CustomSubdivisionDialog/MapViewTab.tsx',
