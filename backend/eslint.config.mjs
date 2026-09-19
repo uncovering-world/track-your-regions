@@ -67,10 +67,14 @@ export default [
       'security/detect-eval-with-expression': 'error',
       'security/detect-no-csrf-before-method-override': 'error',
       'security/detect-child-process': 'warn',
-      // File-size cap: keep files under 1000 lines so they stay scannable.
-      // Skip blank lines and single-line comments (docstrings / section banners)
-      // from the count so files aren't artificially close to the limit.
-      'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
+      // The "split now" line of docs/tech/development-guide.md § Keep Files
+      // Small, in this rule's measure: lines of code, blank and comment lines
+      // skipped, because the repo asks for dense explanatory comments and a
+      // raw-line cap would tax exactly those. The guide states this number
+      // and names this entry, so a change here is a change there too (#530).
+      // The files that were already over it when the ceiling was set keep the
+      // old one in the last block of this config, until they are split.
+      'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
       // Two rules, each documented at its own entries below.
       'no-restricted-syntax': ['error',
         {
@@ -137,6 +141,33 @@ export default [
       // SonarJS: disable genuine false positives only
       'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses (e.g., jitter)
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
+    },
+  },
+  // The files that were over 800 counted lines on the day the ceiling above
+  // was set (#530). Each keeps the ceiling it was written under, 1000, until
+  // it is split; an entry is deleted when its file drops under 800 and no
+  // entry is ever added — a new file that needs one is a file to split first.
+  // A later block wins for the files it names, which is why this one is last.
+  {
+    files: [
+      // The world-view import matcher: one algorithm (ICP, mean-shift, the
+      // pipeline that drives them) in dense numeric code, with no
+      // responsibility seam a line count can find. ADR-0009 split the import
+      // controller by domain; these four are what that split left whole.
+      'src/controllers/admin/wvImportMatchPipeline.ts',
+      'src/controllers/admin/wvImportMatchIcp.ts',
+      'src/controllers/admin/wvImportMatchHelpers.ts',
+      'src/controllers/admin/wvImportMatchController.ts',
+      // Row types written by hand; #792 generates them from the live schema,
+      // which is what shrinks this file.
+      'src/types/index.ts',
+      // Test files over the line: split by the surface under test when touched.
+      'src/services/sync/syncOrchestrator.test.ts',
+      'src/controllers/experience/publishController.test.ts',
+      'src/services/sync/locationWriter.test.ts',
+    ],
+    rules: {
+      'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
     },
   },
 ];
