@@ -21,7 +21,7 @@ export async function listCurators(_req: AuthenticatedRequest, res: Response): P
       u.email,
       u.role,
       u.avatar_url,
-      json_agg(json_build_object(
+      COALESCE(json_agg(json_build_object(
         'id', ca.id,
         'scopeType', ca.scope_type,
         'regionId', ca.region_id,
@@ -30,12 +30,12 @@ export async function listCurators(_req: AuthenticatedRequest, res: Response): P
         'sourceName', es.name,
         'assignedAt', ca.assigned_at,
         'notes', ca.notes
-      ) ORDER BY ca.assigned_at DESC) as scopes
+      ) ORDER BY ca.assigned_at DESC) FILTER (WHERE ca.id IS NOT NULL), '[]'::json) as scopes
     FROM users u
-    JOIN curator_assignments ca ON u.id = ca.user_id
+    LEFT JOIN curator_assignments ca ON u.id = ca.user_id
     LEFT JOIN regions r ON ca.region_id = r.id
     LEFT JOIN experience_sources es ON ca.source_id = es.id
-    WHERE u.role IN ('curator', 'admin')
+    WHERE u.role = 'admin' OR (u.role = 'curator' AND ca.id IS NOT NULL)
     GROUP BY u.id, u.display_name, u.email, u.role, u.avatar_url
     ORDER BY u.display_name
   `);
