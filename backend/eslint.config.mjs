@@ -161,8 +161,6 @@ export default [
       // Row types written by hand; #792 generates them from the live schema,
       // which is what shrinks this file.
       'src/types/index.ts',
-      // A test file over the line: split by the surface under test when touched.
-      'src/services/sync/syncOrchestrator.test.ts',
     ],
     rules: {
       'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],

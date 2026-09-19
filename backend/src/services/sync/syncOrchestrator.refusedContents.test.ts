@@ -11,7 +11,8 @@
  * admitted basilica's `P276` names — is one row and one count, the row's
  * refusal standing.
  *
- * Its own file beside `syncOrchestrator.test.ts`, which is at the line limit;
+ * Its own file beside `syncOrchestrator.test.ts`, which had reached the line
+ * limit and has since been split by the surface under test;
  * the mocks are the same ones, restated.
  */
 

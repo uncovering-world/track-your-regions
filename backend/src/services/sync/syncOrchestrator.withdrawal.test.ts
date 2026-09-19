@@ -8,7 +8,8 @@
  * has to be told — a floor that is computed and then forgotten is run 42 with
  * a withdrawal arm.
  *
- * Its own file beside `syncOrchestrator.test.ts`, which is at the line limit;
+ * Its own file beside `syncOrchestrator.test.ts`, which had reached the line
+ * limit and has since been split by the surface under test;
  * the mocks are the same ones, restated.
  */
 
