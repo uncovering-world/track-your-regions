@@ -100,9 +100,12 @@ export function CuratorPanel() {
         </Button>
       </Box>
 
-      {curators?.length === 0 && (
+      {/* The viewing admin is always a row here (#905), so "no rows" can no
+          longer happen; "nobody holds an assignment" is the state the hint
+          to promote someone is for. */}
+      {curators?.every((curator) => curator.scopes.length === 0) && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          No curators assigned yet. Click "Add Curator" to promote a user.
+          No scopes assigned yet. Click "Add Curator" to promote a user.
         </Alert>
       )}
 
@@ -181,6 +184,15 @@ function CuratorCard({
 
             {/* Scopes */}
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+              {curator.role === 'admin' && (
+                <Chip
+                  icon={<PublicIcon />}
+                  label="Global, by role"
+                  size="small"
+                  variant="outlined"
+                  color="warning"
+                />
+              )}
               {curator.scopes.map((scope) => (
                 <ScopeChip
                   key={scope.id}
