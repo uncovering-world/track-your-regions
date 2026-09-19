@@ -25,7 +25,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { createCuratorAssignment, revokeCuratorAssignment } from './curatorController.js';
+import { createCuratorAssignment, revokeCuratorAssignment, listCurators } from './curatorController.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -55,6 +55,21 @@ function clientSql(client: ReturnType<typeof pinClient>): string[] {
 const ALGERIA = 3;
 const CANDIDATE = 214;
 const ADMIN = { id: 1 };
+
+describe('listing curators by role and assignment', () => {
+  it('keeps admins without assignments and emits no null assignment in their scopes', async () => {
+    mockedQuery.mockReset().mockResolvedValue({ rows: [] });
+    await listCurators({} as never, makeRes() as never);
+
+    // Assert the query sent to PostgreSQL: a canned result cannot reproduce
+    // the inner join that dropped administrators with no assignment (#905).
+    const sql = String(mockedQuery.mock.calls[0][0]).replace(/\s+/g, ' ');
+    expect(sql).toMatch(/LEFT JOIN curator_assignments ca ON u.id = ca.user_id/i);
+    expect(sql).toMatch(/COALESCE\(json_agg\(/i);
+    expect(sql).toMatch(/FILTER \(WHERE ca.id IS NOT NULL\), '\[\]'::json\)/i);
+    expect(sql).toMatch(/WHERE u.role = 'admin' OR \(u.role = 'curator' AND ca.id IS NOT NULL\)/i);
+  });
+});
 
 /**
  * Answers each statement by what it asks for, so a handler's own order of
