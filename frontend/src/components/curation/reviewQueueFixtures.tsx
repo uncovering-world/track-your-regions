@@ -1,11 +1,12 @@
 /**
- * What the review page's two test files both need: a queue answer in the endpoint's own
- * shape, the rows to fill it with, and the page rendered at an address.
+ * What the review page's test files all need: a queue answer in the endpoint's own shape,
+ * the rows to fill it with, and the page rendered at an address.
  *
- * Shared rather than copied because the two files ask different questions of the same
- * screen — `ReviewQueue.test.tsx` about the cards a curator answers, `ReviewPage.test.tsx`
- * about the list the address names — and a second copy of the fixtures is what drifts when
- * the endpoint's shape changes again.
+ * Shared rather than copied because the files ask different questions of the same screen —
+ * the `ReviewQueue*.test.tsx` files about the cards a curator answers, the
+ * `ReviewPage*.test.tsx` files about the list the address names and the rows selected in
+ * it — and a second copy of the fixtures is what drifts when the endpoint's shape changes
+ * again.
  *
  * Each test file still declares its own `vi.mock` of `../../api/reviewQueue`: a module mock
  * belongs to the file that installs it. What it answers with is `shaped`, below.

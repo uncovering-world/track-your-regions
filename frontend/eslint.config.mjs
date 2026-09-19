@@ -128,8 +128,6 @@ export default [
       'src/components/admin/WorldViewImportTree.tsx',
       'src/components/admin/CvGeoPreviewSection.tsx',
       'src/components/WorldViewEditor/components/dialogs/CustomSubdivisionDialog/MapViewTab.tsx',
-      // A test file over the line: split by the surface under test when touched.
-      'src/components/curation/ReviewQueue.test.tsx',
     ],
     rules: {
       'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
