@@ -228,6 +228,23 @@ from deadlocking rather than merely serialising.
 
 ## API Endpoints
 
+### Administrators in the curator directory (#905)
+
+`GET /api/admin/curators` includes every administrator, even without a
+`curator_assignments` row, alongside curators with assigned scopes. The
+left join aggregates only real assignments, returning `scopes: []` when
+there are none. The panel derives a non-revocable **Global, by role**
+scope from `role = 'admin'`; it has no assignment id or grant date.
+Existing assignments remain visible and revocable, but revoking one
+does not remove an administrator's role-based authority.
+
+The same list supplies the entry point to each person's activity log.
+`GET /api/admin/curators/:userId/activity` reads by author id without
+requiring that author to have an assignment. Both reads remain behind
+`requireAuth` and `requireAdmin`; listing an administrator does not
+change who may read the directory or its activity logs. Future curator
+selectors should reuse this directory rather than enumerate assignments.
+
 ### Authentication
 
 | Method | Endpoint | Description | Auth Required |
