@@ -221,7 +221,9 @@ switch, it changes only what a *future* run admits, never a row a reader sees
 today. One admin sets one or two pairs of integers by hand from the source card — the same
 shape as the gate switch, and the same reasoning: admin routes are unlimited by
 design, and the attack surface here is a compromised admin account, not a client
-hammering the endpoint. CodeQL alert #354 is dismissed against this paragraph.
+hammering the endpoint. Its CodeQL alert is dismissed against this paragraph —
+under a new number each time the line moves, since an alert's identity is its
+location, so no number is written here.
 
 `POST /api/experiences/sources/:sourceId/publish-waiting` carries
 `authenticatedLimiter`, and it is the clearest case of the criterion rather than a
