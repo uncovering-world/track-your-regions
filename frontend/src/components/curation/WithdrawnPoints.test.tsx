@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('../../api/experiences', () => ({
+vi.mock('../../api/curation', () => ({
   setLocationState: vi.fn(),
 }));
 
@@ -26,7 +26,7 @@ vi.mock('../shared/PointCorrection', () => ({
 import {
   WithdrawnCard, AnsweredWithdrawalCard, pointTitle, withdrawalStory, wouldReveal,
 } from './WithdrawnPoints';
-import { setLocationState } from '../../api/experiences';
+import { setLocationState } from '../../api/curation';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
 const mockedState = setLocationState as unknown as ReturnType<typeof vi.fn>;

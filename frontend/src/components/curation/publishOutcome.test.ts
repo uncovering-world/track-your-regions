@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
-import type { PublishResult } from '../../api/experiences';
+import type { PublishResult } from '../../api/curation';
 
 function result(over: Partial<PublishResult> = {}): PublishResult {
   return {

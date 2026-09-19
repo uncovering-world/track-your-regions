@@ -20,14 +20,16 @@ vi.mock('../../utils/queryInvalidation', () => ({
   invalidateExperiences: vi.fn(),
 }));
 
-vi.mock('../../api/experiences', () => ({
+vi.mock('../../api/curation', () => ({
   editExperience: vi.fn(),
   rejectExperience: vi.fn(),
   unrejectExperience: vi.fn(),
   removeExperienceFromRegion: vi.fn(),
   fetchCurationLog: vi.fn(),
-  fetchExperience: vi.fn(),
   setExperienceState: vi.fn(),
+}));
+vi.mock('../../api/experiences', () => ({
+  fetchExperience: vi.fn(),
   // The Location field reads this on open; its own test says what it shows. One
   // place per object here, so the remount test below has a place to open.
   fetchExperienceLocations: vi.fn(async (experienceId: number) => ({
@@ -46,7 +48,8 @@ vi.mock('./PointPreviewDialog', () => ({
   ),
 }));
 
-import { editExperience, fetchExperience, type Experience } from '../../api/experiences';
+import { fetchExperience, type Experience } from '../../api/experiences';
+import { editExperience } from '../../api/curation';
 import { CurationDialog } from './CurationDialog';
 
 const mockedEdit = editExperience as unknown as ReturnType<typeof vi.fn>;

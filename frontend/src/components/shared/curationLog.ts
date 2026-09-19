@@ -32,7 +32,8 @@ import { fieldLabel } from '../curation/fieldMeaning';
 import { plural } from '../../utils/plural';
 import { creators } from '../../utils/creatorList';
 import { creditSentence } from './ImageCreditLine';
-import type { CurationLogEntry, ImageCredit } from '../../api/experiences';
+import type { ImageCredit } from '../../api/experiences';
+import type { CurationLogEntry } from '../../api/curation';
 
 // Six hues, and the sense each carries. The colour is the reader's first cue down a
 // column of chips, so two acts that mean opposite things must not share one.

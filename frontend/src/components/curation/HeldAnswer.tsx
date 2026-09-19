@@ -31,7 +31,7 @@
  */
 
 import { Button, Stack, Typography } from '@mui/material';
-import type { HeldSelectionPart } from '../../api/experiences';
+import type { HeldSelectionPart } from '../../api/curation';
 import type { FactSubject } from './factRows';
 
 /** What a curator answered: rows of the object's own, rows of its parts, or both. */

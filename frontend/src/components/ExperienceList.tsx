@@ -38,13 +38,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useNewBadgeImpressions } from '../hooks/useNewBadgeImpressions';
 import { useVisitedExperiences, useVisitedLocations } from '../hooks/useVisitedExperiences';
 import { useRegionLocations } from '../hooks/useRegionLocations';
-import {
-  fetchExperienceKinds,
-  unrejectExperience,
-  removeExperienceFromRegion,
-  type Experience,
-  type ExperienceTreasure,
-} from '../api/experiences';
+import { fetchExperienceKinds, type Experience, type ExperienceTreasure } from '../api/experiences';
+import { unrejectExperience, removeExperienceFromRegion } from '../api/curation';
 import { useNavigation } from '../hooks/useNavigation';
 import { locationLabel } from '../utils/locationLabel';
 import { CurationDialog } from './shared/CurationDialog';

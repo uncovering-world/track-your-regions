@@ -45,7 +45,7 @@ vi.mock('../../api/reviewQueue', () => ({
   setRunAside: vi.fn(),
   bringRunBack: vi.fn(),
 }));
-vi.mock('../../api/experiences', () => ({
+vi.mock('../../api/curation', () => ({
   setExperienceState: vi.fn(),
   setExperienceAdmission: vi.fn(),
   setLocationState: vi.fn(),
@@ -53,15 +53,17 @@ vi.mock('../../api/experiences', () => ({
   declineSourceValue: vi.fn(),
   declineHeld: vi.fn(),
   publishExperience: vi.fn(),
-  fetchExperience: vi.fn(),
   unrefuseContents: vi.fn(),
 }));
+vi.mock('../../api/experiences', () => ({
+  fetchExperience: vi.fn(),
+}));
 
+import { fetchExperience } from '../../api/experiences';
 import {
-  setExperienceState, setExperienceAdmission, setLocationState,
-  acceptSourceValue, declineSourceValue, declineHeld, publishExperience, fetchExperience,
-  unrefuseContents,
-} from '../../api/experiences';
+  setExperienceState, setExperienceAdmission, setLocationState, acceptSourceValue,
+  declineSourceValue, declineHeld, publishExperience, unrefuseContents,
+} from '../../api/curation';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import {
   shaped, renderQueue, openRow,

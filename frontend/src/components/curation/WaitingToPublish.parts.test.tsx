@@ -12,11 +12,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
-import { declineHeld, publishExperience } from '../../api/experiences';
+import { declineHeld, publishExperience } from '../../api/curation';
 import { GatedCard } from './WaitingToPublish';
 
-vi.mock('../../api/experiences', async importOriginal => ({
-  ...await importOriginal<typeof import('../../api/experiences')>(),
+vi.mock('../../api/curation', async importOriginal => ({
+  ...await importOriginal<typeof import('../../api/curation')>(),
   declineHeld: vi.fn(),
   publishExperience: vi.fn(),
 }));

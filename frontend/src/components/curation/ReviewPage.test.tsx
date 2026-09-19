@@ -27,7 +27,7 @@ vi.mock('../../api/reviewQueue', () => ({
   setRunAside: vi.fn(),
   bringRunBack: vi.fn(),
 }));
-vi.mock('../../api/experiences', () => ({
+vi.mock('../../api/curation', () => ({
   setExperienceState: vi.fn(),
   setExperienceAdmission: vi.fn(),
   setLocationState: vi.fn(),
@@ -35,10 +35,12 @@ vi.mock('../../api/experiences', () => ({
   declineSourceValue: vi.fn(),
   declineHeld: vi.fn(),
   publishExperience: vi.fn(),
+}));
+vi.mock('../../api/experiences', () => ({
   fetchExperience: vi.fn(),
 }));
 
-import { setExperienceState } from '../../api/experiences';
+import { setExperienceState } from '../../api/curation';
 import { setRunAside, bringRunBack } from '../../api/reviewQueue';
 import {
   shaped, renderQueue, openRow, at, navType, goBack,

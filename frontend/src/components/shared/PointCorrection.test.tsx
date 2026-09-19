@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('../../api/experiences', () => ({
+vi.mock('../../api/curation', () => ({
   editLocation: vi.fn(),
 }));
 
@@ -23,7 +23,7 @@ vi.mock('./LocationPicker', () => ({
 }));
 
 import { PointCorrection, correctionOutcome, type PlaceToCorrect } from './PointCorrection';
-import { editLocation } from '../../api/experiences';
+import { editLocation } from '../../api/curation';
 
 const mockedEdit = editLocation as unknown as ReturnType<typeof vi.fn>;
 

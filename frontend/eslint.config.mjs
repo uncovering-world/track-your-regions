@@ -122,9 +122,6 @@ export default [
   // A later block wins for the files it names, which is why this one is last.
   {
     files: [
-      // The API client for experiences, grown one endpoint at a time; its
-      // seams are the resources it talks to.
-      'src/api/experiences.ts',
       // The admin's world-view import screens and the custom subdivision
       // dialog's map tab: dense JSX that predates the ceiling.
       'src/components/admin/ImportTreeDialogs.tsx',

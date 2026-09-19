@@ -49,7 +49,7 @@ import {
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
 import { useMutation } from '@tanstack/react-query';
-import { setLocationState } from '../../api/experiences';
+import { setLocationState } from '../../api/curation';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { formatDateTime } from '../../utils/dateFormat';
 import { claimLabel } from '../../utils/placeClaims';

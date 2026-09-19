@@ -31,7 +31,7 @@ import {
   acceptSourceValue,
   declineSourceValue,
   type PublishResult,
-} from '../../api/experiences';
+} from '../../api/curation';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { publishOutcomeFor } from './publishOutcome';
 import { formatDateTime } from '../../utils/dateFormat';

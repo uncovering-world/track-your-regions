@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
 import { useMutation } from '@tanstack/react-query';
-import { unrefuseContents } from '../../api/experiences';
+import { unrefuseContents } from '../../api/curation';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { formatDateTime } from '../../utils/dateFormat';
 import { plural } from '../../utils/plural';

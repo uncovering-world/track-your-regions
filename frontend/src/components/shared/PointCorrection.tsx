@@ -30,7 +30,7 @@
 import { useState } from 'react';
 import { Alert, Button, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { editLocation } from '../../api/experiences';
+import { editLocation } from '../../api/curation';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { placementNotice } from '../../utils/placementNotice';
 import { describeMove, moveLabel } from '../../utils/moveDescription';
