@@ -181,6 +181,15 @@ function CuratorCard({
 
             {/* Scopes */}
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+              {curator.role === 'admin' && (
+                <Chip
+                  icon={<PublicIcon />}
+                  label="Global, by role"
+                  size="small"
+                  variant="outlined"
+                  color="warning"
+                />
+              )}
               {curator.scopes.map((scope) => (
                 <ScopeChip
                   key={scope.id}

@@ -15,10 +15,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CuratorPanel } from './CuratorPanel';
-import { listCurators, getCuratorActivity } from '../../api/admin';
+import { listCurators, getCuratorActivity, revokeCuratorAssignment } from '../../api/admin';
 
 vi.mock('../../api/admin', async () => ({
   listCurators: vi.fn(),
@@ -35,6 +35,7 @@ const mockedCurators = listCurators as unknown as ReturnType<typeof vi.fn>;
 const mockedActivity = getCuratorActivity as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  vi.mocked(revokeCuratorAssignment).mockReset();
   mockedCurators.mockReset().mockResolvedValue([
     {
       user_id: 7,
@@ -71,6 +72,40 @@ function renderPanel() {
 }
 
 describe('a curator’s activity, as an admin reads it', () => {
+  it('shows an administrator’s role-based scope without offering to revoke it, and opens their trail', async () => {
+    mockedCurators.mockResolvedValue([{
+      user_id: 1, email: 'admin@example.com', display_name: 'Administrator',
+      role: 'admin', avatar_url: null, scopes: [],
+    }]);
+    renderPanel();
+
+    expect(await screen.findByText('Global, by role')).toBeInTheDocument();
+    expect(screen.queryByTestId('DeleteIcon')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /view activity/i }));
+    expect(await screen.findByText('Villa Farnesina')).toBeInTheDocument();
+    expect(mockedActivity).toHaveBeenCalledWith(1);
+  });
+
+  it.each(['admin', 'curator'])('keeps real assignments revocable for a %s', async (role) => {
+    vi.mocked(revokeCuratorAssignment).mockResolvedValue({
+      success: true, roleReverted: false, remainingAssignments: 0,
+    });
+    mockedCurators.mockResolvedValue([{
+      user_id: 7, email: 'curator@example.com', display_name: 'A curator',
+      role, avatar_url: null,
+      scopes: [{
+        id: 77, scopeType: 'region', regionId: 3, regionName: 'Algeria',
+        sourceId: null, sourceName: null, assignedAt: '2026-08-23T10:00:00Z', notes: null,
+      }],
+    }]);
+    renderPanel();
+
+    expect(await screen.findByText('Algeria')).toBeInTheDocument();
+    expect(screen.queryByText('Global, by role') !== null).toBe(role === 'admin');
+    fireEvent.click(screen.getByTestId('DeleteIcon'));
+    await waitFor(() => expect(vi.mocked(revokeCuratorAssignment)).toHaveBeenCalledWith(77));
+  });
+
   it('names the act in the product’s words, not the column’s', async () => {
     renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: /view activity/i }));
