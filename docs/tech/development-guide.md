@@ -20,9 +20,17 @@ If similar functionality exists:
 
 ### 2. Keep Files Small
 
-**Keep files under ~500 lines.** When a file approaches this, split proactively. Files at 800+ lines are overdue for splitting.
+**Keep files under ~500 lines of code, and never over 800.** Lines are counted the way the linter counts them: blank lines and comment lines are skipped, so a dense docblock costs nothing — the repo asks for those comments and a raw-line count would tax them. When a file approaches 500, split proactively. 800 is the ceiling `npm run check` enforces: the `max-lines` entry in `backend/eslint.config.mjs` and `frontend/eslint.config.mjs` states that number and names this section, so the guide and the linter are one rule in two places, and a change to either is a change to both (#530). To measure a file with the gate's own ruler rather than `wc -l`, ask the rule for its count:
 
-Exceptions: files with dense, non-decomposable JSX can exceed the limit if splitting would only add prop-drilling overhead without clarity gain. Use judgment — if a file has distinct responsibilities, it should be split.
+```bash
+cd backend   # or: cd frontend — the config and the eslint binary are the stack's own
+npx eslint --rule '{"max-lines":["error",{"max":0,"skipBlankLines":true,"skipComments":true}]}' src/path/to/file.ts
+# → "File has too many lines (975). Maximum allowed is 0."
+```
+
+The files that were already over 800 on the day the ceiling was set are listed by name in the last block of each config, each with the reason it stays whole, at the ceiling they were written under (1000). That list only shrinks: an entry is deleted when its file is split under 800, and no entry is ever added — a new file that would need one is a file to split first.
+
+Exceptions: files with dense, non-decomposable JSX can exceed the ~500 target if splitting would only add prop-drilling overhead without clarity gain. Use judgment — if a file has distinct responsibilities, it should be split. The 800 ceiling has no such exception outside that list.
 
 `ExperienceList.tsx` used to stand here as that exception, at ~1,300 lines. It is comfortably under 700 now, and what moved out was never JSX depth: the windowed rows (#552), then the kind header, the notice lines, the curator's rejected section and every movement of the list itself (#553). Each had a responsibility of its own, and the prop-drilling the exception warns about did not materialise — the pieces take what they render and the handlers they call. The exception stands; that file is no longer an example of it.
 
@@ -78,7 +86,7 @@ controllers/
 3. **Two barrel styles:**
    - `export *` (experience): simpler, use when there are no naming conflicts
    - Named re-exports (worldView): explicit, use when you want to document the API surface
-4. **Target: 100–600 lines per file.** If a controller file exceeds ~600 lines, split by sub-concern.
+4. **Target: 100–600 lines of code per file** (counted as § Keep Files Small counts). If a controller file exceeds ~600 lines, split by sub-concern.
 
 ### Adding a new controller function
 
@@ -414,8 +422,8 @@ For the full reference with examples, see [maplibre-patterns.md](maplibre-patter
 
 | Signal | Action |
 |--------|--------|
-| File > 500 lines | Look for split opportunities |
-| File > 800 lines | Split now |
+| File > 500 lines of code | Look for split opportunities |
+| File > 800 lines of code | The lint fails — split now. A file on the configs' grandfather list is split before anything is added to it |
 | File has 2+ distinct responsibilities | Split by responsibility |
 | You're about to add a new responsibility to an already-large file | Extract the new code into its own file from the start |
 | Hook has 3+ `useState` + related logic that could stand alone | Extract to `use*.ts` |
@@ -478,7 +486,7 @@ Suppressions hide real issues over time. Treat each one as a deliberate exceptio
    see `martin/run-martin.sh:39-44`, which uses exactly that shape — the reason
    from its opening word through to the sourced line. What never changes is one
    site at a time and a reason that says why.
-6. **Config-level rule disables need a comment.** If you turn a rule `'off'` in `eslint.config.mjs` (or equivalent), add an inline comment naming why (see `security/detect-object-injection` in `backend/eslint.config.mjs` for the pattern).
+6. **Config-level rule disables need a comment.** If you turn a rule `'off'` in `eslint.config.mjs` (or equivalent), add an inline comment naming why (see `security/detect-object-injection` in `backend/eslint.config.mjs` for the pattern). A rule relaxed for named files is the same pattern with a list: the `max-lines` grandfather block at the end of each config names every file it covers and the reason each stays whole (§ Keep Files Small).
 
 ### Examples
 
