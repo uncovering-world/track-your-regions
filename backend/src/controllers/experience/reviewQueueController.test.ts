@@ -2,7 +2,8 @@
  * Tests for the review queue's kinds.
  *
  * Split out of `lifecycleController.test.ts` when that file passed eslint's
- * `max-lines` (1000, comments and blanks excluded). The seam was already there:
+ * `max-lines` (then 1000, comments and blanks excluded; 800 since #530). The
+ * seam was already there:
  * the queue is one read with an independent query per kind, and everything left
  * behind is a curator write under a row lock — and #526 split the controllers
  * along the same seam, so this file now sits beside the module it tests.

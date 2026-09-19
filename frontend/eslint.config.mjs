@@ -67,8 +67,14 @@ export default [
       // Security: keep most as warnings, disable noisy ones
       'security/detect-object-injection': 'off', // Too many false positives with TypeScript
       'security/detect-eval-with-expression': 'error',
-      // File-size cap: keep files under 1000 lines so they stay scannable.
-      'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
+      // The "split now" line of docs/tech/development-guide.md § Keep Files
+      // Small, in this rule's measure: lines of code, blank and comment lines
+      // skipped, because the repo asks for dense explanatory comments and a
+      // raw-line cap would tax exactly those. The guide states this number
+      // and names this entry, so a change here is a change there too (#530).
+      // The files that were already over it when the ceiling was set keep the
+      // old one in the last block of this config, until they are split.
+      'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
       // SonarJS: disable genuine false positives only
       'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses (e.g., jitter)
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
@@ -105,6 +111,30 @@ export default [
       // to a configured directory is the runner's job; the rule would fire on
       // all seven fs calls with nothing to say about any of them.
       'security/detect-non-literal-fs-filename': 'off',
+      // The same ceiling as src/, documented at the entry there.
+      'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  // The files that were over 800 counted lines on the day the ceiling above
+  // was set (#530). Each keeps the ceiling it was written under, 1000, until
+  // it is split; an entry is deleted when its file drops under 800 and no
+  // entry is ever added — a new file that needs one is a file to split first.
+  // A later block wins for the files it names, which is why this one is last.
+  {
+    files: [
+      // The API client for experiences, grown one endpoint at a time; its
+      // seams are the resources it talks to.
+      'src/api/experiences.ts',
+      // The admin's world-view import screens and the custom subdivision
+      // dialog's map tab: dense JSX that predates the ceiling.
+      'src/components/admin/ImportTreeDialogs.tsx',
+      'src/components/admin/WorldViewImportTree.tsx',
+      'src/components/admin/CvGeoPreviewSection.tsx',
+      'src/components/WorldViewEditor/components/dialogs/CustomSubdivisionDialog/MapViewTab.tsx',
+      // A test file over the line: split by the surface under test when touched.
+      'src/components/curation/ReviewQueue.test.tsx',
+    ],
+    rules: {
       'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
     },
   },
