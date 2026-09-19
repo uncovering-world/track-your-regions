@@ -49,7 +49,8 @@ if (!G.__cvReady) {
 export type { PipelineContext } from './wvImportMatchContext.js';
 import type { PipelineContext } from './wvImportMatchContext.js';
 import { markStreamBody } from '../../middleware/cacheHeaders.js';
-import { userAgent } from '../../config/userAgent.js';
+import { pictureFetchUrl } from '../../types/urlSafety.js';
+import { fetchPicture } from '../../services/pictureFetch.js';
 
 // =============================================================================
 // colorMatchDivisionsSSE helpers — phase functions
@@ -141,6 +142,15 @@ async function loadRegionAndMap(
   const regionMapUrl = regionResult.rows[0].region_map_url as string | null;
   if (!regionMapUrl) {
     sendEvent({ type: 'error', message: 'No map image selected for this region' });
+    res.end();
+    return null;
+  }
+  // The map is a node of an admin's import tree, stored as any absolute http(s)
+  // url (#694). Whether this server will fetch it is known now, so it is asked
+  // now, before the division queries and the first debug image are paid for —
+  // the same rule `fetchPicture` holds every hop to (#706).
+  if (!pictureFetchUrl(regionMapUrl)) {
+    sendEvent({ type: 'error', message: `This region's map is not a Wikimedia Commons file the server can fetch: ${regionMapUrl}` });
     res.end();
     return null;
   }
@@ -1035,12 +1045,20 @@ interface SourceMapPipelineParams {
  */
 async function runSourceMapPipeline(p: SourceMapPipelineParams, res: Response): Promise<void> {
   await p.logStep('Fetching source map image...');
-  const mapResponse = await fetch(p.regionMapUrl, {
-    headers: { 'User-Agent': userAgent({ purpose: 'CV border detection' }) },
-    redirect: 'follow',
-  });
+  // `loadRegionAndMap` has refused a first address the rule would not call;
+  // null here is a redirect that left the two Commons hosts (#706).
+  const mapResponse = await fetchPicture(p.regionMapUrl, 'CV border detection');
+  if (!mapResponse) {
+    p.sendEvent({ type: 'error', message: 'The region map redirected off Wikimedia Commons, so it was not read' });
+    return;
+  }
   if (!mapResponse.ok) {
+    // Said to the admin and not only to the log, like the two refusals beside
+    // it: this is the likelier one — a Commons file renamed or deleted since
+    // the import, or a 429 — and the run ends here either way, so a silent
+    // return leaves the log stopped at "Fetching source map image…".
     console.log(`  Source map fetch failed: ${mapResponse.status}`);
+    p.sendEvent({ type: 'error', message: `Wikimedia Commons answered ${mapResponse.status} for this region's map, so it was not read` });
     return;
   }
 

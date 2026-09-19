@@ -172,6 +172,126 @@ export function isDisplayablePictureUrl(value: string): boolean {
 }
 
 /**
+ * The origin a server-side fetch of a picture goes to, per host the picture
+ * rule admits. Spelled as literals rather than derived from the list so that
+ * the address `pictureFetchUrl` builds opens on a constant; the test that pins
+ * the host list to the drawing side's (`urlSafety.test.ts`) holds this one to
+ * the list as well.
+ */
+const PICTURE_FETCH_ORIGINS: Record<(typeof DISPLAYABLE_PICTURE_HOSTS)[number], string> = {
+  'commons.wikimedia.org': 'https://commons.wikimedia.org',
+  'upload.wikimedia.org': 'https://upload.wikimedia.org',
+};
+
+/**
+ * Where Commons itself sends a picture on, beyond the two hosts a stored one
+ * may name.
+ *
+ * A picture Commons has to *scale* — `Special:FilePath/…?width=800`, the shape
+ * the drawing side builds — comes from Wikimedia's thumbnail host, so a fetch
+ * holding every hop to the stored list alone refuses every scaled picture. It
+ * is a place a redirect may land and never an address a value may start from:
+ * no stored picture names it, and the drawing side has no reason to.
+ *
+ * Measured 2026-09-19 and re-runnable, since no test can reach the network.
+ * The `Location` headers below are the literal ones, unelided, on a file this
+ * catalogue actually holds (`region_import_state.region_map_url`):
+ *
+ *     curl -sI 'https://commons.wikimedia.org/wiki/Special:FilePath/Algeria_regions_map.png?width=800'
+ *     HTTP/2 302
+ *     location: https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/Algeria_regions_map.png&width=800
+ *
+ *     HTTP/2 301
+ *     location: https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e7/Algeria_regions_map.png/960px-Algeria_regions_map.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail
+ *
+ *     HTTP/2 200   content-type: image/png   content-length: 411022
+ *
+ * Three things in that transcript are easy to mis-transcribe, and each looks
+ * like evidence the host is imaginary:
+ *
+ * - **960px for a `?width=800`.** Commons serves the next standard size up,
+ *   not the width asked for.
+ * - **`/wikipedia/commons/thumb/…` on it.** That is `upload.wikimedia.org`'s
+ *   own thumbnail layout, kept unchanged on this host, so the path alone does
+ *   not say which host answered.
+ * - **A small file never reaches it.** Ask for a width a file already exceeds
+ *   and Commons answers from `upload` with `utm_content=thumbnail_unscaled`;
+ *   Commons' own `Example.jpg` is 172px wide, so the obvious test file shows
+ *   `upload` however wide a picture is asked for. The same is true of any
+ *   file asked for without a width — the Algeria map above answers 200 from
+ *   `upload.wikimedia.org` (image/png, 755384) then.
+ */
+const PICTURE_REDIRECT_ORIGINS: Record<string, string> = {
+  'thumb.wikimedia.org': 'https://thumb.wikimedia.org',
+};
+
+/** The origin for a host, looked up as an own key — a hostname may be `constructor`. */
+function originFor(hostname: string, asRedirect: boolean): string | undefined {
+  if (Object.hasOwn(PICTURE_FETCH_ORIGINS, hostname)) {
+    return PICTURE_FETCH_ORIGINS[hostname as keyof typeof PICTURE_FETCH_ORIGINS];
+  }
+  return asRedirect && Object.hasOwn(PICTURE_REDIRECT_ORIGINS, hostname)
+    ? PICTURE_REDIRECT_ORIGINS[hostname]
+    : undefined;
+}
+
+/**
+ * One path segment spelled again for the picture's host.
+ *
+ * `URL` has already percent-encoded what a path may not carry raw, so the
+ * segment is decoded before it is encoded, or `%C3%A9` would come back as
+ * `%25C3%25A9` and name a file that does not exist. `encodeURIComponent` also
+ * encodes the `:` of `Special:FilePath`, which MediaWiki reads either way
+ * (checked against Commons: `Special%3AFilePath/Algeria%2C_…svg` answers the
+ * same 302 as the raw spelling) — put back for whoever reads the address in a
+ * log, not for the server. A segment that does not decode names nothing this
+ * server should ask for; the caller answers null for it.
+ */
+function respellSegment(segment: string): string {
+  return encodeURIComponent(decodeURIComponent(segment)).replace(/%3A/gi, ':');
+}
+
+/**
+ * The address a server-side fetch of a picture goes to, or null when the
+ * value names a host this server does not call.
+ *
+ * Two readers fetch a picture from the server rather than draw it: the CV
+ * colour-match pipeline reads a region's imported map (`runSourceMapPipeline`),
+ * and the admin panel's image proxy answers a `?url=` for an overlay the
+ * browser cannot load across origins. Either is a request this server makes on
+ * an admin's word, and the value it is handed — a node of an import tree, a
+ * query string — may name any address at all, `http://127.0.0.1:3001/…`
+ * included (#706). So the rule is the picture rule's own host list, matched
+ * host for host rather than by suffix: what this product fetches for itself is
+ * a Commons file, and every Commons file has an address on those two hosts.
+ * `asRedirect` is for a hop Commons sent (`fetchPicture`), which may also land
+ * on the thumbnail host above; a value an admin hands in never may.
+ *
+ * The address is rebuilt rather than passed through. The origin is one of the
+ * literals above; the value contributes the path, one segment at a time and
+ * each spelled again for the host, and the query after a `?` of our own. That
+ * is what drops a port or a `user@` the value may carry, and it is also the
+ * shape a static analyser can read: CodeQL's request-forgery query counts a
+ * value merely *compared* against a list as still the caller's, and a segment
+ * that went through `encodeURIComponent`, or a suffix that follows a literal
+ * `?`, as not — which is why the image proxy's schema used to be a new alert
+ * every time its line moved.
+ */
+export function pictureFetchUrl(value: string, { asRedirect = false } = {}): string | null {
+  if (!isStorableHttpUrl(value)) return null;
+  const url = new URL(value);
+  const origin = originFor(url.hostname, asRedirect);
+  if (!origin) return null;
+  try {
+    const path = url.pathname.split('/').map(respellSegment).join('/');
+    const query = url.search ? `?${url.searchParams}` : '';
+    return `${origin}${path}${query}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The one spelling of a storable url that every later reader agrees about.
  *
  * Judging a value by what the parser makes of it and then storing the string as
@@ -193,3 +313,4 @@ export function normalizeStorableUrl(value: string): string {
 export const STORABLE_HTTP_URL_MESSAGE = 'URL must be an absolute http(s) URL';
 export const DISPLAYABLE_PICTURE_URL_MESSAGE =
   'Image URL must be a Wikimedia Commons picture file or an /images/ path on this site';
+export const PICTURE_FETCH_URL_MESSAGE = 'Only Wikimedia Commons URLs are allowed';
