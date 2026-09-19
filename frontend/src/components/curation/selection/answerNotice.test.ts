@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { ReviewAnswerResult } from '../../../api/experiences';
+import type { ReviewAnswerResult } from '../../../api/reviewQueue';
 import { answerNoticeFor, stoppedNoticeFor } from './answerNotice';
 import { AnswerStopped } from './answerRows';
 

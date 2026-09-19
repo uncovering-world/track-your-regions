@@ -30,9 +30,9 @@ import {
   setExperienceAdmission,
   acceptSourceValue,
   declineSourceValue,
-  type ReviewQueueItem,
   type PublishResult,
 } from '../../api/experiences';
+import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { publishOutcomeFor } from './publishOutcome';
 import { formatDateTime } from '../../utils/dateFormat';
 import { worldViewList } from '../../utils/worldViewList';

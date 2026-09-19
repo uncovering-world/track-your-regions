@@ -35,7 +35,7 @@ import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import {
   fetchReviewQueue,
   type QueueFacets, type ReviewQueue, type ReviewQueueItem, type ReviewQueueKind,
-} from '../../api/experiences';
+} from '../../api/reviewQueue';
 import type { ReviewAddress } from '../../utils/appUrl';
 import { queueRows, type QueueRow } from './queueRows';
 

@@ -26,7 +26,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import {
   bringRunBack, setRunAside, type ReviewQueueItem, type ReviewQueueKind,
-} from '../../api/experiences';
+} from '../../api/reviewQueue';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { buildReviewUrl, isFilteredReview } from '../../utils/appUrl';

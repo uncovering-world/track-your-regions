@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReviewQueueItem } from '../../api/experiences';
+import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { declineHeld, publishExperience } from '../../api/experiences';
 import { GatedCard } from './WaitingToPublish';
 

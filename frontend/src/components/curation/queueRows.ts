@@ -11,7 +11,7 @@
  * skipped rather than thrown on, and logged once so a real gap is not silent.
  */
 
-import type { QueueOrderEntry, ReviewQueue, ReviewQueueItem } from '../../api/experiences';
+import type { QueueOrderEntry, ReviewQueue, ReviewQueueItem } from '../../api/reviewQueue';
 import { groupGated, type GatedGroup } from './WaitingToPublish';
 import type { RowKind } from './queueRowTypes';
 import {

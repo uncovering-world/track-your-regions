@@ -22,10 +22,12 @@ vi.mock('../../utils/queryInvalidation', () => ({
  */
 const { mockedFetch } = vi.hoisted(() => ({ mockedFetch: vi.fn() }));
 
-vi.mock('../../api/experiences', () => ({
+vi.mock('../../api/reviewQueue', () => ({
   fetchReviewQueue: async (params: unknown) => shaped(await mockedFetch(params)),
   setRunAside: vi.fn(),
   bringRunBack: vi.fn(),
+}));
+vi.mock('../../api/experiences', () => ({
   setExperienceState: vi.fn(),
   setExperienceAdmission: vi.fn(),
   setLocationState: vi.fn(),
@@ -36,7 +38,8 @@ vi.mock('../../api/experiences', () => ({
   fetchExperience: vi.fn(),
 }));
 
-import { setExperienceState, setRunAside, bringRunBack } from '../../api/experiences';
+import { setExperienceState } from '../../api/experiences';
+import { setRunAside, bringRunBack } from '../../api/reviewQueue';
 import {
   shaped, renderQueue, openRow, at, navType, goBack,
   ASKED_AT, NO_FACETS, ARRIVAL, CONFLICT, MISSING,

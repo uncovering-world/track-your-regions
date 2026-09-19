@@ -10,13 +10,13 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../../api/experiences', () => ({
+vi.mock('../../../api/reviewQueue', () => ({
   answerReviewRows: vi.fn(),
   fetchReviewQueue: vi.fn(),
   REVIEW_ANSWER_ROWS_MAX: 2,
 }));
 
-import { answerReviewRows, fetchReviewQueue, type ReviewAnswerResult } from '../../../api/experiences';
+import { answerReviewRows, fetchReviewQueue, type ReviewAnswerResult } from '../../../api/reviewQueue';
 import { answerAllMatching, answerRows, AnswerStopped, toAnswerRow } from './answerRows';
 import type { QueueRow } from '../queueRows';
 

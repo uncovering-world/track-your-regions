@@ -22,7 +22,7 @@
 
 import { useState } from 'react';
 import { Divider, Stack, Typography } from '@mui/material';
-import type { ReviewQueueItem } from '../../api/experiences';
+import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { plural } from '../../utils/plural';
 import { claimLabel } from '../../utils/placeClaims';
 import { claimLabel as workClaimLabel } from '../../utils/workClaims';

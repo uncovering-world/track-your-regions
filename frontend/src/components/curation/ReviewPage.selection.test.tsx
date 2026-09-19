@@ -15,12 +15,14 @@ vi.mock('../../utils/queryInvalidation', () => ({
 
 const { mockedFetch, mockedAnswer } = vi.hoisted(() => ({ mockedFetch: vi.fn(), mockedAnswer: vi.fn() }));
 
-vi.mock('../../api/experiences', () => ({
+vi.mock('../../api/reviewQueue', () => ({
   fetchReviewQueue: async (params: unknown) => shaped(await mockedFetch(params)),
   answerReviewRows: mockedAnswer,
   REVIEW_ANSWER_ROWS_MAX: 100,
   setRunAside: vi.fn(),
   bringRunBack: vi.fn(),
+}));
+vi.mock('../../api/experiences', () => ({
   setExperienceState: vi.fn(),
   setExperienceAdmission: vi.fn(),
   setLocationState: vi.fn(),

@@ -15,7 +15,7 @@ import {
 } from './queueRows';
 import type {
   HeldPart, QueueOrderEntry, ReviewQueue, ReviewQueueItem,
-} from '../../api/experiences';
+} from '../../api/reviewQueue';
 
 function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
   return {

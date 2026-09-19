@@ -24,7 +24,7 @@ import {
   Box, Chip, Menu, MenuItem, Typography,
 } from '@mui/material';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
-import type { QueueFacets } from '../../../api/experiences';
+import type { QueueFacets } from '../../../api/reviewQueue';
 import { runStamp } from './rowDate';
 import { COUNT_SX } from './FilterChip';
 

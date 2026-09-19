@@ -20,7 +20,7 @@ import {
   Box, Button, InputAdornment, TextField, ToggleButton, ToggleButtonGroup, Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import type { QueueFacets } from '../../../api/experiences';
+import type { QueueFacets } from '../../../api/reviewQueue';
 import { isFilteredReview, normaliseReviewQ, type ReviewAddress } from '../../../utils/appUrl';
 import type { ReviewPatch } from '../../../hooks/useReviewAddress';
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue';

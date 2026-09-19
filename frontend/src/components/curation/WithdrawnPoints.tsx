@@ -49,7 +49,8 @@ import {
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
 import { useMutation } from '@tanstack/react-query';
-import { setLocationState, type ReviewQueueItem } from '../../api/experiences';
+import { setLocationState } from '../../api/experiences';
+import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { formatDateTime } from '../../utils/dateFormat';
 import { claimLabel } from '../../utils/placeClaims';
 import { placementNotice } from '../../utils/placementNotice';

@@ -27,7 +27,7 @@
 import {
   answerReviewRows, fetchReviewQueue, REVIEW_ANSWER_ROWS_MAX,
   type ReviewAnswer, type ReviewAnswerResult, type ReviewAnswerRow,
-} from '../../../api/experiences';
+} from '../../../api/reviewQueue';
 import type { ReviewAddress } from '../../../utils/appUrl';
 import { queueRows, type QueueRow } from '../queueRows';
 

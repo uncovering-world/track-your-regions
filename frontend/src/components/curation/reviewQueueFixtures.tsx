@@ -7,7 +7,7 @@
  * about the list the address names — and a second copy of the fixtures is what drifts when
  * the endpoint's shape changes again.
  *
- * Each test file still declares its own `vi.mock` of `../../api/experiences`: a module mock
+ * Each test file still declares its own `vi.mock` of `../../api/reviewQueue`: a module mock
  * belongs to the file that installs it. What it answers with is `shaped`, below.
  */
 
