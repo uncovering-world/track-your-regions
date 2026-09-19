@@ -43,17 +43,19 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  fetchExperience,
+  type Experience,
+  type ExperienceDetail,
+  type ImageCredit,
+} from '../../api/experiences';
+import {
   editExperience,
   rejectExperience,
   unrejectExperience,
   removeExperienceFromRegion,
   fetchCurationLog,
-  fetchExperience,
   setExperienceState,
-  type Experience,
-  type ExperienceDetail,
-  type ImageCredit,
-} from '../../api/experiences';
+} from '../../api/curation';
 import { formatRelativeTime } from '../../utils/dateFormat';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LoadingSpinner } from './LoadingSpinner';

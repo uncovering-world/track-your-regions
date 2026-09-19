@@ -14,7 +14,7 @@
 import {
   type DeclineHeldResult,
   type PublishResult,
-} from '../../api/experiences';
+} from '../../api/curation';
 import { plural } from '../../utils/plural';
 import { worldViewList } from '../../utils/worldViewList';
 import { fieldLabel } from './fieldMeaning';

@@ -41,11 +41,10 @@ import SearchIcon from '@mui/icons-material/Search';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   searchExperiences,
-  assignExperienceToRegion,
-  createManualExperience,
   fetchExperienceKinds,
   type ExperienceSearchResult,
 } from '../../api/experiences';
+import { assignExperienceToRegion, createManualExperience } from '../../api/curation';
 import { searchPlaces, suggestImageUrl, type PlaceResult, type ImageSuggestion } from '../../api/geocode';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { invalidateExperiences } from '../../utils/queryInvalidation';

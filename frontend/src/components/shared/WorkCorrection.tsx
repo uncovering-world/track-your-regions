@@ -39,7 +39,8 @@
 import { useState } from 'react';
 import { Alert, Button, Chip, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { editWork, type ExperienceTreasure, type ImageCredit } from '../../api/experiences';
+import type { ExperienceTreasure, ImageCredit } from '../../api/experiences';
+import { editWork } from '../../api/curation';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { creators, creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';

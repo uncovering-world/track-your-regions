@@ -20,12 +20,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('../../api/experiences', () => ({
+vi.mock('../../api/curation', () => ({
   editWork: vi.fn(),
 }));
 
 import { WorkCorrection, correctionOutcome, refusals, type WorkToCorrect } from './WorkCorrection';
-import { editWork } from '../../api/experiences';
+import { editWork } from '../../api/curation';
 
 const mockedEdit = editWork as unknown as ReturnType<typeof vi.fn>;
 
