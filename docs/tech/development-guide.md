@@ -444,6 +444,13 @@ For the full reference with examples, see [maplibre-patterns.md](maplibre-patter
 4. Keep files in the same directory or create a feature subdirectory.
 5. The parent component should read like an outline — hook calls at the top, clean JSX below.
 
+### How to split (test files)
+
+1. **By the surface under test.** The pieces are siblings in the same directory, named for what they ask about: `ReviewQueue.test.tsx` keeps the open questions, and `ReviewQueue.admission.test.tsx`, `.parts` and `.held` hold the review page's other cards.
+2. **Keep the outer `describe`.** Every case then keeps its full name, so test history and a reviewer's search still find it.
+3. **Each file installs its own `vi.mock`s.** A module mock belongs to the file that installs it, and so does the `vi.hoisted` value its factory reads.
+4. **Share what the siblings need, once.** Fixtures, typed handles on the mocked calls and the answers each case starts from go to one co-located helper (`reviewQueueFixtures.tsx`, `reviewQueueCardMocks.ts`, `publishController.fixtures.ts`), never to a copy per file: the copies are what drift when the code under test makes one more call.
+
 ### How NOT to split
 
 - Don't create a file for a single 10-line function.
