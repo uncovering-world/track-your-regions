@@ -28,7 +28,7 @@ import {
   wvImportRenameRegionSchema,
 } from './index.js';
 import {
-  isStorableHttpUrl, isDisplayablePictureUrl, isCommonsPictureUrl,
+  isStorableHttpUrl, isDisplayablePictureUrl, isCommonsPictureUrl, pictureFetchUrl,
   DISPLAYABLE_PICTURE_HOSTS, PICTURE_EXTENSIONS,
 } from './urlSafety.js';
 
@@ -235,6 +235,125 @@ describe('the rule the curation controller shares with the schema', () => {
     expect(isDisplayablePictureUrl('https://whc.unesco.org/document/141884')).toBe(false);
     expect(isDisplayablePictureUrl('https://commons.wikimedia.org/wiki/Special:FilePath/A.pdf')).toBe(false);
     expect(isDisplayablePictureUrl('https://commons.wikimedia.org/wiki/Special:FilePath/A.JPG')).toBe(true);
+  });
+});
+
+/**
+ * A picture the server fetches for itself (#706): the CV pipeline's read of a
+ * region's map, and the admin image proxy's read of an overlay. The value is an
+ * admin's — a tree node, a query string — and the request leaves this server,
+ * so the rule is the picture rule's host list matched host for host, and the
+ * address is rebuilt from a fixed origin rather than passed through.
+ */
+describe('a picture the server fetches for itself', () => {
+  const COMMONS_MAP = 'https://commons.wikimedia.org/wiki/Special:FilePath/Algeria_regions_map.png';
+
+  it('rebuilds a Commons address from a fixed origin, keeping the path and the query', () => {
+    expect(pictureFetchUrl(COMMONS_MAP)).toBe(COMMONS_MAP);
+    expect(pictureFetchUrl(`${COMMONS_MAP}?width=800`)).toBe(`${COMMONS_MAP}?width=800`);
+    expect(pictureFetchUrl('https://upload.wikimedia.org/wikipedia/commons/a/a7/Louvre.jpg'))
+      .toBe('https://upload.wikimedia.org/wikipedia/commons/a/a7/Louvre.jpg');
+    // The origin is ours: the scheme, a port or a user the value carries are not kept.
+    expect(pictureFetchUrl('http://commons.wikimedia.org/wiki/Special:FilePath/A.png'))
+      .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/A.png');
+    expect(pictureFetchUrl('https://commons.wikimedia.org:8443/wiki/Special:FilePath/A.png'))
+      .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/A.png');
+    expect(pictureFetchUrl('https://user:secret@commons.wikimedia.org/wiki/Special:FilePath/A.png'))
+      .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/A.png');
+  });
+
+  it('refuses every host but the two, including the ones the proxy used to take', () => {
+    const elsewhere = [
+      'https://en.wikipedia.org/wiki/Special:FilePath/A.png',
+      'https://maps.wikimedia.org/geoshape?ids=Q262',
+      'https://x.commons.wikimedia.org/wiki/Special:FilePath/A.png',
+      'https://commons.wikimedia.org.evil.example/A.png',
+      'https://evil.example/commons.wikimedia.org/A.png',
+      'https://commons.wikimedia.org@evil.example/A.png',
+      'http://127.0.0.1:3001/health',
+      'http://localhost:3001/health',
+      'http://[::1]:3001/health',
+    ];
+    for (const value of elsewhere) {
+      expect(pictureFetchUrl(value), value).toBeNull();
+    }
+  });
+
+  it("lets a redirect land on Commons' thumbnail host, and never a value start there", () => {
+    // A picture Commons has to scale (`?width=800`) is served from
+    // thumb.wikimedia.org, in upload's own thumbnail layout — the address is
+    // the one `urlSafety.ts` quotes the `Location` header for. No stored
+    // picture names that host, so only a hop Commons sent may go there.
+    const THUMB = 'https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e7/Algeria_regions_map.png/960px-Algeria_regions_map.png';
+    expect(pictureFetchUrl(THUMB)).toBeNull();
+    expect(pictureFetchUrl(THUMB, { asRedirect: true })).toBe(THUMB);
+    // Every other host is refused as a hop just as it is as a start.
+    expect(pictureFetchUrl('http://127.0.0.1:3001/health', { asRedirect: true })).toBeNull();
+    expect(pictureFetchUrl('https://en.wikipedia.org/x.png', { asRedirect: true })).toBeNull();
+  });
+
+  it('reads the host list as own keys, so a hostname named like a property is not a host', () => {
+    for (const hostname of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+      expect(pictureFetchUrl(`https://${hostname}/x.png`), hostname).toBeNull();
+      expect(pictureFetchUrl(`https://${hostname}/x.png`, { asRedirect: true }), hostname).toBeNull();
+    }
+  });
+
+  it('refuses what is not an absolute http(s) url at all', () => {
+    for (const value of [...SCRIPT_SCHEMES, ...FOREIGN_AUTHORITY_PATHS, '/images/maps/algeria.png', '']) {
+      expect(pictureFetchUrl(value), value).toBeNull();
+    }
+  });
+
+  it('spells each path segment again without changing the file it names', () => {
+    // The stored maps carry apostrophes, commas and brackets; a Wikidata picture
+    // arrives percent-encoded already. Each names the same file afterwards —
+    // Commons answers `Special%3AFilePath/Algeria%2C_…` with the same 302 as
+    // the raw spelling — and none is encoded twice.
+    expect(pictureFetchUrl("https://commons.wikimedia.org/wiki/Special:FilePath/M'zab_Valley_map.png"))
+      .toBe("https://commons.wikimedia.org/wiki/Special:FilePath/M'zab_Valley_map.png");
+    expect(pictureFetchUrl('https://commons.wikimedia.org/wiki/Special:FilePath/K%C3%B6lner%20Dom.jpg'))
+      .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/K%C3%B6lner%20Dom.jpg');
+    expect(pictureFetchUrl('https://commons.wikimedia.org/wiki/Special:FilePath/Sardinia,_Italy_(2016-2025).svg'))
+      .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/Sardinia%2C_Italy_(2016-2025).svg');
+    // A segment that does not decode names nothing this server should ask for.
+    expect(pictureFetchUrl('https://commons.wikimedia.org/wiki/Special:FilePath/A%E0%A4%A.png')).toBeNull();
+  });
+
+  it('fetches from every host the picture rule admits, and from no other', () => {
+    // The origins are spelled as literals so the address opens on a constant;
+    // this is what keeps them the same list as the one the rule reads.
+    for (const host of DISPLAYABLE_PICTURE_HOSTS) {
+      expect(pictureFetchUrl(`https://${host}/x.png`)).toBe(`https://${host}/x.png`);
+    }
+  });
+
+  it('is the address every server-side picture fetch calls, not the value it was handed', () => {
+    const src = join(dirname(fileURLToPath(import.meta.url)), '..');
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- a literal path under this package
+    const read = (path: string) => readFileSync(join(src, path), 'utf8');
+    /** Every `fetch(` in a module, in whatever shape it is written. */
+    const fetchSites = (text: string) => [...text.matchAll(/\bfetch\(/g)].length;
+
+    // The two readers are named rather than found, since a fetch of a stored
+    // picture added elsewhere is a reader this list has to grow by. Neither
+    // calls `fetch` itself: both go through `fetchPicture`.
+    for (const reader of ['routes/adminRoutes.ts', 'controllers/admin/wvImportMatchPipeline.ts']) {
+      const text = read(reader);
+      expect(fetchSites(text), `${reader} calls fetch itself`).toBe(0);
+      expect(text.includes('fetchPicture('), `${reader} fetches through fetchPicture`).toBe(true);
+    }
+
+    // And in `fetchPicture`, every `fetch(` — counted in any shape, so a second
+    // one spelled `fetch(url.toString(), …)` cannot slip past a pattern that
+    // only reads bare names — takes a name bound to the rule's answer.
+    const helper = read('services/pictureFetch.ts');
+    const bound = [...helper.matchAll(/\bfetch\(\s*([A-Za-z_$][\w$]*)\s*,/g)].map(m => m[1]);
+    expect(bound.length, 'every fetch( in fetchPicture is a bare name').toBe(fetchSites(helper));
+    expect(bound.length).toBeGreaterThan(0);
+    for (const name of bound) {
+      expect(helper.includes(`const ${name} = pictureFetchUrl(`), `fetch(${name}) takes the rule's answer`).toBe(true);
+    }
   });
 });
 

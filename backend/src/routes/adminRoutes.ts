@@ -148,7 +148,8 @@ import {
 } from '../controllers/admin/aiController.js';
 import { hierarchyReview } from '../controllers/admin/aiHierarchyReviewController.js';
 import { startBaseLayerImportEndpoint } from '../controllers/admin/baseLayerImportController.js';
-import { userAgent } from '../config/userAgent.js';
+import { pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE } from '../types/urlSafety.js';
+import { fetchPicture } from '../services/pictureFetch.js';
 
 const router = Router();
 
@@ -688,25 +689,23 @@ router.get('/wv-import/geoshape/:wikidataId', validate(wikidataIdParamSchema, 'p
 // Image proxy (for CORS-blocked Wikimedia images used as map overlays)
 // =============================================================================
 
+// The proxy fetches on an admin's word from a query string, so the host rule
+// is the one every server-side picture fetch shares (`pictureFetchUrl`,
+// #706): the two Commons hosts, matched exactly, where a suffix match used to
+// let any `*.wikimedia.org` / `*.wikipedia.org` through. The schema answers a
+// refused first address with 400; `fetchPicture` holds every hop after it.
 const imageProxyQuerySchema = z.object({
-  url: z.string().url().refine(
-    (u) => {
-      try {
-        const host = new URL(u).hostname;
-        return host.endsWith('.wikimedia.org') || host.endsWith('.wikipedia.org');
-      } catch { return false; }
-    },
-    { message: 'Only Wikimedia/Wikipedia URLs are allowed' }
-  ),
+  url: z.string().refine((value) => pictureFetchUrl(value) !== null, { message: PICTURE_FETCH_URL_MESSAGE }),
 });
 
 router.get('/image-proxy', validate(imageProxyQuerySchema, 'query'), async (req: AuthenticatedRequest, res: Response) => {
   const { url } = req.query as { url: string };
   try {
-    const response = await fetch(url, {
-      headers: { 'User-Agent': userAgent({ purpose: 'admin image proxy' }) },
-      redirect: 'follow',
-    });
+    const response = await fetchPicture(url, 'admin image proxy');
+    if (!response) {
+      res.status(502).json({ error: 'Upstream redirected off Wikimedia Commons' });
+      return;
+    }
     if (!response.ok) {
       res.status(response.status).json({ error: 'Upstream image fetch failed' });
       return;
