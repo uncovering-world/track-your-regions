@@ -1,13 +1,14 @@
 /**
  * What every test of publishing drives the endpoint with.
  *
- * Two files test `POST /:id/publish` — the object, its contents and its held
- * fields in `publishController.test.ts`, and the held fields of its *parts*
- * (ADR-0037) in `publishHeldParts.test.ts` — and both need the same fake
- * transaction: a client whose statements are recorded, whose locked read
+ * Every test of `POST /:id/publish` — the `publishController*.test.ts` files on
+ * the object, its contents and its held fields, `publishHeldParts.test.ts` on
+ * the held fields of its *parts* (ADR-0037), and the `publishHeldFields.*`
+ * files on the two columns a changeset entry cannot assign — needs the same
+ * fake transaction: a client whose statements are recorded, whose locked read
  * answers with the row every decision rests on, and whose part reads answer
- * with the rows the record resolves to. One client rather than two, so the two
- * files cannot come to describe different servers.
+ * with the rows the record resolves to. One client rather than one per file,
+ * so the files cannot come to describe different servers.
  *
  * The mocks themselves stay in each test file: `vi.mock` is hoisted per file,
  * and what this module imports from `../../db/index.js` is whatever that file
@@ -16,10 +17,31 @@
 
 import { vi } from 'vitest';
 import { pool } from '../../db/index.js';
+import {
+  assignRegionsForExperiences, worldViewsWithGeometry,
+} from '../../services/sync/regionAssignmentService.js';
 import { publishExperience } from './publishController.js';
 
 export const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 export const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
+export const mockedPlace = assignRegionsForExperiences as unknown as ReturnType<typeof vi.fn>;
+export const mockedWorldViews = worldViewsWithGeometry as unknown as ReturnType<typeof vi.fn>;
+
+/**
+ * What every case of the `publishController*.test.ts` files starts from: no
+ * statement recorded, and placement that succeeds — three regions, over the two
+ * world views that carry geometry. A file calling this mocks
+ * `regionAssignmentService.js` as well as the pool; the other users of this
+ * module mock placement too but reset only the pool.
+ */
+export function resetPublishMocks(): void {
+  mockedQuery.mockReset();
+  mockedConnect.mockReset();
+  mockedPlace.mockReset();
+  mockedPlace.mockResolvedValue(3);
+  mockedWorldViews.mockReset();
+  mockedWorldViews.mockResolvedValue([1, 4]);
+}
 
 export function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };

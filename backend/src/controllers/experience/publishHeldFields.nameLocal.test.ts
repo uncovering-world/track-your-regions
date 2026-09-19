@@ -13,7 +13,7 @@
  * entry holding the whole map — and stands until a run re-proposes (ADR-0039
  * decision 4), so both are live and both are here. Its own file beside
  * `publishHeldFields.metadata.test.ts` for the reason that one left
- * `publishController.test.ts`: one server, three files, the client and the
+ * `publishController.test.ts`: one server, several files, the client and the
  * helpers shared through `publishController.fixtures.ts`.
  */
 
