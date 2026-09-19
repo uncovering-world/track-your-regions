@@ -30,10 +30,9 @@ import {
   publishExperience,
   refuseArrival,
   refuseContents,
-  type HeldPart,
   type PublishRequest,
-  type ReviewQueueItem,
 } from '../../api/experiences';
+import type { HeldPart, ReviewQueueItem } from '../../api/reviewQueue';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { plural } from '../../utils/plural';
 import { worldViewList } from '../../utils/worldViewList';

@@ -27,7 +27,7 @@ import {
   WithdrawnCard, AnsweredWithdrawalCard, pointTitle, withdrawalStory, wouldReveal,
 } from './WithdrawnPoints';
 import { setLocationState } from '../../api/experiences';
-import type { ReviewQueueItem } from '../../api/experiences';
+import type { ReviewQueueItem } from '../../api/reviewQueue';
 
 const mockedState = setLocationState as unknown as ReturnType<typeof vi.fn>;
 

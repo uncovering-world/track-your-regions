@@ -10,7 +10,7 @@
  * answered, since each was its own transaction.
  */
 
-import type { ReviewAnswer, ReviewAnswerResult } from '../../../api/experiences';
+import type { ReviewAnswer, ReviewAnswerResult } from '../../../api/reviewQueue';
 import { plural } from '../../../utils/plural';
 import { outOfScopeClause, refusalClauses, stalePlacementClause } from '../../../utils/noticeClauses';
 import type { AnswerStopped } from './answerRows';

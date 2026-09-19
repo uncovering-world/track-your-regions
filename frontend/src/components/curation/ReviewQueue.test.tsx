@@ -40,10 +40,12 @@ const { mockedFetch } = vi.hoisted(() => ({ mockedFetch: vi.fn() }));
  */
 vi.mock('./feed/ReviewToolbar', () => ({ ReviewToolbar: () => null }));
 
-vi.mock('../../api/experiences', () => ({
+vi.mock('../../api/reviewQueue', () => ({
   fetchReviewQueue: async (params: unknown) => shaped(await mockedFetch(params)),
   setRunAside: vi.fn(),
   bringRunBack: vi.fn(),
+}));
+vi.mock('../../api/experiences', () => ({
   setExperienceState: vi.fn(),
   setExperienceAdmission: vi.fn(),
   setLocationState: vi.fn(),

@@ -21,7 +21,8 @@ import {
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
 import { useMutation } from '@tanstack/react-query';
-import { type ReviewQueueItem, unrefuseContents } from '../../api/experiences';
+import { unrefuseContents } from '../../api/experiences';
+import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { formatDateTime } from '../../utils/dateFormat';
 import { plural } from '../../utils/plural';
 import { claimLabel } from '../../utils/placeClaims';

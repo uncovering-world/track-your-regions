@@ -14,7 +14,7 @@ import { useState } from 'react';
 import {
   Box, Button, Collapse, LinearProgress, Paper, Stack, Typography,
 } from '@mui/material';
-import type { ReviewAnswer } from '../../../api/experiences';
+import type { ReviewAnswer } from '../../../api/reviewQueue';
 import type { QueueRow } from '../queueRows';
 import {
   ANSWER_WORDS, countLine, KIND_NOUN, type AnswerableKind,

@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ObjectContext } from './ObjectContext';
-import type { ReviewQueueItem } from '../../api/experiences';
+import type { ReviewQueueItem } from '../../api/reviewQueue';
 
 function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
   return {
@@ -24,7 +24,7 @@ function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
     source_membership: 'present',
     existence: 'extant',
     kind: 'conflict',
-    // Required rather than optional on purpose (`api/experiences.ts`): every queue
+    // Required rather than optional on purpose (`api/reviewQueue.ts`): every queue
     // selects it explicitly so `item.proposed === null` is the whole check anywhere.
     proposed: null,
     ...over,

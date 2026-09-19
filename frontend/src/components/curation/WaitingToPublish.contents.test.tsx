@@ -12,7 +12,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReviewQueueItem } from '../../api/experiences';
+import type { ReviewQueueItem } from '../../api/reviewQueue';
 
 // The dialog is the shared surface a place is looked at and corrected in, with its
 // own test; what this file pins is the wiring — which row opens, as which place, and

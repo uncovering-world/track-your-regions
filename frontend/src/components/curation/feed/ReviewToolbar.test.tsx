@@ -16,7 +16,7 @@ import {
 import {
   render, screen, fireEvent, act,
 } from '@testing-library/react';
-import type { QueueFacets } from '../../../api/experiences';
+import type { QueueFacets } from '../../../api/reviewQueue';
 import type { ReviewAddress } from '../../../utils/appUrl';
 import { EMPTY_REVIEW } from '../../../utils/appUrl';
 import { ReviewToolbar } from './ReviewToolbar';

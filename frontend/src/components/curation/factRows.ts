@@ -20,7 +20,7 @@
 import { changedKeys, isEmptyValue } from './objectDiff';
 import { keyMeaningOf, meaningOf, type ChangeContext, type FieldMeaning, type ProposedField } from './fieldMeaning';
 import type { FieldProvenance } from './ProvenanceTrail';
-import type { HeldPart } from '../../api/experiences';
+import type { HeldPart } from '../../api/reviewQueue';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/placeClaims';

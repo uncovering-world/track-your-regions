@@ -9,7 +9,7 @@
  * writes `import { KIND_COLOR, KIND_SHORT, rowSpecific } from './queueRows'`.
  */
 
-import type { HeldPart, ReviewQueueItem } from '../../../api/experiences';
+import type { HeldPart, ReviewQueueItem } from '../../../api/reviewQueue';
 import type { GatedGroup } from '../WaitingToPublish';
 import type { RowKind } from '../queueRowTypes';
 

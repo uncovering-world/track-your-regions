@@ -10,7 +10,7 @@
  * computed under the other filters.
  */
 
-import type { QueueFacets } from '../../../api/experiences';
+import type { QueueFacets } from '../../../api/reviewQueue';
 import type { ReviewAddress } from '../../../utils/appUrl';
 import type { FilterOption } from './FilterChip';
 import { KIND_COLOR } from '../queueRows';

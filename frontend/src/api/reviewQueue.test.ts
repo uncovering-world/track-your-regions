@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchReviewQueue, setRunAside, bringRunBack } from './experiences';
+import { fetchReviewQueue, setRunAside, bringRunBack } from './reviewQueue';
 import { EMPTY_REVIEW, type ReviewAddress } from '../utils/appUrl';
 
 describe('fetchReviewQueue', () => {

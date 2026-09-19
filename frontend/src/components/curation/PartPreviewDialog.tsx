@@ -25,7 +25,7 @@
  * gives such a part no door in the first place.
  */
 
-import type { HeldPart } from '../../api/experiences';
+import type { HeldPart } from '../../api/reviewQueue';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { WorkPreviewDialog } from '../shared/WorkPreviewDialog';
 

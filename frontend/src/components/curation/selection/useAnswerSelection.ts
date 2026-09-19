@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { ReviewAnswer } from '../../../api/experiences';
+import type { ReviewAnswer } from '../../../api/reviewQueue';
 import type { ReviewAddress } from '../../../utils/appUrl';
 import { invalidateAfterBatchPublication } from '../../../utils/queryInvalidation';
 import type { QueueRow } from '../queueRows';

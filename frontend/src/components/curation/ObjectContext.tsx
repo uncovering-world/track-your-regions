@@ -18,7 +18,7 @@ import {
   Box, Button, ButtonBase, Chip, Dialog, DialogContent, DialogTitle, Link, Stack, Typography,
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
-import type { ReviewQueueItem } from '../../api/experiences';
+import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
 import { ImageCreditLine } from '../shared/ImageCreditLine';

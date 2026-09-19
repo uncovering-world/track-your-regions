@@ -15,7 +15,7 @@
  */
 
 import { Box, Typography, Stack, Chip } from '@mui/material';
-import type { ReviewQueueItem } from '../../api/experiences';
+import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { ObjectContext } from './ObjectContext';
 import { SourceId } from './SourceId';
 
