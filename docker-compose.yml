@@ -84,12 +84,16 @@ services:
       - ./db:/db:ro,z
       - ./frontend/src:/frontend/src:ro,z
       - ./martin:/martin:ro,z
-      # And one file on its own, for the same reason: `scripts/gates.test.mjs`
-      # pins the gate map against the table `docs/tech/gates.md` carries, so the
-      # doc has to be readable here too. The whole of `docs` is not mounted —
-      # nothing else in the suite reads it, and the rest is megabytes of prose
-      # a test run has no business opening (#783).
+      # And two files on their own, for the same reason: `scripts/gates.test.mjs`
+      # pins the gate map against the table `docs/tech/gates.md` carries, and
+      # `scripts/ci-failsafe.test.mjs` pins the fail-safe clause every CI job's
+      # `if:` carries against the workflow that states it (#952), so both have to
+      # be readable here too. Neither directory is mounted whole: the suite reads
+      # these two files and nothing else under `docs` or `.github`, and the rest
+      # of `docs` is megabytes of prose a test run has no business opening
+      # (#783).
       - ./docs/tech/gates.md:/docs/tech/gates.md:ro,z
+      - ./.github/workflows/ci.yml:/.github/workflows/ci.yml:ro,z
       - ${DATA_DIR:-./data}:/app/data:z
     depends_on:
       db:
