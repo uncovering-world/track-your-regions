@@ -39,6 +39,7 @@ docs/
 | [rate-limiting.md](tech/rate-limiting.md) | Rate limiting tiers, per-endpoint strategy, adding limiters to new routes |
 | [hacking.md](tech/hacking.md) | Practical engineering guide for local debugging and safe changes |
 | [development-guide.md](tech/development-guide.md) | Code organization conventions, splitting patterns, commit hygiene |
+| [gates.md](tech/gates.md) | Which gates a change asks for — the map from each gate to its inputs, how to read a run of it, how CI applies it, and what it does not reach |
 | [data-assertions.md](tech/data-assertions.md) | Catalogue Checks — invariants over the live catalogue's rows, and the debt it carries |
 | [performance.md](tech/performance.md) | Performance lane — what is measured, the baseline, the budgets and their ratchet rule, known breaches |
 | [review-surface.md](tech/review-surface.md) | How much review a branch asks for — the baseline over merged PRs, the budget it sets and the rule for moving it |
@@ -107,7 +108,8 @@ Audit reports are saved to `docs/security/audit-YYYY-MM-DD.md`.
 Local security scanning:
 - `npm run security:scan` — Semgrep SAST (OWASP Top 10, Node.js, React, secrets detection)
 - `npm run security:deps` — npm audit for backend + frontend dependencies
-- `npm run security:all` — run both scans
+- `npm run security:all` — the fast gates plus the slow scans, each one run only
+  if the change touched what it reads (`docs/tech/gates.md`)
 
 ## Conventions
 
