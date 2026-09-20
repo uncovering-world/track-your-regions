@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   GATES,
@@ -13,6 +12,7 @@ import {
   renderTable,
   runTier,
 } from './gates.mjs';
+import { backendSrc, repoFile } from './repo-root.mjs';
 
 /** The ids of the gates a change of these paths asks for, in the map's order. */
 const applying = (paths) =>
@@ -522,39 +522,29 @@ describe('the table the doc carries', () => {
 });
 
 /**
- * Where this suite finds the repository, which is not always a checkout.
+ * Every spec the `test:backend` gate runs, whichever root it runs from.
  *
- * The container unit lane mounts `scripts` at `/scripts`, `db` at `/db` and the
- * backend's `src` at `/app/src`, so the root there is `/` and `backend/src` is
- * not a path that exists. Found rather than counted, the same way
- * `backend/src/testSupport/repoFile.ts` finds it (#948).
+ * Two trees, because `backend/vitest.config.ts` includes two: the package's own
+ * `.test.ts` files under `src`, and the repository's tooling specs, the
+ * `.test.mjs` files under `scripts`. Only the first used to be scanned below,
+ * which left the claim this file makes — that a spec reading a path in no input
+ * class turns it red — false for exactly the specs that read the workflow and
+ * the gates document (#952).
  */
-function findRepoRoot() {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (;;) {
-    if (existsSync(join(dir, 'db', 'init', '01-schema.sql'))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) {
-      throw new Error('No ancestor of this spec holds db/init/01-schema.sql.');
-    }
-    dir = parent;
-  }
-}
-
-const repoRoot = findRepoRoot();
-const backendSrc = existsSync(join(repoRoot, 'backend', 'src'))
-  ? join(repoRoot, 'backend', 'src')
-  : join(repoRoot, 'app', 'src');
-
-function specFiles(dir) {
+function specFiles(dir, extension) {
   const found = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) found.push(...specFiles(path));
-    else if (entry.name.endsWith('.test.ts')) found.push(path);
+    if (entry.isDirectory()) found.push(...specFiles(path, extension));
+    else if (entry.name.endsWith(extension)) found.push(path);
   }
   return found;
 }
+
+const gateSpecs = () => [
+  ...specFiles(backendSrc, '.test.ts'),
+  ...specFiles(repoFile('scripts'), '.test.mjs'),
+];
 
 /**
  * Only calls whose every argument is a string literal are read: a computed
@@ -564,37 +554,42 @@ function specFiles(dir) {
 const REPO_FILE_CALL = /repoFile\(\s*('[^']*'(?:\s*,\s*'[^']*')*)\s*\)/g;
 
 describe('the map against the repository', () => {
-  it('covers every repository file the backend suite reads', () => {
+  it('covers every repository file the specs of its own gate read', () => {
     const read = new Set();
-    for (const file of specFiles(backendSrc)) {
+    for (const file of gateSpecs()) {
       const source = readFileSync(file, 'utf8');
       for (const [, args] of source.matchAll(REPO_FILE_CALL)) {
         const segments = args.split(',').map((arg) => arg.trim().slice(1, -1));
         const path = segments.join('/');
         // A segment list naming a directory is that directory's whole subtree:
         // `repoFile('db')` is the input `db/`, not a file called `db`.
-        const full = join(repoRoot, path);
+        const full = repoFile(path);
         const isDir = existsSync(full) && statSync(full).isDirectory();
         read.add(isDir ? `${path}/` : path);
       }
     }
     expect(read.size).toBeGreaterThan(0);
 
-    // `test:backend` is the gate those specs run under, so whatever they read
-    // must be one of its inputs — or repository-wide tooling, which runs
-    // everything anyway. A future spec that reads `.github/…` turns this red
-    // until the map says so.
+    // `test:backend` is the gate every one of those specs runs under, so
+    // whatever they read must be one of its inputs — or repository-wide
+    // tooling, which runs everything anyway.
     const testBackend = GATES.find((gate) => gate.id === 'test:backend');
     for (const path of [...read].sort()) {
       const { inputs } = classifyPaths([path]);
       const covered = inputs.has('tooling') || testBackend.inputs.some((id) => inputs.has(id));
-      expect(covered, `${path} is read by a backend spec but is an input to no gate`).toBe(true);
+      expect(
+        covered,
+        `${path} is read by a spec of the test:backend gate and is an input to no gate that `
+        + 'runs it. A change to that file alone therefore touches no input, the unit lane is '
+        + 'skipped and reports Success, and the spec written to guard that very file does not '
+        + 'run. Add the path to an input class in this map, or stop reading it',
+      ).toBe(true);
     }
   });
 
   it('is the table the doc carries', () => {
     // One map: the doc embeds the generated tables rather than restating them.
-    const doc = readFileSync(join(repoRoot, 'docs', 'tech', 'gates.md'), 'utf8');
+    const doc = readFileSync(repoFile('docs', 'tech', 'gates.md'), 'utf8');
     expect(doc).toContain(renderTable());
   });
 });

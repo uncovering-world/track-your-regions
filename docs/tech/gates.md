@@ -162,7 +162,9 @@ mock the API, so neither its typecheck nor its unit lane can see a backend
 contract change; the only gate that sees the two sides agree is the smoke lane,
 and that is an `app` gate. In the other direction the backend suite reads the
 rest of the repository directly, through `repoFile()` in
-`backend/src/testSupport/` (#948). Everything it reached on 2026-09-20:
+`backend/src/testSupport/` (#948), and the tooling specs beside it under
+`scripts/` do the same through `scripts/repo-root.mjs`. Everything the two
+reached on 2026-09-20:
 
 | What a spec opens | Why |
 | --- | --- |
@@ -172,12 +174,20 @@ rest of the repository directly, through `repoFile()` in
 | `db/` and `scripts/` as whole trees, beside the backend's own `src/` | `db/regionAncestorInvalidation.test.ts` and `db/regionGeomPieces.test.ts` scan every `.sql`, `.py`, `.ts` and `.sh` under them for anything that switches the region geometry triggers off — by name or wholesale — and `db/renderedRungTopology.test.ts` scans `db/` for a simplifier put into a query |
 | `martin/config.yaml`, `martin/README.md` | the tile sources a spec asserts on, and the document that lists them |
 | `scripts/db-migrate.sh` | the migration runner's own behaviour |
+| `docs/tech/gates.md` | `scripts/gates.test.mjs` holds the tables above against `--table`, so the map is written once |
+| `.github/workflows/ci.yml` | `scripts/ci-failsafe.test.mjs` holds every job's condition against the map (#952) |
 
 That list is not maintained by hand. `scripts/gates.test.mjs` reads every
-`repoFile()` call in the backend suite whose arguments are string literals,
-resolves each to a repository path, and asserts it is an input to `test:backend`
-or to `tooling`. A spec that starts reading `.github/…` tomorrow turns that test
-red until the map says so.
+`repoFile()` call whose arguments are string literals — in the backend suite and
+in the tooling specs beside it under `scripts/`, which `backend/vitest.config.ts`
+runs in the same gate — resolves each to a repository path, and asserts it is an
+input to `test:backend` or to `tooling`. The last two rows arrived that way:
+`scripts/ci-failsafe.test.mjs` reads `.github/workflows/ci.yml`, and the
+assertion is green only because the map carries that path under `tooling`. A
+spec that starts reading a path the map does not name turns the test red, and
+the reason it must is the failure the assertion names: a path in no input class
+means a change to that file alone touches no input, so the unit lane is skipped,
+reports Success, and the spec written to guard that very file never runs (#952).
 
 ## How CI applies the map
 
@@ -229,10 +239,26 @@ A scheduled run (`on: schedule`, weekly) has no base, so the `Changes` job sends
 the zero sha and every gate applies — see the calendar under *What the map does
 not reach*.
 
-Not yet pinned by a test: the fail-safe invariant itself — that every job's `if:`
-begins with `!cancelled() && (needs.changes.result != 'success' || …`. A future
-edit that drops one of those clauses from one job would go unnoticed until a
-`Changes` failure let it through; a spec over the workflow YAML is the follow-up.
+The fail-safe invariant itself is pinned by `scripts/ci-failsafe.test.mjs`, which
+parses the workflow and holds it against the map (#952). Every job but `Changes`
+has to wait on it, and its `if:` has to be the whole expression — the clauses in
+the order and the grouping above, built from the `job_*` output the map
+publishes for that job, with `needs.check.result == 'success'` in its place for
+the three jobs that wait behind `check` (`Build`, `E2E Smoke` and
+`Performance (Lighthouse)`). The parts are not enough: an expression that names
+every clause but puts the output comparison in an `&&` term of its own skips the
+job on exactly the failure the fail-safe is for. Each guarded step's condition is
+pinned whole the same way; `Changes` has to declare every `job_*` key the map
+emits, and the workflow may read no key it does not; and `on:` has to carry no
+`paths` filter. It reads in both directions: every job the map names has to exist
+in the workflow, once, so that deleting a job takes the spec red rather than its
+gates quietly out of CI.
+
+Each failure says what the missing clause costs — a required context reporting
+Success with nothing run on it — because that is the part a reader of the diff
+cannot see. The spec runs in the backend's vitest lane, on the host and in the
+container, which mounts that one workflow file read-only beside the repository
+files the suite already reads.
 
 ## What the map does not reach
 
@@ -249,10 +275,12 @@ edit that drops one of those clauses from one job would go unnoticed until a
   map does not chase, because the change touched no Markdown. The next full run —
   any `tooling` change, or the next docs edit — finds it.
 - **The other workflow files are in no input class.** `claude-review.yml`,
-  `claude-qa.yml` and `claude-dependabot.yml` are linted by nothing; `ci.yml` is
-  named only as tooling, which is a statement about reach and not a check. A
-  `lint:actions` gate over `.github/workflows/` (actionlint) is the candidate
-  follow-up.
+  `claude-qa.yml` and `claude-dependabot.yml` are linted by nothing, and neither
+  is `ci.yml` — what a spec holds it to is the fail-safe contract above, not the
+  syntax of a workflow file, so a typo in a `run:` block or an unknown key is
+  found by the run that hits it. A `lint:actions` gate over `.github/workflows/`
+  (actionlint) is the candidate follow-up. ADR-0062 records the gap as it stood
+  when it was accepted, before that spec existed.
 - **`job_check_docs` is emitted and nothing reads it.** The install the docs
   gates need is the unconditional root `npm ci`, and the Docker gates install
   nothing. The key is still published on every run, because a `job_*` key that

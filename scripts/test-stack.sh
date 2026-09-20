@@ -259,13 +259,22 @@ require_output_path() {
 # whole set fails on paths that are simply not there: 18 test files, reported as
 # if the code were wrong (#948). Checked before the run rather than diagnosed
 # after it, because a lane that cannot run should say so, not fail.
+#
+# The last two are files rather than directories, and they are in the list for
+# the same reason the directories are: the repository's own tooling specs hold
+# the gate map against the table docs/tech/gates.md carries (#783) and the CI
+# fail-safe clause against .github/workflows/ci.yml (#952), and each is mounted
+# on its own rather than with its directory. A container made before either
+# mount would otherwise pass a guard that probes only the directories and then
+# die inside the spec, which is the discovery this one place exists to spare.
 require_backend_repo_mounts() {
   local missing
   # $p below belongs to the container's own shell, so the quoting that keeps it
   # unexpanded here is the point; expanding it would send an empty test.
   # shellcheck disable=SC2016
   missing="$(compose exec -T backend sh -lc \
-    'for p in /db/init/01-schema.sql /frontend/src /martin/config.yaml /scripts; do
+    'for p in /db/init/01-schema.sql /frontend/src /martin/config.yaml /scripts \
+              /docs/tech/gates.md /.github/workflows/ci.yml; do
        [ -e "$p" ] || echo "  $p"
      done')"
   if [ -n "$missing" ]; then
