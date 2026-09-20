@@ -84,6 +84,12 @@ services:
       - ./db:/db:ro,z
       - ./frontend/src:/frontend/src:ro,z
       - ./martin:/martin:ro,z
+      # And one file on its own, for the same reason: `scripts/gates.test.mjs`
+      # pins the gate map against the table `docs/tech/gates.md` carries, so the
+      # doc has to be readable here too. The whole of `docs` is not mounted —
+      # nothing else in the suite reads it, and the rest is megabytes of prose
+      # a test run has no business opening (#783).
+      - ./docs/tech/gates.md:/docs/tech/gates.md:ro,z
       - ${DATA_DIR:-./data}:/app/data:z
     depends_on:
       db:
