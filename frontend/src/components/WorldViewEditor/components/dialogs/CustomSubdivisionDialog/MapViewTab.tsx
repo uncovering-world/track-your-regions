@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -25,12 +25,13 @@ import LayersIcon from '@mui/icons-material/Layers';
 import VerticalSplitIcon from '@mui/icons-material/VerticalSplit';
 import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import { Source, Layer, NavigationControl, type MapRef, type MapLayerMouseEvent } from 'react-map-gl/maplibre';
+import { NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as Map } from '../../../../shared/GuardedMap';
 import type { Region, RegionMember } from '../../../../../types';
 import { MAP_STYLE } from '../../../../../constants/mapStyles';
-import type { SubdivisionGroup, MapTool } from './types';
+import type { SubdivisionGroup } from './types';
 import { getGroupColor } from './types';
+import { mapDataWithColors, descendantDataWithColors } from './subdivisionMapColors';
 import { ImageOverlayDialog, type ImageOverlaySettings } from './ImageOverlayDialog';
 import { CutDivisionDialog } from '../CutDivisionDialog';
 import { extractImageUrl } from '../../../../../utils/imageUrl';
@@ -45,19 +46,9 @@ function removeGroupAtIndex(groups: SubdivisionGroup[], idx: number): Subdivisio
   return groups.filter((_, i) => i !== idx);
 }
 
-function pickHoverCursor(
-  activeTool: MapTool,
-  featureProps: Record<string, unknown> | null | undefined,
-  selectedGroupIdx: number | 'unassigned' | null,
-): string {
-  if (activeTool === 'split') {
-    return featureProps?.hasChildren ? 'crosshair' : 'not-allowed';
-  }
-  if (activeTool === 'cut') return 'crosshair';
-  if (activeTool === 'moveToParent') return 'pointer';
-  return selectedGroupIdx !== null ? 'pointer' : 'default';
-}
 import { useDivisionOperations } from './useDivisionOperations';
+import { useSubdivisionMapHover } from './useSubdivisionMapHover';
+import { SubdivisionMapLayers } from './SubdivisionMapLayers';
 import { useImageColorPicker } from './useImageColorPicker';
 
 interface MapViewTabProps {
@@ -94,13 +85,8 @@ export function MapViewTab({
   // with nothing (#694). What the button promises is what the dialog can load.
   const regionMapSrc = regionMapUrl ? extractImageUrl(regionMapUrl) : null;
   const [selectedGroupIdx, setSelectedGroupIdx] = useState<number | 'unassigned' | null>(null);
-  const [hoveredDivisionId, setHoveredDivisionId] = useState<number | null>(null);
   const [editingGroupNameInMap, setEditingGroupNameInMap] = useState<number | null>(null);
   const [newGroupNameInMap, setNewGroupNameInMap] = useState('');
-
-  // Hover state for highlighting groups/unassigned in the map
-  const [hoveredGroupIdx, setHoveredGroupIdx] = useState<number | null>(null);
-  const [hoveredUnassigned, setHoveredUnassigned] = useState(false);
 
   // Image overlay state
   const [imageOverlayDialogOpen, setImageOverlayDialogOpen] = useState(false);
@@ -162,33 +148,13 @@ export function MapViewTab({
     setSubdivisionGroups,
   });
 
-  // Handle mouse move for hover effects
-  const handleMapMouseMove = useCallback((event: MapLayerMouseEvent) => {
-    const features = event.features;
-    if (!features || features.length === 0) {
-      setHoveredDivisionId(null);
-      if (mapRef.current) mapRef.current.getCanvas().style.cursor = '';
-      return;
-    }
-
-    const featureProps = features[0].properties as Record<string, unknown> | null | undefined;
-    const hoveredId = (featureProps?.memberRowId ?? featureProps?.id) as number | null | undefined;
-    setHoveredDivisionId(hoveredId ?? null);
-    if (mapRef.current) {
-      mapRef.current.getCanvas().style.cursor = pickHoverCursor(
-        activeTool,
-        featureProps,
-        selectedGroupIdx,
-      );
-    }
-  }, [activeTool, selectedGroupIdx]);
-
-  const handleMapMouseLeave = useCallback(() => {
-    setHoveredDivisionId(null);
-    if (mapRef.current) {
-      mapRef.current.getCanvas().style.cursor = '';
-    }
-  }, []);
+  // What the pointer is over, and what the cursor says a click would do.
+  const {
+    hoveredDivisionId, hoveredGroupIdx, setHoveredGroupIdx, hoveredUnassigned, setHoveredUnassigned,
+    handleMapMouseMove, handleMapMouseLeave, hoveredInfo,
+  } = useSubdivisionMapHover({
+    mapRef, activeTool, selectedGroupIdx, mapGeometries, subdivisionGroups, getDivisionGroupIdx,
+  });
 
   // Create a new group from the map tab
   const handleCreateGroupFromMap = useCallback(() => {
@@ -201,76 +167,15 @@ export function MapViewTab({
     }
   }, [newGroupNameInMap, subdivisionGroups, setSubdivisionGroups]);
 
-  // Build GeoJSON with group colors for map display
-  const getMapDataWithColors = useCallback((): GeoJSON.FeatureCollection => {
-    if (!mapGeometries) return { type: 'FeatureCollection', features: [] };
+  const getMapDataWithColors = useCallback(
+    () => mapDataWithColors(mapGeometries, getDivisionGroupIdx, subdivisionGroups),
+    [mapGeometries, getDivisionGroupIdx, subdivisionGroups],
+  );
 
-    const features = mapGeometries.features.map(f => {
-      const divId = f.properties?.id;
-      const memberRowId = f.properties?.memberRowId;
-      const groupIdx = getDivisionGroupIdx(divId, memberRowId);
-
-      return {
-        ...f,
-        properties: {
-          ...f.properties,
-          groupIdx: groupIdx ?? -1, // Use -1 for unassigned to avoid null in MapLibre expressions
-          groupColor: groupIdx !== null ? getGroupColor(subdivisionGroups[groupIdx], groupIdx) : '#cccccc',
-          groupName: groupIdx !== null ? subdivisionGroups[groupIdx]?.name : 'Unassigned',
-        },
-      };
-    });
-
-    return { type: 'FeatureCollection', features };
-  }, [mapGeometries, getDivisionGroupIdx, subdivisionGroups]);
-
-  // Build GeoJSON with group colors for descendant context layer
-  const getDescendantDataWithColors = useCallback((): GeoJSON.FeatureCollection => {
-    if (!descendantGeometries) return { type: 'FeatureCollection', features: [] };
-
-    // Build lookup: existingRegionId -> groupIdx
-    const regionIdToGroupIdx: Record<number, number> = {};
-    for (let i = 0; i < subdivisionGroups.length; i++) {
-      const rid = subdivisionGroups[i].existingRegionId;
-      if (rid != null) regionIdToGroupIdx[rid] = i;
-    }
-
-    const features = descendantGeometries.features.map(f => {
-      const rootAncestorId = f.properties?.rootAncestorId as number | undefined;
-      const groupIdx = rootAncestorId != null ? (regionIdToGroupIdx[rootAncestorId] ?? -1) : -1;
-
-      return {
-        ...f,
-        properties: {
-          ...f.properties,
-          groupIdx,
-          groupColor: groupIdx >= 0 ? getGroupColor(subdivisionGroups[groupIdx], groupIdx) : '#9e9e9e',
-        },
-      };
-    });
-
-    return { type: 'FeatureCollection', features };
-  }, [descendantGeometries, subdivisionGroups]);
-
-  // Get hovered feature info
-  const hoveredInfo = useMemo(() => {
-    if (!hoveredDivisionId || !mapGeometries) return null;
-
-    const feature = mapGeometries.features.find(f =>
-      f.properties?.memberRowId === hoveredDivisionId || f.properties?.id === hoveredDivisionId
-    );
-    if (!feature) return null;
-
-    const groupIdx = getDivisionGroupIdx(feature.properties?.id, feature.properties?.memberRowId);
-
-    return {
-      name: feature.properties?.name,
-      path: feature.properties?.path,
-      hasChildren: feature.properties?.hasChildren,
-      groupIdx,
-      groupName: groupIdx !== null ? subdivisionGroups[groupIdx]?.name : null,
-    };
-  }, [hoveredDivisionId, mapGeometries, getDivisionGroupIdx, subdivisionGroups]);
+  const getDescendantDataWithColors = useCallback(
+    () => descendantDataWithColors(descendantGeometries, subdivisionGroups),
+    [descendantGeometries, subdivisionGroups],
+  );
 
   // The stored source page, offered only where it is a page a reader may be
   // sent to (#703): the value is what an import tree posted, and a
@@ -615,153 +520,16 @@ export function MapViewTab({
             >
               <NavigationControl position="top-right" showCompass={false} />
 
-              {/* Reference image overlay (only in overlay mode) */}
-              {imageOverlaySettings && imageDisplayMode === 'overlay' && (
-                <Source
-                  id="image-overlay"
-                  type="image"
-                  url={imageOverlaySettings.imageUrl}
-                  coordinates={imageOverlaySettings.coordinates}
-                >
-                  <Layer
-                    id="image-overlay-layer"
-                    type="raster"
-                    paint={{
-                      'raster-opacity': imageOverlaySettings.opacity,
-                      'raster-fade-duration': 0,
-                    }}
-                  />
-                </Source>
-              )}
-
-              {/* Descendant context layer (read-only, colored by group, highlighted on hover) */}
-              {descendantGeometries && descendantGeometries.features.length > 0 && (
-                <Source id="descendant-context" type="geojson" data={getDescendantDataWithColors()}>
-                  <Layer
-                    id="descendant-context-fill"
-                    type="fill"
-                    paint={{
-                      'fill-color': ['get', 'groupColor'],
-                      'fill-opacity': [
-                        'case',
-                        // Highlight when group chip is hovered
-                        ['all',
-                          ['==', hoveredGroupIdx ?? -999, ['get', 'groupIdx']],
-                          ['!=', hoveredGroupIdx ?? -999, -999],
-                        ],
-                        0.35,
-                        // Default: subtle
-                        0.15,
-                      ],
-                    }}
-                  />
-                  <Layer
-                    id="descendant-context-outline"
-                    type="line"
-                    paint={{
-                      'line-color': [
-                        'case',
-                        ['all',
-                          ['==', hoveredGroupIdx ?? -999, ['get', 'groupIdx']],
-                          ['!=', hoveredGroupIdx ?? -999, -999],
-                        ],
-                        ['get', 'groupColor'],
-                        '#9e9e9e',
-                      ],
-                      'line-width': [
-                        'case',
-                        ['all',
-                          ['==', hoveredGroupIdx ?? -999, ['get', 'groupIdx']],
-                          ['!=', hoveredGroupIdx ?? -999, -999],
-                        ],
-                        2,
-                        1,
-                      ],
-                      'line-dasharray': [3, 2],
-                      'line-opacity': [
-                        'case',
-                        ['all',
-                          ['==', hoveredGroupIdx ?? -999, ['get', 'groupIdx']],
-                          ['!=', hoveredGroupIdx ?? -999, -999],
-                        ],
-                        0.8,
-                        0.5,
-                      ],
-                    }}
-                  />
-                </Source>
-              )}
-
-              <Source id="divisions" type="geojson" data={getMapDataWithColors()}>
-                <Layer
-                  id="divisions-fill"
-                  type="fill"
-                  paint={{
-                    'fill-color': ['get', 'groupColor'],
-                    'fill-opacity': [
-                      'case',
-                      // Highlight when directly hovered
-                      ['==', ['get', 'id'], hoveredDivisionId ?? -1],
-                      0.8,
-                      // Highlight when group chip is hovered
-                      ['all',
-                        ['==', hoveredGroupIdx ?? -999, ['get', 'groupIdx']],
-                        ['!=', hoveredGroupIdx ?? -999, -999]
-                      ],
-                      0.75,
-                      // Highlight unassigned when unassigned chip is hovered (groupIdx === -1)
-                      ['all',
-                        ['==', hoveredUnassigned, true],
-                        ['==', ['get', 'groupIdx'], -1]
-                      ],
-                      0.75,
-                      // Default opacity
-                      0.4,
-                    ],
-                  }}
-                />
-                <Layer
-                  id="divisions-outline"
-                  type="line"
-                  paint={{
-                    'line-color': [
-                      'case',
-                      // Thicker outline when group is hovered
-                      ['all',
-                        ['==', hoveredGroupIdx ?? -999, ['get', 'groupIdx']],
-                        ['!=', hoveredGroupIdx ?? -999, -999]
-                      ],
-                      '#000000',
-                      // Thicker outline when unassigned is hovered (groupIdx === -1)
-                      ['all',
-                        ['==', hoveredUnassigned, true],
-                        ['==', ['get', 'groupIdx'], -1]
-                      ],
-                      '#000000',
-                      '#333333',
-                    ],
-                    'line-width': [
-                      'case',
-                      ['==', ['get', 'id'], hoveredDivisionId ?? -1],
-                      4,
-                      // Thicker when group is hovered
-                      ['all',
-                        ['==', hoveredGroupIdx ?? -999, ['get', 'groupIdx']],
-                        ['!=', hoveredGroupIdx ?? -999, -999]
-                      ],
-                      3,
-                      // Thicker when unassigned is hovered (groupIdx === -1)
-                      ['all',
-                        ['==', hoveredUnassigned, true],
-                        ['==', ['get', 'groupIdx'], -1]
-                      ],
-                      3,
-                      2,
-                    ],
-                    'line-opacity': 0.8,
-                  }}
-                />
-              </Source>
+              <SubdivisionMapLayers
+                imageOverlaySettings={imageOverlaySettings}
+                imageDisplayMode={imageDisplayMode}
+                descendantGeometries={descendantGeometries}
+                getDescendantDataWithColors={getDescendantDataWithColors}
+                getMapDataWithColors={getMapDataWithColors}
+                hoveredGroupIdx={hoveredGroupIdx}
+                hoveredUnassigned={hoveredUnassigned}
+                hoveredDivisionId={hoveredDivisionId}
+              />
             </Map>
           )}
 
