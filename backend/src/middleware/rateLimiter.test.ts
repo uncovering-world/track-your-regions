@@ -16,7 +16,7 @@
  * exactly.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { readCeiling } from './rateLimiter.js';
 
@@ -24,6 +24,15 @@ const VARIABLE = 'RATE_LIMIT_PUBLIC_READ_MAX';
 const source = readFileSync(new URL('./rateLimiter.ts', import.meta.url), 'utf8');
 
 describe('the read ceilings', () => {
+  // Cleared before each case as well as after: this suite also runs inside the
+  // test stack's backend container, where `docker-compose.test.yml` sets the
+  // very variable these cases are about, and "the environment says nothing"
+  // then read 10000 (#948). A spec about what a value does must own that value
+  // rather than inherit whatever the lane it runs in happens to export.
+  beforeEach(() => {
+    delete process.env[VARIABLE];
+  });
+
   afterEach(() => {
     delete process.env[VARIABLE];
   });
