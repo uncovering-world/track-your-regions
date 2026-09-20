@@ -47,6 +47,23 @@ describe('what a change asks for', () => {
     }
   });
 
+  it('asks the workflow lint, and only it, for a change to a workflow that is not ci.yml', () => {
+    // Before this class the three `claude-*.yml` workflows were in no input
+    // class at all: `npm run check` answered "Nothing to run" and a mistake in
+    // one was found by the run that hit it, on the branch it was merged to.
+    expect(applying(['.github/workflows/claude-review.yml'])).toEqual(['lint:actions']);
+
+    // Docker is the gate's whole toolchain, and a Docker-only check has no
+    // setup key of its own, so the check job starts and not one of the three
+    // setup keys — node, python, docs — turns true with it.
+    const out = outputs(['.github/workflows/claude-review.yml']);
+    expect(out.job_check).toBe('true');
+    for (const key of Object.keys(out)) {
+      if (key === 'reason' || key === 'job_check') continue;
+      expect(out[key], key).toBe('false');
+    }
+  });
+
   it('asks every gate of the product for a change of backend source', () => {
     // Both stacks, because the product is one contract surface: a backend spec
     // reads `frontend/src` through repoFile(), and the smoke lane is the only
@@ -187,6 +204,12 @@ describe('the map itself', () => {
     expect(inputsOf('backend/Dockerfile')).toEqual(['app', 'docker']);
     expect(inputsOf('scripts/db-cli.sh')).toEqual(['app', 'shell']);
     expect(inputsOf('scripts/gates.mjs')).toEqual(['app', 'tooling']);
+    // `ci.yml` is read by actionlint like any workflow *and* decides which
+    // gates run at all, so it is both: linted as a file, and tooling that
+    // re-asks every gate. Losing the second membership would let an edit to
+    // the job filter run nothing but the workflow lint.
+    expect(inputsOf('.github/workflows/ci.yml')).toEqual(['tooling', 'workflows']);
+    expect(decide({ paths: ['.github/workflows/ci.yml'] }).everything).toBe(true);
     // The one gate whose runner is outside its inputs: `security:image` reads
     // python, and its script sits under scripts/. Tooling is what makes an
     // edit to the scan run the scan.
@@ -242,6 +265,7 @@ describe('the CI outputs', () => {
       docs: 'docs/tech/x.md',
       shell: 'tools/release.sh',
       docker: 'Dockerfile',
+      workflows: '.github/workflows/claude-qa.yml',
       tooling: 'package.json',
     };
     // A new input class with no sample would otherwise sit untested here.

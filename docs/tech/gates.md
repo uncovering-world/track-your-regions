@@ -123,6 +123,7 @@ everything or the base was simply unknown.
 | `docs` | `/\.md$/` | Every tracked Markdown file, wherever it sits: the docs pass checks what renders and what a link points at, which is the same question in docs/, in a service’s README and in the root guides. |
 | `shell` | `/\.sh$/` | shellcheck reads the scripts themselves; nothing else changes its verdict. |
 | `docker` | `/(^\|\/)Dockerfile[^/]*$/` | hadolint reads the Dockerfiles themselves, including their per-stage variants. |
+| `workflows` | `.github/workflows/` | actionlint parses the workflow files themselves — their syntax, their expressions, the shell in their `run:` blocks. Every one of them, not only ci.yml: a workflow is checked by nothing else, so a mistake in one is found by the run that hits it, on the branch it is already merged to. |
 | `tooling` | `.github/workflows/ci.yml`, `package.json`, `package-lock.json`, `scripts/gates.mjs`, `scripts/require-node-tools.sh`, `scripts/require-py-tools.sh`, `scripts/require-python-312.sh`, `scripts/scan-image.sh`, `.semgrepignore`, `.markdownlint-cli2.jsonc`, `docs/tech/gates.md` | A root config reaches every stack — it decides what the gates are, not what they read — so a change to one runs everything. That is the conservative answer to the reach question #783 had to settle, and the only one that cannot skip a gate its own change just broke. |
 
 ### Gates
@@ -139,6 +140,7 @@ everything or the base was simply unknown.
 | `security:deps` | check | `node-deps` | `npm run security:deps` | check |
 | `lint:shell` | check | `shell` | `npm run lint:shell` | check |
 | `lint:docker` | check | `docker` | `npm run lint:docker` | check |
+| `lint:actions` | check | `workflows` | `npm run lint:actions` | check |
 | `lint:md` | check | `docs` | `npm run lint:md` | check |
 | `lint:links` | check | `docs` | `npm run lint:links` | check |
 | `check:py` | check | `python` | `npm run check:py` | check |

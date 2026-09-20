@@ -96,8 +96,20 @@ export const INPUTS = [
     note: 'hadolint reads the Dockerfiles themselves, including their per-stage variants.',
   },
   {
+    id: 'workflows',
+    paths: ['.github/workflows/'],
+    note:
+      'actionlint parses the workflow files themselves — their syntax, their'
+      + ' expressions, the shell in their `run:` blocks. Every one of them, not'
+      + ' only ci.yml: a workflow is checked by nothing else, so a mistake in one'
+      + ' is found by the run that hits it, on the branch it is already merged to.',
+  },
+  {
     id: 'tooling',
     paths: [
+      // In two classes, and both are true of it: `workflows` is what actionlint
+      // reads, and `tooling` is what makes an edit to the job filter re-ask
+      // every gate the filter decides for.
       '.github/workflows/ci.yml',
       'package.json',
       'package-lock.json',
@@ -143,6 +155,7 @@ export const GATES = [
   { id: 'security:deps', tier: 'check', inputs: ['node-deps'], command: ['npm', 'run', 'security:deps'], job: 'check', setup: 'node' },
   { id: 'lint:shell', tier: 'check', inputs: ['shell'], command: ['npm', 'run', 'lint:shell'], job: 'check', setup: 'docker' },
   { id: 'lint:docker', tier: 'check', inputs: ['docker'], command: ['npm', 'run', 'lint:docker'], job: 'check', setup: 'docker' },
+  { id: 'lint:actions', tier: 'check', inputs: ['workflows'], command: ['npm', 'run', 'lint:actions'], job: 'check', setup: 'docker' },
   { id: 'lint:md', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:md'], job: 'check', setup: 'docs' },
   { id: 'lint:links', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:links'], job: 'check', setup: 'docker' },
   { id: 'check:py', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'check:py'], job: 'check', setup: 'python' },
@@ -192,7 +205,7 @@ const oneLine = (text) => String(text).replace(/\s+/g, ' ').trim();
 /**
  * Every gate runs. The per-gate `why` is the short form rather than the
  * reason, which the caller prints once above the list: repeating one sentence
- * down twenty-four lines buries the list it is meant to explain.
+ * down twenty-five lines buries the list it is meant to explain.
  */
 function everything(reason, inputs, unclassified) {
   return {
