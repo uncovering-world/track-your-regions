@@ -89,12 +89,13 @@ Walk through each finding:
 Run ALL project checks to verify everything is clean:
 
 ```bash
-npm run check          # lint + typecheck
+npm run gates          # which gates this change asks for, and why the rest are skipped
+npm run check          # the fast gates it asks for (check:all forces every one)
 npm run knip           # unused files + dependencies
-npm run security:all   # Semgrep SAST + npm audit
-TEST_REPORT_LOCAL=1 npm test  # unit tests
-npm run test:e2e:smoke # isolated test stack + Playwright smoke (before pushing)
-npm run perf:local     # production build on the dev stack's own data (before pushing, when the change touches what the browser loads or draws)
+npm run security:all   # the fast gates plus the slow Semgrep and Trivy scans it asks for
+TEST_REPORT_LOCAL=1 npm run gates -- run test  # the unit lanes it asks for, on the host
+npm run test:e2e:smoke # isolated test stack + Playwright smoke (before pushing, when npm run gates lists it)
+npm run perf:local     # production build on the dev stack's own data (before pushing, when npm run gates lists it)
 ```
 
 Also run `/security-check` for Claude Code security review of changed files.

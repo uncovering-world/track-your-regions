@@ -71,12 +71,13 @@ Invoke `/vibe-compliance` to verify and fix:
 
 This phase includes the full pre-commit verification suite:
 ```bash
+npm run gates        # what this change asks for; every skip carries its reason
 npm run check
 npm run knip
 npm run security:all
-TEST_REPORT_LOCAL=1 npm test
-npm run test:e2e:smoke
-npm run perf:local   # when the change touches what the browser loads or draws
+TEST_REPORT_LOCAL=1 npm run gates -- run test
+npm run test:e2e:smoke   # when npm run gates lists it
+npm run perf:local       # when npm run gates lists it
 ```
 
 Plus `/security-check` for Claude Code security review.

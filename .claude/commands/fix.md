@@ -83,13 +83,16 @@ Ask the user to confirm before proceeding with the fix.
 
 ### 7. Verify
 
-Run the project checks:
+Run the gates this change asks for — `npm run check` is the fast tier, and it
+reads `scripts/gates.mjs` to decide which of them the diff touched (ADR-0062):
 
 ```bash
-npm run check
+npm run check                  # the fast gates this change asks for
+npm run gates -- run test      # the unit lanes it asks for
 ```
 
-Fix any lint or type errors introduced by the change.
+Fix any lint or type errors introduced by the change. A bug fix that is only a
+test plus a one-line guard still runs both, because both read what it changed.
 
 ### 8. Update docs if needed
 
