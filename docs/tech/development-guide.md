@@ -646,6 +646,33 @@ Bad: one giant commit "Add batch location fetching" with all of the above mixed 
 - **Never commit `docs/inbox/`** — inbox is a local scratch space, not tracked in git.
 - Branch naming: `feature/NNN-short-slug`, `fix/NNN-short-slug`, or descriptive kebab-case (`add-development-guide`).
 
+### Review Surface
+
+One purpose per branch is not the same as one sitting's worth of review. A branch
+can be a single honest change and still be five times the work to review as the
+median one — and the current workflow discovers that only after the review has
+started, when the whole surface has been read and the threads are already open.
+**A branch is split before its first review round, not after**, whenever the
+split keeps each part to one purpose.
+
+`npm run review:surface` measures how much review the branch asks for, in counted
+lines, discounting what reviewers pass over: generated output, lines that only
+moved between files, a single token swept across many files, and — at a
+fraction — migrations and prose. The budget it reports against is the one in
+`docs/tech/review-surface.md`, read off the recent history: the fifteen branches
+over it drew a median of 28 review threads against five for the forty under. It
+is a signal and not a gate — no CI job and no branch protection consults it.
+
+```bash
+npm run review:surface          # main...HEAD, with the seams a split could follow
+```
+
+Over budget, split along a seam the scorecard reports — an area, or a run of
+commits — or record why the surface is inherently one change. `/pr-create` runs
+this before it opens the pull request and writes a recorded reason into the body.
+`docs/tech/review-surface.md` holds the baseline, the evidence for the budget and
+the rule for moving it.
+
 ## Security
 
 This project follows **OWASP ASVS 5.0 Level 2**. Key rules:
