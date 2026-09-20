@@ -28,7 +28,7 @@ npx eslint --rule '{"max-lines":["error",{"max":0,"skipBlankLines":true,"skipCom
 # → "File has too many lines (975). Maximum allowed is 0."
 ```
 
-The files that were already over 800 on the day the ceiling was set are listed by name in the last block of each config, each with the reason it stays whole, at the ceiling they were written under (1000). That list only shrinks: an entry is deleted when its file is split under 800, and no entry is ever added — a new file that would need one is a file to split first.
+The files that were already over 800 on the day the ceiling was set are listed by name in a last block of the config that owns them, each with the reason it stays whole, at the ceiling they were written under (1000). That list only shrinks: an entry is deleted when its file is split under 800, and no entry is ever added — a new file that would need one is a file to split first. A block goes with its last entry: the frontend's is gone (#933), and `backend/eslint.config.mjs` is the one that still has one.
 
 Exceptions: files with dense, non-decomposable JSX can exceed the ~500 target if splitting would only add prop-drilling overhead without clarity gain. Use judgment — if a file has distinct responsibilities, it should be split. The 800 ceiling has no such exception outside that list.
 
@@ -271,8 +271,11 @@ components/
 │       └── dialogs/
 │           └── CustomSubdivisionDialog/
 │               ├── MapViewTab.tsx             ← map-based subdivision UI (hooks below)
+│               ├── SubdivisionMapLayers.tsx   ← what the map draws: image, context, divisions
+│               ├── subdivisionMapColors.ts    ← each layer's GeoJSON, coloured by group (pure)
 │               ├── useGeometryLoading.ts      ← geometry fetch, fit-bounds, feature building
 │               ├── useDivisionOperations.ts   ← split/cut/assign/moveToParent tools
+│               ├── useSubdivisionMapHover.ts  ← what the pointer is over, and the cursor for it
 │               ├── useImageColorPicker.ts     ← eyedropper color sampling from reference image
 │               ├── AIAssistTab.tsx
 │               ├── aiAssistTypes.ts
@@ -423,7 +426,7 @@ For the full reference with examples, see [maplibre-patterns.md](maplibre-patter
 | Signal | Action |
 |--------|--------|
 | File > 500 lines of code | Look for split opportunities |
-| File > 800 lines of code | The lint fails — split now. A file on the configs' grandfather list is split before anything is added to it |
+| File > 800 lines of code | The lint fails — split now. A file on the backend config's grandfather list is split before anything is added to it |
 | File has 2+ distinct responsibilities | Split by responsibility |
 | You're about to add a new responsibility to an already-large file | Extract the new code into its own file from the start |
 | Hook has 3+ `useState` + related logic that could stand alone | Extract to `use*.ts` |
@@ -493,7 +496,7 @@ Suppressions hide real issues over time. Treat each one as a deliberate exceptio
    see `martin/run-martin.sh:39-44`, which uses exactly that shape — the reason
    from its opening word through to the sourced line. What never changes is one
    site at a time and a reason that says why.
-6. **Config-level rule disables need a comment.** If you turn a rule `'off'` in `eslint.config.mjs` (or equivalent), add an inline comment naming why (see `security/detect-object-injection` in `backend/eslint.config.mjs` for the pattern). A rule relaxed for named files is the same pattern with a list: the `max-lines` grandfather block at the end of each config names every file it covers and the reason each stays whole (§ Keep Files Small).
+6. **Config-level rule disables need a comment.** If you turn a rule `'off'` in `eslint.config.mjs` (or equivalent), add an inline comment naming why (see `security/detect-object-injection` in `backend/eslint.config.mjs` for the pattern). A rule relaxed for named files is the same pattern with a list: the `max-lines` grandfather block at the end of `backend/eslint.config.mjs` names every file it covers and the reason each stays whole (§ Keep Files Small).
 
 ### Examples
 

@@ -2,8 +2,9 @@
 
 This document covers the map tab internals for the Create Subregions dialog:
 
-- Component: `frontend/src/components/WorldViewEditor/components/dialogs/CustomSubdivisionDialog/MapViewTab.tsx`
-- Hooks: `useGeometryLoading.ts`, `useDivisionOperations.ts`, `useImageColorPicker.ts`
+- Component: `frontend/src/components/WorldViewEditor/components/dialogs/CustomSubdivisionDialog/MapViewTab.tsx`, with `SubdivisionMapLayers.tsx` for what the map draws
+- Hooks: `useGeometryLoading.ts`, `useDivisionOperations.ts`, `useImageColorPicker.ts`, `useSubdivisionMapHover.ts`
+- Colours: `subdivisionMapColors.ts` — pure, one function per layer
 - Tools: `assign`, `split`, `cut`, `moveToParent`
 
 ## Geometry loading pipeline
