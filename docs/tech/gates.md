@@ -36,15 +36,15 @@ stack test:e2e:smoke        skipped  inputs untouched: app
 stack perf                  skipped  inputs untouched: app
 ```
 
-Two of twenty-four gates, and the other twenty-two each name the input class they
-did not see move. Three shapes of answer are worth recognising:
+Two of twenty-five gates, and the other twenty-three each name the input class
+they did not see move. Three shapes of answer are worth recognising:
 
 - **`inputs touched: <class>`** — the gate runs, and the class says which of its
   inputs moved.
 - **`every gate applies`**, under a line naming the reason — a path in the
   `tooling` class was touched, or the change set could not be worked out (no
   base, a shallow clone, a git that would not answer). The reason is printed
-  once above the list rather than repeated down twenty-four lines.
+  once above the list rather than repeated down twenty-five lines.
 - **`Not an input to any gate: …`**, at the end — paths that belong to no class.
   They are reported rather than dropped: a file nothing reads is a fact about the
   map, not about the change.
@@ -57,7 +57,7 @@ what is committed.
 
 | Tier | What it holds | What runs it |
 | --- | --- | --- |
-| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the docs pass, the fast security audits | `npm run check` — `npm run check:all` forces every one |
+| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the docs pass, the workflow lint, the fast security audits | `npm run check` — `npm run check:all` forces every one |
 | `test` | the unit lanes, Node and Python | `npm run gates -- run test`, with `TEST_REPORT_LOCAL=1` to keep the Node lanes on the host |
 | `scan` | the slow scans: Semgrep on both stacks, the Trivy image scan | `npm run security:all` — the `check` tier, then this one |
 | `stack` | build, smoke, Lighthouse: the lanes that stand a stack up | `npm run gates -- run stack` **lists** them with run/skip marks and exits 2; they are typed by hand |
@@ -91,7 +91,7 @@ A tier whose gates all sit on untouched inputs prints the sentence rather than
 nothing at all — on a clean `main`, `npm run check` says
 
 ```text
-Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:circular, security:deps, lint:shell, lint:docker, lint:md, lint:links, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
+Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:circular, security:deps, lint:shell, lint:docker, lint:actions, lint:md, lint:links, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
 ```
 
 and exits 0. That is the one line this runner exists to print: a gate that did
@@ -106,7 +106,7 @@ $ GATES_BASE= node scripts/gates.mjs run stack
 GATES_BASE is empty: nothing to diff against, so every gate applies.
 ```
 
-Without it a reader sees fifteen gates run, or a stack listing whose every line
+Without it a reader sees sixteen gates run, or a stack listing whose every line
 reads `(every gate applies)`, and has to guess whether the branch really touched
 everything or the base was simply unknown.
 
@@ -276,13 +276,26 @@ files the suite already reads.
   Renaming a `.sh`, an `.sql` or an image leaves a dead link in prose that this
   map does not chase, because the change touched no Markdown. The next full run —
   any `tooling` change, or the next docs edit — finds it.
-- **The other workflow files are in no input class.** `claude-review.yml`,
-  `claude-qa.yml` and `claude-dependabot.yml` are linted by nothing, and neither
-  is `ci.yml` — what a spec holds it to is the fail-safe contract above, not the
-  syntax of a workflow file, so a typo in a `run:` block or an unknown key is
-  found by the run that hits it. A `lint:actions` gate over `.github/workflows/`
-  (actionlint) is the candidate follow-up. ADR-0062 records the gap as it stood
-  when it was accepted, before that spec existed.
+- **A workflow's syntax is read; what it needs from GitHub is not.** The gap ADR-0062
+  recorded here — the three `claude-*.yml` workflows in no input class, `ci.yml` held
+  only to the fail-safe contract and never to the syntax of a workflow file — is
+  closed: `lint:actions` runs actionlint over the `workflows` class, which is
+  `.github/workflows/` whole (#951). It parses each file, type-checks the `${{ }}`
+  expressions against the outputs and contexts actually available, checks a `uses:`
+  step's inputs against the action's own, and runs shellcheck over every `run:`
+  block. What it cannot see is the half that lives outside the file: whether a
+  secret, a variable, a permission or an environment the workflow names exists in
+  this repository's settings, and whether a job does what it says. An unset secret
+  is not an error but the empty string, so neither this gate nor GitHub's own parser
+  says a word: the cost lands later, on the step that needed a real value — or it
+  never announces itself at all, an `if:` on that secret simply reading false and
+  the step quietly not running. The fail-safe contract likewise remains the business
+  of `scripts/ci-failsafe.test.mjs`.
+  The gate finds its own files rather than being handed a list, so a workflow added
+  and not yet tracked is linted too; a discovery that turns up no project or no YAML
+  under `.github/workflows/` exits 3 rather than 0, which is what keeps the gate from
+  going quiet if the directory ever moves.
+  ADR-0062 records the gap as it stood when it was accepted, before either existed.
 - **`job_check_docs` is emitted and nothing reads it.** The install the docs
   gates need is the unconditional root `npm ci`, and the Docker gates install
   nothing. The key is still published on every run, because a `job_*` key that
