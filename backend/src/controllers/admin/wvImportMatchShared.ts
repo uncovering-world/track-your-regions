@@ -19,14 +19,16 @@ import {
 import { cleanClusters } from './wvImportMatchClusterClean.js';
 import {
   alignDivisionsToImage,
+  type AlignmentResult,
+} from './wvImportMatchIcp.js';
+import {
   detectBboxInflation,
   findBboxOutliers,
   findOverlapOutliers,
   computeSvgPathArea,
   computeBboxFromDivisions,
-  type AlignmentResult,
   type DivisionBbox,
-} from './wvImportMatchIcp.js';
+} from './wvImportMatchIcpOutliers.js';
 import { parseSvgPathPoints } from './wvImportMatchSvgHelpers.js';
 import {
   assignDivisionsToClusters,
