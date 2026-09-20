@@ -354,7 +354,7 @@ The same reporting covers what happens *inside* an open card — the picture arr
 
 `experience-list-layout.smoke.spec.ts` keeps the opening honest by sampling **every animation frame** rather than polling: the fault it guards against lasted a single frame, and a 50 ms poll steps straight over it. It caught this one when a pre-paint measurement placed in the wrong component looked correct and did nothing.
 
-Rows here are of unequal height — a header is one line, an expanded experience carries its locations — so the sizes are measured rather than assumed, via `measureElement` and a `getItemKey` that keys the measurement cache by the row's identity instead of its index. `admin/WorldViewImportTree.tsx:393,613` is the prior art for that; `RegionList.tsx:265` also virtualises but with a fixed `estimateSize: () => 48`, and needs none of it.
+Rows here are of unequal height — a header is one line, an expanded experience carries its locations — so the sizes are measured rather than assumed, via `measureElement` and a `getItemKey` that keys the measurement cache by the row's identity instead of its index. The admin's import tree is the prior art for that: `WorldViewImportTree.tsx` measures its rows through `nav.virtualizer.measureElement`, and the `getItemKey` that keys the cache by a row's identity sits in the `useNavigationState.ts` beside it. `RegionList.tsx` also virtualises, but with a fixed `estimateSize: () => 48`, and needs none of it.
 
 The region is still read whole (`WHOLE_REGION_LIMIT`, see above) and every marker is still built: windowing is about what the DOM holds, not about what was fetched. The scrollbar covers the region, so this is not paging under another name.
 
