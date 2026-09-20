@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { repoFile } from '../testSupport/repoFile.js';
 
 /**
  * `uses_hull` chooses what a region's rungs are made of, so changing it has to
@@ -28,8 +28,8 @@ import { fileURLToPath } from 'node:url';
  * runner of its own.
  */
 
-const SCHEMA_PATH = fileURLToPath(new URL('../../../db/init/01-schema.sql', import.meta.url));
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+const SCHEMA_PATH = repoFile('db', 'init', '01-schema.sql');
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const schema = readFileSync(SCHEMA_PATH, 'utf8');
 
 /** The body of the `regions` 3857 trigger, between `AS $$` and the closing `$$`. */

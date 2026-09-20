@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { repoFile } from '../testSupport/repoFile.js';
 
 // The ledger that says which files in db/migrations/ a database has been
 // through (#435, ADR-0041). Two things have to hold for it to mean anything,
@@ -15,15 +15,15 @@ import { fileURLToPath } from 'node:url';
 // change to the shell script that this repository's files no longer satisfy
 // fails here instead of on somebody's db:migrate.
 
-const SCHEMA_PATH = fileURLToPath(new URL('../../../db/init/01-schema.sql', import.meta.url));
-const MIGRATIONS_DIR = fileURLToPath(new URL('../../../db/migrations', import.meta.url));
-const RUNNER_PATH = fileURLToPath(new URL('../../../scripts/db-migrate.sh', import.meta.url));
+const SCHEMA_PATH = repoFile('db', 'init', '01-schema.sql');
+const MIGRATIONS_DIR = repoFile('db', 'migrations');
+const RUNNER_PATH = repoFile('scripts', 'db-migrate.sh');
 
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const schema = readFileSync(SCHEMA_PATH, 'utf8');
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const runner = readFileSync(RUNNER_PATH, 'utf8');
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const migrationFiles = readdirSync(MIGRATIONS_DIR)
   .filter(name => name.endsWith('.sql'))
   .sort();

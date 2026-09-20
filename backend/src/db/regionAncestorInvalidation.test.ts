@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { backendSrc, repoFile } from '../testSupport/repoFile.js';
 
 /**
  * Ancestor geometry invalidation is stated once, in the database.
@@ -27,18 +28,17 @@ import { join } from 'node:path';
  * and the whole point of moving it was that there is one.
  */
 
-const repoRoot = join(__dirname, '..', '..', '..');
 const collapse = (text: string) => text.replace(/\s+/g, ' ');
 
-const schemaRaw = readFileSync(join(repoRoot, 'db', 'init', '01-schema.sql'), 'utf8');
+const schemaRaw = readFileSync(repoFile('db', 'init', '01-schema.sql'), 'utf8');
 const schema = collapse(schemaRaw);
 const migration = collapse(
-  readFileSync(join(repoRoot, 'db', 'migrations', '036-parent-geometry-invalidation-trigger.sql'), 'utf8'),
+  readFileSync(repoFile('db', 'migrations', '036-parent-geometry-invalidation-trigger.sql'), 'utf8'),
 );
 
 /** Every file under a directory, for the guards that hold a rule across a package. */
 function filesUnder(dir: string, ext: string): string[] {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- every caller passes a path built from repoRoot and literals
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- every caller passes a path built from the repository root and literals
   return readdirSync(dir, { recursive: true, encoding: 'utf8' })
     .filter(name => name.endsWith(ext))
     .map(name => join(dir, name));
@@ -155,7 +155,7 @@ describe('update_region_metadata, when the geometry goes', () => {
 
   it('is what 048-a-region-without-geometry-has-no-area.sql installs, and it repairs the area alone', () => {
     const repair = collapse(
-      readFileSync(join(repoRoot, 'db', 'migrations', '048-a-region-without-geometry-has-no-area.sql'), 'utf8'),
+      readFileSync(repoFile('db', 'migrations', '048-a-region-without-geometry-has-no-area.sql'), 'utf8'),
     );
     const migrationFn = functionBody(repair, 'update_region_metadata()', '$$ LANGUAGE plpgsql;');
     expect(migrationFn).toContain(AREA_FOLLOWS_GEOMETRY);
@@ -185,7 +185,6 @@ describe('the rule has one implementation, and no way round it', () => {
     // split on backticks are the statements. Anchored, or hull_geom = NULL --
     // three legitimate hull-clearing statements -- would read as a match.
     const nullsGeom = /(?<!\w)geom\s*=\s*NULL/;
-    const backendSrc = join(repoRoot, 'backend', 'src');
     for (const file of filesUnder(backendSrc, '.ts')) {
       // A guard has to name what it forbids, so the suite is where those names
       // are allowed to appear -- the same exclusion regionFocusAntimeridian
@@ -208,7 +207,7 @@ describe('the rule has one implementation, and no way round it', () => {
     // The ancestors are the trigger's, reached because this is itself a write to
     // regions.geom.
     const helpers = collapse(readFileSync(
-      join(repoRoot, 'backend', 'src', 'controllers', 'worldView', 'helpers.ts'), 'utf8',
+      join(backendSrc, 'controllers', 'worldView', 'helpers.ts'), 'utf8',
     ));
     // Both anchors are asserted for the reason functionBody() asserts its
     // terminator: indexOf gives -1 for a name that has been renamed, slice reads
@@ -230,7 +229,7 @@ describe('the rule has one implementation, and no way round it', () => {
     // (#667's shape, from an anonymous request). Under the trigger it would
     // blank a continent for every visitor as well (#680).
     const read = collapse(readFileSync(
-      join(repoRoot, 'backend', 'src', 'controllers', 'worldView', 'geometryRead.ts'), 'utf8',
+      join(backendSrc, 'controllers', 'worldView', 'geometryRead.ts'), 'utf8',
     ));
     expect(read).not.toMatch(/UPDATE regions SET geom/);
   });
@@ -240,8 +239,7 @@ describe('the rule has one implementation, and no way round it', () => {
     // loads GADM and computes their columns in one pass afterwards. Doing that
     // to this one would lose the invalidation for every row of the load, with
     // nothing afterwards to make up for it.
-    for (const dir of ['db', join('backend', 'src'), 'scripts']) {
-      const root = join(repoRoot, dir);
+    for (const root of [repoFile('db'), backendSrc, repoFile('scripts')]) {
       for (const ext of ['.sql', '.py', '.ts', '.sh']) {
         for (const file of filesUnder(root, ext)) {
           if (file.endsWith('.test.ts')) continue;

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { backendSrc, repoFile } from '../testSupport/repoFile.js';
 
 /**
  * The two schema homes must agree.
@@ -20,7 +21,6 @@ import { join } from 'node:path';
  * statements can be indented and wrapped however the files find readable while
  * the expected text stays a plain literal.
  */
-const repoRoot = join(__dirname, '..', '..', '..');
 /**
  * Line comments go first, then the whitespace: a `);` inside a `--` comment
  * ended the `experiences` block of `createTable` a hundred lines early, and every
@@ -38,9 +38,9 @@ const collapse = (sql: string) => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, '
  */
 const renamedBy055 = (sql: string) =>
   sql.replace(/experience_categories/g, 'experience_sources').replace(/\bcategory_id\b/g, 'source_id');
-const schema = collapse(readFileSync(join(repoRoot, 'db', 'init', '01-schema.sql'), 'utf8'));
+const schema = collapse(readFileSync(repoFile('db', 'init', '01-schema.sql'), 'utf8'));
 const migration = collapse(renamedBy055(
-  readFileSync(join(repoRoot, 'db', 'migrations', '018-curation-gate.sql'), 'utf8'),
+  readFileSync(repoFile('db', 'migrations', '018-curation-gate.sql'), 'utf8'),
 ));
 /**
  * The newest migration that restates the curation-log action list, found rather than named.
@@ -52,7 +52,7 @@ const migration = collapse(renamedBy055(
  * a guard that quietly checks a superseded file passes for the wrong reason.
  */
 const ACTION_CHECK_CONSTRAINT = 'experience_curation_log_action_check';
-const migrationsDir = join(repoRoot, 'db', 'migrations');
+const migrationsDir = repoFile('db', 'migrations');
 const actionMigrationFile = readdirSync(migrationsDir)
   .filter(name => name.endsWith('.sql'))
   // The names come from a listing of a fixed in-repo directory, in a test that no request
@@ -66,7 +66,7 @@ const publishMigrationRaw = readFileSync(join(migrationsDir, actionMigrationFile
 const publishMigration = collapse(publishMigrationRaw);
 /** Uncollapsed, for the assertions that are about how a line starts. */
 const migrationLines = readFileSync(
-  join(repoRoot, 'db', 'migrations', '018-curation-gate.sql'),
+  repoFile('db', 'migrations', '018-curation-gate.sql'),
   'utf8',
 );
 const publishMigrationLines = publishMigrationRaw;
@@ -84,7 +84,7 @@ const refusedIndexMigration = collapse(readFileSync(
   join(migrationsDir, '052-curator-takes-back-a-refused-part.sql'), 'utf8',
 ));
 const deferralMigrationRaw = readFileSync(
-  join(repoRoot, 'db', 'migrations', '020-deferred-withdrawal.sql'),
+  repoFile('db', 'migrations', '020-deferred-withdrawal.sql'),
   'utf8',
 );
 const deferralMigration = collapse(deferralMigrationRaw);
@@ -109,21 +109,21 @@ const typeMigrationFile = readdirSync(migrationsDir)
 const typeMigrationRaw = readFileSync(join(migrationsDir, typeMigrationFile), 'utf8');
 const typeMigration = collapse(typeMigrationRaw);
 const contentsMigrationRaw = readFileSync(
-  join(repoRoot, 'db', 'migrations', '023-contents-delta.sql'),
+  repoFile('db', 'migrations', '023-contents-delta.sql'),
   'utf8',
 );
 const contentsMigration = collapse(contentsMigrationRaw);
 const locationVerdictMigrationRaw = readFileSync(
-  join(repoRoot, 'db', 'migrations', '024-location-verdicts.sql'),
+  repoFile('db', 'migrations', '024-location-verdicts.sql'),
   'utf8',
 );
 const locationVerdictMigration = collapse(locationVerdictMigrationRaw);
 /** The two TypeScript homes of the same list, read as text for the same reason. */
 const changeRecorderSource = collapse(
-  readFileSync(join(__dirname, '..', 'services', 'sync', 'changeRecorder.ts'), 'utf8'),
+  readFileSync(join(backendSrc, 'services', 'sync', 'changeRecorder.ts'), 'utf8'),
 );
 const backendTypesSource = collapse(
-  readFileSync(join(__dirname, '..', 'types', 'index.ts'), 'utf8'),
+  readFileSync(join(backendSrc, 'types', 'index.ts'), 'utf8'),
 );
 
 /**
@@ -141,7 +141,7 @@ const PART_GATE_COLUMNS: Array<[table: string, column: string]> = [
   ['treasures', 'curation_state'],
 ];
 const splitMigrationRaw = readFileSync(
-  join(repoRoot, 'db', 'migrations', '046-a-kind-is-its-own-table-and-a-membership-its-own-row.sql'),
+  repoFile('db', 'migrations', '046-a-kind-is-its-own-table-and-a-membership-its-own-row.sql'),
   'utf8',
 );
 const splitMigration = collapse(renamedBy055(splitMigrationRaw));
@@ -821,7 +821,7 @@ describe('a point has verdict columns in both schema homes', () => {
  */
 describe('a withdrawn link and a skipped withdrawal have columns in both schema homes', () => {
   const withdrawalMigrationRaw = readFileSync(
-    join(repoRoot, 'db', 'migrations', '041-a-work-is-marked-not-deleted.sql'),
+    repoFile('db', 'migrations', '041-a-work-is-marked-not-deleted.sql'),
     'utf8',
   );
   const withdrawalMigration = collapse(withdrawalMigrationRaw);

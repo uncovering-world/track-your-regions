@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { backendSrc, repoFile, repoRelative } from '../testSupport/repoFile.js';
 
 /**
  * Simplification makes an outline coarser. It does not add holes to it.
@@ -36,14 +36,12 @@ import { fileURLToPath } from 'node:url';
  * writes them.
  */
 
-const SCHEMA_PATH = fileURLToPath(new URL('../../../db/init/01-schema.sql', import.meta.url));
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+const SCHEMA_PATH = repoFile('db', 'init', '01-schema.sql');
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const schema = readFileSync(SCHEMA_PATH, 'utf8');
 
-const MIGRATION_PATH = fileURLToPath(
-  new URL('../../../db/migrations/037-topology-preserving-rungs.sql', import.meta.url),
-);
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+const MIGRATION_PATH = repoFile('db', 'migrations', '037-topology-preserving-rungs.sql');
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const migration = readFileSync(MIGRATION_PATH, 'utf8');
 
 /**
@@ -103,20 +101,18 @@ function simplifiersIn(source: string): string[] {
   return [...withoutComments(source).matchAll(/ST_\w*Simplify\w*(?=\s*\()/gi)].map((m) => m[0]);
 }
 
-const REPO = fileURLToPath(new URL('../../../', import.meta.url));
-
 /** Every file in the repository that can put a simplification into a query. */
 function sourcesThatQuery(): string[] {
   const roots: [string, (name: string) => boolean][] = [
-    ['backend/src', (name) => name.endsWith('.ts') && !name.endsWith('.test.ts')],
-    ['db', (name) => name.endsWith('.sql') || name.endsWith('.py')],
+    [backendSrc, (name) => name.endsWith('.ts') && !name.endsWith('.test.ts')],
+    [repoFile('db'), (name) => name.endsWith('.sql') || name.endsWith('.py')],
   ];
 
   return roots.flatMap(([root, wanted]) =>
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- root is one of the two literals above, resolved against this module's own URL
-    readdirSync(join(REPO, root), { recursive: true, encoding: 'utf8' })
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- root is one of the two directories named above
+    readdirSync(root, { recursive: true, encoding: 'utf8' })
       .filter(wanted)
-      .map((name) => join(REPO, root, name)),
+      .map((name) => join(root, name)),
   );
 }
 
@@ -129,7 +125,7 @@ describe('everything that queries simplifies only in ways that preserve topology
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- path comes from sourcesThatQuery(), which walks two literal roots
       simplifiersIn(readFileSync(path, 'utf8'))
         .filter((call) => !TOPOLOGY_PRESERVING.some((ok) => ok.toLowerCase() === call.toLowerCase()))
-        .map((call) => `${relative(REPO, path)}: ${call}`),
+        .map((call) => `${repoRelative(path)}: ${call}`),
     );
     expect(offenders).toEqual([]);
   });

@@ -16,8 +16,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { backendSrc, repoFile } from '../testSupport/repoFile.js';
 import {
   editExperienceBodySchema,
   createManualExperienceBodySchema,
@@ -329,7 +329,7 @@ describe('a picture the server fetches for itself', () => {
   });
 
   it('is the address every server-side picture fetch calls, not the value it was handed', () => {
-    const src = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const src = backendSrc;
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- a literal path under this package
     const read = (path: string) => readFileSync(join(src, path), 'utf8');
     /** Every `fetch(` in a module, in whatever shape it is written. */
@@ -527,11 +527,10 @@ describe("a region's source page is held to the link rule", () => {
  * module may decide which scheme a stored url names.
  */
 describe('the rule is declared once', () => {
-  const backendSrc = join(dirname(fileURLToPath(import.meta.url)), '..');
 
   /** Every module under a directory, for the guards that hold a rule across a package. */
   function modulesUnder(dir: string): string[] {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the one caller passes a path built from this module's own URL and literals
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the one caller passes a path built from this package's src or the repository root
     return readdirSync(dir, { recursive: true, encoding: 'utf8' })
       .filter(name => name.endsWith('.ts') && !name.endsWith('.test.ts'))
       .map(name => join(dir, name));
@@ -578,7 +577,7 @@ describe('the rule is declared once', () => {
    * are not allowed to show would come back after #557 was closed.
    */
   it('allows a picture from the same hosts on the storing side and the drawing side', () => {
-    const frontendSrc = join(backendSrc, '..', '..', 'frontend', 'src');
+    const frontendSrc = repoFile('frontend', 'src');
     const drawing = readFileSync(join(frontendSrc, 'utils', 'imageUrl.ts'), 'utf8');
     const declared = /const TRUSTED_IMAGE_DOMAINS = \[([^\]]*)\]/.exec(drawing);
 
@@ -592,7 +591,7 @@ describe('the rule is declared once', () => {
     // The second list across the boundary, pinned like the first: a type added
     // here alone stores files that never draw, one added there alone draws
     // files nothing may store — and the host check would not notice either.
-    const frontendSrc = join(backendSrc, '..', '..', 'frontend', 'src');
+    const frontendSrc = repoFile('frontend', 'src');
     const drawing = readFileSync(join(frontendSrc, 'utils', 'imageUrl.ts'), 'utf8');
     const declared = /const PICTURE_EXTENSIONS = \[([^\]]*)\]/.exec(drawing);
 
@@ -619,7 +618,7 @@ describe('the rule is declared once', () => {
    * actually occurred.
    */
   it('lets no component put a stored picture into a src of its own', () => {
-    const frontendSrc = join(backendSrc, '..', '..', 'frontend', 'src');
+    const frontendSrc = repoFile('frontend', 'src');
     /**
      * A stored picture: a region's map, by the name every prop carries it
      * under, or an experience's or a work's picture as the column it comes
@@ -757,7 +756,7 @@ describe('the rule is declared once', () => {
   });
 
   it('lets no module that carries a stored link put an href of its own on screen', () => {
-    const frontendSrc = join(backendSrc, '..', '..', 'frontend', 'src');
+    const frontendSrc = repoFile('frontend', 'src');
     /** A stored link: a region's source page, and a picture credit's licence and details pages, by the names every prop and every row carry them under. */
     const storedLink = /\b(?:sourceUrl|source_url|licenseUrl|detailsUrl)\b/;
 

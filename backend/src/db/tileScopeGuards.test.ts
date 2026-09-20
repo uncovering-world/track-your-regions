@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { repoFile } from '../testSupport/repoFile.js';
 
 /**
  * A tile function that answers for one scope must be given that scope.
@@ -36,12 +36,12 @@ import { fileURLToPath } from 'node:url';
  * enumeration of what Martin publishes.
  */
 
-const SCHEMA_PATH = fileURLToPath(new URL('../../../db/init/01-schema.sql', import.meta.url));
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+const SCHEMA_PATH = repoFile('db', 'init', '01-schema.sql');
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const schema = readFileSync(SCHEMA_PATH, 'utf8');
 
-const README_PATH = fileURLToPath(new URL('../../../martin/README.md', import.meta.url));
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+const README_PATH = repoFile('martin', 'README.md');
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const readme = readFileSync(README_PATH, 'utf8');
 
 /**

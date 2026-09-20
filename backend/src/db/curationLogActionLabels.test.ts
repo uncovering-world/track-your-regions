@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { repoFile } from '../testSupport/repoFile.js';
 
 /**
  * Every act the trail can record has to be an act a screen can name.
@@ -29,13 +29,11 @@ import { fileURLToPath } from 'node:url';
  * ever reaches, and no row would ever be named by it.
  */
 
-const SCHEMA_PATH = fileURLToPath(new URL('../../../db/init/01-schema.sql', import.meta.url));
-const LABELS_PATH = fileURLToPath(
-  new URL('../../../frontend/src/components/shared/curationLog.ts', import.meta.url),
-);
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+const SCHEMA_PATH = repoFile('db', 'init', '01-schema.sql');
+const LABELS_PATH = repoFile('frontend', 'src', 'components', 'shared', 'curationLog.ts');
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const schema = readFileSync(SCHEMA_PATH, 'utf8').replace(/\s+/g, ' ');
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const labelsSource = readFileSync(LABELS_PATH, 'utf8');
 
 /**

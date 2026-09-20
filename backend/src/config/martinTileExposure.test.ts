@@ -33,11 +33,11 @@
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { repoFile } from '../testSupport/repoFile.js';
 import { parse } from 'yaml';
 
-const CONFIG_PATH = fileURLToPath(new URL('../../../martin/config.yaml', import.meta.url));
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+const CONFIG_PATH = repoFile('martin', 'config.yaml');
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const configText = readFileSync(CONFIG_PATH, 'utf8');
 
 interface MartinConfig {

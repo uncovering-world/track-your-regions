@@ -20,12 +20,13 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { repoFile } from '../../testSupport/repoFile.js';
 import {
   foldLabel, tidyLabel, JS_WHITESPACE_CODE_POINTS, SQL_WHITESPACE_ALTERNATION,
 } from './labelFold.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const frontendFold = join(here, '..', '..', '..', '..', 'frontend', 'src', 'utils', 'labelFold.ts');
+const frontendFold = repoFile('frontend', 'src', 'utils', 'labelFold.ts');
 
 /** The steps of one of the rules, with each side's own comments and indentation removed. */
 function steps(source: string, rule: 'foldLabel' | 'tidyLabel'): string {

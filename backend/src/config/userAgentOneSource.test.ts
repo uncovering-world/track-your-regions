@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { backendSrc, repoFile } from '../testSupport/repoFile.js';
 
 /**
  * The User-Agent is spelled in one file, and nowhere else.
@@ -23,8 +23,8 @@ import { fileURLToPath } from 'node:url';
  * one module, and this only keeps a second home from appearing.
  */
 
-const SRC = fileURLToPath(new URL('..', import.meta.url));
-const SCHEMA_PATH = fileURLToPath(new URL('../../../db/init/01-schema.sql', import.meta.url));
+const SRC = backendSrc;
+const SCHEMA_PATH = repoFile('db', 'init', '01-schema.sql');
 
 /** The module that owns the string, and the two test files that quote it on purpose. */
 const OWNERS = new Set([
@@ -67,7 +67,7 @@ describe('the User-Agent has one home', () => {
 
   it('keeps the header out of the seeded source rows', () => {
     // A run's header is code's answer; api_config carries what a run reads.
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- a literal path resolved against this module's own URL
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
     expect(readFileSync(SCHEMA_PATH, 'utf8')).not.toContain('userAgent');
   });
 });
