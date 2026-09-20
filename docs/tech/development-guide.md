@@ -454,6 +454,14 @@ For the full reference with examples, see [maplibre-patterns.md](maplibre-patter
 3. **Each file installs its own `vi.mock`s.** A module mock belongs to the file that installs it, and so does the `vi.hoisted` value its factory reads.
 4. **Share what the siblings need, once.** Fixtures, typed handles on the mocked calls and the answers each case starts from go to one co-located helper (`reviewQueueFixtures.tsx`, `reviewQueueCardMocks.ts`, `publishController.fixtures.ts`), never to a copy per file: the copies are what drift when the code under test makes one more call.
 
+### Tests that read a repository file
+
+Some guards hold a claim in code against the file that actually states it: the schema in `db/init/01-schema.sql`, a numbered migration, Martin's `config.yaml`, a frontend module spelling the same rule for the browser. They live in the backend suite because the things they compare have no test runner of their own, and the frontend's cannot read outside its root.
+
+Such a spec locates the file through `backend/src/testSupport/repoFile.ts` — `repoFile(...segments)`, `repoRelative(path)` and `backendSrc` — never by counting `..` from its own module. `npm test` has two shapes: with `TEST_REPORT_LOCAL=1` it runs vitest on the host against the working tree, and without it inside the test stack's containers, where the backend mounts `backend/src` at `/app/src` and the repository directories it reads at the container root. A fixed walk up lands outside the checkout there, which is how 18 test files failed in the container lane while the host lane and CI stayed green (#948). The helper finds the root instead — the nearest ancestor holding `db/init/01-schema.sql` — and `scripts/test-stack.sh` refuses the run outright, naming the mounts, when a stale container does not have them.
+
+A spec must also own any environment variable it asserts on. The container lane sets some of its own (`docker-compose.test.yml` raises the read ceilings for the smoke suite), so "the environment says nothing" has to be arranged by the spec, not assumed.
+
 ### How NOT to split
 
 - Don't create a file for a single 10-line function.
