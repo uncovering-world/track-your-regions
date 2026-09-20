@@ -1632,7 +1632,7 @@ for it.
 **Refusals**, in the words the *kept out* card shows (ADR-0024), each pass-through and untranslated:
 
 - `not a place to visit: destroyed building or structure`, and the same form naming any other kill
-  class the row carries, several joined by `; ` — hill, mountain, neighborhood, ancient city,
+  class the row carries, several joined by `;` and a space — hill, mountain, neighborhood, ancient city,
   polis, tell, Jewish cemetery, Latin Rite Catholic cemetery, Holy Trinity column, palace of the
   Popes, civil basilica, auberge.
 - `a tower, not a place of worship: bell tower`, and the same form naming whichever of the five
@@ -2456,8 +2456,8 @@ run says a row fell below one of the two lines or stopped passing the rule and n
 whether the museum still opens its doors, every run recomputes the whole membership from the whole
 pool, and **belonging is not the badge here**. A museum is in this kind for what it is about and
 never for one find (ADR-0058 decision 2), so the must-see badge marks the museum that holds a
-famous find and nothing else (ADR-0045 decision 5): `badgesAdmitted: (item) => item.findsAboveLine
-> 0`. The British Museum is badged for the Rosetta Stone; the Bardo, in the kind in full standing
+famous find and nothing else (ADR-0045 decision 5): `badgesAdmitted: (item) => item.findsAboveLine > 0`.
+The British Museum is badged for the Rosetta Stone; the Bardo, in the kind in full standing
 on its own 35 articles and holding nothing above the finds' line, wears none. It is written once
 admission is settled rather than per museum (#760), and the orchestrator hands `markIconic` only
 the admitted ids whose item passes (`badgeAdmitted`). **And takes it back**: a museum that stays
