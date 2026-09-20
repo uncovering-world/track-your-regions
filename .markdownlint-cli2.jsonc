@@ -1,0 +1,92 @@
+// What this pass is for: Markdown that does not render the way it was
+// written. Never style.
+//
+// The default rule set was measured over the 155 tracked Markdown files this
+// repository held on 2026-09-20, in a clean checkout — a working tree's
+// untracked files are not part of the count (`markdownlint-cli2` 0.23.3 with
+// the globs and ignores below and every rule left on): 13 432 findings,
+// 11 235 of them MD013 line-length and 1 305 MD060 table-pipe-style.
+// Neither changes a rendered page by a pixel, and a gate that opens with
+// thirteen thousand findings is a gate nobody reads.
+//
+// So `default` is off and exactly eleven rules are on — each one a defect a
+// reader would see: a link that is not a link, a heading that is not a
+// heading, a table that renders as a row of pipes. On the same 155 files this
+// set finds 7, across three files, which is a list a person fixes in one
+// sitting (#783).
+//
+// MD018 (`#Heading`) is deliberately not one of them, although it names a real
+// defect. A line in this repository often *opens with an issue number*, which
+// CommonMark renders as an ordinary paragraph — a hash begins a heading only
+// when a space follows it — and MD018 cannot tell such a line from a heading
+// typed without its space. On the same run it flagged 14 of those, in eleven
+// files, and no mistyped heading at all: here it is a false-positive generator
+// rather than a render-defect rule, and the escapes it would ask for would be
+// edits to prose that already renders correctly — in five ADRs, three of them
+// Accepted, which may change only in their `Status`.
+{
+  "config": {
+    "default": false,
+
+    // `(text)[url]` renders as literal text: the link is simply not there.
+    "MD011": true,
+
+    // `#   Heading` still renders, so this one is cosmetic. It is on to hold
+    // heading spacing to one shape across the three rules left here: an odd
+    // run of spaces after the hashes is a typo of the same family as MD020's,
+    // which is the one that actually stops a heading being a heading.
+    "MD019": true,
+
+    // `##Heading##` — the closed form with no space is not a heading either,
+    // and nothing here opens a line with `##` followed by a digit, so it
+    // carries none of MD018's ambiguity.
+    "MD020": true,
+
+    // The closed form's spacing sibling, on for the same reason as MD019.
+    "MD021": true,
+
+    // A heading indented four spaces stops being a heading and renders as a
+    // code block.
+    "MD023": true,
+
+    // `** bold **` renders as literal asterisks around a spaced word.
+    "MD037": true,
+
+    // A space against the backtick changes the text a code span shows, so
+    // the identifier on the page is not the identifier that was meant.
+    "MD038": true,
+
+    // `[ text ](url)` puts the spaces inside the clickable text.
+    "MD039": true,
+
+    // A link with an empty destination is a link that goes nowhere.
+    "MD042": true,
+
+    // A file with no final newline makes its last line re-appear as changed
+    // in the next diff that touches it.
+    "MD047": true,
+
+    // A table with no blank line around it does not render as a table at
+    // all — it renders as a paragraph full of pipes.
+    "MD058": true
+  },
+
+  "globs": ["**/*.md"],
+  // Prose this repository does not own or does not keep: dependencies, local
+  // working documents (`docs/tech/planning/` is gitignored by design),
+  // vendored bundles, agent scratch space and test output.
+  "ignores": [
+    "**/node_modules/**",
+    "docs/tech/planning/**",
+    "data/**",
+    "ds-bundle/**",
+    ".superpowers/**",
+    ".agents/**",
+    ".worktrees/**",
+    "docs/inbox/**",
+    ".test-results/**",
+    "frontend/playwright-report/**",
+    "frontend/test-results/**"
+  ],
+  "gitignore": true
+}

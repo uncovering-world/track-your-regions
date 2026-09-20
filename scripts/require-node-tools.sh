@@ -33,8 +33,9 @@ done
 gates=()
 for tool in "${missing[@]}"; do
   case "$tool" in
-    madge) gates+=("lint:circular") ;;
-    *)     gates+=("$tool") ;;
+    madge)             gates+=("lint:circular") ;;
+    markdownlint-cli2) gates+=("lint:md") ;;
+    *)                 gates+=("$tool") ;;
   esac
 done
 
