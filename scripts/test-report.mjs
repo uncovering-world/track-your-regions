@@ -37,7 +37,7 @@ const STEP_TEMPLATES = {
   'backend-unit': {
     id: 'backend-unit',
     label: 'Backend Unit/Integration',
-    scope: 'backend/src/**/*.test.ts',
+    scope: 'backend/src/**/*.test.ts + scripts/**/*.test.mjs',
     kind: 'vitest',
     packageDir: 'backend',
     coverage: false,
@@ -45,7 +45,7 @@ const STEP_TEMPLATES = {
   'backend-coverage': {
     id: 'backend-coverage',
     label: 'Backend Coverage',
-    scope: 'backend/src/**/*.test.ts + coverage',
+    scope: 'backend/src/**/*.test.ts + scripts/**/*.test.mjs + coverage',
     kind: 'vitest',
     packageDir: 'backend',
     coverage: true,

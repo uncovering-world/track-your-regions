@@ -63,6 +63,12 @@ services:
       - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
     volumes:
       - ./backend/src:/app/src:ro,z
+      # The backend's vitest run is also the runner for the repository's own
+      # tooling specs (`../scripts/**/*.test.mjs`, #923). Inside the container
+      # that glob resolves to /scripts, and without this mount it would match
+      # nothing and the container lane would pass having run none of them —
+      # a lane that quietly does not run, which is what #432 was.
+      - ./scripts:/scripts:ro,z
       - ${DATA_DIR:-./data}:/app/data:z
     depends_on:
       db:

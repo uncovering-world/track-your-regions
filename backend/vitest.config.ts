@@ -4,7 +4,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['src/**/*.test.ts'],
+    // scripts/ holds the repository's own tooling. Only the pieces that decide
+    // something are worth a unit test — review-surface.mjs measures how much
+    // review a branch asks for (#923) — and they are plain ESM run under node,
+    // which is this project, not the browser one.
+    include: ['src/**/*.test.ts', '../scripts/**/*.test.mjs'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
