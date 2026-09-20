@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { backendSrc, repoFile, repoRelative } from '../testSupport/repoFile.js';
 
 /**
  * The antimeridian rule behind `focus_bbox`, held in the three places that state it.
@@ -43,10 +44,9 @@ import { join } from 'node:path';
  * before it; two of them read Antarctica as crossing.
  */
 
-const repoRoot = join(__dirname, '..', '..', '..');
 const collapse = (text: string) => text.replace(/\s+/g, ' ');
 
-const schemaRaw = readFileSync(join(repoRoot, 'db', 'init', '01-schema.sql'), 'utf8');
+const schemaRaw = readFileSync(repoFile('db', 'init', '01-schema.sql'), 'utf8');
 const schema = collapse(schemaRaw);
 /** The schema with its comment lines dropped, for counting what the code does rather than what it says. */
 const schemaCode = collapse(
@@ -55,16 +55,16 @@ const schemaCode = collapse(
 
 /** Every file under a directory, for the guards that hold a rule across a package. */
 function filesUnder(dir: string, ext: string): string[] {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- every caller passes a path built from repoRoot and literals
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- every caller passes a path built from the repository root and literals
   return readdirSync(dir, { recursive: true, encoding: 'utf8' })
     .filter(name => name.endsWith(ext))
     .map(name => join(dir, name));
 }
 const migration = collapse(
-  readFileSync(join(repoRoot, 'db', 'migrations', '032-antimeridian-focus-data.sql'), 'utf8'),
+  readFileSync(repoFile('db', 'migrations', '032-antimeridian-focus-data.sql'), 'utf8'),
 );
 const mapUtils = readFileSync(
-  join(repoRoot, 'frontend', 'src', 'utils', 'mapUtils.ts'),
+  repoFile('frontend', 'src', 'utils', 'mapUtils.ts'),
   'utf8',
 );
 
@@ -194,7 +194,6 @@ describe('the antimeridian is decided in two places, and nowhere else', () => {
     // hull/dateline.ts, and an envelope test in geometryRead.ts. Neither may
     // come back under its old name or its old arithmetic; a backend module
     // reads focus_bbox, or asks geometry_focus() for a shape that is not stored.
-    const backendSrc = join(repoRoot, 'backend', 'src');
     for (const file of filesUnder(backendSrc, '.ts')) {
       if (file.endsWith('.test.ts')) continue;
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
@@ -207,12 +206,12 @@ describe('the antimeridian is decided in two places, and nowhere else', () => {
   });
 
   it('keeps the frontend threshold in one place, equal to the schema', () => {
-    const frontendSrc = join(repoRoot, 'frontend', 'src');
+    const frontendSrc = repoFile('frontend', 'src');
     const declarations = filesUnder(frontendSrc, '.ts')
       .concat(filesUnder(frontendSrc, '.tsx'))
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
       .filter(file => /NEAR_GLOBAL_DEG\s*=/.test(readFileSync(file, 'utf8')));
-    expect(declarations.map(file => file.slice(repoRoot.length + 1)))
+    expect(declarations.map(repoRelative))
       .toEqual(['frontend/src/utils/mapUtils.ts']);
     expect(mapUtils).toContain(`const NEAR_GLOBAL_DEG = ${NEAR_GLOBAL_DEG};`);
   });
@@ -236,13 +235,13 @@ describe('the antimeridian is decided in two places, and nowhere else', () => {
       // The helper's own body, written out by hand: measure, then fly with the box.
       { label: 'focusFromGeoJson + smartFitBounds', pattern: /smartFitBounds\s*\([^;]*\bfocus\.bbox/s, allowed: 'frontend/src/utils/mapUtils.ts' },
     ];
-    const frontendSrc = join(repoRoot, 'frontend', 'src');
+    const frontendSrc = repoFile('frontend', 'src');
     const offenders: string[] = [];
     for (const file of filesUnder(frontendSrc, '.ts').concat(filesUnder(frontendSrc, '.tsx'))) {
       if (/\.test\.tsx?$/.test(file)) continue;
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
       const text = readFileSync(file, 'utf8');
-      const rel = file.slice(repoRoot.length + 1);
+      const rel = repoRelative(file);
       for (const rule of rules) {
         if (rule.allowed !== rel && rule.pattern.test(text)) offenders.push(`${rel}: ${rule.label}`);
       }
@@ -255,7 +254,7 @@ describe('the antimeridian is decided in two places, and nowhere else', () => {
     // downloaded geometry to frame a division; both now read what the
     // division list carried (#674).
     const interactions = readFileSync(
-      join(repoRoot, 'frontend', 'src', 'components', 'regionMap', 'useMapInteractions.ts'),
+      repoFile('frontend', 'src', 'components', 'regionMap', 'useMapInteractions.ts'),
       'utf8',
     );
     expect(interactions).not.toContain('turf.bbox');

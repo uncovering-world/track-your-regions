@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { repoFile } from '../testSupport/repoFile.js';
 
 // db/init/01-schema.sql is applied by docker-entrypoint-initdb.d on a fresh
 // database, but it is also re-applied by hand to existing databases whenever
 // the schema grows new tables or columns (db/migrations/README.md). Every seed
 // in it must therefore be idempotent.
-const SCHEMA_PATH = fileURLToPath(new URL('../../../db/init/01-schema.sql', import.meta.url));
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+const SCHEMA_PATH = repoFile('db', 'init', '01-schema.sql');
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const schema = readFileSync(SCHEMA_PATH, 'utf8');
 
 /** Tables the schema file is expected to seed. A new entry here is a signal to

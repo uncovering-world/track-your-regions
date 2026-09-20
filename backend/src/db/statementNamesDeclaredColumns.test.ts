@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { backendSrc, repoFile } from '../testSupport/repoFile.js';
 import ts from 'typescript';
 
 /**
@@ -37,8 +37,8 @@ import ts from 'typescript';
  * covers the class rather than the one statement that broke.
  */
 
-const SRC = fileURLToPath(new URL('..', import.meta.url));
-const SCHEMA_PATH = fileURLToPath(new URL('../../../db/init/01-schema.sql', import.meta.url));
+const SRC = backendSrc;
+const SCHEMA_PATH = repoFile('db', 'init', '01-schema.sql');
 
 type Schema = Map<string, Set<string>>;
 
@@ -310,7 +310,7 @@ function undeclaredColumns(literal: string, schema: Schema): Sweep {
 }
 
 function sourceFiles(): string[] {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the root is built from this module's own URL
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the root is this package's own src
   return readdirSync(SRC, { recursive: true, encoding: 'utf8' })
     .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && !name.endsWith('.d.ts'));
 }
@@ -340,7 +340,7 @@ function sqlLiterals(name: string): { text: string; line: number }[] {
   return out;
 }
 
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
 const schema = readFileSync(SCHEMA_PATH, 'utf8');
 const tables = declaredColumns(schema);
 

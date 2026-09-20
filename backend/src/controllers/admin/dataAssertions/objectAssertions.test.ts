@@ -11,7 +11,7 @@ import {
   KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, MONUMENT_CLASSES, FOUNTAIN_ROOT,
 } from '../../../services/sync/publicArt/classes.js';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { repoFile } from '../../../testSupport/repoFile.js';
 import { SQL_WHITESPACE_ALTERNATION, tidyLabelSql } from '../../../services/sync/labelFold.js';
 import { objectAssertions } from './objectAssertions.js';
 
@@ -263,12 +263,9 @@ describe('the name a filter cannot find', () => {
     // The migration cannot import the constant, so it carries the alternation
     // in full; a code point added to one and not the other is a name one side
     // tidies and the other reports for ever.
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is built from the repository root and literals
     const migration = readFileSync(
-      fileURLToPath(new URL(
-        '../../../../../db/migrations/047-a-name-is-stored-as-a-person-would-type-it.sql',
-        import.meta.url,
-      )),
+      repoFile('db', 'migrations', '047-a-name-is-stored-as-a-person-would-type-it.sql'),
       'utf8',
     );
     expect(migration).toContain(`'${SQL_WHITESPACE_ALTERNATION}+'`);

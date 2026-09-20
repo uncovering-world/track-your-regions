@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { backendSrc, repoFile } from '../testSupport/repoFile.js';
 
 /**
  * A leaf's pieces are kept by the database, from the geometry it holds now.
@@ -21,18 +22,17 @@ import { join } from 'node:path';
  * verified against the development database.
  */
 
-const repoRoot = join(__dirname, '..', '..', '..');
 /** Comments first, then whitespace, so an assertion cannot be met by a comment. */
 const collapse = (text: string) => text.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ');
 
-const schema = collapse(readFileSync(join(repoRoot, 'db', 'init', '01-schema.sql'), 'utf8'));
+const schema = collapse(readFileSync(repoFile('db', 'init', '01-schema.sql'), 'utf8'));
 const migration = collapse(
-  readFileSync(join(repoRoot, 'db', 'migrations', '054-leaf-pieces-for-placement.sql'), 'utf8'),
+  readFileSync(repoFile('db', 'migrations', '054-leaf-pieces-for-placement.sql'), 'utf8'),
 );
 
 /** Every file under a directory, for the guards that hold a rule across a package. */
 function filesUnder(dir: string, ext: string): string[] {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- every caller passes a path built from repoRoot and literals
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- every caller passes a path built from the repository root and literals
   return readdirSync(dir, { recursive: true, encoding: 'utf8' })
     .filter(name => name.endsWith(ext))
     .map(name => join(dir, name));
@@ -129,7 +129,7 @@ describe('054-leaf-pieces-for-placement.sql', () => {
 describe('the pieces have one writer, and no way round it', () => {
   it('lets no backend TypeScript write the pieces', () => {
     const writes = /\b(INSERT\s+INTO|DELETE\s+FROM|UPDATE|TRUNCATE)\s+region_geom_pieces\b/i;
-    for (const file of filesUnder(join(repoRoot, 'backend', 'src'), '.ts')) {
+    for (const file of filesUnder(backendSrc, '.ts')) {
       // A guard names what it forbids, so the suite may.
       if (file.endsWith('.test.ts')) continue;
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
@@ -143,9 +143,9 @@ describe('the pieces have one writer, and no way round it', () => {
     // no trigger: ALL or USER on the table, or a session replaying as a replica,
     // which fires no ordinary trigger at all.
     const wholesale = [/DISABLE\s+TRIGGER\s+(ALL|USER)\b/i, /session_replication_role/i];
-    for (const dir of ['db', 'scripts', join('backend', 'src')]) {
+    for (const root of [repoFile('db'), repoFile('scripts'), backendSrc]) {
       for (const ext of ['.sql', '.py', '.ts', '.sh']) {
-        for (const file of filesUnder(join(repoRoot, dir), ext)) {
+        for (const file of filesUnder(root, ext)) {
           if (file.endsWith('.test.ts')) continue;
           // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from literal roots
           const text = readFileSync(file, 'utf8');
