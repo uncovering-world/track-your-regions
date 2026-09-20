@@ -35,11 +35,12 @@ once, in the repository root:
 npm install
 ```
 
-`npm run check` runs `madge` from the root `node_modules` instead of
-fetching it per run, so the version that runs here is the one the
-tracked root `package-lock.json` names — the same tree CI installs with
-`npm ci`. Without it the gate stops and names the check that did not
-run, rather than dying on `madge: command not found`.
+`npm run check` runs `madge` (circular imports) and `markdownlint-cli2`
+(the docs pass) from the root `node_modules` instead of fetching them
+per run, so the versions that run here are the ones the tracked root
+`package-lock.json` names — the same tree CI installs with `npm ci`.
+Without it the gate stops and names the check that did not run, rather
+than dying on `madge: command not found`.
 
 For Python tooling (cv-python tests, type checking), set up the venv
 once:
@@ -63,24 +64,43 @@ command that runs it against 3.12 instead.
 
 ### Testing
 
-Run all automated tests before opening a PR:
+**A gate runs when, and only when, the inputs it checks have changed.**
+`scripts/gates.mjs` is the map from each gate to its inputs;
+`npm run gates` prints which gates the current change asks for and why
+the rest are skipped; `docs/tech/gates.md` has the map and the
+reasoning. Before every commit: `npm run check` (the fast gates the
+change asks for; `npm run check:all` forces every one),
+`npm run gates -- run test` (the unit lanes it asks for;
+`TEST_REPORT_LOCAL=1` keeps them on the host), and `/security-check`.
+Before pushing: `npm run security:all` (the fast gates plus the slow
+Semgrep and Trivy scans the change asks for) and, when `npm run gates`
+lists them, `npm run test:e2e:smoke` and `npm run perf:local`. A gate
+the map skips was not run and did not need to be; a gate the host
+cannot run (the Python tooling guard) is a failure to report, not a
+skip. CI reads the same map per job, so a skipped job is a job whose
+inputs the pull request does not touch.
 
 ```shell
-npm run check                  # lint + typecheck + fast security +
-                               # knip + circular/shell/docker checks
-TEST_REPORT_LOCAL=1 npm test   # Node unit + integration tests
-npm run test:py                # cv-python pytest + the GADM loader's tests
-                               # (needs setup:py:dev)
+npm run gates                  # every gate, run or skipped, with its reason
+npm run check                  # the fast gates this change asks for
+npm run gates -- run test      # the unit lanes it asks for (the Python
+                               # one needs setup:py:dev)
+npm run gates -- run stack     # the before-push lanes, listed not run
 ```
 
-`npm run check` is the same gate CI runs — a clean local check means
-a clean CI check.
+`/security-check` is a Claude Code slash command, so it is not
+available in every setup. Where it is not, do the same by hand before
+committing: read the diff for secrets, for an endpoint added without
+auth or ownership checks, and for user input concatenated into SQL or
+rendered unescaped.
 
 ### Pre-commit Checks
 
-Before every commit run the three gates above. See `CLAUDE.md` for
-the full mandatory pre-commit checklist (includes a security scan on
-changed files).
+Before every commit run the three things the rule names above: the fast
+gates, the unit lanes, and the security pass over the diff. `CLAUDE.md`
+§ Mandatory Pre-Commit Checks states the same rule for contributors
+working with Claude Code, and `docs/tech/gates.md` is the map both of
+them read.
 
 ### Commit Message Template
 Follow this format for all commit messages:

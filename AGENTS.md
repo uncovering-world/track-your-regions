@@ -13,14 +13,15 @@ Supporting directories:
 
 ## Build, Test, and Development Commands
 Run from repo root unless noted.
-- `npm install`: install the repo-wide lint tooling the root `package.json` declares (`madge`, behind `lint:circular`). The two apps carry their own trees: `npm ci --prefix backend`, `npm ci --prefix frontend`. npm, not pnpm — the pins live in `package-lock.json`, which pnpm does not read.
+- `npm install`: install the repo-wide lint tooling the root `package.json` declares (`madge`, behind `lint:circular`; `markdownlint-cli2`, behind `lint:md`). The two apps carry their own trees: `npm ci --prefix backend`, `npm ci --prefix frontend`. npm, not pnpm — the pins live in `package-lock.json`, which pnpm does not read.
 - `npm run dev`: start all services with Docker Compose.
 - `npm run dev:frontend`: run frontend locally.
 - `npm run dev:backend`: run backend locally.
 - `npm run build`: build backend and frontend.
 - `npm run lint`: lint all TypeScript packages.
 - `npm run typecheck`: run `tsc --noEmit` across packages.
-- `npm run check`: lint + typecheck gate.
+- `npm run gates`: which gates this change asks for, and why each of the rest is skipped (`docs/tech/gates.md`).
+- `npm run check`: the fast gates the change asks for — lint, typecheck, knip, the docs pass, the fast security audits. `npm run check:all` forces every one.
 - `npm run db:up` / `npm run db:down`: start or stop Postgres.
 
 ## Coding Style & Naming Conventions
@@ -33,7 +34,7 @@ Run from repo root unless noted.
 ## Testing Guidelines
 - DB invariants live in `db/tests/` (SQL + Python checks).
 - Frontend test notes live in `frontend/tests/README.md`; Playwright is available in frontend dev deps.
-- Before opening a PR, run `npm run check` and relevant DB test scripts for changed SQL/geometry logic.
+- Before opening a PR, run `npm run check` and `npm run gates -- run test`, plus the relevant DB test scripts for changed SQL/geometry logic. A gate runs when, and only when, the inputs it checks have changed (ADR-0062), so `npm run gates` is what says which of them this branch asks for.
 - Name tests by behavior/scope (example: `test_extent_boxes.py`, `geometry-invariants.sql`).
 
 ## Commit & Pull Request Guidelines
@@ -54,7 +55,8 @@ Run from repo root unless noted.
 ## Extended Runtime Commands
 
 ```bash
-npm run check              # Lint + typecheck (run before committing)
+npm run gates              # Every gate, run or skipped, with its reason
+npm run check              # The fast gates the change asks for (run before committing)
 npm run dev                # Start all services via Docker Compose
 npm run dev:backend        # Start backend only (local, no Docker)
 npm run dev:frontend       # Start frontend only (local, no Docker)

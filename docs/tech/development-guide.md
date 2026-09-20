@@ -696,18 +696,39 @@ See `docs/security/SECURITY.md` for the full security profile and `CLAUDE.md` fo
 
 ## Verification Workflow
 
-Run before every commit:
+**A gate runs when, and only when, the inputs it checks have changed.**
+`scripts/gates.mjs` is the map from each gate to its inputs; `npm run gates`
+prints which gates the current change asks for and why the rest are skipped;
+`docs/tech/gates.md` has the map and the reasoning. Before every commit:
+`npm run check` (the fast gates the change asks for; `npm run check:all` forces
+every one), `npm run gates -- run test` (the unit lanes it asks for;
+`TEST_REPORT_LOCAL=1` keeps them on the host), and `/security-check`. Before
+pushing: `npm run security:all` (the fast gates plus the slow Semgrep and Trivy
+scans the change asks for) and, when `npm run gates` lists them,
+`npm run test:e2e:smoke` and `npm run perf:local`. A gate the map skips was not
+run and did not need to be; a gate the host cannot run (the Python tooling
+guard) is a failure to report, not a skip. CI reads the same map per job, so a
+skipped job is a job whose inputs the pull request does not touch.
 
 ```bash
-npm run check          # comprehensive gate: lint + typecheck (Node + Python) + fast security + knip + lint:extra. Same script CI runs.
+npm run gates                       # every gate, run or skipped, with its reason
+npm run check                       # the fast gates this change asks for
+npm run gates -- run test           # the unit lanes it asks for
+npm run gates -- run stack          # the before-push lanes, listed with run/skip marks
 ```
 
+ADR-0062 is the rule and `scripts/gates.mjs` holds the only copy of the map, so
+a gate whose point is not obvious is a gate whose `inputs` line says what it
+reads (#783).
+
 It expects dependencies installed in three places: `backend/`, `frontend/`, and
-the repository root — the root holds the repo-wide lint tooling (`madge`), whose
-version comes from the tracked root `package-lock.json` rather than from the
-registry at run time. A missing root install stops `lint:circular` with the name
-of the gate that did not run; a missing `cv-python/.venv` does the same for the
-`*:py` gates.
+the repository root — the root holds the repo-wide lint tooling (`madge` for
+`lint:circular`, `markdownlint-cli2` for `lint:md`), whose versions come from
+the tracked root `package-lock.json` rather than from the registry at run time.
+A missing root install stops those gates with the name of the gate that did not
+run; a missing `cv-python/.venv` does the same for the `*:py` gates, which only
+a change under `cv-python/` — or, for the test lane, the GADM loader's own
+Python files — asks for.
 
 For periodic cleanup (includes exports/types, ~30-40% false positive rate on exports):
 
@@ -715,10 +736,11 @@ For periodic cleanup (includes exports/types, ~30-40% false positive rate on exp
 npm run knip:full      # full knip scan including exports/types
 ```
 
-Before pushing (slow scans):
+The before-push tier assumes Docker and minutes of runtime, which is why the map
+lists those lanes rather than running them:
 
 ```bash
-npm run security:all   # check + slow Semgrep (Node + Python) + Trivy image scan
+npm run security:all   # the fast gates, then the slow Semgrep and Trivy scans the change asks for
 npm run test:e2e:smoke # isolated test stack, seeded fixture, Playwright smoke
 ```
 
@@ -774,8 +796,10 @@ whatever database that code is later run against. See
 ## Performance
 
 Performance is measured, budgeted and gated — not felt. Two tiers, both run
-by CI on every pull request and both available locally under the same names,
-plus a local run on the developer's own data:
+by CI on every pull request whose inputs ask for them — they are `app` gates,
+so a prose pull request runs neither (`docs/tech/gates.md`) — and both
+available locally under the same names, plus a local run on the developer's
+own data:
 
 ```bash
 npm run perf:size      # build the frontend, check the entry chunk against its gzip budget (size-limit)

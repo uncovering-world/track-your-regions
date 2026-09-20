@@ -24,6 +24,11 @@ ratchets instead of aspiring.
 | Backend latency | p50/p95/max of the hot read endpoints — the by-region experience reads and the Martin tile functions — and the bytes each one puts on the wire, in the encoding it puts them there in | — (a measurement, recorded here) | locally `npm run perf:api` against a stack holding the real catalogue |
 | Local run | all three, on the dev stack's production build and its real catalogue: the map view and Discover of the world view the database exposes | `frontend/perf/lighthouse-budgets.local.json` | locally `npm run perf:local` — the pre-push run for a change that touches what the browser loads or draws |
 
+Both CI jobs are gates in the map, on the `app` input class: they run on a pull
+request that touches the product and are skipped, with the reason printed, on one
+that does not (`docs/tech/gates.md`, ADR-0062). A prose change measures nothing
+because there is nothing it could have moved.
+
 Why two tiers and not one: the bundle check is deterministic and needs no
 browser, so it runs in the minutes the build already takes and fails on
 exactly the change that caused it. Lighthouse needs a browser, a backend

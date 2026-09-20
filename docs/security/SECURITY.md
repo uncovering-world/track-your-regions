@@ -104,6 +104,28 @@ Level 3 requirements are tracked but optional for now.
 | Containers | Dockerfiles run as non-root user (`node` for backend/frontend, `appuser` for cv-python) |
 | LLM prompt construction | System prompts are static. Operator-supplied text (`world_views.source`, `world_views.description`) is sanitised by `sanitizePromptData()` and quoted inside `<<< >>>` in the **user** message only; every system prompt carries `UNTRUSTED_DATA_RULE`. See `backend/src/services/ai/openaiShared.ts` |
 
+### When each of these runs
+
+Since #783 a gate runs when, and only when, the inputs it checks have changed,
+and the scanners above sit on both sides of that rule. **Semgrep (both scans),
+Trivy, `npm audit`, `pip-audit` and Bandit are gates in the map**
+(`docs/tech/gates.md`, [ADR-0062](../decisions/0062-a-gate-runs-only-when-its-inputs-changed.md)):
+the Node scan is pointed at the whole checkout and runs when any `app` path
+moved — `backend/`, `frontend/`, `db/`, `martin/`, `scripts/`, either compose
+file or `.env.example` — or any `cv-python/` path did, since its rule packs
+carry Python rules; the Python scan and the image scan run when `cv-python/`
+did, and `npm audit` when a manifest or lockfile did. A backend change cannot
+alter what the Python scan finds, and a prose change cannot alter any of them.
+Time is the one input the map cannot name: Trivy, `npm audit` and `pip-audit`
+answer from vulnerability databases, so a weekly `schedule:` run of the workflow
+re-asks every gate whether or not a file moved. **GitHub's native secret scanning, push protection, the DCO
+check and CodeQL's default-setup analyses are outside the map** and read every
+change, whatever it touches: they are server-side or repository-wide, they are
+what covers the file types Semgrep never opens, and nothing in this repository
+can skip them. Every skip the map does make is printed with the input class that
+did not move, locally and in the CI run summary alike, so "that scan did not
+run" is a checkable sentence rather than an absence.
+
 ## Semgrep Ruleset Composition
 
 Both scans run `p/default` — Semgrep's own curated baseline — alongside the
@@ -209,7 +231,10 @@ The Python service has a smaller surface than the Node backend but introduces ne
   after #481**, which widened the *ruleset* and deliberately left the *file*
   exclusions alone: the two are independent, and lifting the exclusions changes
   which files `p/secrets` reads rather than which rules it runs. That is its own
-  change, with its own triage.
+  change, with its own triage. The Markdown pass added for #783 does not narrow
+  this gap either: `lint:md` and `lint:links` check what a page renders as and
+  where a link points, not what a file contains — `*.md` is still read for
+  secrets by GitHub's provider-pattern scanning alone.
 - **Four files are only partially analysed by Semgrep.** Its parser reports a
   syntax error and analyses what it can: `martin/warm-tiles.sh:1`,
   `backend/src/services/wikivoyageExtract/parser.ts:83`,
