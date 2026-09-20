@@ -6,19 +6,146 @@ on:
   push:
     branches: [main]
   workflow_dispatch: {}
+  # The calendar is an input the map cannot name. Trivy, `npm audit` and
+  # `pip-audit` answer from vulnerability databases, so their verdict changes
+  # when a CVE is published, not when a file moves; before #783 every push
+  # re-asked them, and under the map a base-image CVE disclosed after the last
+  # cv-python change would be found by nothing. A scheduled run carries no
+  # base, so the Changes job sends the zero sha and every gate applies.
+  schedule:
+    - cron: '17 6 * * 1'
 
 permissions:
   contents: read
 
 jobs:
-  check:
-    # Job display name kept as "Lint & Type Check" so existing branch-protection
-    # required-check rules continue to match. The job's actual scope is the
-    # full `npm run check` gate (lint + typecheck + knip + audits, both stacks).
-    name: Lint & Type Check
+  # What this change asks for, decided once and read by every job below
+  # (#783, ADR-0062).
+  #
+  # The filter sits on the jobs and never on `on:`. A workflow skipped by a
+  # `paths:` filter never reports its checks at all, so the contexts required
+  # by branch protection — Lint & Type Check, Security Scan, Unit Tests — stay
+  # Pending for ever and the merge button never lights up. A job skipped by its
+  # own `if:` reports Success and satisfies the same required check. That one
+  # asymmetry is the whole reason this job exists.
+  #
+  # It decides nothing itself: scripts/gates.mjs is the only place an input is
+  # mapped to the gates that read it. This job just tells it which range to
+  # look at, and publishes the answer as outputs.
+  #
+  # A detection job that fails skips nothing: every `if:` below reads
+  # `needs.changes.result != 'success'` first, so a broken decision makes every
+  # job run. That is the map's own rule for a change set it cannot work out,
+  # applied one level up — and without it a failure here would skip the three
+  # required contexts, each of which would report Success and leave a pull
+  # request mergeable on which nothing ran at all.
+  changes:
+    name: Changes
     runs-on: ubuntu-latest
+    outputs:
+      base: ${{ steps.gates.outputs.base }}
+      job_check: ${{ steps.gates.outputs.job_check }}
+      job_check_node: ${{ steps.gates.outputs.job_check_node }}
+      job_check_python: ${{ steps.gates.outputs.job_check_python }}
+      job_check_docs: ${{ steps.gates.outputs.job_check_docs }}
+      job_test: ${{ steps.gates.outputs.job_test }}
+      job_python_tests: ${{ steps.gates.outputs.job_python_tests }}
+      job_build: ${{ steps.gates.outputs.job_build }}
+      job_security: ${{ steps.gates.outputs.job_security }}
+      job_security_node: ${{ steps.gates.outputs.job_security_node }}
+      job_security_python: ${{ steps.gates.outputs.job_security_python }}
+      job_trivy: ${{ steps.gates.outputs.job_trivy }}
+      job_smoke: ${{ steps.gates.outputs.job_smoke }}
+      job_perf: ${{ steps.gates.outputs.job_perf }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The base of the comparison is a commit rather than a branch tip,
+          # and the default shallow clone would not contain it. Without it
+          # there is no merge base, so the change set is unknown and every
+          # gate runs — safe, and exactly the cost this job exists to avoid.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Decide which gates this change asks for
+        id: gates
+        env:
+          # Through the environment rather than interpolated into the script:
+          # these are commit shas today, and a workflow expression pasted into
+          # a shell line is how that stops being true safely.
+          PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME" in
+            # The pull request's base, not its own previous head: the range is
+            # everything the branch adds on top of main, so a gate cannot be
+            # skipped because the last push of a branch happened to touch
+            # nothing it reads.
+            pull_request) BASE="$PULL_REQUEST_BASE" ;;
+            # On a push to main after a rebase merge, `before` is the previous
+            # tip of main, so the pushed range is exactly what the merge
+            # brought and nothing else.
+            push) BASE="$PUSH_BEFORE" ;;
+            # A manual or scheduled run has no base at all, and says so with the zero sha —
+            # the same value GitHub sends for a ref that had no previous tip.
+            # gates.mjs answers either with "nothing to diff against, so every
+            # gate applies". The sentinel rather than the empty string because
+            # this value travels on through job outputs and `env:` entries:
+            # anything that dropped an empty value would leave GATES_BASE
+            # unset downstream, and an unset variable falls back to `main`,
+            # which in this checkout is the tip being tested — an empty change
+            # set, every gate skipped, a green run that checked nothing. A
+            # forty-character sentinel cannot be dropped by accident.
+            *) BASE='0000000000000000000000000000000000000000' ;;
+          esac
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          GATES_BASE="$BASE" node scripts/gates.mjs --github-output
+
+      # With $GITHUB_OUTPUT set the script writes its lines to that file and
+      # nothing to the log, so the decision would otherwise be invisible: the
+      # reader would see ten grey jobs and no reason for any of them. This
+      # prints every gate with its verdict, into the log and the run summary.
+      - name: Say which gates run, which are skipped, and why
+        env:
+          # The same sentinel as above wherever the value could arrive empty,
+          # so this print can never disagree with the outputs it explains.
+          GATES_BASE: ${{ steps.gates.outputs.base || '0000000000000000000000000000000000000000' }}
+        run: |
+          set -euo pipefail
+          {
+            echo '### Gates for this change'
+            echo ''
+            echo '```text'
+            node scripts/gates.mjs
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  check:
+    # Job display name kept as "Lint & Type Check" so existing branch-protection
+    # required-check rules continue to match. The job's scope is the fast gates
+    # this change asks for: `npm run check` reads the same map as the job above
+    # and runs the gates whose inputs moved, naming every one it skips (#783).
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_check == 'true') }}
+    env:
+      # The range the `changes` job settled on, so that job's outputs and this
+      # job's gate selection cannot disagree about what changed. When that job
+      # failed there is no output to read, and the zero sha is what says so:
+      # `npm run check` then runs every gate rather than none.
+      GATES_BASE: ${{ needs.changes.outputs.base || '0000000000000000000000000000000000000000' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `npm run check` works out the change set for itself, and needs the
+          # merge base with GATES_BASE to do it.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -26,6 +153,7 @@ jobs:
           node-version: '22'
 
       - name: Setup Python
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_check_python == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -34,9 +162,14 @@ jobs:
             cv-python/requirements.txt
             cv-python/requirements-dev.txt
 
-      # The root install is this job's alone: `npm run check` is the only
-      # entry point that reaches `lint:extra`, and the root package.json
-      # carries nothing but the repo-wide lint tooling. `npm ci` rather than
+      # The root install is this job's alone, and it is unconditional because
+      # of one gate: `lint:md` needs markdownlint from here, and it is the gate
+      # a prose-only change runs with no other install to its name. (The root's
+      # other tool, madge, serves `lint:circular`, which is an `app` gate and
+      # so never arrives without `job_check_node`.) That is also why nothing
+      # reads the `job_check_docs` output: the install the docs gates need is
+      # already here, and the Docker gates (`lint:links`, `lint:shell`,
+      # `lint:docker`) install nothing at all. `npm ci` rather than
       # `npm install` so the transitive tree is the locked one — the whole
       # point of #490 was that a tool resolved fresh on every run is neither
       # reproducible nor immune to a registry blip.
@@ -44,20 +177,27 @@ jobs:
         run: npm ci
 
       - name: Install backend dependencies
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_check_node == 'true' }}
         run: npm ci --prefix backend
 
       - name: Install frontend dependencies
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_check_node == 'true' }}
         run: npm ci --prefix frontend
 
       - name: Set up cv-python venv
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_check_python == 'true' }}
         run: npm run setup:py:dev
 
-      - name: Run check (Node + Python lint, typecheck, knip, audits)
+      # Unchanged command: which gates it runs is the map's answer, not this
+      # file's, and it prints both halves — what ran and what was skipped.
+      - name: Run the fast gates this change asks for
         run: npm run check
 
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_test == 'true') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -83,6 +223,11 @@ jobs:
   python-tests:
     name: Python Tests (cv-python + GADM loader)
     runs-on: ubuntu-latest
+    needs: [changes]
+    # One key for both pytest lanes below: the map gives the `test:py` gate
+    # two input classes — cv-python and the GADM loader's own `db-python`
+    # files — because this job runs the two of them on one interpreter.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_python_tests == 'true') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -114,7 +259,14 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [check]
+    # `changes` for the verdict, `check` for the order. `!cancelled()` removes
+    # the implicit `success()`, which is what the ordering used to rest on, so
+    # `needs.check.result == 'success'` states it instead: a red — or skipped —
+    # `check` keeps this job from starting, which is the behaviour that was
+    # here before. A skipped `check` cannot strand a build that should have
+    # run: every input that asks for a build asks for the lint gates too.
+    needs: [changes, check]
+    if: ${{ !cancelled() && needs.check.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.job_build == 'true') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -150,6 +302,14 @@ jobs:
     # Bandit) moved into `npm run check`.
     name: Security Scan
     runs-on: ubuntu-latest
+    needs: [changes]
+    # `job_security` starts the job when either scan has something to read;
+    # each step then asks for itself. The Python scan is pointed at cv-python
+    # alone, so a change in backend/ or frontend/ cannot alter its answer and
+    # does not pay for it; the Node scan is pointed at the whole checkout, so
+    # a cv-python change pays for both — running both off a single key would
+    # be the same waste one level down.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_security == 'true') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -178,15 +338,22 @@ jobs:
       # `severity: MEDIUM` config exits non-zero on its own. The coverage loss
       # is recorded in docs/security/SECURITY.md under Known Gaps.
       - name: Semgrep SAST (Node)
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_security_node == 'true' }}
         run: npm run security:scan
 
       - name: Semgrep SAST (Python)
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_security_python == 'true' }}
         run: npm run security:py:semgrep
 
   trivy-image:
     name: Trivy Image Scan (cv-python)
     runs-on: ubuntu-latest
-    needs: [build]
+    # No longer behind `build`: this job builds the image it scans, and the
+    # Node build it used to wait for is not one of its inputs. A change to
+    # cv-python alone must be scanned, and that change does not ask for a
+    # build at all — under the old order the scan would never have run.
+    needs: [changes]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_trivy == 'true') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -212,8 +379,9 @@ jobs:
     # Gated on lint+typecheck so a PR that does not compile fails in 4 min
     # with a tsc error instead of burning a full smoke run and surfacing the
     # same error buried in `docker compose build` output. Costs ~12s on the
-    # green path: the critical path is already check -> build -> trivy.
-    needs: [check]
+    # green path: the critical path is already check -> build.
+    needs: [changes, check]
+    if: ${{ !cancelled() && needs.check.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.job_smoke == 'true') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -270,7 +438,8 @@ jobs:
     # docs/tech/performance.md. Same command as `npm run perf` locally.
     name: Performance (Lighthouse)
     runs-on: ubuntu-latest
-    needs: [check]
+    needs: [changes, check]
+    if: ${{ !cancelled() && needs.check.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.job_perf == 'true') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
