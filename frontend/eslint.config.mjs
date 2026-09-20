@@ -122,9 +122,8 @@ export default [
   // A later block wins for the files it names, which is why this one is last.
   {
     files: [
-      // The admin's cluster review screen and the custom subdivision dialog's
-      // map tab: dense JSX that predates the ceiling.
-      'src/components/admin/CvGeoPreviewSection.tsx',
+      // The custom subdivision dialog's map tab: dense JSX that predates the
+      // ceiling.
       'src/components/WorldViewEditor/components/dialogs/CustomSubdivisionDialog/MapViewTab.tsx',
     ],
     rules: {
