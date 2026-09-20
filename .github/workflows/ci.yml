@@ -169,7 +169,7 @@ jobs:
       # so never arrives without `job_check_node`.) That is also why nothing
       # reads the `job_check_docs` output: the install the docs gates need is
       # already here, and the Docker gates (`lint:links`, `lint:shell`,
-      # `lint:docker`) install nothing at all. `npm ci` rather than
+      # `lint:docker`, `lint:actions`) install nothing at all. `npm ci` rather than
       # `npm install` so the transitive tree is the locked one — the whole
       # point of #490 was that a tool resolved fresh on every run is neither
       # reproducible nor immune to a registry blip.
