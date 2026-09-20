@@ -251,12 +251,39 @@ require_output_path() {
   fi
 }
 
+# The backend suite holds a dozen claims against the repository files that state
+# them - the schema, numbered migrations, Martin's config, frontend modules that
+# spell the same rule for the browser - and finds them through
+# backend/src/testSupport/repoFile.ts, at the container root beside /app. When a
+# container predates those mounts (docker-compose.yml, the backend service) the
+# whole set fails on paths that are simply not there: 18 test files, reported as
+# if the code were wrong (#948). Checked before the run rather than diagnosed
+# after it, because a lane that cannot run should say so, not fail.
+require_backend_repo_mounts() {
+  local missing
+  # $p below belongs to the container's own shell, so the quoting that keeps it
+  # unexpanded here is the point; expanding it would send an empty test.
+  # shellcheck disable=SC2016
+  missing="$(compose exec -T backend sh -lc \
+    'for p in /db/init/01-schema.sql /frontend/src /martin/config.yaml /scripts; do
+       [ -e "$p" ] || echo "  $p"
+     done')"
+  if [ -n "$missing" ]; then
+    echo "The backend container is missing the repository mounts the unit suite reads:" >&2
+    echo "$missing" >&2
+    echo "Recreate the test stack so docker-compose.yml's current volumes apply:" >&2
+    echo "  npm run test:stack:down && npm run test:stack:up" >&2
+    exit 1
+  fi
+}
+
 run_backend_vitest() {
   local out_path="$1"
   local coverage_flag="${2:-}"
   local report_path="/tmp/backend-vitest-report.json"
 
   ensure_up
+  require_backend_repo_mounts
   compose exec -T backend sh -lc "npx vitest run --reporter=default --reporter=json --outputFile='${report_path}' ${coverage_flag}"
   compose exec -T backend sh -lc "cat '${report_path}'" > "$out_path"
 }
