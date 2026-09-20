@@ -106,6 +106,7 @@ Not "top 10 must-see", but "where to go to feel like a local."
 What everyone thinks about your region vs what's actually true.
 
 **Example (Germany):**
+
 | Stereotype | Reality |
 |---|---|
 | Everyone is always on time | We try, but Deutsche Bahn makes it hard |
@@ -114,6 +115,7 @@ What everyone thinks about your region vs what's actually true.
 | Everyone drinks beer | True. This one is accurate. |
 
 **Example (Russia):**
+
 | Stereotype | Reality |
 |---|---|
 | Always cold | In summer it can be +35°C, and it's hell without AC |
