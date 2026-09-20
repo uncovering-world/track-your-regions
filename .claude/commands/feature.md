@@ -103,13 +103,17 @@ Once the user approves the plan:
 
 ### 6. Verify
 
-Run the project checks:
+Run the gates this change asks for — `npm run check` is the fast tier, and it
+reads `scripts/gates.mjs` to decide which of them the diff touched (ADR-0062):
 
 ```bash
-npm run check
+npm run check                  # the fast gates this change asks for
+npm run gates -- run test      # the unit lanes it asks for
 ```
 
-Fix any lint or type errors.
+Fix any lint or type errors. `npm run gates` on its own lists every gate with
+the reason each skipped one was skipped, so "nothing ran" is a sentence you can
+check rather than a silence.
 
 ### 7. Update documentation
 

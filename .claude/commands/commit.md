@@ -7,9 +7,14 @@ Review uncommitted changes, organize them into atomic commits on an appropriate 
 `$ARGUMENTS` — optional. Accepts any combination of:
 
 - A branch name or short description of the change (e.g. `fix-auth-token-refresh`). If absent, infer from the diff.
-- `--skip-tests` — skip the test runs for trivial doc-only / comment-only / `.gitignore`-only changes. The lint+typecheck gate (`npm run check`) and the security pass still run.
 
-Examples: `/commit`, `/commit fix-token-refresh`, `/commit docs-cleanup --skip-tests`.
+Examples: `/commit`, `/commit fix-token-refresh`, `/commit docs-cleanup`.
+
+There is no flag for "this change is too small to test". Which gates a change
+asks for is read from the diff by `scripts/gates.mjs`, not asserted by whoever
+is typing (ADR-0062): a doc-only commit runs the docs gates and no unit lane
+because the map says so, and each skip is printed with the input class that did
+not move.
 
 ## Prerequisites
 
@@ -21,7 +26,7 @@ The conventions exist because each one has burned this repo before:
 
 - **DCO sign-off (`-s`) is a CI gate, not a style preference.** PRs without a `Signed-off-by:` trailer fail the DCO check and cannot merge. This is the most common cause of red CI on dependency PRs.
 - **72-char body wrap** keeps `git log`, `gh pr view`, and review tools readable. Longer lines wrap mid-word and obscure the history.
-- **Pre-commit gates** (`npm run check`, tests, security pass) catch issues locally that would otherwise show up as red CI 5 minutes later. Running them now saves a force-push cycle.
+- **Pre-commit gates** (`npm run check`, the unit lanes, the security pass) catch issues locally that would otherwise show up as red CI 5 minutes later. Running them now saves a force-push cycle — and since #783 they are only the gates this change's own diff asks for, so running them costs what the change costs.
 - **One purpose per branch** keeps PRs reviewable and reversible.
 
 ## Instructions
@@ -68,7 +73,9 @@ If you find suspicious files, **skip them** and mention it in the summary.
 
 Run these **before** creating any commit, so a failure aborts the workflow before history is touched.
 
-**a. Lint + typecheck + fast security (always):**
+**A gate runs when, and only when, the inputs it checks have changed.** `scripts/gates.mjs` is the map from each gate to its inputs; `npm run gates` prints which gates the current change asks for and why the rest are skipped; `docs/tech/gates.md` has the map and the reasoning. Before every commit: `npm run check` (the fast gates the change asks for; `npm run check:all` forces every one), `npm run gates -- run test` (the unit lanes it asks for; `TEST_REPORT_LOCAL=1` keeps them on the host), and `/security-check`. Before pushing: `npm run security:all` (the fast gates plus the slow Semgrep and Trivy scans the change asks for) and, when `npm run gates` lists them, `npm run test:e2e:smoke` and `npm run perf:local`. A gate the map skips was not run and did not need to be; a gate the host cannot run (the Python tooling guard) is a failure to report, not a skip. CI reads the same map per job, so a skipped job is a job whose inputs the pull request does not touch.
+
+**a. The fast gates:**
 
 ```bash
 npm run check
@@ -76,14 +83,15 @@ npm run check
 
 If this fails, stop. Report the specific failure to the user with the relevant output (the failing lint rule, type error, audit advisory, etc.). Don't try to commit "anyway" — the same failure will appear in CI and block the PR. Either fix the underlying issue or ask the user how to proceed (e.g. if the failure is unrelated infra noise, the user may want to aggregate a separate fix into this PR — that's what we did for PR #396).
 
-**b. Tests (unless `--skip-tests` was passed):**
+Read the tail of the output as well as its exit code. `Nothing to run for tier check: …` means this change is an input to none of the fast gates — a legitimate outcome, and one to report as itself rather than as "checks passed".
+
+**b. The unit lanes:**
 
 ```bash
-TEST_REPORT_LOCAL=1 npm test
-npm run test:py
+TEST_REPORT_LOCAL=1 npm run gates -- run test
 ```
 
-`--skip-tests` is only appropriate for changes that touch zero executable code: `*.md` doc edits, comment-only edits, `.gitignore` / `.editorconfig` tweaks. Any `.ts`, `.tsx`, `.js`, `.py`, `.sql`, `.yaml` (config) change — run the tests.
+One command for both stacks: the map sends a Node change to `test:backend` and `test:frontend` and a change under `cv-python/` or the GADM loader to `test:py`, and prints which of them it skipped and why. Don't reach past it for `npm test` or `npm run test:py` — that is the flag this command used to carry, spelled differently.
 
 **c. Security pass on changed files:**
 
@@ -171,14 +179,15 @@ If anything's off and the commit hasn't been pushed yet, undo with `git reset --
 
 ### 8. Push
 
-Before pushing, run `npm run test:e2e:smoke` — it stands up the isolated
-test stack and seeds its fixture automatically, then runs the Playwright
-smoke specs. This is the before-pushing tier from `CLAUDE.md`'s Mandatory
-Pre-Commit Checks, alongside `npm run security:all` and — when the change
-touches what the browser loads or draws (a dependency, a route, a layout, a
-hot endpoint) — `npm run perf:local`, which measures the production build
-on the dev stack's own data; all three assume Docker and minutes of
-runtime, which is why they aren't part of step 4's per-commit gates.
+Before pushing: `npm run security:all` (the fast gates plus the slow
+Semgrep and Trivy scans the change asks for) and, when `npm run gates`
+lists them, `npm run test:e2e:smoke` and `npm run perf:local`. The smoke
+lane stands up the isolated test stack and seeds its fixture automatically
+before running the Playwright smoke specs; `perf:local` measures the
+production build on the dev stack's own data. `npm run gates -- run stack`
+prints those lanes with run/skip marks and runs none of them — they assume
+Docker and minutes of runtime, which is why they are here and not among
+step 4's per-commit gates.
 
 After all commits are created and verified:
 

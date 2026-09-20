@@ -125,7 +125,9 @@ This **never blocks**. There is no CI job and no branch-protection check behind
 it; a PR with a recorded reason proceeds exactly like any other. Crossing the
 budget buys one decision made early, not a refusal.
 
-Also confirm the before-pushing tier ran on this branch: `npm run test:e2e:smoke` (stands up the isolated test stack and seeds its fixture automatically) alongside `npm run security:all`, and `npm run perf:local` when the change touches what the browser loads or draws, per `CLAUDE.md`'s Mandatory Pre-Commit Checks.
+Also confirm the gates this branch asks for ran on it. **A gate runs when, and only when, the inputs it checks have changed.** `scripts/gates.mjs` is the map from each gate to its inputs; `npm run gates` prints which gates the current change asks for and why the rest are skipped; `docs/tech/gates.md` has the map and the reasoning. Before every commit: `npm run check` (the fast gates the change asks for; `npm run check:all` forces every one), `npm run gates -- run test` (the unit lanes it asks for; `TEST_REPORT_LOCAL=1` keeps them on the host), and `/security-check`. Before pushing: `npm run security:all` (the fast gates plus the slow Semgrep and Trivy scans the change asks for) and, when `npm run gates` lists them, `npm run test:e2e:smoke` and `npm run perf:local`. A gate the map skips was not run and did not need to be; a gate the host cannot run (the Python tooling guard) is a failure to report, not a skip. CI reads the same map per job, so a skipped job is a job whose inputs the pull request does not touch.
+
+Run `npm run gates -- --base main` on the branch, on a clean tree, to get that list as the reviewer's CI will compute it, and say in the PR what ran. (`--rev HEAD`, the default, reads the working tree and the untracked files too, which CI never sees; on a clean tree the two agree.) A job reported green because its inputs were untouched is not a job that found nothing wrong — it is a job that had nothing to read.
 
 ### 3. For each branch, analyze the changes
 
@@ -169,7 +171,7 @@ Fill in the checklist based on actual state:
 - Check commit messages: are they well-formatted with title + body?
 - Check signatures: `git log main..<branch> --format='%G?'` or look for `Signed-off-by`
 - Check for related issues (already gathered above)
-- Lint status: run `npm run check` if code files changed, skip for docs-only changes
+- Lint status: run `npm run check` — it runs the fast gates this branch's diff asks for and names the ones it skipped, so a docs-only branch needs no judgement call about whether to run it
 
 #### Additional Comments
 Add any notable context: migration notes, deployment considerations, or things the reviewer should pay attention to. Leave empty if nothing special.
