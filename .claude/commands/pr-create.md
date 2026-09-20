@@ -86,6 +86,45 @@ git log --oneline {base}..HEAD
 
 If any commit just patches a previous one on this branch (e.g. "fix typo from <earlier>", "address review", "harden X added two commits ago"), **STOP and fold it into the original** before proceeding — run `/pr-changes-amend`. Only continue to the PR once every commit stands on its own.
 
+### 2.6 Measure the review surface (before the first review round)
+
+A branch can keep the one-purpose rule and still be far more than one sitting's
+review. Measure that **before** the PR exists — after it, splitting means moving
+reviewed code between histories and reopening threads that were already answered:
+
+```bash
+npm run review:surface -- --base main --rev <branch>
+```
+
+The scorecard reports the surface in counted lines against the budget, what
+was discounted — moved lines, a swept token, generated output — and two
+breakdowns, **by area** and **by commit**. Those are the seams. Read the commit
+column as a ranking only: each commit is measured on its own, so it does not sum
+to the headline, and the saving a split actually buys is the surface of the
+proposed halves, measured.
+
+- **Within budget** — say the number in one line and carry on to step 3.
+- **Over budget** — read the seams before proposing anything. When the surface
+  divides cleanly (an area the rest does not touch; a run of the first N commits
+  that stands alone), propose that split to the user concretely: which commits go
+  to which PR, in which order, and which one the other depends on. The user
+  decides; do not split a branch unasked.
+- **Over budget and inherently one change** — record the reason. Put one line in
+  the PR body's **Additional Comments** section, written for the reviewer who is
+  about to open a large diff:
+
+  ```
+  Review surface: 1 338 counted lines, over the budget — a migration and every
+  reader of the renamed column land together or the catalogue is briefly wrong.
+  ```
+
+  `docs/tech/review-surface.md` lists the reasons this repository's history shows
+  to be real and the two that are not.
+
+This **never blocks**. There is no CI job and no branch-protection check behind
+it; a PR with a recorded reason proceeds exactly like any other. Crossing the
+budget buys one decision made early, not a refusal.
+
 Also confirm the before-pushing tier ran on this branch: `npm run test:e2e:smoke` (stands up the isolated test stack and seeds its fixture automatically) alongside `npm run security:all`, and `npm run perf:local` when the change touches what the browser loads or draws, per `CLAUDE.md`'s Mandatory Pre-Commit Checks.
 
 ### 3. For each branch, analyze the changes
