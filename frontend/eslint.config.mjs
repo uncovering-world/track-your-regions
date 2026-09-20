@@ -72,8 +72,6 @@ export default [
       // skipped, because the repo asks for dense explanatory comments and a
       // raw-line cap would tax exactly those. The guide states this number
       // and names this entry, so a change here is a change there too (#530).
-      // The files that were already over it when the ceiling was set keep the
-      // old one in the last block of this config, until they are split.
       'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
       // SonarJS: disable genuine false positives only
       'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses (e.g., jitter)

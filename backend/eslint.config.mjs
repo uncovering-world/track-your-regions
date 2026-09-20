@@ -143,19 +143,15 @@ export default [
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
     },
   },
-  // The files that were over 800 counted lines on the day the ceiling above
-  // was set (#530). Each keeps the ceiling it was written under, 1000, until
-  // it is split; an entry is deleted when its file drops under 800 and no
-  // entry is ever added — a new file that needs one is a file to split first.
+  // What is left of the files that were over 800 counted lines on the day the
+  // ceiling above was set (#530). Each keeps the ceiling it was written under,
+  // 1000, until it is split; an entry is deleted when its file drops under 800
+  // and no entry is ever added — a new file that needs one is a file to split
+  // first. #933 split the other thirteen, the frontend's six among them, so
+  // the block there is gone and this one is down to a single file.
   // A later block wins for the files it names, which is why this one is last.
   {
     files: [
-      // The world-view import matcher's numeric core: the ICP that fits a
-      // cluster to a division's outline. ADR-0009 split the import controller
-      // by domain, and #933 has since taken the water out of the helpers, the
-      // geometry endpoints out of the controller and the two CV branches out
-      // of the pipeline; this is what is left.
-      'src/controllers/admin/wvImportMatchIcp.ts',
       // Row types written by hand; #792 generates them from the live schema,
       // which is what shrinks this file.
       'src/types/index.ts',
