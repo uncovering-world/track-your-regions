@@ -115,19 +115,4 @@ export default [
       'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
     },
   },
-  // The files that were over 800 counted lines on the day the ceiling above
-  // was set (#530). Each keeps the ceiling it was written under, 1000, until
-  // it is split; an entry is deleted when its file drops under 800 and no
-  // entry is ever added — a new file that needs one is a file to split first.
-  // A later block wins for the files it names, which is why this one is last.
-  {
-    files: [
-      // The custom subdivision dialog's map tab: dense JSX that predates the
-      // ceiling.
-      'src/components/WorldViewEditor/components/dialogs/CustomSubdivisionDialog/MapViewTab.tsx',
-    ],
-    rules: {
-      'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
-    },
-  },
 ];
