@@ -69,6 +69,21 @@ services:
       # nothing and the container lane would pass having run none of them —
       # a lane that quietly does not run, which is what #432 was.
       - ./scripts:/scripts:ro,z
+      #
+      # The three below are the same shape, louder: a dozen backend specs hold a
+      # claim in code against the file that states it — the schema, a numbered
+      # migration, Martin's config, a frontend module spelling the same rule for
+      # the browser. They find those through `src/testSupport/repoFile.ts`, whose
+      # root is the nearest ancestor holding `db/init/01-schema.sql`; here that is
+      # `/`, which is why these sit at the container root beside /scripts rather
+      # than under /app. Without them the container lane failed 18 test files on
+      # paths that were simply not there, while the host lane and CI — which check
+      # out the whole repository — stayed green (#948). Read-only: a test run has
+      # no business writing to the checkout. `frontend/src` rather than
+      # `frontend`, to leave that package's node_modules and build output out.
+      - ./db:/db:ro,z
+      - ./frontend/src:/frontend/src:ro,z
+      - ./martin:/martin:ro,z
       - ${DATA_DIR:-./data}:/app/data:z
     depends_on:
       db:
