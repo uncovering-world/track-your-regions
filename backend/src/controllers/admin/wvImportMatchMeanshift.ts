@@ -20,7 +20,7 @@
  */
 
 import sharp from 'sharp';
-import { reviewAndFinalizeWater } from './wvImportMatchHelpers.js';
+import { reviewAndFinalizeWater } from './wvImportMatchWater.js';
 import type { PipelineContext } from './wvImportMatchContext.js';
 
 // ── Mean-shift parameters ──────────────────────────────────────────

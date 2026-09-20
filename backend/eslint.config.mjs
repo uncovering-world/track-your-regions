@@ -150,14 +150,12 @@ export default [
   // A later block wins for the files it names, which is why this one is last.
   {
     files: [
-      // The world-view import matcher: one algorithm (ICP, mean-shift, the
-      // pipeline that drives them) in dense numeric code, with no
-      // responsibility seam a line count can find. ADR-0009 split the import
-      // controller by domain; these four are what that split left whole.
+      // The world-view import matcher's numeric core: ICP and the pipeline
+      // that drives it. ADR-0009 split the import controller by domain, and
+      // #933 has since taken the water out of the helpers and the geometry
+      // endpoints out of the controller; these two are what is left.
       'src/controllers/admin/wvImportMatchPipeline.ts',
       'src/controllers/admin/wvImportMatchIcp.ts',
-      'src/controllers/admin/wvImportMatchHelpers.ts',
-      'src/controllers/admin/wvImportMatchController.ts',
       // Row types written by hand; #792 generates them from the live schema,
       // which is what shrinks this file.
       'src/types/index.ts',
