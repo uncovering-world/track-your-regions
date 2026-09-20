@@ -27,7 +27,8 @@ import {
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 import { CvWaterReviewSection } from './CvWaterReviewSection';
 import { CvClusterReviewSection } from './CvClusterReviewSection';
-import { CvGeoPreviewSection, CvClusterSuggestionsSection } from './CvGeoPreviewSection';
+import { CvGeoPreviewSection } from './CvGeoPreviewSection';
+import { CvClusterSuggestionsSection } from './CvClusterSuggestionsSection';
 import { CvIcpAdjustmentSection } from './CvIcpAdjustmentSection';
 
 export interface CvMatchDialogProps {
