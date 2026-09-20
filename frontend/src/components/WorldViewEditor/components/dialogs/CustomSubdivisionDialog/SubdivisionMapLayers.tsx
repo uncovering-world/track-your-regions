@@ -115,7 +115,15 @@ export function SubdivisionMapLayers({
                     'fill-opacity': [
                       'case',
                       // Highlight when directly hovered
-                      ['==', ['get', 'id'], hoveredDivisionId ?? -1],
+                      // The hook keys the hovered shape the way the tooltip finds it
+                      // again — a member row where there is one, the division
+                      // otherwise — so the paint asks the same question. Not a `-1`
+                      // sentinel: a member row a cut has just made carries a
+                      // negative id, and -1 is one of them.
+                      hoveredDivisionId === null ? false : ['==',
+                        ['coalesce', ['get', 'memberRowId'], ['get', 'id']],
+                        hoveredDivisionId,
+                      ],
                       0.8,
                       // Highlight when group chip is hovered
                       ['all',
@@ -156,7 +164,10 @@ export function SubdivisionMapLayers({
                     ],
                     'line-width': [
                       'case',
-                      ['==', ['get', 'id'], hoveredDivisionId ?? -1],
+                      hoveredDivisionId === null ? false : ['==',
+                        ['coalesce', ['get', 'memberRowId'], ['get', 'id']],
+                        hoveredDivisionId,
+                      ],
                       4,
                       // Thicker when group is hovered
                       ['all',
