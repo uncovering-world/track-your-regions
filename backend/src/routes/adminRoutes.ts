@@ -426,7 +426,7 @@ router.post(
     // Python-originated reviews go through the pythonReviewBridge: the
     // Python worker thread is blocked waiting on /pipeline/respond. The
     // forwarding to Python happens inside the onReview callback in
-    // wvImportMatchPipeline.ts.
+    // wvImportMatchPythonBranch.ts.
     const { isPythonReviewId, resolvePythonReview } = await import('../services/cv/pythonReviewBridge.js');
     if (isPythonReviewId(reviewId)) {
       const forwarded = resolvePythonReview(reviewId, body);

@@ -150,11 +150,11 @@ export default [
   // A later block wins for the files it names, which is why this one is last.
   {
     files: [
-      // The world-view import matcher's numeric core: ICP and the pipeline
-      // that drives it. ADR-0009 split the import controller by domain, and
-      // #933 has since taken the water out of the helpers and the geometry
-      // endpoints out of the controller; these two are what is left.
-      'src/controllers/admin/wvImportMatchPipeline.ts',
+      // The world-view import matcher's numeric core: the ICP that fits a
+      // cluster to a division's outline. ADR-0009 split the import controller
+      // by domain, and #933 has since taken the water out of the helpers, the
+      // geometry endpoints out of the controller and the two CV branches out
+      // of the pipeline; this is what is left.
       'src/controllers/admin/wvImportMatchIcp.ts',
       // Row types written by hand; #792 generates them from the live schema,
       // which is what shrinks this file.

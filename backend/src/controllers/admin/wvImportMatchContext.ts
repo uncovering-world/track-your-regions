@@ -1,9 +1,14 @@
 /**
- * Shared `PipelineContext` type for the CV color-match pipeline.
+ * The vocabulary the CV colour-match pipeline's parts share: the context every
+ * phase writes into, the three calls that report progress to the browser, and
+ * the dimensions the image is read at.
  *
  * Extracted from `wvImportMatchPipeline.ts` so that phase-module files
- * (`wvImportMatchCluster`, `wvImportMatchHelpers`, `wvImportMatchMeanshift`)
- * can import the type without creating a circular dependency through Pipeline.
+ * (`wvImportMatchCluster`, `wvImportMatchMeanshift`, `wvImportMatchWater` and
+ * `wvImportMatchJsBranch`) can import the type without creating a circular
+ * dependency through Pipeline;
+ * the SSE callbacks and `ImageDims` followed it when the two CV branches moved
+ * into files of their own (#933), for the same reason.
  */
 
 /** Mutable state threaded through every phase of the color-match pipeline. */
@@ -62,6 +67,30 @@ export interface PipelineContext {
   startTime: number;
 
   // Utility functions (depend on TW/RES_SCALE)
+  oddK: (base: number) => number;
+  pxS: (base: number) => number;
+}
+
+export type SendEvent = (event: {
+  type: string;
+  step?: string;
+  elapsed?: number;
+  debugImage?: { label: string; dataUrl: string };
+  data?: unknown;
+  message?: string;
+  reviewId?: string;
+  waterMaskImage?: string;
+  waterPxPercent?: number;
+  waterComponents?: Array<{ id: number; pct: number; cropDataUrl: string; subClusters: Array<{ idx: number; pct: number; cropDataUrl: string }> }>;
+}) => void;
+
+export type LogStep = (step: string) => Promise<void>;
+export type PushDebugImage = (label: string, dataUrl: string) => Promise<void>;
+
+export interface ImageDims {
+  TW: number; TH: number; tp: number;
+  origW: number; origH: number;
+  RES_SCALE: number;
   oddK: (base: number) => number;
   pxS: (base: number) => number;
 }
