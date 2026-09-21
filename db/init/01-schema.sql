@@ -1,7 +1,8 @@
 -- =============================================================================
 -- Track Your Regions - New Gen Database Schema
 -- =============================================================================
--- This is the consolidated schema with NEW terminology (matching Drizzle ORM).
+-- This is the consolidated schema, and the one file the backend's row types
+-- are generated from (backend/src/db/schema.generated.ts, ADR-0064).
 --
 -- Terminology:
 -- - administrative_divisions: Official GADM boundaries (countries, states, cities)
