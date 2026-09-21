@@ -159,11 +159,12 @@ jobs:
           # auto-loaded into Claude Code's system context by the action.
           #
           # Output rules below are mandatory, and they decide the channel: a
-          # Critical or Major finding this PR introduced, on a line it changed,
-          # goes inline through the MCP tool, where it is a thread the author
-          # must resolve; everything else — Minor, Note, `[pre-existing]` of
-          # any severity — is a line in the one summary comment `gh pr comment`
-          # posts, which blocks nothing (#796). Per docs/capabilities-and-
+          # Critical or Major finding that is the branch's own — introduced by
+          # this PR, or pre-existing and depended on by the change (#924) — on
+          # a line it changed, goes inline through the MCP tool, where it is a
+          # thread the author must resolve; everything else — Minor, Note,
+          # `[pre-existing]` of any severity — is a line in the one summary
+          # comment `gh pr comment` posts, which blocks nothing (#796). Per docs/capabilities-and-
           # limitations.md the action itself updates only its tracking
           # comment; the summary is a second comment, posted by the CLI.
           prompt: |
@@ -215,8 +216,24 @@ jobs:
                inline thread is a blocking ask of this branch (branch
                protection on main requires every thread resolved), and a
                defect the branch did not introduce is not the branch's
-               ask. Naming it in the summary lets the author fix it here,
-               file it, or leave it, without a round.
+               ask. Naming it in the summary lets the author dispose of
+               it without a round: link the open issue that covers it,
+               file one, or drop it with a stated reason (#924).
+               The tag is a judgement, not a date. `[pre-existing]` means
+               the branch neither introduced the defect nor depends on it,
+               and the test is two questions: would it exist if this
+               branch were not merged, and is the changed path correct
+               while it stands? A pre-existing defect the changed path
+               *depends on* — the new call reaches it, the rewritten
+               sentence restates it, the change is wrong while it stands —
+               is the branch's own: report it without the tag, with one
+               clause saying why the change depends on it, and it takes
+               the branch's channel — a thread when Critical or Major,
+               anchored on the changed line that depends on it (the new
+               call, the rewritten sentence) when its own line is not in
+               the diff, as a ripple finding is; a summary line
+               otherwise. Severity is a triage of urgency;
+               whose defect it is decides the channel (#924).
             5. **Calibrate severity.** Critical / Major / Minor / Note based
                on blast radius, exploitability, recoverability — NOT on
                visual prominence.
@@ -268,7 +285,17 @@ jobs:
             `docs/tech/*` doc for the area touched by this PR. Note the
             project's patterns and conventions for this domain.
 
-            **Phase 2 — Diff.** Get the diff with `gh pr diff <PR NUMBER>`. Identify
+            **Phase 2 — Diff.** Get the diff with `gh pr diff <PR NUMBER>`.
+            The checkout is the PR head except for the paths the action
+            restores from main before you start — `.claude/`, `CLAUDE.md`
+            and its other configuration paths (docs/security.md) — and it
+            keeps the PR's own copies of those paths under `.claude-pr/`
+            (`.claude-pr/.claude/commands/…`, `.claude-pr/CLAUDE.md`). So
+            for those paths read `.claude-pr/` — whole files, which the
+            Phase 4 search and the "fixed at the head" check both need —
+            or the diff, never the working tree: a grep there reads
+            pre-PR text and manufactures a contradiction the head does
+            not have. Identify
             what changed: pure move vs new behavior vs deletion. For each
             hunk also name the *claim* it changes — a rule, a threshold, a
             command, a flag, a signature, a schema field, a documented
@@ -376,8 +403,10 @@ jobs:
             **Inline thread** — `mcp__github_inline_comment__create_inline_comment`
             with the exact `path` and `line` of the issue and one or two
             sentences naming the issue and the fix. ONLY for a finding that
-            is **Critical or Major**, **introduced by this PR** (no
-            `[pre-existing]`), and anchored on a **line the diff changed**.
+            is **Critical or Major**, **the branch's own** — introduced by
+            this PR, or pre-existing and depended on by the change, per
+            CRITICAL INSTRUCTION #4; never one tagged `[pre-existing]` —
+            and anchored on a **line the diff changed**.
             Every thread costs the author a round — branch protection on
             main requires it resolved before the merge — so open one only
             for what must change before this branch merges.
@@ -395,6 +424,19 @@ jobs:
                  - **Minor** `path:line` — the issue; the fix
                  Ordered Critical first. These are information for the
                  author, not asks: nothing here blocks the merge.
+                 A `[pre-existing]` line is a follow-up candidate — the
+                 author will link it to an issue, file one, or drop it
+                 with a reason — so it names the defect, its `path:line`,
+                 and the open issue that already covers it when one
+                 exists: before writing the line, run
+                 `gh issue list --search "<two or three words of the
+                 defect>" --state open --limit 500` (the limit is an
+                 upper bound, so a narrow query costs nothing, while a
+                 query with a common word matches more open issues than
+                 any small cut shows; it is the depth the author's own
+                 search uses), and end the
+                 line with `→ #N` when a hit clearly covers it, with
+                 nothing when none does.
               4. Never repeat the inline findings in the summary — that
                  defeats the inline channel.
             No findings at all → the verdict and the SHA alone.
@@ -405,8 +447,11 @@ jobs:
             claude[bot] thread, open or resolved, is never threaded again —
             it is judged in that thread. Notes only on lines changed since
             the SHA the last summary names
-            (`gh api repos/<REPO>/compare/<sha>...<head>`, or the diff of
-            that range in the checkout); an earlier note that still stands
+            (`gh api repos/<REPO>/compare/<sha>...<head>` — the API, not
+            the checkout: a wave folds its fixes into the owning commits,
+            so the previous SHA is not reachable from the new head and
+            `git diff <sha>..<head>` fails there, while the server still
+            holds it); an earlier note that still stands
             is not repeated — the earlier summary holds it. Existing
             UNRESOLVED claude[bot] inline threads are resolved (GraphQL
             `resolveReviewThread`; own threads only — never CodeQL's,
@@ -417,6 +462,23 @@ jobs:
             persuade stays open, with your answer to the reply in it. The
             verdict says how many were resolved, e.g. "Resolved 3 prior
             findings; no new blocking issues."
+            A re-review also reads the round's dispositions. The author
+            closes each wave with a PR comment whose first line starts
+            with `Review round` and which lists, under `Fixed on the
+            branch`, `Filed` and `Dropped`, what became of every earlier
+            finding — the issue comments since the reviewed SHA in
+            `gh api repos/<REPO>/issues/<PR NUMBER>/comments`, read
+            together with the thread replies. Verify every "Fixed on the
+            branch" item at the head, and write one more summary line,
+            right after `Reviewed <sha>`:
+            `Dispositions since <sha>: N fixed (N verified) · N filed
+            (#…) · N dropped (N accepted, N contested)`. A "fixed" that
+            is not fixed at the head is said in the summary and, for a
+            threaded finding, in its thread. A contested drop of a
+            Critical or Major finding keeps its thread open with your
+            answer in it (the rule above); a contested drop of a note is
+            one summary line naming why the drop does not hold, never a
+            thread.
 
             Workflow:
             1. Record the head you are reviewing before you read anything:
@@ -425,10 +487,13 @@ jobs:
                `gh pr diff <PR NUMBER>` (by number: on a `/review` run the
                checkout began on main)
             2. Run the Phase 4 repo search for every claim the diff changes
-            3. For each Critical or Major finding this PR introduced, on a
-               line the diff changed → inline thread
+            3. For each Critical or Major finding that is the branch's own
+               (CRITICAL INSTRUCTION #4), on a line the diff changed →
+               inline thread
             4. Once all inline threads are posted → ONE summary via
-               `gh pr comment`: verdict, `Reviewed <sha>`, the notes
+               `gh pr comment`: verdict, `Reviewed <sha>`, the notes —
+               each `[pre-existing]` note ending with `→ #N` where an
+               open issue already covers it (`gh issue list --search`)
             5. On a re-review (TRIGGER is `issue_comment` or
                `pull_request synchronize`, or the PR already carries a
                claude[bot] summary): read the last summary's SHA (the
@@ -438,8 +503,12 @@ jobs:
                on a finding that already has one, resolve your own threads
                that are addressed or reasonably declined (`gh api graphql`
                with the `reviewThreads` query and each thread's replies,
-               then `resolveReviewThread`), and count them in the verdict
-               — the convergence rule above
+               then `resolveReviewThread`), and count them in the verdict;
+               then read the `Review round` disposition comments since
+               that SHA and the thread replies, verify each "Fixed on the
+               branch" item at the head, and add the `Dispositions since
+               <sha>` line after `Reviewed <sha>` — the convergence rule
+               above
 
             Other rules:
             - Only post GitHub comments — don't submit review text as chat messages.
@@ -447,8 +516,18 @@ jobs:
 
           # Grep/Glob/Read come from the action's own base tool set; the
           # grep/rg shell entries mirror claude-qa.yml + claude-dependabot.yml
-          # so the Phase 4 repo search has a path either way. `gh api repos`
-          # closes the one concrete asymmetry with claude-qa.yml, which has it.
+          # so the Phase 4 repo search has a path either way. `gh api` is one
+          # entry, not `gh api graphql` plus `gh api repos`: a REST path is a
+          # single shell token, so a prefix rule ending in `repos` is followed
+          # by `/` and never matches — the reviewer's own run on PR #962
+          # recorded seven refused `gh api repos/…` reads next to an allowed
+          # `gh api graphql`. graphql already permits mutations
+          # (resolveReviewThread), so the wider entry adds no write the
+          # narrower withheld. claude-qa.yml carries the old pair (#963).
+          # `gh issue list` is what lets a `[pre-existing]` note name the open
+          # issue that already covers it, so the author links rather than
+          # files twice (#924); it reads, and the summary is still the one
+          # place the reviewer writes.
           #
           # --max-turns is headroom, not a fix: across seven review rounds on
           # PR #430 the reported num_turns ran 29-59 against a cap of 50 and
@@ -466,7 +545,7 @@ jobs:
             --model claude-opus-5
             --effort xhigh
             --max-turns 140
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(gh api repos:*),Bash(grep:*),Bash(rg:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(gh issue list:*),Bash(grep:*),Bash(rg:*)"
 
       # Every review round on PR #430 reported 1-6 permission_denials_count
       # with no way to tell which tool was refused: the action prints only the
