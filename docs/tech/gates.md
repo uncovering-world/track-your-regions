@@ -116,11 +116,11 @@ everything or the base was simply unknown.
 
 | Input | Paths | Why this is what it is |
 | --- | --- | --- |
-| `app` | `backend/`, `frontend/`, `db/`, `martin/`, `scripts/`, `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | The product is one contract surface, not two stacks: backend specs read db/, frontend/src, martin/ and scripts/ through repoFile(), and the smoke lane is the only gate that sees the backend↔frontend contract at all, so a change to either side asks for both. |
+| `app` | `backend/`, `frontend/`, `packages/`, `db/`, `martin/`, `scripts/`, `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | The product is one contract surface, not two stacks: both sides import packages/shared (ADR-0065), backend specs read db/, frontend/src, martin/ and scripts/ through repoFile(), and the smoke lane is the only gate that sees the backend↔frontend contract at all, so a change to any of them asks for all of it. |
 | `python` | `cv-python/` | The computer-vision service is its own interpreter, its own dependency set and its own image; no Node gate reads it except the Semgrep scan pointed at the whole checkout. |
 | `db-python` | `/^db\/.*\.py$/`, `db/pyproject.toml`, `db/requirements.txt` | The GADM loaders live in db/ but are run by pytest, so they are an input to the Python test lane without being an input to cv-python’s lint. |
 | `schema` | `/^db\/init\//`, `docker-compose.yml`, `backend/src/db/schema.generated.ts`, `backend/src/db/generateSchemaTypes.ts`, `backend/src/db/schemaTypesRender.ts`, `backend/src/db/testDbName.ts`, `scripts/db-types.sh` | The generated row types are a function of what a fresh database is built from: the db/init directory the image applies on first start, the compose file that pins that image, the file the generator produces, the generator, the renderer, the guard it imports and its runner. The migrations are not — a fresh database never reads them, and the schema-to-migration parity test answers for those. |
-| `node-deps` | `backend/package.json`, `backend/package-lock.json`, `frontend/package.json`, `frontend/package-lock.json` | npm audit reads the two manifests and their lockfiles and nothing else, so a change of source code cannot alter its answer. |
+| `node-deps` | `backend/package.json`, `backend/package-lock.json`, `frontend/package.json`, `frontend/package-lock.json`, `packages/shared/package.json`, `packages/shared/package-lock.json` | npm audit reads the three manifests and their lockfiles and nothing else, so a change of source code cannot alter its answer. |
 | `docs` | `/\.md$/` | Every tracked Markdown file, wherever it sits: the docs pass checks what renders and what a link points at, which is the same question in docs/, in a service’s README and in the root guides. |
 | `shell` | `/\.sh$/` | shellcheck reads the scripts themselves; nothing else changes its verdict. |
 | `docker` | `/(^\|\/)Dockerfile[^/]*$/` | hadolint reads the Dockerfiles themselves, including their per-stage variants. |
@@ -137,6 +137,9 @@ everything or the base was simply unknown.
 | `typecheck:frontend` | check | `app` | `npm --prefix frontend run typecheck` | check |
 | `knip:backend` | check | `app` | `npm --prefix backend run knip` | check |
 | `knip:frontend` | check | `app` | `npm --prefix frontend run knip` | check |
+| `lint:shared` | check | `app` | `npm --prefix packages/shared run lint` | check |
+| `typecheck:shared` | check | `app` | `npm --prefix packages/shared run typecheck` | check |
+| `knip:shared` | check | `app` | `npm --prefix packages/shared run knip` | check |
 | `lint:circular` | check | `app` | `npm run lint:circular` | check |
 | `db:types` | check | `schema` | `npm run db:types:check` | check |
 | `security:deps` | check | `node-deps` | `npm run security:deps` | check |

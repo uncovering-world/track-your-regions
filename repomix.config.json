@@ -22,6 +22,8 @@
     "backend/src/**/*.ts",
     "frontend/package.json",
     "frontend/src/**/*.{ts,tsx}",
+    "packages/shared/package.json",
+    "packages/shared/src/**/*.ts",
     "db/init/01-schema.sql",
     "docs/vision/**/*.md",
     "docs/tech/development-guide.md",

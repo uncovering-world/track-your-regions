@@ -197,6 +197,12 @@ jobs:
         if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_check_node == 'true' }}
         run: npm ci --prefix frontend
 
+      # The third package's own lint, typecheck and knip (ADR-0065). The two
+      # installs above need nothing here: they link the package by path.
+      - name: Install shared package dependencies
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_check_node == 'true' }}
+        run: npm ci --prefix packages/shared
+
       - name: Set up cv-python venv
         if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_check_python == 'true' }}
         run: npm run setup:py:dev
