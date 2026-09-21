@@ -72,8 +72,10 @@ export default [
       // skipped, because the repo asks for dense explanatory comments and a
       // raw-line cap would tax exactly those. The guide states this number
       // and names this entry, so a change here is a change there too (#530).
-      // The files that were already over it when the ceiling was set keep the
-      // old one in the last block of this config, until they are split.
+      // No hand-written file is exempt: the list of files that were over it
+      // when it was set is gone (#933), and a file that would need an entry
+      // is a file to split first. The one relaxation is the generated schema
+      // below, whose length is the schema's.
       'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
       // Two rules, each documented at its own entries below.
       'no-restricted-syntax': ['error',
@@ -150,23 +152,6 @@ export default [
     files: ['src/db/schema.generated.ts'],
     rules: {
       'max-lines': 'off',
-    },
-  },
-  // What is left of the files that were over 800 counted lines on the day the
-  // ceiling above was set (#530). Each keeps the ceiling it was written under,
-  // 1000, until it is split; an entry is deleted when its file drops under 800
-  // and no entry is ever added — a new file that needs one is a file to split
-  // first. #933 split the other thirteen, the frontend's six among them, so
-  // the block there is gone and this one is down to a single file.
-  // A later block wins for the files it names, which is why this one is last.
-  {
-    files: [
-      // Row types written by hand; #792 generates them from the live schema,
-      // which is what shrinks this file.
-      'src/types/index.ts',
-    ],
-    rules: {
-      'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
     },
   },
 ];
