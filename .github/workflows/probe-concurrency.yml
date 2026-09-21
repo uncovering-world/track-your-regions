@@ -1,0 +1,20 @@
+name: Probe concurrency
+
+# Temporary probe for #920: does a job its `if:` skips join a job-level
+# concurrency group and cancel the job in flight? Deleted with its branch.
+on:
+  pull_request:
+    types: [labeled, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.event.action == 'labeled'
+    concurrency:
+      group: probe-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - run: sleep 150 && echo survived
