@@ -42,6 +42,17 @@ per run, so the versions that run here are the ones the tracked root
 Without it the gate stops and names the check that did not run, rather
 than dying on `madge: command not found`.
 
+The third package, `packages/shared` — the rules both apps apply,
+declared once (ADR-0065) — has its own lint, typecheck and knip, so it
+takes an install of its own too:
+
+```shell
+npm ci --prefix packages/shared
+```
+
+The two apps link it by path and need nothing installed there; the
+directory only has to exist.
+
 For Python tooling (cv-python tests, type checking), set up the venv
 once:
 

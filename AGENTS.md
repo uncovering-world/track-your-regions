@@ -5,6 +5,7 @@ This is a monorepo with three main areas:
 - `frontend/`: Vite + React + TypeScript UI (`src/components`, `src/hooks`, `src/api`, `src/theme`).
 - `backend/`: Express + TypeScript API (`src/routes`, `src/controllers`, `src/services`, `src/db`).
 - `db/`: Postgres/PostGIS schema, migrations, and geometry scripts (`init/`, `scripts/`, `tests/`).
+- `packages/shared/`: the pure rules both apps apply, declared once and imported by both as `@tyr/shared/<module>` (ADR-0065).
 
 Supporting directories:
 - `scripts/`: repo tooling (for example `scripts/db-cli.sh`).
@@ -13,7 +14,7 @@ Supporting directories:
 
 ## Build, Test, and Development Commands
 Run from repo root unless noted.
-- `npm install`: install the repo-wide lint tooling the root `package.json` declares (`madge`, behind `lint:circular`; `markdownlint-cli2`, behind `lint:md`). The two apps carry their own trees: `npm ci --prefix backend`, `npm ci --prefix frontend`. npm, not pnpm — the pins live in `package-lock.json`, which pnpm does not read.
+- `npm install`: install the repo-wide lint tooling the root `package.json` declares (`madge`, behind `lint:circular`; `markdownlint-cli2`, behind `lint:md`). The two apps carry their own trees: `npm ci --prefix backend`, `npm ci --prefix frontend`; both link `packages/shared` — the rules both sides apply (ADR-0065) — by path, and `npm ci --prefix packages/shared` installs that package's own lint and typecheck tooling. npm, not pnpm — the pins live in `package-lock.json`, which pnpm does not read.
 - `npm run dev`: start all services with Docker Compose.
 - `npm run dev:frontend`: run frontend locally.
 - `npm run dev:backend`: run backend locally.
@@ -130,7 +131,7 @@ Five trigger functions fire on region geometry changes: `update_region_metadata(
 
 ### Experience Images
 
-- **Every picture a run writes is a Wikimedia Commons file, and that is a licence rule before it is a technical one** (ADR-0043); a curator may also name a file we host, as an `/images/…` path. The World Heritage Centre's terms forbid copying *and* in-lining its photographs, so a UNESCO site's picture comes from Commons through Wikidata (P757 "World Heritage Site ID" → P18 "image", read through `p:P757/ps:P757` — `wdt:` sees only the best-ranked statement), matched by the site's own id; the portal is linked to (`metadata.website`), never drawn. The hosts a picture may come from are `DISPLAYABLE_PICTURE_HOSTS` (backend) and `TRUSTED_IMAGE_DOMAINS` (frontend), pinned together by `urlSafety.test.ts`; every writer of `image_url` — the sync upsert, the works writer and the picture repairs (`isCommonsPictureUrl`, the run's rule), a curator's edit and publishing a held proposal (`isDisplayablePictureUrl`, which adds the `/images/` path) — refuses anything else, and the admin panel's *Fix pictures* repairs what is stored. Nothing is downloaded: the `/data/images` machinery exists and holds 0 rows
+- **Every picture a run writes is a Wikimedia Commons file, and that is a licence rule before it is a technical one** (ADR-0043); a curator may also name a file we host, as an `/images/…` path. The World Heritage Centre's terms forbid copying *and* in-lining its photographs, so a UNESCO site's picture comes from Commons through Wikidata (P757 "World Heritage Site ID" → P18 "image", read through `p:P757/ps:P757` — `wdt:` sees only the best-ranked statement), matched by the site's own id; the portal is linked to (`metadata.website`), never drawn. The hosts a picture may come from are `PICTURE_HOSTS` in `@tyr/shared/pictures`, imported by both sides (ADR-0065); every writer of `image_url` — the sync upsert, the works writer and the picture repairs (`isCommonsPictureUrl`, the run's rule), a curator's edit and publishing a held proposal (`isDisplayablePictureUrl`, which adds the `/images/` path) — refuses anything else, and the admin panel's *Fix pictures* repairs what is stored. Nothing is downloaded: the `/data/images` machinery exists and holds 0 rows
 - Thumbnails: `Special:FilePath/X.jpg?width=N` (120, 250, 330, 500, 960, 1280 px)
 - Wikimedia integration requirements: proper `User-Agent`, handle 429 + `Retry-After`, and keep ~1.5s delay between downloads
 - **A hosted picture carries a credit.** Most Commons files are CC BY / CC BY-SA, which of a page that merely *shows* a picture ask the one thing — that the author is named wherever the work appears; ShareAlike binds adaptations, which showing a photograph is not. The World Heritage portal's photographs are not drawn at all (ADR-0043), so no credit the product shows answers to its terms — every one comes from Commons' `extmetadata`. Credits are captured at sync time into `metadata.imageCredit` on **both** `experiences` and `treasures` (`imageCredit.ts`) and rendered by `ImageCreditLine`. Anything new that displays an experience's or a work's picture shows the credit with it — the curator screens behind `requireCurator` included. On a **dense** row or tile, pass `redundantWith={artist}` (`creditAddsBeyond`; see `docs/tech/shared-frontend-patterns.md`), and hang the credit on the picture actually on screen — never beside an image that failed to load
