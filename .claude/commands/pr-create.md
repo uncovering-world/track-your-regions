@@ -225,7 +225,7 @@ Creating the PR is not the end of the job — an open PR is unfinished work. Sta
 gh pr comment <number> --body '/review'
 ```
 
-One per wave, in this order: push (when there is one) → replies in the threads (`/pr-comments-reply`) → `/review`, so the re-review reads the replies — the bot verifies each fix at the head, accepts a reasoned decline, and resolves its own threads it finds addressed or reasonably declined. A rebase that resolved conflicts is a wave too and gets one; a rebase that left `git diff origin/main...HEAD` unchanged gets none, since there is nothing new to read. When the maintainer wants every push to one PR reviewed, `/review always` labels it `review-on-push` and every push is reviewed until the label is removed by hand: the loop's escape hatch, not its default. On such a PR the push is itself the ask — post no `/review` after a push there, or the same head is reviewed twice; a reply-only wave on it still gets one.
+One per wave. The order of a wave is stated in full here only; `/pr-comments-reply` § 6, `/pr-changes-amend` § 6, `/review-pr` steps 4–7, the guide's § Review Rounds and the *Dispositions* paragraph below each carry the unlabelled sequence in passing and point here for the label case, so an edit to this order visits those five too: on a PR without the `review-on-push` label, push (when there is one) → replies in the threads (`/pr-comments-reply`) → the round comment (*Dispositions* below) → `/review`; on a PR that carries the label, replies → round comment → push, because there the push is what starts the run, and a run that has started reads nothing posted after it. Either way the re-review reads the replies and the dispositions — the bot verifies each fix at the head, accepts a reasoned decline, and resolves its own threads it finds addressed or reasonably declined. A rebase that resolved conflicts is a wave too and gets one; a rebase that left `git diff origin/main...HEAD` unchanged gets none, since there is nothing new to read. When the maintainer wants every push to one PR reviewed, `/review always` labels it `review-on-push` and every push is reviewed until the label is removed by hand: the loop's escape hatch, not its default. On such a PR the push is itself the ask — post no `/review` after a push there, or the same head is reviewed twice; a reply-only wave on it still gets one.
 
 The review to wait for is the **workflow run** the comment started, never a check on the PR: a comment-triggered run's check attaches to main's head commit, not the PR's, so `gh pr checks` never lists it, and the PR head's own `review` check is the skipped `synchronize` one. Find the run and block on it:
 
@@ -242,7 +242,24 @@ What else the round waits on — CodeRabbit's finished signal, CI — is #920's 
 - Read a bot reviewer's *verdict*, not just its finding list — and verify each claim against the code (grep for the claim, not the cited line number; lines drift) before agreeing or pushing back.
 - When a finding is real, look for its symmetric twin — the same bug in the mirrored code path — and fix both; then expect second-order breakage from the fix and re-run the affected tests.
 - A declined finding gets a reply with the concrete reason, never silence.
-- A line in the bot's summary comment — Minor, Note, `[pre-existing]` of any severity — opens no thread and blocks nothing: it is information, not an ask. Fix the cheap ones in the next wave and say in a PR comment what was left and why (#924 will state the dispositions — fixed on the branch, filed, dropped).
+- A line in the bot's summary comment — Minor, Note, `[pre-existing]` of any severity — opens no thread and blocks nothing: it is information, not an ask. What it and every thread are owed is a **disposition** (#924).
+
+**Dispositions.** Every *verified* finding — one this loop checked against the code, never the reviewer's raw claim — ends in exactly one of three places, and the round comment below records which:
+
+- **Fixed on the branch** — the branch introduced it, or it is pre-existing but the changed path depends on it, so the change is unsafe or incorrect while it stands. The test is two questions: *would this problem exist if this branch were not merged?* and, if it would, *is the changed path correct while it stands?* A no to either makes it the branch's. Folded into the owning commit in this wave; a branch never files a ticket for its own defect.
+- **Filed** — a verified pre-existing defect the branch neither introduced nor depends on, worth durable backlog work. Search first (`gh issue list --state open --limit 500 --search "<claim>"` — the limit is an upper bound, so a narrow query costs nothing, while a query with a common word matches more open issues than any small cut shows and a covering issue can rank below it; the same depth the reviewer's own search uses) and link the issue that already covers it; otherwise file it with `/issue-create` — Bug type, area labels, the four fields proposed conservatively — whose § 3 confirmation gate is carved out inside this loop (as `/pr-comments-analyze` § 8 and `/pr-comments-reply` § 5 are), with the test and the search result stated in the round comment so the maintainer sees the number and can close it. Never a blocking thread, never a fix wave on this branch.
+- **Dropped** — verification found no defect (a false positive, a defensive wish where a guarantee exists, a style preference), or a real but trivial cleanup or speculative improvement that does not justify backlog work. One line with the reason; a thread is declined with that reason in it.
+
+A reviewer's severity is a triage of urgency; the disposition is ownership, decided by the test. A Critical in a path this branch never touched is urgent follow-up work (Priority Urgent), not this branch's; a small defect the branch introduced is the branch's, whatever the reviewer called it. Security-bot findings are never dropped without the full data-flow read (`/pr-comments-analyze` § 3).
+
+The wave closes with one PR comment — under these three labels and no other, since the re-review parses by them — posted after the thread replies and before whatever asks for the round ("The next round" above: `/review`, or the push on a labelled PR), so the re-review can verify it — its summary carries a `Dispositions since <sha>` tally — and the maintainer can see where review scope ended without reading every round:
+
+```
+Review round <n> — dispositions
+- Fixed on the branch: <finding> → <commit>
+- Filed: <finding> → #<issue> — would exist without this branch; the changed path does not depend on it
+- Dropped: <finding> — <reason>
+```
 
 **Conflicts and staleness.** If main moves ahead, rebase — the repo is rebase-only, no merge commits:
 

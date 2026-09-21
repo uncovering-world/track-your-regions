@@ -45,6 +45,11 @@ For each comment or review (including comments from review bots):
   - **Question** — reviewer asking for clarification (may need a reply, code change, or both)
   - **Disagree** — the reviewer's suggestion is based on a misunderstanding of the codebase context, project conventions, or requirements. The comment does not warrant a code change
   - **Already addressed** — if the comment thread is resolved or the code already changed
+- **Decide the disposition** of every actionable item, beside its category. The category says what the reviewer asked; the disposition says who owns it (#924), and it is decided by two questions — *would this problem exist if this branch were not merged?* and, if it would, *is the changed path correct while it stands?* A no to either makes it the branch's
+  - **Fixed on the branch** — the branch introduced it, or it is pre-existing but the changed path depends on it (the change is unsafe or incorrect while it stands). Folded into the owning commit in this wave; a branch never files a ticket for its own defect
+  - **Filed** — a verified pre-existing defect the branch neither introduced nor depends on, worth durable backlog work: linked to the open issue that already covers it (`gh issue list --state open --limit 500 --search "<claim>"` — the limit is an upper bound, so a narrow query costs nothing, while a query with a common word can rank a covering issue below any small cut), else filed as a Bug with `/issue-create`. Never a fix wave on this branch
+  - **Dropped** — verification found no defect, or a real but trivial cleanup or speculative improvement that does not justify backlog work; a **Disagree** is a *dropped* with its reason
+  - The category does not decide the disposition: a **Must fix** that is pre-existing and independent is *filed*; a **Consider** that the branch introduced is *fixed on the branch*. Severity is the reviewer's triage of urgency; ownership is the test's
 - **NEVER dismiss security bot comments** (e.g., CodeQL, github-advanced-security, Snyk, Dependabot) — always investigate them thoroughly. Even if the flagged line looks safe, trace the full data flow (function returns, exception messages, error handlers) to verify. Security findings that appear to be false positives often reveal real issues in adjacent code (e.g., exception messages leaking credentials, hardcoded defaults)
 
 ### 4. Map comments to code
@@ -83,6 +88,7 @@ URL: {url}
 1. **{Short description}** ({file}:{line}) — comment id: {id}
    - Reviewer: @{author}
    - Comment: "{abbreviated comment}"
+   - Disposition: {fixed on the branch | filed | dropped} — {the test's answer in one clause}
    - Plan: {What to change and why}
 
 #### Should Fix
@@ -95,7 +101,7 @@ URL: {url}
 ...
 
 #### Disagree — Draft Replies
-For comments where the reviewer misunderstands the context, draft a polite reply explaining the rationale:
+For comments where the reviewer misunderstands the context, draft a polite reply explaining the rationale (disposition: dropped):
 
 1. **{Short description}** ({file}:{line}) — comment id: {id}
    - Reviewer: @{author}
@@ -105,6 +111,14 @@ For comments where the reviewer misunderstands the context, draft a polite reply
 
 #### Already Addressed
 ...
+
+#### Follow-ups to file
+Every item whose disposition is *filed*, with what `/issue-create` needs:
+
+1. **{Draft issue title}** — from comment id: {id}
+   - Why it is not this branch's: {the test's answer — would exist without this branch; the changed path does not depend on it}
+   - Existing issue: {#N found by `gh issue list --state open --limit 500 --search "..."`, or none}
+   - Type: Bug · Labels: {area labels} · Proposed fields: {Priority / Size / Theme / AI fit}
 
 ### Recommended Order
 {Suggested sequence for tackling the items, grouping related changes}
