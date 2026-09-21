@@ -241,6 +241,19 @@ A scheduled run (`on: schedule`, weekly) has no base, so the `Changes` job sends
 the zero sha and every gate applies — see the calendar under *What the map does
 not reach*.
 
+A push to a pull request cancels the run on the head it replaced (#920). The
+workflow's `concurrency` group is the pull request's number with
+`cancel-in-progress` on, and for every other event — a push to `main`, the
+weekly schedule, a dispatch — the group is the run's own id, so those always
+finish. A shared group with cancellation off would not do: GitHub keeps one
+*pending* run per group, so a third push to `main` would still replace a second
+one that had not started. The review workflow cancels the same way, keyed on the
+pull request, with its group on the `review` **job** rather than the workflow:
+every comment on a pull request starts that workflow, and a job its `if:` skips
+never joins the group — measured on a probe PR (#966) — so a thread reply or
+the round's dispositions comment leaves a review in flight alone, where a
+workflow-level group would have cancelled it.
+
 The fail-safe invariant itself is pinned by `scripts/ci-failsafe.test.mjs`, which
 parses the workflow and holds it against the map (#952). Every job but `Changes`
 has to wait on it, and its `if:` has to be the whole expression — the clauses in
