@@ -5,9 +5,9 @@
  * In-memory cache with 60s TTL to avoid DB round-trips on every AI call.
  */
 
-import { sql } from 'drizzle-orm';
-import { db } from '../../db/index.js';
-import { aiSettings } from '../../db/schema.js';
+// ADR-0064: raw parameterized SQL on the pool, typed by the generated rows.
+import { pool } from '../../db/index.js';
+import type { AiSettingsRow } from '../../db/schema.generated.js';
 
 const CACHE_TTL_MS = 60_000;
 let cache: Map<string, string> | null = null;
@@ -17,7 +17,9 @@ async function loadCache(): Promise<Map<string, string>> {
   const now = Date.now();
   if (cache && now - cacheTime < CACHE_TTL_MS) return cache;
 
-  const rows = await db.select({ key: aiSettings.key, value: aiSettings.value }).from(aiSettings);
+  const { rows } = await pool.query<Pick<AiSettingsRow, 'key' | 'value'>>(
+    'SELECT key, value FROM ai_settings',
+  );
   cache = new Map(rows.map(r => [r.key, r.value]));
   cacheTime = now;
   return cache;
@@ -52,11 +54,11 @@ export async function getAllSettings(): Promise<Record<string, string>> {
 
 /** Update a single AI setting. */
 export async function updateSetting(key: string, value: string): Promise<void> {
-  await db.insert(aiSettings)
-    .values({ key, value, updatedAt: new Date() })
-    .onConflictDoUpdate({
-      target: aiSettings.key,
-      set: { value, updatedAt: sql`NOW()` },
-    });
+  await pool.query(
+    `INSERT INTO ai_settings (key, value, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [key, value],
+  );
   invalidateCache();
 }

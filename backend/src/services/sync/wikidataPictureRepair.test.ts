@@ -14,7 +14,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
-  db: {},
 }));
 vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
 vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn() }));

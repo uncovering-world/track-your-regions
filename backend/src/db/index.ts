@@ -1,6 +1,4 @@
 import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import * as schema from './schema.js';
 import type { PoolClient } from 'pg';
 
 const pool = new Pool({
@@ -14,9 +12,8 @@ const pool = new Pool({
   connectionTimeoutMillis: 5000,
 });
 
-export const db = drizzle(pool, { schema });
-
-// Raw pool for custom queries (geometry operations)
+// ADR-0064: every query is raw parameterized SQL on this pool, typed by the
+// generated rows in `schema.generated.ts`.
 export { pool };
 
 /**

@@ -7,9 +7,9 @@
  * one import for what a run writes.
  */
 
-import { eq } from 'drizzle-orm';
-import { pool, db } from '../../db/index.js';
-import { experienceSyncLogs, experienceSources } from '../../db/schema.js';
+// ADR-0064: raw parameterized SQL on the pool, typed by the generated rows.
+import { pool, rollbackQuietly } from '../../db/index.js';
+import type { ExperienceSyncLogsRow } from '../../db/schema.generated.js';
 import {
   writeExperienceLocations, type LocationWriteResult, type LocationWriteRun,
 } from './locationWriter.js';
@@ -158,30 +158,39 @@ export async function annotateClosedSyncLog(
   status: string,
   errorDetails: unknown[],
 ): Promise<void> {
-  // ADR-0004: Drizzle over raw SQL. These are ordinary relational updates with
-  // no PostGIS in them, which is where the raw `pool` is reserved for.
-  //
   // One transaction, because the two rows are one statement of fact: the log
   // marked and the source not would leave the admin surfaces disagreeing
-  // about the run they both read.
-  await db.transaction(async (tx) => {
-    const [log] = await tx
-      .update(experienceSyncLogs)
-      .set({ status, errorDetails })
-      .where(eq(experienceSyncLogs.id, logId))
-      .returning({ isDryRun: experienceSyncLogs.isDryRun });
+  // about the run they both read. Pinned to one client: `pool.query('BEGIN')`
+  // would leave the two updates free to land on other connections.
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    const { rows: [log] } = await client.query<Pick<ExperienceSyncLogsRow, 'is_dry_run'>>(
+      `UPDATE experience_sync_logs SET status = $2, error_details = $3
+       WHERE id = $1
+       RETURNING is_dry_run`,
+      [logId, status, JSON.stringify(errorDetails)],
+    );
 
-    if (log?.isDryRun) return;
-
-    // `last_sync_error` carries the same mapping `updateSyncLog` applies, or a
-    // downgrade would leave a stale message from an earlier failed run standing
-    // next to this run's new status.
-    await tx
-      .update(experienceSources)
-      .set({
-        lastSyncStatus: status,
-        lastSyncError: status === 'failed' ? 'See sync log for details' : null,
-      })
-      .where(eq(experienceSources.id, sourceId));
-  });
+    // A dry run synced nothing, so the source's record of its last sync is
+    // not this run's to touch.
+    if (!log?.is_dry_run) {
+      // `last_sync_error` carries the same mapping `updateSyncLog` applies, or
+      // a downgrade would leave a stale message from an earlier failed run
+      // standing next to this run's new status.
+      await client.query(
+        `UPDATE experience_sources SET last_sync_status = $2, last_sync_error = $3
+         WHERE id = $1`,
+        [sourceId, status, status === 'failed' ? 'See sync log for details' : null],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    // A client whose ROLLBACK also failed must be destroyed, not pooled.
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
+  }
 }

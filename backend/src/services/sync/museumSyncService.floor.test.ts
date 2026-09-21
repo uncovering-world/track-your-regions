@@ -17,7 +17,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn() },
-  db: {},
 }));
 vi.mock('./syncOrchestrator.js', () => ({
   orchestrateSync: vi.fn().mockResolvedValue(undefined),

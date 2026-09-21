@@ -15,18 +15,12 @@
  * on exactly two questions and a batch answer has a batch.
  */
 
-import { eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../index.js';
-import {
-  experienceSources,
-  experienceKindMemberships,
-  experienceLocationRegions,
-  experienceLocations,
-  experienceRegions,
-  experiences,
-  regions,
-  worldViews,
-} from '../schema.js';
+import type { PoolClient } from 'pg';
+// ADR-0064: raw parameterized SQL on the pool, typed by the generated rows.
+import { pool, rollbackQuietly } from '../index.js';
+import type {
+  ExperienceLocationsRow, ExperienceSourcesRow, UsersRow,
+} from '../schema.generated.js';
 import { hashPassword } from '../../services/authService.js';
 // The rule for a database a test may write to, shared with the database-backed
 // lane (#522): this seed deletes and re-inserts its rows and rewinds three
@@ -88,14 +82,13 @@ const REFUSED_POINT = {
 const REGION_WKT =
   'MULTIPOLYGON(((10 50, 10.5 50, 10.5 50.5, 10 50.5, 10 50)))';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-type Source = { id: number; kindId: number };
+type Source = Pick<ExperienceSourcesRow, 'id' | 'kind_id'>;
 
-async function sourceNamed(tx: Tx, name: string): Promise<Source> {
-  const [source] = await tx
-    .select({ id: experienceSources.id, kindId: experienceSources.kindId })
-    .from(experienceSources)
-    .where(eq(experienceSources.name, name));
+async function sourceNamed(client: PoolClient, name: string): Promise<Source> {
+  const { rows: [source] } = await client.query<Source>(
+    'SELECT id, kind_id FROM experience_sources WHERE name = $1',
+    [name],
+  );
   if (!source) {
     throw new Error(`Source "${name}" missing - is db/init applied?`);
   }
@@ -110,32 +103,20 @@ async function sourceNamed(tx: Tx, name: string): Promise<Source> {
  * `pending` is a gated source's, held for the review feed (ADR-0025).
  */
 async function seedPlace(
-  tx: Tx,
+  client: PoolClient,
   exp: { id: number; name: string; lon: number; lat: number },
   source: Source,
   curationState: 'auto' | 'pending',
 ): Promise<void> {
   // Unlike regions.geom, experiences.location and experience_locations.location
   // are NOT NULL, so an insert-then-update split fails on the insert itself.
-  // Scalars and geometry therefore go in together, in one raw statement -
-  // the same split `upsertExperienceRecord` (services/sync/experienceUpsert.ts)
-  // already uses for this exact NOT NULL constraint. sql.identifier()
-  // resolves each scalar column name from the Drizzle model, so renaming
-  // or dropping any of them still fails `npm run typecheck` even though
-  // the statement itself is raw SQL. Only `location` - deliberately
-  // absent from the Drizzle model - is a literal, and on the point below
-  // `curation_state` too, which the location model does not carry.
-  await tx.execute(
-    sql`INSERT INTO experiences (
-          ${sql.identifier(experiences.id.name)},
-          ${sql.identifier(experiences.sourceId.name)},
-          ${sql.identifier(experiences.externalId.name)},
-          ${sql.identifier(experiences.name.name)},
-          location
-        ) VALUES (
-          ${exp.id}, ${source.id}, ${`e2e-${exp.id}`}, ${exp.name},
-          ST_SetSRID(ST_MakePoint(${exp.lon}, ${exp.lat}), 4326)
-        )`,
+  // Scalars and geometry therefore go in together, in one statement - the
+  // same shape `upsertExperienceRecord` (services/sync/experienceUpsert.ts)
+  // already uses for this exact NOT NULL constraint.
+  await client.query(
+    `INSERT INTO experiences (id, source_id, external_id, name, location)
+     VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))`,
+    [exp.id, source.id, `e2e-${exp.id}`, exp.name, exp.lon, exp.lat],
   );
 
   // The place's membership in the kind its source fills (#822). Without
@@ -143,44 +124,35 @@ async function seedPlace(
   // unread, simply never asked — and the smoke lane's region list is
   // empty while nothing says why. Admitted and published, the way a
   // trusted source's arrival is; or pending, the way a gated one's is.
-  await tx.insert(experienceKindMemberships).values({
-    experienceId: exp.id,
-    kindId: source.kindId,
-    sourceId: source.id,
-    curationState,
-    publishedAt: curationState === 'auto' ? new Date() : null,
-  });
+  await client.query(
+    `INSERT INTO experience_kind_memberships
+       (experience_id, kind_id, source_id, curation_state, published_at)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [exp.id, source.kind_id, source.id, curationState,
+      curationState === 'auto' ? new Date() : null],
+  );
 
-  const [location] = (
-    await tx.execute<{ id: number }>(
-      sql`INSERT INTO experience_locations (
-            ${sql.identifier(experienceLocations.experienceId.name)},
-            ${sql.identifier(experienceLocations.name.name)},
-            ${sql.identifier(experienceLocations.ordinal.name)},
-            curation_state,
-            location
-          ) VALUES (
-            ${exp.id}, ${exp.name}, 0, ${curationState},
-            ST_SetSRID(ST_MakePoint(${exp.lon}, ${exp.lat}), 4326)
-          )
-          RETURNING id`,
-    )
-  ).rows;
+  const { rows: [location] } = await client.query<Pick<ExperienceLocationsRow, 'id'>>(
+    `INSERT INTO experience_locations (experience_id, name, ordinal, curation_state, location)
+     VALUES ($1, $2, 0, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326))
+     RETURNING id`,
+    [exp.id, exp.name, curationState, exp.lon, exp.lat],
+  );
 
-  await tx.insert(experienceRegions).values({
-    experienceId: exp.id,
-    regionId: E2E_REGION_ID,
-  });
+  await client.query(
+    'INSERT INTO experience_regions (experience_id, region_id) VALUES ($1, $2)',
+    [exp.id, E2E_REGION_ID],
+  );
 
   // Without this, experienceLocationController's `in_region` EXISTS
   // check is false for every fixture location, ExperienceMarkers filters
   // all three out, and the map renders no markers even though the
   // region's experience list shows three.
-  await tx.insert(experienceLocationRegions).values({
-    locationId: location.id,
-    regionId: E2E_REGION_ID,
-    assignmentType: 'manual',
-  });
+  await client.query(
+    `INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
+     VALUES ($1, $2, 'manual')`,
+    [location.id, E2E_REGION_ID],
+  );
 }
 
 /**
@@ -192,20 +164,13 @@ async function seedPlace(
  * that wrote one without the other would be a row the product cannot produce.
  */
 async function seedRefusedPoint(
-  tx: Tx, point: { experienceId: number; name: string; lon: number; lat: number },
+  client: PoolClient, point: { experienceId: number; name: string; lon: number; lat: number },
 ): Promise<void> {
-  await tx.execute(
-    sql`INSERT INTO experience_locations (
-          ${sql.identifier(experienceLocations.experienceId.name)},
-          ${sql.identifier(experienceLocations.name.name)},
-          ${sql.identifier(experienceLocations.ordinal.name)},
-          curation_state,
-          refused_at,
-          location
-        ) VALUES (
-          ${point.experienceId}, ${point.name}, 1, 'pending', NOW(),
-          ST_SetSRID(ST_MakePoint(${point.lon}, ${point.lat}), 4326)
-        )`,
+  await client.query(
+    `INSERT INTO experience_locations
+       (experience_id, name, ordinal, curation_state, refused_at, location)
+     VALUES ($1, $2, 1, 'pending', NOW(), ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
+    [point.experienceId, point.name, point.lon, point.lat],
   );
 }
 
@@ -215,18 +180,74 @@ async function seedRefusedPoint(
  * assignment names the curator as its own assigner, since the fixture has no
  * admin and the column only records who.
  */
-async function seedCurator(tx: Tx): Promise<void> {
+async function seedCurator(client: PoolClient): Promise<void> {
   const passwordHash = await hashPassword(E2E_CURATOR.password);
-  const [user] = (
-    await tx.execute<{ id: number }>(
-      sql`INSERT INTO users (uuid, email, password_hash, display_name, auth_provider, email_verified, role)
-          VALUES (gen_random_uuid()::text, ${E2E_CURATOR.email}, ${passwordHash}, 'E2E Curator', 'local', true, 'curator')
-          RETURNING id`,
-    )
-  ).rows;
-  await tx.execute(
-    sql`INSERT INTO curator_assignments (user_id, scope_type, assigned_by, notes)
-        VALUES (${user.id}, 'global', ${user.id}, 'smoke fixture')`,
+  const { rows: [user] } = await client.query<Pick<UsersRow, 'id'>>(
+    `INSERT INTO users (uuid, email, password_hash, display_name, auth_provider, email_verified, role)
+     VALUES (gen_random_uuid()::text, $1, $2, 'E2E Curator', 'local', true, 'curator')
+     RETURNING id`,
+    [E2E_CURATOR.email, passwordHash],
+  );
+  await client.query(
+    `INSERT INTO curator_assignments (user_id, scope_type, assigned_by, notes)
+     VALUES ($1, 'global', $1, 'smoke fixture')`,
+    [user.id],
+  );
+}
+
+/** Every row of the fixture, inside the one transaction `seedE2eFixture` opened. */
+async function seedRows(client: PoolClient): Promise<void> {
+  // Idempotent: drop our own rows first. Cascades clear the links, the
+  // memberships and the curator's assignment.
+  await client.query(
+    'DELETE FROM experiences WHERE id = ANY($1::int[])',
+    [[...EXPERIENCES, ...ARRIVALS].map((e) => e.id)],
+  );
+  await client.query('DELETE FROM world_views WHERE id = $1', [E2E_WORLD_VIEW_ID]);
+  await client.query('DELETE FROM users WHERE email = $1', [E2E_CURATOR.email]);
+
+  const unesco = await sourceNamed(client, UNESCO_SOURCE_NAME);
+  const worship = await sourceNamed(client, WORSHIP_SOURCE_NAME);
+
+  // The smoke specs browse anonymously; a hidden world view is invisible
+  // to them and every region read under it answers 404, so it is public.
+  await client.query(
+    `INSERT INTO world_views (id, name, description, is_default, is_active, is_public)
+     VALUES ($1, $2, $3, false, true, true)`,
+    [E2E_WORLD_VIEW_ID, 'E2E Fixture', 'Synthetic data for the smoke lane'],
+  );
+
+  await client.query(
+    'INSERT INTO regions (id, world_view_id, name) VALUES ($1, $2, $3)',
+    [E2E_REGION_ID, E2E_WORLD_VIEW_ID, E2E_REGION_NAME],
+  );
+
+  // The geometry goes in by a second statement, still inside this
+  // transaction: the BEFORE UPDATE OF geom trigger fires here and fills
+  // anchor_point, focus_bbox and geom_area_km2. Never compute those here.
+  await client.query(
+    'UPDATE regions SET geom = ST_GeomFromText($1, 4326) WHERE id = $2',
+    [REGION_WKT, E2E_REGION_ID],
+  );
+
+  for (const exp of EXPERIENCES) await seedPlace(client, exp, unesco, 'auto');
+  for (const exp of ARRIVALS) await seedPlace(client, exp, worship, 'pending');
+  await seedRefusedPoint(client, REFUSED_POINT);
+  await seedCurator(client);
+
+  // Explicit ids do not advance the sequences; application writes would
+  // otherwise collide with the fixture.
+  await client.query(
+    `SELECT setval(pg_get_serial_sequence('world_views', 'id'),
+                   GREATEST((SELECT MAX(id) FROM world_views), 1))`,
+  );
+  await client.query(
+    `SELECT setval(pg_get_serial_sequence('regions', 'id'),
+                   GREATEST((SELECT MAX(id) FROM regions), 1))`,
+  );
+  await client.query(
+    `SELECT setval(pg_get_serial_sequence('experiences', 'id'),
+                   GREATEST((SELECT MAX(id) FROM experiences), 1))`,
   );
 }
 
@@ -239,62 +260,20 @@ export async function seedE2eFixture(): Promise<void> {
     );
   }
 
-  await db.transaction(async (tx) => {
-    // Idempotent: drop our own rows first. Cascades clear the links, the
-    // memberships and the curator's assignment.
-    await tx.delete(experiences).where(
-      inArray(experiences.id, [...EXPERIENCES, ...ARRIVALS].map((e) => e.id)),
-    );
-    await tx.delete(worldViews).where(eq(worldViews.id, E2E_WORLD_VIEW_ID));
-    await tx.execute(sql`DELETE FROM users WHERE email = ${E2E_CURATOR.email}`);
-
-    const unesco = await sourceNamed(tx, UNESCO_SOURCE_NAME);
-    const worship = await sourceNamed(tx, WORSHIP_SOURCE_NAME);
-
-    await tx.insert(worldViews).values({
-      id: E2E_WORLD_VIEW_ID,
-      name: 'E2E Fixture',
-      description: 'Synthetic data for the smoke lane',
-      isDefault: false,
-      isActive: true,
-      // The smoke specs browse anonymously; a hidden world view is invisible
-      // to them and every region read under it answers 404.
-      isPublic: true,
-    });
-
-    await tx.insert(regions).values({
-      id: E2E_REGION_ID,
-      worldViewId: E2E_WORLD_VIEW_ID,
-      name: E2E_REGION_NAME,
-    });
-
-    // geom is deliberately absent from the Drizzle model, so it goes through
-    // a sql template - still inside this transaction. The BEFORE UPDATE OF
-    // geom trigger fires here and fills anchor_point, focus_bbox and
-    // geom_area_km2. Never compute those here.
-    await tx.execute(
-      sql`UPDATE regions SET geom = ST_GeomFromText(${REGION_WKT}, 4326)
-          WHERE id = ${E2E_REGION_ID}`,
-    );
-
-    for (const exp of EXPERIENCES) await seedPlace(tx, exp, unesco, 'auto');
-    for (const exp of ARRIVALS) await seedPlace(tx, exp, worship, 'pending');
-    await seedRefusedPoint(tx, REFUSED_POINT);
-    await seedCurator(tx);
-
-    // Explicit ids do not advance the sequences; application writes would
-    // otherwise collide with the fixture.
-    await tx.execute(
-      sql`SELECT setval(pg_get_serial_sequence('world_views', 'id'),
-                        GREATEST((SELECT MAX(id) FROM world_views), 1))`,
-    );
-    await tx.execute(
-      sql`SELECT setval(pg_get_serial_sequence('regions', 'id'),
-                        GREATEST((SELECT MAX(id) FROM regions), 1))`,
-    );
-    await tx.execute(
-      sql`SELECT setval(pg_get_serial_sequence('experiences', 'id'),
-                        GREATEST((SELECT MAX(id) FROM experiences), 1))`,
-    );
-  });
+  // One transaction on one client, the shape every writer here uses: a
+  // `pool.query('BEGIN')` pins nothing, and the rows would land on whichever
+  // connection the pool handed out next.
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    await seedRows(client);
+    await client.query('COMMIT');
+  } catch (error) {
+    // A client whose ROLLBACK also failed must be destroyed, not pooled.
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
+  }
 }

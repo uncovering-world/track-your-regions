@@ -18,7 +18,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../../db/index.js', () => ({
   pool: { connect: vi.fn() },
   rollbackQuietly: vi.fn().mockResolvedValue(undefined),
-  db: {},
 }));
 
 import { pool, rollbackQuietly } from '../../../db/index.js';
