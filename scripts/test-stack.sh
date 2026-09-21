@@ -286,15 +286,60 @@ require_backend_repo_mounts() {
   fi
 }
 
+# The database-backed lane (`npm run test:db`, #522) is the same vitest run
+# under a second config, `vitest.db.config.ts`, and that file is baked into
+# the backend image rather than mounted — only `backend/src` is. A container
+# built before the config existed would fail inside vitest on a config it
+# cannot find, which reads as a broken lane rather than a stale image; checked
+# before the run for the same reason the mounts are.
+require_backend_db_config() {
+  if ! compose exec -T backend sh -lc '[ -f /app/vitest.db.config.ts ]'; then
+    echo "The backend container predates vitest.db.config.ts, which the database lane runs under." >&2
+    echo "Recreate the test stack so the current image applies:" >&2
+    echo "  npm run test:stack:down && npm run test:stack:up" >&2
+    exit 1
+  fi
+}
+
+# One vitest run inside the backend container, its JSON report copied out.
+# `extra_flags` is appended verbatim: `--coverage` for the coverage lane,
+# `--config vitest.db.config.ts` for the database lane. The callers below own
+# the stack and the checks a run needs first.
+#
+# `|| rc=$?`, as run_e2e_playwright does: under `set -e` a failing spec would
+# unwind this function before the `cat`, and test-report.mjs would print
+# "Missing Vitest report" beside the real exit code -- on exactly the run
+# whose report says which test broke. The report is copied out either way,
+# and the caller still sees vitest's own status.
+backend_vitest_exec() {
+  local out_path="$1"
+  local extra_flags="${2:-}"
+  local report_path="/tmp/backend-vitest-report.json"
+  local vitest_rc=0
+
+  compose exec -T backend sh -lc "npx vitest run --reporter=default --reporter=json --outputFile='${report_path}' ${extra_flags}" || vitest_rc=$?
+  compose exec -T backend sh -lc "cat '${report_path}'" > "$out_path"
+  return "$vitest_rc"
+}
+
 run_backend_vitest() {
   local out_path="$1"
-  local coverage_flag="${2:-}"
-  local report_path="/tmp/backend-vitest-report.json"
+  local extra_flags="${2:-}"
 
   ensure_up
   require_backend_repo_mounts
-  compose exec -T backend sh -lc "npx vitest run --reporter=default --reporter=json --outputFile='${report_path}' ${coverage_flag}"
-  compose exec -T backend sh -lc "cat '${report_path}'" > "$out_path"
+  backend_vitest_exec "$out_path" "$extra_flags"
+}
+
+# The database-backed specs, inside the backend container where DB_NAME is the
+# stack's track_regions_test. The lane's own global setup refuses any database
+# not named like a test one and fails outright when none answers.
+run_backend_db_vitest() {
+  local out_path="$1"
+
+  ensure_up
+  require_backend_db_config
+  backend_vitest_exec "$out_path" "--config vitest.db.config.ts"
 }
 
 run_frontend_vitest() {
@@ -439,6 +484,7 @@ Commands:
   full                    Run fast tests + full E2E suite
   run-backend-unit        Internal: run backend unit/integration tests
   run-backend-coverage    Internal: run backend unit/integration tests with coverage
+  run-backend-db          Internal: run the database-backed backend specs (rows, not text)
   run-frontend-unit       Internal: run frontend unit/integration tests
   run-frontend-coverage   Internal: run frontend unit/integration tests with coverage
   run-e2e-smoke           Internal: run smoke E2E tests
@@ -472,6 +518,10 @@ case "${1:-help}" in
   run-backend-coverage)
     require_output_path "${2:-}"
     run_backend_vitest "$2" "--coverage"
+    ;;
+  run-backend-db)
+    require_output_path "${2:-}"
+    run_backend_db_vitest "$2"
     ;;
   run-frontend-unit)
     require_output_path "${2:-}"
