@@ -158,10 +158,14 @@ jobs:
           # cost turns to read. Project conventions (CLAUDE.md, etc.) are
           # auto-loaded into Claude Code's system context by the action.
           #
-          # Output rules below are mandatory: per docs/capabilities-and-
-          # limitations.md, Claude can only update ONE top-level comment.
-          # The only way to surface multiple findings is via the inline-
-          # comment MCP tool — so direct, line-level findings MUST go inline.
+          # Output rules below are mandatory, and they decide the channel: a
+          # Critical or Major finding this PR introduced, on a line it changed,
+          # goes inline through the MCP tool, where it is a thread the author
+          # must resolve; everything else — Minor, Note, `[pre-existing]` of
+          # any severity — is a line in the one summary comment `gh pr comment`
+          # posts, which blocks nothing (#796). Per docs/capabilities-and-
+          # limitations.md the action itself updates only its tracking
+          # comment; the summary is a second comment, posted by the CLI.
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -171,6 +175,15 @@ jobs:
             (already in your context). The structure below mirrors
             anthropics/claude-code-security-review's prompt design — phased
             methodology, generic categories, confidence-based publish bar.
+
+            TRIGGER says how this review was asked for. `pull_request opened`
+            or `pull_request ready_for_review` is the first review of this
+            PR. `issue_comment` (someone commented `/review`) or
+            `pull_request synchronize` (a PR subscribed to push-triggered
+            reviews) is a re-review, and the OUTPUT RULES say what changes
+            then. Whichever it is, the review covers the whole diff against
+            main, not the last push: a push alone never starts a review
+            here, so what you see may be several waves of work.
 
             ## CRITICAL INSTRUCTIONS
 
@@ -194,9 +207,16 @@ jobs:
                handled elsewhere — Zod `validate()` at the route layer,
                `requireAuth` middleware, generic error handler — DON'T flag.
                False positives waste reviewer attention.
-            4. **Pre-existing ≠ skip.** Latent bugs in moved/refactored code
-               STILL get flagged with a `[pre-existing]` prefix. Refactoring
-               is the natural moment to surface latent issues.
+            4. **Pre-existing ≠ skip, and pre-existing ≠ inline.** Latent
+               bugs in moved/refactored code STILL get reported, with a
+               `[pre-existing]` prefix — refactoring is the natural moment
+               to surface latent issues — but in the summary comment,
+               never as an inline thread, whatever their severity. An
+               inline thread is a blocking ask of this branch (branch
+               protection on main requires every thread resolved), and a
+               defect the branch did not introduce is not the branch's
+               ask. Naming it in the summary lets the author fix it here,
+               file it, or leave it, without a round.
             5. **Calibrate severity.** Critical / Major / Minor / Note based
                on blast radius, exploitability, recoverability — NOT on
                visual prominence.
@@ -290,9 +310,11 @@ jobs:
               - `db/init/*.sql` ⇄ Drizzle schema ⇄ the domain model
                 described in CLAUDE.md
 
-            An inline comment must land on a line that exists in the diff,
-            so anchor a ripple finding on the line the PR *changed* and
-            name the other `file:line` that now disagrees.
+            A Major or Critical ripple finding is anchored on the line the
+            PR *changed* (an inline comment must land on a line that exists
+            in the diff) and names the other `file:line` that now
+            disagrees. A lesser one is a summary line and names the other
+            file directly — it needs no anchor.
 
             **Phase 5 — Verify.** For each candidate finding, run the
             CRITICAL INSTRUCTION #3 check (upstream/downstream) before
@@ -320,6 +342,13 @@ jobs:
               while another file still states the old version (Phase 4).
               Docs count: a stale rule in CLAUDE.md is as real a defect as
               a stale constant in code, because both are read as truth.
+              A stale count, tally, line pointer or history sentence in
+              prose or a comment is a Note, and the fix it names is to
+              drop the volatile claim — state the class, name the symbols
+              (#579) — not to refresh the number, which will be stale
+              again after the next change. It goes inline only when the
+              stale sentence states a rule that is now false and the blast
+              radius makes it Major.
             - **Convention adherence** — code reuse (shared components/utils),
               file-size limits, dev-guide patterns, commit hygiene
 
@@ -333,30 +362,80 @@ jobs:
 
             ## OUTPUT RULES (mandatory)
 
-            For EVERY specific line-level finding, you MUST post an inline comment
-            via `mcp__github_inline_comment__create_inline_comment` with:
-              - the exact `path` and `line` of the issue
-              - one or two sentences naming the issue and suggesting a fix
+            Two channels, and a finding's severity and provenance decide
+            which one it goes to.
 
-            Reserve the top-level comment (`gh pr comment`) for the OVERALL summary only:
-              - 1–2 sentence verdict (e.g. "Clean. No issues." / "3 inline findings flagged.")
-              - Optional: 1-line per category mentioning how many issues / where
-              - DO NOT repeat the inline issues in the top-level — that defeats the inline mechanism
+            **Inline thread** — `mcp__github_inline_comment__create_inline_comment`
+            with the exact `path` and `line` of the issue and one or two
+            sentences naming the issue and the fix. ONLY for a finding that
+            is **Critical or Major**, **introduced by this PR** (no
+            `[pre-existing]`), and anchored on a **line the diff changed**.
+            Every thread costs the author a round — branch protection on
+            main requires it resolved before the merge — so open one only
+            for what must change before this branch merges.
 
-            If you find NO line-level issues, post just the top-level summary.
+            **Summary comment** — ONE top-level comment via `gh pr comment`,
+            posted after the inline threads:
+              1. A 1–2 sentence verdict with a tally, e.g. "2 blocking
+                 findings inline; 3 notes below." or "Clean."
+              2. The head SHA you recorded at step 1 of the Workflow, on
+                 its own line: `Reviewed <sha>` — that SHA, not a fresh
+                 read, so a push that lands mid-review is never named as
+                 reviewed. The next re-review reads it.
+              3. **Notes** — every Minor and Note finding, and every
+                 `[pre-existing]` finding of any severity, one line each:
+                 - **Minor** `path:line` — the issue; the fix
+                 Ordered Critical first. These are information for the
+                 author, not asks: nothing here blocks the merge.
+              4. Never repeat the inline findings in the summary — that
+                 defeats the inline channel.
+            No findings at all → the verdict and the SHA alone.
+
+            **Re-review convergence.** A re-review is any run on a PR that
+            already carries a claude[bot] summary. Threads follow the rule
+            above, with one more condition: a finding that already has a
+            claude[bot] thread, open or resolved, is never threaded again —
+            it is judged in that thread. Notes only on lines changed since
+            the SHA the last summary names
+            (`gh api repos/<REPO>/compare/<sha>...<head>`, or the diff of
+            that range in the checkout); an earlier note that still stands
+            is not repeated — the earlier summary holds it. Existing
+            UNRESOLVED claude[bot] inline threads are resolved (GraphQL
+            `resolveReviewThread`; own threads only — never CodeQL's,
+            CodeRabbit's or a human's) in two cases: the concern is gone
+            from the diff, or the author's reply gives a reason you accept
+            — a reasoned decline closes a thread the way a fix does. A
+            thread whose concern still stands and whose reply does not
+            persuade stays open, with your answer to the reply in it. The
+            verdict says how many were resolved, e.g. "Resolved 3 prior
+            findings; no new blocking issues."
 
             Workflow:
-            1. Get the diff: `gh pr diff <PR NUMBER>` (by number: on a
-               `/review` run the checkout began on main)
+            1. Record the head you are reviewing before you read anything:
+               `gh pr view <PR NUMBER> --json headRefOid`. That SHA is what
+               the summary's `Reviewed <sha>` names. Then get the diff:
+               `gh pr diff <PR NUMBER>` (by number: on a `/review` run the
+               checkout began on main)
             2. Run the Phase 4 repo search for every claim the diff changes
-            3. For each specific line-level concern → inline comment
-            4. Once all inline comments are posted → ONE top-level summary via `gh pr comment`
-            5. **Re-run only**: if there are existing UNRESOLVED claude[bot] inline review threads on this PR (use `gh api graphql` with the `reviewThreads` query), check whether the diff at the thread's path/line still contains the issue you previously flagged. For each thread whose concern is now addressed, resolve it via the GraphQL `resolveReviewThread` mutation. Skip threads where the original concern still applies — leave those open. Skip threads from other authors (CodeQL, CodeRabbit, humans) — only resolve your own.
+            3. For each Critical or Major finding this PR introduced, on a
+               line the diff changed → inline thread
+            4. Once all inline threads are posted → ONE summary via
+               `gh pr comment`: verdict, `Reviewed <sha>`, the notes
+            5. On a re-review (TRIGGER is `issue_comment` or
+               `pull_request synchronize`, or the PR already carries a
+               claude[bot] summary): read the last summary's SHA (the
+               newest claude[bot] comment with a `Reviewed` line in
+               `gh api repos/<REPO>/issues/<PR NUMBER>/comments`), confine
+               the notes to what changed since it, open no second thread
+               on a finding that already has one, resolve your own threads
+               that are addressed or reasonably declined (`gh api graphql`
+               with the `reviewThreads` query and each thread's replies,
+               then `resolveReviewThread`), and count them in the verdict
+               — the convergence rule above
 
             Other rules:
             - Only post GitHub comments — don't submit review text as chat messages.
             - Be terse. Actionable findings only, no narration of what the PR does.
-            - On a clean re-review (everything resolved + no new findings), the top-level summary should explicitly mention how many threads you resolved (e.g. "Resolved 3 prior findings; no new issues.").
 
           # Grep/Glob/Read come from the action's own base tool set; the
           # grep/rg shell entries mirror claude-qa.yml + claude-dependabot.yml
