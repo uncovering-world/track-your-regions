@@ -72,10 +72,14 @@ reasoning. Before every commit: `npm run check` (the fast gates the
 change asks for; `npm run check:all` forces every one),
 `npm run gates -- run test` (the unit lanes it asks for;
 `TEST_REPORT_LOCAL=1` keeps them on the host), and `/security-check`.
-Before pushing: `npm run security:all` (the fast gates plus the slow
-Semgrep and Trivy scans the change asks for) and, when `npm run gates`
-lists them, `npm run test:e2e:smoke` and `npm run perf:local`. A gate
-the map skips was not run and did not need to be; a gate the host
+Before the pull request opens, and again on the head the maintainer is
+asked to merge when a review wave since then touched their inputs:
+`npm run security:all` (the fast gates plus the slow Semgrep and Trivy
+scans the change asks for) and, when `npm run gates` lists them,
+`npm run test:e2e:smoke` and `npm run perf:local` — a review-wave push
+owes the per-commit tier alone, and CI answers for the slow lanes on the
+pushed head (`.claude/commands/commit.md` § 8 holds the rule, #920). A
+gate the map skips was not run and did not need to be; a gate the host
 cannot run (the Python tooling guard) is a failure to report, not a
 skip. CI reads the same map per job, so a skipped job is a job whose
 inputs the pull request does not touch.
