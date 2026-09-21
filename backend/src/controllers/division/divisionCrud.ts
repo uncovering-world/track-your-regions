@@ -3,39 +3,47 @@
  */
 
 import { Request, Response } from 'express';
-import { eq, isNull } from 'drizzle-orm';
-import { db, pool } from '../../db/index.js';
-import { administrativeDivisions } from '../../db/schema.js';
+// ADR-0064: raw parameterized SQL on the pool, typed by the generated rows.
+import { pool } from '../../db/index.js';
+import type { AdministrativeDivisionsRow } from '../../db/schema.generated.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import type { AdministrativeDivision } from './types.js';
-import { FOCUS_JSON_COLUMNS, focusColumns } from './focusColumns.js';
+import { FOCUS_JSON_COLUMNS } from './focusColumns.js';
 
-const divisionColumns = {
-  id: administrativeDivisions.id,
-  name: administrativeDivisions.name,
-  parentId: administrativeDivisions.parentId,
-  hasChildren: administrativeDivisions.hasChildren,
-  ...focusColumns,
+/**
+ * The row every division read answers with: the four scalars and the stored
+ * focus, aliased the way `FOCUS_JSON_COLUMNS` names it.
+ */
+type DivisionRow = Pick<AdministrativeDivisionsRow, 'id' | 'name' | 'parent_id' | 'has_children'> & {
+  focus_bbox_json: [number, number, number, number] | null;
+  anchor_point_json: [number, number] | null;
 };
+
+/** One select list for every read here, so no producer can drop the focus. */
+const DIVISION_COLUMNS = `id, parent_id, name, has_children, ${FOCUS_JSON_COLUMNS}`;
+
+function toDivision(d: DivisionRow): AdministrativeDivision {
+  return {
+    id: d.id,
+    name: d.name,
+    parentId: d.parent_id,
+    hasChildren: d.has_children,
+    focusBbox: d.focus_bbox_json,
+    anchorPoint: d.anchor_point_json,
+  };
+}
 
 /**
  * Get root divisions (no parent)
  */
 export async function getRootDivisions(_req: Request, res: Response): Promise<void> {
-  const result = await db.select(divisionColumns)
-    .from(administrativeDivisions)
-    .where(isNull(administrativeDivisions.parentId));
+  const result = await pool.query<DivisionRow>(
+    `SELECT ${DIVISION_COLUMNS}
+     FROM administrative_divisions
+     WHERE parent_id IS NULL`,
+  );
 
-  const divisionList: AdministrativeDivision[] = result.map(d => ({
-    id: d.id,
-    name: d.name,
-    parentId: d.parentId,
-    hasChildren: d.hasChildren,
-    focusBbox: d.focusBbox,
-    anchorPoint: d.anchorPoint,
-  }));
-
-  res.json(divisionList);
+  res.json(result.rows.map(toDivision));
 }
 
 /**
@@ -44,24 +52,19 @@ export async function getRootDivisions(_req: Request, res: Response): Promise<vo
 export async function getDivisionById(req: Request, res: Response): Promise<void> {
   const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
 
-  const result = await db.select(divisionColumns)
-    .from(administrativeDivisions)
-    .where(eq(administrativeDivisions.id, divisionId))
-    .limit(1);
+  const result = await pool.query<DivisionRow>(
+    `SELECT ${DIVISION_COLUMNS}
+     FROM administrative_divisions
+     WHERE id = $1
+     LIMIT 1`,
+    [divisionId],
+  );
 
-  if (result.length === 0) {
+  if (result.rows.length === 0) {
     throw notFound(`Division ${divisionId} not found`);
   }
 
-  const d = result[0];
-  res.json({
-    id: d.id,
-    name: d.name,
-    parentId: d.parentId,
-    hasChildren: d.hasChildren,
-    focusBbox: d.focusBbox,
-    anchorPoint: d.anchorPoint,
-  });
+  res.json(toDivision(result.rows[0]));
 }
 
 /**
@@ -74,12 +77,12 @@ export async function getSubdivisions(req: Request, res: Response): Promise<void
   const offset = parseInt(String(req.query.offset ?? '0'));
 
   // Check if division exists
-  const exists = await db.select({ id: administrativeDivisions.id })
-    .from(administrativeDivisions)
-    .where(eq(administrativeDivisions.id, divisionId))
-    .limit(1);
+  const exists = await pool.query<Pick<AdministrativeDivisionsRow, 'id'>>(
+    'SELECT id FROM administrative_divisions WHERE id = $1 LIMIT 1',
+    [divisionId],
+  );
 
-  if (exists.length === 0) {
+  if (exists.rows.length === 0) {
     throw notFound(`Division ${divisionId} not found`);
   }
 
@@ -96,14 +99,14 @@ export async function getSubdivisions(req: Request, res: Response): Promise<void
         FROM administrative_divisions d
         INNER JOIN subdivisions s ON d.parent_id = s.id
       )
-      SELECT id, parent_id, name, has_children, ${FOCUS_JSON_COLUMNS}
+      SELECT ${DIVISION_COLUMNS}
       FROM subdivisions
       ORDER BY depth, name
       LIMIT $2 OFFSET $3
     `;
   } else {
     query = `
-      SELECT id, parent_id, name, has_children, ${FOCUS_JSON_COLUMNS}
+      SELECT ${DIVISION_COLUMNS}
       FROM administrative_divisions
       WHERE parent_id = $1
       ORDER BY name
@@ -111,18 +114,9 @@ export async function getSubdivisions(req: Request, res: Response): Promise<void
     `;
   }
 
-  const result = await pool.query(query, [divisionId, limit, offset]);
+  const result = await pool.query<DivisionRow>(query, [divisionId, limit, offset]);
 
-  const divisionList: AdministrativeDivision[] = result.rows.map(d => ({
-    id: d.id,
-    name: d.name,
-    parentId: d.parent_id,
-    hasChildren: d.has_children,
-    focusBbox: d.focus_bbox_json,
-    anchorPoint: d.anchor_point_json,
-  }));
-
-  res.json(divisionList);
+  res.json(result.rows.map(toDivision));
 }
 
 /**
@@ -141,27 +135,18 @@ export async function getAncestors(req: Request, res: Response): Promise<void> {
       FROM administrative_divisions d
       INNER JOIN ancestors a ON d.id = a.parent_id
     )
-    SELECT id, parent_id, name, has_children, ${FOCUS_JSON_COLUMNS}
+    SELECT ${DIVISION_COLUMNS}
     FROM ancestors
     ORDER BY depth DESC
   `;
 
-  const result = await pool.query(query, [divisionId]);
+  const result = await pool.query<DivisionRow>(query, [divisionId]);
 
   if (result.rows.length === 0) {
     throw notFound(`Division ${divisionId} not found`);
   }
 
-  const divisionList: AdministrativeDivision[] = result.rows.map(d => ({
-    id: d.id,
-    name: d.name,
-    parentId: d.parent_id,
-    hasChildren: d.has_children,
-    focusBbox: d.focus_bbox_json,
-    anchorPoint: d.anchor_point_json,
-  }));
-
-  res.json(divisionList);
+  res.json(result.rows.map(toDivision));
 }
 
 /**
@@ -170,31 +155,30 @@ export async function getAncestors(req: Request, res: Response): Promise<void> {
 export async function getSiblings(req: Request, res: Response): Promise<void> {
   const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
 
-  const divisionResult = await db.select({ parentId: administrativeDivisions.parentId })
-    .from(administrativeDivisions)
-    .where(eq(administrativeDivisions.id, divisionId))
-    .limit(1);
+  const divisionResult = await pool.query<Pick<AdministrativeDivisionsRow, 'parent_id'>>(
+    'SELECT parent_id FROM administrative_divisions WHERE id = $1 LIMIT 1',
+    [divisionId],
+  );
 
-  if (divisionResult.length === 0) {
+  if (divisionResult.rows.length === 0) {
     throw notFound(`Division ${divisionId} not found`);
   }
 
-  const parentId = divisionResult[0].parentId;
+  const parentId = divisionResult.rows[0].parent_id;
 
-  const result = await db.select(divisionColumns)
-    .from(administrativeDivisions)
-    .where(parentId === null
-      ? isNull(administrativeDivisions.parentId)
-      : eq(administrativeDivisions.parentId, parentId));
+  // A root's siblings are the other roots, and NULL is never `= $1`.
+  const result = parentId === null
+    ? await pool.query<DivisionRow>(
+      `SELECT ${DIVISION_COLUMNS}
+       FROM administrative_divisions
+       WHERE parent_id IS NULL`,
+    )
+    : await pool.query<DivisionRow>(
+      `SELECT ${DIVISION_COLUMNS}
+       FROM administrative_divisions
+       WHERE parent_id = $1`,
+      [parentId],
+    );
 
-  const divisionList: AdministrativeDivision[] = result.map(d => ({
-    id: d.id,
-    name: d.name,
-    parentId: d.parentId,
-    hasChildren: d.hasChildren,
-    focusBbox: d.focusBbox,
-    anchorPoint: d.anchorPoint,
-  }));
-
-  res.json(divisionList);
+  res.json(result.rows.map(toDivision));
 }

@@ -29,7 +29,6 @@ vi.mock('../../../db/index.js', () => {
     // so a scripted run and the pointer assertions read one stream.
     pool: { query, connect: vi.fn(async () => ({ query, release: vi.fn() })) },
     rollbackQuietly: vi.fn(),
-    db: {},
   };
 });
 

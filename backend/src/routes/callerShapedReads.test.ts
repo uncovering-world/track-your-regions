@@ -3,7 +3,6 @@ import { Router } from 'express';
 
 vi.mock('../db/index.js', () => ({
   pool: { query: vi.fn(), connect: vi.fn() },
-  db: {},
   rollbackQuietly: vi.fn(),
 }));
 

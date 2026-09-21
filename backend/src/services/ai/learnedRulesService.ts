@@ -9,10 +9,9 @@
  * the admin sees the full rule set in one unified view.
  */
 
-// ADR-0004: Drizzle ORM over raw SQL for non-PostGIS queries.
-import { eq, asc, inArray } from 'drizzle-orm';
-import { db } from '../../db/index.js';
-import { aiLearnedRules } from '../../db/schema.js';
+// ADR-0064: raw parameterized SQL on the pool, typed by the generated rows.
+import { pool } from '../../db/index.js';
+import type { AiLearnedRulesRow } from '../../db/schema.generated.js';
 
 export interface LearnedRule {
   id: number;
@@ -44,55 +43,61 @@ export const PREDEFINED_RULES: PredefinedRule[] = [
   { code: 'interview.coverage', feature: 'extraction_interview', ruleText: 'If <50% of subregions have pages, recommend not splitting.' },
 ];
 
+/** The whole row, in the order `toLearnedRule` reads it. */
+const RULE_COLUMNS = 'id, feature, rule_text, context, created_at';
+
 /**
- * Drizzle returns `created_at` as `Date | null`. The public LearnedRule shape
+ * `pg` returns `created_at` as `Date | null`. The public LearnedRule shape
  * uses `string` (ISO) so JSON-serializing the response keeps a stable format.
  */
-function toLearnedRule(row: typeof aiLearnedRules.$inferSelect): LearnedRule {
+function toLearnedRule(row: AiLearnedRulesRow): LearnedRule {
   return {
     id: row.id,
     feature: row.feature,
-    ruleText: row.ruleText,
+    ruleText: row.rule_text,
     context: row.context,
-    createdAt: (row.createdAt ?? new Date()).toISOString(),
+    createdAt: (row.created_at ?? new Date()).toISOString(),
   };
 }
 
 /** Get all rules for a given feature (e.g., 'extraction'). */
 export async function getRules(feature: string): Promise<LearnedRule[]> {
-  const rows = await db
-    .select()
-    .from(aiLearnedRules)
-    .where(eq(aiLearnedRules.feature, feature))
-    .orderBy(asc(aiLearnedRules.createdAt));
+  const { rows } = await pool.query<AiLearnedRulesRow>(
+    `SELECT ${RULE_COLUMNS} FROM ai_learned_rules
+     WHERE feature = $1
+     ORDER BY created_at ASC`,
+    [feature],
+  );
   return rows.map(toLearnedRule);
 }
 
 /** Get all rules across all features. */
 export async function getAllRules(): Promise<LearnedRule[]> {
-  const rows = await db
-    .select()
-    .from(aiLearnedRules)
-    .orderBy(asc(aiLearnedRules.feature), asc(aiLearnedRules.createdAt));
+  const { rows } = await pool.query<AiLearnedRulesRow>(
+    `SELECT ${RULE_COLUMNS} FROM ai_learned_rules
+     ORDER BY feature ASC, created_at ASC`,
+  );
   return rows.map(toLearnedRule);
 }
 
 /** Add a new learned rule. Returns the new rule. */
 export async function addRule(feature: string, ruleText: string, context?: string): Promise<LearnedRule> {
-  const [row] = await db
-    .insert(aiLearnedRules)
-    .values({ feature, ruleText, context: context ?? null })
-    .returning();
+  const { rows: [row] } = await pool.query<AiLearnedRulesRow>(
+    `INSERT INTO ai_learned_rules (feature, rule_text, context)
+     VALUES ($1, $2, $3)
+     RETURNING ${RULE_COLUMNS}`,
+    [feature, ruleText, context ?? null],
+  );
   return toLearnedRule(row);
 }
 
 /** Delete a learned rule by ID. Returns true if a row was removed. */
 export async function deleteRule(id: number): Promise<boolean> {
-  const deleted = await db
-    .delete(aiLearnedRules)
-    .where(eq(aiLearnedRules.id, id))
-    .returning({ id: aiLearnedRules.id });
-  return deleted.length > 0;
+  const { rows } = await pool.query<Pick<AiLearnedRulesRow, 'id'>>(
+    'DELETE FROM ai_learned_rules WHERE id = $1 RETURNING id',
+    [id],
+  );
+  return rows.length > 0;
 }
 
 /**
@@ -119,20 +124,19 @@ When multiple rules apply, later rules (higher numbers) take precedence over ear
 
 /** Bulk-replace a rule's text by ID. Returns true if a row was updated. */
 export async function updateRuleText(id: number, ruleText: string): Promise<boolean> {
-  const updated = await db
-    .update(aiLearnedRules)
-    .set({ ruleText })
-    .where(eq(aiLearnedRules.id, id))
-    .returning({ id: aiLearnedRules.id });
-  return updated.length > 0;
+  const { rows } = await pool.query<Pick<AiLearnedRulesRow, 'id'>>(
+    'UPDATE ai_learned_rules SET rule_text = $2 WHERE id = $1 RETURNING id',
+    [id, ruleText],
+  );
+  return rows.length > 0;
 }
 
 /** Bulk-delete multiple rules by IDs. Returns number of rows deleted. */
 export async function deleteRules(ids: number[]): Promise<number> {
   if (ids.length === 0) return 0;
-  const deleted = await db
-    .delete(aiLearnedRules)
-    .where(inArray(aiLearnedRules.id, ids))
-    .returning({ id: aiLearnedRules.id });
-  return deleted.length;
+  const { rows } = await pool.query<Pick<AiLearnedRulesRow, 'id'>>(
+    'DELETE FROM ai_learned_rules WHERE id = ANY($1::int[]) RETURNING id',
+    [ids],
+  );
+  return rows.length;
 }
