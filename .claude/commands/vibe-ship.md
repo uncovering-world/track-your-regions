@@ -77,6 +77,7 @@ npm run knip
 npm run security:all
 TEST_REPORT_LOCAL=1 npm run gates -- run test
 npm run test:e2e:smoke   # when npm run gates lists it
+npm run test:db          # when npm run gates lists it
 npm run perf:local       # when npm run gates lists it
 ```
 

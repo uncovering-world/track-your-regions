@@ -73,7 +73,7 @@ If you find suspicious files, **skip them** and mention it in the summary.
 
 Run these **before** creating any commit, so a failure aborts the workflow before history is touched.
 
-**A gate runs when, and only when, the inputs it checks have changed.** `scripts/gates.mjs` is the map from each gate to its inputs; `npm run gates` prints which gates the current change asks for and why the rest are skipped; `docs/tech/gates.md` has the map and the reasoning. Before every commit: `npm run check` (the fast gates the change asks for; `npm run check:all` forces every one), `npm run gates -- run test` (the unit lanes it asks for; `TEST_REPORT_LOCAL=1` keeps them on the host), and `/security-check`. Before the pull request opens, and again on the head the maintainer is asked to merge when a review wave since then touched their inputs: `npm run security:all` (the fast gates plus the slow Semgrep and Trivy scans the change asks for) and, when `npm run gates` lists them, `npm run test:e2e:smoke` and `npm run perf:local` — a review-wave push owes the per-commit tier alone, and CI answers for the slow lanes on the pushed head (§ 8 holds the rule, #920). A gate the map skips was not run and did not need to be; a gate the host cannot run (the Python tooling guard) is a failure to report, not a skip. CI reads the same map per job, so a skipped job is a job whose inputs the pull request does not touch.
+**A gate runs when, and only when, the inputs it checks have changed.** `scripts/gates.mjs` is the map from each gate to its inputs; `npm run gates` prints which gates the current change asks for and why the rest are skipped; `docs/tech/gates.md` has the map and the reasoning. Before every commit: `npm run check` (the fast gates the change asks for; `npm run check:all` forces every one), `npm run gates -- run test` (the unit lanes it asks for; `TEST_REPORT_LOCAL=1` keeps them on the host), and `/security-check`. Before the pull request opens, and again on the head the maintainer is asked to merge when a review wave since then touched their inputs: `npm run security:all` (the fast gates plus the slow Semgrep and Trivy scans the change asks for) and, when `npm run gates` lists them, `npm run test:e2e:smoke`, `npm run test:db` and `npm run perf:local` — a review-wave push owes the per-commit tier alone, and CI answers for the slow lanes on the pushed head (§ 8 holds the rule, #920). A gate the map skips was not run and did not need to be; a gate the host cannot run (the Python tooling guard) is a failure to report, not a skip. CI reads the same map per job, so a skipped job is a job whose inputs the pull request does not touch.
 
 **a. The fast gates:**
 
@@ -181,7 +181,8 @@ If anything's off and the commit hasn't been pushed yet, undo with `git reset --
 
 The slow tier — `npm run security:all` (the fast gates plus the slow
 Semgrep and Trivy scans the change asks for) and, when `npm run gates`
-lists them, `npm run test:e2e:smoke` and `npm run perf:local` — is owed
+lists them, `npm run test:e2e:smoke`, `npm run test:db` and
+`npm run perf:local` — is owed
 twice per pull request, not before every push (#920): before the push the
 pull request opens on, so the first review round does not read a broken
 smoke lane; and again on the head the maintainer is asked to merge, then
@@ -216,8 +217,10 @@ This paragraph is the one statement of that rule; `CLAUDE.md`,
 guide's § Verification Workflow carry it in one sentence and point here.
 
 The smoke lane stands up the isolated test stack and seeds its fixture
-automatically before running the Playwright smoke specs; `perf:local`
-measures the production build on the dev stack's own data.
+automatically before running the Playwright smoke specs; `test:db` runs
+the database-backed backend specs — rows a statement selects, not its
+text — inside that same stack; `perf:local` measures the production
+build on the dev stack's own data.
 `npm run gates -- run stack` prints those lanes with run/skip marks and
 runs none of them — they assume Docker and minutes of runtime, which is
 why they are here and not among step 4's per-commit gates.
