@@ -21,6 +21,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # The rules both sides apply live outside either package's context
+      # (packages/shared, ADR-0065). A named context hands the directory to
+      # the build — its own .dockerignore applies — without widening the
+      # context to the whole checkout; the Dockerfile copies it to
+      # /packages/shared, where the package's file: link resolves from /app.
+      additional_contexts:
+        shared: ./packages/shared
     container_name: ${STACK_NAME:-tyr-ng}-backend
     environment:
       DB_HOST: db
@@ -63,11 +70,17 @@ services:
       - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
     volumes:
       - ./backend/src:/app/src:ro,z
+      # The shared rules package is baked into the image (see the build
+      # context above); its source is mounted over that copy so an edit on the
+      # host reaches tsx watch and the unit lane, the way ./backend/src does.
+      - ./packages/shared/src:/packages/shared/src:ro,z
       # The backend's vitest run is also the runner for the repository's own
-      # tooling specs (`../scripts/**/*.test.mjs`, #923). Inside the container
-      # that glob resolves to /scripts, and without this mount it would match
-      # nothing and the container lane would pass having run none of them —
-      # a lane that quietly does not run, which is what #432 was.
+      # tooling specs (`../scripts/**/*.test.mjs`, #923) and for the shared
+      # package's (`../packages/shared/src/**/*.test.ts`, ADR-0065). Inside the
+      # container those globs resolve to /scripts and /packages/shared/src, and
+      # without the mounts they would match nothing and the container lane
+      # would pass having run none of them — a lane that quietly does not run,
+      # which is what #432 was.
       - ./scripts:/scripts:ro,z
       #
       # The three below are the same shape, louder: a dozen backend specs hold a
@@ -104,6 +117,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      # The same named context as the backend's: the frontend links the same
+      # package (ADR-0065).
+      additional_contexts:
+        shared: ./packages/shared
     container_name: ${STACK_NAME:-tyr-ng}-frontend
     environment:
       # Defaults target the host-mapped ports, for a browser running on the
@@ -136,6 +153,9 @@ services:
     volumes:
       - ./frontend/src:/app/src:ro,z
       - ./frontend/index.html:/app/index.html:ro,z
+      # The shared rules package's source over the copy baked into the image,
+      # so an edit reaches Vite's watcher the way ./frontend/src does.
+      - ./packages/shared/src:/packages/shared/src:ro,z
     depends_on:
       - backend
 

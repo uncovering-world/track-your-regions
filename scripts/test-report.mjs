@@ -46,7 +46,7 @@ const STEP_TEMPLATES = {
   'backend-unit': {
     id: 'backend-unit',
     label: 'Backend Unit/Integration',
-    scope: 'backend/src/**/*.test.ts + scripts/**/*.test.mjs',
+    scope: 'backend/src/**/*.test.ts + scripts/**/*.test.mjs + packages/shared/src/**/*.test.ts',
     kind: 'vitest',
     packageDir: 'backend',
     coverage: false,
@@ -54,7 +54,7 @@ const STEP_TEMPLATES = {
   'backend-coverage': {
     id: 'backend-coverage',
     label: 'Backend Coverage',
-    scope: 'backend/src/**/*.test.ts + scripts/**/*.test.mjs + coverage',
+    scope: 'backend/src/**/*.test.ts + scripts/**/*.test.mjs + packages/shared/src/**/*.test.ts + coverage',
     kind: 'vitest',
     packageDir: 'backend',
     coverage: true,
@@ -507,6 +507,14 @@ function relativeToRoot(targetPath) {
 function normalizeSuitePath(rawPath) {
   const normalized = toPosix(rawPath);
   if (!normalized.startsWith('/app/')) {
+    // A spec the container lane reads from the repository mounts beside /app
+    // — /scripts, /packages/shared/src (docker-compose.yml) — sits at the
+    // container root under its own repository path, so the path minus the
+    // leading slash is the checkout's path when the checkout has it.
+    const mounted = normalized.slice(1);
+    if (normalized.startsWith('/') && fs.existsSync(path.join(ROOT_DIR, mounted))) {
+      return mounted;
+    }
     return relativeToRoot(rawPath);
   }
 

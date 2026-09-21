@@ -2,6 +2,13 @@ FROM mcr.microsoft.com/playwright:v1.58.2-jammy
 
 WORKDIR /app
 
+# The linked rules package (packages/shared, ADR-0065), from the named context
+# docker-compose.test.yml hands in: `npm ci` refuses a file: dependency whose
+# target is not there, and /app/../packages/shared is where the manifest looks.
+# `shared` is a named build context (docker-compose.yml additional_contexts),
+# which hadolint reads only as a missing FROM alias.
+# hadolint ignore=DL3022
+COPY --from=shared . /packages/shared
 COPY package*.json ./
 RUN npm ci
 

@@ -274,7 +274,7 @@ require_backend_repo_mounts() {
   # shellcheck disable=SC2016
   missing="$(compose exec -T backend sh -lc \
     'for p in /db/init/01-schema.sql /frontend/src /martin/config.yaml /scripts \
-              /docs/tech/gates.md /.github/workflows/ci.yml; do
+              /packages/shared/src /docs/tech/gates.md /.github/workflows/ci.yml; do
        [ -e "$p" ] || echo "  $p"
      done')"
   if [ -n "$missing" ]; then
