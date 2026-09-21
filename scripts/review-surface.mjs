@@ -20,7 +20,7 @@
 import { execFileSync } from 'node:child_process';
 
 /** Output nothing asked a reviewer to write, so nothing asks one to read it. */
-const GENERATED = [/(^|\/)package-lock\.json$/, /\.snap$/, /(^|\/)[^/]*\.lock$/];
+const GENERATED = [/(^|\/)package-lock\.json$/, /\.snap$/, /(^|\/)[^/]*\.lock$/, /\.generated\.[jt]s$/];
 const MIGRATION = [/^db\/migrations\//];
 const DOCS = [/^docs\//, /\.md$/];
 
