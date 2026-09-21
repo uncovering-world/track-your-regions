@@ -523,7 +523,8 @@ jobs:
           # recorded seven refused `gh api repos/…` reads next to an allowed
           # `gh api graphql`. graphql already permits mutations
           # (resolveReviewThread), so the wider entry adds no write the
-          # narrower withheld. claude-qa.yml carries the old pair (#963).
+          # narrower withheld. claude-qa.yml carries the same single entry
+          # for the same reason.
           # `gh issue list` is what lets a `[pre-existing]` note name the open
           # issue that already covers it, so the author links rather than
           # files twice (#924); it reads, and the summary is still the one
