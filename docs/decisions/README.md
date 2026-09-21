@@ -82,6 +82,7 @@ and accepted by it.
 | [0060](0060-the-site-pool-has-a-second-entrance-the-map.md) | The site pool has a second entrance, what the map calls a dig, and one rule judges both | Accepted | 2026-09-15 |
 | [0061](0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md) | The catalogue's world map is a read of the API, not a tile source | Accepted | 2026-09-16 |
 | [0062](0062-a-gate-runs-only-when-its-inputs-changed.md) | A gate runs when, and only when, the inputs it checks have changed | Accepted | 2026-09-20 |
+| [0063](0063-sql-whose-correctness-is-a-row-set-is-tested-on-postgres.md) | SQL whose correctness is a row set is tested on PostgreSQL | Accepted | 2026-09-21 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

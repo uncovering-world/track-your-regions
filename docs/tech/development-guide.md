@@ -462,6 +462,16 @@ Such a spec locates the file through `backend/src/testSupport/repoFile.ts` — `
 
 A spec must also own any environment variable it asserts on. The container lane sets some of its own (`docker-compose.test.yml` raises the read ceilings for the smoke suite), so "the environment says nothing" has to be arranged by the spec, not assumed.
 
+### Tests that need a database
+
+The backend suite mocks the `pg` pool, so a test asserts the **text** of the SQL a function sends. That is the right tool for most of this codebase: it pins predicates, guard clauses and parameter binding cheaply, and its assertions catch real defects when each one is anchored to the clause it is about (a regex slice of the CTE) rather than to the whole statement. It cannot see *which row a statement selects*. A statement needs the database lane when **the assertion is about which rows the statement selects, not about what it says** — a CTE over a table holding rows the reader cannot see, a `row_number()` join, a partial unique index, a lock, a transaction boundary. Everything else stays in the mocked suite; the lane is for the row set, not for coverage (ADR-0063).
+
+The case that made the lane: the deferred-withdrawal pairing in `backend/src/services/sync/locationWriter.ts` had twelve text-level tests, all fifteen mutations of it were killed, and it still picked the wrong old row whenever two moves landed without a curator publishing in between — a one-point site showing the same place with two pins. Four statements on a real database saw it; no amount of text assertion could have (#522). `locationWriter.chain.db.test.ts` is that scenario as a test.
+
+**Writing one.** The file is `*.db.test.ts`, beside the code it asks about; `backend/vitest.db.config.ts` runs those files and the unit config excludes them. It imports the real `pool` from `db/index.ts` — nothing is mocked — and ends it in `afterAll(() => pool.end())`. The fixture is the spec's own and destructive to its own rows only: ids pinned above the e2e fixture's 9001–9005 range, deleted before and after the run (the cascades take the dependants), seeded sources looked up by name rather than id, and never a `TRUNCATE` — the smoke fixture shares the database and has to be standing when the specs are done. Assertions are counts and ids read back from the table, and each step of a scenario carries one intermediate assertion, so a regression names the step that broke rather than the count at the end.
+
+**Running it.** `npm run test:db` runs the lane inside the isolated test stack, against `track_regions_test` by default — `TEST_DB_NAME` names another database in that stack, and `scripts/test-stack.sh` refuses the golden one while the guard below refuses any name that does not say `test` — and only there: `TEST_REPORT_LOCAL=1` is refused for it, because on the host `db/index.ts` defaults to the dev catalogue. `TEST_REPORT_KEEP_ENV=1` keeps the stack up between runs while a spec is being written. The lane **fails rather than skips** without a database: `backend/src/testSupport/dbLane.globalSetup.ts` asks the server `SELECT current_database()` and throws unless the answer matches `TEST_DB_NAME_PATTERN` (`backend/src/db/testDbName.ts`, the same guard the e2e seed applies), and `dbLane.db.test.ts` is one permanent spec, so a green run always executed something. The unit lane never selects these files, which is how `npm test` stays a command a laptop without Docker can run. In CI the lane is a step of the E2E job, the one job with a database (`docs/tech/gates.md`).
+
 ### How NOT to split
 
 - Don't create a file for a single 10-line function.
@@ -801,9 +811,10 @@ every one), `npm run gates -- run test` (the unit lanes it asks for;
 the pull request opens, and again on the head the maintainer is asked to merge
 when a review wave since then touched their inputs: `npm run security:all` (the
 fast gates plus the slow Semgrep and Trivy scans the change asks for) and, when
-`npm run gates` lists them, `npm run test:e2e:smoke` and `npm run perf:local` —
-a review-wave push owes the per-commit tier alone, and CI answers for the slow
-lanes on the pushed head (`/commit` § 8 holds the rule, #920). A gate the map
+`npm run gates` lists them, `npm run test:e2e:smoke`, `npm run test:db` and
+`npm run perf:local` — a review-wave push owes the per-commit tier alone, and CI
+answers for the slow lanes on the pushed head (`/commit` § 8 holds the rule,
+#920). A gate the map
 skips was not run and did not need to be; a gate the host cannot run (the Python tooling
 guard) is a failure to report, not a skip. CI reads the same map per job, so a
 skipped job is a job whose inputs the pull request does not touch.
@@ -840,6 +851,8 @@ lists those lanes rather than running them:
 ```bash
 npm run security:all   # the fast gates, then the slow Semgrep and Trivy scans the change asks for
 npm run test:e2e:smoke # isolated test stack, seeded fixture, Playwright smoke
+npm run test:db        # the database-backed backend specs, inside the same stack (rows, not text)
+npm run perf:local     # the production build on the dev stack's own data: size, Lighthouse, the probe
 ```
 
 ### Reading a smoke result
