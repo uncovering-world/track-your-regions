@@ -174,6 +174,11 @@ export const GATES = [
   // commands: it is what a person types, not an argv the runner passes on.
   { id: 'build', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'build', '&&', 'npm', '--prefix', 'frontend', 'run', 'size'], job: 'build', setup: 'node' },
   { id: 'test:e2e:smoke', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'test:e2e:smoke'], job: 'smoke', setup: 'docker' },
+  // The database-backed backend specs (#522): what they assert is the rows a
+  // statement selects, not its text, so they need a real Postgres. They run
+  // inside the same isolated stack the smoke lane stands up, so they hang off
+  // that job and share its inputs.
+  { id: 'test:db', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'test:db'], job: 'smoke', setup: 'docker' },
   { id: 'perf', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'perf:local'], job: 'perf', setup: 'docker' },
 ];
 
@@ -300,6 +305,13 @@ export function githubOutputs(decision) {
     job_security_python: hasGate('security:py:semgrep'),
     job_trivy: hasJob('trivy'),
     job_smoke: hasJob('smoke'),
+    // The database lane is a step of the smoke job, in the same shape as the
+    // two Semgrep steps: the job-level key starts the job, this one says the
+    // step has something to read. Today both gates read `app`, so it can never
+    // be true while `job_smoke` is false — and gates.test.mjs pins that, since
+    // a smoke gate narrowed on its own would strand the step in a skipped job
+    // that reports Success.
+    job_test_db: hasGate('test:db'),
     job_perf: hasJob('perf'),
   };
   return [

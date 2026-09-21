@@ -81,6 +81,7 @@ describe('what a change asks for', () => {
       'security:scan',
       'build',
       'test:e2e:smoke',
+      'test:db',
       'perf',
     ]);
 
@@ -232,11 +233,12 @@ describe('the CI outputs', () => {
     'job_security_python',
     'job_trivy',
     'job_smoke',
+    'job_test_db',
     'job_perf',
     'reason',
   ];
 
-  it('prints the same fourteen lines in the same order, whatever changed', () => {
+  it('prints the same fifteen lines in the same order, whatever changed', () => {
     // CI reads these by name from a job-level `if:`. A key that appears only
     // sometimes is an `if:` that silently reads the empty string as false.
     const keysOf = (paths) =>
@@ -277,6 +279,14 @@ describe('the CI outputs', () => {
       const stack = ['job_build', 'job_smoke', 'job_perf'].filter((key) => out[key] === 'true');
       if (stack.length > 0) {
         expect(out.job_check, `${id} asks for ${stack.join(', ')} without job_check`).toBe('true');
+      }
+      // The database lane is a step of the smoke job, not a job of its own, so
+      // its key can only ever decide something inside a job that started. A
+      // smoke gate narrowed to fewer inputs than `test:db` reads would strand
+      // the step in a skipped job — one that reports Success having run
+      // nothing, which is the failure this whole map exists to prevent.
+      if (out.job_test_db === 'true') {
+        expect(out.job_smoke, `${id} asks for test:db inside a smoke job it does not start`).toBe('true');
       }
     }
   });
