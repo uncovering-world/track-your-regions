@@ -16,7 +16,8 @@
 
 import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from './changeSet.js';
 import type { FieldChange } from './changeSet.js';
-import { sameLabel, sameLabelSet } from './labelFold.js';
+import { sameLabel } from '@tyr/shared/labels';
+import { sameLabelSet } from './labelFold.js';
 
 /** A point as the diff sees it. `ref` and `ordinal` are identity, so neither is here. */
 export interface PointSnapshot {

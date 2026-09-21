@@ -20,6 +20,10 @@
  * content, and no map is a path on our own origin.
  */
 
+import {
+  PICTURE_HOSTS, isPictureHost, namesAPictureFile, isCommonsPath, isDescriptionPage,
+} from '@tyr/shared/pictures';
+
 /** The only protocols a stored url may name. */
 const STORABLE_PROTOCOLS = new Set(['http:', 'https:']);
 
@@ -44,82 +48,14 @@ export function isStorableHttpUrl(value: string): boolean {
 }
 
 /**
- * The hosts a picture on a card may come from.
- *
- * A licence question before it is a technical one ([ADR-0043](../../../docs/decisions/0043-a-picture-we-show-is-one-we-may-show.md)).
- * Wikimedia Commons files are published to be reused with the author named,
- * which is what `ImageCreditLine` does; a photograph on somebody else's server
- * carries whatever terms that server carries, and the World Heritage Centre's
- * are explicit that its pictures "may not be copied or retransmitted by any
- * means" and that a site may "only link to, not replicate" them. So the rule
- * cannot be "any http(s) url": the product has to be able to say, of every
- * picture it draws, why it is allowed to draw it.
- *
- * Mirrored by `TRUSTED_IMAGE_DOMAINS` in `frontend/src/utils/imageUrl.ts`, which
- * is the same list on the rendering side. No import can cross that boundary
- * (#527), so the two are kept in step by `urlSafety.test.ts`, which reads that
- * declaration out of the other side's source — a host added here alone stores
- * pictures that never draw, and one added there alone draws pictures nothing
- * may store.
+ * Which hosts a picture may come from and what names a picture file are the
+ * drawing side's rule as much as this side's — a host added here alone stores
+ * pictures that never draw, one added there alone draws pictures nothing may
+ * store — so they are declared once, in `@tyr/shared/pictures` (ADR-0065),
+ * and the licence reasoning (ADR-0043) sits there with them. What this module
+ * adds is the storing side's use of them: which *urls* a run and a curator may
+ * write, and the addresses a server-side fetch goes to.
  */
-export const DISPLAYABLE_PICTURE_HOSTS = [
-  'commons.wikimedia.org',
-  'upload.wikimedia.org',
-] as const;
-
-/**
- * The file types a picture may be, read from the name the host serves it under.
- *
- * The evidence that a stored url is a picture at all, and it is what this
- * repository can check without asking somebody else's server on every write.
- * Mirrored on the drawing side like the host list is, and pinned to it by the
- * same test (`urlSafety.test.ts`): a type added here alone stores files that
- * never draw, one added there alone draws files nothing may store.
- * Commons hosts PDFs, videos and scanned books under the same `Special:FilePath`
- * shape, and a run that stored one of those would put an empty frame on a card
- * exactly the way `whc.unesco.org/document/<id>` did (#557).
- */
-export const PICTURE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.tif', '.tiff', '.avif'] as const;
-
-function isPictureHost(hostname: string): boolean {
-  return DISPLAYABLE_PICTURE_HOSTS.some((host) => hostname === host || hostname.endsWith(`.${host}`));
-}
-
-function namesAPictureFile(pathname: string): boolean {
-  const name = decodeURIComponent(pathname).toLowerCase();
-  return PICTURE_EXTENSIONS.some((ext) => name.endsWith(ext));
-}
-
-/**
- * Is this file actually one of Commons', on the host that serves every wiki's
- * uploads?
- *
- * `upload.wikimedia.org` serves the files of every Wikimedia project from one
- * host, and only the ones under `/wikipedia/commons/` are Commons files. The
- * others are a language edition's own uploads, and the English Wikipedia's
- * include fair-use files — a poster, an album cover — that no licence lets this
- * product show. The host alone does not say which; the path does.
- */
-function isCommonsPath(hostname: string, pathname: string): boolean {
-  const uploadHost = hostname === 'upload.wikimedia.org' || hostname.endsWith('.upload.wikimedia.org');
-  return !uploadHost || pathname.includes('/wikipedia/commons/');
-}
-
-/**
- * Is this the page *about* a file rather than the file?
- *
- * `commons.wikimedia.org/wiki/File:Louvre.jpg` ends the way a picture ends and
- * answers HTML — the description page, with the licence and the uploader on it.
- * The file itself is served under `Special:FilePath/` (or from `upload.`), and
- * only those are pictures to store.
- */
-function isDescriptionPage(pathname: string): boolean {
-  try {
-    return /^\/wiki\/File:/i.test(decodeURIComponent(pathname));
-  } catch {
-    return true;
-  }
-}
 
 /**
  * Is this a picture file on a host whose licence lets us show it?
@@ -174,11 +110,11 @@ export function isDisplayablePictureUrl(value: string): boolean {
 /**
  * The origin a server-side fetch of a picture goes to, per host the picture
  * rule admits. Spelled as literals rather than derived from the list so that
- * the address `pictureFetchUrl` builds opens on a constant; the test that pins
- * the host list to the drawing side's (`urlSafety.test.ts`) holds this one to
- * the list as well.
+ * the address `pictureFetchUrl` builds opens on a constant; the type holds it
+ * to the shared host list, and `urlSafety.test.ts` walks that list to hold
+ * each entry to its origin.
  */
-const PICTURE_FETCH_ORIGINS: Record<(typeof DISPLAYABLE_PICTURE_HOSTS)[number], string> = {
+const PICTURE_FETCH_ORIGINS: Record<(typeof PICTURE_HOSTS)[number], string> = {
   'commons.wikimedia.org': 'https://commons.wikimedia.org',
   'upload.wikimedia.org': 'https://upload.wikimedia.org',
 };

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { NEAR_GLOBAL_DEG } from '@tyr/shared/geometry';
 import { backendSrc, repoFile, repoRelative } from '../testSupport/repoFile.js';
 
 /**
@@ -20,7 +21,7 @@ import { backendSrc, repoFile, repoRelative } from '../testSupport/repoFile.js';
  * shape `tileScopeGuards.test.ts` and `schemaMigrationParity.test.ts` already
  * use: it cannot prove the SQL runs, only that the terms the fix turns on are
  * still in it. What it can prove properly is the agreement between the three
- * files, which is where this rule is most likely to drift:
+ * places that state the rule, which is where it is most likely to drift:
  *
  * - `db/init/01-schema.sql`, where `geometry_focus()` measures and the trigger
  *   stores the box (#674 moved the measurement out of the trigger);
@@ -29,7 +30,9 @@ import { backendSrc, repoFile, repoRelative } from '../testSupport/repoFile.js';
  *   selection — where no trigger has measured it yet. A stored region or
  *   division carries its box and is never measured there; framing a division
  *   from a plain `turf.bbox` is how the bug reached the client before #666,
- *   and downloading its geometry to measure it is what #674 retired;
+ *   and downloading its geometry to measure it is what #674 retired. The
+ *   threshold it reads is `NEAR_GLOBAL_DEG` from `@tyr/shared/geometry`, the
+ *   same import this file holds the SQL function to (ADR-0065);
  * - `db/migrations/032-antimeridian-focus-data.sql`, whose guard refuses to run
  *   against a database whose function predates the fix, and which would refuse
  *   forever if a term it looks for left the schema.
@@ -63,11 +66,6 @@ function filesUnder(dir: string, ext: string): string[] {
 const migration = collapse(
   readFileSync(repoFile('db', 'migrations', '032-antimeridian-focus-data.sql'), 'utf8'),
 );
-const mapUtils = readFileSync(
-  repoFile('frontend', 'src', 'utils', 'mapUtils.ts'),
-  'utf8',
-);
-
 /**
  * One function's body, so no assertion below can match another function. The
  * terminator is asserted: a missing one gives -1, slice(start, -1) runs to the
@@ -92,8 +90,6 @@ const nearGlobalFn = functionBody('near_global_deg()', '$$;');
 /** The window round a near-global parent's children, as an arc (#673). */
 const childrenArcFn = functionBody('children_focus_arc(', 'END; $$;');
 
-/** The threshold above which a span is the whole world however it is measured. */
-const NEAR_GLOBAL_DEG = 350;
 
 describe('update_region_focus_data() antimeridian rule', () => {
   it('measures snapped geometry, never the raw geometry', () => {
@@ -140,16 +136,14 @@ describe('update_region_focus_data() antimeridian rule', () => {
     expect(childrenArcFn).toContain('covers_globe := gap_width <= 0 OR arc_width > near_global_deg()');
   });
 
-  it('states the near-global threshold once, as a function', () => {
+  it('states the near-global threshold once, as a function, equal to the one both sides import', () => {
+    // The database is the third runtime of the rule: `focusFromGeoJson` reads
+    // `NEAR_GLOBAL_DEG` from `@tyr/shared/geometry`, and so does this line.
     expect(nearGlobalFn).toContain(`SELECT ${NEAR_GLOBAL_DEG}.0::double precision`);
     // A bare 350 anywhere else is a second, unlabelled copy of the threshold.
     expect(geometryFocusFn).not.toContain('350');
     expect(focusFn).not.toContain('350');
     expect(childrenArcFn).not.toContain('350');
-  });
-
-  it('agrees with the threshold the frontend applies to a division', () => {
-    expect(mapUtils).toContain(`const NEAR_GLOBAL_DEG = ${NEAR_GLOBAL_DEG};`);
   });
 });
 
@@ -203,17 +197,6 @@ describe('the antimeridian is decided in two places, and nowhere else', () => {
       expect(text, `${file} decides a crossing from an envelope`)
         .not.toMatch(/min_lng|max_lng/);
     }
-  });
-
-  it('keeps the frontend threshold in one place, equal to the schema', () => {
-    const frontendSrc = repoFile('frontend', 'src');
-    const declarations = filesUnder(frontendSrc, '.ts')
-      .concat(filesUnder(frontendSrc, '.tsx'))
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
-      .filter(file => /NEAR_GLOBAL_DEG\s*=/.test(readFileSync(file, 'utf8')));
-    expect(declarations.map(repoRelative))
-      .toEqual(['frontend/src/utils/mapUtils.ts']);
-    expect(mapUtils).toContain(`const NEAR_GLOBAL_DEG = ${NEAR_GLOBAL_DEG};`);
   });
 
   it('lets no surface measure its own frame', () => {

@@ -9,7 +9,10 @@ export default defineConfig({
     // review a branch asks for (#923), gates.mjs decides which gates a change
     // asks for (#783) — and they are plain ESM run under node, which is this
     // project, not the browser one.
-    include: ['src/**/*.test.ts', '../scripts/**/*.test.mjs'],
+    // packages/shared holds the rules both sides apply (ADR-0065). Its specs run
+    // here for the same reason the tooling's do: the package ships source and
+    // has no runner of its own, and this lane already reads the tree beside it.
+    include: ['src/**/*.test.ts', '../scripts/**/*.test.mjs', '../packages/shared/src/**/*.test.ts'],
     // The database-backed specs (`*.db.test.ts`, #522) execute their statements
     // against a real PostgreSQL and belong to `vitest.db.config.ts`, which runs
     // only inside the isolated test stack. The include above matches them too,

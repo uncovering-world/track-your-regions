@@ -27,9 +27,9 @@ import {
   wvImportAddChildSchema,
   wvImportRenameRegionSchema,
 } from './index.js';
+import { PICTURE_HOSTS } from '@tyr/shared/pictures';
 import {
   isStorableHttpUrl, isDisplayablePictureUrl, isCommonsPictureUrl, pictureFetchUrl,
-  DISPLAYABLE_PICTURE_HOSTS, PICTURE_EXTENSIONS,
 } from './urlSafety.js';
 
 /** Spellings of a script-bearing scheme that a URL parser resolves all the same. */
@@ -323,7 +323,7 @@ describe('a picture the server fetches for itself', () => {
   it('fetches from every host the picture rule admits, and from no other', () => {
     // The origins are spelled as literals so the address opens on a constant;
     // this is what keeps them the same list as the one the rule reads.
-    for (const host of DISPLAYABLE_PICTURE_HOSTS) {
+    for (const host of PICTURE_HOSTS) {
       expect(pictureFetchUrl(`https://${host}/x.png`)).toBe(`https://${host}/x.png`);
     }
   });
@@ -564,42 +564,11 @@ describe('the rule is declared once', () => {
     expect(offenders, 'which protocols may be stored is decided in urlSafety.ts and read from there').toEqual([]);
   });
 
-  /**
-   * Which hosts a picture may come from is a licence question (ADR-0043), and
-   * it is answered on both sides: here, before a value is stored, and in
-   * `frontend/src/utils/imageUrl.ts`, before one is drawn. No import can cross
-   * that boundary (#527), so the two lists are pinned against each other from
-   * the side that can read files.
-   *
-   * A list that grew on one side only fails in the direction nobody notices:
-   * a host added here alone stores pictures that never draw, and one added
-   * there alone draws pictures nothing may store — which is how a picture we
-   * are not allowed to show would come back after #557 was closed.
-   */
-  it('allows a picture from the same hosts on the storing side and the drawing side', () => {
-    const frontendSrc = repoFile('frontend', 'src');
-    const drawing = readFileSync(join(frontendSrc, 'utils', 'imageUrl.ts'), 'utf8');
-    const declared = /const TRUSTED_IMAGE_DOMAINS = \[([^\]]*)\]/.exec(drawing);
-
-    expect(declared, 'the drawing side declares its hosts as TRUSTED_IMAGE_DOMAINS').not.toBeNull();
-    const drawn = [...(declared?.[1] ?? '').matchAll(/'([^']+)'/g)].map(m => m[1]);
-
-    expect(drawn.sort()).toEqual([...DISPLAYABLE_PICTURE_HOSTS].sort());
-  });
-
-  it('calls the same file types a picture on both sides', () => {
-    // The second list across the boundary, pinned like the first: a type added
-    // here alone stores files that never draw, one added there alone draws
-    // files nothing may store — and the host check would not notice either.
-    const frontendSrc = repoFile('frontend', 'src');
-    const drawing = readFileSync(join(frontendSrc, 'utils', 'imageUrl.ts'), 'utf8');
-    const declared = /const PICTURE_EXTENSIONS = \[([^\]]*)\]/.exec(drawing);
-
-    expect(declared, 'the drawing side declares its file types as PICTURE_EXTENSIONS').not.toBeNull();
-    const drawn = [...(declared?.[1] ?? '').matchAll(/'([^']+)'/g)].map(m => m[1]);
-
-    expect(drawn.sort()).toEqual([...PICTURE_EXTENSIONS].sort());
-  });
+  // Which hosts a picture may come from and what names a picture file are
+  // answered on both sides — here before a value is stored, in
+  // `frontend/src/utils/imageUrl.ts` before one is drawn — by one declaration,
+  // `@tyr/shared/pictures` (ADR-0065). Two tests used to read that file's copy
+  // of each list out of its source and hold it to this side's (#789).
 
   /**
    * The read side of the same rule lives in `frontend/src/utils/imageUrl.ts`,

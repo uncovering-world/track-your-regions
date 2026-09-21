@@ -7,10 +7,11 @@ import { fileURLToPath } from 'node:url';
  *
  * A dozen guards in this suite hold a claim in code against the file that actually
  * states it: the schema in `db/init/01-schema.sql`, a numbered migration, Martin's
- * `config.yaml`, a frontend module that spells the same rule for the browser. They
- * live here because the things they compare have no test runner of their own and the
- * frontend's cannot read outside its root — see the header of
- * `src/db/curationLogActionLabels.test.ts` for that argument.
+ * `config.yaml`, a frontend module whose shape is the claim. They live here because
+ * the things they compare have no test runner of their own and the frontend's cannot
+ * read outside its root. A rule both sides *apply* is no longer among them: that is
+ * imported from `packages/shared` by both, and pinned to the schema by a type
+ * (ADR-0065, `src/db/curationLogActions.test.ts`).
  *
  * Each of them used to walk up from its own file with its own count of `..`, which
  * works only where `backend/` sits inside a full checkout. The container unit lane

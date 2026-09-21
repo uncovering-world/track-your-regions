@@ -67,7 +67,7 @@ import {
   computeChangeSet, METADATA_CLAIM_PREFIX, METADATA_SET_KEYS, SYNC_OWNED_METADATA_KEYS,
   type BoundarySnapshot, type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
-import { tidyLabel } from './labelFold.js';
+import { tidyLabel } from '@tyr/shared/labels';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 
 export interface ExperienceUpsertParams {

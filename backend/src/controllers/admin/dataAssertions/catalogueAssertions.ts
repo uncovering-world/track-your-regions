@@ -65,7 +65,7 @@ import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import { heldFieldRefusedSql, heldPartRefusedSql } from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '../../../services/sync/changeSet.js';
 
-import { DISPLAYABLE_PICTURE_HOSTS, PICTURE_EXTENSIONS } from '../../../types/urlSafety.js';
+import { PICTURE_HOSTS, PICTURE_EXTENSIONS } from '@tyr/shared/pictures';
 
 import { count, text } from './assertion.js';
 import type { AssertionRow, CatalogueAssertion } from './assertion.js';
@@ -621,9 +621,9 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
  * stored value the writers have already judged.
  */
 function drawableHostSql(column: string): string {
-  const hosts = DISPLAYABLE_PICTURE_HOSTS.map((host) => `'${host}'`).join(', ');
+  const hosts = PICTURE_HOSTS.map((host) => `'${host}'`).join(', ');
   // A subdomain of a listed host counts, as it does for `isPictureHost`.
-  const subdomains = DISPLAYABLE_PICTURE_HOSTS.map((host) => `'%.${host}'`).join(', ');
+  const subdomains = PICTURE_HOSTS.map((host) => `'%.${host}'`).join(', ');
   // The host as the parser reads it — lowercased, without a port — and the
   // path behind any-case scheme letters, so the SQL agrees with `new URL()`.
   const host = `lower(split_part(split_part(split_part(${column}, '//', 2), '/', 1), ':', 1))`;

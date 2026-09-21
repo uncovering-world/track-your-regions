@@ -5,6 +5,7 @@
  */
 
 import { Request, Response } from 'express';
+import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import { pool } from '../../db/index.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import {
@@ -122,12 +123,12 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
  *   cathedral, church, chapel, monastery, mosque, temple, shrine, synagogue)
  * - regionId: Filter by region
  * - search: Search by name
- * - limit: Max results (default 50, max 5000)
+ * - limit: Max results (default 50, at most `WHOLE_REGION_LIMIT`)
  * - offset: Pagination offset
  * - bbox: Bounding box filter "west,south,east,north"
  */
 export async function listExperiences(req: Request, res: Response): Promise<void> {
-  const limit = Math.min(parseInt(String(req.query.limit)) || 50, 5000);
+  const limit = Math.min(parseInt(String(req.query.limit)) || 50, WHOLE_REGION_LIMIT);
   const offset = parseInt(String(req.query.offset)) || 0;
   const { conditions, params } = buildExperiencesFilters(req.query);
   const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
@@ -303,13 +304,11 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
 export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
   const includeChildren = req.query.includeChildren !== 'false';
-  // Ceiling raised to match `listExperiences` above. At 500 a region's list was
-  // silently truncated rather than paginated: the ordering is `e.name`, so the
-  // cut fell mid-alphabet and simply removed everything after it — 661 in Europe
-  // meant no museum past "G", and the map builds its markers from this same
-  // array, so those pins vanished too. Callers that want a page still get one by
-  // passing `limit`; the default of 100 is unchanged.
-  const limit = Math.min(parseInt(String(req.query.limit)) || 100, 5000);
+  // The same ceiling as `listExperiences` above, and the number the client asks
+  // for: a region is read whole or truncated mid-alphabet, never paged
+  // (`WHOLE_REGION_LIMIT`). Callers that want a page still get one by passing
+  // `limit`; the default of 100 is unchanged.
+  const limit = Math.min(parseInt(String(req.query.limit)) || 100, WHOLE_REGION_LIMIT);
   const offset = parseInt(String(req.query.offset)) || 0;
 
   // Determine if the user is a curator with scope for this region

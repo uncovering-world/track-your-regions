@@ -1,39 +1,16 @@
 /**
- * Two labels that name the same thing.
+ * The label rules as SQL, and the set comparison a work's makers are judged by.
  *
- * Unicode-normalised, dashes folded together, whitespace collapsed, compared
- * case-insensitively. Everything folded here is a typographic rewrite of one
- * name: `Boma-Badingilo` becoming `Boma–Badingilo` is the source's typesetting,
- * not a decision about a place, and nobody can answer a card that asks about it.
- *
- * Case is folded for the same reason and no further: a name that differs by more
- * than its punctuation is a real rename and is reported, minor.
- *
- * Its own module because three readings of the same rule now depend on it and
- * they sit in different layers: the contents diff asks whether a name changed,
- * the museum pool asks whether two creator statements name the same person —
- * Q2415079 (*The Washington Family*) lists "Edward Savage" twice under two QIDs
- * — and the landmark parse asks it of a monument's makers. A second fold would
- * be a second answer to "is this the same name", and the diff and the importer
- * disagreeing about that is a card raised about nothing.
+ * The fold and the store rule themselves — `foldLabel`, `sameLabel`,
+ * `tidyLabel` — are `@tyr/shared/labels` (ADR-0065): a form and an endpoint
+ * have to answer "is this the same name" alike, so the one declaration is
+ * imported by both sides rather than copied and pinned by a test reading the
+ * other copy as text. What stays here is what only the storing side asks:
+ * the rule spelled for Postgres, where `\s` stops at ASCII, and the set
+ * comparison over a list of names.
  */
 
-/** A label reduced to what it names, with its typesetting removed. */
-export function foldLabel(value: string | null | undefined): string {
-  return (value ?? '')
-    .normalize('NFKC')
-    // Every dash Unicode offers, to the plain one. `‐-―` covers hyphen
-    // through horizontal bar; `−` is the minus sign, which sources use too.
-    .replace(/[‐-―−]/g, '-')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-/** Whether two labels name the same thing. */
-export function sameLabel(a: string | null | undefined, b: string | null | undefined): boolean {
-  return foldLabel(a) === foldLabel(b);
-}
+import { foldLabel } from '@tyr/shared/labels';
 
 /**
  * Whether two lists of labels hold the same names, in any order.
@@ -56,38 +33,14 @@ export function sameLabelSet(
 }
 
 /**
- * A label as a person would type it: the edges trimmed, a run of whitespace
- * inside it collapsed to one space. Case, dashes and accents stay — this is
- * the *store* rule, not the fold: what a row holds is still the source's
- * spelling, only without the typesetting nobody can see.
- *
- * Every source is a label service and a label service passes runs through:
- * Wikidata's English label for *St. John  on Patmos* (Q2390197) carries two
- * spaces and *Portrait of a Man (Self      Portrait?)* (Q2392901) six, the
- * World Heritage Centre's component names carry eighteen runs across the
- * catalogue, and four Arabic and Spanish local names hold a no-break space.
- * On screen HTML collapses all of it, so a reader types what they see and a
- * filter that compares the raw string finds nothing (#835). Applied by every
- * writer of a name — the three importers' writers and the curator's schemas
- * alike — *before* the diff, so a run compares tidied to tidied and reports no
- * rename for a label it only tidied.
- *
- * `\s` is JavaScript's class: ASCII whitespace and Unicode's spaces, the
- * no-break space included. `JS_WHITESPACE_CODE_POINTS` spells the same set out
- * for SQL, where `\s` stops at ASCII and a bracket expression over these code
- * points misfires under a locale collation.
- */
-export function tidyLabel(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
-}
-
-/**
  * The code points JavaScript's `\s` matches beyond ASCII, as SQL spells them
  * — an `(\s|\u00a0|…)` alternation, never a bracket expression, since under
  * `en_US.utf8` a bracket expression over these code points also matches the
  * en dash (measured on the development catalogue: it named *MAK – Museum of
- * Applied Arts*). Pinned to
- * `\s` itself by `labelFold.test.ts`, which walks the Basic Multilingual Plane.
+ * Applied Arts*). `tidyLabel` collapses `\s+`, so this is the same set the
+ * store rule collapses, spelled for a runtime whose `\s` stops at ASCII.
+ * Pinned to `\s` itself by `labelFold.test.ts`, which walks the Basic
+ * Multilingual Plane.
  */
 export const JS_WHITESPACE_CODE_POINTS: readonly number[] = [
   0x00a0, 0x1680,

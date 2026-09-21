@@ -9,8 +9,10 @@ import { COLUMN_WIDTHS, type CheckValue } from '../db/schema.generated.js';
 // Database Types
 // =============================================================================
 
-export type UserRole = 'user' | 'curator' | 'admin';
-export type AuthProvider = 'local' | 'google' | 'apple';
+// The two enums both sides read, declared once (ADR-0065) and held to the
+// schema's own by `db/curationLogActions.test.ts`.
+import type { UserRole, AuthProvider } from '@tyr/shared/auth';
+export type { UserRole, AuthProvider };
 
 /** `curator_assignments.scope_type`, as its CHECK lists it. */
 export type CuratorScopeType = CheckValue<'curator_assignments', 'scope_type'>;

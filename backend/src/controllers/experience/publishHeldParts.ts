@@ -24,7 +24,7 @@
 
 import type { PoolClient } from 'pg';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
-import { tidyLabel } from '../../services/sync/labelFold.js';
+import { tidyLabel } from '@tyr/shared/labels';
 import { heldRowKey, tidyNameValue, type HeldAnswer, type HeldRowRef } from './heldDecisions.js';
 import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelection.js';
 import type { ContentKind, ContentsByKind, ContentItemChange } from '../../services/sync/types.js';
