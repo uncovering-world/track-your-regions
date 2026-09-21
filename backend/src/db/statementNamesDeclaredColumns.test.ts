@@ -16,8 +16,8 @@ import ts from 'typescript';
  * by grep.
  *
  * This holds every SQL string literal in `backend/src` to the columns
- * `db/init/01-schema.sql` declares, the way `columnBounds.test.ts` holds the
- * request bounds to the same file. The extractor is deliberately narrow, and
+ * `db/init/01-schema.sql` declares, the way `schemaMigrationParity.test.ts`
+ * holds the migrations to the same file. The extractor is deliberately narrow, and
  * the boundary is what it can resolve without a parser:
  *
  * - an identifier qualified by an alias the same literal declares

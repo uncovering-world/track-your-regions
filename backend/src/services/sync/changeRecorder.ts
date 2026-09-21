@@ -8,7 +8,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import type { CheckValue } from '../../db/schema.generated.js';
+import { COLUMN_WIDTHS, type CheckValue } from '../../db/schema.generated.js';
 import type { FieldChange } from './changeSet.js';
 import type { ContentsByKind } from './types.js';
 
@@ -48,8 +48,8 @@ export interface ChangeRecord {
   error: string | null;
 }
 
-/** `experience_sync_changes.name_snapshot` is VARCHAR(500). */
-const NAME_SNAPSHOT_LIMIT = 500;
+/** A snapshot is cut to what `experience_sync_changes.name_snapshot` holds. */
+const NAME_SNAPSHOT_LIMIT = COLUMN_WIDTHS.experience_sync_changes.name_snapshot;
 
 /** Postgres caps a statement at 65535 parameters; 500 rows × 9 stays far below. */
 export const CHANGE_INSERT_BATCH_SIZE = 500;

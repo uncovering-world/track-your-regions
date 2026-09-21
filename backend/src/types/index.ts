@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { parseBbox } from '../db/bboxEnvelopes.js';
-import { CHECK_VALUES } from '../db/schema.generated.js';
+import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { foldLabel, tidyLabel } from '../services/sync/labelFold.js';
 import {
   isStorableHttpUrl,
@@ -144,8 +144,8 @@ export const searchQuerySchema = z.object({
  * A URL field bounded by whatever holds it, kept to the shapes that field can
  * legitimately take. Most of these end up inside the `metadata` JSONB, which
  * has no width, so they keep the generic 2000; `imageUrl` is stored in
- * `experiences.image_url` and `treasures.image_url`, both `varchar(1000)`, and
- * takes that width instead.
+ * `experiences.image_url` and `treasures.image_url`, and takes the narrower
+ * of the two widths instead.
  *
  * The value is judged, then rewritten to the form the parser read, and that is
  * what gets stored: `validate()` puts the parsed object back on the request, so
@@ -166,7 +166,11 @@ const boundedUrl = (max: number, isStorable: (value: string) => boolean, message
     });
 
 const safeUrlSchema = boundedUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
-const safeImageUrlSchema = boundedUrl(1000, isDisplayablePictureUrl, DISPLAYABLE_PICTURE_URL_MESSAGE);
+const safeImageUrlSchema = boundedUrl(
+  Math.min(COLUMN_WIDTHS.experiences.image_url, COLUMN_WIDTHS.treasures.image_url),
+  isDisplayablePictureUrl,
+  DISPLAYABLE_PICTURE_URL_MESSAGE,
+);
 
 /**
  * The same rule for a url that has to be there: an element of a list, or a
@@ -240,7 +244,7 @@ export const syncLogIdParamSchema = z.object({
  * and on a single-point object that is where the object itself would go.
  */
 export const editLocationBodySchema = z.object({
-  name: storedName(500).optional(),
+  name: storedName(COLUMN_WIDTHS.experience_locations.name).optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
 }).refine(
@@ -283,8 +287,8 @@ export const workEditParamsSchema = z.object({
  * Commons for it (`workEditController`).
  */
 export const editWorkBodySchema = z.object({
-  name: storedName(500).optional(),
-  artists: z.array(storedName(500)).max(20).optional(),
+  name: storedName(COLUMN_WIDTHS.treasures.name).optional(),
+  artists: z.array(storedName(COLUMN_WIDTHS.treasures.artists)).max(20).optional(),
   year: z.number().int().min(-200000).max(2200).nullable().optional(),
   imageUrl: safeImageUrlSchema,
 }).refine(
@@ -426,10 +430,10 @@ export const assignExperienceBodySchema = z.object({
 const optionalSafeUrlSchema = requiredSafeUrlSchema.optional();
 
 export const editExperienceBodySchema = z.object({
-  name: storedName(500).optional(),
+  name: storedName(COLUMN_WIDTHS.experiences.name).optional(),
   shortDescription: z.string().max(1000).optional(),
   description: z.string().max(10000).optional(),
-  type: z.string().max(100).optional(),
+  type: z.string().max(COLUMN_WIDTHS.experiences.type).optional(),
   imageUrl: safeImageUrlSchema,
   tags: z.array(z.string().max(100)).max(50).optional(),
   websiteUrl: safeUrlSchema,
@@ -437,15 +441,18 @@ export const editExperienceBodySchema = z.object({
 });
 
 export const createManualExperienceBodySchema = z.object({
-  name: storedName(500),
+  // Written as the place's name and again as its first location's, so the
+  // bound is whichever column is narrower.
+  name: storedName(Math.min(COLUMN_WIDTHS.experiences.name, COLUMN_WIDTHS.experience_locations.name)),
   shortDescription: z.string().max(1000).optional(),
-  type: z.string().max(100).optional(),
+  type: z.string().max(COLUMN_WIDTHS.experiences.type).optional(),
   longitude: z.number().min(-180).max(180),
   latitude: z.number().min(-90).max(90),
   imageUrl: safeImageUrlSchema,
   tags: z.array(z.string().max(100)).max(50).optional(),
-  countryCode: z.string().max(10).optional(),
-  countryName: z.string().max(255).optional(),
+  // One element each of the two VARCHAR arrays; the width is the element's.
+  countryCode: z.string().max(COLUMN_WIDTHS.experiences.country_codes).optional(),
+  countryName: z.string().max(COLUMN_WIDTHS.experiences.country_names).optional(),
   regionId: z.number().int().positive(),
   /** The kind the curator files the place under; its source is the kind's own (#819). */
   kindId: z.number().int().positive(),
@@ -745,8 +752,8 @@ export const declineSourceBodySchema = z.object({
  */
 const heldPartSelectionSchema = z.object({
   kind: z.enum(CHECK_VALUES.experience_held_decisions.part_kind),
-  ref: z.string().max(255).nullable().optional(),
-  name: z.string().max(500).nullable().optional(),
+  ref: z.string().max(COLUMN_WIDTHS.experience_held_decisions.part_ref).nullable().optional(),
+  name: z.string().max(COLUMN_WIDTHS.experience_held_decisions.part_name).nullable().optional(),
   fields: z.array(z.string().min(1).max(100)).min(1).max(50),
 });
 
@@ -1030,7 +1037,7 @@ export const sourceLineBodySchema = z.object({
  * refused at the edge rather than by the database.
  */
 export const dataAssertionAcceptBodySchema = z.object({
-  assertionId: z.string().min(1).max(80),
+  assertionId: z.string().min(1).max(COLUMN_WIDTHS.data_assertion_acceptances.assertion_id),
 });
 
 export const startRegionAssignmentBodySchema = z.object({
@@ -1075,7 +1082,7 @@ export const adminUserSearchQuerySchema = z.object({
 // =============================================================================
 
 export const wvExtractStartSchema = z.object({
-  name: z.string().min(1).max(255).default('Wikivoyage Regions'),
+  name: z.string().min(1).max(COLUMN_WIDTHS.world_views.name).default('Wikivoyage Regions'),
   /** 'none' for clean fetch, or a wikivoyage-cache*.json basename. No path separators allowed. */
   cacheFile: z
     .string()
@@ -1119,7 +1126,7 @@ export const wvExtractAnswerSchema = z.object({
 const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
     // Every node becomes a region, so the bound is regions.name.
-    name: z.string().min(1).max(255),
+    name: z.string().min(1).max(COLUMN_WIDTHS.regions.name),
     // Both are pictures a dialog draws, so both are held to what a stored url
     // may be (#694) -- and to the link form of it: unlike an experience's
     // picture, no map is a path on our own origin.
@@ -1134,20 +1141,20 @@ const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
 );
 
 export const wvImportBodySchema = z.object({
-  name: z.string().min(1).max(255),
+  name: z.string().min(1).max(COLUMN_WIDTHS.world_views.name),
   tree: importTreeNodeSchema,
   matchingPolicy: z.enum(['country-based', 'hierarchical', 'none']).default('country-based'),
 });
 
 export const baseLayerImportBodySchema = z.object({
-  name: z.string().min(1).max(255),
-  // Bounded by world_views.description, not world_views.source: both are
-  // VARCHAR(1000), but startBaseLayerImport embeds the label in
+  name: z.string().min(1).max(COLUMN_WIDTHS.world_views.name),
+  // Bounded by world_views.description, not world_views.source: both are the
+  // same width, but startBaseLayerImport embeds the label in
   // `Mirror of the administrative base layer (<label>), depth <n>` — 51 fixed
   // characters — so a label sized against `source` alone would pass validation
   // here and then fail with 22001 inside the import run, minutes later and
   // after the endpoint has already answered { started: true }.
-  providerLabel: z.string().min(1).max(949),
+  providerLabel: z.string().min(1).max(COLUMN_WIDTHS.world_views.description - 51),
   // Depth 2 mirrors roots + countries + first-level subdivisions (~3800 regions).
   // 3 is allowed but adds tens of thousands; deeper is refused outright, since
   // the base layer has 392k divisions.
@@ -1272,7 +1279,7 @@ export const wvImportSelectMapImageSchema = z.object({
 export const wvImportAddChildSchema = z.object({
   parentRegionId: z.coerce.number().int().positive(),
   // Inserted verbatim as the new child's regions.name.
-  name: z.string().min(1).max(255),
+  name: z.string().min(1).max(COLUMN_WIDTHS.regions.name),
   sourceUrl: optionalSafeUrlSchema,
   sourceExternalId: z.string().max(100).optional(),
 });
@@ -1286,7 +1293,7 @@ export const wvImportRemoveRegionSchema = z.object({
 export const wvImportRenameRegionSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   // Written straight into regions.name.
-  name: z.string().min(1).max(255),
+  name: z.string().min(1).max(COLUMN_WIDTHS.regions.name),
   sourceUrl: optionalSafeUrlSchema,
   sourceExternalId: z.string().max(100).optional(),
 });
@@ -1303,7 +1310,8 @@ export const wvImportApproveCoverageSchema = z.object({
   divisionId: z.coerce.number().int().positive(),
   regionId: z.coerce.number().int().positive(),
   action: z.enum(['add_member', 'create_region']),
-  gapName: z.string().max(255).optional(),
+  // The region `create_region` makes is named by it.
+  gapName: z.string().max(COLUMN_WIDTHS.regions.name).optional(),
 });
 
 export const wvImportSmartSimplifySchema = z.object({
@@ -1410,36 +1418,37 @@ export const childrenCoverageQuerySchema = z.object({
 // world_views and regions in db/init/01-schema.sql. A bound wider than its
 // column is not a laxer API, only a later failure: Zod passes the value on,
 // Postgres raises 22001 on the write, and the caller gets a 500 where a 400
-// was owed. columnBounds.test.ts holds the two in step.
+// was owed. Each bound reads its width from `COLUMN_WIDTHS`, so the two
+// cannot drift apart.
 
 export const createWorldViewBodySchema = z.object({
-  name: z.string().min(1).max(255),
-  description: z.string().max(1000).optional(),
-  source: z.string().max(1000).optional(),
+  name: z.string().min(1).max(COLUMN_WIDTHS.world_views.name),
+  description: z.string().max(COLUMN_WIDTHS.world_views.description).optional(),
+  source: z.string().max(COLUMN_WIDTHS.world_views.source).optional(),
 });
 
 export const updateWorldViewBodySchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  description: z.string().max(1000).optional(),
-  source: z.string().max(1000).optional(),
+  name: z.string().min(1).max(COLUMN_WIDTHS.world_views.name).optional(),
+  description: z.string().max(COLUMN_WIDTHS.world_views.description).optional(),
+  source: z.string().max(COLUMN_WIDTHS.world_views.source).optional(),
   isPublic: z.boolean().optional(),
 });
 
 export const createRegionBodySchema = z.object({
-  name: z.string().min(1).max(255),
-  description: z.string().max(1000).optional(),
+  name: z.string().min(1).max(COLUMN_WIDTHS.regions.name),
+  description: z.string().max(COLUMN_WIDTHS.regions.description).optional(),
   parentRegionId: z.number().int().positive().optional(),
   // `#rrggbb`, the one shape the editor's <input type="color"> produces and
-  // the only one regions.color — VARCHAR(7) — has room for.
-  color: z.string().max(7).optional(),
+  // the only one regions.color has room for.
+  color: z.string().max(COLUMN_WIDTHS.regions.color).optional(),
   customGeometry: z.any().optional(),
 });
 
 export const updateRegionBodySchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  description: z.string().max(1000).optional(),
+  name: z.string().min(1).max(COLUMN_WIDTHS.regions.name).optional(),
+  description: z.string().max(COLUMN_WIDTHS.regions.description).optional(),
   parentRegionId: z.number().int().positive().nullable().optional(),
-  color: z.string().max(7).nullable().optional(),
+  color: z.string().max(COLUMN_WIDTHS.regions.color).nullable().optional(),
   usesHull: z.boolean().optional(),
 });
 
@@ -1459,8 +1468,9 @@ export const addDivisionsToRegionBodySchema = z.object({
   inheritColor: z.boolean().default(true),
   childIds: z.array(z.number().int().positive()).optional(),
   // Names the subregion this call creates (regions.name) and the
-  // region_members.custom_name recorded beside it — both VARCHAR(255).
-  customName: z.string().max(255).optional(),
+  // region_members.custom_name recorded beside it, so the bound is whichever
+  // column is narrower.
+  customName: z.string().max(Math.min(COLUMN_WIDTHS.regions.name, COLUMN_WIDTHS.region_members.custom_name)).optional(),
   customGeometry: z.any().optional(),
 });
 
@@ -1582,7 +1592,7 @@ export const setModelBodySchema = z.object({
 
 /** `PUT /api/admin/ai/settings/:key` — the key is the row's primary key. */
 export const aiSettingKeyParamSchema = z.object({
-  key: z.string().trim().min(1).max(255),
+  key: z.string().trim().min(1).max(COLUMN_WIDTHS.ai_settings.key),
 });
 
 export const aiSettingValueBodySchema = z.object({
@@ -1590,7 +1600,7 @@ export const aiSettingValueBodySchema = z.object({
 });
 
 export const addLearnedRuleBodySchema = z.object({
-  feature: z.string().trim().min(1).max(100),
+  feature: z.string().trim().min(1).max(COLUMN_WIDTHS.ai_learned_rules.feature),
   // rule_text and context are TEXT columns, so 2000 is not a width — it is the
   // same refuse-the-absurd bound every other free-text request field carries.
   ruleText: z.string().trim().min(1).max(2000),
