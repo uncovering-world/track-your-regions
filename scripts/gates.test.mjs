@@ -91,6 +91,29 @@ describe('what a change asks for', () => {
     expect(out.job_check_python).toBe('false');
   });
 
+  it('asks for the generated row types on a schema edit, and never on backend source alone', () => {
+    // The generated file is a function of db/init/01-schema.sql (ADR-0064), so
+    // an edit there, to the file itself, to the generator or to its runner asks
+    // the check that diffs the two; a change elsewhere in backend/ cannot
+    // alter what the generator reads, and the case above pins that it is not
+    // asked. The gate runs from backend/node_modules, so it is a node setup:
+    // the check job installs the backend before it.
+    for (const path of [
+      'db/init/01-schema.sql',
+      'db/init/02-anything.sql',
+      'docker-compose.yml',
+      'backend/src/db/schema.generated.ts',
+      'backend/src/db/generateSchemaTypes.ts',
+      'backend/src/db/testDbName.ts',
+      'scripts/db-types.sh',
+    ]) {
+      expect(applying([path]), path).toContain('db:types');
+      expect(outputs([path]).job_check_node, path).toBe('true');
+    }
+    expect(applying(['db/migrations/060-x.sql'])).not.toContain('db:types');
+    expect(applying(['backend/src/db/index.ts'])).not.toContain('db:types');
+  });
+
   it('asks the Python gates, and the Node scan that reads cv-python too, for a change under cv-python', () => {
     // The Node Semgrep scan is pointed at the whole checkout with rule packs
     // that carry Python rules, so it is the one non-Python gate a cv-python
@@ -263,6 +286,7 @@ describe('the CI outputs', () => {
       app: 'backend/src/a.ts',
       python: 'cv-python/app/a.py',
       'db-python': 'db/gadm_levels.py',
+      schema: 'db/init/01-schema.sql',
       'node-deps': 'backend/package-lock.json',
       docs: 'docs/tech/x.md',
       shell: 'tools/release.sh',

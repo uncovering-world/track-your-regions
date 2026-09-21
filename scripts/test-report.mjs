@@ -61,7 +61,7 @@ const STEP_TEMPLATES = {
   },
   'backend-db': {
     id: 'backend-db',
-    label: 'Backend Database (rows, not text)',
+    label: 'Backend Database (a real Postgres, not the mocked pool)',
     scope: 'backend/src/**/*.db.test.ts (inside the test stack, against track_regions_test)',
     kind: 'vitest',
     packageDir: 'backend',

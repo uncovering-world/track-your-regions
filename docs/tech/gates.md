@@ -36,15 +36,15 @@ stack test:e2e:smoke        skipped  inputs untouched: app
 stack perf                  skipped  inputs untouched: app
 ```
 
-Two of twenty-five gates, and the other twenty-three each name the input class
-they did not see move. Three shapes of answer are worth recognising:
+Two gates run, and every other one names the input class it did not see
+move. Three shapes of answer are worth recognising:
 
 - **`inputs touched: <class>`** — the gate runs, and the class says which of its
   inputs moved.
 - **`every gate applies`**, under a line naming the reason — a path in the
   `tooling` class was touched, or the change set could not be worked out (no
   base, a shallow clone, a git that would not answer). The reason is printed
-  once above the list rather than repeated down twenty-five lines.
+  once above the list rather than repeated on every line of it.
 - **`Not an input to any gate: …`**, at the end — paths that belong to no class.
   They are reported rather than dropped: a file nothing reads is a fact about the
   map, not about the change.
@@ -57,7 +57,7 @@ what is committed.
 
 | Tier | What it holds | What runs it |
 | --- | --- | --- |
-| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the docs pass, the workflow lint, the fast security audits | `npm run check` — `npm run check:all` forces every one |
+| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the generated row types against the schema, the docs pass, the workflow lint, the fast security audits | `npm run check` — `npm run check:all` forces every one |
 | `test` | the unit lanes, Node and Python | `npm run gates -- run test`, with `TEST_REPORT_LOCAL=1` to keep the Node lanes on the host |
 | `scan` | the slow scans: Semgrep on both stacks, the Trivy image scan | `npm run security:all` — the `check` tier, then this one |
 | `stack` | build, smoke, the database lane, Lighthouse: the lanes that stand a stack up | `npm run gates -- run stack` **lists** them with run/skip marks and exits 2; they are typed by hand |
@@ -91,7 +91,7 @@ A tier whose gates all sit on untouched inputs prints the sentence rather than
 nothing at all — on a clean `main`, `npm run check` says
 
 ```text
-Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:circular, security:deps, lint:shell, lint:docker, lint:actions, lint:md, lint:links, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
+Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:circular, db:types, security:deps, lint:shell, lint:docker, lint:actions, lint:md, lint:links, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
 ```
 
 and exits 0. That is the one line this runner exists to print: a gate that did
@@ -119,6 +119,7 @@ everything or the base was simply unknown.
 | `app` | `backend/`, `frontend/`, `db/`, `martin/`, `scripts/`, `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | The product is one contract surface, not two stacks: backend specs read db/, frontend/src, martin/ and scripts/ through repoFile(), and the smoke lane is the only gate that sees the backend↔frontend contract at all, so a change to either side asks for both. |
 | `python` | `cv-python/` | The computer-vision service is its own interpreter, its own dependency set and its own image; no Node gate reads it except the Semgrep scan pointed at the whole checkout. |
 | `db-python` | `/^db\/.*\.py$/`, `db/pyproject.toml`, `db/requirements.txt` | The GADM loaders live in db/ but are run by pytest, so they are an input to the Python test lane without being an input to cv-python’s lint. |
+| `schema` | `/^db\/init\//`, `docker-compose.yml`, `backend/src/db/schema.generated.ts`, `backend/src/db/generateSchemaTypes.ts`, `backend/src/db/schemaTypesRender.ts`, `backend/src/db/testDbName.ts`, `scripts/db-types.sh` | The generated row types are a function of what a fresh database is built from: the db/init directory the image applies on first start, the compose file that pins that image, the file the generator produces, the generator, the renderer, the guard it imports and its runner. The migrations are not — a fresh database never reads them, and the schema-to-migration parity test answers for those. |
 | `node-deps` | `backend/package.json`, `backend/package-lock.json`, `frontend/package.json`, `frontend/package-lock.json` | npm audit reads the two manifests and their lockfiles and nothing else, so a change of source code cannot alter its answer. |
 | `docs` | `/\.md$/` | Every tracked Markdown file, wherever it sits: the docs pass checks what renders and what a link points at, which is the same question in docs/, in a service’s README and in the root guides. |
 | `shell` | `/\.sh$/` | shellcheck reads the scripts themselves; nothing else changes its verdict. |
@@ -137,6 +138,7 @@ everything or the base was simply unknown.
 | `knip:backend` | check | `app` | `npm --prefix backend run knip` | check |
 | `knip:frontend` | check | `app` | `npm --prefix frontend run knip` | check |
 | `lint:circular` | check | `app` | `npm run lint:circular` | check |
+| `db:types` | check | `schema` | `npm run db:types:check` | check |
 | `security:deps` | check | `node-deps` | `npm run security:deps` | check |
 | `lint:shell` | check | `shell` | `npm run lint:shell` | check |
 | `lint:docker` | check | `docker` | `npm run lint:docker` | check |
@@ -241,9 +243,10 @@ builds the image it scans, and a cv-python-only change asks for no build at all.
 The `e2e-smoke` job runs two lanes, because it is the one job in CI with a
 database. The smoke step keeps the stack up when it is done
 (`TEST_REPORT_KEEP_ENV=1`), and the step after it runs `npm run test:db` — the
-database-backed backend specs (#522), which assert the rows a statement selects
-rather than its text — against that same stack, then tears it down. The step
-reads `job_test_db`, a key of its own in the shape of the two Semgrep steps.
+database-backed backend specs (#522; which specs those are is
+`docs/tech/development-guide.md` § Tests that need a database) — against that
+same stack, then tears it down. The step reads `job_test_db`, a key of its own
+in the shape of the two Semgrep steps.
 Today it always equals `job_smoke`, since both gates read `app`; what
 `scripts/gates.test.mjs` pins is the containment, not the equality — a smoke
 gate narrowed to fewer inputs than `test:db` reads would leave the step inside a
