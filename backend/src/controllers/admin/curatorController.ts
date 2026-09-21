@@ -8,6 +8,7 @@
 import { Response } from 'express';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { CuratorScopeType } from '../../types/auth.js';
 
 /**
  * List all curators with their scopes
@@ -45,7 +46,7 @@ export async function listCurators(_req: AuthenticatedRequest, res: Response): P
 
 interface AssignmentInput {
   userId: number;
-  scopeType: 'region' | 'source' | 'global';
+  scopeType: CuratorScopeType;
   regionId?: number;
   sourceId?: number;
   notes?: string;

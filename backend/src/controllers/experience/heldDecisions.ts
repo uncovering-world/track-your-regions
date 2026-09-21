@@ -44,11 +44,12 @@
  */
 
 import type { PoolClient } from 'pg';
+import type { CheckValue } from '../../db/schema.generated.js';
 import type { ContentKind } from '../../services/sync/types.js';
 import { tidyLabel, tidyLabelSql } from '../../services/sync/labelFold.js';
 
-/** The two answers a curator can give one held row. */
-export type HeldAnswer = 'published' | 'refused';
+/** The two answers a curator can give one held row — the column's own CHECK list. */
+export type HeldAnswer = CheckValue<'experience_held_decisions', 'answer'>;
 
 /**
  * A held row, as both endpoints and the record name it: the object's own field

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { parseBbox } from '../db/bboxEnvelopes.js';
+import { CHECK_VALUES } from '../db/schema.generated.js';
 import { foldLabel, tidyLabel } from '../services/sync/labelFold.js';
 import {
   isStorableHttpUrl,
@@ -626,8 +627,8 @@ export const reviewQueueQuerySchema = z.object({
  * clear reveals it too.
  */
 export const lifecycleStateBodySchema = z.object({
-  membership: z.enum(['present', 'former']).optional(),
-  existence: z.enum(['extant', 'lost']).optional(),
+  membership: z.enum(CHECK_VALUES.experiences.source_membership).optional(),
+  existence: z.enum(CHECK_VALUES.experiences.existence).optional(),
   note: z.string().max(1000).optional(),
   /**
    * The row as the curator was looking at it: both axes and whether it was
@@ -642,8 +643,8 @@ export const lifecycleStateBodySchema = z.object({
    * currently lists.
    */
   expected: z.object({
-    membership: z.enum(['present', 'former']),
-    existence: z.enum(['extant', 'lost']),
+    membership: z.enum(CHECK_VALUES.experiences.source_membership),
+    existence: z.enum(CHECK_VALUES.experiences.existence),
     flagged: z.boolean(),
   }),
 }).refine(b => b.membership !== undefined || b.existence !== undefined, {
@@ -743,7 +744,7 @@ export const declineSourceBodySchema = z.object({
  * part one way to publish it and another way to refuse it.
  */
 const heldPartSelectionSchema = z.object({
-  kind: z.enum(['locations', 'treasures']),
+  kind: z.enum(CHECK_VALUES.experience_held_decisions.part_kind),
   ref: z.string().max(255).nullable().optional(),
   name: z.string().max(500).nullable().optional(),
   fields: z.array(z.string().min(1).max(100)).min(1).max(50),
@@ -957,8 +958,10 @@ export const publishExperienceBodySchema = z.object({
 );
 
 export const syncChangesQuerySchema = z.object({
-  type: z.enum(['created', 'updated', 'conflict', 'held', 'contents', 'missing', 'returned', 'failed', 'filtered']).optional(),
-  significance: z.enum(['major', 'minor']).optional(),
+  // The column's own CHECK lists, so `?type=` accepts exactly what a changeset
+  // row can hold — a value missing here answered 400 for a row that existed.
+  type: z.enum(CHECK_VALUES.experience_sync_changes.change_type).optional(),
+  significance: z.enum(CHECK_VALUES.experience_sync_changes.significance).optional(),
   // Not z.coerce.boolean(): that is Boolean(input), so 'false' would enable it
   significantOnly: z.enum(['true', 'false']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -1052,7 +1055,7 @@ export const syncLogsQuerySchema = z.object({
 
 export const createCuratorAssignmentBodySchema = z.object({
   userId: z.number().int().positive(),
-  scopeType: z.enum(['region', 'source', 'global']),
+  scopeType: z.enum(CHECK_VALUES.curator_assignments.scope_type),
   regionId: z.number().int().positive().optional(),
   sourceId: z.number().int().positive().optional(),
   notes: z.string().max(1000).optional(),

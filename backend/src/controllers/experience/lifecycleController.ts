@@ -21,14 +21,16 @@ import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
+import type { CheckValue } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import type { AppliedPart } from './publishHeldParts.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 
-type Membership = 'present' | 'former';
-type Existence = 'extant' | 'lost';
+/** The object's two axes, as the columns' CHECK lists spell them. */
+type Membership = CheckValue<'experiences', 'source_membership'>;
+type Existence = CheckValue<'experiences', 'existence'>;
 
 /** What a curator sends about an object's lifecycle, and the row they were looking at. */
 export interface StateAnswer {
@@ -367,7 +369,7 @@ export interface AdmissionAnswer {
 /** What answering a refusal reports — `publish`'s own shape, with the verdict in front. */
 export interface AdmissionResult {
   experienceId: number;
-  admission: 'admitted' | 'refused';
+  admission: CheckValue<'experience_kind_memberships', 'admission'>;
   published: boolean;
   curationState: string;
   appliedFields: string[];
