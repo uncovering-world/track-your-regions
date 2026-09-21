@@ -190,6 +190,8 @@ PR title rules:
 - Imperative mood ("Add X", "Fix Y", not "Added X" or "Fixes Y")
 - Derived from the branch's overall purpose, not just the last commit
 
+The review bot reviews the PR once it is open, unless it is a draft — a draft is reviewed when it is marked ready. After that a push on its own brings no review; § 8 asks for each further round.
+
 ### 6. Update the board
 
 For every issue the PR references (`Closes #N` / `Fixes #N` / `Part of #N`), move it to review on the org board:
@@ -217,12 +219,30 @@ Creating the PR is not the end of the job — an open PR is unfinished work. Sta
 
 **Checks.** `gh pr checks <number>` (add `--watch` to block on them). On a failure, read the actual failing log (`gh run view <run-id> --log-failed`), reproduce locally, and fix. A fix is folded into the commit that owns the broken code — run `/pr-changes-amend` (for a dependent member of a stacked chain, pass its dependency branch as the base: `/pr-changes-amend <dependency-branch>` — the default `main` base would let the mapping reach the root's commits and rewrite them inside the dependent; and when the amended commit belongs to a chain member that itself **has** dependents, create the `fixup!` on the chain's top branch and fold from there with `git rebase --autosquash --update-refs origin/main`, so the rewrite carries into every dependent and all refs move together — then force-push each branch of the chain) — never appended as an "address review" commit; then `git push --force-with-lease` (see "Conflicts and staleness" below for the one rule that keeps that safe). Pushing its own amends unattended is this loop's normal operation (the carve-out is stated in `/pr-changes-amend` and `/commit` too): the branch is under this loop's stewardship, `--force-with-lease` refuses to clobber anything it has not seen, every amend answers a review thread that gets a reply naming the fix, and parking each wave for a manual push would defeat "stay on it until it is mergeable".
 
+**The next round.** A push brings no review on its own — the bot reviews a pull request when it is opened or marked ready, and after that only when asked (`claude-review.yml`, #796). So once the wave has landed — its `git push --force-with-lease`, or, for a wave with no push because every finding was declined with a reason, its last reply — comment `/review` on the PR:
+
+```bash
+gh pr comment <number> --body '/review'
+```
+
+One per wave, in this order: push (when there is one) → replies in the threads (`/pr-comments-reply`) → `/review`, so the re-review reads the replies — the bot verifies each fix at the head, accepts a reasoned decline, and resolves its own threads it finds addressed or reasonably declined. A rebase that resolved conflicts is a wave too and gets one; a rebase that left `git diff origin/main...HEAD` unchanged gets none, since there is nothing new to read. When the maintainer wants every push to one PR reviewed, `/review always` labels it `review-on-push` and every push is reviewed until the label is removed by hand: the loop's escape hatch, not its default. On such a PR the push is itself the ask — post no `/review` after a push there, or the same head is reviewed twice; a reply-only wave on it still gets one.
+
+The review to wait for is the **workflow run** the comment started, never a check on the PR: a comment-triggered run's check attaches to main's head commit, not the PR's, so `gh pr checks` never lists it, and the PR head's own `review` check is the skipped `synchronize` one. Find the run and block on it:
+
+```bash
+gh run list --workflow claude-review.yml --event issue_comment --limit 1 --json databaseId,status,conclusion,createdAt   # created after the comment
+gh run watch <databaseId>
+```
+
+What else the round waits on — CodeRabbit's finished signal, CI — is #920's question. This paragraph is the one statement of when a round is asked for; `/commit` § 8, `/pr-changes-amend`, `/pr-comments-reply` and `/review-pr` point here rather than restate it.
+
 **Reviews and comments.** Fetch new review threads as they arrive — `/pr-comments-analyze` collects and classifies them, `/pr-comments-reply` answers them; inside this loop their ask-the-user approval gates are carved out (stated in both files), since an unattended loop cannot wait on them and every reply is anchored to a verified fix or a stated reason. Ground rules, learned the hard way:
 
 - Answer every thread; **do not resolve threads yourself** unless explicitly told to — the commenter resolves. `main` requires conversation resolution, so an ignored thread blocks the merge as surely as a red check. One carve-out: when a bot commenter reports it could not resolve its own thread ("please resolve it manually"), that *is* being told — resolve it yourself and say so in the reply.
 - Read a bot reviewer's *verdict*, not just its finding list — and verify each claim against the code (grep for the claim, not the cited line number; lines drift) before agreeing or pushing back.
 - When a finding is real, look for its symmetric twin — the same bug in the mirrored code path — and fix both; then expect second-order breakage from the fix and re-run the affected tests.
 - A declined finding gets a reply with the concrete reason, never silence.
+- A line in the bot's summary comment — Minor, Note, `[pre-existing]` of any severity — opens no thread and blocks nothing: it is information, not an ask. Fix the cheap ones in the next wave and say in a PR comment what was left and why (#924 will state the dispositions — fixed on the branch, filed, dropped).
 
 **Conflicts and staleness.** If main moves ahead, rebase — the repo is rebase-only, no merge commits:
 

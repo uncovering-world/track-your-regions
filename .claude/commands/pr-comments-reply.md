@@ -82,6 +82,8 @@ gh api repos/{owner}/{repo}/issues/{number}/comments -f body="..."
 
 **Post one at a time** and report progress. If any post fails, report the error and continue with the rest.
 
+Replies first, then the round: a reply alone brings no re-review, and neither does the push that carried the fixes (`claude-review.yml`, #796). Once every reply is posted and any fixes are pushed — a wave with no push, every finding declined with a reason, is a wave too — ask for the round as `/pr-create` § 8 "The next round" says: `gh pr comment <number> --body '/review'`, so the re-review reads the replies — the bot verifies each fix at the head, accepts a reasoned decline, and resolves its own threads it finds addressed or reasonably declined. On a PR labelled `review-on-push` a push already brought the round; `/review` there follows a reply-only wave only. Inside `/pr-create` § "Babysit the PR until it is mergeable" the loop posts it after the replies; outside it, remind the user.
+
 ### 7. Summary
 
 After posting, show a summary: how many replies posted, any failures, and the PR URL.

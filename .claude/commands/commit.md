@@ -197,6 +197,14 @@ git push -u origin <branch-name>
 
 If the branch is new, this sets up tracking. If pushing to an existing branch, a regular `git push` suffices. If the branch was rebased, use `git push --force-with-lease` (never bare `--force`; and nothing that refreshes `origin/<branch>` beforehand — a refspec-less `git fetch origin` or a bare `git pull` blinds the lease, see `/pr-create` § 8) and confirm with the user first if the branch already has a PR with reviewers — except inside `/pr-create` § Babysit, whose loop pushes its own amends as part of answering that PR's review (see the carve-out there).
 
+A push brings no review on its own: the bot reviews a pull request when it is opened or marked ready, and after that only when asked (`claude-review.yml`, #796). So when the branch has an open non-draft PR and this push is not the `/pr-create` § 8 loop's own — that loop asks for its rounds itself — comment `/review` on it once the push has landed:
+
+```bash
+gh pr comment <number> --body '/review'
+```
+
+and say so in step 9's summary. Skip it in two cases: the user asked for a push without a review, or the PR carries the `review-on-push` label (`/review always`), under which every push is reviewed already.
+
 ### 9. Summary
 
 Report to the user:
@@ -204,6 +212,7 @@ Report to the user:
 - Branch name
 - Number of commits created (with short titles)
 - Pre-commit gate results (which gates ran, anything noteworthy)
+- Whether `/review` was posted on the PR, or why not (no PR, a draft, the user asked for none, `review-on-push`)
 - Any files that were **skipped** (junk, secrets, host-specific) and why
 - Any uncommitted changes that remain (files you chose not to commit)
 - Remind the user if leftover changes suggest a separate branch

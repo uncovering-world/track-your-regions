@@ -130,8 +130,8 @@ The safest approach:
 After successful rebase:
 - Delete the backup branch: `git branch -D backup/{branch-name}` — after the autosquash its tip is never reachable from HEAD, so plain `-d` refuses every time; the real safety check was step 4's `git diff backup/{branch-name}..HEAD`, not `-d`'s reachability test
 - Show the final commit history: `git log --oneline {base}..HEAD`
-- Remind the user they need to **force-push**: `git push --force-with-lease` (sound as long as nothing refreshed `origin/<branch>` since the last look at the branch — no refspec-less `git fetch origin`, no bare `git pull`; see `/pr-create` § 8)
-- **Do NOT force-push automatically** — always let the user do it. One carve-out: when this command runs inside `/pr-create` § "Babysit the PR until it is mergeable", the loop pushes its own amends (`git push --force-with-lease`, per `/pr-create` § 8) as part of answering that PR's review — that is the loop's normal operation, not an override to ask about.
+- Remind the user they need to **force-push**: `git push --force-with-lease` (sound as long as nothing refreshed `origin/<branch>` since the last look at the branch — no refspec-less `git fetch origin`, no bare `git pull`; see `/pr-create` § 8) — and, once the push has landed, to ask for the round as `/pr-create` § 8 "The next round" says: a `/review` comment, unless the PR carries `review-on-push`, where the push is the ask
+- **Do NOT force-push automatically** — always let the user do it. One carve-out: when this command runs inside `/pr-create` § "Babysit the PR until it is mergeable", the loop pushes its own amends (`git push --force-with-lease`, per `/pr-create` § 8) and asks for the round itself as part of answering that PR's review — that is the loop's normal operation, not an override to ask about.
 
 ### 7. Abort safety
 
