@@ -21,7 +21,8 @@ name: Claude PR Review
 # A comment-triggered run's check attaches to main's head commit, not the
 # PR's (`GITHUB_SHA` on `issue_comment` is the default branch), so it never
 # shows under the PR's checks; what waits for that review waits on the
-# workflow run itself (`/pr-create` § 8).
+# workflow run itself (`/pr-create` § 8). A newer review of the same PR
+# cancels the one in flight (the job's `concurrency`, #920).
 # Before this, every `synchronize` ran the whole prompt, and most of what a
 # push-triggered round found was a Note on a line the push had not touched --
 # each one a round, because main requires every thread resolved (the
@@ -92,6 +93,19 @@ jobs:
         && github.event.issue.user.login != 'dependabot[bot]'
         && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
         && startsWith(github.event.comment.body, '/review'))
+    # A newer review of the same pull request cancels the one in flight
+    # (#920): a `/review` after a fix wave, or a push under `review-on-push`,
+    # asks about a head the older run is no longer reading. The group sits on
+    # the job, after the `if:` above, and not on the workflow: every comment on
+    # a pull request starts this workflow — a thread reply, the round's
+    # dispositions comment, a `/review` from an account the filter refuses —
+    # and a workflow-level group would let that run, which does nothing, cancel
+    # the review it arrived during. A job its `if:` skips never joins the
+    # group. A cancelled run leaves the action's progress comment unfinished;
+    # the newer run posts its own.
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
