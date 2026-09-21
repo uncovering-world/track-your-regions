@@ -484,7 +484,7 @@ Commands:
   full                    Run fast tests + full E2E suite
   run-backend-unit        Internal: run backend unit/integration tests
   run-backend-coverage    Internal: run backend unit/integration tests with coverage
-  run-backend-db          Internal: run the database-backed backend specs (rows, not text)
+  run-backend-db          Internal: run the database-backed backend specs (a real Postgres, not the mocked pool)
   run-frontend-unit       Internal: run frontend unit/integration tests
   run-frontend-coverage   Internal: run frontend unit/integration tests with coverage
   run-e2e-smoke           Internal: run smoke E2E tests

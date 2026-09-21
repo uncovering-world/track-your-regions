@@ -66,6 +66,27 @@ export const INPUTS = [
       + ' to the Python test lane without being an input to cv-python’s lint.',
   },
   {
+    id: 'schema',
+    paths: [
+      // Everything docker-entrypoint-initdb.d applies, not the one file it
+      // holds today, and the compose file that pins the image it runs on.
+      /^db\/init\//,
+      'docker-compose.yml',
+      'backend/src/db/schema.generated.ts',
+      'backend/src/db/generateSchemaTypes.ts',
+      'backend/src/db/schemaTypesRender.ts',
+      'backend/src/db/testDbName.ts',
+      'scripts/db-types.sh',
+    ],
+    note:
+      'The generated row types are a function of what a fresh database is'
+      + ' built from: the db/init directory the image applies on first start,'
+      + ' the compose file that pins that image, the file the generator'
+      + ' produces, the generator, the renderer, the guard it imports and its'
+      + ' runner. The migrations are not — a fresh database never reads them,'
+      + ' and the schema-to-migration parity test answers for those.',
+  },
+  {
     id: 'node-deps',
     paths: [
       'backend/package.json',
@@ -152,6 +173,11 @@ export const GATES = [
   { id: 'knip:backend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'backend', 'run', 'knip'], job: 'check', setup: 'node' },
   { id: 'knip:frontend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'frontend', 'run', 'knip'], job: 'check', setup: 'node' },
   { id: 'lint:circular', tier: 'check', inputs: ['app'], command: ['npm', 'run', 'lint:circular'], job: 'check', setup: 'node' },
+  // Stands a fresh Postgres up from db/init, regenerates the row types and
+  // diffs them against the committed file (ADR-0064): a schema edit without
+  // `npm run db:types` fails here. `node` because the generator runs from
+  // backend/node_modules; the database is Docker, which every runner has.
+  { id: 'db:types', tier: 'check', inputs: ['schema'], command: ['npm', 'run', 'db:types:check'], job: 'check', setup: 'node' },
   { id: 'security:deps', tier: 'check', inputs: ['node-deps'], command: ['npm', 'run', 'security:deps'], job: 'check', setup: 'node' },
   { id: 'lint:shell', tier: 'check', inputs: ['shell'], command: ['npm', 'run', 'lint:shell'], job: 'check', setup: 'docker' },
   { id: 'lint:docker', tier: 'check', inputs: ['docker'], command: ['npm', 'run', 'lint:docker'], job: 'check', setup: 'docker' },
@@ -174,10 +200,10 @@ export const GATES = [
   // commands: it is what a person types, not an argv the runner passes on.
   { id: 'build', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'build', '&&', 'npm', '--prefix', 'frontend', 'run', 'size'], job: 'build', setup: 'node' },
   { id: 'test:e2e:smoke', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'test:e2e:smoke'], job: 'smoke', setup: 'docker' },
-  // The database-backed backend specs (#522): what they assert is the rows a
-  // statement selects, not its text, so they need a real Postgres. They run
-  // inside the same isolated stack the smoke lane stands up, so they hang off
-  // that job and share its inputs.
+  // The database-backed backend specs (#522): the ones that need a real
+  // Postgres, by the criterion in docs/tech/development-guide.md § Tests that
+  // need a database. They run inside the same isolated stack the smoke lane
+  // stands up, so they hang off that job and share its inputs.
   { id: 'test:db', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'test:db'], job: 'smoke', setup: 'docker' },
   { id: 'perf', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'perf:local'], job: 'perf', setup: 'docker' },
 ];
@@ -210,7 +236,7 @@ const oneLine = (text) => String(text).replace(/\s+/g, ' ').trim();
 /**
  * Every gate runs. The per-gate `why` is the short form rather than the
  * reason, which the caller prints once above the list: repeating one sentence
- * down twenty-five lines buries the list it is meant to explain.
+ * on every line buries the list it is meant to explain.
  */
 function everything(reason, inputs, unclassified) {
   return {

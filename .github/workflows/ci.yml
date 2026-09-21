@@ -435,11 +435,12 @@ jobs:
       - name: Run E2E smoke suite
         run: TEST_REPORT_KEEP_ENV=1 npm run test:e2e:smoke
 
-      # The database-backed backend specs (#522): what they assert is the rows a
-      # statement selects, not its text, so they need a real Postgres, and this
-      # is the one job in CI that has one. The `Unit Tests` job is a bare runner
-      # with no database, which is why a reachability-guarded spec in that
-      # suite would skip for ever and report green. Same key shape as the two
+      # The database-backed backend specs (#522): the ones that need a real
+      # Postgres, by the criterion in docs/tech/development-guide.md § Tests
+      # that need a database, and this is the one job in CI that has one. The
+      # `Unit Tests` job is a bare runner with no database, which is why a
+      # reachability-guarded spec in that suite would skip for ever and report
+      # green. Same key shape as the two
       # Semgrep steps: the job-level `job_smoke` starts the job, `job_test_db`
       # says this step has something to read — today both key off `app`, and
       # scripts/gates.test.mjs pins that the second never holds without the first.
