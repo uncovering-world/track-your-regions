@@ -143,6 +143,15 @@ export default [
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
     },
   },
+  // The one file nobody writes: `schema.generated.ts` is the schema's
+  // relations rendered by src/db/generateSchemaTypes.ts (ADR-0064), and its
+  // length is the schema's, not a sign of a file to split.
+  {
+    files: ['src/db/schema.generated.ts'],
+    rules: {
+      'max-lines': 'off',
+    },
+  },
   // What is left of the files that were over 800 counted lines on the day the
   // ceiling above was set (#530). Each keeps the ceiling it was written under,
   // 1000, until it is split; an entry is deleted when its file drops under 800
