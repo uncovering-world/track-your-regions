@@ -603,7 +603,7 @@ export async function getSources(req: Request, res: Response): Promise<void> {
   // true — a full rebuild is now only for changed region geometry, so nothing a
   // sync does could ever satisfy it.
   //
-  // `last_assignment_at` went with it rather than being ported to Drizzle: it
+  // `last_assignment_at` went with it rather than being kept in the response: it
   // existed to feed that comparison and no client ever read it on its own. The
   // column is still written by `assignExperiencesToRegions` and still available
   // to whatever wants it later.
