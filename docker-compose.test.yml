@@ -17,6 +17,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.e2e
+      # The frontend's manifest links packages/shared (ADR-0065), and this
+      # image runs its `npm ci`, which needs the link target present.
+      additional_contexts:
+        shared: ./packages/shared
     container_name: ${STACK_NAME:-tyr-ng}-e2e
     environment:
       E2E_BASE_URL: http://frontend:5173
