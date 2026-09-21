@@ -28,6 +28,11 @@ import {
   worldViews,
 } from '../schema.js';
 import { hashPassword } from '../../services/authService.js';
+// The rule for a database a test may write to, shared with the database-backed
+// lane (#522): this seed deletes and re-inserts its rows and rewinds three
+// sequences, so it must never run against the dev catalogue db/index.ts
+// defaults to.
+import { TEST_DB_NAME_PATTERN } from '../testDbName.js';
 
 export const E2E_WORLD_VIEW_ID = 9001;
 export const E2E_REGION_ID = 9001;
@@ -40,15 +45,6 @@ export const E2E_REGION_NAME = 'Testland';
  */
 // eslint-disable-next-line sonarjs/no-hardcoded-passwords -- a fixture credential for the isolated test stack, seeded only into a database whose name says `test`; the lane signs in through the dialog with it
 export const E2E_CURATOR = { email: 'curator@e2e.test', password: 'e2e-curator-password' };
-
-// db/index.ts defaults to localhost:5432/track_regions - the developer's
-// dev database - when no environment is set. This seed deletes and
-// re-inserts fixture rows (world view 9001, experiences 9001-9005, the
-// curator) and rewinds three sequences, so it must never run against a
-// non-test database. Anchored to a `test` path component rather than a bare
-// substring: `/test/i` would let "track_regions_latest" through, since
-// "latest" itself contains "test".
-const TEST_DB_NAME_PATTERN = /(^|[_-])test($|[_-])/i;
 
 /** UNESCO World Heritage Sites — seeded by db/init/01-schema.sql. */
 const UNESCO_SOURCE_NAME = 'UNESCO World Heritage Sites';
