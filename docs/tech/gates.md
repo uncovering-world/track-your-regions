@@ -165,19 +165,23 @@ everything or the base was simply unknown.
 ## What the backend suite reads across the repository
 
 The `app` class is one class and not two because the product is one contract
-surface. The frontend imports nothing from the backend (#527) and its unit tests
-mock the API, so neither its typecheck nor its unit lane can see a backend
-contract change; the only gate that sees the two sides agree is the smoke lane,
-and that is an `app` gate. In the other direction the backend suite reads the
-rest of the repository directly, through `repoFile()` in
+surface. Both sides import `packages/shared` — the rules both apply, declared
+once (ADR-0065), which is why that directory is in the class too: a change to
+a shared rule is a change to both sides, and both typechecks read its source
+through the link. Beyond those rules the frontend imports nothing from the
+backend (an endpoint's response shape is still declared per side, #527) and its
+unit tests mock the API, so neither its typecheck nor its unit lane can see a
+backend contract change; the only gate that sees the two sides agree on one is
+the smoke lane, and that is an `app` gate. In the other direction the backend
+suite reads the rest of the repository directly, through `repoFile()` in
 `backend/src/testSupport/` (#948), and the tooling specs beside it under
 `scripts/` do the same through `scripts/repo-root.mjs`. Everything the two
-reached on 2026-09-20:
+reached on 2026-09-21:
 
 | What a spec opens | Why |
 | --- | --- |
 | `db/init/01-schema.sql`, `db/migrations/` (and named migrations under it) | the schema-parity and migration guards compare SQL as text |
-| `frontend/src/utils/mapUtils.ts`, `utils/labelFold.ts`, `components/shared/curationLog.ts`, `components/regionMap/useMapInteractions.ts` | one rule, one runtime: the spec asserts the client's copy of a rule the database also holds (#674) |
+| `frontend/src/components/regionMap/useMapInteractions.ts` | one rule, one runtime: the spec asserts that the map's own division paths frame from the stored box rather than measuring (#674). The client's *copies* of a rule the database also holds — the near-global threshold, the label fold, the action vocabulary — are gone: both sides import `packages/shared` (ADR-0065), and the schema is held to it by a type |
 | `frontend/src` as a whole tree | `types/urlSafety.test.ts` and `db/regionFocusAntimeridian.test.ts` scan it for a second decision made anywhere in the client (#672, #674) |
 | `db/` and `scripts/` as whole trees, beside the backend's own `src/` | `db/regionAncestorInvalidation.test.ts` and `db/regionGeomPieces.test.ts` scan every `.sql`, `.py`, `.ts` and `.sh` under them for anything that switches the region geometry triggers off — by name or wholesale — and `db/renderedRungTopology.test.ts` scans `db/` for a simplifier put into a query |
 | `martin/config.yaml`, `martin/README.md` | the tile sources a spec asserts on, and the document that lists them |
