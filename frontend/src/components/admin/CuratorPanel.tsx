@@ -60,7 +60,7 @@ import { searchRegions, type RegionSearchResult } from '../../api/regions';
 import type { CuratorInfo, CuratorScope, CuratorActivityEntry } from '../../api/admin';
 import { formatDateTime } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
-import { ACTION_LABELS } from '../shared/curationLog';
+import { actionLabel } from '../shared/curationLog';
 
 // =============================================================================
 // Main Panel
@@ -601,7 +601,7 @@ function ActivityRow({
   // The detail below stays raw JSON: an admin reading a curator's trail is auditing it,
   // and the whole payload is the point. `formatLogDetails` says what a curator meant;
   // this says what was written.
-  const named = ACTION_LABELS[entry.action];
+  const named = actionLabel(entry.action);
 
   return (
     <>

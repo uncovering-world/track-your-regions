@@ -34,7 +34,7 @@ import { editLocation } from '../../api/curation';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { placementNotice } from '../../utils/placementNotice';
 import { describeMove, moveLabel } from '../../utils/moveDescription';
-import { tidyLabel } from '../../utils/labelFold';
+import { tidyLabel } from '@tyr/shared/labels';
 import { LocationPicker } from './LocationPicker';
 
 /**

@@ -14,7 +14,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import SearchIcon from '@mui/icons-material/Search';
 import type { ExperienceTreasure } from '../../api/experiences';
-import { foldLabel } from '../../utils/labelFold';
+import { foldLabel } from '@tyr/shared/labels';
 import { holdingsNoun } from '../../utils/experienceTypes';
 import { ContentTile } from './ContentTile';
 

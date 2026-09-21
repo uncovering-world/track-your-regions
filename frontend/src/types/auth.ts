@@ -2,8 +2,10 @@
  * Authentication types for Track Your Regions Frontend
  */
 
-export type UserRole = 'user' | 'curator' | 'admin';
-export type AuthProvider = 'local' | 'google' | 'apple';
+// The two enums both sides read, declared once (ADR-0065) and held to the
+// schema's own on the storing side.
+import type { UserRole, AuthProvider } from '@tyr/shared/auth';
+export type { UserRole, AuthProvider };
 
 export interface User {
   id: number;

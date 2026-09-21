@@ -8,43 +8,14 @@
  * `criteria` arriving as text, `imageCredit` arriving as an object, a counter moving by
  * two, a `criteria` key appearing as `null` and meaning nothing.
  *
- * The `valuesEqual` block is one half of a pin the two packages cannot share a runtime
- * for (#527): `changeSet.test.ts` § "the equality a curation card mirrors" states the
- * identical properties against `jsonEquals`, so a relaxation on either side fails a test
- * beside it. Keep the two in step — a property added here wants its twin there.
+ * The equality itself is `jsonEquals` from `@tyr/shared/equality`, the server's own,
+ * and its properties are stated once beside that declaration (ADR-0065). Until #789
+ * this file held a `valuesEqual` block twinned with one in `changeSet.test.ts`.
  */
 
 import { describe, it, expect } from 'vitest';
-import { changedKeys, isEmptyValue, valuesEqual } from './objectDiff';
-
-describe('valuesEqual', () => {
-  it('reads null, undefined and the empty string as the same nothing', () => {
-    // `changeSet.ts` does, and a key that merely appeared as `null` must not raise a row:
-    // 17 of the log's `criteria` entries are exactly that.
-    expect(valuesEqual(null, undefined)).toBe(true);
-    expect(valuesEqual('', null)).toBe(true);
-    expect(valuesEqual(undefined, '')).toBe(true);
-    expect(valuesEqual(null, 'Y 2026')).toBe(false);
-  });
-
-  it('compares object keys as a set, since JSONB does not keep their order', () => {
-    expect(valuesEqual({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
-    expect(valuesEqual({ qid: 'Q1892745', label: 'Salvator Mundi' },
-      { label: 'Salvator Mundi', qid: 'Q1892745' })).toBe(true);
-    expect(valuesEqual({ qid: 'Q1892745' }, { qid: 'Q19675' })).toBe(false);
-  });
-
-  it('compares arrays by position, because their order is the value', () => {
-    expect(valuesEqual([1, 2], [1, 2])).toBe(true);
-    expect(valuesEqual([1, 2], [2, 1])).toBe(false);
-  });
-
-  it('holds a string apart from the number that reads the same', () => {
-    // The trap the whole "shown as stored" note exists for.
-    expect(valuesEqual('2003', 2003)).toBe(false);
-    expect(valuesEqual(0, false)).toBe(false);
-  });
-});
+import { jsonEquals } from '@tyr/shared/equality';
+import { changedKeys, isEmptyValue } from './objectDiff';
 
 describe('changedKeys', () => {
   /**
@@ -111,13 +82,13 @@ describe('changedKeys', () => {
 });
 
 describe('isEmptyValue', () => {
-  it('reads an empty list as nothing, which valuesEqual deliberately does not', () => {
+  it('reads an empty list as nothing, which jsonEquals deliberately does not', () => {
     // A place with no countries listed and then two is a fact arriving, to a person.
     expect(isEmptyValue([])).toBe(true);
     expect(isEmptyValue(null)).toBe(true);
     expect(isEmptyValue('')).toBe(true);
     expect(isEmptyValue(false)).toBe(false);
     expect(isEmptyValue(0)).toBe(false);
-    expect(valuesEqual([], null)).toBe(false);
+    expect(jsonEquals([], null)).toBe(false);
   });
 });

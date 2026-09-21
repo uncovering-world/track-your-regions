@@ -4,6 +4,6 @@
   "ignore": [
     "src/components/admin/ClusterPaintEditor.tsx"
   ],
-  "ignoreDependencies": ["globals", "@vitest/coverage-v8"],
+  "ignoreDependencies": ["globals", "@vitest/coverage-v8", "@tyr/shared"],
   "ignoreExportsUsedInFile": true
 }

@@ -62,9 +62,9 @@ import { LoadingSpinner } from './LoadingSpinner';
 import { PictureWithCredit } from './PictureWithCredit';
 import { CurationPlaces } from './CurationPlaces';
 import { verdictOf } from './LifecycleChip';
-import { ACTION_LABELS, formatLogDetails } from './curationLog';
+import { actionLabel, formatLogDetails } from './curationLog';
 import { typeOptionsFor } from '../../utils/experienceTypes';
-import { tidyLabel } from '../../utils/labelFold';
+import { tidyLabel } from '@tyr/shared/labels';
 
 interface CurationDialogProps {
   /** The experience to curate — null means dialog is closed */
@@ -580,7 +580,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
               </Typography>
             )}
             {logQuery.data?.map((entry) => {
-              const actionInfo = ACTION_LABELS[entry.action] || { label: entry.action, color: '#6B7280' };
+              const actionInfo = actionLabel(entry.action) || { label: entry.action, color: '#6B7280' };
               const details = formatLogDetails(entry);
               return (
                 <Box

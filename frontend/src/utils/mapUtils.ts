@@ -4,6 +4,7 @@
 
 import { coordEach } from '@turf/turf';
 import type { MapRef } from 'react-map-gl/maplibre';
+import { NEAR_GLOBAL_DEG } from '@tyr/shared/geometry';
 
 /** What a map needs to frame a shape: the box, and where to point the camera. */
 export interface GeoFocus {
@@ -12,12 +13,6 @@ export interface GeoFocus {
   /** [lng, lat] — the centre of the box measured in the frame the box was chosen in. */
   anchorPoint: [number, number];
 }
-
-/**
- * A span this wide is the whole world however it is measured, so no window onto
- * it is a frame. Mirrors `near_global_deg()` in the schema, which `geometry_focus()` reads.
- */
-const NEAR_GLOBAL_DEG = 350;
 
 /**
  * Measure a shape the way the database measures a region (#666).

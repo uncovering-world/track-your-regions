@@ -37,7 +37,7 @@ import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { sameLabel } from '../../utils/labelFold';
+import { sameLabel } from '@tyr/shared/labels';
 
 /**
  * The most the endpoint stores, so the form refuses a twenty-first rather than
@@ -74,7 +74,7 @@ export function MakerList({ makers, onChange, overCap = false }: {
   // The endpoint refuses the same maker twice and folds before it compares —
   // NFKC, every dash to the plain one, runs of whitespace to one, lowercase —
   // because the importer dedupes that way and a stored list never names one
-  // person twice. Asked with the same fold here (`utils/labelFold`), or the
+  // person twice. Asked with the same fold here (`@tyr/shared/labels`), or the
   // narrower question would pass exactly what the server then refuses: a work
   // names *Vincent van Gogh* and a curator pastes `Vincent  van Gogh` off a
   // wrapped line, or a hyphen that is U+2010, and the answer comes back as the

@@ -15,7 +15,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ACTION_LABELS, formatLogDetails } from './curationLog';
+import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
+import { ACTION_LABELS, actionLabel, formatLogDetails } from './curationLog';
 
 /** An entry as the controllers write it. */
 function entry(action: string, details: Record<string, unknown>) {
@@ -30,8 +31,8 @@ describe('a point verdict in the object’s history', () => {
       'location_marked_former', 'location_marked_lost',
       'location_state_restored', 'location_missing_dismissed',
     ]) {
-      expect(ACTION_LABELS[action]?.label).toBeTruthy();
-      expect(ACTION_LABELS[action]?.label).not.toContain('location_');
+      expect(actionLabel(action)?.label).toBeTruthy();
+      expect(actionLabel(action)?.label).not.toContain('location_');
     }
   });
 
@@ -114,12 +115,12 @@ describe('a point verdict in the object’s history', () => {
 
 describe('every act the History can be handed', () => {
   // Which acts exist is the schema's answer, not this file's: the CHECK on
-  // `experience_curation_log.action` is the closed list, and `curationLogActionLabels`
-  // in the backend suite is what holds the two together — a text-level guard in the
-  // family of `schemaMigrationParity`, since the label lives in a module no backend
-  // test can import and the schema in a file no frontend test may read. What is
-  // checkable from here is the quality of each label, for every one that exists.
-  it.each(Object.keys(ACTION_LABELS))('says %s in words rather than in the column value',
+  // `experience_curation_log.action` is the closed list, `CURATION_LOG_ACTIONS` is
+  // the one declaration both sides import (ADR-0065), held to that CHECK by a type
+  // in the backend suite, and `ACTION_LABELS` is keyed by it — so a label missing
+  // or invented is a type error before this file runs. What is checkable from here
+  // is the quality of each label, for every act that exists.
+  it.each(CURATION_LOG_ACTIONS)('says %s in words rather than in the column value',
     (action) => {
       const named = ACTION_LABELS[action];
       expect(named.label).toBeTruthy();
@@ -136,7 +137,7 @@ describe('a verdict on the whole object', () => {
   // what stops a component's departure reading as the whole site's (ADR-0026) — so the
   // History has to tell them apart on the chip.
   it('does not read as a verdict on one of its places', () => {
-    for (const action of ['marked_former', 'marked_lost', 'state_restored', 'missing_dismissed']) {
+    for (const action of ['marked_former', 'marked_lost', 'state_restored', 'missing_dismissed'] as const) {
       expect(ACTION_LABELS[action]?.label).not.toContain('Place');
       expect(ACTION_LABELS[`location_${action}`]?.label).toContain('Place');
     }

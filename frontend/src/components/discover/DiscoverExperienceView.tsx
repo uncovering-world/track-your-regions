@@ -37,7 +37,7 @@ import { useDiscoverMap } from './useDiscoverMap';
 import { useDiscoverHover } from './useDiscoverHover';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { experienceColor } from '../../utils/kindColors';
-import { foldLabel } from '../../utils/labelFold';
+import { foldLabel } from '@tyr/shared/labels';
 
 /**
  * A set of places as one shape to frame. `LngLatBounds.extend` was the

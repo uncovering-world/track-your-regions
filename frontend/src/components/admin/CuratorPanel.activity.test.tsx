@@ -8,8 +8,9 @@
  * table did, and neither knew about the other, which is how one screen can be fixed and
  * the other left saying the opposite thing about one act.
  *
- * The chip's words come from `ACTION_LABELS` now, so what holds this screen to the twenty
- * the database accepts is the guard on that table (`curationLogActionLabels.test.ts`).
+ * The chip's words come from `ACTION_LABELS` now, keyed by the vocabulary both sides import
+ * (`@tyr/shared/curationLog`, ADR-0065) and held to the schema's CHECK by a type, so what
+ * holds this screen to the acts the database accepts is the typecheck.
  * This pins the wiring: that the label reaching an admin is the product's word for the
  * act, and the payload stays underneath, an audit rather than a story.
  */

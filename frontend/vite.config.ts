@@ -55,6 +55,13 @@ export default defineConfig({
     // Not reachable from outside the compose network, so this doesn't widen
     // real exposure.
     allowedHosts: ['frontend'],
+    // The rules both sides apply are a linked package outside this root
+    // (packages/shared, ADR-0065), and Vite serves a file outside its
+    // allow-list as 403. This root and that package, nothing wider: the
+    // backend tree stays unreachable from the dev server.
+    fs: {
+      allow: [path.resolve(__dirname), path.resolve(__dirname, '../packages/shared')],
+    },
   },
   preview: {
     // Same port and host rule as the dev server: the test stack's frontend

@@ -6,28 +6,23 @@
  * Extracted from useExperienceContext for reuse across components.
  */
 
+import {
+  isPictureHost, isUploadHost, isCommonsPath, isDescriptionPage, namesAPictureFile,
+} from '@tyr/shared/pictures';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-/**
- * The hosts a stored picture may be drawn from.
- *
- * A licence question rather than a security one (ADR-0043): a Wikimedia Commons
- * file is published to be reused with its author named, which `ImageCreditLine`
- * does, while the World Heritage Centre's terms say its photographs "may not be
- * copied or retransmitted by any means" and that a site may "only link to, not
- * replicate" them — so `whc.unesco.org` and `data.unesco.org` came off this list
- * with #557, and the 1260 rows that pointed there are answered from Commons
- * instead. A card whose picture is not on Commons shows no picture and keeps the
- * link to the property's own page, which those terms invite.
- *
- * The storing side holds the same list, as `DISPLAYABLE_PICTURE_HOSTS`
- * (`backend/src/types/urlSafety.ts`); no import can cross that boundary (#527),
- * so `urlSafety.test.ts` reads this declaration and pins the two together.
+/*
+ * Which hosts a stored picture may be drawn from, and what names a picture
+ * file, are the storing side's rule as much as this side's: declared once in
+ * `@tyr/shared/pictures` (ADR-0065), with the licence reasoning (ADR-0043) —
+ * `whc.unesco.org` and `data.unesco.org` came off that list with #557, and the
+ * 1260 rows that pointed there are answered from Commons instead. A card whose
+ * picture is not on Commons shows no picture and keeps the link to the
+ * property's own page, which those terms invite. What this module adds is the
+ * drawing side's use of the rule: what an `<img src>` may be handed, and how
+ * a Commons file is asked for at a size.
  */
-const TRUSTED_IMAGE_DOMAINS = [
-  'commons.wikimedia.org',
-  'upload.wikimedia.org',
-];
 
 /**
  * A base with no other purpose than resolving a value that names no host of its
@@ -83,50 +78,14 @@ function isRenderableImageUrl(url: string): boolean {
  */
 function isTrustedImageUrl(url: string): boolean {
   try {
-    const parsed = new URL(url);
-    const trustedHost = TRUSTED_IMAGE_DOMAINS.some(
-      domain => parsed.hostname === domain || parsed.hostname.endsWith('.' + domain),
-    );
-    const uploadHost = parsed.hostname === 'upload.wikimedia.org'
-      || parsed.hostname.endsWith('.upload.wikimedia.org');
-    const commonsFile = !uploadHost || parsed.pathname.includes('/wikipedia/commons/');
-    return trustedHost && commonsFile && !isDescriptionPage(parsed.pathname) && namesAPictureFile(parsed.pathname);
+    const { hostname, pathname } = new URL(url);
+    return isPictureHost(hostname)
+      && isCommonsPath(hostname, pathname)
+      && !isDescriptionPage(pathname)
+      && namesAPictureFile(pathname);
   } catch {
     return false;
   }
-}
-
-/**
- * The file types a picture may be, read from the name it is served under — the
- * same list the storing side holds (`PICTURE_EXTENSIONS`, `urlSafety.ts`), and
- * pinned to it by `urlSafety.test.ts`, which reads this declaration as it reads
- * the host list above. A Commons *page* — a kind, a file's description —
- * sits on the same host and answers HTML, which an `<img>` draws as nothing;
- * and Commons serves PDFs, videos and scanned books under the same
- * `Special:FilePath` shape.
- */
-const PICTURE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.tif', '.tiff', '.avif'];
-
-/**
- * The page *about* a file rather than the file: `/wiki/File:Louvre.jpg` ends
- * like a picture and answers HTML. The file is under `Special:FilePath/`.
- */
-function isDescriptionPage(pathname: string): boolean {
-  try {
-    return /^\/wiki\/File:/i.test(decodeURIComponent(pathname));
-  } catch {
-    return true;
-  }
-}
-
-function namesAPictureFile(pathname: string): boolean {
-  let name: string;
-  try {
-    name = decodeURIComponent(pathname).toLowerCase();
-  } catch {
-    return false;
-  }
-  return PICTURE_EXTENSIONS.some(ext => name.endsWith(ext));
 }
 
 /**
@@ -146,9 +105,7 @@ function commonsFilePathUrl(url: string): string | null {
     const parsed = new URL(url);
     // The same host test the trust gate applies: a subdomain of the upload host
     // is the upload host, and a file there is sized through Commons like any other.
-    const uploadHost = parsed.hostname === 'upload.wikimedia.org'
-      || parsed.hostname.endsWith('.upload.wikimedia.org');
-    if (!uploadHost) return null;
+    if (!isUploadHost(parsed.hostname)) return null;
     if (!parsed.pathname.includes('/wikipedia/commons/')) return null;
     const segments = parsed.pathname.split('/').filter(Boolean);
     const name = segments[segments.length - (parsed.pathname.includes('/thumb/') ? 2 : 1)];
