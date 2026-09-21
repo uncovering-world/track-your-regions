@@ -675,7 +675,7 @@ Border opacity slider (0–100%) controls SVG layer visibility.
 | `wvImportMatchReview.ts` | `ManualClusterDecision` type, `ClusterReviewResponse` union, overlay image store |
 | `adminWorldViewImport.ts` (frontend API) | `BorderPath`, `ManualClusterResponse`, `ClusterReviewCluster`, `clusterOverlayUrl()` |
 
-Zod validation schemas: `wvImportClusterReviewBodySchema`, `wvImportClusterHighlightParamSchema` in `backend/src/types/index.ts`.
+Zod validation schemas: `wvImportClusterReviewBodySchema`, `wvImportClusterHighlightParamSchema` in `backend/src/types/worldViewImportSchemas.ts` (re-exported from the `types` barrel).
 
 ## Future Enhancements
 
