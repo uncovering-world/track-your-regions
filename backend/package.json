@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "test:coverage": "node ../scripts/test-report.mjs backend-coverage",
     "seed:e2e": "tsx src/db/seed/runE2eFixture.ts",
+    "db:types": "tsx src/db/generateSchemaTypes.ts",
     "knip": "knip --include files,dependencies,unlisted",
     "knip:full": "knip"
   },

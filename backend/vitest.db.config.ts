@@ -10,7 +10,10 @@ import { defineConfig } from 'vitest/config';
  * `src/services/sync/locationWriter.ts` passed twelve text tests while choosing
  * the wrong old row; four statements on a database found it. A spec belongs here
  * when its assertion is about which rows a statement selects, not about what it
- * says — see docs/tech/development-guide.md § Tests that need a database.
+ * says — or about what the live server or driver hands back, which the mock is
+ * precisely what bypasses (`src/db/schemaTypes.db.test.ts` checks the generated
+ * row types' claim about `pg`'s type parsers, ADR-0064) — see
+ * docs/tech/development-guide.md § Tests that need a database.
  *
  * A second config rather than a second `projects` entry in the first one, on
  * purpose: a bare `vitest run` runs every project, and the two places that type
