@@ -30,6 +30,15 @@ const PERF_CONTAINER_ONLY =
   'the lane measures a production build served inside the test stack, by the '
   + "stack's own pinned Chromium; no host-side shape of it produces comparable "
   + 'numbers';
+// The database-backed specs (#522) execute statements and assert on the rows
+// they selected, so they build and tear down rows in whatever database the
+// backend points at — and on the host backend/src/db/index.ts points at the
+// developer's own catalogue when nothing is set. Inside the stack that is
+// track_regions_test, and the lane's global setup refuses any other name.
+const DB_CONTAINER_ONLY =
+  'the specs write rows into whatever database the backend points at, and on '
+  + 'the host that is the dev catalogue (backend/src/db/index.ts); the lane runs '
+  + 'only inside the isolated test stack, against track_regions_test';
 
 fs.mkdirSync(RESULTS_DIR, { recursive: true });
 
@@ -49,6 +58,15 @@ const STEP_TEMPLATES = {
     kind: 'vitest',
     packageDir: 'backend',
     coverage: true,
+  },
+  'backend-db': {
+    id: 'backend-db',
+    label: 'Backend Database (rows, not text)',
+    scope: 'backend/src/**/*.db.test.ts (inside the test stack, against track_regions_test)',
+    kind: 'vitest',
+    packageDir: 'backend',
+    coverage: false,
+    containerOnly: DB_CONTAINER_ONLY,
   },
   'frontend-unit': {
     id: 'frontend-unit',
@@ -109,6 +127,7 @@ const MODE_STEPS = {
   coverage: ['backend-coverage', 'frontend-coverage'],
   'backend-unit': ['backend-unit'],
   'backend-coverage': ['backend-coverage'],
+  'backend-db': ['backend-db'],
   'frontend-unit': ['frontend-unit'],
   'frontend-coverage': ['frontend-coverage'],
   'e2e-smoke': ['e2e-smoke'],
@@ -119,6 +138,7 @@ const MODE_STEPS = {
 const STEP_CONTAINER_COMMAND = {
   'backend-unit': 'run-backend-unit',
   'backend-coverage': 'run-backend-coverage',
+  'backend-db': 'run-backend-db',
   'frontend-unit': 'run-frontend-unit',
   'frontend-coverage': 'run-frontend-coverage',
   'e2e-smoke': 'run-e2e-smoke',
