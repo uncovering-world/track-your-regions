@@ -37,6 +37,7 @@ export const INPUTS = [
     paths: [
       'backend/',
       'frontend/',
+      'packages/',
       'db/',
       'martin/',
       'scripts/',
@@ -45,10 +46,11 @@ export const INPUTS = [
       '.env.example',
     ],
     note:
-      'The product is one contract surface, not two stacks: backend specs read'
-      + ' db/, frontend/src, martin/ and scripts/ through repoFile(), and the smoke'
-      + ' lane is the only gate that sees the backend↔frontend contract at all, so'
-      + ' a change to either side asks for both.',
+      'The product is one contract surface, not two stacks: both sides import'
+      + ' packages/shared (ADR-0065), backend specs read db/, frontend/src, martin/'
+      + ' and scripts/ through repoFile(), and the smoke lane is the only gate that'
+      + ' sees the backend↔frontend contract at all, so a change to any of them'
+      + ' asks for all of it.',
   },
   {
     id: 'python',
@@ -93,9 +95,11 @@ export const INPUTS = [
       'backend/package-lock.json',
       'frontend/package.json',
       'frontend/package-lock.json',
+      'packages/shared/package.json',
+      'packages/shared/package-lock.json',
     ],
     note:
-      'npm audit reads the two manifests and their lockfiles and nothing else,'
+      'npm audit reads the three manifests and their lockfiles and nothing else,'
       + ' so a change of source code cannot alter its answer.',
   },
   {
@@ -172,6 +176,12 @@ export const GATES = [
   { id: 'typecheck:frontend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'frontend', 'run', 'typecheck'], job: 'check', setup: 'node' },
   { id: 'knip:backend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'backend', 'run', 'knip'], job: 'check', setup: 'node' },
   { id: 'knip:frontend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'frontend', 'run', 'knip'], job: 'check', setup: 'node' },
+  // The third package (ADR-0065): its own lint, typecheck and knip, the way
+  // the other two have theirs. Its specs run in test:backend, like the
+  // tooling's, and both sides' typechecks read its source through the link.
+  { id: 'lint:shared', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'packages/shared', 'run', 'lint'], job: 'check', setup: 'node' },
+  { id: 'typecheck:shared', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'packages/shared', 'run', 'typecheck'], job: 'check', setup: 'node' },
+  { id: 'knip:shared', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'packages/shared', 'run', 'knip'], job: 'check', setup: 'node' },
   { id: 'lint:circular', tier: 'check', inputs: ['app'], command: ['npm', 'run', 'lint:circular'], job: 'check', setup: 'node' },
   // Stands a fresh Postgres up from db/init, regenerates the row types and
   // diffs them against the committed file (ADR-0064): a schema edit without

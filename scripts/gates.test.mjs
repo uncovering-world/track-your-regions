@@ -75,6 +75,9 @@ describe('what a change asks for', () => {
       'typecheck:frontend',
       'knip:backend',
       'knip:frontend',
+      'lint:shared',
+      'typecheck:shared',
+      'knip:shared',
       'lint:circular',
       'test:backend',
       'test:frontend',
@@ -224,6 +227,10 @@ describe('the map itself', () => {
   it('puts a path in every input it belongs to, not just the first', () => {
     const inputsOf = (path) => [...classifyPaths([path]).inputs].sort();
     expect(inputsOf('backend/package.json')).toEqual(['app', 'node-deps']);
+    // The third package (ADR-0065) is product like the other two: a rule both
+    // sides import is a change to both sides.
+    expect(inputsOf('packages/shared/src/labels.ts')).toEqual(['app']);
+    expect(inputsOf('packages/shared/package-lock.json')).toEqual(['app', 'node-deps']);
     expect(inputsOf('db/gadm_levels.py')).toEqual(['app', 'db-python']);
     expect(inputsOf('backend/Dockerfile')).toEqual(['app', 'docker']);
     expect(inputsOf('scripts/db-cli.sh')).toEqual(['app', 'shell']);
