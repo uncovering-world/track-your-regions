@@ -7,10 +7,53 @@ name: Claude PR Review
 #   docs/configuration.md > "Custom Tools"          — Bash whitelist required for gh CLI
 #   docs/usage.md inputs table                       — claude_code_oauth_token for OAuth
 # Auth: Pro/Max subscription via CLAUDE_CODE_OAUTH_TOKEN.
+#
+# When it runs (#796). A review starts four ways, and a push on its own is
+# not one of them:
+#   - the pull request is opened as a non-draft, or a draft is marked ready
+#     (`opened` and `ready_for_review`; a PR opened ready never emits the
+#     second, which is why the first stays);
+#   - someone with write access comments `/review` -- one round, on a draft
+#     too, since an explicit ask is an ask;
+#   - someone comments `/review always`, which labels the PR
+#     `review-on-push`, and from then on every push to it is reviewed
+#     (`synchronize` behind the label; remove the label to unsubscribe).
+# A comment-triggered run's check attaches to main's head commit, not the
+# PR's (`GITHUB_SHA` on `issue_comment` is the default branch), so it never
+# shows under the PR's checks; what waits for that review waits on the
+# workflow run itself (`/pr-create` § 8).
+# Before this, every `synchronize` ran the whole prompt, and most of what a
+# push-triggered round found was a Note on a line the push had not touched --
+# each one a round, because main requires every thread resolved (the
+# measurement is on #796). These are the three modes Anthropic's managed
+# Code Review ships (once on open or ready / every push / manual, with
+# `@claude review` and `@claude review always`), what Copilot ships (once,
+# with "Review new pushes" opt-in) and what the action's own repository uses
+# (`opened` only). The commands that push a fix wave ask for the next round
+# themselves (`/pr-create` § 8, `/commit` § 8).
+#
+# Trust. An `issue_comment` run carries the repository's secrets, so a
+# `/review` on a fork PR runs the reviewer with the fork's tree checked out.
+# The job admits a comment only from a member or collaborator
+# (`author_association`), the subscribe step asks the API for the commenter's
+# effective permission before it labels anything (MEMBER covers a read-only
+# member too), the action then admits only a commenter with write access,
+# restores `.claude/` and `CLAUDE.md` from the base branch before Claude
+# starts (docs/security.md), and Bash is limited to the `gh`, `grep` and `rg`
+# forms under --allowedTools.
+#
+# A pull request that changes this file gets no review from it: the action
+# refuses to run when the workflow file differs from the default branch's copy
+# ("Workflow validation failed … identical content"), and the `review` check
+# still reports success while the step below prints that no execution log
+# exists. The review of such a PR is the maintainer's own, and what the change
+# does is seen on the first pull request after it merges.
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+    types: [opened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -22,13 +65,33 @@ permissions:
 
 jobs:
   review:
-    # Auto-runs on every PR open/sync EXCEPT Dependabot —
+    # The four ways in (see the header), and never Dependabot --
     # claude-dependabot.yml owns those (different prompt focused on
     # version-bump risk + codebase impact). Comment-based @claude
-    # interactions are handled separately by claude-qa.yml (tag mode).
-    # Action enforces "users with write access only" internally
-    # (docs/security.md), and GitHub strips secrets for fork PRs.
-    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    # interactions are handled separately by claude-qa.yml (tag mode);
+    # `/review` carries no @claude, so the two never both fire.
+    # Action enforces "users with write access only" on every event here
+    # (docs/security.md), and GitHub strips secrets for a fork's
+    # `pull_request` events. The `author_association` filter on the comment
+    # path is a cheaper gate in front of that one, and it is not optional:
+    # the label step below runs before the action's check does, so without
+    # it any account that can comment on this public repository could
+    # subscribe a PR to a review on every push. The association is a
+    # relationship, not a permission — a read-only member is MEMBER too — so
+    # the label step asks for the effective permission before it acts, and
+    # the action verifies write access again before Claude runs.
+    if: |
+      (github.event_name == 'pull_request'
+        && github.event.pull_request.user.login != 'dependabot[bot]'
+        && ((github.event.action == 'opened' && github.event.pull_request.draft == false)
+            || github.event.action == 'ready_for_review'
+            || (github.event.action == 'synchronize'
+                && contains(github.event.pull_request.labels.*.name, 'review-on-push'))))
+      || (github.event_name == 'issue_comment'
+        && github.event.issue.pull_request != null
+        && github.event.issue.user.login != 'dependabot[bot]'
+        && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+        && startsWith(github.event.comment.body, '/review'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -36,7 +99,40 @@ jobs:
         with:
           # Action runs `git fetch origin main --depth=1` internally to restore
           # trusted base-branch config (CLAUDE.md, .claude/, etc.). Shallow OK.
+          # On a `/review` comment this checks out main; the action's tag mode
+          # (which `track_progress` selects for every event here) then fetches
+          # and checks out the PR's head branch itself before Claude starts,
+          # so no `ref:` is needed.
           fetch-depth: 1
+
+      # `/review always`: label the PR so that `synchronize` reviews it from
+      # now on. The label is (re)created on every use so the step never fails
+      # on a repository that has not seen one; removing it from the PR is how
+      # a subscription ends.
+      - name: Subscribe the pull request to push-triggered reviews
+        if: github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/review always')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.comment.user.login }}
+        run: |
+          # The job's author_association filter is a relationship, not a
+          # permission: a member with read access passes it. The label is a
+          # write to the PR, so ask for the effective permission first.
+          perm=$(gh api "repos/$GH_REPO/collaborators/$ACTOR/permission" --jq '.permission')
+          case "$perm" in
+            admin|maintain|write) ;;
+            *)
+              echo "$ACTOR has '$perm' access here; only write access may subscribe a PR. Nothing changed."
+              exit 0
+              ;;
+          esac
+          gh label create review-on-push --force \
+            --color 0E8A16 \
+            --description "Every push to this pull request is reviewed (claude-review.yml)"
+          gh pr edit "$PR" --add-label review-on-push
+          echo "PR #$PR is subscribed: every push is reviewed until the label is removed."
 
       - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
@@ -68,7 +164,8 @@ jobs:
           # comment MCP tool — so direct, line-level findings MUST go inline.
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+            TRIGGER: ${{ github.event_name }} ${{ github.event.action }}
 
             You are reviewing this PR. Project conventions live in CLAUDE.md
             (already in your context). The structure below mirrors
@@ -151,7 +248,7 @@ jobs:
             `docs/tech/*` doc for the area touched by this PR. Note the
             project's patterns and conventions for this domain.
 
-            **Phase 2 — Diff.** Get the diff with `gh pr diff`. Identify
+            **Phase 2 — Diff.** Get the diff with `gh pr diff <PR NUMBER>`. Identify
             what changed: pure move vs new behavior vs deletion. For each
             hunk also name the *claim* it changes — a rule, a threshold, a
             command, a flag, a signature, a schema field, a documented
@@ -249,7 +346,8 @@ jobs:
             If you find NO line-level issues, post just the top-level summary.
 
             Workflow:
-            1. Get the diff: `gh pr diff`
+            1. Get the diff: `gh pr diff <PR NUMBER>` (by number: on a
+               `/review` run the checkout began on main)
             2. Run the Phase 4 repo search for every claim the diff changes
             3. For each specific line-level concern → inline comment
             4. Once all inline comments are posted → ONE top-level summary via `gh pr comment`
