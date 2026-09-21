@@ -8,7 +8,8 @@
  */
 
 import { pool } from '../../db/index.js';
-import type { FieldChange, FieldSignificance } from './changeSet.js';
+import type { CheckValue } from '../../db/schema.generated.js';
+import type { FieldChange } from './changeSet.js';
 import type { ContentsByKind } from './types.js';
 
 export interface ChangeRecord {
@@ -31,8 +32,11 @@ export interface ChangeRecord {
    * `conflict`, which would have reported a disagreement with a curator that never
    * happened — and the admin report's `?type=conflict` filter would have handed it
    * back as one.
+   *
+   * The list itself is the column's CHECK, read from the generated schema: a
+   * tenth word added here alone no longer compiles.
    */
-  changeType: 'created' | 'updated' | 'conflict' | 'held' | 'contents' | 'missing' | 'returned' | 'failed' | 'filtered';
+  changeType: CheckValue<'experience_sync_changes', 'change_type'>;
   changedFields: FieldChange[] | null;
   /**
    * What the run did to the object's contents, by kind, or `null` where it moved
@@ -40,7 +44,7 @@ export interface ChangeRecord {
    * description and drop a point in the same pass.
    */
   contents: ContentsByKind | null;
-  significance: FieldSignificance | null;
+  significance: CheckValue<'experience_sync_changes', 'significance'> | null;
   error: string | null;
 }
 

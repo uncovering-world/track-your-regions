@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CheckValue } from '../db/schema.generated.js';
 
 /**
  * Authentication types for Track Your Regions
@@ -11,7 +12,8 @@ import { z } from 'zod';
 export type UserRole = 'user' | 'curator' | 'admin';
 export type AuthProvider = 'local' | 'google' | 'apple';
 
-export type CuratorScopeType = 'region' | 'source' | 'global';
+/** `curator_assignments.scope_type`, as its CHECK lists it. */
+export type CuratorScopeType = CheckValue<'curator_assignments', 'scope_type'>;
 
 export interface CuratorScope {
   id: number;

@@ -15,12 +15,14 @@
 import { Response } from 'express';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
+import type { CheckValue } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 
-type Membership = 'present' | 'former';
-type Existence = 'extant' | 'lost';
+/** The point's two axes, as the columns' CHECK lists spell them. */
+type Membership = CheckValue<'experience_locations', 'source_membership'>;
+type Existence = CheckValue<'experience_locations', 'existence'>;
 
 /**
  * Name each transition this call makes, so the log reads as events rather than as
