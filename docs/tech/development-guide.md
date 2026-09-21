@@ -701,24 +701,50 @@ and what the change does is seen on the first PR after it merges.
 
 What the bot posts arrives through two channels, and severity with provenance
 decides which. An inline thread is opened only for a Critical or Major finding
-the branch introduced, on a line the diff changed. A thread is a blocking ask:
+that is the branch's own — introduced by it, or pre-existing and depended on by
+the change — on a line the diff changed. A thread is a blocking ask:
 `main` requires every conversation resolved, so each one costs the author a
 round, and the bot opens one only for what must change before the merge.
 Everything else — Minor, Note, and a `[pre-existing]` finding of any severity —
 is a line in the bot's summary comment: information for the author, not an ask.
-What an author owes such a line is #924's rule.
+
+What an author owes any finding, thread or line, is a **disposition** (#924). A
+verified finding — one the round checked against the code, not the reviewer's
+claim as posted — ends in exactly one of three places. It is **fixed on the
+branch** when the branch introduced it, or when it is pre-existing but the
+changed path depends on it so the change is unsafe or incorrect while it stands;
+the test is two questions, *would this problem exist if this branch were not
+merged?* and, if it would, *is the changed path correct while it stands?*, and
+a no to either makes it the branch's, folded into the owning commit in the same
+wave. It is **filed** when it is a verified pre-existing defect the branch
+neither introduced nor depends on and is worth durable backlog work: linked to
+the open issue that already covers it, else created as a Bug through
+`/issue-create`, and never a blocking thread or a fix wave on this branch. It is
+**dropped** when verification found no defect — a false positive, a defensive
+wish where a guarantee exists, a style preference — or a cleanup too small or
+too speculative for the backlog, with its reason said once. Severity is the
+reviewer's triage of urgency; the disposition is ownership: a Critical in a path
+the branch never touched is urgent follow-up work, and a small defect the branch
+introduced is the branch's. A branch never files a ticket for its own defect —
+#753, #581 and #783 each ended with the branch's leftovers filed as tickets and
+folded back in — and the record of a round is the `Review round <n> —
+dispositions` comment the loop posts before `/review`, listing what was fixed,
+filed with its number, and dropped; the bot's re-review summary verifies it in a
+`Dispositions since <sha>` tally, so the maintainer sees where review scope ended
+without reading every round. `/pr-create` § 8 states the rule for the loop and
+`/pr-comments-analyze` sorts each item by it.
 
 A re-review converges rather than restarts. Its notes cover only the lines
 changed since the head SHA the previous summary names, an earlier note that
 still stands is not repeated (the earlier summary holds it), and the bot
 resolves its own threads it finds addressed at the new head, and opens no second
 thread on a finding that already has one. The round on the author's side runs
-push → reply in the threads → `/review`, in that order, so the re-review reads
-the replies and a reasoned decline closes a thread the same way a fix does; a
-wave with no push — every finding declined with a reason — is a round too, and
-on a PR labelled `review-on-push` the push is itself the ask. The one statement
-of when a round is asked for is `/pr-create` § 8 "The next round", which also
-says what to wait on: the workflow run the comment started, since a
+in the order `/pr-create` § 8 "The next round" states — the one place it is
+written, for a PR with the `review-on-push` label and for one without, so it is
+not repeated here — and the re-review then reads the replies and the
+dispositions, and a reasoned decline closes a thread the same way a fix does; a
+wave with no push — every finding declined with a reason — is a round too. The
+same section says when a round is asked for and what to wait on: the workflow run the comment started, since a
 comment-triggered run's check attaches to `main`'s head and never shows under
 the PR's checks.
 
