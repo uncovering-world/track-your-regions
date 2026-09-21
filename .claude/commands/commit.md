@@ -218,9 +218,9 @@ guide's § Verification Workflow carry it in one sentence and point here.
 
 The smoke lane stands up the isolated test stack and seeds its fixture
 automatically before running the Playwright smoke specs; `test:db` runs
-the database-backed backend specs — rows a statement selects, not its
-text — inside that same stack; `perf:local` measures the production
-build on the dev stack's own data.
+the database-backed backend specs — the ones the guide's § Tests that
+need a database sends to a real Postgres — inside that same stack;
+`perf:local` measures the production build on the dev stack's own data.
 `npm run gates -- run stack` prints those lanes with run/skip marks and
 runs none of them — they assume Docker and minutes of runtime, which is
 why they are here and not among step 4's per-commit gates.

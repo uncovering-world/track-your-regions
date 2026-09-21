@@ -1,7 +1,7 @@
 # ADR-0004: Use Drizzle ORM + Raw Pool for PostGIS
 
 **Date:** 2025-01-01
-**Status:** Accepted
+**Status:** Superseded by ADR-0064
 
 ---
 

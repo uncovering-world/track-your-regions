@@ -19,7 +19,7 @@ npm run gates              # What this change asks for: every gate, run or skipp
 npm run check              # The fast gates the change asks for — npm run gates lists them; check:all forces every one
 TEST_REPORT_LOCAL=1 npm run gates -- run test  # The unit lanes the change asks for, on the host (before committing)
 npm run test:e2e:smoke     # Playwright smoke against the isolated test stack (the slow tier)
-npm run test:db            # The database-backed backend specs — rows, not text — inside the isolated test stack (the slow tier; docs/tech/development-guide.md § Tests that need a database)
+npm run test:db            # The database-backed backend specs — a real Postgres, not the mocked pool — inside the isolated test stack (the slow tier; docs/tech/development-guide.md § Tests that need a database)
 npm run perf               # Lighthouse against the production build on the isolated test stack; budgets in frontend/perf/lighthouse-budgets.json (CI runs it on every PR that touches the app)
 npm run perf:size          # Bundle-size budget on the entry chunk (size-limit; CI runs it in the build job)
 npm run perf:local         # Everything this machine can measure on its own data: size + Lighthouse on the dev stack's production build + the probe (the slow tier)
@@ -27,6 +27,7 @@ npm run dev:frontend:preview  # Dev stack's frontend as the production build (wh
 npm run dev                # Start all services via Docker Compose (rebuilds images, so container deps track package.json)
 npm run db:shell           # Open psql shell to active database
 npm run db:migrate         # Apply pending db/migrations/ files and record them (db:migrate:status to look first)
+npm run db:types           # Regenerate backend/src/db/schema.generated.ts from the schema (db:types:check is the gate)
 npm run help               # Full command reference (all other scripts: package.json)
 ```
 
@@ -63,7 +64,7 @@ Every open issue belongs on the org project board — https://github.com/orgs/un
 ## Architecture
 
 ### Stack
-Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile server. TypeScript everywhere. Drizzle ORM for queries, raw `pool` for PostGIS geometry operations.
+Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile server. TypeScript everywhere. Raw `pool` with parameterized SQL for every query, row types generated from the schema in `backend/src/db/schema.generated.ts` (ADR-0064).
 
 ### Database
 - **Name**: `track_regions` (NOT `track_your_regions`)
@@ -138,7 +139,7 @@ Current audit status: `docs/security/asvs-checklist.yaml`
 
 ### Security Rules (Always Apply)
 
-1. **Never** concatenate user input into SQL/NoSQL queries — use parameterized queries or Drizzle ORM
+1. **Never** concatenate user input into SQL/NoSQL queries — use parameterized queries
 2. **Never** render user-generated content without escaping (experience names, user names, external data)
 3. **Always** verify resource ownership before returning data (IDOR prevention)
 4. **Always** validate and sanitize file paths and content-types for server-side downloads
@@ -200,8 +201,8 @@ Do **not** create an ADR for: bug fixes, routine feature additions, styling chan
 
 **Linking in code** — add a short comment at the relevant entry point:
 ```typescript
-// ADR-0004: Drizzle ORM over raw SQL
-const result = await db.select().from(regions).where(eq(regions.id, id));
+// ADR-0064: row types are generated from the schema, and queries stay SQL
+const result = await pool.query<Pick<RegionsRow, 'id' | 'name'>>('SELECT id, name FROM regions WHERE id = $1', [id]);
 ```
 
 See `docs/decisions/README.md` for the full process, template, and index.

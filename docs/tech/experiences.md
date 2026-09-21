@@ -3151,7 +3151,8 @@ by a number chosen at the API — the rule and its reasoning are in
 Short description, description, tags, and the website and Wikipedia URLs are
 not on this list: the first three are `TEXT`/`JSONB` columns and the last two
 live inside the `metadata` JSONB, so none of them has a width to align with.
-`backend/src/types/columnBounds.test.ts` holds every entry above to its column.
+Every entry above reads its width from `COLUMN_WIDTHS` in
+`backend/src/db/schema.generated.ts`, generated from the schema (ADR-0064).
 
 A name — a place's, a point's, a work's title and each of its makers — is
 tidied before it is bounded (`storedName`, the schemas' spelling of

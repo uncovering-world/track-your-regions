@@ -366,7 +366,7 @@ Registration is bounded by what the columns hold, alongside the password rules a
 | Email | 254 | `users.email` is `VARCHAR(255)`, but RFC 5321 § 4.5.3.1.3 caps a deliverable address at 254 — the tighter of the two is the real bound |
 | Display name | 255 | `users.display_name` |
 
-Both are held to their columns by `backend/src/types/columnBounds.test.ts`; the reasoning behind bounding a request field by its column is in `world-views.md` § "Field limits".
+The display name reads its width from `COLUMN_WIDTHS` in `backend/src/db/schema.generated.ts` (ADR-0064), and the email's tighter literal carries its reason; the reasoning behind bounding a request field by its column is in `world-views.md` § "Field limits".
 
 ## Frontend Integration
 

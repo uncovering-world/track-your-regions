@@ -23,7 +23,7 @@ and accepted by it.
 | [0001](0001-use-maplibre-over-mapbox.md) | Use MapLibre over Mapbox | Accepted | 2024-11-01 |
 | [0002](0002-use-gadm-for-administrative-boundaries.md) | Use GADM for administrative boundaries | Accepted | 2024-11-01 |
 | [0003](0003-barrel-exports-for-controllers.md) | Use barrel exports for controllers | Accepted | 2025-01-01 |
-| [0004](0004-drizzle-orm-plus-raw-pool-for-postgis.md) | Drizzle ORM + raw pool for PostGIS | Accepted | 2025-01-01 |
+| [0004](0004-drizzle-orm-plus-raw-pool-for-postgis.md) | Drizzle ORM + raw pool for PostGIS | Superseded by [0064](0064-row-types-are-generated-from-the-schema-and-queries-stay-sql.md) | 2025-01-01 |
 | [0005](0005-source-agnostic-world-view-import.md) | Source-agnostic world view import pipeline | Accepted | 2025-01-01 |
 | [0006](0006-martin-for-vector-tiles.md) | Martin for vector tile serving | Accepted | 2025-01-01 |
 | [0007](0007-jwt-with-httponly-refresh-tokens.md) | JWT with httpOnly refresh tokens | Accepted | 2025-02-01 |
@@ -83,6 +83,7 @@ and accepted by it.
 | [0061](0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md) | The catalogue's world map is a read of the API, not a tile source | Accepted | 2026-09-16 |
 | [0062](0062-a-gate-runs-only-when-its-inputs-changed.md) | A gate runs when, and only when, the inputs it checks have changed | Accepted | 2026-09-20 |
 | [0063](0063-sql-whose-correctness-is-a-row-set-is-tested-on-postgres.md) | SQL whose correctness is a row set is tested on PostgreSQL | Accepted | 2026-09-21 |
+| [0064](0064-row-types-are-generated-from-the-schema-and-queries-stay-sql.md) | Row types are generated from the schema, and queries stay SQL | Accepted | 2026-09-21 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

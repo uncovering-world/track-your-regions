@@ -145,8 +145,10 @@ services/
 
 ### Database Queries
 
-- Use Drizzle ORM for standard queries.
-- Use raw `pool.query()` with parameterized SQL for PostGIS geometry operations.
+- Every query is raw parameterized SQL on the pool: `pool.query<Row>('... $1 ...', [value])`. There is no ORM and no query builder (ADR-0064).
+- The row type comes from `backend/src/db/schema.generated.ts`, one `<PascalCase>Row` interface per table and view in the select shape `pg` returns. A partial select is `Pick<ExperiencesRow, 'id' | 'name'>`; a computed column (a count, an `ST_AsGeoJSON`, a joined field) gets a small type of its own next to the statement. The file is never edited by hand.
+- A vocabulary a `CHECK` constraint declares is read from `CHECK_VALUES` (the list) and `CheckValue<'table', 'column'>` (the union); a `VARCHAR` width is read from `COLUMN_WIDTHS`, per element for an array column. Never restate either as a literal — the two guards that used to keep such copies equal are gone, so a copy now drifts silently.
+- After any change to `db/init/01-schema.sql`, run `npm run db:types` and commit the regenerated file. `npm run db:types:check` is the gate that fails otherwise (it needs Docker: a fresh database is built from `db/init` and read back, about half a minute).
 - **Never** concatenate user input into SQL strings.
 - When you need `SET`/`RESET` to apply to the same connection as your query, use `const client = await pool.connect()` + `client.query()` + `client.release()`. `pool.query()` grabs a random connection each time.
 - **A transaction is pinned to one client, always.** `pool.query('BEGIN')` is not a transaction: pg.Pool checks out an arbitrary idle client, runs the BEGIN on it and releases it with the transaction still open. The statements that follow may land on other connections, and a *different request* that checks out the leaked client runs its own writes inside that stray transaction — to be rolled back with it. The shape, as in `curationController.ts`'s `editExperience`:
@@ -190,7 +192,10 @@ npm run db:baseline         # record pending files as applied WITHOUT running th
 ```
 
 The runner records each file in `schema_migrations`, so a database says what it
-has seen instead of it being remembered (ADR-0041). Two rules bind a new
+has seen instead of it being remembered (ADR-0041). A migration changes nothing
+the row-type generator reads: the types follow `01-schema.sql`, which every
+migration's DDL is also applied to, so it is the schema edit and not the
+migration that asks for `npm run db:types` (ADR-0064). Two rules bind a new
 migration:
 
 - **Name it `NNN-slug.sql`.** Filename order is the order they are applied in;
@@ -207,10 +212,11 @@ missed: every SQL string literal in `backend/src` is held to the columns
 `01-schema.sql` declares — a reference qualified by an alias the literal
 declares, anywhere in it, and a bare name in a select list, a `SET` clause or an
 `INSERT` column list where a single table owns it. What the extractor cannot
-resolve it skips. That is the shape of `columnBounds.test.ts` and
-`tileScopeGuards.test.ts`, a guard over the schema file's text, and the
-executable SQL lane (#522) retires it: there a statement naming a dropped
-column is refused by the database itself.
+resolve it skips. That is the shape of `tileScopeGuards.test.ts` (and of
+`columnBounds.test.ts`, until the generated widths retired it, ADR-0064), a
+guard over the schema file's text, and the executable SQL lane (#522) retires
+it: there a statement naming a dropped column is refused by the database
+itself.
 
 `db/migrations/README.md` has the rest, including what each existing migration
 does and how to give an older database a ledger.
@@ -464,7 +470,7 @@ A spec must also own any environment variable it asserts on. The container lane 
 
 ### Tests that need a database
 
-The backend suite mocks the `pg` pool, so a test asserts the **text** of the SQL a function sends. That is the right tool for most of this codebase: it pins predicates, guard clauses and parameter binding cheaply, and its assertions catch real defects when each one is anchored to the clause it is about (a regex slice of the CTE) rather than to the whole statement. It cannot see *which row a statement selects*. A statement needs the database lane when **the assertion is about which rows the statement selects, not about what it says** — a CTE over a table holding rows the reader cannot see, a `row_number()` join, a partial unique index, a lock, a transaction boundary. Everything else stays in the mocked suite; the lane is for the row set, not for coverage (ADR-0063).
+The backend suite mocks the `pg` pool, so a test asserts the **text** of the SQL a function sends. That is the right tool for most of this codebase: it pins predicates, guard clauses and parameter binding cheaply, and its assertions catch real defects when each one is anchored to the clause it is about (a regex slice of the CTE) rather than to the whole statement. It cannot see *which row a statement selects*. A statement needs the database lane when **the assertion is about which rows the statement selects, not about what it says** — a CTE over a table holding rows the reader cannot see, a `row_number()` join, a partial unique index, a lock, a transaction boundary — or when **the assertion is about what the live server or driver hands back**, which the mocked pool is precisely what bypasses: `backend/src/db/schemaTypes.db.test.ts` selects one value of every Postgres type the generated row types map and compares what `pg` delivers with the claim (ADR-0064). Everything else stays in the mocked suite; the lane is for the row set and the driver's contract, not for coverage (ADR-0063).
 
 The case that made the lane: the deferred-withdrawal pairing in `backend/src/services/sync/locationWriter.ts` had twelve text-level tests, all fifteen mutations of it were killed, and it still picked the wrong old row whenever two moves landed without a curator publishing in between — a one-point site showing the same place with two pins. Four statements on a real database saw it; no amount of text assertion could have (#522). `locationWriter.chain.db.test.ts` is that scenario as a test.
 
@@ -790,7 +796,7 @@ refresh a number the next change will falsify again.
 
 This project follows **OWASP ASVS 5.0 Level 2**. Key rules:
 
-- **Never** concatenate user input into SQL — use parameterized queries or Drizzle ORM
+- **Never** concatenate user input into SQL — use parameterized queries
 - **Always** validate inputs with Zod schemas via `validate()` middleware
 - **Always** verify resource ownership (IDOR prevention)
 - **Always** apply auth middleware to new endpoints
@@ -851,7 +857,7 @@ lists those lanes rather than running them:
 ```bash
 npm run security:all   # the fast gates, then the slow Semgrep and Trivy scans the change asks for
 npm run test:e2e:smoke # isolated test stack, seeded fixture, Playwright smoke
-npm run test:db        # the database-backed backend specs, inside the same stack (rows, not text)
+npm run test:db        # the database-backed backend specs, inside the same stack (a real Postgres, not the mocked pool)
 npm run perf:local     # the production build on the dev stack's own data: size, Lighthouse, the probe
 ```
 
