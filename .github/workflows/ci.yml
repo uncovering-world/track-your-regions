@@ -18,6 +18,18 @@ on:
 permissions:
   contents: read
 
+# A push to a pull request cancels the run on the head it replaced (#920). That
+# run's verdict answers for a commit nobody will merge, and before this a
+# force-pushed fix wave left it executing to the end — the smoke stack and
+# Lighthouse included. Only a pull request is ever cancelled: every other run
+# gets a group of its own (`run_id`), so a push to main, the weekly schedule and
+# a dispatch always finish. A shared group with `cancel-in-progress: false`
+# would not be enough — GitHub keeps one pending run per group, so a third push
+# to main would still replace a second one that had not started.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # What this change asks for, decided once and read by every job below
   # (#783, ADR-0062).
