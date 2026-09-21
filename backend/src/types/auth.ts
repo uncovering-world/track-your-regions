@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CheckValue } from '../db/schema.generated.js';
+import { COLUMN_WIDTHS, type CheckValue } from '../db/schema.generated.js';
 
 /**
  * Authentication types for Track Your Regions
@@ -103,14 +103,14 @@ export interface PublicUser {
 export const registerSchema = z.object({
   // 254 is the longest address SMTP will carry (RFC 5321 § 4.5.3.1.3), and it
   // is the value stored in users.email — VARCHAR(255) — so the tighter of the
-  // two bounds is the real one.
+  // two bounds is the real one and stays a literal on purpose.
   email: z.string().email('Invalid email address').max(254, 'Email must be at most 254 characters'),
   password: z.string()
     .min(8, 'Password must be at least 8 characters')
     .max(128, 'Password must be at most 128 characters'),
   displayName: z.string()
     .min(1, 'Display name is required')
-    .max(255, 'Display name must be at most 255 characters'),
+    .max(COLUMN_WIDTHS.users.display_name, `Display name must be at most ${COLUMN_WIDTHS.users.display_name} characters`),
 });
 
 export const loginSchema = z.object({

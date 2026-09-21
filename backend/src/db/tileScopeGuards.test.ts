@@ -20,8 +20,8 @@ import { repoFile } from '../testSupport/repoFile.js';
  * guard is the missing half, and it lives in the backend suite for the reason
  * `martinTileExposure.test.ts` gives — that suite is the one the pre-commit
  * gate runs, and `db/init/01-schema.sql` has no test runner of its own.
- * Asserting over the text of that file is the shape `columnBounds.test.ts` and
- * `schemaMigrationParity.test.ts` already use.
+ * Asserting over the text of that file is the shape
+ * `schemaMigrationParity.test.ts` already uses.
  *
  * What it holds is the contract below, not a pattern found in the file: every
  * tile function is listed with the parameters it takes and whether each is
