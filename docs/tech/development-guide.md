@@ -681,6 +681,54 @@ this before it opens the pull request and writes a recorded reason into the body
 `docs/tech/review-surface.md` holds the baseline, the evidence for the budget and
 the rule for moving it.
 
+### Review Rounds
+
+The review bot (`.github/workflows/claude-review.yml`) reads a pull request at
+four moments, and a push is not one of them: when the PR is opened as a
+non-draft; when a draft is marked ready; when someone with write access comments
+`/review` — one round, drafts included, since an explicit ask is an ask; and on
+every push, only while the PR carries the `review-on-push` label, which a
+`/review always` comment applies and removing the label ends. A push by itself
+brings no review, so the commands that push ask for the next round themselves:
+`/pr-create` § 8 after every wave it pushes, `/commit` § 8 after a push to a
+branch with an open PR. Those are the three modes Anthropic's managed Code
+Review, Copilot and CodeRabbit ship between them; the measurement that set this
+cadence is on #796. One pull request gets none of this: a PR that changes
+`claude-review.yml` itself. The action refuses to run while the workflow file
+differs from `main`'s copy, and the `review` check reports success anyway — so a
+green check on such a PR is not a review, the maintainer reads that PR alone,
+and what the change does is seen on the first PR after it merges.
+
+What the bot posts arrives through two channels, and severity with provenance
+decides which. An inline thread is opened only for a Critical or Major finding
+the branch introduced, on a line the diff changed. A thread is a blocking ask:
+`main` requires every conversation resolved, so each one costs the author a
+round, and the bot opens one only for what must change before the merge.
+Everything else — Minor, Note, and a `[pre-existing]` finding of any severity —
+is a line in the bot's summary comment: information for the author, not an ask.
+What an author owes such a line is #924's rule.
+
+A re-review converges rather than restarts. Its notes cover only the lines
+changed since the head SHA the previous summary names, an earlier note that
+still stands is not repeated (the earlier summary holds it), and the bot
+resolves its own threads it finds addressed at the new head, and opens no second
+thread on a finding that already has one. The round on the author's side runs
+push → reply in the threads → `/review`, in that order, so the re-review reads
+the replies and a reasoned decline closes a thread the same way a fix does; a
+wave with no push — every finding declined with a reason — is a round too, and
+on a PR labelled `review-on-push` the push is itself the ask. The one statement
+of when a round is asked for is `/pr-create` § 8 "The next round", which also
+says what to wait on: the workflow run the comment started, since a
+comment-triggered run's check attaches to `main`'s head and never shows under
+the PR's checks.
+
+The "same thing twice" list in the bot's Ripple phase is a guard for rules
+without a single home; each pair is deleted by the #788 slice that gives its
+rule one, in the same pull request, so the list only shrinks. A text finding — a
+stale count, tally, line pointer or sentence of history — is fixed in #579's
+form: drop the volatile claim and name the class or the symbols, rather than
+refresh a number the next change will falsify again.
+
 ## Security
 
 This project follows **OWASP ASVS 5.0 Level 2**. Key rules:
@@ -884,7 +932,8 @@ npm run check         # verify
 /pr-create            # create PR, then babysit it until mergeable:
                       #   watch checks, answer every review thread,
                       #   /pr-changes-amend fixes into owning commits,
-                      #   force-with-lease push, repeat until green
+                      #   force-with-lease push, comment /review,
+                      #   repeat until green
 ```
 
 **Refactoring:**
