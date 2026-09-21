@@ -28,9 +28,9 @@ npx eslint --rule '{"max-lines":["error",{"max":0,"skipBlankLines":true,"skipCom
 # → "File has too many lines (975). Maximum allowed is 0."
 ```
 
-The files that were already over 800 on the day the ceiling was set are listed by name in a last block of the config that owns them, each with the reason it stays whole, at the ceiling they were written under (1000). That list only shrinks: an entry is deleted when its file is split under 800, and no entry is ever added — a new file that would need one is a file to split first. A block goes with its last entry: the frontend's is gone (#933), and `backend/eslint.config.mjs` is the one that still has one.
+The files that were over 800 on the day the ceiling was set (#530) were listed by name in a last block of the config that owned them, at the ceiling they were written under (1000), and that list only shrank: #933 split every one of them, the last — `backend/src/types/index.ts` — along the world-view import's seam, and both blocks are gone. No hand-written file is exempt now, and none is ever added back: a file that would need an exemption is a file to split first. The one relaxation left is `backend/src/db/schema.generated.ts`, whose length is the schema's and which nobody writes (ADR-0064).
 
-Exceptions: files with dense, non-decomposable JSX can exceed the ~500 target if splitting would only add prop-drilling overhead without clarity gain. Use judgment — if a file has distinct responsibilities, it should be split. The 800 ceiling has no such exception outside that list.
+Exceptions: files with dense, non-decomposable JSX can exceed the ~500 target if splitting would only add prop-drilling overhead without clarity gain. Use judgment — if a file has distinct responsibilities, it should be split. The 800 ceiling has no such exception for a hand-written file.
 
 `ExperienceList.tsx` used to stand here as that exception, at ~1,300 lines. It is comfortably under 700 now, and what moved out was never JSX depth: the windowed rows (#552), then the kind header, the notice lines, the curator's rejected section and every movement of the list itself (#553). Each had a responsibility of its own, and the prop-drilling the exception warns about did not materialise — the pieces take what they render and the handlers they call. The exception stands; that file is no longer an example of it.
 
@@ -432,7 +432,7 @@ For the full reference with examples, see [maplibre-patterns.md](maplibre-patter
 | Signal | Action |
 |--------|--------|
 | File > 500 lines of code | Look for split opportunities |
-| File > 800 lines of code | The lint fails — split now. A file on the backend config's grandfather list is split before anything is added to it |
+| File > 800 lines of code | The lint fails — split now |
 | File has 2+ distinct responsibilities | Split by responsibility |
 | You're about to add a new responsibility to an already-large file | Extract the new code into its own file from the start |
 | Hook has 3+ `useState` + related logic that could stand alone | Extract to `use*.ts` |
@@ -520,7 +520,7 @@ Suppressions hide real issues over time. Treat each one as a deliberate exceptio
    see `martin/run-martin.sh:39-44`, which uses exactly that shape — the reason
    from its opening word through to the sourced line. What never changes is one
    site at a time and a reason that says why.
-6. **Config-level rule disables need a comment.** If you turn a rule `'off'` in `eslint.config.mjs` (or equivalent), add an inline comment naming why (see `security/detect-object-injection` in `backend/eslint.config.mjs` for the pattern). A rule relaxed for named files is the same pattern with a list: the `max-lines` grandfather block at the end of `backend/eslint.config.mjs` names every file it covers and the reason each stays whole (§ Keep Files Small).
+6. **Config-level rule disables need a comment.** If you turn a rule `'off'` in `eslint.config.mjs` (or equivalent), add an inline comment naming why (see `security/detect-object-injection` in `backend/eslint.config.mjs` for the pattern). A rule relaxed for named files is the same pattern with a list, each entry carrying its reason — the way the `max-lines` block for `src/db/schema.generated.ts` in `backend/eslint.config.mjs` says why a generated file's length is not a file to split (§ Keep Files Small).
 
 ### Examples
 
