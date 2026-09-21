@@ -45,7 +45,7 @@ import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { creators, creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { plural } from '../../utils/plural';
-import { tidyLabel } from '../../utils/labelFold';
+import { tidyLabel } from '@tyr/shared/labels';
 import { MakerList, MAX_MAKERS } from './MakerList';
 import { YearField } from './YearField';
 import { PictureWithCredit } from './PictureWithCredit';

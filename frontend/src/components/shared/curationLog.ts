@@ -28,6 +28,7 @@
  * that existed came to disagree.
  */
 
+import { POINT_VERDICT_ACTIONS, type CurationLogAction } from '@tyr/shared/curationLog';
 import { fieldLabel } from '../curation/fieldMeaning';
 import { plural } from '../../utils/plural';
 import { creators } from '../../utils/creatorList';
@@ -50,7 +51,11 @@ const VIOLET = '#8B5CF6';
 /** Its regions changed. */
 const TEAL = '#0D9488';
 
-export const ACTION_LABELS: Record<string, { label: string; color: string }> = {
+// Keyed by the vocabulary both sides import (ADR-0065), which the schema's CHECK
+// is held to by a type on the storing side: an act with no label here, or a
+// label for an act that cannot happen, is a type error rather than a chip
+// printing the column value on a screen a person reads.
+export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: string }> = {
   rejected: { label: 'Rejected', color: RED },
   unrejected: { label: 'Unrejected', color: GREEN },
   edited: { label: 'Edited', color: BLUE },
@@ -107,16 +112,27 @@ export const ACTION_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 /**
+ * The chip for an act a row records, or `undefined` for one the vocabulary does
+ * not name.
+ *
+ * A row's `action` arrives as a string: the log is read from the API, and a row
+ * can be older than this build or written by a schema newer than it. The table
+ * above is closed, so the lookup is by own key, and each screen keeps its own
+ * fallback for the miss — which is a chip in the column's words, the thing #691
+ * was about, so a miss is a defect and never a design.
+ */
+export function actionLabel(action: string): { label: string; color: string } | undefined {
+  return Object.hasOwn(ACTION_LABELS, action) ? ACTION_LABELS[action as CurationLogAction] : undefined;
+}
+
+/**
  * The verdict actions, in the two families the prefix keeps apart (ADR-0026).
  *
  * One formatter serves both — an object's verdict is a point's without the place — but
  * the sets stay separate because everything else about them does: they are written by
  * different endpoints, answered on different cards, and mean different things.
  */
-const POINT_VERDICT_ACTIONS = new Set([
-  'location_marked_former', 'location_marked_lost',
-  'location_state_restored', 'location_missing_dismissed',
-]);
+const POINT_VERDICTS = new Set<string>(POINT_VERDICT_ACTIONS);
 
 const OBJECT_VERDICT_ACTIONS = new Set([
   'marked_former', 'marked_lost', 'state_restored', 'missing_dismissed',
@@ -439,7 +455,7 @@ export function formatLogDetails(entry: CurationLogEntry): string | null {
   if (entry.action === 'rejected' && d.reason) return `Reason: ${d.reason}`;
   if (entry.action === 'edited') return formatEditedChanges(d);
   if (entry.action === 'created' && d.name) return `Name: ${d.name}`;
-  if (POINT_VERDICT_ACTIONS.has(entry.action) || OBJECT_VERDICT_ACTIONS.has(entry.action)) {
+  if (POINT_VERDICTS.has(entry.action) || OBJECT_VERDICT_ACTIONS.has(entry.action)) {
     return formatVerdict(d);
   }
   if (entry.action === 'location_edited') return formatPartEdit(d, 'locationId', 'Place');

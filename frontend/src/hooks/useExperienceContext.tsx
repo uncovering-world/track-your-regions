@@ -18,7 +18,8 @@
 
 import { createContext, useContext, useState, useMemo, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchExperiencesByRegion, WHOLE_REGION_LIMIT, type Experience, type ImageCredit } from '../api/experiences';
+import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
+import { fetchExperiencesByRegion, type Experience, type ImageCredit } from '../api/experiences';
 import { useAppAddress } from './useAppAddress';
 import { useCollapsedExperiences } from './useCollapsedExperiences';
 import { HoverProvider } from './useHoverContext';

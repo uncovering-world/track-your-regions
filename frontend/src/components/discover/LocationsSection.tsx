@@ -35,7 +35,7 @@ import { subscribeToHoverTarget, useHoverActions, useHoverSelector } from '../..
 import { EmptyState } from '../shared/EmptyState';
 import { locationLabel } from '../../utils/locationLabel';
 import { claimLabel } from '../../utils/placeClaims';
-import { foldLabel } from '../../utils/labelFold';
+import { foldLabel } from '@tyr/shared/labels';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 

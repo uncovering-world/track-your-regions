@@ -27,7 +27,17 @@
  * being split at all. Naming the key is what the curator was missing; flattening
  * `imageCredit.author` into a path is a different question, and it belongs with the
  * model #574 is for.
+ *
+ * The equality is the server's own — `jsonEquals` from `@tyr/shared/equality`, the
+ * one declaration a run's changeset also reads (ADR-0065): the server decided the
+ * *field* changed, this decides which *keys* to show for it, and the two have to
+ * answer alike or the card contradicts the queue that raised it. Disagreeing on key
+ * order would put a row on screen for a key whose value never moved; disagreeing on
+ * `null` against a missing key would put up 17 rows this catalogue's log holds where a
+ * `criteria` key merely appeared as `null`. Until #789 this module held a copy.
  */
+
+import { jsonEquals } from '@tyr/shared/equality';
 
 /**
  * Nothing, however it is spelled.
@@ -43,44 +53,6 @@ function isAbsent(value: unknown): boolean {
 /** A JSON object with named keys — not an array, not `null`. */
 function isNamedObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/**
- * Deep value equality, with object keys compared as a set.
- *
- * A second copy of `jsonEquals` from `backend/src/services/sync/changeSet.ts`, and the
- * duplication is deliberate: the server decided the *field* changed, this decides which
- * *keys* to show for it, and the two have to answer alike or the card contradicts the
- * queue that raised it. Disagreeing on key order would put a row on screen for a key
- * whose value never moved; disagreeing on `null` against a missing key would put up 17
- * rows this catalogue's log holds where a `criteria` key merely appeared as `null`.
- *
- * There is no runtime the two can share — the packages share no build, which is what
- * #527 is open about — so nothing structural can hold them together and the pin is
- * behavioural, on **both** sides. `objectDiff.test.ts` states the properties against
- * this copy; `changeSet.test.ts` § "the equality a curation card mirrors" states the
- * same ones against the server's, through `computeChangeSet`, so relaxing either one
- * fails a test beside it rather than surfacing as a curator reading a row that should
- * not exist. Both were checked by injecting the drift they exist for. A third copy is
- * not the answer to a second one.
- */
-export function valuesEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (isAbsent(a) && isAbsent(b)) return true;
-  if (a === null || b === null || a === undefined || b === undefined) return false;
-  if (typeof a !== typeof b) return false;
-
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-    return a.every((item, i) => valuesEqual(item, b[i]));
-  }
-
-  if (isNamedObject(a) && isNamedObject(b)) {
-    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-    return [...keys].every(key => valuesEqual(a[key], b[key]));
-  }
-
-  return false;
 }
 
 /** One named part of an object, and what the two sides say about it. */
@@ -120,19 +92,19 @@ export function changedKeys(before: unknown, after: unknown): KeyChange[] | null
 
   const changes = [...new Set([...Object.keys(left), ...Object.keys(right)])]
     .sort()
-    .filter(key => !valuesEqual(left[key], right[key]))
+    .filter(key => !jsonEquals(left[key], right[key]))
     .map(key => ({ key, old: left[key], new: right[key] }));
 
   return changes.length > 0 ? changes : null;
 }
 
 /**
- * Nothing, as a card reads it: the absence `valuesEqual` knows, and an empty list.
+ * Nothing, as a card reads it: the absence `jsonEquals` knows, and an empty list.
  *
  * Wider than `isAbsent` on purpose, and kept apart from it. This decides whether a row
  * reads as *new* — a fact appearing where there was none — or as *changed*, and an
  * empty list is nothing to a person: a place with no countries listed and then two is a
- * fact arriving. `valuesEqual` keeps the server's stricter reading, because it decides
+ * fact arriving. `jsonEquals` keeps the server's stricter reading, because it decides
  * which keys are shown and must agree with the server about that.
  */
 export function isEmptyValue(value: unknown): boolean {

@@ -19,6 +19,7 @@
  * one, the tree stands at the region itself.
  */
 
+import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import { useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -26,7 +27,6 @@ import {
   fetchExperienceKinds,
   fetchExperiencesByRegion,
   fetchExperienceLocations,
-  WHOLE_REGION_LIMIT,
 } from '../api/experiences';
 import type { Region } from '../types';
 import { useNavigation } from './useNavigation';
