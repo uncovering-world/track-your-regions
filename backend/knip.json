@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
   "project": ["src/**/*.ts"],
-  "ignoreDependencies": ["globals", "@vitest/coverage-v8"],
+  "ignoreDependencies": ["globals", "@vitest/coverage-v8", "@tyr/shared"],
   "ignoreExportsUsedInFile": true,
   "vitest": {
     "config": ["vitest.config.ts", "vitest.db.config.ts"]

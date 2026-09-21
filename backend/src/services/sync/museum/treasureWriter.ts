@@ -15,8 +15,10 @@ import { creditToWrite, type ImageCredit, type StoredCredit } from '../imageCred
 import { retirePassAfterNewContent } from '../curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from '../heldProposalPointer.js';
 import { workChanges } from '../contentsChangeSet.js';
-import { sameLabelSet, tidyLabel } from '../labelFold.js';
-import { jsonEquals, type FieldChange } from '../changeSet.js';
+import { tidyLabel } from '@tyr/shared/labels';
+import { sameLabelSet } from '../labelFold.js';
+import { jsonEquals } from '@tyr/shared/equality';
+import { type FieldChange } from '../changeSet.js';
 import type {
   ContentItem, ContentItemChange, ContentsDelta, ProcessedContent,
 } from '../types.js';

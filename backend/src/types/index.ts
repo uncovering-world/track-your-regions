@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { parseBbox } from '../db/bboxEnvelopes.js';
 import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
-import { foldLabel, tidyLabel } from '../services/sync/labelFold.js';
+import { foldLabel, tidyLabel } from '@tyr/shared/labels';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
 
 // The world-view import's request schemas live in their own module (#933) and

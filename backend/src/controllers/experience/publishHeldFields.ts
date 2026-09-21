@@ -26,7 +26,7 @@ import {
 import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelection.js';
 import type { PoolClient } from 'pg';
 import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
-import { tidyLabel } from '../../services/sync/labelFold.js';
+import { tidyLabel } from '@tyr/shared/labels';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
 interface ProposedField {

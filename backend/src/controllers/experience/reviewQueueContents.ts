@@ -21,6 +21,7 @@
  * are built once, in the handler, from `resolveExperienceScope`'s answer.
  */
 
+import { POINT_VERDICT_ACTIONS } from '@tyr/shared/curationLog';
 import { pool } from '../../db/index.js';
 import { rowKindJoinSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
@@ -453,21 +454,6 @@ export async function queryWithdrawn(
 }
 
 /**
- * The actions a verdict on a point writes, which is what the log has to be asked for.
- *
- * All four, not only the two that hide a point: the question this list answers is *who
- * last decided*, and taking one axis back is as much a decision as setting it — a curator
- * who undid a `lost` while a `former` still stands is the person the next reader of the
- * card should be shown. Kept beside the query that reads them rather than imported from
- * the writer, because `locationStateController.ts` names them one branch at a time and
- * there is no list there to import.
- */
-const POINT_VERDICT_ACTIONS = [
-  'location_marked_former', 'location_marked_lost',
-  'location_state_restored', 'location_missing_dismissed',
-];
-
-/**
  * The points a curator has answered, and which no reader can see — the only surface
  * they appear on at all (#544).
  *
@@ -543,6 +529,14 @@ export async function queryAnsweredWithdrawals(
     scopeFilter, sourceFilter, nameFilter, logScopeFilter, params, pageSize, offset,
   }: AnsweredQueryContext,
 ): Promise<QueryResult> {
+  // The log is asked for the actions a verdict on a point writes — all four of
+  // `POINT_VERDICT_ACTIONS` (`@tyr/shared/curationLog`, the same four the
+  // history's formatter reads on the drawing side), not only the two that hide
+  // a point: the question is *who last decided*, and taking one axis back is as
+  // much a decision as setting it — a curator who undid a `lost` while a
+  // `former` still stands is the person the next reader of the card should be
+  // shown. `locationStateController.ts` names them one branch at a time and has
+  // no list to import.
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},

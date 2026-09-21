@@ -14,7 +14,7 @@ import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor, METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
-import { tidyLabel } from '../../services/sync/labelFold.js';
+import { tidyLabel } from '@tyr/shared/labels';
 import { tidyNameValue } from './heldDecisions.js';
 import { columnFor } from './acceptableFields.js';
 import type { ContentItemChange } from '../../services/sync/types.js';

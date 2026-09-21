@@ -95,7 +95,7 @@ import { pool } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from './heldProposalPointer.js';
-import { tidyLabel } from './labelFold.js';
+import { tidyLabel } from '@tyr/shared/labels';
 import type { ContentsDelta } from './types.js';
 // The source's list, before anything is known about the store: how it becomes a
 // CTE, how its values bind, and the duplicates the source itself ships.

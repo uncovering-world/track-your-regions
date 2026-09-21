@@ -22,7 +22,7 @@
  */
 
 import { extractQid, isQid, parseWktPoint, LABEL_LANGS, type SparqlBinding } from '../wikidataUtils.js';
-import { foldLabel } from '../labelFold.js';
+import { foldLabel } from '@tyr/shared/labels';
 import {
   ENTITY_PREFIX,
   HINT_PREFIX,

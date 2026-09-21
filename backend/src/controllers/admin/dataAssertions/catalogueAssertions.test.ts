@@ -25,7 +25,7 @@ import {
 } from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '../../../services/sync/changeSet.js';
 import { catalogueAssertions } from './catalogueAssertions.js';
-import { DISPLAYABLE_PICTURE_HOSTS, PICTURE_EXTENSIONS } from '../../../types/urlSafety.js';
+import { PICTURE_HOSTS, PICTURE_EXTENSIONS } from '@tyr/shared/pictures';
 
 const byId = (id: string) => {
   const assertion = catalogueAssertions.find(a => a.id === id);
@@ -405,7 +405,7 @@ describe('picture-the-product-may-not-show', () => {
     // ADR-0043's rule is declared once in urlSafety.ts; a second spelling here
     // would be the copy that drifts. Both tables, because both are shown.
     const sql = collapse(assertion.sql);
-    for (const host of DISPLAYABLE_PICTURE_HOSTS) expect(sql).toContain(`'${host}'`);
+    for (const host of PICTURE_HOSTS) expect(sql).toContain(`'${host}'`);
     expect(sql).toContain('FROM experiences e');
     expect(sql).toContain('FROM treasures t');
     expect(sql).toMatch(/NOT \(e\.image_url LIKE '\/images\/%'/);

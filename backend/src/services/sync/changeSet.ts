@@ -10,6 +10,7 @@
  * of edits that are real.
  */
 
+import { jsonEquals } from '@tyr/shared/equality';
 import { sameLabelSet } from './labelFold.js';
 
 /**
@@ -368,28 +369,6 @@ function setEquals(a: string[] | null, b: string[] | null): boolean {
   return right.every(item => seen.has(item));
 }
 
-/** Deep value equality with object keys compared as sets, not sequences. */
-export function jsonEquals(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (isAbsent(a) && isAbsent(b)) return true;
-  if (a === null || b === null || a === undefined || b === undefined) return false;
-  if (typeof a !== typeof b) return false;
-
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-    return a.every((item, i) => jsonEquals(item, b[i]));
-  }
-
-  if (typeof a === 'object') {
-    const left = a as Record<string, unknown>;
-    const right = b as Record<string, unknown>;
-    const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
-    return [...keys].every(key => jsonEquals(left[key], right[key]));
-  }
-
-  return false;
-}
-
 /**
  * Great-circle distance in metres.
  *
@@ -582,9 +561,9 @@ function metadataChanges(
  * and the same card has to read the same way twice.
  *
  * `jsonEquals` per language rather than `textEquals`, because that is what the
- * card compared and what the two sides are pinned to (`objectDiff.ts` §
- * `valuesEqual`); the two agree on a string, and only this one is right about a
- * value that is not one.
+ * card compares — the same import, `@tyr/shared/equality`, in `objectDiff.ts`
+ * — and the two agree on a string, while only this one is right about a value
+ * that is not one.
  */
 function nameLocalChanges(
   before: Record<string, string> | null,

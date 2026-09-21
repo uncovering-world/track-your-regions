@@ -46,7 +46,8 @@
 import type { PoolClient } from 'pg';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { ContentKind } from '../../services/sync/types.js';
-import { tidyLabel, tidyLabelSql } from '../../services/sync/labelFold.js';
+import { tidyLabel } from '@tyr/shared/labels';
+import { tidyLabelSql } from '../../services/sync/labelFold.js';
 
 /** The two answers a curator can give one held row — the column's own CHECK list. */
 export type HeldAnswer = CheckValue<'experience_held_decisions', 'answer'>;

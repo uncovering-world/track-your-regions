@@ -22,6 +22,7 @@
   "dependencies": {
     "@techstark/opencv-js": "^4.12.0-release.1",
     "@turf/turf": "^7.3.2",
+    "@tyr/shared": "file:../packages/shared",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
