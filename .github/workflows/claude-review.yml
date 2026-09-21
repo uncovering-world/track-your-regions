@@ -356,8 +356,6 @@ jobs:
                 [retired by #527]
               - `.env.example` ⇄ `docker-compose.yml` ⇄ any doc naming
                 the variable [no slice yet]
-              - `db/init/*.sql` ⇄ Drizzle schema ⇄ the domain model
-                described in CLAUDE.md [retired by #792]
 
             A Major or Critical ripple finding is anchored on the line the
             PR *changed* (an inline comment must land on a line that exists

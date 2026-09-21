@@ -21,7 +21,7 @@ Run a focused security check on recently changed files.
 
 ### Node / TypeScript-specific (`backend/`, `frontend/`)
 
-- SQL injection — `pool.query(`${userInput}`...)` or template strings concatenated into queries (must use `$1, $2, ...` placeholders / Drizzle)
+- SQL injection — `pool.query(`${userInput}`...)` or template strings concatenated into queries (must use `$1, $2, ...` placeholders)
 - XSS — unescaped user-generated content rendered into HTML / `dangerouslySetInnerHTML`
 - Missing `requireAuth` / `requireAdmin` / `requireCurator` on new routes
 - JWT misuse — verifying without algorithm allowlist, missing iss/aud, accepting expired tokens

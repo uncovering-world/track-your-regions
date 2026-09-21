@@ -10,7 +10,7 @@ Perform an in-depth OWASP ASVS security review of the specified file or module.
 
 ### Injection (V1)
 - SQL/NoSQL queries: are they parameterized?
-  - Node/TS: `pool.query('... $1 ...', [val])` or Drizzle — never template strings
+  - Node/TS: `pool.query('... $1 ...', [val])` — never template strings
   - Python/psycopg: `cur.execute('... %s ...', (val,))` — never f-string interpolation
 - HTML output: is it escaped/encoded?
 - URL construction: is user input encoded?

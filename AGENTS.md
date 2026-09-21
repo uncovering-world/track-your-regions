@@ -71,7 +71,7 @@ Backend runs on port 3001, frontend on port 5173, Martin tile server on port 300
 
 ### Stack
 
-Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile server. TypeScript everywhere. Drizzle ORM for queries, raw `pool` for PostGIS geometry operations.
+Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile server. TypeScript everywhere. Raw `pool` with parameterized SQL for every query, row types generated from the schema in `backend/src/db/schema.generated.ts` (ADR-0064).
 
 ### Database
 

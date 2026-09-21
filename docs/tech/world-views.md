@@ -540,20 +540,20 @@ value passes validation and Postgres refuses it on the write with `22001`,
 which carries no status code and so surfaces as a 500. One thing prevents
 that, and one catches what still gets through:
 
-- `backend/src/types/columnBounds.test.ts` reads the widths out of
-  `db/init/01-schema.sql` and holds each request bound equal to its column, so
-  drift is named whichever way it happens — a column narrowed under its bound,
-  or a column widened while the bound that should have followed stayed put. A
-  bound deliberately tighter than its column carries the reason with it and is
-  pinned at that number instead: the import's `providerLabel` at 949, because
-  51 characters of prefix are added before it reaches
-  `world_views.description`, and a registration email at 254, the longest
-  address RFC 5321 will carry. Wider than the column is never deliberate. The
-  same test covers the experience fields listed in `experiences.md` § "Field
+- Each request bound *is* its column's width: `COLUMN_WIDTHS` in
+  `backend/src/db/schema.generated.ts`, generated from `db/init/01-schema.sql`
+  and held to it by the `db:types` gate (ADR-0064), so a column narrowed or
+  widened moves the bound with it. A bound deliberately tighter than its column
+  says so beside the number: the import's `providerLabel` is the description
+  width minus the 51 characters of prefix added before it reaches
+  `world_views.description`, and a registration email stays at 254, the
+  longest address RFC 5321 will carry. Wider than the column is never
+  deliberate. The
+  same constant bounds the experience fields listed in `experiences.md` § "Field
   limits", the account fields in `authentication.md` § "Account Field Limits",
   and the two admin AI fields that reach a column — an `ai_settings` key and a
   learned rule's `feature`.
-- `errorHandler.ts` catches what the test did not prevent: a `22001` that
+- `errorHandler.ts` catches what the bound did not prevent: a `22001` that
   reaches the database is answered 400 instead of 500. Postgres reports the
   type and width but never the column for this class, so the message quotes
   the width when the driver message carries one and stays generic when it does
