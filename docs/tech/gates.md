@@ -60,7 +60,7 @@ what is committed.
 | `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the docs pass, the workflow lint, the fast security audits | `npm run check` — `npm run check:all` forces every one |
 | `test` | the unit lanes, Node and Python | `npm run gates -- run test`, with `TEST_REPORT_LOCAL=1` to keep the Node lanes on the host |
 | `scan` | the slow scans: Semgrep on both stacks, the Trivy image scan | `npm run security:all` — the `check` tier, then this one |
-| `stack` | build, smoke, Lighthouse: the lanes that stand a stack up | `npm run gates -- run stack` **lists** them with run/skip marks and exits 2; they are typed by hand |
+| `stack` | build, smoke, the database lane, Lighthouse: the lanes that stand a stack up | `npm run gates -- run stack` **lists** them with run/skip marks and exits 2; they are typed by hand |
 
 A `run` stops at the first failure, then prints what it did, what broke, what
 never got its turn and what this change never asked for. The `check` tier over a
@@ -154,6 +154,7 @@ everything or the base was simply unknown.
 | `security:image` | scan | `python` | `npm run security:image` | trivy |
 | `build` | stack | `app` | `npm run build && npm --prefix frontend run size` | build |
 | `test:e2e:smoke` | stack | `app` | `npm run test:e2e:smoke` | smoke |
+| `test:db` | stack | `app` | `npm run test:db` | smoke |
 | `perf` | stack | `app` | `npm run perf:local` | perf |
 
 ## What the backend suite reads across the repository
@@ -236,6 +237,17 @@ does not pay for it, while the Node scan is pointed at the whole checkout with
 rule packs that carry Python rules, so `cv-python/` is one of its inputs and a
 cv-python change pays for both. `trivy-image` no longer waits for `build`: it
 builds the image it scans, and a cv-python-only change asks for no build at all.
+
+The `e2e-smoke` job runs two lanes, because it is the one job in CI with a
+database. The smoke step keeps the stack up when it is done
+(`TEST_REPORT_KEEP_ENV=1`), and the step after it runs `npm run test:db` — the
+database-backed backend specs (#522), which assert the rows a statement selects
+rather than its text — against that same stack, then tears it down. The step
+reads `job_test_db`, a key of its own in the shape of the two Semgrep steps.
+Today it always equals `job_smoke`, since both gates read `app`; what
+`scripts/gates.test.mjs` pins is the containment, not the equality — a smoke
+gate narrowed to fewer inputs than `test:db` reads would leave the step inside a
+skipped job, reporting Success with nothing run.
 
 A scheduled run (`on: schedule`, weekly) has no base, so the `Changes` job sends
 the zero sha and every gate applies — see the calendar under *What the map does

@@ -91,17 +91,18 @@ const normalise = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
 const BEHIND_CHECK = ['build', 'e2e-smoke', 'perf'];
 
 /**
- * How many steps read a map output. The six are the check job's four setup
+ * How many steps read a map output. The seven are the check job's four setup
  * steps — `Setup Python`, `Install backend dependencies`,
- * `Install frontend dependencies`, `Set up cv-python venv` — and the security
- * job's two scans, `Semgrep SAST (Node)` and `Semgrep SAST (Python)`.
+ * `Install frontend dependencies`, `Set up cv-python venv` — the security
+ * job's two scans, `Semgrep SAST (Node)` and `Semgrep SAST (Python)`, and the
+ * smoke job's `Run the database-backed backend specs` (#522).
  *
  * This is a property of the workflow rather than of the map: nothing in
  * `gates.mjs` says how many steps of a job install a toolchain, so the number
  * is stated here. A step that quietly loses its condition, or one added
  * without it, moves it.
  */
-const GUARDED_STEPS = 6;
+const GUARDED_STEPS = 7;
 
 function readWorkflow() {
   if (!existsSync(WORKFLOW)) {

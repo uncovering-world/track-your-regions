@@ -68,6 +68,7 @@ jobs:
       job_security_python: ${{ steps.gates.outputs.job_security_python }}
       job_trivy: ${{ steps.gates.outputs.job_trivy }}
       job_smoke: ${{ steps.gates.outputs.job_smoke }}
+      job_test_db: ${{ steps.gates.outputs.job_test_db }}
       job_perf: ${{ steps.gates.outputs.job_perf }}
     steps:
       - uses: actions/checkout@v4
@@ -424,8 +425,27 @@ jobs:
       # service under test installs its own dependencies inside its own
       # container image (backend/Dockerfile, frontend/Dockerfile). Host
       # node_modules are never read on this path.
+      # TEST_REPORT_KEEP_ENV=1 leaves the stack up for the step below, which
+      # would otherwise pay for a `down -v` and a cold `up` — a Postgres
+      # re-initialised from the schema, two readiness waits and a re-seed — to
+      # reach a database this step has just finished with. The database lane's
+      # own run tears the stack down. When this step fails, the next is skipped
+      # and nothing runs that `down`; that costs nothing here, because the
+      # runner is thrown away with the containers on it.
       - name: Run E2E smoke suite
-        run: npm run test:e2e:smoke
+        run: TEST_REPORT_KEEP_ENV=1 npm run test:e2e:smoke
+
+      # The database-backed backend specs (#522): what they assert is the rows a
+      # statement selects, not its text, so they need a real Postgres, and this
+      # is the one job in CI that has one. The `Unit Tests` job is a bare runner
+      # with no database, which is why a reachability-guarded spec in that
+      # suite would skip for ever and report green. Same key shape as the two
+      # Semgrep steps: the job-level `job_smoke` starts the job, `job_test_db`
+      # says this step has something to read — today both key off `app`, and
+      # scripts/gates.test.mjs pins that the second never holds without the first.
+      - name: Run the database-backed backend specs
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_db == 'true' }}
+        run: npm run test:db
 
       # `always()`, not `failure()`: a spec that passes on retry is flaky and
       # no longer fails the job (#447), so on a `failure()` condition the one
