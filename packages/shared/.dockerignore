@@ -1,0 +1,6 @@
+# The package ships as source: an image copies src/ and the manifest and links
+# them into its own install, so neither a host install nor test output belongs
+# in the build context.
+node_modules
+coverage
+.dockerignore
