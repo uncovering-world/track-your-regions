@@ -294,21 +294,29 @@ jobs:
             not run a search this phase did not happen.
 
             Places this repo states the same thing twice — check the ones
-            the diff actually touches, not all of them:
+            the diff actually touches, not all of them. Each pair is a
+            guard for a rule that has no single home yet: the slice of
+            #788 that gives it one deletes the pair from this list in the
+            same pull request, and a pair whose home has landed is a stale
+            line here, not a check.
               - `CLAUDE.md` ⇄ `docs/tech/development-guide.md` — both
                 state process rules (commit format, pre-commit gates,
-                file-size limits, refactoring hygiene)
+                file-size limits, refactoring hygiene) [no slice yet]
               - `CLAUDE.md` command table ⇄ `package.json` scripts
+                [no slice yet]
               - any user-visible change ⇄ `docs/vision/vision.md`
+                [no slice: a product document is written by hand]
               - auth / endpoint / role / input-surface changes ⇄
                 `docs/security/SECURITY.md` and
-                `docs/security/asvs-checklist.yaml`
+                `docs/security/asvs-checklist.yaml` [no slice yet]
               - architectural choices ⇄ accepted ADRs in `docs/decisions/`
+                [no slice: an ADR is a record]
               - backend response shape ⇄ its frontend consumer
+                [retired by #527]
               - `.env.example` ⇄ `docker-compose.yml` ⇄ any doc naming
-                the variable
+                the variable [no slice yet]
               - `db/init/*.sql` ⇄ Drizzle schema ⇄ the domain model
-                described in CLAUDE.md
+                described in CLAUDE.md [retired by #792]
 
             A Major or Critical ripple finding is anchored on the line the
             PR *changed* (an inline comment must land on a line that exists
