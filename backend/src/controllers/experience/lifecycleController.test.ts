@@ -719,10 +719,10 @@ describe('setExperienceAdmission', () => {
       experienceId: 5, admission: 'admitted', published: false,
       curationState: 'auto', appliedFields: [], claimedFieldsSkipped: [], appliedParts: [],
       fromSyncLogId: null,
-      // Zero because an override answers no held row, not because none was open
-      // (#722): a row holding a proposal keeps its pointer and its own card
-      // through this verdict. Asserted whole, as the rest of this shape is, so
-      // the field cannot go missing and be read as "nothing was left waiting".
+      // Zero because an override answers no held row, not because none was open:
+      // a row holding a proposal keeps its pointer and its own card through this
+      // verdict. That the key is present at all is the schema's to hold
+      // (`AdmissionResult`, which `respond()` parses in this lane).
       heldLeftOpen: 0,
       locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0,
     });

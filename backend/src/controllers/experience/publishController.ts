@@ -34,16 +34,18 @@
 
 import { Response } from 'express';
 import type { PoolClient } from 'pg';
+import { respond } from '../../api/respond.js';
+import { PublishResult, type AppliedPart, type PartNotFound } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
+import type { CheckValue } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { heldFieldWrites, publicationAssignments, type HeldFieldWrites } from './publishHeldFields.js';
 import {
-  applyHeldPartWrites, planHeldPartWrites,
-  type AppliedPart, type HeldPartPlan, type PartNotFound,
+  applyHeldPartWrites, planHeldPartWrites, type HeldPartPlan,
 } from './publishHeldParts.js';
 import { recordHeldAnswers } from './heldDecisions.js';
 import type { HeldSelection, SelectedPart } from './heldSelection.js';
@@ -156,64 +158,6 @@ function scopeOf({ contentsOnly, fieldsOnly }: { contentsOnly: boolean; fieldsOn
   return contentsOnly ? 'contents' : 'object';
 }
 
-interface PublishResult {
-  experienceId: number;
-  /** The experience's own state after the call — unchanged by a contents publish. */
-  curationState: string;
-  /** Held fields written now. */
-  appliedFields: string[];
-  /** Held fields left alone because the curator claims them (see below). */
-  claimedFieldsSkipped: string[];
-  /**
-   * The parts whose held fields were written now — a place renamed, a work
-   * re-attributed (ADR-0037) — each with what it applied and what it left as
-   * the curator wrote it. Empty on a contents publish, which leaves the
-   * proposal exactly where it was.
-   */
-  appliedParts: AppliedPart[];
-  /**
-   * Parts the proposal names that no offered row answers to any more — a place
-   * the source withdrew after proposing its rename. Reported rather than
-   * refused: there is nothing to apply and nothing readers see, and a 409 would
-   * leave a card no answer can clear. Present only when there is one.
-   */
-  partsNotFound?: PartNotFound[];
-  /** The run whose held proposal was applied, or null when none was held. */
-  fromSyncLogId: number | null;
-  /**
-   * Held rows this call left open, at both levels (#722).
-   *
-   * Non-zero exactly when the pointer stayed, so the card is still standing and
-   * the page should say what is still waiting rather than reporting the object
-   * answered. Zero on every call that names no selection, which is every call
-   * that existed before per-row answers.
-   */
-  heldLeftOpen: number;
-  locationsPublished: number;
-  treasureLinksPublished: number;
-  treasuresPublished: number;
-  /** Points the source had replaced, withdrawn now that their replacement shows. */
-  withdrawalsReleased: number;
-  /** Set when the publication landed but re-placing the object afterwards did not. */
-  placementFailed?: true;
-  /**
-   * Where the regions are now stale, named rather than only counted. Present
-   * exactly when `placementFailed` is, and never empty.
-   *
-   * The caller cannot fix any of this: a re-assignment is admin-only, and this
-   * page's ordinary user is a region- or source-scoped curator. What they can
-   * do is tell an admin which object and which world views — so the answer has
-   * to contain that, and a boolean plus a line in the server's log leaves them
-   * saying "something about regions failed". `id: null` is the one case with no
-   * world view to name: listing them is what failed, so none was attempted.
-   *
-   * The reason each one gave stays in the log and out of this: it is a database
-   * error string, the curator can do nothing with it, and an admin reading the
-   * log has it in full.
-   */
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}
-
 interface PublishRefusal {
   status: number;
   error: string;
@@ -277,7 +221,7 @@ export async function publishExperience(req: AuthenticatedRequest, res: Response
     res.status(status).json(payload);
     return;
   }
-  res.json(outcome.result);
+  respond(res, PublishResult, outcome.result!);
 }
 
 /**
@@ -694,31 +638,34 @@ export async function publishUnderLock(
     const placementFailures = withdrawalsReleased > 0
       ? await placeAfterRelease(experienceId)
       : [];
+    const staleWorldViews = placementFailures.length === 0
+      ? undefined
+      : placementFailures.map(f => ({ id: f.worldViewId, name: f.worldViewName }));
 
+    // Every key is written into this literal, the optional ones as `undefined`
+    // (which JSON drops) rather than spread in from a conditional object:
+    // TypeScript checks a literal's own keys against `PublishResult` and not the
+    // keys a spread brings in.
     return {
       result: {
         experienceId,
-        curationState: contentsOnly ? (before.curation_state as string) : 'verified',
+        curationState: contentsOnly
+          ? (before.curation_state as CheckValue<'experience_kind_memberships', 'curation_state'>)
+          : 'verified',
         appliedFields: applied,
         claimedFieldsSkipped,
         appliedParts,
-        ...(partsNotFound.length === 0 ? {} : { partsNotFound }),
+        partsNotFound: partsNotFound.length === 0 ? undefined : partsNotFound,
         fromSyncLogId: heldFrom,
         heldLeftOpen,
         locationsPublished,
         treasureLinksPublished,
         treasuresPublished,
         withdrawalsReleased,
-        // The flag and the list travel together or not at all: a flag without the
-        // list is the dead end this endpoint just stopped handing to a curator,
-        // and a list without the flag would need every reader to re-derive
-        // "did it fail" from an array's length.
-        ...(placementFailures.length === 0 ? {} : {
-          placementFailed: true as const,
-          placementFailedWorldViews: placementFailures.map(f => ({
-            id: f.worldViewId, name: f.worldViewName,
-          })),
-        }),
+        // Both from one condition, so the flag and the list travel together or
+        // not at all (see `placementFailedWorldViews` in the schema).
+        placementFailed: staleWorldViews ? true : undefined,
+        placementFailedWorldViews: staleWorldViews,
       },
     };
   } catch (error) {
