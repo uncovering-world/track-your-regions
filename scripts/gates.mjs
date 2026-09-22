@@ -23,6 +23,8 @@
 import { appendFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 
+import { READ_EXTENSIONS } from './lint-line-pointers.mjs';
+
 /**
  * The classes of file a gate can read, in the order a reader should meet them.
  *
@@ -130,6 +132,19 @@ export const INPUTS = [
       + ' is found by the run that hits it, on the branch it is already merged to.',
   },
   {
+    id: 'prose',
+    // The pass's own extension list, so what the gate reads and what asks for
+    // it cannot disagree: an issue template under .github/ or the ASVS
+    // checklist is in no class above, and a pointer added there would
+    // otherwise surface as a red check on some unrelated branch.
+    paths: [new RegExp(`\\.(?:${READ_EXTENSIONS.join('|')})$`)],
+    note:
+      'Every tracked file the line-pointer pass reads — Markdown, and each'
+      + ' file type that carries a comment — by the extension list the pass'
+      + ' itself declares (scripts/lint-line-pointers.mjs), whichever'
+      + ' directory the file sits in.',
+  },
+  {
     id: 'tooling',
     paths: [
       // In two classes, and both are true of it: `workflows` is what actionlint
@@ -194,6 +209,14 @@ export const GATES = [
   { id: 'lint:actions', tier: 'check', inputs: ['workflows'], command: ['npm', 'run', 'lint:actions'], job: 'check', setup: 'docker' },
   { id: 'lint:md', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:md'], job: 'check', setup: 'docs' },
   { id: 'lint:links', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:links'], job: 'check', setup: 'docker' },
+  // A line pointer — a file name with a line number after it — is refused
+  // wherever living prose lives: a Markdown page, a code comment, a workflow's
+  // `#` line. Its input is the `prose` class, which is the pass's own
+  // extension list (#579). `docs` rather than `node`: the script needs the
+  // runtime and nothing installed, which is the docs pass's own setup — the
+  // root install CI's check job runs unconditionally — so a prose-only change
+  // still installs no package.
+  { id: 'lint:pointers', tier: 'check', inputs: ['prose'], command: ['node', 'scripts/lint-line-pointers.mjs'], job: 'check', setup: 'docs' },
   { id: 'check:py', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'check:py'], job: 'check', setup: 'python' },
   { id: 'security:py:bandit', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:bandit'], job: 'check', setup: 'python' },
   { id: 'security:py:deps', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:deps'], job: 'check', setup: 'python' },
