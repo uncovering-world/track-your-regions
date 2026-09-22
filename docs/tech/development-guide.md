@@ -46,6 +46,19 @@ Exceptions: files with dense, non-decomposable JSX can exceed the ~500 target if
 | New/changed API endpoints, auth flows, input surfaces | `docs/security/SECURITY.md` and/or `docs/security/asvs-checklist.yaml` |
 | Completed a plan | Trim `docs/tech/planning/*.md` — remove implemented sections, keep only remaining ideas |
 | New tech doc | Add it to `docs/README.md` index table |
+| A line pointer, a count of places or a tally in living prose | Replace it with the symbol, the names or the class (§ What a living document may not say, below) |
+
+### What a living document may not say
+
+A living document — `docs/tech/*`, `docs/security/SECURITY.md`, `CLAUDE.md` (and `AGENTS.md`, which links to it), the command files under `.claude/commands/`, and a code comment — is read as current. A fact copied out of the code into it is a claim that expires without anything looking broken: the sentence stays readable and true-sounding while the thing it pins moves underneath it. Three shapes, one rule (#579, #797):
+
+- **No line numbers.** Reference code as file + symbol, or as `§ Section`: "`RegionList`'s `useVirtualizer`", "`SECURITY.md` § Known Gaps". Every edit above a cited line breaks the pointer while the claim it supports stays true, and nothing checks a pointer between reviews — #578's review re-synced `docs/tech/experience-map-ui.md`'s pointer at the virtualiser twice in one afternoon. A name is searchable and survives edits for free.
+- **No count of places — name the places.** "Seven statements read `paired_rows`" is falsified by the eighth writer without a character of the sentence changing (PR #548), and the module inventory in `docs/tech/experiences.md` went stale on five consecutive pushes of PR #495. Name what is counted ("`markVisited`, `markLocationVisited` and `markTreasureViewed` all carry it"), or name the class ("every writer of `image_url`"), or put the enumeration in the same sentence as the count, so the sentence checks itself. A number that does not drift stays: an external contract (Commons answers 50 titles per request), a declared constant or a rule's threshold, a schema width, an id, a date, a named real example. A tally measured from the database — rows, works, sites — is the same defect one step over; #579 owns that sweep.
+- **One file, not twins.** A rule stated for more than one reader lives in one file the others link to or are generated from. `AGENTS.md` is a symlink to `CLAUDE.md` for that reason: the hand-kept paraphrase it used to be still said the JWT lived in `localStorage` after it had moved to memory. (On a checkout without symlinks — Windows with `core.symlinks` off — the file is one line naming `CLAUDE.md`, which is still the pointer.)
+
+Where all of this stays legitimate: a point-in-time record — an ADR, an audit report, an issue or pull request, a commit message, a local plan under `docs/tech/planning/` (gitignored; the plans still tracked there are #514's to move out) — describes the code as of a date, and a line pointer or a count there is evidence rather than a standing claim. The same measurement copied from a pull request description into `docs/tech/` becomes one.
+
+The review bot reads a stale count, tally or line pointer as a Note whose fix is to drop the volatile claim and name the class or the symbols — never to refresh the number, which the next change falsifies again. The sweep that does so is also where a claim that was never true gets caught: a sentence read as boilerplate for months is read as a claim once.
 
 ## Backend
 
@@ -824,9 +837,10 @@ never picks up, and a status that never leaves `pending`.
 The "same thing twice" list in the bot's Ripple phase is a guard for rules
 without a single home; each pair is deleted by the #788 slice that gives its
 rule one, in the same pull request, so the list only shrinks. A text finding — a
-stale count, tally, line pointer or sentence of history — is fixed in #579's
-form: drop the volatile claim and name the class or the symbols, rather than
-refresh a number the next change will falsify again.
+stale count, tally, line pointer or sentence of history — is fixed the way
+§ What a living document may not say asks: drop the volatile claim and name
+the class or the symbols, rather than refresh a number the next change will
+falsify again.
 
 ## Security
 
