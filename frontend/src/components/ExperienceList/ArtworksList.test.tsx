@@ -1,18 +1,18 @@
 /**
  * Tests for what a works list does when a picture does not arrive.
  *
- * Both cases below are regressions this branch shipped and then fixed, one after
- * the other, which is why they are pinned rather than argued in a comment.
+ * Both cases below are pinned rather than argued in a comment, because each is
+ * a way of getting the first one wrong.
  *
- * The first: the credit line was added outside the thumbnail's own guard, so a
- * failed request left a photographer named under nothing — the exact claim the
+ * The first: a credit line outside the thumbnail's own guard leaves a
+ * photographer named under nothing when the request fails — the exact claim the
  * whole feature exists to avoid making.
  *
- * The second came out of fixing the first. Hiding the picture by emptying the
- * URL unmounted the wrapper that carries `onMouseLeave`, and that handler is the
- * only thing that closes the map's artwork overlay. A failure while the pointer
- * rested on the row therefore left a sheet painted over the whole map with
- * nothing able to lift it. The frame is now hung on the URL rather than on
+ * The second follows from fixing the first. Hiding the picture by emptying the
+ * URL unmounts the wrapper that carries `onMouseLeave`, and that handler is the
+ * only thing that closes the map's artwork overlay: a failure while the pointer
+ * rests on the row then leaves a sheet painted over the whole map with
+ * nothing able to lift it. So the frame hangs on the URL rather than on
  * whether the picture loaded, and only the `<img>` and the credit answer to the
  * failure — an arrangement one refactor could undo silently, since the comment
  * that explains it is not executable and this file is.

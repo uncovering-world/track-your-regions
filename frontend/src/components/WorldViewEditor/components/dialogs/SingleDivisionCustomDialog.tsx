@@ -44,7 +44,7 @@ export function SingleDivisionCustomDialog({
   onConfirm,
   isPending,
 }: SingleDivisionCustomDialogProps) {
-  // Internal state — previously in parent
+  // Internal state
   const [regionName, setRegionName] = useState('');
   const [customGeometry, setCustomGeometry] = useState<GeoJSON.Polygon | GeoJSON.MultiPolygon | null>(null);
   const [sourceGeometry, setSourceGeometry] = useState<GeoJSON.FeatureCollection | null>(null);

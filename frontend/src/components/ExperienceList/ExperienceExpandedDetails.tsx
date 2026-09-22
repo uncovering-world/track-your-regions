@@ -168,11 +168,9 @@ function ExperienceExpandedDetailsComponent({
 
   // The box is given its 250 px only once the bytes are actually here, because
   // a picture can fail to arrive and a reserved box taken back moves every row
-  // below. That used to be the ordinary outcome — 1260 of 1604 cards pointed at
-  // a portal photograph that answered 403 — and reserving space for all of them
-  // shuffled four cards in five. Since ADR-0043 every stored picture is a Commons
-  // file (#557), so the failure is the exception again; the rule stays, because
-  // a card that moves once is a card that moves.
+  // below. Every stored picture is a Commons file (ADR-0043, #557), so a
+  // failure is the exception; the rule stays anyway, because a card that moves
+  // once is a card that moves.
   //
   // Usually the answer is already known, because hovering the row started the
   // fetch (`imagePreload.ts`), and hovering is what precedes opening. Then this
@@ -261,7 +259,7 @@ function ExperienceExpandedDetailsComponent({
             // measured row growing means every row below it moves — the reader
             // watched the list settle twice. `contain` letterboxes a wide picture
             // against the grey rather than cropping it, which is what this
-            // background colour was always for.
+            // background colour is for.
             height: 250,
             objectFit: 'contain',
             borderRadius: 1,

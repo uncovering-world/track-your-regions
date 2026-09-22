@@ -334,8 +334,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
   // Drive list → map hover, straight from the store. Subscribed rather than
   // depended on: the values change on every mouse move across the list, and
-  // reading them in the render is what used to rebuild this whole component —
-  // and with it the map's sources — per move.
+  // reading them in the render rebuilds this whole component — and with it the
+  // map's sources — per move.
   //
   // To the *target* only. `updateHoverFromList` writes the preview card, and a
   // subscriber that heard that write would answer it by writing again — see
@@ -351,15 +351,14 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     }
   }), [hoverStore, updateHoverFromList]);
 
-  // No auto-fit on a marker click any more. It framed every place of the object
-  // clicked, which was the whole content of that click while an object was one
-  // dot: "show me this". A pin is one named place now, and framing all of them
-  // takes the place the reader clicked off the screen — at zoom 12 over Aragón,
-  // clicking one of the Rock Art's 734 shelters threw the view out across three
-  // provinces, and that shelter's own pin left `exp-markers` in the same commit,
-  // so there was nothing to click back to. A click on the map means "this one,
-  // here"; a click in the list still means "take me to it", and that fly-to
-  // below is unchanged.
+  // No auto-fit on a marker click. Framing every place of the object clicked is
+  // the whole content of that click only while an object is one dot: "show me
+  // this". A pin is one named place, and framing all of them takes the place
+  // the reader clicked off the screen — at zoom 12 over Aragón, clicking one of
+  // the Rock Art's 734 shelters would throw the view out across three provinces
+  // with that shelter's own pin gone from `exp-markers`, so nothing to click
+  // back to. A click on the map means "this one, here"; a click in the list
+  // means "take me to it", and the fly-to below answers that one.
 
   // ── Fly to experience when triggered from list click ──
   useEffect(() => {

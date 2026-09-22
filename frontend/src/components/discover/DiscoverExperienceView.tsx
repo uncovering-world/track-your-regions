@@ -330,9 +330,9 @@ export function DiscoverExperienceView({
       const markers = buildExperienceMarkers(
         visibleExperiences, locationsByExperience, NO_KIND_FILTER, collapsedExperienceIds);
 
-      // No feature-level `id`: it used to be the experience's, which now repeats
-      // across every one of its places, and nothing here reads it — clustering
-      // does not need one, and the handlers below resolve an object through
+      // No feature-level `id`: the experience's repeats across every one of its
+      // places, and nothing here reads one — clustering
+      // does not need it, and the handlers below resolve an object through
       // `properties.id`.
       const features: GeoJSON.Feature<GeoJSON.Point>[] = markers.map((m) => ({
         type: 'Feature',
@@ -396,10 +396,10 @@ export function DiscoverExperienceView({
       updateData();
       return;
     }
-    // Removed on cleanup, which matters now that this effect re-runs on four
-    // more things than it used to: every arrival before the map has loaded — the
-    // experiences query, the location batch, a fold taken early — used to leave
-    // another closure attached, and on `load` they all ran in turn, each with its
+    // Removed on cleanup, which matters because this effect re-runs on every
+    // arrival before the map has loaded — the experiences query, the location
+    // batch, a fold taken early. Each would otherwise leave another closure
+    // attached, and on `load` they would all run in turn, each with its
     // own snapshot and each evaluating the fit.
     map.on('load', updateData);
     return () => { map.off('load', updateData); };

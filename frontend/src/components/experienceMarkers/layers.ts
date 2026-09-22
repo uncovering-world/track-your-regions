@@ -170,8 +170,8 @@ export const heatmapLayer: HeatmapLayerProps = {
     //
     // The climb is late for the opposite reason. Each zoom level doubles the
     // on-screen distance between points, so a fixed radius covers roughly a
-    // quarter as many and density falls about fourfold per level — which is what
-    // used to make the layer fade out on the way in. The gain arrives where that
+    // quarter as many and density falls about fourfold per level, which would
+    // fade the layer out on the way in. The gain arrives where that
     // loss does, past zoom 3, rather than on the overview where it only floods.
     'heatmap-intensity': ['interpolate', ['linear'], ['zoom'],
       0, 0.22, 3, 0.4, HEATMAP_MAX_ZOOM, 3],
@@ -211,8 +211,8 @@ export const markerLayer: CircleLayerProps = {
   paint: {
     // Decided once, in `experienceColor` (the kind's colour, refined by the type
     // where the types are told apart), and carried on the feature: a `match` on
-    // the type value here hung a museum's blue on a literal every museum row
-    // used to carry and put a monument in the fallback (#814).
+    // the type value here has no literal to key a museum's blue on and drops a
+    // monument into the fallback (#814).
     'circle-color': ['get', 'color'],
     'circle-radius': 6,
     'circle-stroke-width': 2,

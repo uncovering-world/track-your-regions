@@ -1,10 +1,10 @@
 /**
- * The picker draws every candidate a region's import carried, and until #694
- * it drew them raw: `src={`${url}?width=300`}` for whatever string the tree
- * had named. A candidate is wiki content, not an admin's own typing, so the
- * picker is the surface where an unrenderable value would meet the DOM first.
- * Now each candidate goes through `toThumbnailUrl`, and one it refuses is not
- * offered at all -- a picture no `<img>` may draw is not a map to choose.
+ * The picker draws every candidate a region's import carried, and each goes
+ * through `toThumbnailUrl` rather than into `src={`${url}?width=300`}` raw
+ * (#694). A candidate is wiki content, not an admin's own typing, so the
+ * picker is the surface where an unrenderable value would meet the DOM first;
+ * one `toThumbnailUrl` refuses is not offered at all -- a picture no `<img>`
+ * may draw is not a map to choose.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -30,7 +30,7 @@ function renderPicker(candidates: string[], currentSelection: string | null = nu
 const drawnSrcs = () => Array.from(document.querySelectorAll('img')).map(img => img.getAttribute('src'));
 
 describe('MapImagePickerDialog', () => {
-  it('sizes a Commons map the way the dialogs used to by hand', () => {
+  it('sizes a Commons map through the shared thumbnail rule', () => {
     renderPicker([COMMONS_MAP]);
     expect(drawnSrcs()).toEqual([`${COMMONS_MAP}?width=300`]);
   });

@@ -61,8 +61,8 @@ function snapOut(value: number, step: number, up: boolean): number {
  * edge rounds outward by up to a step, so a snapped span reaches 1.5x the
  * viewport's; a raw span under 360 can snap past it, and then the two wrapped
  * edges come back with `west < east` naming a box *narrower* than the viewport
- * rather than the world. Measured on the shape the review found: a 300 degree
- * view from -149 to 151 has a step of 75, snaps to -150 and 225, and 225 wraps
+ * rather than the world. Measured on a 300 degree view: one from -149 to 151
+ * has a step of 75, snaps to -150 and 225, and 225 wraps
  * to -135 — a 15 degree box for a 300 degree screen, not even a crossing one,
  * so the endpoint builds one small envelope and the layer draws pins over five
  * per cent of the map. That breaks this module's own invariant, the one its

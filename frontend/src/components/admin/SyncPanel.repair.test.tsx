@@ -1,10 +1,10 @@
 /**
  * Tests for how the sync panel follows a picture repair.
  *
- * A repair is not a sync, and the panel used to know which it was following
- * only by remembering which button was pressed — so a page reloaded during
- * one showed "Syncing..." and ended in a sync's sentence. The server says
- * which kind of run it is now (`kind`), and these pin that the panel reads it:
+ * A repair is not a sync, and knowing which one the panel is following by
+ * remembering which button was pressed loses it on a reload — the page then
+ * shows "Syncing..." and ends in a sync's sentence. The server says
+ * which kind of run it is (`kind`), and these pin that the panel reads it:
  * for the chip, for the sentence at the end, and for following a run it did
  * not start.
  */

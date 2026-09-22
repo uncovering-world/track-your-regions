@@ -106,7 +106,7 @@ export function LocationsSection({
 
   // Auto-scroll to hovered location (from map highlight dot hover) — from a
   // subscription, so a pointer crossing the dots does not re-render this
-  // section per move; the hover used to arrive as page state, which did (#573).
+  // section per move, which the hover arriving as page state would (#573).
   // Only a hover from the map: a row hover can only have come from a row
   // already on the page. Through refs, because the subscription is registered
   // once and a hover is not the moment to re-register it because the rows or

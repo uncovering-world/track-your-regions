@@ -385,12 +385,12 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const handleClick = useCallback((exp: Experience) => {
     const isClosing = selectedIdRef.current === exp.id;
     toggleSelectedExperience(exp.id);
-    // Closing a card moves no camera. It used to fly back to the whole region,
-    // on the theory that opening had flown you in — but by then the reader has
-    // usually panned or zoomed for themselves, and throwing that away is the
-    // list moving under them, which is the complaint every movement here is
-    // narrowed to avoid. It also fought #553: refitting the region republishes
-    // the view, so closing one card silently changed which rows are listed.
+    // Closing a card moves no camera. Flying back to the whole region would
+    // throw away the pan or zoom the reader has usually made by then, which is
+    // the list moving under them — the complaint every movement here is
+    // narrowed to avoid. It would also fight #553: refitting the region
+    // republishes the view, so closing one card silently changes which rows
+    // are listed.
     if (!isClosing) {
       // Said before the flight so the list's re-aim knows the rows may move
       // under the card that is about to open — see `useListScrollAnchor`.

@@ -329,7 +329,7 @@ describe('useTileUrls — rootRegionsBorderUrl', () => {
     // The scope is what the border layer draws, not a refinement of it:
     // tile_world_view_root_regions answers a request that names no world view
     // with an empty tile, so a URL that lost the parameter draws nothing at all
-    // (#662). It used to draw every world view's roots at once.
+    // (#662).
     expect(scope(result.current.rootRegionsBorderUrl).get('world_view_id')).toBe('2');
   });
 

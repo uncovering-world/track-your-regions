@@ -51,9 +51,9 @@ export interface ExperienceListItemProps {
   isSelected: boolean;
   locationRefs: React.MutableRefObject<Map<number, HTMLElement>>;
   /**
-   * Registered by the row itself. The parent used to wrap each row in a `<Box>`
-   * carrying this ref, which put one unmemoised MUI component per experience
-   * back on the hover path — 148 of them re-rendering on every mouse move, worth
+   * Registered by the row itself: a parent wrapping each row in a `<Box>`
+   * carrying this ref puts one unmemoised MUI component per experience
+   * on the hover path — 148 of them re-rendering on every mouse move, worth
    * about 400 ms a hover even with this component memoised.
    */
   itemRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
@@ -252,7 +252,7 @@ function ExperienceListItemComponent({
   );
   // Bound once per object for the same reason, and handed down unchanged to
   // every place row — which is memoised too, and would re-render on a fresh
-  // closure per row exactly the way this card used to.
+  // closure per row.
   const handleCorrectPlace = useMemo(
     () => (onCorrectPlace
       ? (location: LocationRowData) => onCorrectPlace(experience, location)

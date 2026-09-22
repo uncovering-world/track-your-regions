@@ -19,11 +19,11 @@ import { ARTWORKS_INITIAL_LIMIT } from './utils';
 /**
  * One work in the list: its picture, whether this reader has seen it, and whose photograph it is.
  *
- * A component rather than a block inside the loop because the row now holds
- * state: whether its picture actually arrived. `onError` used to hide the `<img>`
- * and leave everything else standing, which after this change would leave a
- * photographer credited under nothing — and on some sources a picture failing to
- * load is the common case rather than the edge one (#557).
+ * A component rather than a block inside the loop because the row holds state:
+ * whether its picture actually arrived. An `onError` that hid the `<img>` and
+ * left everything else standing would leave a photographer credited under
+ * nothing — and on some sources a picture failing to load is the common case
+ * rather than the edge one (#557).
  */
 function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArtworkPreview, onCorrect }: {
   content: ExperienceTreasure;
@@ -103,8 +103,8 @@ function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArt
         <Typography variant="caption" color="text.secondary" noWrap>
           {[creatorsBrief(content.artists, content.artists_curated),
             // Not the stored integer: the Borghese Gladiator was carved around
-            // 100 BC, and this row used to print "-100" while the works preview
-            // beside it printed "100 BC" (`yearLabel`).
+            // 100 BC, and the stored -100 is not what the works preview beside
+            // this row spells (`yearLabel`).
             yearLabel(content.year), content.treasure_type]
             .filter(Boolean).join(' · ')}
         </Typography>

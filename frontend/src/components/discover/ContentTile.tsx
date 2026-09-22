@@ -172,8 +172,8 @@ export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed
           renders its checkbox only when there is somebody to record for. */}
       {/* On the outer element, not on the name strip: `Tooltip` binds its listeners
           to its own child, and the strip is a plain `<div>` that never takes focus.
-          Bound there, the artist, the year and the credit were shown to a pointer
-          and to nobody else — on a tile this branch had just made a focus stop. The
+          Bound there, the artist, the year and the credit are shown to a pointer
+          and to nobody else — on a tile that is itself a focus stop. The
           strip is `noWrap` besides, so a long name is cut there too.
           `describeChild` because the tile already carries an `aria-label` saying
           what the press will do: without it MUI writes the title into that

@@ -38,7 +38,7 @@ export function PropagateColorDialog({
   onConfirm,
   isPending,
 }: PropagateColorDialogProps) {
-  // Internal state — previously lifted to parent
+  // Internal state
   const [selection, setSelection] = useState<Map<number, boolean>>(new Map());
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 

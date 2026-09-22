@@ -2,10 +2,10 @@
  * The card that names what the pointer is over, drawn on top of the map.
  *
  * Its own component, and its own subscriber to the hover context, so that the
- * map does not have to be. `RegionMapVT` used to read `hoverPreview` and render
- * this inline, which meant a mouse move across a list of places re-rendered the
- * whole map — react-map-gl reconciling every `<Source>` and `<Layer>` per event.
- * On the Historic Centre of Saint Petersburg's 112 places that was seconds of
+ * map does not have to be. Read as `hoverPreview` in `RegionMapVT` and rendered
+ * inline, a mouse move across a list of places re-renders the
+ * whole map — react-map-gl reconciling every `<Source>` and `<Layer>` per event,
+ * which on the Historic Centre of Saint Petersburg's 112 places is seconds of
  * lag between the pointer and the ring. Here, the only thing a hover re-renders
  * on the map side is this card.
  *
@@ -24,11 +24,10 @@ import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 /**
  * The card's entrance, defined next to the thing that plays it.
  *
- * It used to live in a `<style>` block inside `RegionMapVT`, which worked only
- * because that component was the sole renderer and the block rendered
- * unconditionally. This component is exported and standalone now: a second
- * caller would get a card that appears with no animation and no error to say
- * why.
+ * A `<style>` block inside `RegionMapVT` would work only while that component
+ * is the sole renderer and the block renders unconditionally. This component is
+ * exported and standalone: a second caller would get a card that appears with
+ * no animation and no error to say why.
  */
 const cardIn = keyframes`
   from { opacity: 0; transform: translateY(8px) scale(0.98); }
