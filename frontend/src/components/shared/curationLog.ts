@@ -16,11 +16,11 @@
  * front of it. What must not diverge is which answer a row records, and that is the
  * action itself, which both read straight.
  *
- * Both halves used to fall short of the table. Nine actions reached the chip's fallback
- * and printed the column value itself, so the History said `admission_overridden` on a
- * screen a person reads, and twelve carried details nothing rendered — including the
- * six that hold a curator's note, which the cards that ask for one promise "in this
- * object's curation history" and which reached no screen at all (#691).
+ * Every action in the table needs both halves. One missing from the labels reaches the
+ * chip's fallback and prints the column value itself, so the History says
+ * `admission_overridden` on a screen a person reads; one missing from the details carries
+ * something nothing renders — six actions hold a curator's note, which the cards that ask
+ * for one promise "in this object's curation history" (#691).
  *
  * Its own module rather than a block inside `CurationDialog`, because the presentation
  * is not the dialog's — the admin table proves it, and the cross-curator feed (#611) is

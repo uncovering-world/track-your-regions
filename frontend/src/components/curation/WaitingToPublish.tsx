@@ -351,11 +351,10 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
             {publishLabel(group)}
           </Button>
           {/* Only where both halves are open, because that is the only case in
-              which the one button above does two things at once. The card of a
-              museum holding twelve unread paintings and a proposed label used to
-              force those together: answering the label released the paintings,
-              so a curator who doubted one sentence held back twelve works
-              (#524). */}
+              which the one button above does two things at once: on the card of
+              a museum holding twelve unread paintings and a proposed label,
+              answering the label releases the paintings, so a curator who doubts
+              one sentence would otherwise hold back twelve works (#524). */}
           {held && contents && (
             <Button
               variant="text"

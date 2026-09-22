@@ -7,8 +7,7 @@
  *
  * Its own module because two screens read it: the gated card writes it, and
  * `ReviewQueue.tsx` says the same sentence after an admission override that
- * publishes. It used to be exported from the card, which made one screen import
- * from another for a string.
+ * publishes — and neither screen imports from the other for a string.
  */
 
 import {

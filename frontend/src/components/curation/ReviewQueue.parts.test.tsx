@@ -165,11 +165,11 @@ describe('ReviewQueue', () => {
   });
 
   /**
-   * The third answered block, and the one that used to be missing (#859).
+   * The third answered block: the answer that would otherwise have no way back (#859).
    *
-   * Turning down an unread point or work was the only answer on this page with no
-   * way back: readers never saw the part, and the mark took it out of every
-   * question, so a mis-click lived on in the curation log and nowhere else.
+   * Turning down an unread point or work is otherwise the one answer on this page
+   * with no way back: readers never see the part, and the mark takes it out of every
+   * question, so a mis-click would live on in the curation log and nowhere else.
    */
   describe('a point or work the curator turned down', () => {
     beforeEach(() => {

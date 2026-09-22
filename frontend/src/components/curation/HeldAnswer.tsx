@@ -1,20 +1,20 @@
 /**
  * The two answers to one row of a held card (#722).
  *
- * The card used to have one answer for the whole proposal: run 68 wants to drop
+ * One answer per fact, not one for the whole proposal: run 68 wants to drop
  * "(Phase II)" from Getbol's name, rewrite its description for the 2026
- * extension and replace its photograph, and the buttons were all of it or none
- * of it. The one way to refuse a single field was to edit it by hand — which
- * *claims* it, a statement about whose value it is rather than about this value,
- * and one that outlives the question.
+ * extension and replace its photograph, and one pair of buttons for all of it
+ * is all of it or none of it. The only way to refuse a single field would then
+ * be to edit it by hand — which *claims* it, a statement about whose value it
+ * is rather than about this value, and one that outlives the question.
  *
  * So the answer sits in its own column, once per fact — the shape the conflict
  * card has had since #516, because it is the same decision: two versions of one
  * fact, and a person choosing between them. **A key inside the source's data is
  * a fact** and carries its own two buttons (ADR-0039, which narrows ADR-0038
- * decision 1 for exactly this): it used to be answered with the field it
- * belonged to and never on its own, which is what folded a site's inscription
- * criteria together with a picture credit nobody had checked. So is one language
+ * decision 1 for exactly this): answered with the field it belongs to and
+ * never on its own, a site's inscription criteria fold together with a picture
+ * credit nobody has checked. So is one language
  * of the local-names map (#728), which folded Getbol's corrected Korean name
  * together with the English one a curator had no view on.
  *

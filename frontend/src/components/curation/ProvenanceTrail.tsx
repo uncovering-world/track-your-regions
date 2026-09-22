@@ -1,10 +1,8 @@
 /**
  * Who decided what about this field, and when.
  *
- * The screen used to say "Keep my edit (current)" about a claim another curator made,
- * and named the run only *after* someone acted, in the outcome alert. So a curator was
- * asked to choose between two texts without being told whose the standing one was, when
- * the source last proposed otherwise, or that the same field had already been answered
+ * A curator choosing between two texts has to be told whose the standing one is, when
+ * the source last proposed otherwise, and whether the same field has already been answered
  * twice.
  *
  * No new storage: the claim's author is the most recent `edited` entry in

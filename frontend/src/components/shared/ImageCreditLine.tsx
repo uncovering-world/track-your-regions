@@ -100,8 +100,7 @@ export function creditAddsBeyond(
  *
  * The one sentence the line below renders, so that a credit reads the same
  * wherever it is said: under the picture, in a tooltip, and in the history line
- * that records an edit taking the picture away (#801) — which used to print the
- * stored object through `String()` as `[object Object]`, on the one screen a
+ * that records an edit taking the picture away (#801), the one screen a
  * removed photographer's name survives. `null` where nobody is named, rather
  * than an empty string, so a caller says "(empty)" or nothing in its own words.
  */

@@ -17,8 +17,8 @@
  *
  * A part opened here is also a part a curator is looking at, so the dialog offers
  * the correction — the third answer to a held value, where "take the source's"
- * and "keep what is here" are both wrong. For a place since #583 and for a work
- * since #731, and in both cases only where the stored row was found: a record
+ * and "keep what is here" are both wrong. For a place and for a work (#583,
+ * #731), and in both cases only where the stored row was found: a record
  * naming a row the source has since withdrawn opens nothing and corrects
  * nothing, and is not opened at all: everything a card would draw — the picture,
  * the makers, the year — belongs to that row, and `factRows`' own `openable`

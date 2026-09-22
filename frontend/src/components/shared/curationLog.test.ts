@@ -8,10 +8,10 @@
  * (#544). The card that destroys it says so and points here — a promise this file is what
  * keeps true.
  *
- * Both halves used to fail silently, first for a point's verdict (#690) and then for the
- * nine acts the labels never learned (#691): the chip fell through to the raw
- * `admission_overridden` and the detail line returned null, so the History said a machine
- * word and nothing else about six acts that carry a curator's own sentence.
+ * Both halves fail silently when they fall short of the table (#690, #691): the chip falls
+ * through to the raw `admission_overridden` and the detail line returns null, so the
+ * History says a machine word and nothing else about six acts that carry a curator's
+ * own sentence.
  */
 
 import { describe, it, expect } from 'vitest';

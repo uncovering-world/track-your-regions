@@ -1,9 +1,9 @@
 /**
  * Tests for the id a source knows an object by.
  *
- * The chip used to copy the id and do nothing else, which left a curator holding
- * `Q1662392` with nowhere to take it. What is worth pinning is where each kind of
- * id now opens — the item for a Wikidata id, the source's own page for a World
+ * A chip that only copies the id leaves a curator holding `Q1662392` with nowhere
+ * to take it. What is worth pinning is where each kind of
+ * id opens — the item for a Wikidata id, the source's own page for a World
  * Heritage number — and that an id nothing names keeps the copy affordance
  * rather than gaining a link to nowhere.
  */

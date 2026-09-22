@@ -12,9 +12,8 @@
  * draws, why it is allowed to draw it.
  *
  * Declared once because a host or a file type added on one side alone is a
- * picture that is stored and never drawn, or drawn and never storable — which
- * used to be held off by `urlSafety.test.ts` reading the frontend's copy as
- * text (#789). The storing side builds `isCommonsPictureUrl` and
+ * picture that is stored and never drawn, or drawn and never storable
+ * (#789). The storing side builds `isCommonsPictureUrl` and
  * `isDisplayablePictureUrl` on these; the drawing side builds `toThumbnailUrl`
  * and `extractImageUrl`. What differs between the two is what each side does
  * with a url, never which url is a picture.

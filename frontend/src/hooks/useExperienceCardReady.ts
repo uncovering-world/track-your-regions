@@ -70,10 +70,9 @@ export function useExperienceCardReady(
   // stored as a bare yes. Today that is belt and braces: there is one instance per
   // mounted row, each with `enabled = isSelected`, so moving from one card to
   // another is one instance going false and another going true, and there is no
-  // previous answer to carry anywhere. It was not always so — an earlier revision
-  // kept a second instance for "the selection", where a latch keyed to `enabled`
-  // did carry one card's answer into the next — and deriving costs nothing while
-  // surviving the next caller who tries that again.
+  // previous answer to carry anywhere. Deriving costs nothing and survives a
+  // caller that adds a second instance for "the selection", where a latch keyed
+  // to `enabled` would carry one card's answer into the next.
   const [settledUrl, setSettledUrl] = useState<string | null>(null);
   const imageSettled = !imageUrl || settledUrl === imageUrl || isImageSettled(imageUrl);
   useEffect(() => {

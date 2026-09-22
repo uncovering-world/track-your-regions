@@ -136,9 +136,9 @@ export function ReviewQueueList({
    * the keyboard onto here may not exist in the filter that is actually loading, so both
    * the click and the key move are refused outright, before either touches `pending` or
    * `focusNext`: arming either one over a row that turns out not to exist is exactly what
-   * let a key move outlive the click guard that used to sit in the page instead (a `j`
-   * during this window left `pending` and `focusNext` set, and the next real move — after
-   * the address had already moved on its own — read them as if the stale move had
+   * lets a key move outlive a click guard kept in the page instead (a `j`
+   * during this window leaves `pending` and `focusNext` set, and the next real move — after
+   * the address has already moved on its own — reads them as if the stale move had
    * happened, landing one row further than asked and pulling focus off the bench). The
    * list is the one place a selection can originate, so it is where a stale one has to be
    * refused before anything downstream of it is set.

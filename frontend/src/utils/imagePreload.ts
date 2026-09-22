@@ -20,12 +20,10 @@
  * url that failed once stays failed for the session, because the only thing a
  * retry buys is a second chance to move the list.
  *
- * `useExperienceContext` used to do the opposite — one `new Image()` per
- * experience the moment a region was explored, ~670 requests for Europe, and of
- * the *original* url rather than the thumbnail any view renders, so none of those
- * bytes were ever displayed. It was removed alongside this file, which is why the
- * position above is now the repository's rather than a claim contradicted a few
- * modules away.
+ * Nothing else preloads pictures — `useExperienceContext` deliberately does not:
+ * one `new Image()` per experience the moment a region is explored is hundreds
+ * of requests for Europe, and of the *original* url rather than the thumbnail
+ * any view renders, so none of those bytes are ever displayed.
  */
 
 import { extractImageUrl, toThumbnailUrl } from './imageUrl';

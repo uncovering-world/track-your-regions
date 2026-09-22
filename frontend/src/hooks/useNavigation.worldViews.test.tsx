@@ -402,8 +402,7 @@ describe('useNavigation world view fetching', () => {
   });
 
   it('reconciles a selection that goes invalid without the list changing', async () => {
-    // The case HierarchySwitcher used to carry its own copy of, and the only one
-    // the id-joined dep array cannot reach by itself: the list never changes, so
+    // The only case the id-joined dep array cannot reach by itself: the list never changes, so
     // `selectedWorldView` in the deps is the whole reason the effect fires.
     //
     // The assertion is the invariant, not a particular id. setSelectedWorldView

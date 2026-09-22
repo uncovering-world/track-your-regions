@@ -144,7 +144,7 @@ describe('values as readers see them', () => {
  *
  * Dona i Ocell — Miró's sculpture in Barcelona — as run 93 proposed to replace its
  * picture: the file readers see today carries no credit, the proposed one is CC BY-SA
- * with no author named. One of 86 such cards that run filed, each of which used to put
+ * with no author named. One of 86 such cards that run filed, each of which would put
  * two addresses in front of the curator and no picture at all.
  */
 describe('a picture on the card', () => {

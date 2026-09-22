@@ -6,7 +6,7 @@
  * always got — the map and nothing else — because the object's own coordinate and a
  * reader's place open here too. And with a `correction` the dialog opens *on* the form,
  * with no read-only map beside it: that is the one-WebGL-context rule the docblock is
- * built on, and the one-mode rule the product review asked for. The map and the form
+ * built on, and the one-mode rule: a correction is a form, never a form beside a map. The map and the form
  * are stubbed — neither mounts in jsdom, and what this test is about is which of them
  * is asked for.
  */

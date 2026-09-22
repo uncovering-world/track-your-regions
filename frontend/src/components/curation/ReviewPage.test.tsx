@@ -63,9 +63,9 @@ const RUN_98_FACETS = {
 /**
  * A filter change through the toolbar's own control: the question chip, ticked.
  *
- * Not the order toggle, which is what these cases used to reach for. Reordering keeps the
- * selected row on purpose — the same questions in the other direction — so it is no longer
- * an example of a filter at all, and a case about a *different list* has to name one.
+ * Not the order toggle: reordering keeps the selected row on purpose — the same questions
+ * in the other direction — so it is not an example of a filter at all, and a case about
+ * a *different list* has to name one.
  */
 async function pickKind(label: RegExp) {
   fireEvent.click(screen.getByRole('button', {

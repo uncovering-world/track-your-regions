@@ -1,10 +1,10 @@
 /**
  * One closed vocabulary of types per kind, and none for a museum.
  *
- * The dialogs used to offer cultural / natural / mixed / art to every object,
- * whatever its kind, and the review card explained a monument's type with
- * UNESCO's sentence (#814). What is pinned: a kind offers its own list, a
- * museum offers none, and a value says which vocabulary it is from.
+ * What is pinned (#814): a kind offers its own list, never cultural / natural /
+ * mixed / art to every object whatever its kind; a museum offers none; and a
+ * value says which vocabulary it is from, so a monument's type is never
+ * explained with UNESCO's sentence.
  */
 
 import { describe, it, expect } from 'vitest';

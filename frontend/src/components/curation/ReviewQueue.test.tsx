@@ -135,8 +135,8 @@ describe('ReviewQueue', () => {
   it('shows both versions in full before asking anyone to choose', async () => {
     renderQueue();
 
-    // Whole values, side by side in their own columns — not the two ellipses the
-    // 120-character summary used to give. The words themselves are split across marked
+    // Whole values, side by side in their own columns — not two ellipses from a
+    // truncated summary. The words themselves are split across marked
     // and unmarked runs, so this asks the rendered text for them rather than one node.
     await screen.findByRole('columnheader', { name: 'as curated' });
     expect(screen.getByRole('columnheader', { name: 'the source proposes' })).toBeInTheDocument();
@@ -222,8 +222,8 @@ describe('ReviewQueue', () => {
     });
     renderQueue();
 
-    // Standing by your own value used to be the absence of an action, which is why the
-    // same card came back after every run. The run id goes with it for the reason it goes
+    // Standing by your own value writes a refusal, or the same card comes back after
+    // every run. The run id goes with it for the reason it goes
     // with an acceptance: refusing the wrong run silences a proposal nobody read.
     const keepThese = await screen.findAllByRole('button', { name: 'keep this' });
     fireEvent.click(keepThese[1]);

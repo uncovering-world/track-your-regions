@@ -46,8 +46,8 @@ export interface CountedWork {
  * "statue · Polykleitos · 450 BC" — what it is, who made it, when.
  *
  * Antiquities are what these lists are mostly made of, so the era is written out on both
- * sides of zero — `yearLabel`'s rule, which used to live here and is now shared with
- * every other surface that shows a work's year (#731).
+ * sides of zero — `yearLabel`'s rule, the one spelling every surface that shows a
+ * work's year uses (#731).
  */
 function subtitle(work: CountedWork): string {
   const parts: string[] = [];

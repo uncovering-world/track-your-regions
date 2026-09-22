@@ -1,11 +1,11 @@
 /**
  * The points and works a curator turned down, and the way back from each (#859).
  *
- * The third answered block at the foot of the review page, and the one ADR-0053
- * left owing: turning down unread contents was the only answer on the page with
- * no take-back, because a refused part is on no screen at all — readers never saw
- * it, and the mark took it out of every question. A mis-click could be found only
- * in the curation log.
+ * The third answered block at the foot of the review page (ADR-0053): without
+ * it, turning down unread contents is the one answer on the page with no
+ * take-back, because a refused part is on no screen at all — readers never see
+ * it, and the mark takes it out of every question — so a mis-click could be
+ * found only in the curation log.
  *
  * Shaped like `AnsweredWithdrawalCard` beside it, for the same reason it is
  * shaped that way: one card per object, its parts listed inside, each with the
@@ -39,9 +39,9 @@ import { HelpHint } from './HelpHint';
 /**
  * What decides whether the take-back is offered, and which question to name where
  * it is not — declared once, so a caller cannot supply less than the behaviour
- * turns on. `missing_since` is deliberately absent: it was the gate in an earlier
- * revision, and leaving it in the type let a test pass an object with only that
- * field, take the unblocked branch and assert the wrong caption.
+ * turns on. `missing_since` is deliberately absent: a type wider than the
+ * behaviour lets a test pass an object with only that field, take the unblocked
+ * branch and assert the wrong caption.
  */
 type BlockingFacts = Pick<
   ReviewQueueItem, 'takeable' | 'object_admission' | 'object_curation_state'

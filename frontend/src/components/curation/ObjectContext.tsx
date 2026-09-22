@@ -2,8 +2,8 @@
  * The object a card is asking about, so the answer does not require leaving the page.
  *
  * Every kind in this queue asks a curator to judge something — is this site gone, is the
- * source's description better, should this museum be visible — and the screen used to
- * show a name and an external id. Judging the wording of a description without the
+ * source's description better, should this museum be visible — and a name and an
+ * external id are not enough to judge by. Judging the wording of a description without the
  * photograph, the place, or the page it was written from is guesswork with a button
  * under it.
  *
@@ -60,11 +60,9 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const [showMap, setShowMap] = useState(false);
   const [showImage, setShowImage] = useState(false);
   // Two, because they are two requests: the card asks for 120 px and the dialog
-  // for 960. A failure has to take its *own* credit away. On this screen it used
-  // to be the ordinary case rather than the edge one — most of what the queue
-  // holds is UNESCO, whose portal URLs answered 403 through the resizer that
-  // stood here (#557); every picture is a Commons file since ADR-0043, and the
-  // rule stays for the day one does not load.
+  // for 960. A failure has to take its *own* credit away. Every picture is a
+  // Commons file (ADR-0043, #557), so a failure is the edge case rather than
+  // the ordinary one, and the rule stays for the day one does not load.
   //
   // Held as *which picture* failed rather than as a flag, because this component
   // is not a list row: the bench draws one card at a time (`ReviewBench`,

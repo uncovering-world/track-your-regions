@@ -2,8 +2,8 @@
  * What to call one of an experience's locations when the source did not name it.
  *
  * Four screens ask this — the expanded list, its out-of-region section, the map's
- * marker layer and Discover's detail panel — and they used to answer it with an
- * inline `Location ${ordinal + 1}`, which was the same expression four times and
+ * marker layer and Discover's detail panel — and the answer is here once: an
+ * inline `Location ${ordinal + 1}` is the same expression four times and
  * has one case it cannot express.
  *
  * **`ordinal` is nullable, and a null one has no number to show.** It means the

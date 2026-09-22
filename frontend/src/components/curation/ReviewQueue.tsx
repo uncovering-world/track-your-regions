@@ -239,12 +239,12 @@ export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
  * Two versions of a field a curator claimed, and a decision for each one.
  *
  * Per field rather than per object, because a run improves and damages in the
- * same breath: taking a better description used to mean taking a mangled name
- * with it.
+ * same breath: one answer for the object takes a better description together
+ * with a mangled name.
  *
- * Both answers are buttons now. Standing by your own value used to be the
- * absence of an action, which meant the card came back after every run — Aksum's
- * three times in two days, the source proposing the identical text each time.
+ * Both answers are buttons. Standing by your own value writes a refusal, or the
+ * card comes back after every run — Aksum's three times in two days, the source
+ * proposing the identical text each time.
  * Refusing writes nothing to the object: the stored value has already won every
  * one of those runs. What it settles is the asking, and only for the value being
  * refused, so a source that changes its mind is heard.
@@ -321,9 +321,9 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
             // precisely so this card stops calling another curator's work "mine".
             labels={{ before: 'as curated', after: 'the source proposes' }}
             // One field at a time, because a run improves and damages in the same
-            // breath: a better description arriving with a mangled name used to be
-            // one button that took both or neither. The endpoint has always accepted
-            // a list — it was the screen that could not say "this one". The answer
+            // breath: one button for a better description arriving with a mangled
+            // name takes both or neither. The endpoint accepts a list, so the screen
+            // has to be able to say "this one". The answer
             // sits in its own column, once per fact: a key inside the source data has
             // been a fact of its own since #488 claimed one per key, and every key a
             // run reports since ADR-0039. It spans only where facts still share

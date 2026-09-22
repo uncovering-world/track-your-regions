@@ -121,9 +121,9 @@ export function useAnswerSelection({
   // Without a confirmation for a batch within one page, since the count is on
   // the bar and every answer has a take-back at the foot of the page; asked once
   // past that, and for an all-matching selection, whose size the ticks do not
-  // show. Turning down unread contents used to be asked about whatever its size,
-  // being the one answer nothing could bring back — #859 gave it the list and the
-  // take-back its neighbours had, so it is answered like the rest.
+  // show. Turning down unread contents follows the same confirmation rule as
+  // the other answers: it has the list and the take-back its neighbours have
+  // (#859).
   const answer = (which: ReviewAnswer) => {
     if (selection.allMatching || rows.length > pageSize) setConfirming(which);
     else void run(which);

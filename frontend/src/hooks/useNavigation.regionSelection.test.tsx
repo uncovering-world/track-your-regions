@@ -103,8 +103,8 @@ describe('useNavigation — completing a region selected from the map', () => {
     // An ancestors answer about a world view the caller may see but is not
     // looking at. The read is keyed on a region id alone and bounded by
     // `requireVisibleWorldView`, so completing a selection from it would point
-    // this map at that world view's regions. #660 scoped the layer that used to
-    // hand over such an id; this is the fence behind it.
+    // this map at that world view's regions. No layer hands over a foreign
+    // world view's region id (#660); this is the fence behind that.
     mockFetchRegionAncestors.mockResolvedValue([
       { ...EUROPE, worldViewId: 9 },
       { ...MALTA, worldViewId: 9 },
