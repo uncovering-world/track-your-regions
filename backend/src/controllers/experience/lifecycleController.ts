@@ -18,6 +18,8 @@
 
 import { Response } from 'express';
 import type { PoolClient } from 'pg';
+import { respond } from '../../api/respond.js';
+import { AdmissionResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
@@ -25,7 +27,6 @@ import type { CheckValue } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
-import type { AppliedPart } from './publishHeldParts.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 
 /** The object's two axes, as the columns' CHECK lists spell them. */
@@ -357,32 +358,13 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     res.status(status).json(payload);
     return;
   }
-  res.json(outcome.result);
+  respond(res, AdmissionResult, outcome.result!);
 }
 
 /** The two answers to a refusal, and the curator's note. */
 export interface AdmissionAnswer {
   decision: 'confirm' | 'override';
   note?: string;
-}
-
-/** What answering a refusal reports — `publish`'s own shape, with the verdict in front. */
-export interface AdmissionResult {
-  experienceId: number;
-  admission: CheckValue<'experience_kind_memberships', 'admission'>;
-  published: boolean;
-  curationState: string;
-  appliedFields: string[];
-  claimedFieldsSkipped: string[];
-  appliedParts: AppliedPart[];
-  fromSyncLogId: null;
-  heldLeftOpen: number;
-  locationsPublished: number;
-  treasureLinksPublished: number;
-  treasuresPublished: number;
-  withdrawalsReleased: number;
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
 }
 
 /**
@@ -402,7 +384,7 @@ export async function answerAdmissionUnderLock(
   // Read by the response after the transaction settles, so they have to be
   // hoisted out of the `try` block that assigns them.
   let publishes = false;
-  let curationState = '';
+  let curationState: CheckValue<'experience_kind_memberships', 'curation_state'>;
   let locationsPublished = 0;
   let treasureLinksPublished = 0;
   let treasuresPublished = 0;
@@ -503,7 +485,9 @@ export async function answerAdmissionUnderLock(
     // deduce for one placeholder, and the error is invisible to every
     // mocked-pool test.
     publishes = admitted && before.curation_state === 'pending';
-    curationState = publishes ? 'verified' : (before.curation_state as string);
+    curationState = publishes
+      ? 'verified'
+      : (before.curation_state as CheckValue<'experience_kind_memberships', 'curation_state'>);
     const publishSet = publishes
       ? `, curation_state = 'verified', published_at = COALESCE(published_at, NOW())`
       : '';
@@ -585,11 +569,11 @@ export async function answerAdmissionUnderLock(
     // override does not apply a proposal; that is `/publish`'s question, not
     // this one's, and a row holding one keeps its pointer and its own card.
     curationState,
-    appliedFields: [] as string[],
-    claimedFieldsSkipped: [] as string[],
+    appliedFields: [],
+    claimedFieldsSkipped: [],
     // Empty for the reason the two above are: a held field of a part is a
     // proposal too (ADR-0037), and an override answers none.
-    appliedParts: [] as AppliedPart[],
+    appliedParts: [],
     fromSyncLogId: null,
     // Zero because this call answered no held row, not because none was open
     // (#722): a row holding a proposal keeps its pointer and its own card
@@ -620,22 +604,13 @@ export async function answerAdmissionUnderLock(
  */
 async function placeAfterAdmissionRelease(
   experienceId: number, withdrawalsReleased: number,
-): Promise<{
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}> {
+): Promise<Pick<AdmissionResult, 'placementFailed' | 'placementFailedWorldViews'>> {
   if (withdrawalsReleased === 0) return {};
   const failures = await placeAfterRelease(experienceId);
   if (failures.length === 0) return {};
-  // The list, not only the flag. The remedy — a region re-assignment — is
-  // admin-only, so a curator's actionable step is to tell an admin *which*
-  // object and *which* world views, and a bare boolean reduces them to
-  // "something about regions failed on the Prado". `placeAfterRelease` already
-  // returns one entry per failed world view with its id and its name, and
-  // `/:id/publish` already passes them through; a bare boolean here would
-  // reduce them to "something about regions failed".
-  // Reshaped to the same `{ id, name }` the publish endpoint answers with, so
-  // the page renders one sentence for both rather than two.
+  // The world views by name, in the `{ id, name }` the publish endpoint answers
+  // with, so the page renders one sentence for both. `PlacementFailure` in the
+  // schema says why it is a list and not only a flag.
   return {
     placementFailed: true,
     placementFailedWorldViews: failures.map(f => ({ id: f.worldViewId, name: f.worldViewName })),

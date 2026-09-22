@@ -28,29 +28,9 @@ import { tidyLabel } from '@tyr/shared/labels';
 import { heldRowKey, tidyNameValue, type HeldAnswer, type HeldRowRef } from './heldDecisions.js';
 import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelection.js';
 import type { ContentKind, ContentsByKind, ContentItemChange } from '../../services/sync/types.js';
-
-/** One part publishing wrote to, as the response and the audit row name it. */
-export interface AppliedPart {
-  kind: ContentKind;
-  /** The part as the record names it — what the curator saw on the card. */
-  name: string;
-  fields: string[];
-  /** Fields left alone because the part's own `curated_fields` claims them. */
-  claimedFieldsSkipped: string[];
-}
-
-/**
- * A part the record names that publishing could not write to: no offered row
- * answers to it (`withdrawn`), or more than one does and nothing tells them
- * apart (`ambiguous` — `partRecord.ts` says when that is). Said rather than merged,
- * because the two ask the curator for different things: nothing at all, or a
- * look at the siblings.
- */
-export interface PartNotFound {
-  kind: ContentKind;
-  name: string;
-  reason: 'withdrawn' | 'ambiguous';
-}
+// The part a publish wrote to and the part it could not reach are the response's
+// own shapes, and the audit row records the same ones (ADR-0066).
+import type { AppliedPart, PartNotFound } from '../../api/responses/curation.js';
 
 /** One statement the plan will run, with the part it is about. */
 interface PlannedWrite {

@@ -319,9 +319,13 @@ export interface ContentItemChange {
  * The kinds of contents an experience holds.
  *
  * The same two the curation gate already spans — `pending_locations` and
- * `pending_treasures` in the queue's `contents` kind.
+ * `pending_treasures` in the queue's `contents` kind. A list as well as a type,
+ * because the response schemas enumerate it for the web (`ContentKind` in
+ * `api/responses/curation.ts`).
  */
-export type ContentKind = 'locations' | 'treasures';
+export const CONTENT_KINDS = ['locations', 'treasures'] as const;
+
+export type ContentKind = (typeof CONTENT_KINDS)[number];
 
 /**
  * What a run did to an object's contents, by kind (ADR-0026 decision 1).
