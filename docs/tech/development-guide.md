@@ -448,6 +448,7 @@ The handler sends the body with `respond(res, Schema, body)`, from `backend/src/
 TypeScript checks only the keys a literal writes itself, so build the body to write every key:
 - An optional key is written as `key: cond ? value : undefined`, never as `...(cond ? { key } : {})`. JSON drops the `undefined`.
 - A fragment spread into the body is typed as a `Pick` of the schema's type.
+  - The placement pair is one such fragment. An answer whose call re-places the object spreads `placementReport(failures)` (`controllers/experience/placementReport.ts`), which is typed as `PublishResult`'s two keys, rather than mapping `placeAfterRelease`'s failures itself.
 - Rows are typed from the generated row types (§ Database Queries) and mapped key by key, never passed through as `result.rows`. An untyped row is `any`, and `any` satisfies every type.
 
 The runtime parse catches what the compiler cannot, on every path a lane exercises. Error bodies stay `{ error }`, and #793's route declarations are where they will be declared.

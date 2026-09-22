@@ -3079,6 +3079,8 @@ kind later decides about the building.
 
 ### Curator (`requireAuth + requireCurator`)
 
+Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in `backend/src/api/responses/curation.ts` (ADR-0066), and the web types each answer from it. Each one that can re-place the object after its commit reports the outcome in `PublishResult`'s words: `placementFailed` with the named `placementFailedWorldViews`, or neither, built once by `placementReport` (`controllers/experience/placementReport.ts`). The curation log's entries are typed and mapped key by key: `action` is the curation-log vocabulary, and `curator_name` is null for a curator with no display name.
+
 | Method | Endpoint | Body |
 |--------|----------|------|
 | POST | `/api/experiences` | Create manual experience. Required `kindId` (no default); the row is filed under that kind's own source, first by display order (#819). Optional `websiteUrl` and `wikipediaUrl` stored in `metadata.website` / `metadata.wikipediaUrl`, and the saved `imageUrl` has its `metadata.imageCredit` resolved and stored with it — resolved before the transaction opens, so a slow Commons never holds a lock |
