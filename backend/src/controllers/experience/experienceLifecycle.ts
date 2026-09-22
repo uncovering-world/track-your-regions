@@ -171,7 +171,7 @@ export function offeredLocationSql(alias = 'el'): string {
  * a locator for a whole property rather than a place anyone can go to — UNESCO
  * leaves it empty on serial nominations and publishes a site point elsewhere — and
  * a reader planning a trip needs somewhere to arrive. Where the object's own
- * coordinate *is* one of its places, which is 1382 of 1604, the distance is zero
+ * coordinate *is* one of its places, which is most of the catalogue, the distance is zero
  * and this returns it unchanged.
  *
  * Why not "the coordinate when it matches a place within ADR-0027's ten metres,
@@ -223,8 +223,8 @@ export function offeredLocationSql(alias = 'el'): string {
  * for the object with no visible places rather than a missing anchor: it stays
  * where its source put it rather than losing its position.
  *
- * Costs 25 ms on a whole-region read: Europe's 661 experiences and the 3725
- * places under them go from 19 ms to 44 ms, of which the `geography` cast is
+ * Costs 25 ms on a whole-region read, measured 2026-08-19: Europe's 661
+ * experiences and the 3725 places under them went from 19 ms to 44 ms, of which the `geography` cast is
  * 16 ms — the price of a distance in metres, paid once per region and cached for
  * five minutes by the reader's query. Two scalar subqueries rather than a lateral
  * join because the two shapes measured 44 ms and 42 ms, and this one drops into a

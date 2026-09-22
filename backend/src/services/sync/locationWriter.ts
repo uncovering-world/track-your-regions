@@ -46,8 +46,8 @@
  * it.** This function returns aggregates — a `rowCount` and a flat id list — and
  * the withdrawal `UPDATE` does not report the ids it marked, so no caller could
  * reconstruct "old point X moved to new point Y" afterwards. The definition
- * available is the reference: `external_ref` is populated on 6679 of 6680 stored
- * locations, and a move is *the same reference at a point more than ten metres
+ * available is the reference: `external_ref` is populated on all but one stored
+ * location, and a move is *the same reference at a point more than ten metres
  * away* — the tolerance being ADR-0027's, because within it the source is writing
  * the same place more precisely rather than moving it. For museums
  * and landmarks it is the experience's own Wikidata id, so it cannot change while

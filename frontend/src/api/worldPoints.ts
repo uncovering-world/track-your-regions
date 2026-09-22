@@ -7,8 +7,8 @@
  * MapLibre wants.
  *
  * **Why columnar on the wire and GeoJSON only here.** Measured over the
- * development catalogue with brotli: the same values as GeoJSON are 267 kB and
- * as arrays 125 kB, because a Feature repeats its own keys 8 830 times. The
+ * development catalogue on 2026-09-16 with brotli: the same values as GeoJSON are 267 kB and
+ * as arrays 125 kB, because a Feature repeats its own keys once per place. The
  * shape MapLibre needs is built once per read, in one pass, and handed to the
  * source by reference — never rebuilt in a render, which would re-parse the
  * whole collection on the GPU thread for nothing.
@@ -42,7 +42,8 @@ export interface WorldPointsResponse {
   /**
    * Present, and true, only when the endpoint hit its row cap.
    *
-   * It cannot fire on today's catalogue — the cap is 2.3x its size — and it is
+   * It cannot fire on the catalogue as it stands — the cap is more than twice
+   * its size (8 842 places on 2026-09-22) — and it is
    * in the type so that the day it does, the layer is drawing a subset
    * knowingly rather than a wrong density picture silently.
    */

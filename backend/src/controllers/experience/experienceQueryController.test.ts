@@ -504,7 +504,7 @@ describe('lifecycle visibility across the read paths', () => {
 /**
  * A box asks where an object is, and the answer has to be the one the row
  * carries. Filtering on `experiences.location` while the select list answers
- * with the nearest place made the two disagree for the 222 objects whose own
+ * with the nearest place made the two disagree for the hundreds of objects whose own
  * coordinate is not any of their places — a box around 144.97,-15.65 matched
  * Wet Tropics of Queensland and answered with a pin 191 km away, and a box
  * around Lake Barrin, the part a reader is actually shown, matched nothing.

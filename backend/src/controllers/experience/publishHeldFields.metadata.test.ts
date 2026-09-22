@@ -20,7 +20,7 @@
  * one server.
  *
  * The rule worth pinning hardest is the credit's (#722): it is the credit of
- * the *stored picture*. On 1413 of the 1414 cards that hold one there is no
+ * the *stored picture*. On all but one of the cards that hold one there is no
  * picture change at all, so the pin stays null and the entries decide — the
  * credit's own since ADR-0039, the catch-all's on a card filed before it.
  */
@@ -128,7 +128,7 @@ describe('the metadata column, which no single entry describes', () => {
   it('writes a credit the run fetched for the picture the row already shows', async () => {
     grantScope();
     // The ordinary case, and the one a rule about the picture must not break:
-    // 1413 of the 1414 cards holding a credit on this catalogue hold no picture
+    // all but one of the cards holding a credit on this catalogue hold no picture
     // change at all — the run found the photographer for the photograph the page
     // has been showing all along, and publishing that change is what finally
     // names them (`data-assertions.md` § picture-with-nobody-credited). Deleting
@@ -220,7 +220,7 @@ describe('the metadata column, which no single entry describes', () => {
     // same photographer for the new picture. Reading the silence as "no credit
     // offered" would delete a credit the run stands behind, on every call that
     // publishes a picture. This is `creditPin`'s first guard and the module's
-    // most-exercised path: 1413 of the 1414 cards holding a credit.
+    // most-exercised path: all but one of the cards holding a credit.
     expect(picture(queries)).toBe('http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg');
     expect(none(queries, 'metadata = ')).toBe(true);
   });
@@ -535,7 +535,7 @@ describe('the metadata column, which no single entry describes', () => {
 
     it('names the credit on its own where the run holds no picture change', async () => {
       grantScope();
-      // 1413 of the 1414 cards holding a credit hold no picture change at all:
+      // All but one of the cards holding a credit hold no picture change at all:
       // the run fetched the photographer of the picture the page has been
       // showing all along, and publishing that one fact names them.
       const { client, queries } = perKey(

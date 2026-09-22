@@ -212,7 +212,7 @@ describe('publishing a held proposal', () => {
 
     await publish({ expectedSyncLogId: 53 }, client);
 
-    // Not even through COALESCE: 1576 rows predate the gate with `published_at`
+    // Not even through COALESCE: the rows that predate the gate carry `published_at`
     // NULL, having been visible for months, and stamping one now would not
     // restart a window but invent one.
     expect(only(queries, 'UPDATE experience_kind_memberships').sql).not.toContain('published_at');

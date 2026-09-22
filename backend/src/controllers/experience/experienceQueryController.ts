@@ -82,7 +82,7 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
     // to the object's own coordinate only where no such place exists -- which
     // is `readerPositionSql`'s COALESCE asked as a filter instead of a column.
     //
-    // Matching the anchor was the contradiction: 222 objects have one that is
+    // Matching the anchor was the contradiction: hundreds of objects have one that is
     // not any of their places, so a box around 144.97,-15.65 matched Wet
     // Tropics of Queensland and answered with a pin 191 km away at Lake
     // Barrin, while a box drawn around Lake Barrin -- the part a reader is

@@ -84,7 +84,7 @@ export interface ReviewQueueItem {
    * What the object is, carried on every kind for the same reason the lifecycle axes
    * are: one fragment feeds every one of the queries, so a card cannot show less about an
    * object than its neighbour. Every one of them is genuinely optional in the data —
-   * 14 of 1604 rows have no image, and a landmark commonly has no website — so the
+   * a few dozen rows have no image, and a landmark commonly has no website — so the
    * card renders what exists rather than reserving space for what does not.
    */
   image_url?: string | null;

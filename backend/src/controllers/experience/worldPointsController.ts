@@ -20,7 +20,7 @@
  * **Two tiers, because the map draws two different things.** Below the marker
  * band the layer is a density heatmap, which needs coordinates and nothing
  * else; above it every point is a pin with a name, a kind and a type. Measured
- * over the development catalogue, brotli q4 on the wire:
+ * over the development catalogue on 2026-09-16, brotli q4 on the wire:
  *
  * | read | points | bytes |
  * |---|---|---|
@@ -97,7 +97,7 @@ const DECIMALS: Record<PointsDetail, number> = { overview: 2, markers: 5 };
  * bounds how often a stranger may ask, not how much each ask costs, and this is
  * the widest anonymous read the product has.
  *
- * 20 000 is 2.3x the 8 830 places the catalogue holds, so it never fires today
+ * 20 000 is more than twice the places the catalogue holds (8 842 on 2026-09-22), so it never fires today
  * and the measured payloads stay the measured payloads. It fires the day the
  * catalogue outgrows the tier design, and when it does the answer says
  * `truncated` rather than quietly drawing a heatmap of part of the world —
@@ -324,7 +324,7 @@ function foldedQuery(detail: PointsDetail, where: string): string {
  * The rows as arrays.
  *
  * Built in one pass with the arrays pre-sized, because this is the hot path the
- * whole endpoint exists for: the overview answers 8 830 points on the map's
+ * whole endpoint exists for: the overview answers every place in the catalogue — thousands of points — on the map's
  * first screen, and an intermediate object per point is exactly the cost the
  * columnar shape was chosen to avoid.
  */

@@ -2,7 +2,7 @@
  * Tests for the object a review card is asking about.
  *
  * The property that matters is what happens when a piece is missing. Every field here is
- * genuinely absent on real rows — 14 of 1604 have no image, a landmark commonly has no
+ * genuinely absent on real rows — a few dozen have no image, a landmark commonly has no
  * website — so the card has to render what exists and claim nothing about the rest. An
  * empty frame or a link to nowhere would say the object has something it does not, on the
  * screen whose whole job is to be trusted about the object.
@@ -132,7 +132,7 @@ describe('ObjectContext', () => {
   });
 
   it('says nothing about the shape of a single place holding nothing', () => {
-    // 1119 of 1604 objects are exactly this. A line that reads "made of 1 place" on
+    // Most objects are exactly this. A line that reads "made of 1 place" on
     // all of them is one a curator learns to skip before meeting the one that counts.
     render(<ObjectContext item={item({ offered_locations: 1, counted_works_total: 0 })} />);
 

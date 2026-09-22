@@ -5,8 +5,8 @@
  * The map used to be empty at world zoom: markers and the heatmap are built
  * from a region's own read (`ExperienceMarkers`), so nothing was drawn until a
  * region was selected, and the places that sit in no region (#470) were on no
- * map at all. This draws the catalogue itself — 8 830 reader-visible points
- * today, of which a serial World Heritage site contributes hundreds — as the
+ * map at all. This draws the catalogue itself — every reader-visible point,
+ * thousands of them, of which a serial World Heritage site contributes hundreds — as the
  * same density heatmap below zoom 5 and the same kind-coloured markers above
  * it, from `GET /api/experiences/points` rather than from a page of
  * `GET /api/experiences`, which caps at 1 000 rows and answers objects.
@@ -126,8 +126,8 @@ export function WorldExperiencePoints({ kindId, folded, kindNameOf }: WorldExper
    * The FeatureCollection MapLibre wants, built once per answer.
    *
    * Memoised on the answer itself rather than on the query key, because the
-   * build is the expensive half of this layer — 8 830 features at the overview
-   * — and a rebuild on any other render would re-parse the whole collection
+   * build is the expensive half of this layer — every place in the catalogue
+   * as a feature at the overview — and a rebuild on any other render would re-parse the whole collection
    * for a picture that has not changed.
    *
    * **Whatever answer is in hand is drawn**, through the layers its own shape

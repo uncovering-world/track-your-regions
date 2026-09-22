@@ -421,7 +421,7 @@ async function upsertExperience(
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
-    // The serial sites are here — 485 objects hold more than one point, and a
+    // The serial sites are here — hundreds of objects hold more than one point, and a
     // component arriving or leaving is often the only thing a run changed about
     // one of them (ADR-0026).
     contents = { locations: written.delta };

@@ -21,7 +21,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
  *
  * **Switching it on is not retroactive, and this statement is why:** it touches
  * `experience_sources` and nothing else. Rows the source already published
- * stay `auto` and stay visible — a setting that removed 1272 objects from the
+ * stay `auto` and stay visible — a setting that removed every World Heritage site from the
  * product on one click would be a different feature. One source can therefore
  * hold `auto` rows from before the switch beside `pending` ones from after it,
  * which is intended and which the panel's copy says out loud.

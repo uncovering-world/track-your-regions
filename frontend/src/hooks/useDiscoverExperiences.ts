@@ -156,8 +156,8 @@ export function useDiscoverExperiences() {
     queryKey: ['discover-experiences', selectedRegion?.id],
     // The kind filter runs in `select` below, on what came back — so a
     // truncated response is filtered, not a filtered response truncated. At 500
-    // that lost the smaller kinds first: Europe holds 69 museums among 661
-    // experiences, and `Museo del Prado` sorts past the cut.
+    // that lost the smaller kinds first: on 2026-08-19 Europe held 69 museums
+    // among 661 experiences, and `Museo del Prado` sorted past the cut.
     queryFn: () => fetchExperiencesByRegion(selectedRegion!.id, {
       includeChildren: true,
       limit: WHOLE_REGION_LIMIT,
