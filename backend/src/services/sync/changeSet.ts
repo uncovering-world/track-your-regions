@@ -66,9 +66,8 @@ export interface FieldChange {
    * through `accept-source`, a hold through `POST /:id/publish` — so a field
    * carrying both would raise two contradictory cards over one value.
    *
-   * Positive rather than inferred. Three sites used to read "held" as "refused
-   * and not claimed", which was right only while the gate was the sole other
-   * reason a write could be refused.
+   * Positive rather than inferred: "refused and not claimed" is not "held",
+   * because the gate is not the only other reason a write can be refused.
    */
   held: boolean;
 }
@@ -447,10 +446,9 @@ function ownValue(source: Record<string, unknown>, key: string): unknown {
  * curator claimed individually is checked against that claim, and the rest are
  * minor.
  *
- * It used to be three shapes, with everything unclaimed collapsing into one
- * catch-all entry — and that made the card fold those facts into one answer,
- * because an answer is addressed to an entry. Which bucket a key landed in was
- * decided here and was invisible to the person being asked.
+ * No catch-all entry: an answer is addressed to an entry, so an entry that
+ * carried several unclaimed keys would fold those facts into one answer, on a
+ * split decided here and invisible to the person being asked.
  *
  * One group is reported nowhere: the keys the run computes about its own
  * pass. They are not a question, so they raise no card — see

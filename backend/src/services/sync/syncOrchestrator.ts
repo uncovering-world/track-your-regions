@@ -574,7 +574,8 @@ async function applyAdmissionSweep<T>(
  * Persist the per-object changeset, or leave a marker saying it was lost.
  *
  * Recorded before the log is closed, but never at the cost of closing it: a
- * failed insert here used to leave the run stuck at 'running' forever.
+ * failed insert here must not leave the run at 'running', which nothing but
+ * the next backend start would then clear.
  */
 async function recordChangesetOrMark(
   changes: ChangeRecord[],
@@ -922,7 +923,7 @@ export async function orchestrateSync<T>(
     // The run is not over, but it is no longer processing items: placement is
     // its own phase, and a window of its own on a first run, where the whole
     // source lands in `movedExperiences` and every world view gets its own
-    // transaction (seconds since #851, minutes before it). Naming the phase
+    // transaction (seconds per world view, #851). Naming the phase
     // keeps `isSyncStillRunning` true — the poller must keep polling — while
     // giving `cancelSync` something to refuse and the panel something truthful
     // to show. Without it the panel offers a Cancel that nothing reads, beside
