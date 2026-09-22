@@ -393,7 +393,11 @@ jobs:
               is a Note, and the fix it names is to drop the volatile
               claim — state the class, name the symbols (#579) — not to
               refresh the number, which will be stale again after the
-              next change. A sentence of repository history in a comment
+              next change. One boundary: a measurement that carries its
+              date or its run number ("8 842 places on 2026-09-22", "dry
+              run 109") is a record a reader can place, not a claim to
+              drop (development-guide.md § What a living document may
+              not say). A sentence of repository history in a comment
               (what it used to say, which review found what, the Nth time
               on a branch) is a Note too, and its fix is to state the
               current invariant and point at the ADR or issue (#925,
