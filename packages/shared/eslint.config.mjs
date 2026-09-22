@@ -39,4 +39,13 @@ export default [
       'sonarjs/no-clear-text-protocols': 'off',
     },
   },
+  // The files nobody writes: `api.generated.ts` is the backend's response
+  // schemas rendered by backend/src/api/generateApiTypes.ts (ADR-0066), and its
+  // length is the API's, not a sign of a file to split.
+  {
+    files: ['src/*.generated.ts'],
+    rules: {
+      'max-lines': 'off',
+    },
+  },
 ];

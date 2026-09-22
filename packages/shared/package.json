@@ -6,6 +6,7 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./api": "./src/api.generated.ts",
     "./auth": "./src/auth.ts",
     "./catalogue": "./src/catalogue.ts",
     "./curationLog": "./src/curationLog.ts",
