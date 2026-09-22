@@ -626,6 +626,26 @@ Ask yourself: "If someone writes new code tomorrow that needs this pattern, will
 
 Use `/refactor-check` to automate this verification.
 
+## A migration deletes what its owner replaced
+
+A change that gives a rule a new authoritative owner — a shared package, a route declaration, one writer module, a generated type, a trigger — is complete only when it names what that owner made unnecessary and removes it. Before the owner existed, the repository kept the rule's copies aligned by other means, and those means do not retire themselves: a migration that leaves them in place hands the repository both the new abstraction and the machinery built for the old duplication, which is more moving parts than it started with (#788, #926).
+
+What such a change supersedes is one of five kinds:
+
+| Kind | What it looked like | Retired by |
+|------|---------------------|------------|
+| **Parity test that reads source** | `backend/src/types/urlSafety.test.ts` read the frontend's `imageUrl.ts` as text to hold the picture hosts equal | the shared package (#789) — six such pins deleted in the same pull request |
+| **Duplicated constant or type** | `frontend/src/utils/labelFold.ts`, the frontend's copy of the label fold | the shared package (#789) — file deleted |
+| **Handwritten adapter or type** | `backend/src/db/schema.ts` (Drizzle's hand-kept table types) and `columnBounds.test.ts`, which held Zod bounds to the column widths | generated row types (#792) — both deleted |
+| **Lint rule** | the two Cache-Control `no-restricted-syntax` rules in `backend/eslint.config.mjs` | the route declaration (#793), once no route bypasses it |
+| **Reviewer cross-check** | a pair in the review bot's "places this repo states the same thing twice" list (`.github/workflows/claude-review.yml`, Phase 4) | the slice that gives the pair a home, which deletes the line when it lands — the backend-response ⇄ frontend-consumer pair carries `[retired by #527]`, which names the owning slice while #527 is open; the mark is not the retirement, the deletion is |
+
+**The rule.** What the new owner makes deletable is deleted **in the same slice**, and the pull request's description lists the deletion as part of the result, beside what was added. A plan for such a change names the guard it deletes before any code is written; `/refactor-check` walks the five kinds on the branch and drafts that paragraph.
+
+**Coexistence is a dated exception, not a state.** When a guard cannot go yet — a consumer still reads the old copy, a route still bypasses the registry — the pull request links the follow-up issue that owns the removal and names the dependency that blocks it now. "Remove later" with no issue, or an issue with no stated dependency, does not qualify.
+
+**What is rejected.** An abstraction added beside independent representations that stay authoritative indefinitely is a new layer, not a home, and is not accepted as a migration: a shared module both sides *may* import while each keeps its own copy, a registry some routes join while the rest keep their hand-written middleware and the lint rule that polices them. A slice that deletes nothing has not moved the rule; it has added one more place that states it.
+
 ## Commits and Branches
 
 ### Commit Messages
@@ -998,7 +1018,7 @@ The project has slash commands (in `.claude/commands/`) that automate common wor
 | `/security-audit` | Full OWASP ASVS 5.0 audit with report generation |
 | `/security-alerts` | Triage GitHub code scanning alerts (CodeQL, etc.) |
 | `/quality-alerts` | Triage code quality alerts |
-| `/refactor-check` | Post-refactoring prevention check — verify dev guide has rules preventing the old pattern from recurring |
+| `/refactor-check` | Post-refactoring check — a change that gave a rule a new owner deletes the guard the owner made obsolete (or links the issue that owns it), and the dev guide has rules preventing the old pattern from recurring |
 | `/issues` | Browse the task board — Backlog grouped by Priority with type, Size/Theme/AI fit, parent and blockers |
 | `/issue-create` | Create a new GitHub issue — type (Bug / Feature / Task / Epic), the form's body shape in a neutral voice, area labels, the four fields, parent / blockers / milestone, board placement; a slice of an Epic also gets its `→ #N` ledger mark written onto the Epic's own list, which the other commands gate on |
 | `/issue-upload` | Batch-create issues from a markdown file — the same type, fields, hierarchy and Epic mark per item, with a file ledger that lets an interrupted run resume, plus a lookup of recently created issues shown for adoption before the batch is confirmed, which covers the one gap the ledger cannot (a create that succeeded while its file mark failed); a line is cleaned up only once its placement, its Epic mark and — for an adopted issue — its hierarchy, labels and type have all landed |
@@ -1025,7 +1045,7 @@ npm run check         # verify
   ... refactor (extract shared components, consolidate utils, etc.) ...
 npm run check         # verify
 /security-check       # security scan
-/refactor-check       # verify dev guide prevents the old pattern from recurring
+/refactor-check       # delete the guard the new owner replaced; verify dev guide prevents the old pattern
 /commit               # atomic commits + push
 /pr-create            # create PR + babysit until mergeable
 ```
