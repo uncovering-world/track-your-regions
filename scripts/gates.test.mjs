@@ -33,11 +33,11 @@ function outputs(paths) {
 
 describe('what a change asks for', () => {
   it('asks only the docs gates for a change of prose', () => {
-    expect(applying(['docs/tech/x.md'])).toEqual(['lint:md', 'lint:links']);
+    expect(applying(['docs/tech/x.md'])).toEqual(['lint:md', 'lint:links', 'lint:pointers']);
 
-    // This is the case #783 was filed for: a Markdown-only pull request used to
-    // burn every lane. The check job still runs — it is where the docs pass
-    // lives — but nothing else does.
+    // This is the case #783 was filed for: a Markdown-only pull request asks
+    // for the docs gates and nothing else. The check job still runs — it is
+    // where the docs pass lives — and installs no package for it.
     const out = outputs(['docs/tech/x.md']);
     expect(out.job_check).toBe('true');
     expect(out.job_check_docs).toBe('true');
@@ -47,19 +47,21 @@ describe('what a change asks for', () => {
     }
   });
 
-  it('asks the workflow lint, and only it, for a change to a workflow that is not ci.yml', () => {
-    // Before this class the three `claude-*.yml` workflows were in no input
-    // class at all: `npm run check` answered "Nothing to run" and a mistake in
-    // one was found by the run that hit it, on the branch it was merged to.
-    expect(applying(['.github/workflows/claude-review.yml'])).toEqual(['lint:actions']);
+  it('asks the workflow lint and the pointer pass, and nothing else, for a workflow that is not ci.yml', () => {
+    // Every workflow is in the class, the three `claude-*.yml` included: a
+    // workflow is checked by nothing else, so a mistake in one is otherwise
+    // found by the run that hits it, on the branch it is already merged to.
+    // The pointer pass reads a workflow's `#` lines as it reads any prose.
+    expect(applying(['.github/workflows/claude-review.yml'])).toEqual(['lint:actions', 'lint:pointers']);
 
-    // Docker is the gate's whole toolchain, and a Docker-only check has no
-    // setup key of its own, so the check job starts and not one of the three
-    // setup keys — node, python, docs — turns true with it.
+    // Docker is the lint's whole toolchain and the pointer pass needs only the
+    // root install the check job runs unconditionally, so the check job starts
+    // and neither node nor python turns true with it.
     const out = outputs(['.github/workflows/claude-review.yml']);
     expect(out.job_check).toBe('true');
+    expect(out.job_check_docs).toBe('true');
     for (const key of Object.keys(out)) {
-      if (key === 'reason' || key === 'job_check') continue;
+      if (key === 'reason' || key === 'job_check' || key === 'job_check_docs') continue;
       expect(out[key], key).toBe('false');
     }
   });
@@ -79,6 +81,7 @@ describe('what a change asks for', () => {
       'typecheck:shared',
       'knip:shared',
       'lint:circular',
+      'lint:pointers',
       'test:backend',
       'test:frontend',
       'security:scan',
@@ -119,9 +122,11 @@ describe('what a change asks for', () => {
 
   it('asks the Python gates, and the Node scan that reads cv-python too, for a change under cv-python', () => {
     // The Node Semgrep scan is pointed at the whole checkout with rule packs
-    // that carry Python rules, so it is the one non-Python gate a cv-python
+    // that carry Python rules, and the pointer pass reads a Python comment as
+    // it reads any prose: those two are the non-Python gates a cv-python
     // change asks for.
     expect(applying(['cv-python/app/a.py'])).toEqual([
+      'lint:pointers',
       'check:py',
       'security:py:bandit',
       'security:py:deps',
@@ -229,22 +234,28 @@ describe('the map itself', () => {
     expect(inputsOf('backend/package.json')).toEqual(['app', 'node-deps']);
     // The third package (ADR-0065) is product like the other two: a rule both
     // sides import is a change to both sides.
-    expect(inputsOf('packages/shared/src/labels.ts')).toEqual(['app']);
+    // A source file is prose too: its comments are what the pointer pass reads.
+    expect(inputsOf('packages/shared/src/labels.ts')).toEqual(['app', 'prose']);
     expect(inputsOf('packages/shared/package-lock.json')).toEqual(['app', 'node-deps']);
-    expect(inputsOf('db/gadm_levels.py')).toEqual(['app', 'db-python']);
+    expect(inputsOf('db/gadm_levels.py')).toEqual(['app', 'db-python', 'prose']);
     expect(inputsOf('backend/Dockerfile')).toEqual(['app', 'docker']);
-    expect(inputsOf('scripts/db-cli.sh')).toEqual(['app', 'shell']);
-    expect(inputsOf('scripts/gates.mjs')).toEqual(['app', 'tooling']);
+    expect(inputsOf('scripts/db-cli.sh')).toEqual(['app', 'prose', 'shell']);
+    expect(inputsOf('scripts/gates.mjs')).toEqual(['app', 'prose', 'tooling']);
+    // Prose in no other class: an issue template, the ASVS checklist. The
+    // pointer pass reads them, so a pointer added there runs the gate that
+    // refuses it rather than surfacing on some unrelated branch.
+    expect(inputsOf('.github/ISSUE_TEMPLATE/task.yml')).toEqual(['prose']);
+    expect(inputsOf('docs/security/asvs-checklist.yaml')).toEqual(['prose']);
     // `ci.yml` is read by actionlint like any workflow *and* decides which
     // gates run at all, so it is both: linted as a file, and tooling that
     // re-asks every gate. Losing the second membership would let an edit to
     // the job filter run nothing but the workflow lint.
-    expect(inputsOf('.github/workflows/ci.yml')).toEqual(['tooling', 'workflows']);
+    expect(inputsOf('.github/workflows/ci.yml')).toEqual(['prose', 'tooling', 'workflows']);
     expect(decide({ paths: ['.github/workflows/ci.yml'] }).everything).toBe(true);
     // The one gate whose runner is outside its inputs: `security:image` reads
     // python, and its script sits under scripts/. Tooling is what makes an
     // edit to the scan run the scan.
-    expect(inputsOf('scripts/scan-image.sh')).toEqual(['app', 'shell', 'tooling']);
+    expect(inputsOf('scripts/scan-image.sh')).toEqual(['app', 'prose', 'shell', 'tooling']);
     expect(decide({ paths: ['scripts/scan-image.sh'] }).everything).toBe(true);
   });
 });
@@ -299,6 +310,7 @@ describe('the CI outputs', () => {
       shell: 'tools/release.sh',
       docker: 'Dockerfile',
       workflows: '.github/workflows/claude-qa.yml',
+      prose: '.github/ISSUE_TEMPLATE/task.yml',
       tooling: 'package.json',
     };
     // A new input class with no sample would otherwise sit untested here.

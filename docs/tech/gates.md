@@ -31,12 +31,13 @@ check lint:frontend         skipped  inputs untouched: app
 …
 check lint:md               runs     inputs touched: docs
 check lint:links            runs     inputs touched: docs
+check lint:pointers         runs     inputs touched: prose
 …
 stack test:e2e:smoke        skipped  inputs untouched: app
 stack perf                  skipped  inputs untouched: app
 ```
 
-`lint:md` and `lint:links` run, and every other one names the input class it did not see
+`lint:md`, `lint:links` and `lint:pointers` run, and every other one names the input class it did not see
 move. Three shapes of answer are worth recognising:
 
 - **`inputs touched: <class>`** — the gate runs, and the class says which of its
@@ -57,7 +58,7 @@ what is committed.
 
 | Tier | What it holds | What runs it |
 | --- | --- | --- |
-| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the generated row types against the schema, the docs pass, the workflow lint, the fast security audits | `npm run check` — `npm run check:all` forces every one |
+| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the generated row types against the schema, the docs pass, the line-pointer pass over every file that carries prose, the workflow lint, the fast security audits | `npm run check` — `npm run check:all` forces every one |
 | `test` | the unit lanes, Node and Python | `npm run gates -- run test`, with `TEST_REPORT_LOCAL=1` to keep the Node lanes on the host |
 | `scan` | the slow scans: Semgrep on both stacks, the Trivy image scan | `npm run security:all` — the `check` tier, then this one |
 | `stack` | build, smoke, the database lane, Lighthouse: the lanes that stand a stack up | `npm run gates -- run stack` **lists** them with run/skip marks and exits 2; they are typed by hand |
@@ -91,7 +92,7 @@ A tier whose gates all sit on untouched inputs prints the sentence rather than
 nothing at all — on a clean `main`, `npm run check` says
 
 ```text
-Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:circular, db:types, security:deps, lint:shell, lint:docker, lint:actions, lint:md, lint:links, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
+Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:shared, typecheck:shared, knip:shared, lint:circular, db:types, security:deps, lint:shell, lint:docker, lint:actions, lint:md, lint:links, lint:pointers, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
 ```
 
 and exits 0. That is the one line this runner exists to print: a gate that did
@@ -125,6 +126,7 @@ everything or the base was simply unknown.
 | `shell` | `/\.sh$/` | shellcheck reads the scripts themselves; nothing else changes its verdict. |
 | `docker` | `/(^\|\/)Dockerfile[^/]*$/` | hadolint reads the Dockerfiles themselves, including their per-stage variants. |
 | `workflows` | `.github/workflows/` | actionlint parses the workflow files themselves — their syntax, their expressions, the shell in their `run:` blocks. Every one of them, not only ci.yml: a workflow is checked by nothing else, so a mistake in one is found by the run that hits it, on the branch it is already merged to. |
+| `prose` | `/\.(?:md\|ts\|tsx\|mjs\|cjs\|js\|sql\|sh\|py\|yml\|yaml)$/` | Every tracked file the line-pointer pass reads — Markdown, and each file type that carries a comment — by the extension list the pass itself declares (scripts/lint-line-pointers.mjs), whichever directory the file sits in. |
 | `tooling` | `.github/workflows/ci.yml`, `package.json`, `package-lock.json`, `scripts/gates.mjs`, `scripts/require-node-tools.sh`, `scripts/require-py-tools.sh`, `scripts/require-python-312.sh`, `scripts/scan-image.sh`, `.semgrepignore`, `.markdownlint-cli2.jsonc`, `docs/tech/gates.md` | A root config reaches every stack — it decides what the gates are, not what they read — so a change to one runs everything. That is the conservative answer to the reach question #783 had to settle, and the only one that cannot skip a gate its own change just broke. |
 
 ### Gates
@@ -148,6 +150,7 @@ everything or the base was simply unknown.
 | `lint:actions` | check | `workflows` | `npm run lint:actions` | check |
 | `lint:md` | check | `docs` | `npm run lint:md` | check |
 | `lint:links` | check | `docs` | `npm run lint:links` | check |
+| `lint:pointers` | check | `prose` | `node scripts/lint-line-pointers.mjs` | check |
 | `check:py` | check | `python` | `npm run check:py` | check |
 | `security:py:bandit` | check | `python` | `npm run security:py:bandit` | check |
 | `security:py:deps` | check | `python` | `npm run security:py:deps` | check |
@@ -236,8 +239,8 @@ Three things about that line are load-bearing.
   the same required check (ADR-0062 decision 2).
 
 Inside the `check` job the setup steps have keys of their own: the root `npm ci`
-is unconditional, because `lint:md` needs markdownlint from there and is the gate
-a prose-only change runs with no other install to its name; the backend and
+is unconditional, because `lint:md` needs markdownlint from there and is the one
+gate a prose-only change runs that needs an install at all; the backend and
 frontend installs wait on `job_check_node` and the cv-python venv on
 `job_check_python`. The job then runs `npm run check` unchanged, with
 `GATES_BASE` set from the `Changes` job's own base, so the two cannot disagree
