@@ -99,8 +99,8 @@ describe('publishing a held proposal', () => {
 
     const res = await publish({ heldFields: ['name'], expectedSyncLogId: 53 }, client);
 
-    // #722: a run improves and damages in the same breath, and the card's one
-    // button used to take both or neither. What is not named stays open, and
+    // #722: a run improves and damages in the same breath, so the card answers
+    // per field rather than both or neither. What is not named stays open, and
     // the pointer is what keeps it findable — clearing it here would take the
     // description off every screen there is, unanswered.
     const update = only(queries, 'UPDATE experiences');
@@ -407,9 +407,9 @@ describe('publishing a held proposal', () => {
       row: { curation_state: 'auto', pending_change_sync_log_id: 53, curated_fields: [] },
       proposal: [
         // Neither flag: a field some future refusal kept out for a reason that is
-        // not the gate. The writer used to read "held" as "not claimed", so this
-        // would have been applied — publishing all eleven columns over a value no
-        // card ever showed and no curator ever answered (#519). Unreachable today
+        // not the gate. A writer reading "held" as "not claimed" would apply
+        // this — publishing all eleven columns over a value no card ever showed
+        // and no curator ever answered (#519). Unreachable today
         // and deliberately so: the flag is what keeps it unreachable tomorrow.
         { field: 'name', new: 'Refused for some other reason' },
         { field: 'description', new: 'D', held: true },

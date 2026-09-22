@@ -68,7 +68,7 @@ describe('the guard notices when the members stop reaching the union', () => {
   });
 
   it('reports a collected CTE that reads the members only for a sibling column', () => {
-    // The mutation the review named: `$2` is in the CTE, and in the CTE the
+    // The mutation this exists to catch: `$2` is in the CTE, and in the CTE the
     // geometry comes from -- but not in the geometry. A count beside the
     // collect reads exactly like the log line the last narrowing was about.
     const problems = droppedMemberProblems(callsWith(`

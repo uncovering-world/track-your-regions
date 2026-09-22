@@ -793,8 +793,8 @@ describe('searchExperiences region context', () => {
   it('sends the kind a row is shown under, which the search rows render', async () => {
     const sql = await searchSql();
 
-    // The curator's "search and assign" dialog renders the row's kind; this
-    // read did not send it at all until #592, and sent the source's name until #819.
+    // The curator's "search and assign" dialog renders the row's kind, read
+    // through the membership rather than the source's name (#592, #819).
     expect(sql).toContain('ek.name AS kind_name');
     expect(sql).toMatch(/JOIN experience_kind_memberships em ON em\.experience_id = e\.id AND em\.source_id = e\.source_id/);
     expect(sql).toContain('m.kind_name');

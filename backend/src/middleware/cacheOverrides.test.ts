@@ -28,7 +28,7 @@ const SRC = join(fileURLToPath(new URL('.', import.meta.url)), '..');
  *   different value, so `markPublicReferenceBody` replaces it afterwards —
  *   `setHeader` replaces, which is what makes that work;
  * - the streams `EventSource` opens sit behind it too and must replace the
- *   header, which is how `private` was lost until #710; `markStreamBody` puts
+ *   header, or `private` is lost (#710); `markStreamBody` puts
  *   it back, and for a caller whose token is a query parameter it is the whole
  *   of the guarantee;
  * - the responses that hand back an access token mostly sit *ahead* of it —

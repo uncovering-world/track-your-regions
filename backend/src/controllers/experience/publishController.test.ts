@@ -10,10 +10,9 @@
  * the object (`publishController.placement.test.ts`). All of them drive the endpoint
  * through `publishController.fixtures.ts`.
  *
- * Every assertion is anchored to the one statement it is about. Two predicates
- * on this branch have already survived deletion under a green suite because an
- * assertion matched a sibling statement, so `only()` fails when a fragment
- * matches more than one.
+ * Every assertion is anchored to the one statement it is about: an assertion
+ * that matches a sibling statement lets the predicate it names be deleted
+ * under a green suite, so `only()` fails when a fragment matches more than one.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -184,9 +183,9 @@ describe('publishing an arrival', () => {
     // run that offers it again, which clears `missing_since` and leaves
     // `curation_state` alone: the coordinate then appears on the map marked as
     // one a curator passed, having been on no card at any point.
-    // Both terms of `offeredLocationSql`, because one of them is satisfied by the
-    // bare predicate this used to carry: asserting `missing_since IS NULL` alone stays
-    // green if the existence term is reverted, and the invariant this test names — the
+    // Both terms of `offeredLocationSql`, because the bare predicate satisfies
+    // one of them: asserting `missing_since IS NULL` alone stays
+    // green if the existence term is dropped, and the invariant this test names — the
     // same predicate the `contents` card carries — would silently stop holding.
     const publishSql = only(queries, 'UPDATE experience_locations SET curation_state').sql;
     expect(publishSql).toContain('missing_since IS NULL');

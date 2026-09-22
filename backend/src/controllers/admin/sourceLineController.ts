@@ -2,9 +2,9 @@
  * An admin sets a source's fame line.
  *
  * The world tier's line (how many sitelinks a row needs to enter it, and how
- * few it may fall to before it is refused by name) used to be two constants in
- * the pipeline that owned it. A kind whose sources enumerate different worlds
- * needs its own numbers, so the line is stored on the source row
+ * few it may fall to before it is refused by name) is a property of the
+ * source, not a constant of the pipeline: a kind whose sources enumerate
+ * different worlds needs its own numbers, so the line is stored on the source row
  * (`experience_sources.api_config`) and read by the run through
  * `parseSourceLine` (`services/sync/sourceLine.ts`) — this route is that
  * value's only writer, and the two share one bound (integers 1..1000, stay no

@@ -52,12 +52,12 @@ function classifyPipelineError(
  * takes it: a soft result is right, and computeOneGroup tallying it as skipped
  * while the run reports Complete is right with it.
  *
- * There is no second kind of failure to tell it apart from any more. Marking
- * the ancestors stale used to be a statement of its own here, made after the
- * geometry UPDATE had committed, so losing it was the opposite state -- the
- * region fine and the tree above it silently wrong for good -- and it had to be
- * rethrown rather than softened. Since #680 that work runs inside the UPDATE
- * itself, as a trigger, so it fails only by failing the write (ADR-0035).
+ * There is no second kind of failure to tell it apart from. Marking the
+ * ancestors stale runs inside the UPDATE itself, as a trigger, so it fails
+ * only by failing the write (#680, ADR-0035); a statement of its own after
+ * the commit could be lost on its own, leaving the region fine and the tree
+ * above it silently wrong for good, and would have to be rethrown rather
+ * than softened.
  */
 function coreFailure(err: unknown, regionId: number, logPrefix: string): PipelineResult {
   const errorMessage = err instanceof Error ? err.message : String(err);
@@ -415,8 +415,7 @@ async function applyCoverageAndTileVersion(
 export async function computeSingleRegionGeometry(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
   const force = req.query.force === 'true';
-  // Absent means snap: computeGeometryQuerySchema supplies the default this
-  // endpoint used to have no way of being told (#736).
+  // Absent means snap: computeGeometryQuerySchema supplies the default (#736).
   const skipSnapping = req.query.skipSnapping === 'true';
 
   console.log(`[ComputeSingle] Computing region ${regionId}, force=${force}, skipSnapping=${skipSnapping}`);

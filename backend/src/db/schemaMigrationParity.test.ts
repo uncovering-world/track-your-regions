@@ -440,7 +440,7 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     'created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region',
     'marked_former', 'marked_lost', 'state_restored', 'accepted_source',
     // What POST /:id/decline-source records: a curator standing by their own value,
-    // which used to be the absence of an action and therefore left no trace at all.
+    // which without a row of its own is the absence of an action and leaves no trace.
     // Beside its opposite, because the SQL lists it there and this is a literal
     // comparison — the list's *order* is part of what the two files must agree on.
     'declined_source',
@@ -740,10 +740,10 @@ describe('a point has verdict columns in both schema homes', () => {
   it('both files carry the rules the two axes have nowhere else', () => {
     // Neither rule is expressible as a constraint, and neither lives anywhere a
     // person reading `\d+ experience_locations` can reach — so the column comment
-    // is the whole of it, in both files. The restore clause is the string on this
-    // branch with a measured drift rate: it was wrong twice before it was right,
-    // first claiming a curator is the only writer, then crediting the `returned`
-    // arm alone. Pinning the phrase and not the sentence, because the wording
+    // is the whole of it, in both files. The restore clause is the string most
+    // prone to drift: a spelling that claims a curator is the only writer, or
+    // one that credits the `returned` arm alone, is wrong and reads fine.
+    // Pinning the phrase and not the sentence, because the wording
     // will keep being improved and the rule must not move under it.
     for (const sql of [schema, locationVerdictMigration]) {
       expect(sql).toContain('COMMENT ON COLUMN experience_locations.source_membership IS');

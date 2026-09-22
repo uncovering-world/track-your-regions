@@ -126,7 +126,7 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
     // - a throw from `resolveExperienceScope`, which is a `pool.query` like any
     //   other, running a recursive CTE once per row. A statement timeout, a reset
     //   connection or an admin's `pg_terminate_backend` on object 400 is as likely
-    //   here as inside the publish, and it used to sit outside this block.
+    //   here as inside the publish, which is why it sits inside this block.
     //
     // Any of them rejecting the handler answers 500 to a caller whose earlier
     // objects are already committed, and the page then says nothing was published —

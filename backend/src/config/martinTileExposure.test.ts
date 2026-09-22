@@ -10,12 +10,12 @@
  * re-expose table sources, including every column of `experiences`, on a
  * public port.
  *
- * Parsed with the `yaml` package, not scanned as text. A hand-rolled
- * line/indentation reader used to sit here; it took the first `tables:` line
- * whose indentation looked deep enough, so a decoy nested one level further
- * in (`auto_publish: { functions: { tables: false }, tables: true }`) read
- * as the real key while the actual `auto_publish.tables` — `true` — went
- * unchecked. The same reader also rejected flow-style mappings
+ * Parsed with the `yaml` package, not scanned as text: a hand-rolled
+ * line/indentation reader takes the first `tables:` line
+ * whose indentation looks deep enough, so a decoy nested one level further
+ * in (`auto_publish: { functions: { tables: false }, tables: true }`) reads
+ * as the real key while the actual `auto_publish.tables` — `true` — goes
+ * unchecked. The same reader also rejects flow-style mappings
  * (`auto_publish: { tables: false, functions: true }`, the exact form this
  * repo's own docs use) as having no children at all. A real parser builds
  * the same tree Martin's own config loader builds, and this guard asserts on

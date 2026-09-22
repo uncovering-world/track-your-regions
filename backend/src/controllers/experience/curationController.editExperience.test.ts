@@ -433,8 +433,8 @@ describe('editExperience and an emptied field', () => {
   });
 
   it('writes a cleared picture and a new name in the one save that carried both', async () => {
-    // The silent half of #696: a save that also changed a sent field used to
-    // report success while the removal never left the browser.
+    // The silent half of #696: a save that also changes a sent field must
+    // write the removal too, not report success while it never left the browser.
     queueQueries({ lockedCurated: [], lockedRow: { image_url: OLD_PICTURE } });
 
     await editWith({ name: 'New name', imageUrl: '' }).done;

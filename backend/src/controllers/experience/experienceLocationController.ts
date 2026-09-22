@@ -168,11 +168,10 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
     experience_id: number;
     name: string | null;
     external_ref: string | null;
-    // Nullable, and this branch is what made it so: a point whose replacement is
-    // waiting to be published keeps its row and loses its ordinal, so the feed
-    // that draws the map returns it with none. The frontend's own type says
-    // `number | null` and `locationLabel` handles it; this declaration was the
-    // last place still promising a number.
+    // Nullable: a point whose replacement is waiting to be published keeps its
+    // row and loses its ordinal, so the feed that draws the map returns it with
+    // none. The frontend's own type says `number | null` and `locationLabel`
+    // handles it.
     ordinal: number | null;
     longitude: number;
     latitude: number;
@@ -199,9 +198,9 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
       created_at: row.created_at,
       in_region: row.in_region,
       region_path: row.region_path,
-      // Selected above and, until #583's review, dropped right here: the batch
-      // rebuilds each row by hand, so a column the SELECT gains is not a column
-      // the response gains. `[]` where a row predates the column's default.
+      // Selected above and rebuilt by hand here: a column the SELECT gains is
+      // not a column the response gains until this batch names it (#583).
+      // `[]` where a row predates the column's default.
       curated_fields: row.curated_fields ?? [],
     });
   }
@@ -718,9 +717,8 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
     WHERE el.experience_id = $1
       -- Offered points only, like every other read that shows a place.
       --
-      -- An earlier version also returned a withdrawn point this reader had
-      -- visited, to keep their record of it in view. That is wrong here, and a
-      -- replaced point shows why: identity is the point together with the
+      -- Not a withdrawn point this reader has visited, even to keep their
+      -- record of it in view: a replaced point shows why. Identity is the point together with the
       -- source's reference, so an edit to either — a component moved to a new place, a
       -- renumbered one — is a withdrawal plus an insert, and the reader
       -- would meet the same place twice, once ticked and once not, with this

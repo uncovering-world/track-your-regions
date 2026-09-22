@@ -262,7 +262,7 @@ describe('a picture the server fetches for itself', () => {
       .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/A.png');
   });
 
-  it('refuses every host but the two, including the ones the proxy used to take', () => {
+  it('refuses every host but the two, a suffix match on wikimedia.org included', () => {
     const elsewhere = [
       'https://en.wikipedia.org/wiki/Special:FilePath/A.png',
       'https://maps.wikimedia.org/geoshape?ids=Q262',
@@ -360,7 +360,7 @@ describe('a picture the server fetches for itself', () => {
 /**
  * A region's imported map is the other stored picture (#694). It arrives three
  * ways -- a node of an import tree, a pick among that node's candidates, and
- * the url a vision match is asked to look at -- and each of them used to be
+ * the url a vision match is asked to look at -- and none of them may be
  * `z.string().url()`, which is `new URL()` in a try/catch and not a protocol
  * allowlist: it accepts `javascript:` and `data:` as readily as `https:`.
  * Unlike an experience's picture, nothing legitimate here is a local path: the
@@ -447,9 +447,9 @@ describe("a region's imported map is held to the same rule", () => {
  * A region's source page is the third url an import tree carries, and the only
  * one that reaches an `<a href>` (#703). It arrives three ways -- a node of an
  * import tree, a child added during review, and a rename that enriches a
- * region with the page an AI review found -- and each of them used to be
- * `z.string().url()`, the same check #694 replaced for the two picture fields
- * two lines above it in the same schema. What makes it a different class from
+ * region with the page an AI review found -- and none of them may be
+ * `z.string().url()`, the same check the two picture fields two lines above
+ * it in the same schema refuse (#694). What makes it a different class from
  * the map: `javascript:` in an `img src` has not executed since Netscape 4,
  * but in an `href` it runs on click, in the admin's session, on every browser.
  */
@@ -567,8 +567,8 @@ describe('the rule is declared once', () => {
   // Which hosts a picture may come from and what names a picture file are
   // answered on both sides — here before a value is stored, in
   // `frontend/src/utils/imageUrl.ts` before one is drawn — by one declaration,
-  // `@tyr/shared/pictures` (ADR-0065). Two tests used to read that file's copy
-  // of each list out of its source and hold it to this side's (#789).
+  // `@tyr/shared/pictures` (ADR-0065, #789): both sides import it rather than
+  // one reading the other's copy out of its source.
 
   /**
    * The read side of the same rule lives in `frontend/src/utils/imageUrl.ts`,

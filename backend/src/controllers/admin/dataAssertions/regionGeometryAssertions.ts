@@ -131,9 +131,9 @@ const framedAsTheWorld: CatalogueAssertion = {
  * because of the Ogasawara islands, and Antarctica's continent row because the
  * centre of a box round the pole is the Southern Ocean. Those anchors are
  * right — the frame is right — so there is nothing to answer for. The number
- * is worth watching because the Far Eastern Federal District (anchored off
- * Shetland) and Fiji (off Namibia) were on this list until #671, and a
- * regression would put them back.
+ * is worth watching because a regression would put the Far Eastern Federal
+ * District (anchored off Shetland) and Fiji (off Namibia) back on this list
+ * (#671).
  *
  * Measured on the 3857 low rung with the tolerance scaled by latitude, because
  * the exact distance on geography over full-resolution polygons costs sixteen

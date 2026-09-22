@@ -34,12 +34,12 @@ import {
  * written. Both routes below run `validate()` first, so this is a second layer
  * and not the only one — but it is the layer a direct call to the controller
  * still passes through, and it reads the rule and its wording from
- * `urlSafety.ts` rather than restating either: the two spellings that used to
- * sit here and in the schema disagreed about whitespace, which is how a scheme
- * behind one space was stored (#693).
+ * `urlSafety.ts` rather than restating either: a second spelling here can
+ * disagree with the schema's about whitespace, which is how a scheme behind
+ * one space gets stored (#693).
  *
- * It covers the picture as well as the two links. It did not, which left the
- * second layer absent from the one field that bug was actually about.
+ * It covers the picture as well as the two links: leaving the picture out
+ * leaves the second layer absent from the one field #693 was actually about.
  */
 function refusalFor(value: unknown, isStorable: (url: string) => boolean, message: string): string | null {
   return typeof value === 'string' && value && !isStorable(value) ? message : null;

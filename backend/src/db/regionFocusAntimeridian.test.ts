@@ -8,8 +8,8 @@ import { backendSrc, repoFile, repoRelative } from '../testSupport/repoFile.js';
  * The antimeridian rule behind `focus_bbox`, held in the three places that state it.
  *
  * A region crossing the dateline is stored as `west > east`; one that really
- * wraps the world keeps a full-width box. Telling those apart is one rule, and
- * before #666 the trigger got it wrong for a reason no reader would guess:
+ * wraps the world keeps a full-width box. Telling those apart is one rule,
+ * subtle for a reason no reader would guess (#666):
  * GADM's geometry overshoots +180 by 1e-13 degrees -- some 11 nanometres -- and
  * `ST_ShiftLongitude` wraps in both directions, so the five overshooting
  * vertices of the Far Eastern Federal District came back at -179.9999999999999
@@ -28,9 +28,9 @@ import { backendSrc, repoFile, repoRelative } from '../testSupport/repoFile.js';
  * - `frontend/src/utils/mapUtils.ts`, which applies the same rule to a shape
  *   that exists only in the client — a boundary being drawn, a cut, a combined
  *   selection — where no trigger has measured it yet. A stored region or
- *   division carries its box and is never measured there; framing a division
- *   from a plain `turf.bbox` is how the bug reached the client before #666,
- *   and downloading its geometry to measure it is what #674 retired. The
+ *   division carries its box and is never measured there: framing a division
+ *   from a plain `turf.bbox` reproduces the bug in the client (#666), and
+ *   downloading its geometry to measure it is the wrong frame too (#674). The
  *   threshold it reads is `NEAR_GLOBAL_DEG` from `@tyr/shared/geometry`, the
  *   same import this file holds the SQL function to (ADR-0065);
  * - `db/migrations/032-antimeridian-focus-data.sql`, whose guard refuses to run
@@ -233,9 +233,9 @@ describe('the antimeridian is decided in two places, and nowhere else', () => {
   });
 
   it("frames the map's own division paths from the stored box, not a measurement", () => {
-    // useMapInteractions used to measure a clipped tile feature and a
-    // downloaded geometry to frame a division; both now read what the
-    // division list carried (#674).
+    // useMapInteractions frames a division from the stored box the division
+    // list carries, never from a clipped tile feature or a downloaded
+    // geometry (#674).
     const interactions = readFileSync(
       repoFile('frontend', 'src', 'components', 'regionMap', 'useMapInteractions.ts'),
       'utf8',

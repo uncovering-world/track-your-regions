@@ -38,7 +38,7 @@ describe('getWorldViews visibility', () => {
   });
 
   // The cache headers that keep a shared cache from serving an admin's list to
-  // a visitor are no longer this controller's to set: `optionalAuth` on the
+  // a visitor are not this controller's to set: `optionalAuth` on the
   // route sets them for every caller-shaped read (middleware/auth.test.ts),
   // and routes/callerShapedReads.test.ts holds that this route carries it.
 

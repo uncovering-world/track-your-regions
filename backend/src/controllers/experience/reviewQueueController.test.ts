@@ -1,9 +1,8 @@
 /**
  * Tests for the review queue's kinds.
  *
- * Split out of `lifecycleController.test.ts` when that file passed eslint's
- * `max-lines` (then 1000, comments and blanks excluded; 800 since #530). The
- * seam was already there:
+ * Its own file beside `lifecycleController.test.ts`, split at the seam the
+ * code has:
  * the queue is one read with an independent query per kind, and everything left
  * behind is a curator write under a row lock — and #526 split the controllers
  * along the same seam, so this file now sits beside the module it tests.
@@ -406,8 +405,8 @@ describe('getReviewQueue', () => {
   it('stops asking about a proposal a curator already refused', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
-    // Standing by your own edit used to be the absence of an action, so the card
-    // came back after every run — Aksum's three times in two days, with the source
+    // Standing by your own edit is recorded as an action, or the card comes
+    // back after every run — Aksum's three times in two days, with the source
     // proposing the identical value each time.
     const [conflictSql] = callMatching("'conflict' AS kind");
     expect(conflictSql).toContain('experience_conflict_decisions');
@@ -823,7 +822,7 @@ describe('getReviewQueue', () => {
   it('cannot multiply locations by treasures, because neither is joined to the other', async () => {
     // They are independent one-to-many on the same experience, so joined side by
     // side their rows are a product — 3 pending points and 12 pending works make
-    // 36. `COUNT(DISTINCT ...)` used to absorb that; a list cannot, and would show
+    // 36. `COUNT(DISTINCT ...)` would absorb that; a list cannot, and would show
     // each point twelve times. Aggregated in their own laterals the product has
     // nowhere to form, which is a stronger promise than counting distinctly and is
     // asserted as such: no top-level join to either table.
@@ -983,8 +982,8 @@ describe('getReviewQueue', () => {
   });
 
   it('states the works total once, not twice, on the refusal kinds', async () => {
-    // Both counts moved into the shared fragment, and the refusal query used to
-    // select the total itself. Two columns of the same name are legal SQL and the
+    // Both counts come from the shared fragment, and the refusal query must not
+    // select the total itself: two columns of the same name are legal SQL and the
     // driver hands over whichever came last — so the duplicate would be invisible
     // rather than loud.
     const sql = await capturedQueueSql('refused');
@@ -1085,8 +1084,8 @@ describe('getReviewQueue', () => {
     const res = makeRes();
     // The counts are counted under the filter the curator set, over the whole
     // union rather than over the page — a client holding 25 rows of 1 630 can
-    // count nothing, and "the first N of this kind, and there may be more" is
-    // what the page used to have to say instead.
+    // count nothing, and without the union the page could only say "the first
+    // N of this kind, and there may be more".
     const facets = { kind: [{ kind: 'arrival', count: 52 }], source: [], region: [], run: [], setAside: { batches: 0 } };
     mockedQuery.mockImplementation(async (sql: string) => (
       String(sql).includes('AS page')

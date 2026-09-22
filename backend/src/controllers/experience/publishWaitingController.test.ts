@@ -343,8 +343,8 @@ describe('publishWaiting', () => {
   });
 
   it('sends the report when the closing count fails, with the count as null', async () => {
-    // The count is the last statement, so a throw from it used to reach
-    // `express-async-errors` and answer 500 — discarding a report about publications
+    // The count is the last statement, and a throw from it must not reach
+    // `express-async-errors` and answer 500 — that discards a report about publications
     // that are already committed, including the world-view names that reach a person
     // through this response and nowhere else. `null` says "not counted"; a `0` here
     // would be a claim about the source that nothing checked.

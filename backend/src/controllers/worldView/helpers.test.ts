@@ -19,8 +19,8 @@ describe('invalidateRegionGeometry', () => {
   });
 
   it('skips rows with is_custom_boundary IS TRUE — regression for #283', async () => {
-    // The bug: this statement used to walk a recursive CTE that included the
-    // starting region itself. Without the IS NOT TRUE guard, calling addMembers
+    // The guard is what this pins: without IS NOT TRUE the recursive CTE
+    // reaches the starting region itself, so calling addMembers
     // right after createRegion(customGeometry) would null the just-created
     // custom shape and reset is_custom_boundary, then a subsequent recompute
     // would produce the merged-from-members geometry — losing the user's

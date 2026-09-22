@@ -2,8 +2,8 @@
  * Which rows of a held proposal a caller is answering, resolved against the
  * proposal itself.
  *
- * A held card used to be one act — publish all of it or none — and is now
- * answered row by row (#722): "publish this" writes one field, "not this"
+ * A held card is answered row by row (#722), never as one act for all of it:
+ * "publish this" writes one field, "not this"
  * records a refusal of one value. Both endpoints have to agree about what "one
  * row" is, or a curator would refuse the row they were shown and publish a
  * different one, so the naming rule lives here and both read it.
@@ -164,11 +164,9 @@ function names(selection: HeldSelection, row: HeldRowRef): boolean {
  * The matcher above widens across `partnerOf`, so the accounting has to widen
  * with it: a caller naming a picture *and* its credit where the run held only
  * one of them reaches one row, and an unmatched entry refuses the whole call.
- * An object's pair as well as a work's, since ADR-0039 — and that is not
- * hypothetical: publishing's own object-level accounting was a bare field-name
- * test until this branch, so the two endpoints disagreed about exactly that
- * body. Exported so publishing's loop asks this question rather than keeping a
- * second copy, which is precisely the shape that produced the defect.
+ * An object's pair as well as a work's (ADR-0039). Exported so publishing's
+ * loop asks this question rather than keeping a second copy: a bare field-name
+ * test on one side lets the two endpoints disagree about exactly that body.
  */
 export function namedRowReached(reached: ReadonlySet<string>, row: HeldRowRef): boolean {
   if (reached.has(heldRowKey(row))) return true;

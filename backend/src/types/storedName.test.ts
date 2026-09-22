@@ -3,7 +3,7 @@
  *
  * Four schemas take a name that lands in a `name` column — a work's title and
  * its makers, a place's, a point's, and the one a created place starts with —
- * and each used to take the string as typed, edges trimmed at best. Every
+ * and each tidies it rather than taking the string as typed. Every
  * importer's writer tidies by `tidyLabel`; the schemas are the other door to
  * the same columns, and what `validate()` puts back on the request is what the
  * controller writes.

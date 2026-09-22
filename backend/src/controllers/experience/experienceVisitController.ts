@@ -76,7 +76,7 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
   const result = await pool.query(query, params);
 
   // Get total count. Same gate as the list above, for the same reason every
-  // count on this branch carries whatever its list carries: a total that
+  // count carries whatever its list carries: a total that
   // counted a manufactured visit the list above already hides would disagree
   // with what a caller can even see rows for.
   let countQuery = `SELECT COUNT(*) FROM user_visited_experiences uve JOIN experiences e ON uve.experience_id = e.id ${rowKindJoinSql('e')} WHERE uve.user_id = $1 AND ${hidePendingSql()}`;

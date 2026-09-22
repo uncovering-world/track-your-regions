@@ -23,7 +23,7 @@ import { updateRegion, deleteRegion } from './regionCrud.js';
  * handlers name their rows themselves, and this is the only place that can
  * check they still do.
  *
- * The reparent case is the sharp one, and was live on this branch until review.
+ * The reparent case is the sharp one.
  * Nulling the moved region reaches its new parent through the trigger only
  * while that statement writes a row, and for a hand-drawn region it writes
  * none: `invalidateRegionGeometry` excludes `is_custom_boundary` so that a

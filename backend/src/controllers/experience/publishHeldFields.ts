@@ -500,9 +500,9 @@ export interface HeldFieldWrites {
   /**
    * The row points at a run whose changeset row is not there.
    *
-   * Distinct from "the proposal is empty", which is what an absent row used to
-   * be read as: publishing then applied nothing, cleared the pointer and
-   * reported success, so a curator was told they had published a proposal whose
+   * Distinct from "the proposal is empty", which an absent row must not be
+   * read as: publishing would then apply nothing, clear the pointer and
+   * report success, telling a curator they had published a proposal whose
    * values were never written and whose record was gone. `accept-source`
    * refuses this case outright (`No source proposal on record for this
    * experience`), and the two endpoints answering the same question differently

@@ -16,11 +16,11 @@
  * The queue's `held` query reaches the held fields through
  * `CROSS JOIN LATERAL jsonb_array_elements(changed_fields)` because it has to
  * *show* them; a count only needs to know one exists, so it asks with `EXISTS`.
- * Two spellings of one rule is exactly the shape this branch has been closing,
- * and the honest defence is the case that separates them: a pointer whose
- * changeset holds only fields a **curator** claimed (`curatedConflict`, no
- * `held`) must count zero and raise no `held` card. `waitingCounts.test.ts` and
- * the live cross-check in the branch's report both drive that row.
+ * Two spellings of one rule is exactly the shape the repository closes where it
+ * can, and here it cannot; the honest defence is the case that separates them:
+ * a pointer whose changeset holds only fields a **curator** claimed (`curatedConflict`, no
+ * `held`) must count zero and raise no `held` card. `waitingCounts.test.ts`
+ * drives that row.
  *
  * A `pending` membership never carries a proposal pointer — `heldProposalPointer.ts`
  * writes the pointer only `WHERE curation_state <> 'pending'` — so `held` needs no

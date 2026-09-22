@@ -354,9 +354,9 @@ describe('a picture with nobody credited', () => {
   });
 
   it('finds a held credit in either record shape', () => {
-    // The object arm used to test for an `imageCredit` key inside a payload,
-    // which was the catch-all's shape. Since ADR-0039 the credit is an entry of
-    // its own and its value *is* the credit, so that test answers false for
+    // Two record shapes: an `imageCredit` key inside a payload (the catch-all's
+    // shape) and, since ADR-0039, an entry of its own whose value *is* the
+    // credit. A test for the key alone answers false for
     // every card a run files from here -- measured against the live catalogue
     // mid-transition, 199 rows would still have said "waiting" and 1315 would
     // have flipped to "a sync run has to fetch one", which is the other of the

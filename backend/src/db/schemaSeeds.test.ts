@@ -67,8 +67,8 @@ describe('db/init/01-schema.sql seeds', () => {
   it('pins every seed to an explicit ON CONFLICT arbiter', () => {
     // A bare `ON CONFLICT DO NOTHING` is not a guard: it only fires on a real
     // unique/exclusion violation, so on a table whose sole unique constraint is
-    // a serial primary key it never fires at all. That is how re-applying this
-    // file used to add a second "GADM (Default)" world view on every run.
+    // a serial primary key it never fires at all, and re-applying this file
+    // adds a second "GADM (Default)" world view on every run.
     // Naming the arbiter forces the guard to be backed by an actual index.
     for (const { table, sql } of seedStatements()) {
       expect(sql, `seed into ${table} must name an ON CONFLICT arbiter`).toMatch(

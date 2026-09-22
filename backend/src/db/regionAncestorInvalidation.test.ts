@@ -8,12 +8,12 @@ import { backendSrc, repoFile } from '../testSupport/repoFile.js';
  *
  * A region's outline is the union of what is under it, so a write to
  * `regions.geom` leaves every derived ancestor covering a smaller world than it
- * contains. #667 settled the rule and #679 enforced it by hand at each writer;
- * that review found seven writers beyond the one the issue described, one round
- * at a time, and every miss was permanent -- the parent kept a stale outline
- * with nothing `NULL` beneath it, fell outside every later run's closure
+ * contains. #667 settled the rule, and enforcing it by hand at each writer
+ * (#679) misses writers silently, and every miss is permanent -- the parent
+ * keeps a stale outline with nothing `NULL` beneath it, falls outside every
+ * later run's closure
  * (`loadGroupsToCompute` selects regions with no geometry and every ancestor of
- * one, once per run), and the run reported Complete. North America drew 18.3 %
+ * one, once per run), and the run reports Complete. North America drew 18.3 %
  * of the countries under it that way.
  *
  * Since #680 the rule is `trg_regions_geom_invalidates_parent`, which runs
@@ -132,10 +132,11 @@ describe('036-parent-geometry-invalidation-trigger.sql', () => {
 
 /**
  * What a cleared geometry leaves behind. The invalidation above writes NULL
- * into geom, and the metadata trigger that fires on that write used to compute
- * the area only from a geometry that was there -- so Europe read as NULL and
- * 4,095,971 km2 at once, and the Catalogue Check reading the stored area saw a
- * different world from the one reading the geometry (#763).
+ * into geom, and the metadata trigger that fires on that write must clear the
+ * area with it: computing the area only from a geometry that is there leaves
+ * Europe reading as NULL and 4,095,971 km2 at once, and the Catalogue Check
+ * reading the stored area seeing a different world from the one reading the
+ * geometry (#763).
  */
 describe('update_region_metadata, when the geometry goes', () => {
   const metadataFn = functionBody(schema, 'update_region_metadata()', '$$ LANGUAGE plpgsql;');
@@ -177,7 +178,7 @@ describe('the rule has one implementation, and no way round it', () => {
     // Behaviour, not a name: reading ancestors is ordinary and sixteen modules
     // do it -- curator scope in middleware/auth.ts, breadcrumbs, the matchers.
     // What belongs to the trigger alone is nulling geom on rows chosen by
-    // following parent_region_id, which is what nullGeometryOf did until #680.
+    // following parent_region_id (#680).
     // A module that wants a region recomputed nulls that one region and lets
     // the news travel up on its own.
     //

@@ -323,10 +323,10 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
   });
 
   const result = await pool.query(query, params);
-  // Counted rather than measured. `total` used to be `result.rows.length` — the
-  // size of the page, which equals the match count only while nothing is cut
-  // off, and silently agrees with itself the moment something is, so a region
-  // at the ceiling reported a confident, wrong total.
+  // Counted rather than measured: `result.rows.length` is the size of the
+  // page, which equals the match count only while nothing is cut off and
+  // silently agrees with itself the moment something is, so a region at the
+  // ceiling would report a confident, wrong total.
   //
   // Against a real count, `offset + experiences.length < total` says one thing:
   // rows remain beyond this window. What that means is the caller's to decide —
