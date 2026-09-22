@@ -47,7 +47,7 @@ export function CreateFromStagedDialog({
   onConfirm,
   isPending,
 }: CreateFromStagedDialogProps) {
-  // Internal state — previously in parent
+  // Internal state
   const [regionName, setRegionName] = useState('');
   const [useCustomBoundary, setUseCustomBoundary] = useState(false);
   const [customBoundaryGeometry, setCustomBoundaryGeometry] = useState<GeoJSON.Polygon | GeoJSON.MultiPolygon | null>(null);

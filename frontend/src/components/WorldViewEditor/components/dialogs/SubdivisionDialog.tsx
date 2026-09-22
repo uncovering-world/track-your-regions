@@ -85,7 +85,7 @@ export function SubdivisionDialog({
   onConfirm,
   isPending,
 }: SubdivisionDialogProps) {
-  // Internal state — previously lifted to parent
+  // Internal state
   const [tree, setTree] = useState<SubregionNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [customRegionName, setCustomRegionName] = useState('');

@@ -2,10 +2,10 @@
  * A museum's holdings on its Discover panel: what it keeps, which of it this
  * reader has seen, and — for a curator — the way into correcting one.
  *
- * Its own file since #731 put a dialog behind each tile: `ExperienceDetailPanel`
- * was at the size the development guide asks a file to be split at, and this
- * section is the half of it that has nothing to do with the object itself. The
- * places went the same way in #583 (`LocationsSection`).
+ * Its own file (#731): this section is the half of `ExperienceDetailPanel`
+ * that has nothing to do with the object itself, and that panel is at the size
+ * the development guide asks a file to be split at. The places went the same
+ * way (`LocationsSection`, #583).
  */
 
 import { useState, useMemo } from 'react';
@@ -98,10 +98,10 @@ export function ContentsSection({
         onClick={() => setExpanded(!expanded)}
       >
         <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
-          {/* The kind's own noun, off the rule Map mode's list reads: the same
-              British Museum used to be headed "Notable finds" there and
-              "Notable Works" here, which is the drift the shared-patterns
-              inventory exists to prevent (#885). */}
+          {/* The kind's own noun, off the rule Map mode's list reads, so the
+              same British Museum is not headed "Notable finds" there and
+              "Notable Works" here — the drift the shared-patterns inventory
+              exists to prevent (#885). */}
           Notable {holdingsNoun(kindId)} ({totalCount})
         </Typography>
         {isAuthenticated && viewedCount > 0 && (

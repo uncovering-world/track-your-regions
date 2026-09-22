@@ -204,7 +204,7 @@ export function CustomSubdivisionDialog({
 }: CustomSubdivisionDialogProps) {
   const queryClient = useQueryClient();
 
-  // Internal state — previously lifted to parent
+  // Internal state
   const [unassignedDivisions, setUnassignedDivisions] = useState<RegionMember[]>([]);
   const [subdivisionGroups, setSubdivisionGroups] = useState<SubdivisionGroup[]>([]);
   const [draggingDivisionId, setDraggingDivisionId] = useState<number | null>(null);
@@ -214,7 +214,7 @@ export function CustomSubdivisionDialog({
   const [isCreating, setIsCreating] = useState(false);
   const [isQuickExpanding, setIsQuickExpanding] = useState(false);
 
-  // Preview state — previously in parent
+  // Preview state
   const [previewDivision, setPreviewDivision] = useState<{ id: number; name: string } | null>(null);
   const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Geometry | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);

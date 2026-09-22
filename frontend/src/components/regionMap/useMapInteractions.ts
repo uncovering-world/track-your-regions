@@ -44,10 +44,10 @@ function flyToClickedFeature(
   // -- `useTileUrls` returns none otherwise, and `RegionMapVT` renders and
   // registers them under the same condition.
   //
-  // GADM divisions used to be the exception, framed from the clipped tile
-  // feature because they had focus data nowhere. They have it stored now
-  // (#674), the division lists carry it, and `useRegionMetadata` puts it in
-  // `meta` -- so a division takes this branch exactly as a region does.
+  // A GADM division is no exception and is never framed from the clipped tile
+  // feature: it has focus data stored (#674), the division lists carry it, and
+  // `useRegionMetadata` puts it in `meta` -- so a division takes this branch
+  // exactly as a region does.
   lastMapClickIdRef.current = id;
   smartFitBounds(map, meta.focusBbox, {
     padding: 60,

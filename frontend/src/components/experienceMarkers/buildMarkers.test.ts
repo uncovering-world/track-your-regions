@@ -77,10 +77,10 @@ describe('an object made of several places', () => {
 
   it('draws a point waiting to be replaced beside the one that will replace it', () => {
     // A point whose replacement is waiting to be published keeps its row and
-    // loses its `ordinal` (ADR-0025 decision 5), and readers still see it. It
-    // used to be *excluded* from standing for the row, because one dot could only
-    // be one place and a dot about to disappear was the wrong one. Drawing every
-    // place removes that choice: both are shown, each as itself.
+    // loses its `ordinal` (ADR-0025 decision 5), and readers still see it.
+    // Every place is drawn, so the choice of which single dot stands for the
+    // row — where one about to disappear is the wrong one — does not arise:
+    // both are shown, each as itself.
     const exp = makeExperience(1, { location_count: 2 });
     const held = makeLocation(11, { ordinal: null, longitude: 1, latitude: 1 });
     const listed = makeLocation(12, { ordinal: 1, longitude: 2, latitude: 2 });
@@ -164,11 +164,12 @@ describe('an object the reader asked to see as one pin', () => {
   });
 
   it('changes nothing for an object drawing one pin out of several places', () => {
-    // The boundary that cost this branch a bug, and it is not "one location": an
+    // The boundary, and it is not "one location": an
     // object with three places of which one is in region *draws* one pin, so
-    // folding it can change nothing. When the chip gated on the total and the
-    // builder on the drawn count, the chip offered a fold the builder ignored,
-    // and a click on the resulting ordinary pin unfolded instead of selecting.
+    // folding it can change nothing. The chip and the builder must gate on the
+    // same count — with the chip on the total and the builder on the drawn
+    // count, the chip offers a fold the builder ignores, and a click on the
+    // resulting ordinary pin unfolds instead of selecting.
     const exp = makeExperience(1, { location_count: 3 });
     const locations = {
       1: [

@@ -2,10 +2,10 @@
  * WorldExperiencePoints — a kind's places across the whole world, before any
  * region is chosen (#910).
  *
- * The map used to be empty at world zoom: markers and the heatmap are built
- * from a region's own read (`ExperienceMarkers`), so nothing was drawn until a
- * region was selected, and the places that sit in no region (#470) were on no
- * map at all. This draws the catalogue itself — every reader-visible point,
+ * What fills the map at world zoom. Markers and the heatmap are built from a
+ * region's own read (`ExperienceMarkers`), which draws nothing until a region
+ * is selected and never covers the places that sit in no region (#470).
+ * This draws the catalogue itself — every reader-visible point,
  * thousands of them, of which a serial World Heritage site contributes hundreds — as the
  * same density heatmap below zoom 5 and the same kind-coloured markers above
  * it, from `GET /api/experiences/points` rather than from a page of
@@ -214,10 +214,10 @@ export function WorldExperiencePoints({ kindId, folded, kindNameOf }: WorldExper
   /**
    * Nothing goes into the style until there is something to draw.
    *
-   * This used to mount both sources and every layer on the first render, over
-   * an empty collection, and fill them when the read landed — so for the whole
-   * of the page's load the style carried a heatmap, a circle layer and two
-   * hover layers with no features in them. That is not free: a layer added to a
+   * Mounting both sources and every layer on the first render, over an empty
+   * collection, and filling them when the read lands leaves the style carrying
+   * a heatmap, a circle layer and two hover layers with no features in them
+   * for the whole of the page's load. That is not free: a layer added to a
    * live style is a synchronous style update and a repaint, react-map-gl adds
    * them one at a time, and a heatmap's blur passes are sized by the viewport
    * rather than by what is in the source.

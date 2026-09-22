@@ -160,8 +160,7 @@ export function expansionForSelection<T extends ExperienceGroupLike>(opts: {
 /**
  * Groups and their open experiences as one sequence, headers included.
  *
- * A collapsed group contributes its header alone — which is what `unmountOnExit`
- * used to do, arrived at differently. The order is the groups' own: the reader's
+ * A collapsed group contributes its header alone. The order is the groups' own: the reader's
  * sequence must not change because the rows are now windowed.
  */
 export function flattenGroups(

@@ -74,7 +74,7 @@ describe('useRegionMetadata', () => {
     // A division's tile click frames from `meta.focusBbox`, the branch a region
     // takes; the box comes from the division list, stored beside its geometry
     // (#674). Without these two fields the click would have nothing to fly
-    // from, since the tile-geometry path that used to stand in is gone.
+    // from: there is no tile-geometry path standing in for them.
     navState.isCustomWorldView = false;
     navState.selectedWorldView = { id: 1 };
     mockFetchRootDivisions.mockResolvedValue([{

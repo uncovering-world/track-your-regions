@@ -2,13 +2,13 @@
  * What an admin reads in a curator's trail.
  *
  * The same rows as an object's History, asked a different question — what has this
- * person done — and until #691 answered with the machine's word for the column, run
- * through `action.replace(/_/g, ' ')`: `admission overridden`, `location marked former`,
- * `accepted source`. Its own six-entry colour map named the same six acts the History's
- * table did, and neither knew about the other, which is how one screen can be fixed and
- * the other left saying the opposite thing about one act.
+ * person done. Answered with the machine's word for the column, run
+ * through `action.replace(/_/g, ' ')`, it reads `admission overridden`, `location marked
+ * former`, `accepted source`; a six-entry colour map of its own would name the same six
+ * acts the History's table names, with neither knowing about the other, which is how one
+ * screen gets fixed and the other is left saying the opposite thing about one act.
  *
- * The chip's words come from `ACTION_LABELS` now, keyed by the vocabulary both sides import
+ * The chip's words come from `ACTION_LABELS`, keyed by the vocabulary both sides import
  * (`@tyr/shared/curationLog`, ADR-0065) and held to the schema's CHECK by a type, so what
  * holds this screen to the acts the database accepts is the typecheck.
  * This pins the wiring: that the label reaching an admin is the product's word for the

@@ -62,13 +62,13 @@ function waitingSentence(waiting: WaitingCounts | null): string {
  * split below: while the gate is on they are subjunctive — what the click *would* do,
  * which is what someone deciding needs — and once it is off they are indicative, a
  * statement of where the backlog now stands. A consequence of a click that appears only
- * after the click is a report, and reports do not inform decisions. Getting this right
- * for one answer and not the other is how it was wrong twice in a row here: first the
- * held half rendered only after the flip, then the unread half did.
+ * after the click is a report, and reports do not inform decisions. Both answers have to
+ * follow that split, not one of them: a half that renders only after the flip is a
+ * report where a decision was being made.
  */
 function gateConsequence(gateOn: boolean, waiting: WaitingCounts | null): string {
   if (waiting !== null) return gateOn ? gatedConsequence(waiting) : ungatedConsequence(waiting);
-  // Count-free but **not silent**, and the difference is the whole of this branch. Both
+  // Count-free but **not silent**, and the difference is what this branch is for. Both
   // answers are said as classes, because the one this drops is the only consequence on
   // this control a flip back cannot undo: once the next run has applied a held change the
   // pointer is cleared, and re-gating restores nothing. Saying nothing would leave an
@@ -169,8 +169,8 @@ export function CurationGateControls({ source }: { source: ExperienceSource }) {
     // may already be visible") beside a panel still reading "1272 objects nobody has
     // read" and a button still offering to publish 1272, with the object and
     // `region-locations` caches stale in the same window. Refetching after a request
-    // that turned out to change nothing costs one query; the alternative the copy
-    // used to leave was a page reload.
+    // that turned out to change nothing costs one query; the alternative is a page
+    // reload.
     //
     // The dialog closes here for the same reason: its backdrop covered the one message
     // that matters and put `aria-hidden` over the tree it lives in, with the publish

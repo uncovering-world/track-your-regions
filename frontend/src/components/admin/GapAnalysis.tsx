@@ -32,9 +32,9 @@ import { frameGeoJson } from '../../utils/mapUtils';
 
 /**
  * The basemap every map of the import screen's coverage draws on, shared with
- * `CoverageCompareDialog.tsx`. It used to be copied there, because the file
- * that held it imported this one's rows and the import would have been
- * circular; the dialogs that reach back are their own files now (#933).
+ * `CoverageCompareDialog.tsx` rather than copied into it: the dialogs that
+ * reach back are their own files, so importing this one's rows is not
+ * circular (#933).
  */
 export const COVERAGE_MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 

@@ -1,10 +1,10 @@
 /**
  * The dialog suggests a name for the region it is about to make -- what the
- * staged divisions' names share -- and until #282 it kept suggesting it: the
- * seed ran on every render whose field was empty, so the admin who deleted
- * the "M" that Monroe County and Miami-Dade County share saw it come straight
- * back. A suggestion is offered once, when the dialog opens; after that the
- * field is the admin's, and an emptied field is a choice, not a gap to refill.
+ * staged divisions' names share -- once, when the dialog opens (#282). A seed
+ * that ran on every render whose field was empty would hand the "M" that
+ * Monroe County and Miami-Dade County share straight back to the admin who
+ * deleted it: after the first suggestion the field is the admin's, and an
+ * emptied field is a choice, not a gap to refill.
  */
 
 import { describe, it, expect, vi } from 'vitest';

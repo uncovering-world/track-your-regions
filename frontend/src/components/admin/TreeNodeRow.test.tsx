@@ -1,9 +1,9 @@
 /**
  * The tree draws a source-page glyph beside every node whose import named a
- * page, and until #703 it linked whatever string the row carried: `href={url}`
- * for a value an import tree had posted and `z.string().url()` had let
- * through. A `javascript:` href runs on click, in the admin's session. Now
- * the glyph is offered through `safeHref`, and a page it refuses gets no
+ * page, and the glyph's href goes through `safeHref` rather than linking
+ * whatever string the row carried (#703): `href={url}` for a value an import
+ * tree posted and `z.string().url()` let through is a `javascript:` href that
+ * runs on click, in the admin's session. A page `safeHref` refuses gets no
  * glyph at all -- there is nothing to open.
  */
 

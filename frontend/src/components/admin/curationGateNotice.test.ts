@@ -2,9 +2,9 @@
  * Tests for the line a curator reads after releasing a whole source.
  *
  * Called directly rather than through a rendered dialog, which is the point of the
- * module existing: every clause here is a *claim about what happened*, each one was
- * corrected during review for saying something the response did not support, and each was
- * previously reachable only by mounting a component and clicking twice. A defect in a
+ * module existing: every clause here is a *claim about what happened*, and a clause
+ * saying something the response does not support is reachable, inside a component,
+ * only by mounting it and clicking twice. A defect in a
  * count or a plural is a defect in this function, so this is where it is pinned.
  *
  * The component's own suite keeps one end-to-end case — that this text reaches the alert —

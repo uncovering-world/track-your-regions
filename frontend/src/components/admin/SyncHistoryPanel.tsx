@@ -175,8 +175,8 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
       </TableCell>
       <TableCell align="right">
         {/* A chip above zero, like Errors, because it is the same kind of
-            number: how much of this run is still waiting on a person. A gated
-            run used to read "Updated 0" here and nothing else (#523). */}
+            number: how much of this run is still waiting on a person. Without
+            it a gated run reads "Updated 0" here and nothing else (#523). */}
         {log.total_held > 0 ? (
           <Chip label={log.total_held.toLocaleString()} color="warning" size="small" />
         ) : (

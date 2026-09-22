@@ -83,11 +83,11 @@ interface DivisionRowProps {
 /**
  * One division row, subscribed to its own "am I the hovered one" boolean.
  *
- * Hover used to be state in `NavigationContext`, so crossing this list — or the
- * map, which shares the id — re-rendered the whole list and every other
- * consumer of that context per mouse move (#573). Now a move re-renders the row
- * entered and the row left, which is the invariant `regionHoverStore.test.tsx`
- * pins.
+ * Subscribed to its own hovered-ness rather than to `NavigationContext`: hover
+ * held as context state re-renders the whole list and every other consumer of
+ * that context per mouse move, since the map shares the id (#573). A move
+ * re-renders the row entered and the row left, which is the invariant
+ * `regionHoverStore.test.tsx` pins.
  */
 function DivisionRow({ division, placement, onClick, onHoverChange }: DivisionRowProps) {
   const isHovered = useRegionHoverSelector(id => id === division.id);

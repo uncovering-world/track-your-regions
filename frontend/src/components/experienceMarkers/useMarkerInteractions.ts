@@ -213,9 +213,9 @@ export function useMarkerInteractions({
     // such a leave takes the popup and the ring off something the pointer is
     // still on, or off the thing it has just arrived at: within one DOM
     // `mousemove` the marker handlers run before the highlight ones, so crossing
-    // from a dot onto a pin used to set the hover and then clear it. So a leave
+    // from a dot onto a pin would set the hover and then clear it. So a leave
     // whose point already answers with what is hovered is a move inside the
-    // hover, not a departure; anything else clears as before.
+    // hover, not a departure; anything else clears.
     //
     // Only for a leave delivered by a *move*, though. MapLibre's delegated
     // `mouseleave` has two paths (`_createDelegatedListener`, read in

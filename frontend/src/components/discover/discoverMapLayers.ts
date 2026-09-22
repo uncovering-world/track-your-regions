@@ -54,11 +54,11 @@ export function addDiscoverMapLayers(map: maplibregl.Map): void {
       cluster: true,
       clusterMaxZoom: 12,
       clusterRadius: 50,
-      // No `promoteId`. It used to derive each feature's id from
-      // `properties.id`, which was one per object; a place is a feature now and
-      // that id repeats across every place of an object — MapLibre would key
-      // them all the same, and the first feature-state written here would be
-      // shared by forty pins. Nothing reads feature-state on this source, so
+      // No `promoteId`. Deriving each feature's id from `properties.id` keys
+      // every place of an object the same, since a place is the feature and
+      // that id is one per object — MapLibre would then share the first
+      // feature-state written here across forty pins. Nothing reads
+      // feature-state on this source, so
       // this removes a latent collision rather than a live bug.
     });
 
