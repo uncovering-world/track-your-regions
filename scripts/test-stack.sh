@@ -177,10 +177,10 @@ case "$READINESS_ATTEMPTS" in
     ;;
 esac
 
-# What a readiness timeout has to leave behind. Waiting used to print one line
-# and return 1; under `set -e` the run ended there, before a single spec, so
-# CI's "Upload Playwright report" step found no files and the job log said only
-# that the frontend had not answered - never whether the container was slow,
+# What a readiness timeout has to leave behind. One line and a return of 1 is
+# not enough: under `set -e` the run ends there, before a single spec, so
+# CI's "Upload Playwright report" step finds no files and the job log says only
+# that the frontend did not answer - never whether the container was slow,
 # crashed, or never bound the port. Printed rather than left to be fetched,
 # for two reasons: on CI nobody can fetch it, the runner being discarded with
 # the containers on it; and printing puts the state *at the moment of the

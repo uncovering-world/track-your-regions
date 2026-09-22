@@ -8,8 +8,8 @@
  *
  * **A spec that passes on retry is flaky, not failed** (#447). Playwright
  * itself says so — `stats.flaky` is a category of its own and the process
- * exits 0 — and this file is where that had been overridden: counting flaky
- * as failed turned "the box was busy" into a red pre-push gate, and truncated
+ * exits 0 — and this file is where that verdict is kept: counting flaky
+ * as failed turns "the box was busy" into a red pre-push gate, and truncates
  * the rest of the lane behind it. A flake is loud instead: named here, printed
  * on its own line, and the failed attempt's trace kept by the CI job.
  *
