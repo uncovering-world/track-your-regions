@@ -36,10 +36,10 @@ export interface Bbox {
 export function parseBbox(raw: unknown): Bbox | null {
   // A string, and only a string. Express parses a repeated parameter into an
   // array, and `String(['1,2', '3,4'])` is `'1,2,3,4'` — so `?bbox=1,2&bbox=3,4`
-  // used to compose two halves nobody sent into a perfectly valid box, and
-  // `String(['-10,35,30,60'])` passed a single-element array straight through.
+  // would compose two halves nobody sent into a perfectly valid box, and
+  // `String(['-10,35,30,60'])` would pass a single-element array straight through.
   // Neither is a box a caller asked for, and the schema that guards this
-  // endpoint calls this function, so the coercion was inside the validation
+  // endpoint calls this function, so a coercion here would sit inside the validation
   // rather than in front of it.
   if (typeof raw !== 'string' || raw === '') return null;
   const fields = raw.split(',');

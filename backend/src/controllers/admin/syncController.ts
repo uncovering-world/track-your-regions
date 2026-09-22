@@ -583,7 +583,7 @@ export async function getSources(req: Request, res: Response): Promise<void> {
   // argues: the counts are this endpoint's addition, the sources list is what it is
   // for. This aggregate walks every row of `experiences` with three `EXISTS` filters,
   // one of them a `LATERAL` into a run's changeset — a lock, a pool error or a slow
-  // scan on a grown catalogue is enough. A throw used to reject `getSources`
+  // scan on a grown catalogue is enough. A throw here rejects `getSources`
   // entirely, and the panel that reads it destructures only `data`: no sources, no
   // Start Sync, no Cancel and no message saying why, on all three screens that share
   // the query. `null` costs three numbers and says so; the alternative cost the

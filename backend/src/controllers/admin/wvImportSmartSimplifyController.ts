@@ -343,11 +343,10 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
     await client.query('COMMIT');
 
     // 6. Invalidate geometry + sync match status for all affected regions.
-    //    The post-move "simplify hierarchy" pass used to run here automatically
-    //    has been removed — it's now an explicit operator action via the
-    //    dedicated simplify icon on the tree row. The operator wanted to
-    //    decouple "move divisions" from "fold identical members into a single
-    //    parent-division row".
+    //    No "simplify hierarchy" pass runs here: it is an explicit operator
+    //    action via the dedicated simplify icon on the tree row, because
+    //    "move divisions" and "fold identical members into a single
+    //    parent-division row" are separate decisions.
     for (const regionId of affectedRegionIds) {
       await invalidateRegionGeometry(regionId);
       await syncImportMatchStatus(regionId);

@@ -49,7 +49,7 @@ export function errorHandler(
 
   // A value that did not fit its column (22001, string_data_right_truncation).
   // Without this branch the driver error carries no statusCode, so an input a
-  // request schema let through too wide came back as a 500 — masked to
+  // request schema let through too wide comes back as a 500 — masked to
   // "Internal server error" in production, naming nothing.
   //
   // Postgres reports the type and its width here but never the column or the

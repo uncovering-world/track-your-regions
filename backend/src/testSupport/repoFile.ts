@@ -13,10 +13,10 @@ import { fileURLToPath } from 'node:url';
  * imported from `packages/shared` by both, and pinned to the schema by a type
  * (ADR-0065, `src/db/curationLogActions.test.ts`).
  *
- * Each of them used to walk up from its own file with its own count of `..`, which
- * works only where `backend/` sits inside a full checkout. The container unit lane
- * mounts `backend/src` at `/app/src`, so those walks landed on `/` and every one of
- * those specs failed on a path that was simply not there — 18 files on `main`, green
+ * The root is found rather than counted: a walk up from a spec's own file with
+ * its own count of `..` works only where `backend/` sits inside a full checkout.
+ * The container unit lane mounts `backend/src` at `/app/src`, so such a walk lands
+ * on `/` and the spec fails on a path that is simply not there — 18 files on `main`, green
  * on the host and in CI, which is how the lane stayed broken unnoticed (#948).
  *
  * So the root is found rather than counted: the nearest ancestor that actually holds

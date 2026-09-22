@@ -152,7 +152,7 @@ describe('declineSourceValue', () => {
     expect(insert?.sql).toContain('DO UPDATE SET declined = EXCLUDED.declined');
   });
 
-  it('leaves a trail, since standing by your own edit used to leave none', async () => {
+  it('leaves a trail, so standing by your own edit is an act the log holds', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);

@@ -40,8 +40,8 @@
  *   batch" has stopped being a unit: a curator answers eighteen arrivals over a
  *   week, and no run divides them.
  *
- * **Two consequences, stated rather than discovered later.** Chips no longer clear
- * when a source next runs — they last their full window per row, so a weekly
+ * **Two consequences, stated rather than discovered later.** Chips last their
+ * full window per row rather than clearing when a source next runs, so a weekly
  * source shows roughly four windows' worth at once instead of one batch. And
  * everything published before the gate existed wears no chip at all, because
  * `published_at` is NULL for it; the column starts meaning something from the

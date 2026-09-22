@@ -1,11 +1,10 @@
 /**
  * What a curator may store in a url field, decided in one place.
  *
- * The rule used to be written twice — a denylist in `safeUrl` (types/index.ts)
- * and a second spelling in `isUnsafeUrl` (curationController.ts) — and the two
- * disagreed about whitespace: only one trimmed, so `" javascript:alert(1)"`
- * walked past the schema and was stored (#693). Trimming both would not have
- * closed it. A URL parser drops ASCII tab, LF and CR from anywhere in the input
+ * The rule is written once, here, because two spellings — a denylist in a
+ * schema and another in a controller — disagree about whitespace: with only
+ * one trimming, `" javascript:alert(1)"` walks past the schema and is stored
+ * (#693). Trimming both would not close it. A URL parser drops ASCII tab, LF and CR from anywhere in the input
  * before it decides what the scheme is, so `"java\tscript:alert(1)"` is a
  * `javascript:` url that no denylist over the raw string sees.
  *
@@ -210,8 +209,8 @@ function respellSegment(segment: string): string {
  * shape a static analyser can read: CodeQL's request-forgery query counts a
  * value merely *compared* against a list as still the caller's, and a segment
  * that went through `encodeURIComponent`, or a suffix that follows a literal
- * `?`, as not — which is why the image proxy's schema used to be a new alert
- * every time its line moved.
+ * `?`, as not — so a schema that merely compares the value against the hosts
+ * is a request-forgery alert on every line shift, and this shape is not.
  */
 export function pictureFetchUrl(value: string, { asRedirect = false } = {}): string | null {
   if (!isStorableHttpUrl(value)) return null;

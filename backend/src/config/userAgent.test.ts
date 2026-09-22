@@ -29,8 +29,8 @@ describe('userAgent', () => {
   });
 
   it('takes its version from the package rather than a literal', () => {
-    // The old strings said 1.0 while the package said 1.0.0, and nothing moved
-    // them together. Whatever the package says, the header says (#864).
+    // A literal version drifts from the package's and nothing moves them
+    // together. Whatever the package says, the header says (#864).
     expect(userAgent()).toContain(`/${PACKAGE_VERSION} `);
   });
 

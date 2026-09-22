@@ -5,8 +5,7 @@
  * Two rules, on two columns, and they are not the same rule:
  *
  * - `missing_since` on a *location* — a point the source stopped offering leaves
- *   every list, marker batch and count, exactly as it used to when the row was
- *   deleted, but a visit to it survives, because a person who stood there stood
+ *   every list, marker batch and count, but a visit to it survives, because a person who stood there stood
  *   there. That is the same asymmetry `lost` already has one level up.
  * - `admission` on the *experience* — a row its kind turned down gives
  *   nothing back at its own address, so every by-id read whose answer *is* the

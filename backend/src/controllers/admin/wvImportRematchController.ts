@@ -28,8 +28,8 @@ const runningRematches = new Map<number, { progress: ImportProgress; startTime: 
  * POST /api/admin/wv-import/matches/:worldViewId/rematch
  *
  * The policy defaults to the one the source type's tree is shaped for, so a
- * re-match reproduces the import rather than quietly switching algorithms — it
- * used to call the country matcher unconditionally. `matchingPolicy` in the body
+ * re-match reproduces the import rather than quietly switching algorithms.
+ * `matchingPolicy` in the body
  * overrides it, which is how one tree gets scored under two policies.
  *
  * Destructive by design: every `region_members` row for the world view is

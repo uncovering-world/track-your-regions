@@ -632,8 +632,8 @@ async function placeAfterAdmissionRelease(
   // object and *which* world views, and a bare boolean reduces them to
   // "something about regions failed on the Prado". `placeAfterRelease` already
   // returns one entry per failed world view with its id and its name, and
-  // `/:id/publish` already passes them through; dropping them here would have
-  // made three sentences in this branch false about this one endpoint.
+  // `/:id/publish` already passes them through; a bare boolean here would
+  // reduce them to "something about regions failed".
   // Reshaped to the same `{ id, name }` the publish endpoint answers with, so
   // the page renders one sentence for both rather than two.
   return {

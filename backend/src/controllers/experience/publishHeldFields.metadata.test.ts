@@ -300,7 +300,7 @@ describe('the metadata column, which no single entry describes', () => {
     // Getbol's card: run 68 proposes a new photograph and the credit UNESCO
     // ships beside it, as two answerable rows — `imageUrl` on its own and
     // `imageCredit` inside the source-data catch-all. Publishing the picture
-    // alone used to leave the credit naming the previous photograph's author.
+    // alone must not leave the credit naming the previous photograph's author.
     const { client, queries } = makeClient({
       row: {
         curation_state: 'auto', pending_change_sync_log_id: 53,

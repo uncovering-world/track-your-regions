@@ -49,7 +49,7 @@ router.use(authenticatedLimiter);
  */
 router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    // Fetch full profile from DB (JWT no longer contains PII)
+    // Fetch full profile from DB (the JWT carries no PII)
     const userResult = await pool.query(
       `SELECT id, uuid, email, display_name, role, avatar_url FROM users WHERE id = $1`,
       [req.user!.id],

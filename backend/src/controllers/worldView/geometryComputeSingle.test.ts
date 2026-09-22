@@ -177,11 +177,10 @@ describe('computeSingleRegionGeometry (HTTP handler) reaches the same fast path'
  * right answer and `computeOneGroup` tallying it as *skipped* with the run
  * reporting Complete is right with it.
  *
- * There is no second kind of failure to tell apart from it. Marking the
- * ancestors stale used to be a statement of its own here, made after the
- * geometry `UPDATE` had committed, so losing it had to be raised rather than
- * softened; since #680 the database does that work inside the `UPDATE` itself
- * (ADR-0035).
+ * There is no second kind of failure to tell apart from it: the database
+ * marks the ancestors stale inside the `UPDATE` itself (#680, ADR-0035), so
+ * there is no separate statement after the commit whose loss would have to be
+ * raised rather than softened.
  */
 describe('computeRegionGeometryCore answers a failed pipeline softly', () => {
   beforeEach(() => {
@@ -209,10 +208,10 @@ describe('computeRegionGeometryCore answers a failed pipeline softly', () => {
 /**
  * `regions.geom` is the authoritative shape every derived column is made from
  * (rule 1 of `docs/tech/geometry-columns.md`), so nothing may apply a tolerance
- * between the union and the column. The union path used to end its cleaning
- * step with `ST_SimplifyPreserveTopology(geom, 0.0001)` — roughly 11 m at the
- * equator, baked into a column no rung can recover it from, while the fast path
- * and the two smaller union writers stored the shape they had computed (#443).
+ * between the union and the column. A cleaning step ending in
+ * `ST_SimplifyPreserveTopology(geom, 0.0001)` bakes roughly 11 m at the
+ * equator into a column no rung can recover it from, while the fast path
+ * and the two smaller union writers store the shape they computed (#443).
  *
  * The guard binds the **sink**, not the file. Four statements of the writer can
  * put a geometry into that column — the collect step, the neighbour snap (whose

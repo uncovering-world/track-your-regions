@@ -394,11 +394,11 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
   const { divisionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/geo-suggest-gap — divisionId=${divisionId}`);
 
-  // A division's anchor_point is the focus trigger's since #674: every row with
-  // geometry has one, written from geometry_focus(). The filler that stood here
-  // wrote ST_Centroid(ST_Envelope(geom)) into the NULLs behind a DISABLE
-  // TRIGGER -- a different, worse answer for a division over the dateline --
-  // and the KNN below already COALESCEs to a centroid for a row without one.
+  // A division's anchor_point is the focus trigger's (#674): every row with
+  // geometry has one, written from geometry_focus(). No filler writes
+  // ST_Centroid(ST_Envelope(geom)) into the NULLs here -- that is a different,
+  // worse answer for a division over the dateline -- and the KNN below already
+  // COALESCEs to a centroid for a row without one.
 
   // Boundary-based KNN: finds the nearest assigned region by polygon boundary distance.
   // Uses `geom <->` (GiST bbox-based KNN) to catch large regions whose boundary is

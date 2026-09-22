@@ -440,11 +440,11 @@ const offeredPlaceInNoRegion: CatalogueAssertion = {
  * Measured the day this landed (2026-08-24): 1590 of 1604 objects and 1321 of
  * 1321 works — the largest debt this lane carried. 1414 of those objects had a
  * `held` change naming `imageCredit` waiting in the queue: the portal's own
- * photographer, fetched from its export for a photograph the product has since
- * stopped drawing. ADR-0043 changed both halves of that picture: the World
- * Heritage rows now carry a Commons file *with* its credit, written by the
- * repair rather than proposed, so on the dev database this check fell from
- * 1590 to the 330 Commons pictures that really lack one (2026-09-02). What the
+ * photographer, fetched from its export for a photograph the product does not
+ * draw (ADR-0043). Under ADR-0043 the World Heritage rows carry a Commons
+ * file *with* its credit, written by the repair rather than proposed, so on
+ * the dev database this check reports the 330 Commons pictures that really
+ * lack one (2026-09-02). What the
  * `credit_waiting` flag still tells apart is the same two afternoons — a credit
  * a run fetched and the gate is holding, against one nobody has fetched — and
  * the line says which of the two a row is.

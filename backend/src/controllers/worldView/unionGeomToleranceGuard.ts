@@ -51,10 +51,10 @@ const COARSENING_CALL_GLOBAL = new RegExp(NO_COARSENING_CALL.source, 'gi');
  * means adding a name above cannot leave the collect step's exemption behind.
  *
  * Two forms of one expression: the plain one answers "is the legitimate call
- * still there", the global one counts. Writing the first as a looser pattern —
- * `CASE WHEN $2 THEN st_` — is what an earlier revision did, and it matched any
- * PostGIS call at all, so an input-side guard rewritten to `ST_Buffer` would
- * have satisfied the anti-vacuity check while leaving both counts at zero.
+ * still there", the global one counts. The first is the exact call, not a
+ * looser pattern such as `CASE WHEN $2 THEN st_`: that matches any PostGIS
+ * call at all, so an input-side guard rewritten to `ST_Buffer` would satisfy
+ * the anti-vacuity check while leaving both counts at zero.
  */
 const GUARDED_COARSENING_CALL = new RegExp(
   String.raw`CASE\s+WHEN\s+\$2\s+THEN\s+` + NO_COARSENING_CALL.source,

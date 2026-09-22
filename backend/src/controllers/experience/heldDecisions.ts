@@ -4,8 +4,8 @@
  *
  * A gated run's proposal against a row readers can already see is kept out of the
  * columns and recorded (ADR-0025 decision 5, ADR-0037 for a field of a place or a
- * work). The card used to have one answer for the whole proposal. Since #722 it
- * has one per row, and this is the record of those answers: what was answered
+ * work). The card has one answer per row rather than one for the whole
+ * proposal (#722), and this is the record of those answers: what was answered
  * about, and which of the two answers it was.
  *
  * Recorded **by value**, exactly as a conflict refusal is in

@@ -290,8 +290,7 @@ async function applyReviewDecision(
  * final dilation → interactive review → mask rebuild.
  *
  * Called by the mean-shift pipeline (meanshiftPreprocess) after its water
- * detection. It used to serve the classical pipeline's `detectWater` too, and
- * that pipeline is gone.
+ * detection, and by nothing else.
  *
  * @param waterMaskIn  Binary water mask (1 = water). Modified in place.
  * @param colorBuf     Color buffer for sub-clustering (inpaintedBuf or mean-shift colorBuf).

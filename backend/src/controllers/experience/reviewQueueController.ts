@@ -150,14 +150,13 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
  * **The page is chosen before it is drawn** (ADR-0051 decision 2). The seven
  * questions are one list: `queryQueueKeys` orders every kind by the date of the
  * run that asked it, filters it, and takes one page of keys by keyset — so this
- * handler no longer pages anything, and the seven `<kind>Offset` parameters are
- * gone with the seven `LIMIT`s. What is left here is drawing the cards: the
+ * handler pages nothing and takes no per-kind offset. What is left here is drawing the cards: the
  * page's keys are grouped by kind, and each statement below runs once, for the
  * ids of its own kind, or not at all. Each keeps the `ORDER BY` it had, and what
  * that orders is now its own array rather than anything a curator sees: `order`
  * is the page, in the one order across the kinds, and the arrays are a lookup by
  * id beside it. `total` and `facets` are counted over the union under the
- * filter, so the page no longer has to say "the first N of this kind, and there
+ * filter, so the page never has to say "the first N of this kind, and there
  * may be more".
  * `keptOut`, `answeredWithdrawals` and `refusedParts` are outside all of that and
  * keep their own offsets: they are not open questions, carry no date to order the
@@ -174,9 +173,9 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const query = req.query as ReviewQueueQuery;
   const limit = Number(query.limit ?? QUEUE_PAGE_SIZE);
   const filters = queueFilters(query, limit);
-  // The three lists that are not open questions keep an offset each, and need one
-  // for the reason every kind used to: the page renders them in blocks of their
-  // own, so a shared number would page one whenever a curator paged another.
+  // The three lists that are not open questions keep an offset each: the page
+  // renders them in blocks of their own, so a shared number would page one
+  // whenever a curator paged another.
   const offsets = {
     keptOut: query.keptOutOffset ?? 0,
     answeredWithdrawals: query.answeredWithdrawalsOffset ?? 0,
@@ -559,9 +558,9 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // gate* held, never one a claim already refused for its own reason.
   //
   // The field says so itself rather than being inferred from the absence of a
-  // claim (#519). The old `NOT (f->>'curatedConflict')::boolean` was right only
-  // while the gate was the sole other reason a write could be refused: a third
-  // reason would have been reclassified as gate-held here, and offered to
+  // claim (#519): `NOT (f->>'curatedConflict')::boolean` is right only
+  // while the gate is the sole other reason a write can be refused, and a third
+  // reason would be reclassified as gate-held here and offered to
   // publishing, which writes all eleven columns.
   //
   // What counts as `held`: the reasoning is on `heldOpenSql`
@@ -589,9 +588,9 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // number and the queue's cards agree.
   //
   // Both halves are scalar subqueries rather than a lateral join with a `GROUP
-  // BY`, which is what the object's half used to be, and the change moves where
-  // the empty case is decided. A lateral over `changed_fields` filtered on the
-  // flag dropped a row with nothing held before any aggregate ran; a scalar
+  // BY`, and the shape decides where the empty case is decided. A lateral over
+  // `changed_fields` filtered on the flag drops a row with nothing held before
+  // any aggregate runs; a scalar
   // `jsonb_agg` over an empty set answers NULL instead, on a row the `WHERE`
   // has already admitted for its *other* half. So NULL here is ordinary — the
   // object's half of a card about a part, or the reverse — and the guard below

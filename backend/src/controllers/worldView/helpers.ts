@@ -64,10 +64,9 @@ export async function ensureRegionMember(regionId: number, divisionId: number): 
  * region it does not.
  *
  * The World View Editor's two are not the whole set. The import-review tree
- * operations move and delete regions too, and called nothing at all until #496:
+ * operations move and delete regions too (#496):
  * reparentRegion, mergeChildIntoParent, removeRegionFromImport, dismissChildren,
- * pruneToLeaves and smartFlatten, the last of which the issue's own list did not
- * have. Each now names the rows whose union it changed and no others -- the
+ * pruneToLeaves and smartFlatten. Each names the rows whose union it changed and no others -- the
  * ancestors above them are the trigger's. Their undo paths name nothing, and
  * are right not to: every region they recreate arrives with geom NULL, which is
  * what seeds the run's closure, so the tree above it is recomputed without

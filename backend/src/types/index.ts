@@ -753,9 +753,9 @@ export const publishExperienceBodySchema = z.object({
    * counts rather than the ids behind them. Leaving everything absent means
    * the opposite thing: an arrival, answering for the object too. That
    * inference — "named nothing" reads as "publish the object" — is exactly
-   * the defect this field exists to remove: a contents card whose only held
-   * field a curator had already claimed used to send `{}` and silently
-   * publish the object, asserting a person had read a museum whose paintings
+   * the defect this field exists to remove: without it, a contents card whose
+   * only held field a curator had already claimed sends `{}` and silently
+   * publishes the object, asserting a person had read a museum whose paintings
    * were all a curator ever looked at.
    *
    * `true` only, never `false`: there is no meaningful "not contents-only" to
@@ -1138,9 +1138,9 @@ export const subregionGeometriesQuerySchema = z.object({
  * them: the single-region endpoint, the bulk one and the progress stream.
  *
  * One object rather than one per endpoint, because that is the whole point of
- * it — the three used to disagree about `skipSnapping`, one taking no such
+ * it — three declarations disagree about `skipSnapping`, one taking no such
  * parameter at all and one reading it off a query nothing validated, so the
- * same region came out differently depending on which was asked (#736). Three
+ * same region comes out differently depending on which was asked (#736). Three
  * identical schemas would restore that by the ordinary route: a change made to
  * one and forgotten on the others, with nothing to fail.
  *

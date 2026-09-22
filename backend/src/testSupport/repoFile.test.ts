@@ -7,10 +7,10 @@ import { backendSrc, repoFile, repoRelative, repoRoot } from './repoFile.js';
 /**
  * One way to reach a repository file, so the next spec does not re-discover #948.
  *
- * The guards that pin a claim against the file stating it used to walk up from
- * their own module with a hand-counted `..`, which is right only where `backend/`
+ * A guard that pins a claim against the file stating it must not walk up from
+ * its own module with a hand-counted `..`, which is right only where `backend/`
  * sits inside a full checkout. The container unit lane mounts this package's `src`
- * alone at `/app/src`, so those walks left the checkout and 18 test files failed on
+ * alone at `/app/src`, so such walks leave the checkout — 18 test files failed on
  * paths that were not there — invisibly, because the host lane and CI check out
  * everything.
  *
@@ -22,7 +22,7 @@ import { backendSrc, repoFile, repoRelative, repoRoot } from './repoFile.js';
 const packageRoot = dirname(backendSrc);
 
 /**
- * Every relative path a module builds, in both shapes the suite used before #948.
+ * Every relative path a module builds, in both shapes a spec can spell it (#948).
  *
  * `'../../../db/init/01-schema.sql'` is one literal, as `new URL()` takes it.
  * `join(__dirname, '..', '..', '..')` spells the same walk as segments, and each

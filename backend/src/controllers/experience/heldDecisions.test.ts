@@ -1,8 +1,8 @@
 /**
  * An answer is recorded as the catalogue stores a name (#835).
  *
- * A decision is keyed by the part's name and matched by the proposed value,
- * and both used to be written straight from the record. A record filed before
+ * A decision is keyed by the part's *tidied* name and matched by the proposed
+ * value, never written straight from the record. A record filed before
  * the writers tidied names its part with the run of spaces the run saw; an
  * answer keyed by that would not meet the tidied record the next run files,
  * and a refusal would come back on the card. Tidied at the write, the unique
