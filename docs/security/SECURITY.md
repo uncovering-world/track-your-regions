@@ -236,10 +236,11 @@ The Python service has a smaller surface than the Node backend but introduces ne
   where a link points, not what a file contains — `*.md` is still read for
   secrets by GitHub's provider-pattern scanning alone.
 - **Four files are only partially analysed by Semgrep.** Its parser reports a
-  syntax error and analyses what it can: `martin/warm-tiles.sh:1`,
-  `backend/src/services/wikivoyageExtract/parser.ts:83`,
-  `frontend/src/components/WorldViewEditor.tsx:544`,
-  `scripts/setup-integrations.sh:33`. The code itself is valid — `tsc` and
+  syntax error and analyses what it can: `martin/warm-tiles.sh`,
+  `backend/src/services/wikivoyageExtract/parser.ts`,
+  `frontend/src/components/WorldViewEditor.tsx`,
+  `scripts/setup-integrations.sh` (the scan's own output names the line it
+  stopped at on each run). The code itself is valid — `tsc` and
   ESLint pass on the two TypeScript files, and shellcheck on the two shell
   ones — so this is a limitation of Semgrep's own grammars, not a defect to fix
   in the source. Overall coverage
