@@ -389,12 +389,18 @@ jobs:
               while another file still states the old version (Phase 4).
               Docs count: a stale rule in CLAUDE.md is as real a defect as
               a stale constant in code, because both are read as truth.
-              A stale count, tally, line pointer or history sentence in
-              prose or a comment is a Note, and the fix it names is to
-              drop the volatile claim — state the class, name the symbols
-              (#579) — not to refresh the number, which will be stale
-              again after the next change. It goes inline only when the
-              stale sentence states a rule that is now false and the blast
+              A stale count, tally or line pointer in prose or a comment
+              is a Note, and the fix it names is to drop the volatile
+              claim — state the class, name the symbols (#579) — not to
+              refresh the number, which will be stale again after the
+              next change. A sentence of repository history in a comment
+              (what it used to say, which review found what, the Nth time
+              on a branch) is a Note too, and its fix is to state the
+              current invariant and point at the ADR or issue (#925,
+              development-guide.md § What a source comment says) — never
+              to keep the superseded behaviour in the comment because it
+              is informative. Either goes inline only when the stale
+              sentence states a rule that is now false and the blast
               radius makes it Major.
             - **Convention adherence** — code reuse (shared components/utils),
               file-size limits, dev-guide patterns, commit hygiene
