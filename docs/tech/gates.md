@@ -117,7 +117,7 @@ everything or the base was simply unknown.
 
 | Input | Paths | Why this is what it is |
 | --- | --- | --- |
-| `app` | `backend/`, `frontend/`, `packages/`, `db/`, `martin/`, `scripts/`, `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | The product is one contract surface, not two stacks: both sides import packages/shared (ADR-0065), backend specs read db/, frontend/src, martin/ and scripts/ through repoFile(), and the smoke lane is the only gate that sees the backend↔frontend contract at all, so a change to any of them asks for all of it. |
+| `app` | `backend/`, `frontend/`, `packages/`, `db/`, `martin/`, `scripts/`, `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | The product is one contract surface, not two stacks. Both sides import packages/shared (ADR-0065), whose generated api module types the frontend by the backend's response schemas (ADR-0066). Backend specs read db/, frontend/src, martin/, packages/ and scripts/ through repoFile(). And for an endpoint still declared per side, the smoke lane is the only gate that sees the backend↔frontend contract. So a change to any of them asks for all of it. |
 | `python` | `cv-python/` | The computer-vision service is its own interpreter, its own dependency set and its own image; no Node gate reads it except the Semgrep scan pointed at the whole checkout. |
 | `db-python` | `/^db\/.*\.py$/`, `db/pyproject.toml`, `db/requirements.txt` | The GADM loaders live in db/ but are run by pytest, so they are an input to the Python test lane without being an input to cv-python’s lint. |
 | `schema` | `/^db\/init\//`, `docker-compose.yml`, `backend/src/db/schema.generated.ts`, `backend/src/db/generateSchemaTypes.ts`, `backend/src/db/schemaTypesRender.ts`, `backend/src/db/testDbName.ts`, `scripts/db-types.sh` | The generated row types are a function of what a fresh database is built from: the db/init directory the image applies on first start, the compose file that pins that image, the file the generator produces, the generator, the renderer, the guard it imports and its runner. The migrations are not — a fresh database never reads them, and the schema-to-migration parity test answers for those. |
@@ -171,15 +171,27 @@ The `app` class is one class and not two because the product is one contract
 surface. Both sides import `packages/shared` — the rules both apply, declared
 once (ADR-0065), which is why that directory is in the class too: a change to
 a shared rule is a change to both sides, and both typechecks read its source
-through the link. Beyond those rules the frontend imports nothing from the
-backend (an endpoint's response shape is still declared per side, #527) and its
-unit tests mock the API, so neither its typecheck nor its unit lane can see a
-backend contract change; the only gate that sees the two sides agree on one is
-the smoke lane, and that is an `app` gate. In the other direction the backend
+through the link.
+
+The package also carries the web's types for the backend's response schemas,
+generated into `api.generated.ts` (ADR-0066). Two gates follow from that for an
+endpoint whose answer a schema declares:
+
+- the frontend's typecheck sees a change to that answer;
+- `backend/src/api/apiTypes.test.ts`, in the backend unit lane, fails while the
+  generated file lags the schemas.
+
+An endpoint still declared per side is the work of #527's sub-issues. For one of
+those the frontend imports nothing from the backend, and its unit tests mock the
+API, so neither its typecheck nor its unit lane can see a backend contract
+change. The only gate that sees the two sides agree on one is the smoke lane,
+and that is an `app` gate.
+
+In the other direction the backend
 suite reads the rest of the repository directly, through `repoFile()` in
 `backend/src/testSupport/` (#948), and the tooling specs beside it under
 `scripts/` do the same through `scripts/repo-root.mjs`. Everything the two
-reached on 2026-09-21:
+reached on 2026-09-22:
 
 | What a spec opens | Why |
 | --- | --- |
@@ -188,6 +200,7 @@ reached on 2026-09-21:
 | `frontend/src` as a whole tree | `types/urlSafety.test.ts` and `db/regionFocusAntimeridian.test.ts` scan it for a second decision made anywhere in the client (#672, #674) |
 | `db/` and `scripts/` as whole trees, beside the backend's own `src/` | `db/regionAncestorInvalidation.test.ts` and `db/regionGeomPieces.test.ts` scan every `.sql`, `.py`, `.ts` and `.sh` under them for anything that switches the region geometry triggers off — by name or wholesale — and `db/renderedRungTopology.test.ts` scans `db/` for a simplifier put into a query |
 | `martin/config.yaml`, `martin/README.md` | the tile sources a spec asserts on, and the document that lists them |
+| `packages/shared/src/api.generated.ts` | `api/apiTypes.test.ts` holds the web's response types to what the backend's schemas render to (ADR-0066) |
 | `scripts/db-migrate.sh` | the migration runner's own behaviour |
 | `docs/tech/gates.md` | `scripts/gates.test.mjs` holds the tables above against `--table`, so the map is written once |
 | `.github/workflows/ci.yml` | `scripts/ci-failsafe.test.mjs` holds every job's condition against the map (#952) |
