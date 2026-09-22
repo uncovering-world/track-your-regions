@@ -47,6 +47,7 @@ Exceptions: files with dense, non-decomposable JSX can exceed the ~500 target if
 | Completed a plan | Trim `docs/tech/planning/*.md` — remove implemented sections, keep only remaining ideas |
 | New tech doc | Add it to `docs/README.md` index table |
 | A line pointer, a count of places or a tally in living prose | Replace it with the symbol, the names or the class (§ What a living document may not say, below) |
+| A comment narrating how the rule arrived | State the invariant and link the record (§ What a source comment says, below) |
 
 ### What a living document may not say
 
@@ -59,6 +60,21 @@ A living document — `docs/tech/*`, `docs/security/SECURITY.md`, `CLAUDE.md` (a
 Where all of this stays legitimate: a point-in-time record — an ADR, an audit report, an issue or pull request, a commit message, a local plan under `docs/tech/planning/` (gitignored; the plans still tracked there are #514's to move out) — describes the code as of a date, and a line pointer or a count there is evidence rather than a standing claim. The same measurement copied from a pull request description into `docs/tech/` becomes one.
 
 The review bot reads a stale count, tally or line pointer as a Note whose fix is to drop the volatile claim and name the class or the symbols — never to refresh the number, which the next change falsifies again. The sweep that does so is also where a claim that was never true gets caught: a sentence read as boilerplate for months is read as a claim once.
+
+### What a source comment says
+
+A source comment is a living document too, and the one read with the least context: whoever opens `locationWriter.ts` next has the code and the comment, not the pull request that produced them. It says what is true of the code **now** and why the implementation is not the obvious one — the constraint a reader would otherwise break, the ordering that is not free to change, the number a threshold still turns on, and a pointer to the durable decision (`ADR-0025`, `#706`) when there is one. What it does not hold is the chronology of how that rule arrived: what an older comment said, which pull request changed it, which review found the next exception, how many times a predicate was misspelled on a branch, how the wording evolved. Git history, the issue and the ADR already hold that, as point-in-time records; a comment that retells it is one more copy for the review bot's Ripple phase to keep aligned, and the source file ends up serving as code, ADR, issue log and postmortem at once (#925).
+
+The tells, so a writer and a reviewer find them: *what this comment used to say*, *an earlier version of this paragraph*, *a review found*, *the Nth time on this branch*, *minutes before #N*, and a *used to* whose sentence states nothing about the present. `experienceRoutes.ts`'s `/new-badges/seen` block opened by correcting the sentence its predecessor had been wrong about; `experienceLifecycle.ts`'s `experienceAcceptedAndPassedSql` counted the times the predicate had been written as a subset of itself; `experienceNewBadge.ts`'s `isNewSql` explained a paragraph that was no longer there. Each now states the invariant those sentences were leading to — the reason the limiter is on this route, the hole a partial spelling of the predicate opens, that neither subquery can multiply rows — and the history stays in `git log`.
+
+What a comment keeps:
+
+- **A measurement that still governs.** The 483 ms zoom-3 tile behind `geom_simplified_coarse` and the 775 000 vertices behind a division's stored focus data (`db/init/01-schema.sql`) are why those columns exist; they justify a current threshold and stay. A number that only compares before with after ("seconds since #851, minutes before it") is chronology, and the pointer alone stays.
+- **A pointer without a retelling.** "(ADR-0025)" is the link; three sentences on what ADR-0025 replaced are the copy. Where the *contrast* is the invariant — a suffix match on the picture hosts admits any `*.wikimedia.org` host, deleting a withdrawn point cascades the visit record away — it is stated as a present-tense constraint, not as what the code once did.
+
+**This is not "shorter comments".** The repository's dense explanatory comments are an asset, and the rule leaves them whole where the explanation is the invariant: transaction and lock ordering (`locationWriter.ts`'s pairing CTE and its held-row term; `experienceUpsert.ts`'s follow-up statements on the same connection before the commit); a security guarantee (`experienceLifecycle.ts` — *adding a claim requires the row to have been showable; removing one never does* — and why a conjunction spelled in one place cannot be spelled partly); non-obvious Postgres and PostGIS semantics (`'{"a":null}'::jsonb ? 'a'` is presence, not truth; `OLD` is unavailable in an INSERT trigger's `WHEN`; the antimeridian rule in `geometry_focus`); a measured performance threshold. The target is duplicated chronology, not explanation.
+
+A pull request cleans up the narration in the files it changes where the invariant can be stated more directly, and leaves the rest of the repository alone: the sweep of what exists is #579's, and a branch that rewrites comments in files it has no other reason to touch is adding review surface, not value. The point-in-time exemption above applies unchanged — a commit message, a pull request description or an ADR is where the history goes — and the review bot reads a history sentence in a comment as a Note whose fix is the invariant and the pointer, never a request to keep the superseded behaviour on record because it is informative.
 
 ## Backend
 
@@ -836,11 +852,13 @@ never picks up, and a status that never leaves `pending`.
 
 The "same thing twice" list in the bot's Ripple phase is a guard for rules
 without a single home; each pair is deleted by the #788 slice that gives its
-rule one, in the same pull request, so the list only shrinks. A text finding — a
-stale count, tally, line pointer or sentence of history — is fixed the way
-§ What a living document may not say asks: drop the volatile claim and name
-the class or the symbols, rather than refresh a number the next change will
-falsify again.
+rule one, in the same pull request, so the list only shrinks. A text finding is
+fixed by its shape: a stale count, tally or line pointer the way § What a
+living document may not say asks — drop the volatile claim and name the class
+or the symbols, rather than refresh a number the next change will falsify
+again — and a sentence of history in a comment the way § What a source comment
+says asks — state the invariant it was leading to and point at the record,
+never keep the superseded behaviour in the comment because it is informative.
 
 ## Security
 
