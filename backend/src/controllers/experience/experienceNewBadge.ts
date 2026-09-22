@@ -77,14 +77,12 @@ export const NEW_BADGE_PERSONAL_DAYS = 7;
  * keeps control of parameter numbering, which is the part that has bitten this
  * file's neighbours twice.
  *
- * Two correlated subqueries rather than joins, and after #529 that is a choice
- * about readability rather than about row counts: neither could multiply anything —
+ * Two correlated subqueries rather than joins, and that is a choice about
+ * readability rather than about row counts: neither could multiply anything —
  * `experience_sources` is reached by primary key and `user_new_badge_views` is
- * unique on `(user_id, experience_id)`. The paragraph that used to be here
- * justified the shape by the latest-run subquery this predicate no longer has,
- * which would have sent the next reader looking for a join risk that is gone.
- * `EXISTS` also keeps each clause readable as the question it asks, which matters
- * more than the shape when the two are alternatives rather than filters.
+ * unique on `(user_id, experience_id)` — so there is no join risk here to look
+ * for. `EXISTS` keeps each clause readable as the question it asks, which
+ * matters more than the shape when the two are alternatives rather than filters.
  */
 export function isNewSql(alias = 'e', userIdParam: NewBadgeReaderParam = 'NULL'): string {
   // `published_at` is the membership's since #822 — a place becomes visible

@@ -512,10 +512,10 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       WHERE ${conflictChangeOpenSql('e', 'ch', 'l')}
         ${sourceFilter}
         AND ${scopeFilter}
-        -- Inside the DISTINCT ON rather than outside it, where the LIMIT used to
-        -- sit: the pick is per experience, so narrowing to the page's ids first
-        -- leaves the same newest changeset row per id and reads a handful of rows
-        -- instead of every conflict in the catalogue.
+        -- Inside the DISTINCT ON rather than outside it: the pick is per
+        -- experience, so narrowing to the page's ids first leaves the same newest
+        -- changeset row per id and reads a handful of rows instead of every
+        -- conflict in the catalogue.
         AND e.id = ANY($${acceptableIdx + 1}::int[])
       ORDER BY e.id, ch.id DESC
     ) q

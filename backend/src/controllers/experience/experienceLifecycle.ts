@@ -89,13 +89,12 @@ export function hideRefusedSql(alias = 'e'): string {
  * Hides a point the source has stopped offering. `alias` is the
  * `experience_locations` alias.
  *
- * A location's `missing_since` is read here where an experience's is not, and
- * the reason is what the alternative used to be: a withdrawn point was
- * *deleted*, so it left every list and every map the moment a run stopped
- * seeing it. The row survives now — deleting it took the visit record with it
- * through the cascade — and this fragment keeps what a reader sees exactly as
- * it was. Nothing here is a verdict on the place; that question is still a
- * curator's, and the row is waiting for it.
+ * A location's `missing_since` is read here where an experience's is not. A
+ * withdrawn point is marked rather than deleted, because deleting it would take
+ * the visit record with it through the cascade, and this fragment is what keeps
+ * a marked row off every list and every map as if the run had removed it.
+ * Nothing here is a verdict on the place; that question is still a curator's,
+ * and the row is waiting for it.
  *
  * The line is not "visits are exempt", which would be the obvious reading and
  * is wrong. It runs between two kinds of statement:
@@ -118,10 +117,9 @@ export function hideRefusedSql(alias = 'e'): string {
  *
  *   The class, not a list: **any statement that records a claim about a row and
  *   answers with something about that row** belongs here — a visit, a viewed
- *   work, a seen chip. An earlier version of this paragraph named four such
- *   writers and a reviewer immediately found the fifth (`markNewBadgesSeen`,
- *   which returns the ids it accepted and so confirms a row exists). Counting
- *   them invites exactly that, which is why the rule is stated by shape.
+ *   work, a seen chip, and `markNewBadgesSeen`, which returns the ids it
+ *   accepted and so confirms a row exists. A list of the writers invites the
+ *   one it misses, which is why the rule is stated by shape.
  * - **what the system decides on their behalf** carries the filter: every read
  *   that puts a point on screen, the per-user visited status included, and
  *   equally the count that infers from what remains whether the
@@ -316,17 +314,13 @@ export function publishedContentSql(alias: string): string {
  *
  * The experience-level half of the two composites below, and the whole
  * predicate for the two writers whose claim is about an experience rather than
- * a point or a work — `markVisited` and `markNewBadgesSeen`. It exists because
- * the pair kept being spelled by hand: the composites carried it correctly, the
- * two experience-level writers spelled it themselves, and a review found one of
- * them carrying `hidePendingSql` alone — a guessed id for a refused row
- * answering 200, echoing the row's name, and writing a visit that
- * `getVisitedExperiences` then serves in full for ever, since that read exempts
- * `admission` on purpose (ADR-0022) and nothing else clears the row.
- *
- * That is the sixth time on this branch a predicate in this family was written
- * as a subset of itself. A conjunction spelled in one place cannot be spelled
- * partly.
+ * a point or a work — `markVisited` and `markNewBadgesSeen`. It is one fragment
+ * because a hand-spelled subset of it is a hole: a writer carrying
+ * `hidePendingSql` alone answers 200 to a guessed id for a refused row, echoes
+ * the row's name, and writes a visit that `getVisitedExperiences` then serves
+ * in full for ever, since that read exempts `admission` on purpose (ADR-0022)
+ * and nothing else clears the row. A conjunction spelled in one place cannot be
+ * spelled partly.
  *
  * One `EXISTS` over the memberships rather than the two fragments above joined
  * with `AND`, and the difference is the day a place has two memberships
