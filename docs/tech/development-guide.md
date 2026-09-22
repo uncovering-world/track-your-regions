@@ -9,6 +9,7 @@ Conventions and patterns for writing code in this project. Follow these to keep 
 Before implementing anything new, **search the codebase for similar patterns**:
 
 - **A rule both sides apply:** Check `packages/shared/src/` first — the picture hosts and file types, the label fold and store rule, the near-global threshold, the curation-log action vocabulary, the changeset equality, the whole-region ceiling, the user roles and the auth providers (`USER_ROLES`, `AUTH_PROVIDERS`) — imported as `@tyr/shared/<module>` by backend and frontend alike (ADR-0065; § A rule both sides apply, below). A rule you are about to write on one side that the other side already applies goes there, not beside its twin.
+- **An endpoint's answer:** Check `backend/src/api/responses/` for a success body's schema before typing one on either side. The frontend imports its generated type from `@tyr/shared/api` through the client module that calls the endpoint (ADR-0066; § API Layer, below).
 - **Backend utilities:** Check `backend/src/services/sync/experienceUpsert.ts` (the object upsert and its membership), `syncUtils.ts` (single-location write, sync log), `wikidataUtils.ts` (SPARQL, QID parsing), `backend/src/db/membership.ts` (the one spelling of "admitted" and "passed" over a place's memberships), and service-level shared code before writing new helpers.
 - **Frontend utilities:** Check `frontend/src/utils/` (kindColors, dateFormat, imageUrl, coordinateParser, mapUtils) before creating inline helpers.
 - **Frontend hooks:** Check `frontend/src/hooks/` for app-level hooks and component directories for co-located hooks.
@@ -122,8 +123,9 @@ controllers/
 
 1. Find the right file by concern (queries vs mutations vs a new sub-concern).
 2. Add the function, export it.
-3. If the barrel uses named re-exports, add the new function to `index.ts`.
-4. Wire it in the route file (`backend/src/routes/`).
+3. Declare its success body as a `z.strictObject` in `backend/src/api/responses/<module>.ts`, the module named like the frontend client module that will call it, and send the body with `respond(res, Schema, body)` (§ API Layer).
+4. If the barrel uses named re-exports, add the new function to `index.ts`.
+5. Wire it in the route file (`backend/src/routes/`).
 
 ### Routes
 
@@ -429,9 +431,34 @@ All API calls live in `frontend/src/api/`. Use `authFetchJson()` from `fetchUtil
 
 The one deliberate exception is `changePassword` (`api/auth.ts`): its endpoint answers a wrong *current password* with 401, and `authFetchJson` reads every 401 as an expired token — so the shared path would rotate the refresh family on each wrong attempt and eventually sign the user out under the sentence saying the session is fine. It builds its request by hand and takes its token from `requireFreshToken()`. The reasoning is in [authentication.md](authentication.md) § Password Security; do not "clean it up" back onto the shared path. Other hand-built authenticated calls (`getCurrentUser`, the `image-proxy` fetches in `useImageColorPicker` and `ImageOverlayDialog`) record no reason and are debt, not precedent.
 
+**An endpoint's answer is declared once, on the backend** (ADR-0066). Its success body is a Zod 4 schema in `backend/src/api/responses/<module>.ts`, where `<module>` is named like the client module below whose function calls the endpoint. The web's types are generated from those schemas into `@tyr/shared/api`. The client function names the generated type, and its module re-exports it, so a component imports a call's answer from the call's module. A migrated call's answer is never declared in `frontend/src/api/`.
+
+The schema describes the wire, meaning what `JSON.parse` yields on the client:
+- Every object is a `z.strictObject`. The generator refuses a plain `z.object`, whose parse would strip an undeclared key and pass while the key still went out.
+- A timestamp is `z.iso.datetime({ offset: true })`, and the handler converts its `Date` with `toISOString()`.
+- A vocabulary is read from where it is stated: `z.enum(CHECK_VALUES.…)` for a CHECK list, or the backend constant that holds it.
+- A field's meaning goes in `.describe()`, which reaches the generated type as JSDoc and later the OpenAPI document. Why the handler does what it does stays in comments.
+- A rule across keys is a refinement (`superRefine`) on the schema. An example is a flag that comes only with a non-empty list, as with the placement pair in `responses/curation.ts`.
+  - Zod's `toJSONSchema` does not carry a refinement, so the rule reaches neither the generated type nor the JSON Schema. Only `respond()`'s parse holds it, and only outside production.
+  - A refinement that a second module needs lives beside `respond()` in `backend/src/api/`, because a response module exports schemas only.
+- A schema module imports only `zod/v4`, the generated row types, vocabulary constants, the schemas of other response modules, and the pure helpers beside `respond()` in `backend/src/api/`. The generator imports every schema module, so nothing a schema imports may open a pool or read the environment.
+
+The handler sends the body with `respond(res, Schema, body)`, from `backend/src/api/respond.ts`. The body is typed from the schema, so an undeclared key in the literal, a `Date` where the wire says string, a value outside a vocabulary or a missing key fails `tsc`. Outside production, the body is also parsed strictly before it is sent, which covers both unit lanes, the dev stack, the smoke lane and `test:db`. A mismatch is a 500 that names the route and the issue paths.
+
+TypeScript checks only the keys a literal writes itself, so build the body to write every key:
+- An optional key is written as `key: cond ? value : undefined`, never as `...(cond ? { key } : {})`. JSON drops the `undefined`.
+- A fragment spread into the body is typed as a `Pick` of the schema's type.
+- Rows are typed from the generated row types (§ Database Queries) and mapped key by key, never passed through as `result.rows`. An untyped row is `any`, and `any` satisfies every type.
+
+The runtime parse catches what the compiler cannot, on every path a lane exercises. Error bodies stay `{ error }`, and #793's route declarations are where they will be declared.
+
+After changing a schema, run `npm --prefix backend run api:types` and commit `packages/shared/src/api.generated.ts`. `backend/src/api/apiTypes.test.ts` fails while the file is not what the schemas render to.
+
+Until #527's sub-issues have moved every client module, a module not yet migrated still declares its answers in its own file.
+
 When adding a new endpoint:
 1. Add the function in the appropriate `api/*.ts` file — the module of the caller it serves, which a URL's prefix does not decide. Everything under `/api/experiences` is three modules: `experiences.ts` for what a reader's screens ask of the catalogue, `reviewQueue.ts` for the review queue's calls (`/api/experiences/review/…`) and `curation.ts` for a curator's writes on one object (#933).
-2. Add/update the TypeScript types in the same file.
+2. Declare the answer's schema in the backend module of the same name, regenerate, and name the generated type as the function's return type. Re-export it from the client module.
 3. Use the API function in a hook or component — never call `fetch` directly from components.
 
 ### MapLibre Gotchas
@@ -495,7 +522,7 @@ For the full reference with examples, see [maplibre-patterns.md](maplibre-patter
 
 A rule the backend and the frontend both apply is declared **once**, in `packages/shared`, and imported by both as `@tyr/shared/<module>` (ADR-0065). Until #789 such a rule was written twice — once per side, because no import crossed the two packages — and held equal by a backend test reading the frontend's copy as text; six of those pins are gone with the copies.
 
-**What goes in** is what both sides apply *and the browser must already know*: a list a card is drawn from and a run writes by (`pictures`), a fold a form and an endpoint compare names with (`labels`), a threshold the map and the database measure by (`geometry`), a vocabulary the schema constrains and a screen labels (`curationLog`, `auth`), an equality a run and a review card read by (`equality`), a ceiling a route enforces and a client asks for (`catalogue`). Everything in the bundle is something the frontend already shipped; nothing in the package authorises anything.
+**What goes in** is what both sides apply *and the browser must already know*: a list a card is drawn from and a run writes by (`pictures`), a fold a form and an endpoint compare names with (`labels`), a threshold the map and the database measure by (`geometry`), a vocabulary the schema constrains and a screen labels (`curationLog`, `auth`), an equality a run and a review card read by (`equality`), a ceiling a route enforces and a client asks for (`catalogue`). Everything in the bundle is something the frontend already shipped; nothing in the package authorises anything. One module is generated rather than written: `api.generated.ts`, the web's types for the backend's response schemas (ADR-0066, § API Layer). It holds types only, imports nothing, and is never edited by hand.
 
 **What stays out** is anything that needs a runtime: a module that imports Express, React, `pg`, Zod or MapLibre, or reads `import.meta.env`, stays on its side — the package's `tsconfig.json` has `"types": []` and no DOM lib, so it would not compile there. A rule that is SQL text (`tidyLabelSql`) or a fetch address (`pictureFetchUrl`) stays on the backend beside the shared rule it spells.
 

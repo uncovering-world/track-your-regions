@@ -3744,8 +3744,9 @@ would report the source's local name as applied while the upsert kept the curato
 publishing would write over the claimed column. `metadata` is deliberately **not** a family, since
 its claims are per key. All three arms are `claimKeyFor` in TypeScript and the same expression in
 SQL, off the same two objects, so the two runtimes cannot come to protect and ask about different
-things (`reviewQueueController.ts`; the shape is pinned on both sides — a response shape has no
-home in `packages/shared` yet, which is what #527 is open about).
+things (`reviewQueueController.ts`). The shape is still pinned on both sides: a response now has
+one home, a backend schema whose type the web imports (ADR-0066), and the review queue's answer
+moves there with its sub-issue of #527.
 
 (Those two metadata keys used to be a pre-existing hole in metadata protection too —
 the upsert guarded metadata only with `curated_fields ? 'metadata'`, which neither

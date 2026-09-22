@@ -28,6 +28,7 @@ npm run dev                # Start all services via Docker Compose (rebuilds ima
 npm run db:shell           # Open psql shell to active database
 npm run db:migrate         # Apply pending db/migrations/ files and record them (db:migrate:status to look first)
 npm run db:types           # Regenerate backend/src/db/schema.generated.ts from the schema (db:types:check is the gate)
+npm --prefix backend run api:types  # Regenerate packages/shared/src/api.generated.ts from the response schemas (backend/src/api/apiTypes.test.ts is the check)
 npm run help               # Full command reference (all other scripts: package.json)
 ```
 
@@ -64,7 +65,7 @@ Every open issue belongs on the org project board — https://github.com/orgs/un
 ## Architecture
 
 ### Stack
-Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile server. TypeScript everywhere. Raw `pool` with parameterized SQL for every query, row types generated from the schema in `backend/src/db/schema.generated.ts` (ADR-0064).
+Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile server. TypeScript everywhere. Raw `pool` with parameterized SQL for every query, row types generated from the schema in `backend/src/db/schema.generated.ts` (ADR-0064). An endpoint's success body is a Zod schema in `backend/src/api/responses/`, sent through `respond()`, and the web's types are generated from it into `@tyr/shared/api` (ADR-0066).
 
 ### Database
 - **Name**: `track_regions` (NOT `track_your_regions`)
@@ -87,7 +88,7 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 ### Structure notes (non-obvious contracts; layout itself — see `ls backend/src`, `ls frontend/src`)
 - A rule both sides apply — the picture hosts and file types, the label fold and store rule, the near-global threshold, the curation-log action vocabulary, the changeset equality, the whole-region ceiling, the user roles and the auth providers (`USER_ROLES`, `AUTH_PROVIDERS`) — is declared once in `packages/shared` (`@tyr/shared/<module>`) and imported by both (ADR-0065). It ships source, has no dependencies and no Node or DOM types, and a module in it imports nothing, not even a sibling. Where the schema also states the rule, the package is held to it by a type in `backend/src/db/curationLogActions.test.ts`, never by reading a file. A rule that needs a runtime — Express, React, `pg`, Zod, `import.meta.env` — stays on its side
 - Startup cleanup in backend `index.ts` marks orphaned `running` sync logs as `failed`
-- All frontend API calls go through `authFetchJson()` (`frontend/src/api/fetchUtils.ts`) with in-memory JWT; refresh token lives in an httpOnly cookie. The one *deliberate* exception is `changePassword`, which builds its request by hand because its endpoint answers a wrong *current password* with 401 while `authFetchJson` reads every 401 as an expired token — see `docs/tech/authentication.md` § Password Security. Other hand-built authenticated calls exist (`getCurrentUser`, the `image-proxy` fetches in `useImageColorPicker` and `ImageOverlayDialog`) and record no reason: treat them as debt, not as precedent. Pre-auth calls (login, register, refresh) are not exceptions at all — they have no token to send
+- All frontend API calls go through `authFetchJson()` (`frontend/src/api/fetchUtils.ts`) with in-memory JWT; refresh token lives in an httpOnly cookie. The one *deliberate* exception is `changePassword`, which builds its request by hand because its endpoint answers a wrong *current password* with 401 while `authFetchJson` reads every 401 as an expired token — see `docs/tech/authentication.md` § Password Security. Other hand-built authenticated calls exist (`getCurrentUser`, the `image-proxy` fetches in `useImageColorPicker` and `ImageOverlayDialog`) and record no reason: treat them as debt, not as precedent. Pre-auth calls (login, register, refresh) are not exceptions at all — they have no token to send. A call's answer is typed by the type `@tyr/shared/api` generates from its backend schema, re-exported from the call's module, and never declared in `frontend/src/api/` (ADR-0066; the modules not yet migrated are #527's sub-issues)
 - Map: MapLibre GL via react-map-gl; `RegionMapVT.tsx` renders Martin vector tiles; `ExperienceMarkers.tsx` uses declarative `<Source>`/`<Layer>` over one unclustered GeoJSON source — a density heatmap below `HEATMAP_MAX_ZOOM`, individual markers above it. Discover Mode still clusters, on its own map instance
 
 ### Martin Vector Tiles
