@@ -247,7 +247,7 @@ For each affected API, use Grep and Read to find every place in our code that us
 
 Classify the actual impact for our codebase:
 - **No real impact** — We don't use any of the changed/removed APIs. The major bump is safe for us despite the breaking changes on paper.
-- **Trivial fix** — We use an affected API but the migration is straightforward (rename, add an option, update a config key). Describe the exact changes needed, with file paths and line numbers.
+- **Trivial fix** — We use an affected API but the migration is straightforward (rename, add an option, update a config key). Describe the exact changes needed, with file paths and the symbols involved.
 - **Moderate effort** — Multiple files need updates or behavior changes need testing. List every file and what needs to change.
 - **Significant rework** — Core patterns or architecture are affected. Explain what would need to be redesigned.
 
@@ -291,14 +291,14 @@ For each PR that needed deeper analysis:
 
 **Impact on our codebase:**
 - Change A: **No real impact** — we don't use {affected API}
-- Change B: **Trivial fix** — `backend/src/services/foo.ts:42` calls `bar()` with old signature, needs to change to `bar(options)`
+- Change B: **Trivial fix** — `backend/src/services/foo.ts`'s `bar()` call uses the old signature, needs to change to `bar(options)`
 
 **CI status:** Passes / Fails (reason: ...)
 
 **Verdict:** {Safe to merge as-is / Merge after applying fixes below / Hold off}
 
 **Required code changes (if any):**
-- `{file}:{line}` — change `{old}` to `{new}`
+- `{file}`, in `{symbol}` — change `{old}` to `{new}`
 ```
 
 ### 5. Recommend next steps

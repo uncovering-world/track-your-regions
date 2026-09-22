@@ -324,9 +324,9 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     // rather than the list's and its range is off by that distance, masked in
     // practice by `overscan`. The documented remedy is the list's `offsetTop`,
     // and here that reads 102 px where the true distance is 47: `offsetTop` counts
-    // from the nearest positioned ancestor, and the scroll container
-    // (`RegionDescriptionSection.tsx:54`) is `position: static`, so the count
-    // starts somewhere else entirely. A wrong margin shifts the range for every
+    // from the nearest positioned ancestor, and the scroll container (the box
+    // `RegionDescriptionSection` hands down as `scrollContainerRef`) is
+    // `position: static`, so the count starts somewhere else entirely. A wrong margin shifts the range for every
     // reader, where no margin shifts it only where the box appears — #556 makes
     // the container the origin and measures it.
     overscan: 8,
