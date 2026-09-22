@@ -16,9 +16,9 @@ const RUN_CONTAINER_TESTS = process.env.TEST_REPORT_LOCAL !== '1';
 
 // `containerOnly` marks a lane that has no host-side shape at all. The
 // variable is a documented idiom for the unit lanes (CLAUDE.md,
-// CONTRIBUTING.md), and it used to reach these too: the branch above is
-// global, so `TEST_REPORT_LOCAL=1 npm run test:e2e:smoke` skipped
-// test-stack.sh and browsed whatever dev stack happened to be up, failing on
+// CONTRIBUTING.md), and the branch above is global, so without this mark
+// `TEST_REPORT_LOCAL=1 npm run test:e2e:smoke` would skip
+// test-stack.sh and browse whatever dev stack happened to be up, failing on
 // the missing fixture with nothing naming the cause (#432). Such a lane is
 // refused up front, with its reason, rather than running something else under
 // the same name.

@@ -541,9 +541,9 @@ jobs:
           # so the Phase 4 repo search has a path either way. `gh api` is one
           # entry, not `gh api graphql` plus `gh api repos`: a REST path is a
           # single shell token, so a prefix rule ending in `repos` is followed
-          # by `/` and never matches — the reviewer's own run on PR #962
-          # recorded seven refused `gh api repos/…` reads next to an allowed
-          # `gh api graphql`. graphql already permits mutations
+          # by `/` and never matches, so every `gh api repos/…` read is
+          # refused next to an allowed `gh api graphql` (#962). graphql
+          # already permits mutations
           # (resolveReviewThread), so the wider entry adds no write the
           # narrower withheld. claude-qa.yml carries the same single entry
           # for the same reason.
@@ -552,27 +552,25 @@ jobs:
           # files twice (#924); it reads, and the summary is still the one
           # place the reviewer writes.
           #
-          # --max-turns is headroom, not a fix: across seven review rounds on
-          # PR #430 the reported num_turns ran 29-59 against a cap of 50 and
-          # every run still ended `subtype: success`, so the two do not count
-          # the same unit. 80 was chosen to keep a genuinely large PR off the
-          # limit, and on 2026-09-10 one reached it: PR #860's ninth round
-          # reported a *successful* result after 89 turns and the action failed
-          # the job anyway -- `Claude reported a successful result after 89
-          # turns, exceeding the configured maximum of 80`. The review had run
-          # to the end and posted its findings; the cap turned a finished review
-          # into a red check on a branch with nothing wrong. So the number is
-          # raised on the evidence rather than on a guess, and the sentence that
-          # said the cap "was never observed to bite" is retired: it has.
+          # --max-turns is headroom, not a fix: runs reporting num_turns of
+          # 29-59 against a cap of 50 have still ended `subtype: success`, so
+          # the two do not count the same unit (#430). A cap of 80 is one a genuinely large PR reaches: a
+          # finished review has reported a *successful* result after 89 turns
+          # and the action failed the job anyway -- `Claude reported a
+          # successful result after 89 turns, exceeding the configured maximum
+          # of 80` (#860). The review had run to the end and posted its
+          # findings; the cap turned a finished review into a red check on a
+          # branch with nothing wrong. So the number is set on that evidence
+          # rather than on a guess.
           claude_args: |
             --model claude-opus-5
             --effort xhigh
             --max-turns 140
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(gh issue list:*),Bash(grep:*),Bash(rg:*)"
 
-      # Every review round on PR #430 reported 1-6 permission_denials_count
-      # with no way to tell which tool was refused: the action prints only the
-      # count, and the detail lives in an execution log it does not surface.
+      # The action prints only `permission_denials_count`, never which tool
+      # was refused; the detail lives in an execution log it does not surface
+      # (#430).
       # This lists the tools the run actually reached for, so the allowlist can
       # be tuned against evidence instead of guesswork — anything here that is
       # absent from --allowedTools above is a denial.

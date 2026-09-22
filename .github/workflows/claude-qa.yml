@@ -66,9 +66,9 @@ jobs:
           # `gh api` is one entry, not `gh api graphql` plus `gh api repos`:
           # a REST path is a single shell token (`repos/<owner>/<repo>/…`), so
           # a prefix rule ending in `repos` is followed by `/` and never
-          # matches — every REST read was refused while graphql ran (#963;
-          # claude-review.yml recorded the same refusals before #962 made the
-          # same change). graphql already permits mutations, so the wider
+          # matches — every REST read is refused while graphql runs (#963;
+          # claude-review.yml carries the same single entry for the same
+          # reason, #962). graphql already permits mutations, so the wider
           # entry grants no write the narrower pair withheld.
           claude_args: |
             --model claude-sonnet-4-6

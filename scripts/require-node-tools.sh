@@ -2,11 +2,11 @@
 #
 # Fail loudly, and legibly, when the repo-root dev tooling is not installed.
 #
-# The tools this guards used to be fetched per run with `npx --yes`, which
-# resolved their whole transitive tree from the registry every time and so could
-# not be missing — it could only be a different version than yesterday, or a
-# registry blip failing an unrelated PR (#490). They are ordinary devDependencies
-# now, which trades that for the failure mode every other local dependency has:
+# The tools this guards are ordinary devDependencies rather than fetched per
+# run with `npx --yes` (#490): a fetch resolves the whole transitive tree from
+# the registry every time, so it can never be missing but can be a different
+# version than yesterday, or a registry blip failing an unrelated PR. A
+# devDependency trades that for the failure mode every other local dependency has:
 # `sh: madge: command not found`, exit 127, on a checkout where nobody ran
 # `npm install` at the root. That reads like environment noise rather than "this
 # check did not run", and everything after it in the `&&` chain is skipped too —

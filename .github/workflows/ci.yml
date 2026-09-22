@@ -8,9 +8,9 @@ on:
   workflow_dispatch: {}
   # The calendar is an input the map cannot name. Trivy, `npm audit` and
   # `pip-audit` answer from vulnerability databases, so their verdict changes
-  # when a CVE is published, not when a file moves; before #783 every push
-  # re-asked them, and under the map a base-image CVE disclosed after the last
-  # cv-python change would be found by nothing. A scheduled run carries no
+  # when a CVE is published, not when a file moves; under the map a base-image
+  # CVE disclosed after the last cv-python change would be found by nothing
+  # (#783). A scheduled run carries no
   # base, so the Changes job sends the zero sha and every gate applies.
   schedule:
     - cron: '17 6 * * 1'
@@ -279,11 +279,11 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     # `changes` for the verdict, `check` for the order. `!cancelled()` removes
-    # the implicit `success()`, which is what the ordering used to rest on, so
+    # the implicit `success()` the ordering would otherwise rest on, so
     # `needs.check.result == 'success'` states it instead: a red — or skipped —
-    # `check` keeps this job from starting, which is the behaviour that was
-    # here before. A skipped `check` cannot strand a build that should have
-    # run: every input that asks for a build asks for the lint gates too.
+    # `check` keeps this job from starting. A skipped `check` cannot strand a
+    # build that should have run: every input that asks for a build asks for
+    # the lint gates too.
     needs: [changes, check]
     if: ${{ !cancelled() && needs.check.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.job_build == 'true') }}
     steps:
@@ -346,10 +346,10 @@ jobs:
       # whose logs are still retained. See #479.
       #
       # Deliberately no `--strict`, and this is the file someone lands in when
-      # they wonder why. It was tried and turned this job red at exit 3 on an
-      # otherwise successful scan (266 rules then, 511 since #481 added
-      # p/default; 0 findings and ~99.9% of lines parsed either way, so
-      # widening the ruleset changed nothing here): four files defeat Semgrep's
+      # they wonder why. It turns this job red at exit 3 on an
+      # otherwise successful scan (511 rules with p/default, #481; 0 findings
+      # and ~99.9% of lines parsed, so the ruleset's width does not change
+      # this): four files defeat Semgrep's
       # own parser while being valid to tsc, ESLint and shellcheck, and
       # `--strict` promotes that warning into a
       # failure. Silencing it would mean excluding those files — trading a
@@ -367,10 +367,10 @@ jobs:
   trivy-image:
     name: Trivy Image Scan (cv-python)
     runs-on: ubuntu-latest
-    # No longer behind `build`: this job builds the image it scans, and the
-    # Node build it used to wait for is not one of its inputs. A change to
-    # cv-python alone must be scanned, and that change does not ask for a
-    # build at all — under the old order the scan would never have run.
+    # Not behind `build`: this job builds the image it scans, and the Node
+    # build is not one of its inputs. A change to cv-python alone must be
+    # scanned, and that change does not ask for a build at all — behind
+    # `build`, the scan would never run for it.
     needs: [changes]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_trivy == 'true') }}
     steps:

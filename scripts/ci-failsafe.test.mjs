@@ -26,7 +26,7 @@ import { repoFile } from './repo-root.mjs';
  * decision failed; `!cancelled() && (A) && B` carries every clause of it and
  * skips the job on that same failure, because a job that failed wrote no output
  * and `B` compares the empty string. A spec that asked only whether each clause
- * appeared would call the second one fine (CodeRabbit on PR #954). So the
+ * appeared would call the second one fine (#954). So the
  * expected string is built per job from the map — the output key it publishes,
  * and whether the job waits behind `check` — and compared after runs of
  * whitespace are collapsed, since YAML may fold a long condition across lines.
@@ -83,8 +83,8 @@ const normalise = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
  * These three are the lanes there is no point judging before lint and typecheck
  * have passed: a branch that does not compile should fail in four minutes with
  * a tsc error instead of burning a build, a seeded smoke run and a Lighthouse
- * pass. `!cancelled()` removed the implicit `success()` that used to enforce
- * that order, so the workflow states it — and a tidy-up that drops the clause
+ * pass. `!cancelled()` removes the implicit `success()` that would otherwise
+ * enforce that order, so the workflow states it — and a tidy-up that drops the clause
  * and `check` from the same job's `needs` is self-consistent, which is why the
  * list is pinned here and not only held against `needs` further down.
  */

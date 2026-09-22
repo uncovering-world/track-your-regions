@@ -543,9 +543,9 @@ describe('what the runner says it did', () => {
 
   it('says why everything applies, rather than running the lot in silence', () => {
     // The global rule is that an unknown change set runs everything *and says
-    // why*. `printList` prints the reason; before #783's review the runner did
-    // not, so `run` spent fifteen gates and the stack listing repeated `(every
-    // gate applies)` with nothing naming the shallow clone behind it.
+    // why*. `printList` prints the reason, so a fifteen-gate run names the
+    // shallow clone behind it instead of a stack listing that repeats `(every
+    // gate applies)` on every line (#783).
     const unknown = decide({ paths: null, reason: 'the clone is shallow' });
 
     const run = capture(unknown, 'test', { spawn: fakeSpawn() });
@@ -603,10 +603,10 @@ describe('the table the doc carries', () => {
  *
  * Two trees, because `backend/vitest.config.ts` includes two: the package's own
  * `.test.ts` files under `src`, and the repository's tooling specs, the
- * `.test.mjs` files under `scripts`. Only the first used to be scanned below,
- * which left the claim this file makes — that a spec reading a path in no input
- * class turns it red — false for exactly the specs that read the workflow and
- * the gates document (#952).
+ * `.test.mjs` files under `scripts`. Both are scanned below: scanning the
+ * package's own specs alone leaves the claim this file makes — that a spec
+ * reading a path in no input class turns it red — false for exactly the specs
+ * that read the workflow and the gates document (#952).
  */
 function specFiles(dir, extension) {
   const found = [];

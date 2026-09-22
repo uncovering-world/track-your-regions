@@ -2255,8 +2255,8 @@ def run_matching(
 
     gadm_mid_y_ecc = float(np.median([-c["cy"] for c in centroids]))
 
-    # Legacy inverse perspective warp from the super-blur contour search in
-    # _iou_alignment. Kept as a fallback if pyproj detection finds no projection.
+    # Inverse perspective warp from the super-blur contour search in
+    # _iou_alignment: the fallback when pyproj detection finds no projection.
     if inverse_H is not None:
         progress("Applying inverse perspective warp to cluster image")
         pixel_labels = cv2.warpPerspective(pixel_labels, inverse_H, (tw, th), flags=cv2.INTER_NEAREST)
