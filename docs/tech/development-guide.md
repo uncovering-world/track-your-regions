@@ -116,7 +116,7 @@ Each route file applies appropriate middleware (`requireAuth`, `requireAdmin`, `
 
 ### Services
 
-Services live in `backend/src/services/`, organized by feature:
+Services live in `backend/src/services/`, organized by feature, each file named in camelCase for what it does (`experienceUpsert.ts`, `syncUtils.ts`):
 
 ```
 services/
@@ -303,6 +303,7 @@ components/
 1. **Co-locate extracted hooks and types.** When you extract hooks or types from a component, keep them in the same directory (or a sibling directory named after the feature). Don't scatter them across the tree.
 2. **Feature directories for complex components.** If a component needs >2 extracted files, create a subdirectory (e.g., `regionMap/` for RegionMapVT's hooks, `CustomSubdivisionDialog/` for AIAssistTab's extractions).
 3. **Shared components go in `shared/`.** If a component is used from 2+ unrelated features, it belongs in `frontend/src/components/shared/`.
+4. **Names say what a file is.** A component file is `PascalCase` (`RegionMapVT.tsx`), a hook `useCamelCase` (`useNavigation.tsx`), and everything else camelCase for what it does (`importTreeUtils.ts`). Indentation is two spaces throughout, and ESLint is the source of truth for the rest of the style: `npm run lint` and `npm run lint:fix`.
 
 ### Extracting Hooks from Large Components
 
@@ -871,10 +872,12 @@ ADR-0062 is the rule and `scripts/gates.mjs` holds the only copy of the map, so
 a gate whose point is not obvious is a gate whose `inputs` line says what it
 reads (#783).
 
-It expects dependencies installed in three places: `backend/`, `frontend/`, and
-the repository root — the root holds the repo-wide lint tooling (`madge` for
-`lint:circular`, `markdownlint-cli2` for `lint:md`), whose versions come from
-the tracked root `package-lock.json` rather than from the registry at run time.
+It expects dependencies installed in `backend/`, `frontend/`, `packages/shared/`
+and the repository root, with npm rather than pnpm — the pins live in each
+`package-lock.json`, which pnpm does not read. The root holds the repo-wide
+lint tooling (`madge` for `lint:circular`, `markdownlint-cli2` for `lint:md`),
+whose versions come from the tracked root `package-lock.json` rather than from
+the registry at run time.
 A missing root install stops those gates with the name of the gate that did not
 run; a missing `cv-python/.venv` does the same for the `*:py` gates, which only
 a change under `cv-python/` — or, for the test lane, the GADM loader's own

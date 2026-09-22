@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to any agent working with code in this repository. Claude Code (claude.ai/code) reads it as `CLAUDE.md`; other agents read it through `AGENTS.md`, which is a symlink to it, so the guidance is written here once (#797).
 
 ## Three Chairs
 
