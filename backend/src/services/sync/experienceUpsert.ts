@@ -479,8 +479,7 @@ async function writeUnderLock(
         -- Behind a claim but not behind the gate. Tags are labels the import
         -- derives from facts it also stores by name -- the criteria, the danger
         -- listing, the landmark's type -- and no reader-facing read returns
-        -- them (the by-id read did, rendered by nothing, until #570 took the
-        -- column out of it), so there is nothing a reader can already see for
+        -- them, so there is nothing a reader can already see for
         -- the gate to protect (#570, the rule #571 stated: a person is asked only about
         -- what a reader can eventually see). Held, they filed 3785 rows in
         -- this database's log that restated the row beside them. A claim still
@@ -497,11 +496,11 @@ async function writeUnderLock(
         country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR ${HELD} THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
         country_names = CASE WHEN experiences.curated_fields ? 'country_names' OR ${HELD} THEN experiences.country_names ELSE EXCLUDED.country_names END,
         image_url = CASE WHEN experiences.curated_fields ? 'image_url' OR ${HELD} THEN experiences.image_url ELSE EXCLUDED.image_url END,
-        -- Two claim shapes reach this column, and only one of them used to work.
-        -- editExperience claims per key -- 'metadata.website',
-        -- 'metadata.wikipediaUrl' -- and ? 'metadata' is false for those, so
-        -- the guard never fired and EXCLUDED replaced the object, curator's link
-        -- included (#488). A claim on 'metadata' itself still holds the whole
+        -- Two claim shapes reach this column. editExperience claims per key --
+        -- 'metadata.website', 'metadata.wikipediaUrl' -- and ? 'metadata' is
+        -- false for those, so a guard spelled that way alone never fires and
+        -- EXCLUDED replaces the object, curator's link included (#488). A claim
+        -- on 'metadata' itself holds the whole
         -- column; a per-key claim now re-applies just those keys over whatever
         -- the source sent, so an unclaimed key still updates.
         --

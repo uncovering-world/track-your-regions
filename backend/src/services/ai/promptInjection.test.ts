@@ -1,7 +1,7 @@
 /**
- * Guards the fix for the stored prompt-injection path (CodeQL
- * js/system-prompt-injection): world_views.source and .description are
- * operator-supplied free text that used to be spliced into the system prompt.
+ * Guards the stored prompt-injection path (CodeQL js/system-prompt-injection):
+ * world_views.source and .description are operator-supplied free text and must
+ * never be spliced into the system prompt.
  */
 
 import { describe, expect, it } from 'vitest';

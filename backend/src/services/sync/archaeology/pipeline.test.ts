@@ -1275,8 +1275,8 @@ describe('the site door, beside the museums', () => {
     // and left a reader reconciling two lines that could not disagree.
     expect(lines.filter((line) => line.includes('Admitted'))).toHaveLength(1);
     const summary = lines.find((line) => line.includes('museums'));
-    // Eight: the six the museum door held before #890, the Pergamon Museum,
-    // whose Ishtar Gate and Altar are what the venue-side read is for, and the
+    // Eight: the six the museum door admits by class, the Pergamon Museum,
+    // whose Ishtar Gate and Altar are what the venue-side read is for (#890), and the
     // museum an object read at the Pergamon carried over the line.
     expect(summary).toContain('Admitted 8 museums');
     // Two of the three carry an outline now: Troy's excavations and the villa

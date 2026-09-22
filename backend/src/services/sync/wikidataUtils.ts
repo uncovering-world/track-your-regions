@@ -66,10 +66,10 @@ export const SPARQL_TIMEOUT_MS = 70000;
  *
  * The published guidance is to assume the service is degraded or unavailable and
  * to retry accordingly, and their own status pages measure outages in tens of
- * minutes. The old shape — four retries with a 30-second ceiling — gave up after
- * about 65 seconds, which is not "the service is down", it is "the service was
- * busy for a minute". Run 61 died that way with nothing written after the class
- * closure had already been paid for.
+ * minutes. Four retries with a 30-second ceiling give up after about 65
+ * seconds, which is not "the service is down", it is "the service was busy for
+ * a minute" — and a run that gives up there has paid for the class closure and
+ * written nothing (run 61).
  *
  * So the bound is a duration rather than a count: keep trying while the whole
  * wait is under fifteen minutes, with each pause capped at three. A run that

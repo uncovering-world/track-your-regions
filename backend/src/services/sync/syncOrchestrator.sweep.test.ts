@@ -147,8 +147,8 @@ describe('orchestrateSync changeset recording', () => {
 
   it('lets a run that both filters and admits a venue end with it admitted, and badged', async () => {
     // The orderings that carry weight. A venue can be named in the filtered
-    // list and still be one the run admits — a fold cycle used to produce
-    // exactly that — and the run's own admission has to be the answer that
+    // list and still be one the run admits — a fold cycle produces exactly
+    // that — and the run's own admission has to be the answer that
     // stands, or the row ends the run hidden until the next one. And the badge
     // is written where admission is a settled answer (#760): after the whole
     // admission step, so a refusal this run lifted is admitted by the time it

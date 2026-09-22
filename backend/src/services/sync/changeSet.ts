@@ -132,13 +132,13 @@ const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
  * on the way there is not a question.** Two more keys fall under it than #571
  * named. `sitelinksCount` on a landmark is the same measurement as the museums'
  * sum, one object up — how many Wikipedia editions have an article, which is
- * what the import ranks by; sixteen of its moves had reached curators' cards.
- * `admittedFor` was one of them — "the reason the row exists", the work with
- * the most language links among the ones the pass placed, which no reader sees
- * and which the admission rule re-decides every pass — until #822 moved it
- * off the row altogether: it is what the kind says about the place, so it is
- * written on the membership (`admitted_for`) and never enters metadata or
- * this diff. `wikidataClasses` and `wikidataArtwork` on a landmark are the
+ * what the import ranks by, and a move in it would otherwise reach a curator's
+ * card. `admittedFor` — "the reason the row exists", the work with the most
+ * language links among the ones the pass placed, which no reader sees and
+ * which the admission rule re-decides every pass — is not on the row at all:
+ * it is what the kind says about the place, so it is written on the membership
+ * (`admitted_for`, #822) and never enters metadata or this diff.
+ * `wikidataClasses` and `wikidataArtwork` on a landmark are the
  * same shape one source over (#754): every class the public-art rule read,
  * and whether an artwork class answered it, kept so that Catalogue Checks can
  * ask what an admitted row is typed as; the rule re-reads them every run and
@@ -214,12 +214,11 @@ export const METADATA_CLAIM_PREFIX = 'metadata.';
 /**
  * The prefix a language of the local-names map is reported under (`nameLocal.ko`).
  *
- * `name_local` is one jsonb column and used to be reported as one entry carrying
- * the whole map, so a run proposing six local names for Getbol asked six facts
- * with one pair of buttons — the defect ADR-0039 removed for `metadata`, one
- * column over (#728). Each language that differs is its own entry now, and
- * publishing merges them back onto the stored map exactly as it does for
- * metadata keys.
+ * `name_local` is one jsonb column, and each language that differs is its own
+ * entry: one entry carrying the whole map asks six facts with one pair of
+ * buttons when a run proposes six local names for Getbol — the shape ADR-0039
+ * refuses for `metadata`, one column over (#728). Publishing merges the
+ * entries back onto the stored map exactly as it does for metadata keys.
  *
  * Shared with `publishHeldFields.ts`, which has to recognise the family to know
  * it cannot be written by assignment, for the same reason
@@ -322,8 +321,7 @@ interface RawDiff {
    * resolves back to it: the queue, `accept-source` and `decline-source` look a
    * conflict's claim up through `claimKeyFor`, which sends `metadata.website` to
    * itself, and `['metadata']` does not contain that — so such a conflict is
-   * recorded, protected, and asked nowhere, where the same claim used to raise
-   * one entry named `metadata` that the map resolves.
+   * recorded, protected, and asked nowhere.
    *
    * **Publishing is the fourth reader and loses more than the asking.** Its
    * skip list is the same lookup (`publishHeldFields.ts`,
@@ -506,14 +504,12 @@ function metadataChanges(
 
   const ignoredKeys = [...MAJOR_METADATA_KEYS, ...SYNC_OWNED_METADATA_KEYS, ...claimed];
   // Everything else, one entry per key, for the same reason the two groups above
-  // get one: **a curator answers a fact, and a key is a fact.** These used to
-  // collapse into a single `metadata` entry, which made the card fold them into
-  // one answer — on 1227 of the 1484 held cards on the development catalogue,
-  // where a run proposes inscription criteria and a picture credit together and
-  // taking the criteria meant taking the credit with them. Which bucket a key
-  // landed in was a storage decision (this function), invisible to the person
-  // being asked: `metadata.inDanger` had its own answer only because #600 gave it
-  // its own entry. Now every key does.
+  // get one: **a curator answers a fact, and a key is a fact.** A single
+  // `metadata` entry folds them into one answer — a run proposing inscription
+  // criteria and a picture credit together makes taking the criteria mean
+  // taking the credit with them — on a split decided here, invisible to the
+  // person being asked. Every key has its own answer, as `metadata.inDanger`
+  // has had since #600.
   //
   // The stripping the catch-all needed goes with it. Its payload had to be
   // trimmed of the keys reported above, or a curator would read a claimed value
@@ -551,10 +547,10 @@ function metadataChanges(
  * Flats (Phase II); a curator who wants the corrected Korean name had to take
  * the English one with it, or refuse both.
  *
- * What each entry says is what the card used to work out for itself: the card
- * split the whole-map entry with `changedKeys` (`objectDiff.ts`), on the same
- * equality, in the same alphabetical order. So a run files what a reader was
- * already shown, and the answer now reaches the row rather than the column.
+ * What each entry says is what the card derives for itself with `changedKeys`
+ * (`objectDiff.ts`), on the same equality, in the same alphabetical order. So a
+ * run files what a reader is shown, and the answer reaches the row rather than
+ * the column.
  * Alphabetical because a jsonb column does not keep the order the keys went in,
  * and the same card has to read the same way twice.
  *
@@ -601,10 +597,9 @@ function collectDifferences(
   // Tags are compared nowhere. The import derives them from facts it also
   // stores by name -- `criterion_ii` from the criteria string, `in_danger`
   // from the danger listing, `monument` from the landmark's type -- and no
-  // reader-facing read returns them (the by-id read did, rendered by nothing,
-  // until #570 took the column out), so a tags row on a card restated the row
-  // beside it to a person who could change nothing a reader sees by answering
-  // (3785 such rows in this database's log). The upsert writes them past the
+  // reader-facing read returns them (#570), so a tags row on a card would
+  // restate the row beside it to a person who could change nothing a reader
+  // sees by answering. The upsert writes them past the
   // gate for the same reason, and keeps a curator's claim on them for a
   // different one: a person's deliberate write is not a measurement. A claimed
   // value the source disagrees with is therefore kept and not reported either

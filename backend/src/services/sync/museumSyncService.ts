@@ -296,8 +296,8 @@ async function fetchMuseumItems(
 /**
  * Upsert a museum as an experience.
  *
- * No type: an art museum is a kind, not a type within "Museums" (ADR-0045 decision 1), so the
- * literal `art` every row used to carry said nothing the kind does not (#814). `country` is
+ * No type: an art museum is a kind, not a type within "Museums" (ADR-0045 decision 1), and a
+ * literal `art` on every row says nothing the kind does not (#814). `country` is
  * deliberately absent from the metadata — `country_names` already carries it, and when both
  * existed they disagreed.
  */
@@ -340,8 +340,8 @@ async function upsertMuseumExperience(
     description: details.description,
     shortDescription: null,
     // No type: an art museum is a kind, not a type within "Museums" (ADR-0045
-    // decision 1), so the literal `art` every row used to carry said nothing the
-    // kind does not (#814).
+    // decision 1), and a literal `art` on every row says nothing the kind does
+    // not (#814).
     type: null,
     tags: ['museum'],
     lon: details.lon!,

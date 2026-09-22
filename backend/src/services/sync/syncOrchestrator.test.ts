@@ -80,8 +80,8 @@ describe('orchestrateSync', () => {
     // A run refreshes what the source offers and marks what it withdrew. There
     // is no mode that empties the source first: the visit records and manual
     // region assignments that went with it are the one thing no later run can
-    // rebuild. The config no longer has a cleanup hook to call, and this holds
-    // the line against one coming back.
+    // rebuild. The config has no cleanup hook to call, and this holds the line
+    // against one appearing.
     const config = makeConfig();
     await orchestrateSync(config, null, { force: true } as never);
 
@@ -113,8 +113,7 @@ describe('orchestrateSync', () => {
 
     // A cancel exits ahead of the admission step, so a row this run selected
     // but had not yet re-admitted is left as it was -- refused and unbadged --
-    // rather than refused and badged, which is what the per-item badge write
-    // used to leave behind and the catalogue check reports (#760).
+    // rather than refused and badged, which the catalogue check reports (#760).
     expect(restoreAdmission).not.toHaveBeenCalled();
     expect(markIconic).not.toHaveBeenCalled();
   });

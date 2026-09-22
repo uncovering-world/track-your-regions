@@ -207,7 +207,7 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
     expect(unpair).toMatch(/SET withdrawal_deferred_for_location_id = NULL/);
     // Keyed on the decided pairing rather than on nearness to the incoming list. Under a
     // tolerance the held row *is* near the arrival that replaces it — 1.2 cm in the case
-    // this branch exists for — so asking about nearness cleared the pointer and left
+    // this test names — so asking about nearness would clear the pointer and leave
     // migration 026 with no handle on the pair. Asking about the pairing says what was
     // meant: the pointer goes when the old row is the row the source is offering.
     expect(unpair).toMatch(/EXISTS \(\s*SELECT 1 FROM paired_rows p WHERE p\.location_id = old\.id\s*\)/);

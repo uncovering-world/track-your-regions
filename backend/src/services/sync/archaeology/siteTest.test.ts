@@ -613,7 +613,7 @@ describe('what the final pass of #581 changed', () => {
     expect(verdict.group).toBe('living');
   });
 
-  it('no longer reads a Roman road as a ruin standing somewhere', () => {
+  it('does not read a Roman road as a ruin standing somewhere', () => {
     // Watling Street (Q1434239) and the Via Flaminia (Q374149) are the two
     // items `historic=roman_road` decided, and a 430 km road is not a place a
     // traveller stands in. The tag says nothing now: this item is judged by its

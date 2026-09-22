@@ -73,7 +73,7 @@ describe('fetchUnescoRecords', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const url = String(fetchMock.mock.calls[0][0]);
     // `/exports` and not `/records`: the latter is capped at 100 rows and at
-    // offset+limit <= 10000, which is why the whole list used to be 13 calls.
+    // offset+limit <= 10000, which makes the whole list 13 calls.
     expect(url).toContain('/exports/json');
     expect(url).not.toContain('/records?');
     // Named fields, because all 54 of them are 24 MB and we read 22 of them —

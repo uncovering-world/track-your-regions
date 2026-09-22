@@ -295,15 +295,16 @@ function foldsOntoAdmitted(
  * second pin holding nothing beside it would offer a traveller a museum whose
  * card is empty because its case is next door. The art import says the same by
  * construction — a folded venue is never in `tier.museums`, only its survivor
- * is — and this kind used to say it only by accident, because a folded museum
- * was usually below the place line and came out `out`. One above the line (the
+ * is — and this kind has to say it explicitly: a folded museum is usually below
+ * the place line and comes out `out`, but one above the line (the
  * Pio-Clementino raised to 30 in the fixture; an Egyptian collection housed in a
- * better-known museum, on the ground) stood as its own empty row.
+ * better-known museum, on the ground) would otherwise stand as its own empty row.
  *
- * Every kept fold, not only the ones a find above the line carried. The old
- * narrowing was about a *loss* — a museum whose finds were all below the line
- * was never going to be admitted for them, so counting it as lost overstated
- * what the catalogue had. This line is not a loss but an address: it says where
+ * Every kept fold, not only the ones a find above the line carried. Narrowing
+ * to the finds above the line is right for a *loss* — a museum whose finds
+ * were all below the line was never going to be admitted for them, so counting
+ * it as lost overstates what the catalogue had — and this line is not a loss
+ * but an address: it says where
  * this name went, and that is true of every museum that folded.
  *
  * Read off the folds as they stand after the verdict (`keepFoldsOntoJudged`), so

@@ -447,9 +447,9 @@ describe('parseRegionlist — trailing bullets with nested template in descripti
     const { regions, extraLinks } = parseRegionlist(wt);
     expect(regions.map(r => r.name)).toEqual(['Region One', 'Region Two']);
     expect(extraLinks).toEqual(['Trailing One', 'Trailing Two']);
-    // Description-internal wikilinks must NOT leak into extraLinks
-    // (none in this fixture — but the bug used to pull whatever wikitext
-    // happened to live between the inner }} and the outer }}.)
+    // Description-internal wikilinks must NOT leak into extraLinks (none in
+    // this fixture; the failure mode is pulling whatever wikitext lies between
+    // the inner }} and the outer }}).
     expect(extraLinks).not.toContain('Region One');
     expect(extraLinks).not.toContain('Region Two');
   });

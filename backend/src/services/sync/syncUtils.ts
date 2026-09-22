@@ -29,8 +29,8 @@ export {
  *
  * Used by museum and landmark syncs; UNESCO has its own multi-location path.
  * Both go through `writeExperienceLocations`, which keeps the row — and so the
- * region assignments — of a point that has not moved. This used to delete and
- * re-insert, which is why every run needed a full re-assignment afterwards.
+ * region assignments — of a point that has not moved; deleting and re-inserting
+ * would force a full re-assignment after every run.
  */
 export async function upsertSingleLocation(
   experienceId: number,

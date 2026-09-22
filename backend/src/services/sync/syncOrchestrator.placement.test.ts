@@ -8,9 +8,8 @@
  * owes that phase: which objects, once per world view, however the run ended,
  * and what the log and the panel are told through it.
  *
- * Its own file beside `syncOrchestrator.test.ts`, which had reached the line
- * limit and has since been split by the surface under test;
- * the mocks are the same ones, restated.
+ * Its own file beside `syncOrchestrator.test.ts`: the suite is split by the
+ * surface under test; the mocks are the same ones, restated.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

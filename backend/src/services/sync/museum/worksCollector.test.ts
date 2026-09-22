@@ -1,7 +1,7 @@
 /**
  * Tests for the stages every works-first kind shares: the class closure, the banded pool, the
  * venue statements, the venue graph, placement and folds. `pipeline.test.ts` exercises the same
- * fixture through the museum tail this module no longer holds.
+ * fixture through the museum tail, which is not this module's.
  */
 
 import { describe, it, expect } from 'vitest';

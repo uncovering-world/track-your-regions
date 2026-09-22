@@ -142,12 +142,12 @@ export function museumNature(facts: MuseumFacts, trees: ArchaeologyTrees): Museu
  * The sentence a row refused at the category door carries, and what it does
  * *not* claim.
  *
- * It used to end "the site door's", and for a row like Chaco Culture National
- * Historical Park (dry run 121) that was a promise nobody kept: the site door
- * judges what Wikidata files under `archaeological site`, Chaco is not in that
- * tree, and no door had it. So the sentence says what is true — this is not
- * this door's row — and names what the other door's pool actually is, leaving a
- * curator to see for themselves whether it turned up there.
+ * It does not end "the site door's": for a row like Chaco Culture National
+ * Historical Park (dry run 121) that would be a promise nobody keeps — the site
+ * door judges what Wikidata files under `archaeological site`, Chaco is not in
+ * that tree, and no door has it. So the sentence says what is true — this is
+ * not this door's row — and names what the other door's pool actually is,
+ * leaving a curator to see for themselves whether it turned up there.
  */
 export const NOT_A_MUSEUM = 'no museum class on Wikidata: a site, a castle or a city in '
   + 'Wikipedia\'s category — not this door\'s. The site door judges what Wikidata files '
@@ -219,7 +219,7 @@ export type MuseumVerdict =
  * the caller that counted them, hysteretically, as this door is. It is the
  * door's number and not the badge's: the item the caller builds carries
  * `findsAboveLine`, counted at the enter line alone, and the two are different
- * questions about the same finds, which is why they no longer share a name. One
+ * questions about the same finds, which is why they carry different names. One
  * such find carries a museum that passed the nature door below the place line:
  * Delphi at 15 sitelinks for the Charioteer, Olympia at 17 for the Hermes,
  * Heraklion at 21 for the Phaistos disc. It never carries a museum that failed

@@ -288,8 +288,8 @@ Use additionalDivisions when a region maps to 2+ GADM divisions (e.g., Donbas â†
     progress.totalCost += cost.totalCost;
 
     // Parse JSON response â€” extract fenced code block if the model wrapped
-    // the JSON in ```json ... ```. We use indexOf+slice (extractFencedJson)
-    // to avoid the lazy regex previously flagged by sonarjs/slow-regex.
+    // the JSON in ```json ... ```. indexOf+slice (extractFencedJson) rather
+    // than a lazy regex, which sonarjs/slow-regex flags.
     const jsonStr = extractFencedJson(content);
 
     const parsed = JSON.parse(jsonStr.trim()) as Array<{
