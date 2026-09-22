@@ -453,6 +453,13 @@ repeated from run to run, so it timed tiles Martin already held. These are
 generated tiles. The `tile_gadm_root_divisions` maximum of 433 ms is one
 sample of thirty against a p95 of 83 ms — the laptop, not the query.
 
+The locations read now includes one more cost when the probe runs against the
+dev stack, which is in development mode. Outside production, `respond()` parses
+each success body against its response schema before sending it (ADR-0066). On
+2026-09-22, on the development machine, a strict parse of this read's 4,860
+rows (1.3 MB before compression) took 7.4 ms p50 over 30 runs. Production does
+not parse.
+
 The bare `npm run perf:api` names exactly these targets (its defaults are
 world view 5 and region 6737), so it reproduces this table; a different
 database needs `--world-view` and `--region`. The probe is anonymous, as a
