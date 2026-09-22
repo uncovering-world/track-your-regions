@@ -131,6 +131,7 @@ When modifying code, always clean up leftovers from the change:
 - **Remove unused variables** after replacing logic (e.g., old variable superseded by a new one)
 - **Update downstream checks** after adding guards — if a null guard throws/returns early, remove now-redundant null checks below it
 - **Remove redundant conditionals** in JSX after adding early returns that guarantee truthiness
+- **Delete the guard a new owner made obsolete** — a change that gives a rule one owner removes the parity test, twin, lint rule or review-bot line that kept the old copies aligned, in the same slice, or links the issue that owns it; see `docs/tech/development-guide.md` § A migration deletes what its owner replaced
 
 ## Security Standards
 

@@ -156,6 +156,8 @@ Use the project's PR template (`.github/PULL_REQUEST_TEMPLATE.md`) and fill each
 #### Description
 Write a clear summary of what the branch does and why. Derive this from the commit messages and the actual diff — don't just repeat commit titles. Group related changes if there are multiple commits.
 
+When the branch gives a rule a new owner (a shared module, a route declaration, a writer module, a generated type, a trigger — every slice of #788), the Description names what the branch **deleted** as part of the result, beside what it added: the parity test, duplicated constant or type, handwritten adapter, lint rule or review-bot twin line the owner made obsolete (`/refactor-check` drafts the paragraph). A guard kept on purpose is named with the follow-up issue that owns its removal and the dependency that blocks it now. If the branch establishes an owner and the Description can name neither a deletion nor such an issue, stop and tell the user before opening — the development guide rejects a new layer beside copies that stay authoritative (`docs/tech/development-guide.md` § A migration deletes what its owner replaced).
+
 #### Related Issues
 - If commit messages reference issues, include them with `Closes #N` / `Fixes #N` (the merge closes the issue) or `Part of #N` (partial progress — the issue stays open). Use `Relates to #N` only for a loose association that should not drive the issue's board status.
 - Also search open issues for matches: `gh issue list --state open --limit 500 --json number,title` (the default `--limit` is 30, far below this repo's open count) — look for issues related to the branch's changes by title/keyword
