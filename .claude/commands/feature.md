@@ -85,6 +85,7 @@ This is a feature — it requires proper planning. Enter plan mode to:
 - Identify files to create/modify — **flag any file that would exceed ~500 lines** and plan how to split it
 - Consider edge cases and security implications
 - **If the feature involves an architectural choice** (new library, schema pattern, API convention, or hard-to-reverse decision) — include a new ADR in the plan (see `CLAUDE.md` § Architecture Decision Records)
+- **If the feature gives a rule a new owner** (a slice of #788, or any shared module, route declaration, writer module, generated type or trigger that now states a rule other code stated on its own) — the plan names the guard it deletes: a parity test that reads source, a duplicated constant or type, a handwritten adapter, a lint rule, a line of the review bot's twin list. Where one cannot go yet, the plan names the follow-up issue that owns it and the dependency that blocks it now. A plan that deletes nothing is adding a layer, not a migration — say so to the user before proceeding (`docs/tech/development-guide.md` § A migration deletes what its owner replaced)
 
 Present the plan to the user for approval before writing any code.
 
@@ -133,6 +134,7 @@ Commit the changes following the conventions in `docs/tech/development-guide.md`
 - **Docs in dedicated commits** — documentation updates are separate from code commits
 
 Then summarize what was built and suggest:
+- **If the branch gave a rule a new owner**: run `/refactor-check` first — it finds the guards the owner made obsolete and drafts the Description paragraph that names what was deleted
 - **To create a PR**: run `/pr-create` — it fills the template, references the issue (`Closes #$ARGUMENTS`, or `Part of #$ARGUMENTS` if partial), enforces the clean-history gate, and moves every referenced issue to 👀 In review on the board
 - **To continue work**: list any remaining items from the issue that weren't addressed
 
