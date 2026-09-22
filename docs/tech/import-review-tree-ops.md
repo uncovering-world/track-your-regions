@@ -44,9 +44,10 @@ news reaches the region above through the trigger. The walk stops at a
 hand-drawn child, correctly, since deleting what was under a drawn outline does
 not move it (#283).
 
-The call is made **last**: after the `COMMIT` for the five handlers that open a
-transaction, and after the statement itself for `reparent-region`, which runs on
-the pool and opens none. Where the handler stores an undo entry — as
+The call is made **last**: after the `COMMIT` for the handlers that open a
+transaction — `merge-child`, `remove-region`, `dismiss-children`,
+`prune-to-leaves` and `smart-flatten` — and after the statement itself for
+`reparent-region`, which runs on the pool and opens none. Where the handler stores an undo entry — as
 `dismiss-children`, `prune-to-leaves` and `smart-flatten` do, while
 `reparent-region`, `merge-child` and `remove-region` offer no undo at all — the
 call comes after that too, so a failure here cannot cost the operator their

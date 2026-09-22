@@ -52,11 +52,11 @@ map.off('click', onMarkerClick);   // cleanup takes the same shape
 
 **One handler, one registration.** Registering the same handler across layers that can overlap is what runs it twice — a single-layer registration is one listener whatever the handler does, which is why `map.on('click', 'clusters', …)` navigating on its own layer is fine. Where layers do overlap, only idempotent handlers may stay per layer: `mousemove` may, because painting the same ring twice is painting it once. Anything that toggles, counts, navigates or mutates must be registered once, on the map.
 
-`mouseleave` is not one of them, and idempotency is not what makes it safe. Over overlapping layers it fires a *spurious* leave: moving from a pin onto its own count badge leaves the marker layer while the pointer has not left the pin, and clearing there — once is already too many — takes the popup and the hover ring off something the reader is still pointing at. A per-layer `mouseleave` over layers that overlap needs a condition of its own: that the thing under the point is not the thing the hover is already on. That means one leave handler across every overlapping layer, reading one key space — not one per layer, each blind to the others. `useMarkerInteractions.ts` carries that check for its four: a leave arriving *after* a sibling layer's `mousemove` has set the hover would otherwise clear what the reader has just arrived at, and within one DOM move the handlers run in registration order.
+`mouseleave` is not one of them, and idempotency is not what makes it safe. Over overlapping layers it fires a *spurious* leave: moving from a pin onto its own count badge leaves the marker layer while the pointer has not left the pin, and clearing there — once is already too many — takes the popup and the hover ring off something the reader is still pointing at. A per-layer `mouseleave` over layers that overlap needs a condition of its own: that the thing under the point is not the thing the hover is already on. That means one leave handler across every overlapping layer, reading one key space — not one per layer, each blind to the others. `useMarkerInteractions.ts` carries that check for its four — `MARKER_LAYERS` (the pins and the two halves of the count badge) and `LAYER_HIGHLIGHT_POINT`, every layer it registers `onHoverLayerLeave` on: a leave arriving *after* a sibling layer's `mousemove` has set the hover would otherwise clear what the reader has just arrived at, and within one DOM move the handlers run in registration order.
 
 Two trackers over one visual are the accepted alternative, and `useDiscoverMap.ts` is the example: a marker hover and a highlight-dot hover mean different things and call different callbacks, so they cannot share a key. The price is that a leave which ends one of them must *hand the ring over* to the other rather than merely keep it, since each side dedupes on its own tracker and a ring left alone stays where the pointer no longer is. Hand over the visual only. Writing the other tracker's key is the trap: its own `mousemove` is registered later and runs later in the same DOM move, and a key already set makes it dedupe — so the visual moves and the callback that tells the rest of the app never fires.
 
-A visual whose owner sets it from a one-shot `mouseenter` cannot be reset by anybody else, because nothing will put it back. `mouseenter` fires once and does not fire again while the pointer stays on the layer, so a sibling layer's leave that resets the cursor over a cluster leaves the default arrow on a bubble that is still clickable, until the pointer leaves the cluster too. This is not the same-target check in another form — a cluster is never the thing the hover is *on*; it owns the cursor and nothing else — so ask separately, and ask in the cluster's own leave as well, about the pins and dots its bubble covers. `useDiscoverMap.ts` does, in three places. Map Mode gets away without it only because its source is unclustered and it has no `mouseenter`-set cursor to strand.
+A visual whose owner sets it from a one-shot `mouseenter` cannot be reset by anybody else, because nothing will put it back. `mouseenter` fires once and does not fire again while the pointer stays on the layer, so a sibling layer's leave that resets the cursor over a cluster leaves the default arrow on a bubble that is still clickable, until the pointer leaves the cluster too. This is not the same-target check in another form — a cluster is never the thing the hover is *on*; it owns the cursor and nothing else — so ask separately, and ask in the cluster's own leave as well, about the pins and dots its bubble covers. `useDiscoverMap.ts` does, in each of its leaves: the markers' `onMarkerMouseLeave`, the `clusters` leave and the `highlight-point` leave. Map Mode gets away without it only because its source is unclustered and it has no `mouseenter`-set cursor to strand.
 
 Test it against both paths. MapLibre's delegated `mouseleave` fires from a `mousemove` that no longer hits the layer *and* from a `mouseout` when the pointer leaves the canvas — and only the first guarantees the point is off the feature. A `mouseout` carries the point the pointer left *from*, which is still on the pin whenever it left onto an overlay drawn above the map, and after it `mousein` is false, so no further leave arrives until a feature is entered again. A same-target check that trusts that point leaves the hover lit for good; check `e.originalEvent.type` before trusting it.
 
@@ -133,8 +133,8 @@ Adding a layer to a live style is a synchronous style update and a repaint, and
 react-map-gl adds them one at a time.
 
 Measured on a world view holding **three** experiences (#910, CI's fixture lane):
-mounting a `geojson` source and four layers on the component's first render and
-filling them when the read landed put the shell's total blocking time at 320 ms
+mounting `WorldExperiencePoints`'s `geojson` sources and their layers on the
+component's first render and filling them when the read landed put the shell's total blocking time at 320 ms
 against a 300 ms budget calibrated at 0–128 ms. Mounting nothing until there is
 something to draw brought it to **162 ms**. Three points cannot cost 158 ms;
 carrying the layers can.
@@ -155,8 +155,8 @@ Two consequences worth keeping:
 **own** id — `feature.id`. A `geojson` feature can carry a top-level `id`, as
 the world layer's builder in `api/worldPoints.ts` sets for markers. Both
 `geojson` and `vector` sources can use `promoteId` to lift a named property
-into that id: the four sources using it in `RegionMapVT.tsx` are `vector`
-sources. `discover/discoverMapLayers.ts` deliberately omits `promoteId` for
+into that id: every source using it in `RegionMapVT.tsx` is a `vector`
+source. `discover/discoverMapLayers.ts` deliberately omits `promoteId` for
 its GeoJSON points because their object-id property repeats across places.
 
 The two failures are opposite and are easy to mix up:
@@ -409,10 +409,11 @@ explanation and advertise a map that is not there. Both are gated on
 ### Why the guard lives in the component and not at the call sites
 
 The first pass at this wrapped each map by hand, and enumerated the surfaces by
-grepping for `maplibre-gl`. That found 7 files and missed 12, because a
-component importing only from `react-map-gl/maplibre` never contains the string
-`maplibre-gl`. The real count is 19 files. Use
-`grep -rE "<(Map|MapGL)( |$|>)"` if you ever need to audit it again — but the
+grepping for `maplibre-gl`. That found only a minority of the files that mount
+a map and missed the rest, because a component importing only from
+`react-map-gl/maplibre` never contains the string `maplibre-gl`. The real set is
+what `grep -rE "<(Map|MapGL)( |$|>)"` prints; use it if you ever need to audit
+it again — but the
 point of `GuardedMap` is that you should not have to.
 
 ### Testing it

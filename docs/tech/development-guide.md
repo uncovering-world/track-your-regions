@@ -8,7 +8,7 @@ Conventions and patterns for writing code in this project. Follow these to keep 
 
 Before implementing anything new, **search the codebase for similar patterns**:
 
-- **A rule both sides apply:** Check `packages/shared/src/` first — the picture hosts and file types, the label fold and store rule, the near-global threshold, the curation-log action vocabulary, the changeset equality, the whole-region ceiling, the two auth enums — imported as `@tyr/shared/<module>` by backend and frontend alike (ADR-0065; § A rule both sides apply, below). A rule you are about to write on one side that the other side already applies goes there, not beside its twin.
+- **A rule both sides apply:** Check `packages/shared/src/` first — the picture hosts and file types, the label fold and store rule, the near-global threshold, the curation-log action vocabulary, the changeset equality, the whole-region ceiling, the user roles and the auth providers (`USER_ROLES`, `AUTH_PROVIDERS`) — imported as `@tyr/shared/<module>` by backend and frontend alike (ADR-0065; § A rule both sides apply, below). A rule you are about to write on one side that the other side already applies goes there, not beside its twin.
 - **Backend utilities:** Check `backend/src/services/sync/experienceUpsert.ts` (the object upsert and its membership), `syncUtils.ts` (single-location write, sync log), `wikidataUtils.ts` (SPARQL, QID parsing), `backend/src/db/membership.ts` (the one spelling of "admitted" and "passed" over a place's memberships), and service-level shared code before writing new helpers.
 - **Frontend utilities:** Check `frontend/src/utils/` (kindColors, dateFormat, imageUrl, coordinateParser, mapUtils) before creating inline helpers.
 - **Frontend hooks:** Check `frontend/src/hooks/` for app-level hooks and component directories for co-located hooks.
@@ -251,7 +251,7 @@ components/
 │   ├── ExperienceListItem.styles.ts ← the row's chrome as classes made once
 │   ├── ExperienceExpandedDetails.tsx
 │   ├── ArtworksList.tsx
-│   ├── CardLocationList.tsx  ← the open card's two lists of places, and their caps
+│   ├── CardLocationList.tsx  ← the open card's lists of places, and their caps
 │   ├── GroupHeader.tsx
 │   ├── LocationRow.tsx       ← one place inside an open card
 │   ├── NoticeLink.tsx
@@ -411,7 +411,7 @@ The full inventory of shared components and utilities — including a "use this,
 
 All API calls live in `frontend/src/api/`. Use `authFetchJson()` from `fetchUtils.ts` for authenticated requests.
 
-The one deliberate exception is `changePassword` (`api/auth.ts`): its endpoint answers a wrong *current password* with 401, and `authFetchJson` reads every 401 as an expired token — so the shared path would rotate the refresh family on each wrong attempt and eventually sign the user out under the sentence saying the session is fine. It builds its request by hand and takes its token from `requireFreshToken()`. The reasoning is in [authentication.md](authentication.md) § Password Security; do not "clean it up" back onto the shared path. Other hand-built authenticated calls (`getCurrentUser`, the two `image-proxy` fetches) record no reason and are debt, not precedent.
+The one deliberate exception is `changePassword` (`api/auth.ts`): its endpoint answers a wrong *current password* with 401, and `authFetchJson` reads every 401 as an expired token — so the shared path would rotate the refresh family on each wrong attempt and eventually sign the user out under the sentence saying the session is fine. It builds its request by hand and takes its token from `requireFreshToken()`. The reasoning is in [authentication.md](authentication.md) § Password Security; do not "clean it up" back onto the shared path. Other hand-built authenticated calls (`getCurrentUser`, the `image-proxy` fetches in `useImageColorPicker` and `ImageOverlayDialog`) record no reason and are debt, not precedent.
 
 When adding a new endpoint:
 1. Add the function in the appropriate `api/*.ts` file — the module of the caller it serves, which a URL's prefix does not decide. Everything under `/api/experiences` is three modules: `experiences.ts` for what a reader's screens ask of the catalogue, `reviewQueue.ts` for the review queue's calls (`/api/experiences/review/…`) and `curation.ts` for a curator's writes on one object (#933).
@@ -546,8 +546,8 @@ Suppressions hide real issues over time. Treat each one as a deliberate exceptio
    tells the tool where a sourced file lives rather than switching a check off,
    and `source=/dev/null` is the accepted way to say "there is no fixed file to
    follow". So for that form the requirement is the stated reason, not a code:
-   see `martin/run-martin.sh:39-44`, which uses exactly that shape — the reason
-   from its opening word through to the sourced line. What never changes is one
+   see `load_env` in `martin/run-martin.sh`, which uses exactly that shape —
+   the reason from its opening word through to the sourced line. What never changes is one
    site at a time and a reason that says why.
 6. **Config-level rule disables need a comment.** If you turn a rule `'off'` in `eslint.config.mjs` (or equivalent), add an inline comment naming why (see `security/detect-object-injection` in `backend/eslint.config.mjs` for the pattern). A rule relaxed for named files is the same pattern with a list, each entry carrying its reason — the way the `max-lines` block for `src/db/schema.generated.ts` in `backend/eslint.config.mjs` says why a generated file's length is not a file to split (§ Keep Files Small).
 
@@ -1037,7 +1037,7 @@ The project has slash commands (in `.claude/commands/`) that automate common wor
 | `/quality-alerts` | Triage code quality alerts |
 | `/refactor-check` | Post-refactoring check — a change that gave a rule a new owner deletes the guard the owner made obsolete (or links the issue that owns it), and the dev guide has rules preventing the old pattern from recurring |
 | `/issues` | Browse the task board — Backlog grouped by Priority with type, Size/Theme/AI fit, parent and blockers |
-| `/issue-create` | Create a new GitHub issue — type (Bug / Feature / Task / Epic), the form's body shape in a neutral voice, area labels, the four fields, parent / blockers / milestone, board placement; a slice of an Epic also gets its `→ #N` ledger mark written onto the Epic's own list, which the other commands gate on |
+| `/issue-create` | Create a new GitHub issue — type (Bug / Feature / Task / Epic), the form's body shape in a neutral voice, area labels, Priority / Size / Theme / AI fit, parent / blockers / milestone, board placement; a slice of an Epic also gets its `→ #N` ledger mark written onto the Epic's own list, which the other commands gate on |
 | `/issue-upload` | Batch-create issues from a markdown file — the same type, fields, hierarchy and Epic mark per item, with a file ledger that lets an interrupted run resume, plus a lookup of recently created issues shown for adoption before the batch is confirmed, which covers the one gap the ledger cannot (a create that succeeded while its file mark failed); a line is cleaned up only once its placement, its Epic mark and — for an adopted issue — its hierarchy, labels and type have all landed |
 | `/review-dependabot` | Review Dependabot PRs and security alerts |
 

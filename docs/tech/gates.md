@@ -36,7 +36,7 @@ stack test:e2e:smoke        skipped  inputs untouched: app
 stack perf                  skipped  inputs untouched: app
 ```
 
-Two gates run, and every other one names the input class it did not see
+`lint:md` and `lint:links` run, and every other one names the input class it did not see
 move. Three shapes of answer are worth recognising:
 
 - **`inputs touched: <class>`** — the gate runs, and the class says which of its
@@ -106,7 +106,7 @@ $ GATES_BASE= node scripts/gates.mjs run stack
 GATES_BASE is empty: nothing to diff against, so every gate applies.
 ```
 
-Without it a reader sees sixteen gates run, or a stack listing whose every line
+Without it a reader sees every gate in the map run, or a stack listing whose every line
 reads `(every gate applies)`, and has to guess whether the branch really touched
 everything or the base was simply unknown.
 
@@ -193,7 +193,8 @@ That list is not maintained by hand. `scripts/gates.test.mjs` reads every
 `repoFile()` call whose arguments are string literals — in the backend suite and
 in the tooling specs beside it under `scripts/`, which `backend/vitest.config.ts`
 runs in the same gate — resolves each to a repository path, and asserts it is an
-input to `test:backend` or to `tooling`. The last two rows arrived that way:
+input to `test:backend` or to `tooling`. The `docs/tech/gates.md` and
+`.github/workflows/ci.yml` rows arrived that way:
 `scripts/ci-failsafe.test.mjs` reads `.github/workflows/ci.yml`, and the
 assertion is green only because the map carries that path under `tooling`. A
 spec that starts reading a path the map does not name turns the test red, and
@@ -222,8 +223,9 @@ Three things about that line are load-bearing.
 - **`!cancelled()` removes the implicit `success()`.** A `Changes` job that
   *fails* therefore skips nothing: every job runs, which is the map's own rule
   for an unknown change set applied one level up. Without it a broken decision
-  would skip the three required contexts, each would report Success, and the
-  pull request would be mergeable with nothing run on it.
+  would skip the required contexts — `Lint & Type Check`, `Security Scan` and
+  `Unit Tests` — each would report Success, and the pull request would be
+  mergeable with nothing run on it.
 - **`Build`, `E2E Smoke` and `Performance (Lighthouse)` add
   `needs.check.result == 'success'`.** That ordering existed before and had to be
   restated, because `!cancelled()` is what removed it.
@@ -239,8 +241,9 @@ a prose-only change runs with no other install to its name; the backend and
 frontend installs wait on `job_check_node` and the cv-python venv on
 `job_check_python`. The job then runs `npm run check` unchanged, with
 `GATES_BASE` set from the `Changes` job's own base, so the two cannot disagree
-about what changed. The `security` job's two Semgrep steps read
-`job_security_node` and `job_security_python` separately: the Python scan is
+about what changed. The `security` job's Semgrep steps, `Semgrep SAST (Node)`
+and `Semgrep SAST (Python)`, read `job_security_node` and `job_security_python`
+separately: the Python scan is
 pointed at `cv-python/` alone, so a backend change cannot alter its answer and
 does not pay for it, while the Node scan is pointed at the whole checkout with
 rule packs that carry Python rules, so `cv-python/` is one of its inputs and a
@@ -253,7 +256,7 @@ database. The smoke step keeps the stack up when it is done
 database-backed backend specs (#522; which specs those are is
 `docs/tech/development-guide.md` § Tests that need a database) — against that
 same stack, then tears it down. The step reads `job_test_db`, a key of its own
-in the shape of the two Semgrep steps.
+in the shape of the `Semgrep SAST (Node)` and `Semgrep SAST (Python)` steps.
 Today it always equals `job_smoke`, since both gates read `app`; what
 `scripts/gates.test.mjs` pins is the containment, not the equality — a smoke
 gate narrowed to fewer inputs than `test:db` reads would leave the step inside a
@@ -312,7 +315,8 @@ files the suite already reads.
   map does not chase, because the change touched no Markdown. The next full run —
   any `tooling` change, or the next docs edit — finds it.
 - **A workflow's syntax is read; what it needs from GitHub is not.** The gap ADR-0062
-  recorded here — the three `claude-*.yml` workflows in no input class, `ci.yml` held
+  recorded here — `claude-review.yml`, `claude-qa.yml` and `claude-dependabot.yml`
+  in no input class, `ci.yml` held
   only to the fail-safe contract and never to the syntax of a workflow file — is
   closed: `lint:actions` runs actionlint over the `workflows` class, which is
   `.github/workflows/` whole (#951). It parses each file, type-checks the `${{ }}`
@@ -355,7 +359,7 @@ files the suite already reads.
    contains the generated text verbatim, so `npm test` is red until it does.
 3. If the gate is a new CI job, add its key to `githubOutputs()` and give the job
    the `if:` shape above; if it is a step inside an existing job, give the step
-   its own key the way the two Semgrep steps have theirs.
+   its own key the way `Semgrep SAST (Node)` and `Semgrep SAST (Python)` have theirs.
 4. Check the verdict on a change that should skip it and on one that should not.
    A gate whose inputs are wrong fails the way this whole file exists to prevent:
    quietly, by not running.
