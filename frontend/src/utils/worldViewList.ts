@@ -1,3 +1,5 @@
+import type { PlacementFailure } from '../api/curation';
+
 /**
  * The world views a re-placement failed for, named for the curator and numbered for
  * the admin they take it to.
@@ -21,7 +23,7 @@
  * searching for a world view id are the two halves of one handover.
  */
 export function worldViewList(
-  failed: Array<{ id: number | null; name: string | null }> | undefined,
+  failed: PlacementFailure[] | undefined,
 ): string {
   if (!failed || failed.length === 0) return 'its world views';
   return failed

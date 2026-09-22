@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
 import { useMutation } from '@tanstack/react-query';
-import { unrefuseContents } from '../../api/curation';
+import { unrefuseContents, type UnrefuseContentsResult } from '../../api/curation';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { formatDateTime } from '../../utils/dateFormat';
 import { plural } from '../../utils/plural';
@@ -50,7 +50,6 @@ type BlockingFacts = Pick<
 type RefusedPoint = NonNullable<ReviewQueueItem['refused_points']>[number];
 type RefusedWork = NonNullable<ReviewQueueItem['refused_works']>[number];
 type OnDone = (message?: string, experienceId?: number) => void;
-type TakeBack = Awaited<ReturnType<typeof unrefuseContents>>;
 
 /** A part's name as a curator would say it, the way the withdrawn card says a point's. */
 export function partTitle(part: { name: string | null; externalRef?: string | null }): string {
@@ -97,7 +96,7 @@ export function droppedBySourceLine(part: { missingSince: string | null }): stri
  * anybody can see it — the take-back restores the question, never the answer.
  */
 export function askedAgainOutcome(
-  objectName: string, data: TakeBack | undefined, stillOffered = true,
+  objectName: string, data: UnrefuseContentsResult | undefined, stillOffered = true,
 ): string {
   const points = data?.locationsRestored ?? 0;
   const works = data?.treasureLinksRestored ?? 0;

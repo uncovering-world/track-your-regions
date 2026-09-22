@@ -7,15 +7,24 @@
  * run brought.
  */
 
-import type { AdmissionResult, ContentKind, PublishResult } from '@tyr/shared/api';
+import type {
+  AcceptSourceResult, AdmissionResult, ContentKind, CurationLog, DeclineHeldResult,
+  DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
+  LocationStateResult, ManualExperienceCreated, PublishResult, RefuseArrivalResult,
+  RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
+} from '@tyr/shared/api';
 import { API_URL, authFetchJson } from './fetchUtils';
-import type { ImageCredit } from './experiences';
 
-// The answers the backend declares as schemas (ADR-0066), generated into
-// `@tyr/shared/api`. Passed on from here, so a component imports a call's answer
-// from the module of the call. A call still missing from that list declares its
-// answer in this file until its slice of #527 moves it.
-export type { AdmissionResult, AppliedPart, ContentKind, PartNotFound, PublishResult } from '@tyr/shared/api';
+// What every call here answers is declared once, as a backend schema (ADR-0066),
+// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// imports a call's answer from the module of the call.
+export type {
+  AcceptSourceResult, AdmissionResult, AppliedPart, ContentKind, CurationLog, CurationLogEntry,
+  DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
+  ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated,
+  PartNotFound, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsResult,
+  RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
+} from '@tyr/shared/api';
 
 /**
  * Reject an experience from a region
@@ -24,7 +33,7 @@ export async function rejectExperience(
   experienceId: number,
   regionId: number,
   reason?: string,
-): Promise<{ success: boolean }> {
+): Promise<RegionMembershipResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/reject`, {
     method: 'POST',
     body: JSON.stringify({ regionId, reason }),
@@ -51,7 +60,7 @@ export async function setExperienceState(
      */
     expected: { membership: 'present' | 'former'; existence: 'extant' | 'lost'; flagged: boolean };
   },
-): Promise<{ experienceId: number; sourceMembership: 'present' | 'former'; existence: 'extant' | 'lost' }> {
+): Promise<ExperienceStateResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/state`, {
     method: 'POST',
     body: JSON.stringify(decision),
@@ -78,24 +87,7 @@ export async function setLocationState(
     note?: string;
     expected: { membership: 'present' | 'former'; existence: 'extant' | 'lost'; flagged: boolean };
   },
-): Promise<{
-  locationId: number;
-  experienceId: number;
-  sourceMembership: 'present' | 'former';
-  existence: 'extant' | 'lost';
-  offeredToReaders: boolean;
-  /**
-   * Present only where the verdict committed and re-placing the point into a world
-   * view did not — so it is on the map (or off it) and the regions disagree.
-   *
-   * A verdict that changes what a reader sees is a placement event in either
-   * direction, because a withdrawn point holds no `auto` region rows (ADR-0022) and a
-   * `lost` one must hold none. Undeclared, this field was unreadable without a cast,
-   * which is how the endpoint came to report a state no screen could show.
-   */
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}> {
+): Promise<LocationStateResult> {
   return authFetchJson(`${API_URL}/api/experiences/locations/${locationId}/state`, {
     method: 'POST',
     body: JSON.stringify(decision),
@@ -115,21 +107,7 @@ export async function setLocationState(
 export async function editLocation(
   locationId: number,
   correction: { name?: string; latitude?: number; longitude?: number },
-): Promise<{
-  success: true;
-  locationId: number;
-  /**
-   * Whether the object's own coordinate moved with the place. True only where the
-   * object holds exactly one visible, published place and this is it — the case in
-   * which the source's locator and the place are one fact. A pending or withdrawn
-   * place moves nothing, whatever the count, so a screen reads this rather than
-   * promising it.
-   */
-  anchorMoved: boolean;
-  /** The move committed; re-placing the object into a world view did not. */
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}> {
+): Promise<LocationEditResult> {
   return authFetchJson(`${API_URL}/api/experiences/locations/${locationId}/edit`, {
     method: 'PATCH',
     body: JSON.stringify(correction),
@@ -166,20 +144,7 @@ export async function editWork(
   experienceId: number,
   treasureId: number,
   correction: { name?: string; artists?: string[]; year?: number | null; imageUrl?: string },
-): Promise<{
-  success: true;
-  treasureId: number;
-  /** The columns this edit took ownership of, which a later run will no longer touch. */
-  claimed: Array<'name' | 'artists' | 'year' | 'image_url'>;
-  /**
-   * Who was named under the new picture, present only where the picture changed.
-   *
-   * Read rather than assumed: a Commons file whose credit request timed out is
-   * stored with none, and a screen that promised a name would show the picture
-   * as credited to nobody without saying that is what happened.
-   */
-  imageCredit?: ImageCredit | null;
-}> {
+): Promise<WorkEditResult> {
   return authFetchJson(
     `${API_URL}/api/experiences/${experienceId}/works/${treasureId}/edit`,
     { method: 'PATCH', body: JSON.stringify(correction) },
@@ -218,32 +183,7 @@ export async function acceptSourceValue(
   experienceId: number,
   fields: string[],
   expectedSyncLogId: number,
-): Promise<{
-  experienceId: number;
-  applied: string[];
-  released: string[];
-  /**
-   * The points whose own claim on the coordinate was released with the object's.
-   * Accepting `location` hands back the correction at both levels, because the
-   * object's coordinate and its one visible point's are the same fact.
-   */
-  releasedPoints: number[];
-  /**
-   * Those of them the endpoint also put back on the coordinate that run offered
-   * — releasing alone would have the next run retire the row instead of
-   * rewriting it, since the pairing bounds a point's identity by distance.
-   */
-  movedPoints: number[];
-  /**
-   * Whether accepting the picture also dropped the credit the curator's own edit
-   * wrote for it. A boolean rather than the value: what they need to know is
-   * that the line under their photograph is gone.
-   */
-  releasedCredit?: boolean;
-  placementFailed?: boolean;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-  fromSyncLogId: number;
-}> {
+): Promise<AcceptSourceResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/accept-source`, {
     method: 'POST',
     body: JSON.stringify({ fields, expectedSyncLogId }),
@@ -262,21 +202,11 @@ export async function declineSourceValue(
   experienceId: number,
   fields: string[],
   expectedSyncLogId: number,
-): Promise<{ experienceId: number; declined: string[]; fromSyncLogId: number }> {
+): Promise<DeclineSourceResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/decline-source`, {
     method: 'POST',
     body: JSON.stringify({ fields, expectedSyncLogId }),
   });
-}
-
-/** What refusing one or more held rows settled. */
-export interface DeclineHeldResult {
-  experienceId: number;
-  declinedFields: string[];
-  declinedParts: Array<{ kind: string; name: string; fields: string[] }>;
-  fromSyncLogId: number;
-  /** Held rows still open. Zero means the card is gone and the pointer with it. */
-  heldLeftOpen: number;
 }
 
 /**
@@ -408,7 +338,7 @@ export async function publishExperience(
 export async function refuseArrival(
   experienceId: number,
   note?: string,
-): Promise<{ experienceId: number; admission: 'refused'; reason: string }> {
+): Promise<RefuseArrivalResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/refuse-arrival`, {
     method: 'POST',
     body: JSON.stringify({ note }),
@@ -422,16 +352,7 @@ export async function refuseArrival(
 export async function refuseContents(
   experienceId: number,
   body: { locationIds?: number[]; treasureIds?: number[]; note?: string } = {},
-): Promise<{
-  experienceId: number;
-  locationsRefused: number;
-  treasureLinksRefused: number;
-  /** Old pins a refused arrival had been holding on the map, now withdrawn and asking their own question. */
-  withdrawalsReleased: number;
-  /** The re-placement any refused point calls for — it counts toward no region now, and any pin it released is gone — where it failed; the publish's own shape. */
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}> {
+): Promise<RefuseContentsResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/refuse-contents`, {
     method: 'POST',
     body: JSON.stringify(body),
@@ -449,16 +370,7 @@ export async function refuseContents(
 export async function unrefuseContents(
   experienceId: number,
   body: { locationIds?: number[]; treasureIds?: number[]; note?: string } = {},
-): Promise<{
-  experienceId: number;
-  locationsRestored: number;
-  treasureLinksRestored: number;
-  /** Exactly which points and works came back, as the statement returned them. */
-  locationIds: number[];
-  treasureIds: number[];
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}> {
+): Promise<UnrefuseContentsResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/unrefuse-contents`, {
     method: 'POST',
     body: JSON.stringify(body),
@@ -471,7 +383,7 @@ export async function unrefuseContents(
 export async function unrejectExperience(
   experienceId: number,
   regionId: number,
-): Promise<{ success: boolean }> {
+): Promise<RegionMembershipResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/unreject`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
@@ -484,7 +396,7 @@ export async function unrejectExperience(
 export async function assignExperienceToRegion(
   experienceId: number,
   regionId: number,
-): Promise<{ success: boolean }> {
+): Promise<RegionMembershipResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/assign`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
@@ -509,7 +421,7 @@ export async function createManualExperience(data: {
   kindId?: number;
   websiteUrl?: string;
   wikipediaUrl?: string;
-}): Promise<{ id: number; name: string; externalId: string }> {
+}): Promise<ManualExperienceCreated> {
   return authFetchJson(`${API_URL}/api/experiences`, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -531,7 +443,7 @@ export async function editExperience(
     websiteUrl?: string;
     wikipediaUrl?: string;
   },
-): Promise<{ success: boolean; experienceId: number; curatedFields: string[] }> {
+): Promise<ExperienceEditResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/edit`, {
     method: 'PATCH',
     body: JSON.stringify(data),
@@ -539,24 +451,11 @@ export async function editExperience(
 }
 
 /**
- * Curation log entry
- */
-export interface CurationLogEntry {
-  id: number;
-  action: string;
-  region_id: number | null;
-  region_name: string | null;
-  details: Record<string, unknown> | null;
-  created_at: string;
-  curator_name: string;
-}
-
-/**
  * Get curation log for an experience
  */
 export async function fetchCurationLog(
   experienceId: number,
-): Promise<CurationLogEntry[]> {
+): Promise<CurationLog> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/curation-log`);
 }
 
@@ -566,7 +465,7 @@ export async function fetchCurationLog(
 export async function unassignExperienceFromRegion(
   experienceId: number,
   regionId: number,
-): Promise<{ success: boolean }> {
+): Promise<RegionMembershipResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/assign/${regionId}`, {
     method: 'DELETE',
   });
@@ -580,7 +479,7 @@ export async function unassignExperienceFromRegion(
 export async function removeExperienceFromRegion(
   experienceId: number,
   regionId: number,
-): Promise<{ success: boolean }> {
+): Promise<RegionMembershipResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/remove-from-region/${regionId}`, {
     method: 'DELETE',
   });

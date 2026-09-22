@@ -12,11 +12,12 @@
  * shared sentence imported from one card would make that card a dependency of the map.
  */
 
+import type { PlacementFailure } from '../api/curation';
 import { worldViewList } from './worldViewList';
 
 export function placementNotice(
   item: { name: string },
-  data?: { placementFailed?: true; placementFailedWorldViews?: Array<{ id: number | null; name: string | null }> },
+  data?: { placementFailed?: true; placementFailedWorldViews?: PlacementFailure[] },
 ): string | undefined {
   if (!data?.placementFailed) return undefined;
   return `${item.name}: the answer was recorded, but the point could not be re-placed in `

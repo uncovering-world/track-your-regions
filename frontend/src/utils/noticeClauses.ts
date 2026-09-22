@@ -9,6 +9,7 @@
  * Pure string assembly, no React, tested directly.
  */
 
+import type { PlacementFailure } from '../api/curation';
 import { plural } from './plural';
 import { worldViewList } from './worldViewList';
 
@@ -57,7 +58,7 @@ export function refusalClauses(refused: Array<{ name: string; error: string }>):
  * failure is systemic — one broken world view fails every object the batch releases.
  */
 export function stalePlacementClause(
-  stale: Array<{ name: string; worldViews: Array<{ id: number | null; name: string | null }> | undefined }>,
+  stale: Array<{ name: string; worldViews: PlacementFailure[] | undefined }>,
   verb = 'published',
 ): string[] {
   if (stale.length === 0) return [];

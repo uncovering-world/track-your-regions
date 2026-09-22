@@ -30,7 +30,7 @@
 import { useState } from 'react';
 import { Alert, Button, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { editLocation } from '../../api/curation';
+import { editLocation, type LocationEditResult } from '../../api/curation';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { placementNotice } from '../../utils/placementNotice';
 import { describeMove, moveLabel } from '../../utils/moveDescription';
@@ -62,7 +62,6 @@ export interface PlaceToCorrect {
 }
 
 type Correction = { name?: string; latitude?: number; longitude?: number };
-type Reply = Awaited<ReturnType<typeof editLocation>>;
 
 /** A building fills the frame at this zoom; a country does at the picker's default. */
 const PLACE_ZOOM = 15;
@@ -98,7 +97,7 @@ const REMEDY: Record<UnseenReason, string> = {
  * would be noise, while on a place readers cannot see the thing worth saying
  * is that they still cannot, and what would change that.
  */
-export function correctionOutcome(place: PlaceToCorrect, correction: Correction, reply: Reply): string {
+export function correctionOutcome(place: PlaceToCorrect, correction: Correction, reply: LocationEditResult): string {
   const label = place.name ?? 'the place';
   const renamed = correction.name !== undefined;
   const moved = correction.latitude !== undefined && correction.longitude !== undefined;

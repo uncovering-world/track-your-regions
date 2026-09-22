@@ -40,7 +40,7 @@ import { useState } from 'react';
 import { Alert, Button, Chip, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ExperienceTreasure, ImageCredit } from '../../api/experiences';
-import { editWork } from '../../api/curation';
+import { editWork, type WorkEditResult } from '../../api/curation';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { creators, creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
@@ -103,10 +103,9 @@ export function workToCorrect(
 }
 
 type Correction = { name?: string; artists?: string[]; year?: number | null; imageUrl?: string };
-type Reply = Awaited<ReturnType<typeof editWork>>;
 
 /** What the curator changed, as one line for wherever the caller reports its answers. */
-export function correctionOutcome(work: WorkToCorrect, correction: Correction, reply: Reply): string {
+export function correctionOutcome(work: WorkToCorrect, correction: Correction, reply: WorkEditResult): string {
   const changes: string[] = [];
   if (correction.name !== undefined) changes.push(`retitled “${correction.name}”`);
   if (correction.artists !== undefined) {
