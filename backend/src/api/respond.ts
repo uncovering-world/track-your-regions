@@ -99,7 +99,9 @@ function requestLineOf(res: Response): RequestLine | null {
 }
 
 /**
- * Answer 200 with `body`, after checking it against `schema` outside production.
+ * Answer with `body`, after checking it against `schema` outside production. The
+ * status is whatever the handler set, 200 unless it called `res.status()` first:
+ * `respond(res.status(201), Schema, body)` for a create.
  *
  * An error answer does not go through here. Its body is `{ error }`, and the
  * route declarations of #793 are where error bodies get declared.

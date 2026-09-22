@@ -14,12 +14,15 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { LocationEditResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { offeredLocationSql, publishedContentSql } from './experienceLifecycle.js';
 import { placeAfterRelease } from './publishContents.js';
+import { placementReport } from './placementReport.js';
 
 /** What a curator may claim on a point — see `db/migrations/027`. */
 type Claim = 'name' | 'location';
@@ -224,7 +227,7 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     )
     : [];
 
-  res.json({
+  respond(res, LocationEditResult, {
     success: true,
     locationId,
     anchorMoved,
@@ -235,10 +238,6 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     // curator cannot re-assign anything themselves, so what they need is enough
     // to tell an admin which object and which world views — the disclosure
     // `SECURITY.md` already argues for on the sibling endpoints.
-    ...(placementFailures.length > 0 && {
-      placementFailed: true,
-      placementFailedWorldViews: placementFailures.map(
-        f => ({ id: f.worldViewId, name: f.worldViewName })),
-    }),
+    ...placementReport(placementFailures),
   });
 }

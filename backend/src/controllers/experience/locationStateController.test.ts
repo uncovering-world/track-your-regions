@@ -461,8 +461,9 @@ describe('setLocationState', () => {
       res as never,
     );
 
-    // Absent rather than `false`: a field that is always there stops being read.
-    expect(res.json.mock.calls[0][0]).not.toHaveProperty('placementFailed');
+    // Absent on the wire rather than `false`: a field that is always there stops
+    // being read. The body writes the key as `undefined`, which JSON drops.
+    expect(JSON.parse(JSON.stringify(res.json.mock.calls[0][0]))).not.toHaveProperty('placementFailed');
   });
 
   it('deletes nothing, whatever the verdict', async () => {

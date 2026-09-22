@@ -24,6 +24,17 @@ export type LocationCurationState = z.infer<typeof LocationCurationState>;
 /** A timestamp as the wire carries it: the handler converts the driver's `Date`. */
 const timestamp = z.iso.datetime({ offset: true }).nullable();
 
+// The line under a picture: a Commons file credits a photographer and a licence
+// with a URL, and every half of that can be missing from the file page.
+export const ImageCredit = z.strictObject({
+  author: z.string().nullable().describe('The photographer or uploader, as plain text.'),
+  license: z.string().nullable().describe('The licence in the words its own name uses: "CC BY-SA 3.0", "Public domain".'),
+  licenseUrl: z.string().nullable(),
+  detailsUrl: z.string().nullable()
+    .describe("The file page or the site's own page for the object: where the full terms are."),
+}).describe('Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043).');
+export type ImageCredit = z.infer<typeof ImageCredit>;
+
 /**
  * The keys both location reads send, which is what a screen reads when it does
  * not care which read the point came from.

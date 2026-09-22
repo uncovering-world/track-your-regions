@@ -13,12 +13,15 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { LocationStateResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
+import { placementReport } from './placementReport.js';
 
 /** The point's two axes, as the columns' CHECK lists spell them. */
 type Membership = CheckValue<'experience_locations', 'source_membership'>;
@@ -161,7 +164,7 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
     res.status(status).json(payload);
     return;
   }
-  res.json(outcome.result);
+  respond(res, LocationStateResult, outcome.result!);
 }
 
 /** What a curator sends about one point, and the point as they were looking at it. */
@@ -170,17 +173,6 @@ export interface LocationStateAnswer {
   existence?: Existence;
   note?: string;
   expected: { membership: Membership; existence: Existence; flagged: boolean };
-}
-
-/** What a verdict on a point reports back. */
-export interface LocationStateResult {
-  locationId: number;
-  experienceId: number;
-  sourceMembership: Membership;
-  existence: Existence;
-  offeredToReaders: boolean;
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
 }
 
 /**
@@ -384,9 +376,6 @@ export async function answerLocationStateUnderLock(
     // Named rather than counted, and only when there is something to say: a point
     // back on the map but missing from a region's list is a state a curator can
     // report, and one nobody can guess from a successful answer.
-    ...(placementFailures.length > 0 && {
-      placementFailed: true as const,
-      placementFailedWorldViews: placementFailures.map(f => ({ id: f.worldViewId, name: f.worldViewName })),
-    }),
+    ...placementReport(placementFailures),
   } };
 }

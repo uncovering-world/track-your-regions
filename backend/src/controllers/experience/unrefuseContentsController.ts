@@ -42,27 +42,16 @@
 
 import { Response } from 'express';
 import type { PoolClient } from 'pg';
+import { UnrefuseContentsResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { answerThroughScope } from './curatorRefusalController.js';
 import { placeAfterRelease } from './publishContents.js';
+import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
-
-export interface UnrefuseContentsResult {
-  experienceId: number;
-  locationsRestored: number;
-  treasureLinksRestored: number;
-  /** Exactly which points came back, so the line afterwards can name them as the refusal's log row named what it took. */
-  locationIds: number[];
-  /** Exactly which works came back, by treasure id — the id the link is named by everywhere a curator sees one. */
-  treasureIds: number[];
-  /** The re-placement a restored point calls for — it counts toward its regions again — where it failed; the refusal's own shape. */
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}
 
 /**
  * Ask again about points and works this object's curator had turned down — the
@@ -71,7 +60,7 @@ export interface UnrefuseContentsResult {
  * Body: { locationIds?: number[], treasureIds?: number[], note?: string }
  */
 export async function unrefuseContents(req: AuthenticatedRequest, res: Response): Promise<void> {
-  await answerThroughScope(req, res, (experienceId, userId, logRegionId) =>
+  await answerThroughScope(req, res, UnrefuseContentsResult, (experienceId, userId, logRegionId) =>
     unrefuseContentsUnderLock(experienceId, userId, logRegionId,
       req.body as { locationIds?: number[]; treasureIds?: number[]; note?: string }));
 }
@@ -201,10 +190,7 @@ export async function unrefuseContentsUnderLock(
     treasureLinksRestored: restoredLinks.length,
     locationIds: restoredPoints,
     treasureIds: restoredLinks,
-    ...(placementFailures.length === 0 ? {} : {
-      placementFailed: true as const,
-      placementFailedWorldViews: placementFailures.map(f => ({ id: f.worldViewId, name: f.worldViewName })),
-    }),
+    ...placementReport(placementFailures),
   } };
 }
 

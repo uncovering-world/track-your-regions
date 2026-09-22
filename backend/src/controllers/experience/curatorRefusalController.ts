@@ -32,6 +32,9 @@
  */
 
 import { Response } from 'express';
+import type { z } from 'zod/v4';
+import { respond } from '../../api/respond.js';
+import { RefuseArrivalResult, RefuseContentsResult } from '../../api/responses/curation.js';
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
@@ -41,28 +44,12 @@ import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
+import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 
 /** The reason a curator's refusal carries, in the words the kept-out list shows. */
 export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
-
-export interface RefuseArrivalResult {
-  experienceId: number;
-  admission: 'refused';
-  reason: string;
-}
-
-export interface RefuseContentsResult {
-  experienceId: number;
-  locationsRefused: number;
-  treasureLinksRefused: number;
-  /** Old pins a refused arrival had been holding on the map, now withdrawn and asking their own question. */
-  withdrawalsReleased: number;
-  /** The re-placement any refused point calls for — it counts toward no region now, and any pin it released is gone — where it failed; the publish's own shape. */
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}
 
 /**
  * Keep out an object nobody has passed.
@@ -70,7 +57,7 @@ export interface RefuseContentsResult {
  * Body: { note?: string }
  */
 export async function refuseArrival(req: AuthenticatedRequest, res: Response): Promise<void> {
-  await answerThroughScope(req, res, (experienceId, userId, logRegionId) =>
+  await answerThroughScope(req, res, RefuseArrivalResult, (experienceId, userId, logRegionId) =>
     refuseArrivalUnderLock(experienceId, userId, logRegionId, req.body as { note?: string }));
 }
 
@@ -81,7 +68,7 @@ export async function refuseArrival(req: AuthenticatedRequest, res: Response): P
  * Body: { locationIds?: number[], treasureIds?: number[], note?: string }
  */
 export async function refuseContents(req: AuthenticatedRequest, res: Response): Promise<void> {
-  await answerThroughScope(req, res, (experienceId, userId, logRegionId) =>
+  await answerThroughScope(req, res, RefuseContentsResult, (experienceId, userId, logRegionId) =>
     refuseContentsUnderLock(experienceId, userId, logRegionId,
       req.body as { locationIds?: number[]; treasureIds?: number[]; note?: string }));
 }
@@ -95,11 +82,12 @@ export async function refuseContents(req: AuthenticatedRequest, res: Response): 
  * answer for this object" is exactly the drift `resolveExperienceScope` exists to
  * prevent.
  */
-export async function answerThroughScope<T>(
+export async function answerThroughScope<S extends z.ZodType>(
   req: AuthenticatedRequest,
   res: Response,
+  schema: S,
   write: (experienceId: number, userId: number, logRegionId: number | null)
-    => Promise<{ result?: T; refusal?: AnswerRefusal }>,
+    => Promise<{ result?: z.output<S>; refusal?: AnswerRefusal }>,
 ): Promise<void> {
   const experienceId = parseInt(String(req.params.id));
   const userId = req.user!.id;
@@ -128,7 +116,7 @@ export async function answerThroughScope<T>(
     res.status(status).json(payload);
     return;
   }
-  res.json(outcome.result);
+  respond(res, schema, outcome.result!);
 }
 
 /**
@@ -354,10 +342,7 @@ export async function refuseContentsUnderLock(
     locationsRefused: points.refused,
     treasureLinksRefused,
     withdrawalsReleased: points.withdrawalsReleased,
-    ...(placementFailures.length === 0 ? {} : {
-      placementFailed: true as const,
-      placementFailedWorldViews: placementFailures.map(f => ({ id: f.worldViewId, name: f.worldViewName })),
-    }),
+    ...placementReport(placementFailures),
   } };
 }
 

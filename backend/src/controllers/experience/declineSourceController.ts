@@ -13,6 +13,8 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { DeclineSourceResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -73,7 +75,7 @@ export async function declineSourceValue(req: AuthenticatedRequest, res: Respons
     res.status(409).json(outcome.refusal);
     return;
   }
-  res.json(outcome.result);
+  respond(res, DeclineSourceResult, outcome.result!);
 }
 
 /**
@@ -89,7 +91,7 @@ export async function declineSourceUnderLock(
   fields: string[] | 'all',
   expectedSyncLogId: number,
 ): Promise<{
-  result?: { experienceId: number; declined: string[]; fromSyncLogId: number };
+  result?: DeclineSourceResult;
   refusal?: { error: string; fromSyncLogId?: number };
 }> {
   const outcome = await recordRefusals(experienceId, userId, logRegionId, fields, expectedSyncLogId);
