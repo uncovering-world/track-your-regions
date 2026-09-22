@@ -57,6 +57,30 @@ function makeRes() {
 }
 
 /**
+ * A point as the driver hands it to either location read: float8 as a number, a
+ * timestamp as a `Date`, the claims as an array.
+ *
+ * It carries the columns of both reads. Each read maps only its own, and
+ * `respond()` holds the answer to its schema in this lane, so a fixture that
+ * drifts from the driver's shapes fails here rather than passing on strings.
+ */
+function placeRow(over: Record<string, unknown> = {}) {
+  return {
+    id: 9, experience_id: 42, name: 'See', external_ref: '1363-061', ordinal: 0,
+    longitude: 9.4, latitude: 47.5, created_at: new Date('2026-08-04T15:01:24.341Z'),
+    curated_fields: [], in_region: true, region_path: null, curation_state: 'auto', refused_at: null,
+    ...over,
+  };
+}
+
+/** Answers the location read with a point, and every other statement with the object's own row. */
+function answerPointsAndObject() {
+  mockedQuery.mockImplementation(async (sql: string) => (/FROM experience_locations/i.test(sql)
+    ? { rows: [placeRow()], rowCount: 1 }
+    : { rows: [{ id: 1, name: 'Site' }], rowCount: 1 }));
+}
+
+/**
  * The client a handler pins for its transaction (#532).
  *
  * Its statements are answered by the pool's mock, so a test that stubs a row
@@ -95,7 +119,7 @@ function locationRead(): string {
 describe('reads that show a point', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [{ id: 1, name: 'Site' }], rowCount: 1 });
+    answerPointsAndObject();
   });
 
   it('leaves a withdrawn point out of an experience own list', async () => {
@@ -119,12 +143,7 @@ describe('reads that show a point', () => {
     // query shapes that must not disagree. Asserted on the *response*, not on the
     // SQL: the batch rebuilds each row by hand, and its first version selected the
     // column and dropped it right there, which a match on the query text passed.
-    const place = {
-      id: 9, experience_id: 42, name: 'See', external_ref: '1363-061', ordinal: 0,
-      longitude: '9.4', latitude: '47.5', created_at: 'x', in_region: true, region_path: null,
-      curated_fields: ['location'], curation_state: 'auto',
-    };
-    mockedQuery.mockResolvedValue({ rows: [place], rowCount: 1 });
+    mockedQuery.mockResolvedValue({ rows: [placeRow({ curated_fields: ['location'] })], rowCount: 1 });
 
     let res = makeRes();
     await getExperienceLocations({ params: { id: '42' }, query: {} } as never, res as never);

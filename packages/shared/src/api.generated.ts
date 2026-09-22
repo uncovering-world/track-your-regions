@@ -70,6 +70,79 @@ export interface AppliedPart {
  */
 export type ContentKind = "locations" | "treasures";
 
+/** One point of an object. */
+export interface ExperienceLocation {
+  id: number;
+  experience_id: number;
+  /** The component the source names, such as one fort of a serial nomination. */
+  name: string | null;
+  /** The source's own reference, such as `1739-005` for UNESCO. */
+  external_ref: string | null;
+  /**
+   * The point's place in the source's list. Null for a point waiting on its replacement to be
+   * published, and sorted last. Read it through `locationLabel` rather than doing arithmetic on it.
+   */
+  ordinal: number | null;
+  longitude: number;
+  latitude: number;
+  created_at: string | null;
+  /**
+   * The fields a curator has claimed on the point, such as `name` and `location`, so a row can say
+   * it is corrected.
+   */
+  curated_fields: string[];
+  /** Whether the point lies in the region the read was asked about. True where none was named. */
+  in_region: boolean;
+}
+
+/** An object's own points. */
+export interface ExperienceLocationsResponse {
+  experienceId: number;
+  experienceName: string;
+  /** In the source's order, with the points that have no place last. */
+  locations: ExperienceLocationWithState[];
+  totalLocations: number;
+  /** The region `in_region` was asked about, or null where none was named. */
+  regionId: number | null;
+}
+
+/** One point as its object's own read serves it, with where it stands at the gate. */
+export interface ExperienceLocationWithState {
+  id: number;
+  experience_id: number;
+  /** The component the source names, such as one fort of a serial nomination. */
+  name: string | null;
+  /** The source's own reference, such as `1739-005` for UNESCO. */
+  external_ref: string | null;
+  /**
+   * The point's place in the source's list. Null for a point waiting on its replacement to be
+   * published, and sorted last. Read it through `locationLabel` rather than doing arithmetic on it.
+   */
+  ordinal: number | null;
+  longitude: number;
+  latitude: number;
+  created_at: string | null;
+  /**
+   * The fields a curator has claimed on the point, such as `name` and `location`, so a row can say
+   * it is corrected.
+   */
+  curated_fields: string[];
+  /** Whether the point lies in the region the read was asked about. True where none was named. */
+  in_region: boolean;
+  curation_state: LocationCurationState;
+  /**
+   * Set where a curator turned this unread point down. The state cannot say so, because a refused
+   * point stays `pending`: publishing shows an unread point and refuses a turned-down one.
+   */
+  refused_at: string | null;
+}
+
+/**
+ * Whether readers see the point yet. `pending` is shown to nobody but a curator until it is
+ * published. `auto` and `verified` are shown to readers.
+ */
+export type LocationCurationState = "pending" | "auto" | "verified";
+
 /**
  * Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a
  * curator. `auto` and `verified` are shown to readers, `verified` because a person passed it.
@@ -137,4 +210,41 @@ export interface PublishResult {
    * Where the regions are stale now. Present exactly when `placementFailed` is, and never empty.
    */
   placementFailedWorldViews?: PlacementFailure[];
+}
+
+/** One point as the map and the region list read it. */
+export interface RegionExperienceLocation {
+  id: number;
+  experience_id: number;
+  /** The component the source names, such as one fort of a serial nomination. */
+  name: string | null;
+  /** The source's own reference, such as `1739-005` for UNESCO. */
+  external_ref: string | null;
+  /**
+   * The point's place in the source's list. Null for a point waiting on its replacement to be
+   * published, and sorted last. Read it through `locationLabel` rather than doing arithmetic on it.
+   */
+  ordinal: number | null;
+  longitude: number;
+  latitude: number;
+  created_at: string | null;
+  /**
+   * The fields a curator has claimed on the point, such as `name` and `location`, so a row can say
+   * it is corrected.
+   */
+  curated_fields: string[];
+  /** Whether the point lies in the region the read was asked about. True where none was named. */
+  in_region: boolean;
+  /**
+   * The leaf region the point lies in, with its ancestors, such as `Europe > France > Paris`. It is
+   * shown for a point outside the region on screen. Null where the point lies in no region of that
+   * world view.
+   */
+  region_path: string | null;
+}
+
+/** The points of a region's objects, in one read rather than one per object. */
+export interface RegionExperienceLocationsResponse {
+  /** Every point of every object the region list shows, keyed by the object id. */
+  locationsByExperience: Record<string, RegionExperienceLocation[]>;
 }

@@ -5,7 +5,16 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import {
+  ExperienceLocationsResponse,
+  RegionExperienceLocationsResponse,
+  type ExperienceLocation,
+  type ExperienceLocationWithState,
+  type RegionExperienceLocation,
+} from '../../api/responses/experiences.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
 import {
   hideLostSql,
   hideRefusedSql,
@@ -18,6 +27,42 @@ import {
 } from './experienceLifecycle.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+
+/**
+ * A point as both location reads select it.
+ *
+ * `pg` hands over float8 as a number and a timestamp as a `Date`. The claims
+ * column is JSONB, which the generated row types leave `unknown`: it is an array
+ * of column names by its NOT NULL default and by every writer.
+ */
+type LocationRow = Pick<ExperienceLocationsRow, 'id' | 'experience_id' | 'name' | 'external_ref' | 'ordinal' | 'created_at'> & {
+  longitude: number;
+  latitude: number;
+  in_region: boolean;
+  curated_fields: string[];
+};
+
+/**
+ * The keys both reads send, from a row either one selects.
+ *
+ * Mapped key by key rather than passed through. A column a SELECT gains is not
+ * a key the response gains until this function names it, and the schema has to
+ * name it too.
+ */
+function locationOf(row: LocationRow): ExperienceLocation {
+  return {
+    id: row.id,
+    experience_id: row.experience_id,
+    name: row.name,
+    external_ref: row.external_ref,
+    ordinal: row.ordinal,
+    longitude: row.longitude,
+    latitude: row.latitude,
+    created_at: row.created_at?.toISOString() ?? null,
+    curated_fields: row.curated_fields,
+    in_region: row.in_region,
+  };
+}
 
 // =============================================================================
 // Batch Location Fetching (eliminates N+1 for experience lists/markers)
@@ -160,52 +205,17 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
     `;
   }
 
-  const result = await pool.query(query, params);
+  const result = await pool.query<LocationRow & { region_path: string | null }>(query, params);
 
-  // Group by experience_id
-  const locationsByExperience: Record<number, Array<{
-    id: number;
-    experience_id: number;
-    name: string | null;
-    external_ref: string | null;
-    // Nullable: a point whose replacement is waiting to be published keeps its
-    // row and loses its ordinal, so the feed that draws the map returns it with
-    // none. The frontend's own type says `number | null` and `locationLabel`
-    // handles it.
-    ordinal: number | null;
-    longitude: number;
-    latitude: number;
-    created_at: string;
-    in_region: boolean;
-    region_path: string | null;
-    /** The fields a curator has claimed on the place (migration 027), so a row can say it is corrected. */
-    curated_fields: string[];
-  }>> = {};
-
+  // Keyed by the object id, which JSON carries as a string key.
+  const locationsByExperience: Record<string, RegionExperienceLocation[]> = {};
   for (const row of result.rows) {
-    const expId = row.experience_id;
-    if (!locationsByExperience[expId]) {
-      locationsByExperience[expId] = [];
-    }
-    locationsByExperience[expId].push({
-      id: row.id,
-      experience_id: row.experience_id,
-      name: row.name,
-      external_ref: row.external_ref,
-      ordinal: row.ordinal,
-      longitude: parseFloat(row.longitude),
-      latitude: parseFloat(row.latitude),
-      created_at: row.created_at,
-      in_region: row.in_region,
-      region_path: row.region_path,
-      // Selected above and rebuilt by hand here: a column the SELECT gains is
-      // not a column the response gains until this batch names it (#583).
-      // `[]` where a row predates the column's default.
-      curated_fields: row.curated_fields ?? [],
-    });
+    const points = locationsByExperience[row.experience_id] ?? [];
+    points.push({ ...locationOf(row), region_path: row.region_path });
+    locationsByExperience[row.experience_id] = points;
   }
 
-  res.json({ locationsByExperience });
+  respond(res, RegionExperienceLocationsResponse, { locationsByExperience });
 }
 
 // =============================================================================
@@ -234,7 +244,7 @@ export async function getExperienceLocations(req: AuthenticatedRequest, res: Res
   // live on the British Museum (id 6205). `existence` is deliberately not
   // filtered, matching `getExperience`: that gap predates the admission axis and
   // closing it is a separate decision about a different question.
-  const expResult = await pool.query(
+  const expResult = await pool.query<Pick<ExperiencesRow, 'id' | 'name'>>(
     `SELECT e.id, e.name FROM experiences e
      WHERE e.id = $1 AND ${hideRefusedSql()} AND ($2::boolean OR ${hidePendingSql()})`,
     [experienceId, maySeeUnread],
@@ -251,7 +261,9 @@ export async function getExperienceLocations(req: AuthenticatedRequest, res: Res
   const maySeeUnreadIdx = params.length + 1;
   params.push(maySeeUnread);
 
-  const result = await pool.query(`
+  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at'> & {
+    curation_state: CheckValue<'experience_locations', 'curation_state'>;
+  }>(`
     SELECT
       el.id,
       el.experience_id,
@@ -285,11 +297,17 @@ export async function getExperienceLocations(req: AuthenticatedRequest, res: Res
     ORDER BY el.ordinal
   `, params);
 
-  res.json({
+  const locations: ExperienceLocationWithState[] = result.rows.map((row) => ({
+    ...locationOf(row),
+    curation_state: row.curation_state,
+    refused_at: row.refused_at?.toISOString() ?? null,
+  }));
+
+  respond(res, ExperienceLocationsResponse, {
     experienceId,
     experienceName: expResult.rows[0].name,
-    locations: result.rows,
-    totalLocations: result.rows.length,
+    locations,
+    totalLocations: locations.length,
     regionId,
   });
 }
