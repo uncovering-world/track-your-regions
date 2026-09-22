@@ -174,8 +174,8 @@ all (#470) were on no map anywhere. `WorldExperiencePoints` draws the catalogue 
 (#910, [ADR-0061](../decisions/0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md)):
 every reader-visible place of one kind, or of all kinds, across the whole world.
 
-**It is a read of points, not of objects.** The catalogue's 3 755 published objects stand at
-8 830 places a traveller can be sent to, and a serial World Heritage site is one row and
+**It is a read of points, not of objects.** The catalogue's objects stand at more than twice as
+many places a traveller can be sent to (3 766 objects at 8 842 places on 2026-09-22), and a serial World Heritage site is one row and
 hundreds of them. `GET /api/experiences` caps a page at 1 000 rows and answers objects, so
 the layer reads `GET /api/experiences/points`, which answers places and nothing else.
 
@@ -258,7 +258,7 @@ is the one reading this layer exists to give. The pins need a layer of their own
 one starts at `MARKER_FADE_START` and the tier that reaches the cap first is the
 overview — the unboxed whole-world read, served entirely below the band — so
 inheriting the band's zoom range would leave the map blank with nothing saying
-why. Unreachable on today's catalogue, 20 000 against 8 830 places: this is what
+why. Unreachable on the catalogue as it stands (20 000 against 8 842 places on 2026-09-22): this is what
 the map does on the day the tier design is outgrown.
 
 **The fold is the read, and it reaches the heat.** Asked for a folded map the endpoint
@@ -270,8 +270,8 @@ tile is cached under its URL and must answer both states. It reaches the heat be
 where the distortion shows first:
 the Rock Art of the Mediterranean Basin is one site and 734 rock shelters, and unfolded they
 saturate eastern Spain from Valencia to the Pyrenees at zoom 4, long before a pin is drawn.
-The ramp does **not** change with the fold: folded, World Heritage draws 1 272 points instead
-of 6 347 and comes out about five times fainter, and that faintness is the answer rather than
+The ramp does **not** change with the fold: folded, World Heritage draws one point per site instead
+of one per component (1 272 against 6 347 on 2026-09-22) and comes out about five times fainter, and that faintness is the answer rather than
 a fault — compensating would need a different factor per kind (5 for World Heritage, 2.3
 across all kinds, 1 for the art museums, every one of which is a single place) and would make
 the two pictures incomparable.

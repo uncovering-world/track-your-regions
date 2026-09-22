@@ -92,7 +92,7 @@ An experience can have zero, one, or many locations. Location-bound experiences 
 
 **Where a reader is told an object is** ([ADR-0028](../decisions/0028-a-reader-is-positioned-by-places-they-can-go-to.md)). An object carries a coordinate of its own, `experiences.location`, and its places carry theirs. They are independent answers, and they disagreed by more than a kilometre for 106 objects and by up to 191 km (#502) — a list row and a map pin naming different countries for the same site. Every reader-facing read now positions an object with `readerPositionSql()`: **the place nearest the object's own published coordinate**, falling back to that coordinate for an object with no visible place.
 
-One rule, and no tolerance in it. For 1382 of 1604 objects the coordinate already *is* one of the places, so the distance is zero and nothing moves; of the rest the average move is 9.5 km, and the largest are the ones the issue was opened about — Wet Tropics of Queensland 191 km, Gondwana 171 km, Virgin Komi 144 km. The rule ADR-0028 first proposed — the coordinate when it matches a place to within ADR-0027's ten metres, the medoid otherwise — was measured and dropped: it is discontinuous, moving eight objects over 100 km because their coordinate misses a place by a few hundred metres, the worst of them 2068 km. The same rule answers `GET /api/experiences?bbox=`, which used to filter on `experiences.location` while returning the nearest place: a box around 144.97,-15.65 matched Wet Tropics of Queensland and answered with a pin 191 km away, and a box around the part a reader is shown matched nothing at all. Nearest is measured in metres, on `geography`, never in degrees: 42 multi-place objects sit above 60° — Struve Geodetic Arc's 34 points reach 70.7°N — where a degree of longitude is a third of a degree of latitude, and degree ordering was measured picking a further place for six objects. A tie is broken by `el.id`, so the two axes always name one place. The places considered are only those the same reader may see, so an object is never positioned at a point that reader is not shown — except that the caller which shows a curator an object the queue has not passed yet relaxes the same gate here, because a curator deciding a coordinate has to preview where publishing will put the pin rather than the anchor they are deciding against. It costs 25 ms on a whole-region read of 661 experiences and the 3725 places under them.
+One rule, and no tolerance in it. For most objects — nine in ten on 2026-09-22 — the coordinate already *is* one of the places, so the distance is zero and nothing moves; of the rest the average move is 9.5 km, and the largest are the ones the issue was opened about — Wet Tropics of Queensland 191 km, Gondwana 171 km, Virgin Komi 144 km. The rule ADR-0028 first proposed — the coordinate when it matches a place to within ADR-0027's ten metres, the medoid otherwise — was measured and dropped: it is discontinuous, moving eight objects over 100 km because their coordinate misses a place by a few hundred metres, the worst of them 2068 km. The same rule answers `GET /api/experiences?bbox=`, which used to filter on `experiences.location` while returning the nearest place: a box around 144.97,-15.65 matched Wet Tropics of Queensland and answered with a pin 191 km away, and a box around the part a reader is shown matched nothing at all. Nearest is measured in metres, on `geography`, never in degrees: 42 multi-place objects sit above 60° — Struve Geodetic Arc's 34 points reach 70.7°N — where a degree of longitude is a third of a degree of latitude, and degree ordering was measured picking a further place for six objects. A tie is broken by `el.id`, so the two axes always name one place. The places considered are only those the same reader may see, so an object is never positioned at a point that reader is not shown — except that the caller which shows a curator an object the queue has not passed yet relaxes the same gate here, because a curator deciding a coordinate has to preview where publishing will put the pin rather than the anchor they are deciding against. It cost 25 ms on a whole-region read of Europe's 661 experiences and the 3725 places under them, measured 2026-08-19.
 
 `experiences.location` is kept and stays visible to a curator: it is what the source published, and judging a coordinate needs both values. What it stops being is the object's position for a reader.
 
@@ -194,7 +194,7 @@ rather than never; prevention and floor, both deliberate.
 
 The pairing has to be *created* here, because nothing else in the run knows it: the writer
 returns aggregates, and the withdrawal `UPDATE` does not report the ids it marked. The key is
-the reference — `external_ref` is populated on 6679 of 6680 stored locations, and for museums and
+the reference — `external_ref` is populated on all but one stored location, and for museums and
 landmarks it is the experience's own Wikidata id, so it cannot change while the experience does
 not. Withdrawals and arrivals are numbered within a reference and paired by position, then
 whatever the references could not pair is paired by position alone. All three imperfections in
@@ -209,7 +209,7 @@ hypothetical:
   France"), and it is that experience's only point — so the match is `IS NOT DISTINCT FROM`
   rather than `=`;
 - **a renumbered component changes the reference itself**, so no match by reference is possible,
-  and 787 of the 788 single-point UNESCO sites carry a component reference. This is what the
+  and all but one of the single-point UNESCO sites carry a component reference. This is what the
   by-position pass is for, and a renumber does not even have to move the point to blank the map
   without it.
 
@@ -491,7 +491,7 @@ Common sync logic lives in shared utility files:
 Every run records what it did to each object in `experience_sync_changes`: one row per
 object created, changed, in conflict, held, missing, returned, failed, or filtered, with a
 per-field diff in `changed_fields`. Rows that came through **unchanged are counted on the log, never stored** —
-a UNESCO run would otherwise write 1247 rows of noise around the few dozen that carry
+a UNESCO run would otherwise write a row of noise for nearly every site around the few dozen that carry
 information. Four kinds of unchanged row are stored anyway, because each carries news the
 counters cannot: `conflict`, where `curated_fields` refused the source's edit and the two now
 disagree; `held`, where the source's gate refused it (below); `returned`, where an object
@@ -2902,7 +2902,7 @@ unchanged (`experienceScope.ts`, `reviewQueueContext.ts`, `publishWaitingControl
 what puts the unread point in front of the curator being asked about it. `regions[]` is the single
 read that relaxes, on the same boolean as the row it sits in, for the reason `/:id/locations`
 does: a curator reading a queue item has to be shown where publishing will put it. Measured on the
-dev catalogue, where the predicate changes no row today — all 5368 memberships are backed by a
+dev catalogue, where the predicate changes no row today — every membership is backed by a
 published point — the cost is the region list unchanged within noise, its count 12 → 27 ms, the
 tree counts 5.6 → 10.4 ms at the world's roots, `?regionId` 15 → 33 ms and the marker batch
 129 → 143 ms.
@@ -3045,7 +3045,7 @@ Every read below except `/search`, `/kinds`, `/:id/finds` and `/points` carries 
 | GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId`. Per kind per region, of memberships — a kind's count, ADR-0046 decision 8 (`countedMembershipsSql`), returned under `kind_counts`, keyed by `kind_id`. One per place within a kind, because a place holds at most one membership per kind (`UNIQUE (experience_id, kind_id)`): a place in two kinds counts once under each and never twice under one; a region's total of *places* is the region list's own number (`countedPlacesSql`), not this endpoint's. Excludes `pending` and refused memberships and `lost` places unconditionally |
 | GET | `/api/experiences/:id/locations` | Multi-location list; optional `regionId` adds `in_region`. 404s for a refused row, like `/:id`. Also 404s a `pending` container, and excludes a `pending` location from the list — both relaxed together for a curator/admin whose scope reaches the experience, so a queue item that is itself one pending location inside an otherwise-published experience is still visible once past the gate. Each row carries `curated_fields` — the fields a curator has claimed on the place (migration 027) — so the object screen's Location field can say a correction stands rather than showing a moved pin as the source's; `curation_state`, so the same field can say an unread place is one readers are not sent to until it is published (#583); and `refused_at`, so it can tell a place a curator *turned down* from an unread one (#859) — the state cannot, a refused point staying `pending`, and without the mark the field offered publishing as the way to show a place the publish refuses |
 | GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts). Carries `hideRefusedSql()` on the container, so a refused museum's works come back empty: the contents follow the container, and answering with them would put back on screen exactly what hiding the museum took off it. Three more predicates gate `curation_state` — on the experience, the `experience_treasures` link and the treasure itself — because any of the three can be `pending` independently; all three relax together for a curator/admin whose scope reaches the experience. Each row carries `found_at` (a find's discovery place, ADR-0058) and, since #894, `found_at_site`: the Archaeology site row by that Wikidata id, with its reader-named `regions[]`, where a reader may open one — `null` where the spot is not a site the catalogue holds |
-| GET | `/api/experiences/points` | The catalogue's reader-visible **places**, for the map's world layer (#910, [ADR-0061](../decisions/0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md)). Filters: `kindId` (absent is every kind at once), `bbox` (absent is the whole world), `detail` — `overview` sends coordinates alone, `markers` adds the place's and object's ids and names, the kind and the type — and `folded`, which answers one point per object at its reader position (ADR-0028 decision 2) instead of one per place, counting the places it stands for in `locationCount`. Stateless like `/search`: no `optionalAuth` and no curator widening, so there is nothing caller-shaped to keep out of a cache. Answers **places, not objects**, which is why it exists at all — `/api/experiences` above caps a page at 1 000 rows and answers objects, and a serial site is one row and hundreds of places. Columnar, one array per field, because a `FeatureCollection` repeats its keys 8 830 times: 37 kB brotli for the overview of every kind, 18 kB folded, against 267 kB for the same values as GeoJSON. `kindId` is bounded to int4 and a `bbox` that is not four numbers is a 400, not a dropped filter — an unparseable box must not widen a viewport to the whole catalogue, and a repeated `?bbox=` parameter is refused rather than composed out of its halves. Capped at 20 000 rows, 2.3x the catalogue, because `bbox` is optional on both tiers and the limiter bounds how often a stranger asks rather than what each ask costs; a read that hits the cap answers `truncated: true`, since a density picture built from a subset is wrong rather than incomplete |
+| GET | `/api/experiences/points` | The catalogue's reader-visible **places**, for the map's world layer (#910, [ADR-0061](../decisions/0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md)). Filters: `kindId` (absent is every kind at once), `bbox` (absent is the whole world), `detail` — `overview` sends coordinates alone, `markers` adds the place's and object's ids and names, the kind and the type — and `folded`, which answers one point per object at its reader position (ADR-0028 decision 2) instead of one per place, counting the places it stands for in `locationCount`. Stateless like `/search`: no `optionalAuth` and no curator widening, so there is nothing caller-shaped to keep out of a cache. Answers **places, not objects**, which is why it exists at all — `/api/experiences` above caps a page at 1 000 rows and answers objects, and a serial site is one row and hundreds of places. Columnar, one array per field, because a `FeatureCollection` repeats its keys once per place: 37 kB brotli for the overview of every kind (measured 2026-09-16), 18 kB folded, against 267 kB for the same values as GeoJSON. `kindId` is bounded to int4 and a `bbox` that is not four numbers is a 400, not a dropped filter — an unparseable box must not widen a viewport to the whole catalogue, and a repeated `?bbox=` parameter is refused rather than composed out of its halves. Capped at 20 000 rows, more than twice the places the catalogue holds (8 842 on 2026-09-22), because `bbox` is optional on both tiers and the limiter bounds how often a stranger asks rather than what each ask costs; a read that hits the cap answers `truncated: true`, since a density picture built from a subset is wrong rather than incomplete |
 | GET | `/api/experiences/:id/finds` | The finds dug up at a site and the museums that show them (#894, § Archaeology). Stateless like `/search` — no `optionalAuth`, no curator widening: every row is a museum a reader may be sent to, through a link the source still places and a curator has passed, each with the same reader-named `regions[]` the search sends (`readerRegionsJsonSql`). A site nobody may see, a row that is not a site and an unknown id all answer `{ finds: [], total: 0 }` |
 
 ### User visits (`requireAuth`)
@@ -3251,8 +3251,8 @@ is never true, so the personal clause drops out without needing a second query.
 **Two clauses were removed with the old anchor, and both removals are deliberate.** The
 `EXISTS … change_type = 'created'` proof of a sighting existed only because migration 009
 backfilled `first_seen_sync_log_id` to the newest run of each source, so the column alone
-credited 1547 of 1547 rows to a run that never inserted them; `published_at` is never
-backfilled — migration 018 left 1603 of 1604 rows NULL on purpose — so a publication needs no
+credited every row to a run that never inserted them; `published_at` is never
+backfilled — migration 018 left every row but one NULL on purpose — so a publication needs no
 proof. And the latest-completed-run bound existed to stop chips accumulating, which the window
 already does; under piecemeal approval "the newest batch" has stopped being a unit, because a
 curator answers eighteen arrivals across a week and no run divides them.
@@ -4054,7 +4054,8 @@ Counted **and** listed: `pending_locations`/`pending_treasures` carry the whole 
 `pending_points`/`pending_works` carry the first `CONTENTS_ROWS_SHOWN` of them — the points in the
 source's own order, the works most famous first. Counting alone was #524's complaint: twelve works
 "counted rather than listed" asks a curator to decide about twelve things they cannot see. Listing
-alone would be worse at the other end, since the largest serial nomination holds 758 points, so the
+alone would be worse at the other end, since the largest serial nomination — the Rock Art of the
+Mediterranean Basin on the Iberian Peninsula — holds hundreds of points, so the
 cap stays and the card says *"showing 25 of 93 points"* rather than letting a short list stand for a
 long one. `hideRefusedSql()` on
 the container is what keeps a refused museum's newly-arrived paintings from raising a card here
@@ -4488,7 +4489,7 @@ entry first and falls back to the catch-all's key. Or
 the run offers a *different* picture and this call is not writing it, so the row keeps what it
 shows and the stored credit with it. Everywhere else the pin is null and the credit's own entry
 decides, which is not a corner but the
-ordinary case: **1413 of the 1414 cards holding a credit hold no picture change at all**, the run
+ordinary case: **all but one of the cards holding a credit hold no picture change at all**, the run
 having found the photographer for the picture the page has been showing all along (§
 `picture-with-nobody-credited` in `data-assertions.md`). A rule that fired there would delete the
 credit *and* mark the row answered, so no later run would offer it again. A curator who claimed
@@ -4780,8 +4781,8 @@ leaving a `pending` row unread forever because the one card that could resolve i
 "admit", not "publish".
 
 `published_at = COALESCE(published_at, NOW())`, gated by the same `before.curation_state ===
-'pending'` check as the assignment itself, for the reason `publicationAssignments` states: 1603 of
-the catalogue's 1604 rows are undated because migration 018 left them so, and stamping an
+'pending'` check as the assignment itself, for the reason `publicationAssignments` states: nearly every
+row the catalogue held before the gate is undated because migration 018 left it so, and stamping an
 already-visible row would invent a New-chip window for something visitors could see all along.
 
 **Resolved in TypeScript, not a `CASE` over `$2`.** `nextReason` a few lines above is the same

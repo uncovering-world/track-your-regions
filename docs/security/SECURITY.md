@@ -14,8 +14,8 @@ Level 3 requirements are tracked but optional for now.
 - **APIs**:
   - REST API (Express). Public read endpoint: `GET /api/world-views/regions/:regionId/members/descendant-geometries` (optionalAuth, publicReadLimiter)
   - REST API. `GET /api/experiences/points` (#910, ADR-0061) is the widest anonymous read the
-    product has: one request answers every reader-visible place of the catalogue — 8 830
-    coordinates today, or their names, kinds and types when a box narrows it. No
+    product has: one request answers every reader-visible place of the catalogue — thousands
+    of coordinates (8 842 on 2026-09-22), or their names, kinds and types when a box narrows it. No
     `optionalAuth`, because like `/search` and `/:id/finds` it names only what any reader may
     open and answers the same to everyone, so there is no caller-shaped body to keep out of a
     cache. What bounds it is `publicReadLimiter` — a per-IP ceiling a deployment sets,
