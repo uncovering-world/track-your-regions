@@ -7,7 +7,20 @@
  * are `curation.ts`; the review queue's calls are `reviewQueue.ts`.
  */
 
+import type { ExperienceLocationsResponse, RegionExperienceLocationsResponse } from '@tyr/shared/api';
 import { API_URL, fetchJson, authFetchJson } from './fetchUtils';
+
+// The answers the backend declares as schemas (ADR-0066), generated into
+// `@tyr/shared/api`. Passed on from here, so a component imports a call's answer
+// from the module of the call. A call still missing from that list declares its
+// answer in this file until its slice of #527 moves it.
+export type {
+  ExperienceLocation,
+  ExperienceLocationsResponse,
+  ExperienceLocationWithState,
+  RegionExperienceLocation,
+  RegionExperienceLocationsResponse,
+} from '@tyr/shared/api';
 
 // =============================================================================
 // Types
@@ -96,46 +109,6 @@ export interface Experience {
 }
 
 /**
- * Individual location within a multi-location experience
- */
-export interface ExperienceLocation {
-  id: number;
-  experience_id: number;
-  name: string | null;
-  external_ref: string | null;
-  // Nullable: a point the source no longer lists has no place in that list. Either
-  // its withdrawal is recorded and no read returns the row, or it is a point whose
-  // replacement is still waiting to be published and readers do see it (ADR-0025
-  // decision 5). `ORDER BY ordinal` puts it last. Use `locationLabel` rather than
-  // arithmetic on this.
-  ordinal: number | null;
-  longitude: number;
-  latitude: number;
-  created_at: string;
-  /**
-   * Which of its fields a curator has claimed — `name`, `location` — so a row can
-   * say it is corrected (migration 027). Optional because an older server sends
-   * the row without it.
-   */
-  curated_fields?: string[];
-  /**
-   * Whether a reader sees the place yet — `pending` means not until it is
-   * published. Sent by the per-object read, which serves a curator the unread
-   * rows; absent on an older server.
-   */
-  curation_state?: string;
-  /**
-   * Set where a curator turned this unread point down (#859, ADR-0053). The state
-   * cannot say it — a refused point stays `pending` — and the difference matters
-   * on screen: publishing shows an unread point and refuses a turned-down one, so
-   * a screen reading the state alone promises an outcome that will not happen.
-   */
-  refused_at?: string | null;
-  in_region?: boolean; // Whether this location is in the queried region
-  region_path?: string | null; // Full region path (e.g. "Europe > France > Paris") for out-of-region display
-}
-
-/**
  * Location with visited status
  */
 export interface LocationWithVisitedStatus {
@@ -165,23 +138,6 @@ export interface ExperienceVisitedStatusResponse {
   totalLocations: number;
   visitedLocations: number;
   locations: LocationWithVisitedStatus[];
-}
-
-/**
- * Experience locations response
- */
-export interface ExperienceLocationsResponse {
-  experienceId: number;
-  experienceName: string;
-  locations: ExperienceLocation[];
-  totalLocations: number;
-}
-
-/**
- * Batch response: all locations for all experiences in a region
- */
-export interface RegionExperienceLocationsResponse {
-  locationsByExperience: Record<string, ExperienceLocation[]>;
 }
 
 /**

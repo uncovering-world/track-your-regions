@@ -33,12 +33,13 @@ vi.mock('../../api/experiences', () => ({
   // The Location field reads this on open; its own test says what it shows. One
   // place per object here, so the remount test below has a place to open.
   fetchExperienceLocations: vi.fn(async (experienceId: number) => ({
-    experienceId, experienceName: '', totalLocations: 1,
+    experienceId, experienceName: '', totalLocations: 1, regionId: null,
     locations: [{
       id: 100 + experienceId, experience_id: experienceId, name: null, external_ref: null,
       ordinal: 0, latitude: 34.84, longitude: 67.82, created_at: '2026-08-01T00:00:00Z',
+      curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null,
     }],
-  })),
+  }) satisfies ExperienceLocationsResponse),
 }));
 
 // The point dialog has its own test; here it only has to say which place it holds.
@@ -48,7 +49,7 @@ vi.mock('./PointPreviewDialog', () => ({
   ),
 }));
 
-import { fetchExperience, type Experience } from '../../api/experiences';
+import { fetchExperience, type Experience, type ExperienceLocationsResponse } from '../../api/experiences';
 import { editExperience } from '../../api/curation';
 import { CurationDialog } from './CurationDialog';
 

@@ -15,7 +15,7 @@ import {
 } from '@mui/icons-material';
 import type {
   Experience,
-  ExperienceLocation,
+  RegionExperienceLocation,
   ExperienceTreasure,
 } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
@@ -44,7 +44,7 @@ const HOVER_INTENT_MS = 140;
 
 export interface ExperienceListItemProps {
   experience: Experience;
-  locations?: ExperienceLocation[];
+  locations?: RegionExperienceLocation[];
   /** The batch settled — an in-region count derived from `locations` is meaningful. */
   locationsResolved: boolean;
   isLocationVisited: (locationId: number) => boolean;
@@ -200,7 +200,7 @@ function ExperienceListItemComponent({
   const totalLocations = locations?.length ?? (experience.location_count ?? 0);
   const inRegionLocations = useMemo(() => {
     if (!locations) return [];
-    return locations.filter(l => l.in_region !== false);
+    return locations.filter(l => l.in_region);
   }, [locations]);
   const inRegionCount = inRegionLocations.length;
   const isMultiLocation = totalLocations > 1;

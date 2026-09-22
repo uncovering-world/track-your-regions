@@ -11,7 +11,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchRegionExperienceLocations,
-  type ExperienceLocation,
+  type RegionExperienceLocation,
 } from '../api/experiences';
 
 /**
@@ -49,9 +49,9 @@ export function useRegionLocations(
   });
 
   // Convert string keys from JSON to number keys
-  const locationsByExperience = useMemo<Record<number, ExperienceLocation[]>>(() => {
+  const locationsByExperience = useMemo<Record<number, RegionExperienceLocation[]>>(() => {
     if (!data?.locationsByExperience) return {};
-    const result: Record<number, ExperienceLocation[]> = {};
+    const result: Record<number, RegionExperienceLocation[]> = {};
     for (const [key, locs] of Object.entries(data.locationsByExperience)) {
       result[Number(key)] = locs;
     }
