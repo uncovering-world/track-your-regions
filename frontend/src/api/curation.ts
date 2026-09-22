@@ -7,8 +7,15 @@
  * run brought.
  */
 
+import type { AdmissionResult, ContentKind, PublishResult } from '@tyr/shared/api';
 import { API_URL, authFetchJson } from './fetchUtils';
 import type { ImageCredit } from './experiences';
+
+// The answers the backend declares as schemas (ADR-0066), generated into
+// `@tyr/shared/api`. Passed on from here, so a component imports a call's answer
+// from the module of the call. A call still missing from that list declares its
+// answer in this file until its slice of #527 moves it.
+export type { AdmissionResult, AppliedPart, ContentKind, PartNotFound, PublishResult } from '@tyr/shared/api';
 
 /**
  * Reject an experience from a region
@@ -197,46 +204,7 @@ export async function editWork(
 export async function setExperienceAdmission(
   experienceId: number,
   decision: { decision: 'confirm' | 'override'; note?: string },
-): Promise<{
-  experienceId: number;
-  admission: 'admitted' | 'refused';
-  /**
-   * Whether this override also made the row visible. True only where the row
-   * was unread (`curation_state = 'pending'`) and the verdict was `override`:
-   * putting a gated arrival back is what publishes it (ADR-0025), while an
-   * override of an already-visible row answers the refusal and says nothing
-   * about whether anyone has read it.
-   */
-  published: boolean;
-  /** The experience's own state after the call — unchanged when `published` is false. */
-  curationState: string;
-  /** Always empty: an override never applies a held field. */
-  appliedFields: string[];
-  /** Always empty, for the same reason. */
-  claimedFieldsSkipped: string[];
-  /** Always empty: a held field of a part is a proposal too (ADR-0037), and an override answers none. */
-  appliedParts: AppliedPart[];
-  /** Always null, for the same reason. */
-  fromSyncLogId: number | null;
-  /** Always zero: an override answers no held row, so it leaves none behind either. */
-  heldLeftOpen: number;
-  locationsPublished: number;
-  treasureLinksPublished: number;
-  treasuresPublished: number;
-  /** Points the source had replaced, no longer shown now their replacement is. */
-  withdrawalsReleased: number;
-  /** The publication landed; re-placing the object into its regions did not. */
-  placementFailed?: true;
-  /**
-   * Which world views it did not land in, named rather than counted.
-   *
-   * The remedy is admin-only, so a curator's actionable step is to tell an admin
-   * which object and which world views — a bare flag reduces them to "something
-   * about regions failed". The publish endpoint answers with the same shape, so
-   * the page renders one sentence for both.
-   */
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}> {
+): Promise<AdmissionResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/admission`, {
     method: 'POST',
     body: JSON.stringify(decision),
@@ -336,74 +304,6 @@ export async function declineHeld(
   });
 }
 
-/** One part publishing wrote to, as the server names it and the outcome line repeats it. */
-export interface AppliedPart {
-  kind: 'locations' | 'treasures';
-  name: string;
-  fields: string[];
-  claimedFieldsSkipped: string[];
-}
-
-/**
- * A part the proposal named that publishing could not write to: no offered row
- * answers to it, or more than one does and nothing tells them apart — a component
- * listed once per country under one reference, each row carrying a curator's name (#833).
- */
-export interface PartNotFound {
-  kind: 'locations' | 'treasures';
-  name: string;
-  reason: 'withdrawn' | 'ambiguous';
-}
-
-/** What a publication did, so the page can say it before the refetch. */
-export interface PublishResult {
-  experienceId: number;
-  curationState: string;
-  /** Held fields written now. */
-  appliedFields: string[];
-  /** Held fields left as the curator wrote them, because they claim them. */
-  claimedFieldsSkipped: string[];
-  /**
-   * The parts whose held fields were written now (ADR-0037), each with what it
-   * applied and what it left as the curator wrote it. Empty on a contents
-   * publish, which leaves the proposal where it was.
-   */
-  appliedParts: AppliedPart[];
-  /**
-   * Parts the proposal named that nothing could be written to — a place the
-   * source withdrew after proposing its rename, or one that more than one row
-   * answers to and nothing tells apart. Present when at least one part could not be
-   * written to; nothing was written to them and nothing readers see changed.
-   */
-  partsNotFound?: PartNotFound[];
-  fromSyncLogId: number | null;
-  /**
-   * Held rows this call left open, at both levels (#722).
-   *
-   * Non-zero exactly when the card is still standing, because the pointer that
-   * keys it was kept — which `publishOutcomeFor` says as a state rather than as
-   * this number, since the table does not draw every field the run held. Read
-   * whole in the audit row, where the vocabulary is the record's.
-   */
-  heldLeftOpen: number;
-  locationsPublished: number;
-  treasureLinksPublished: number;
-  treasuresPublished: number;
-  /** Points the source had replaced, no longer shown now their replacement is. */
-  withdrawalsReleased: number;
-  /** The publication landed; re-placing the object into its regions did not. */
-  placementFailed?: true;
-  /**
-   * Where the regions are stale now. Present exactly when `placementFailed` is.
-   *
-   * A curator cannot re-assign regions — that is admin-only — so the only thing
-   * they can do with this is tell an admin which object and which world views.
-   * `id: null` means the world views could not be listed at all, so none was
-   * attempted and there is none to name.
-   */
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}
-
 /**
  * The five shapes the endpoint accepts, as five shapes rather than seven optional
  * fields.
@@ -462,7 +362,7 @@ export type PublishRequest =
  * components of a serial site and a name is not unique either.
  */
 export interface HeldSelectionPart {
-  kind: 'locations' | 'treasures';
+  kind: ContentKind;
   ref: string | null;
   name: string | null;
   fields: string[];

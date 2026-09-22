@@ -30,7 +30,7 @@ import {
   setExperienceAdmission,
   acceptSourceValue,
   declineSourceValue,
-  type PublishResult,
+  type AdmissionResult,
 } from '../../api/curation';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { publishOutcomeFor } from './publishOutcome';
@@ -485,7 +485,7 @@ export function outcomeFor(
  * those two simply have nothing to say and are silent on their own.
  */
 export function admissionOutcomeFor(
-  item: { name: string }, data?: PublishResult & { admission: string; published: boolean },
+  item: { name: string }, data?: AdmissionResult,
 ): string | undefined {
   if (!data?.published) return undefined;
   return publishOutcomeFor(item, data);

@@ -25,6 +25,7 @@ import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/placeClaims';
 import { claimLabel as workClaimLabel } from '../../utils/workClaims';
+import type { ContentKind } from '../../api/curation';
 
 export type FactKind = 'new' | 'changed' | 'removed';
 
@@ -80,7 +81,7 @@ export interface FactSubject {
    * the reference and name the record carries — and it is echoed back unchanged. Absent on
    * the object's own group, which needs no naming.
    */
-  part?: { kind: 'locations' | 'treasures'; ref: string | null; name: string | null };
+  part?: { kind: ContentKind; ref: string | null; name: string | null };
   /** Opens the part where it can be looked at: a point on the map, a work with its picture. */
   onOpen?: () => void;
 }

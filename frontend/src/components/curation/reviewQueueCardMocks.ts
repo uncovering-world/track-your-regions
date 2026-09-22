@@ -15,6 +15,8 @@ import { fetchExperience } from '../../api/experiences';
 import {
   setExperienceState, setExperienceAdmission, setLocationState, acceptSourceValue,
   declineSourceValue, declineHeld, publishExperience, unrefuseContents,
+  type AdmissionResult,
+  type PublishResult,
 } from '../../api/curation';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { MISSING, CONFLICT } from './reviewQueueFixtures';
@@ -36,13 +38,14 @@ export const PUBLISHED = {
   curationState: 'verified',
   appliedFields: ['name'],
   claimedFieldsSkipped: [],
+  appliedParts: [],
   fromSyncLogId: 47,
   heldLeftOpen: 0,
   locationsPublished: 0,
   treasureLinksPublished: 0,
   treasuresPublished: 0,
   withdrawalsReleased: 0,
-};
+} satisfies PublishResult;
 
 /**
  * The answers every card case starts from. `mockedFetch` is the calling file's own queue
@@ -55,8 +58,10 @@ export function resetCardMocks(mockedFetch: ReturnType<typeof vi.fn>): void {
   mockedAccept.mockReset().mockResolvedValue({ experienceId: 88, applied: ['name'], released: [], fromSyncLogId: 9 });
   mockedDecline.mockReset().mockResolvedValue({ experienceId: 88, declined: ['name'], fromSyncLogId: 41 });
   mockedAdmission.mockReset().mockResolvedValue({
-    experienceId: 99, admission: 'refused', published: false,
-  });
+    experienceId: 99, admission: 'refused', published: false, curationState: 'auto',
+    appliedFields: [], claimedFieldsSkipped: [], appliedParts: [], fromSyncLogId: null, heldLeftOpen: 0,
+    locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0,
+  } satisfies AdmissionResult);
   mockedLocationState.mockReset().mockResolvedValue({
     locationId: 13211, experienceId: 1592, offeredToReaders: true,
   });

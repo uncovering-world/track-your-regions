@@ -39,6 +39,7 @@ vi.mock('../../api/experiences', () => ({
 
 import { shaped, renderQueue, MISSING, REFUSED, KEPT_OUT } from './reviewQueueFixtures';
 import { mockedAdmission, mockedInvalidate, resetCardMocks } from './reviewQueueCardMocks';
+import type { AdmissionResult } from '../../api/curation';
 
 describe('ReviewQueue', () => {
   beforeEach(() => {
@@ -176,9 +177,10 @@ describe('ReviewQueue', () => {
   it('says whether putting a row back also put it in front of readers, and what came with it', async () => {
     mockedAdmission.mockResolvedValue({
       experienceId: 99, admission: 'admitted', published: true,
-      curationState: 'verified', appliedFields: [], claimedFieldsSkipped: [], fromSyncLogId: null,
+      curationState: 'verified', appliedFields: [], claimedFieldsSkipped: [], appliedParts: [],
+      fromSyncLogId: null, heldLeftOpen: 0,
       locationsPublished: 1, treasureLinksPublished: 12, treasuresPublished: 12, withdrawalsReleased: 0,
-    });
+    } satisfies AdmissionResult);
     mockedFetch
       .mockResolvedValueOnce({ missing: [], refused: [REFUSED], conflicts: [], limit: 25 })
       .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
