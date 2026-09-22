@@ -8,15 +8,18 @@
  * slice of #527 moves it.
  *
  * A module of this directory imports only `zod/v4`, the generated row types,
- * the backend's vocabulary constants, the schemas of the other modules here,
- * and the pure helpers beside `respond()` in `backend/src/api/`. The generator
- * imports every module here, so nothing a schema imports may open a pool or
- * read the environment on the way to being rendered.
+ * vocabulary constants (the backend's or `@tyr/shared`'s), the schemas of the
+ * other modules here, and the pure helpers beside `respond()` in
+ * `backend/src/api/`. The generator imports every module here, so nothing a
+ * schema imports may open a pool or read the environment on the way to being
+ * rendered.
  */
 
+import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
 import { CONTENT_KINDS } from '../../services/sync/types.js';
+import { ImageCredit } from './experiences.js';
 
 export const ContentKind = z.enum(CONTENT_KINDS)
   .describe("Which of an object's contents a part is: one of its points (`locations`) or one of its works (`treasures`).");
@@ -159,3 +162,156 @@ export const AdmissionResult = publication.omit({ partsNotFound: true }).extend(
   ),
 }).superRefine(placementTogether).describe('What answering a refusal did.');
 export type AdmissionResult = z.infer<typeof AdmissionResult>;
+
+// The pair every answer carries whose call may re-place the object, in
+// `PublishResult`'s words. A partial of `publication` so each schema below takes
+// the same two keys with the same descriptions, and `placementTogether` holds them.
+const placement = publication.pick({ placementFailed: true, placementFailedWorldViews: true });
+
+const SourceMembership = z.enum(CHECK_VALUES.experiences.source_membership)
+  .describe('Whether the source still lists it: `former` once it has delisted it.');
+const Existence = z.enum(CHECK_VALUES.experiences.existence)
+  .describe('Whether it is still there to visit: `lost` once it is gone.');
+
+export const ExperienceStateResult = z.strictObject({
+  experienceId: z.number().int(),
+  sourceMembership: SourceMembership,
+  existence: Existence,
+}).describe("An object's lifecycle as a curator's verdict left it.");
+export type ExperienceStateResult = z.infer<typeof ExperienceStateResult>;
+
+export const LocationStateResult = placement.extend({
+  locationId: z.number().int(),
+  experienceId: z.number().int(),
+  sourceMembership: z.enum(CHECK_VALUES.experience_locations.source_membership),
+  existence: z.enum(CHECK_VALUES.experience_locations.existence),
+  offeredToReaders: z.boolean().describe(
+    'Whether a reader sees the point now. A verdict can move it either way, and both axes decide it, so the answer'
+    + ' says it rather than leaving a card to work it out.',
+  ),
+}).superRefine(placementTogether).describe("A point's lifecycle as a curator's verdict left it.");
+export type LocationStateResult = z.infer<typeof LocationStateResult>;
+
+export const LocationEditResult = placement.extend({
+  success: z.literal(true),
+  locationId: z.number().int(),
+  anchorMoved: z.boolean().describe(
+    "Whether the object's own coordinate moved with the place. True only where the object holds exactly one visible,"
+    + ' published place and this is it.',
+  ),
+}).superRefine(placementTogether).describe("What a curator's correction to a place's name or position did.");
+export type LocationEditResult = z.infer<typeof LocationEditResult>;
+
+export const WorkEditResult = z.strictObject({
+  success: z.literal(true),
+  treasureId: z.number().int(),
+  claimed: z.array(z.enum(['name', 'artists', 'year', 'image_url']))
+    .describe('The columns this edit took ownership of, which a later run no longer touches.'),
+  imageCredit: ImageCredit.nullable().optional().describe(
+    'Who is named under the new picture. Present only where the picture changed, and null where Commons named nobody'
+    + ' in time.',
+  ),
+}).describe("What a curator's correction to a work did.");
+export type WorkEditResult = z.infer<typeof WorkEditResult>;
+
+export const AcceptSourceResult = placement.extend({
+  experienceId: z.number().int(),
+  applied: z.array(z.string()).describe("The fields now holding the source's value."),
+  released: z.array(z.string()).describe('The claims given up to take it.'),
+  releasedPoints: z.array(z.number().int()).describe(
+    "The points whose own claim on the coordinate went with the object's, because the object's coordinate and its one"
+    + " visible point's are the same fact.",
+  ),
+  movedPoints: z.array(z.number().int())
+    .describe('Those of them also put back on the coordinate the run offered.'),
+  releasedCredit: z.boolean()
+    .describe("Whether taking the source's picture also dropped the credit the curator's own edit wrote for it."),
+  fromSyncLogId: z.number().int().describe('The run whose proposal was taken.'),
+}).superRefine(placementTogether).describe("What taking the source's value for claimed fields did.");
+export type AcceptSourceResult = z.infer<typeof AcceptSourceResult>;
+
+export const DeclineSourceResult = z.strictObject({
+  experienceId: z.number().int(),
+  declined: z.array(z.string()).describe("The fields whose proposal was turned down, the curator's value kept."),
+  fromSyncLogId: z.number().int(),
+}).describe("What standing by the curator's own value did.");
+export type DeclineSourceResult = z.infer<typeof DeclineSourceResult>;
+
+export const DeclinedPart = z.strictObject({
+  kind: ContentKind,
+  name: z.string().describe('The part as the record names it.'),
+  fields: z.array(z.string()),
+}).describe('One part a refusal of held rows reached.');
+export type DeclinedPart = z.infer<typeof DeclinedPart>;
+
+export const DeclineHeldResult = z.strictObject({
+  experienceId: z.number().int(),
+  declinedFields: z.array(z.string()).describe("The object's own fields refused now."),
+  declinedParts: z.array(DeclinedPart).describe('The parts refused now, grouped as the card grouped them.'),
+  fromSyncLogId: z.number().int(),
+  heldLeftOpen: z.number().int()
+    .describe('Held rows still open. Zero means the card is gone and the pointer with it.'),
+}).describe('What refusing held rows of a gated proposal settled.');
+export type DeclineHeldResult = z.infer<typeof DeclineHeldResult>;
+
+export const RefuseArrivalResult = z.strictObject({
+  experienceId: z.number().int(),
+  admission: z.literal('refused'),
+  reason: z.string().describe('The reason the kept-out list shows.'),
+}).describe("A curator's no to an arrival (ADR-0053).");
+export type RefuseArrivalResult = z.infer<typeof RefuseArrivalResult>;
+
+export const RefuseContentsResult = placement.extend({
+  experienceId: z.number().int(),
+  locationsRefused: z.number().int(),
+  treasureLinksRefused: z.number().int(),
+  withdrawalsReleased: z.number().int()
+    .describe('Old pins a refused arrival had been holding on the map, now withdrawn and asking their own question.'),
+}).superRefine(placementTogether).describe('What turning down the unread points and works of an object did.');
+export type RefuseContentsResult = z.infer<typeof RefuseContentsResult>;
+
+export const UnrefuseContentsResult = placement.extend({
+  experienceId: z.number().int(),
+  locationsRestored: z.number().int(),
+  treasureLinksRestored: z.number().int(),
+  locationIds: z.array(z.number().int()).describe('Exactly which points came back.'),
+  treasureIds: z.array(z.number().int()).describe('Exactly which works came back, by treasure id.'),
+}).superRefine(placementTogether).describe('What asking again about turned-down points and works did.');
+export type UnrefuseContentsResult = z.infer<typeof UnrefuseContentsResult>;
+
+export const RegionMembershipResult = z.strictObject({
+  success: z.literal(true),
+  experienceId: z.number().int(),
+  regionId: z.number().int(),
+}).describe("What rejecting, unrejecting, assigning, unassigning or removing an object in a region did: it is done.");
+export type RegionMembershipResult = z.infer<typeof RegionMembershipResult>;
+
+export const ExperienceEditResult = z.strictObject({
+  success: z.literal(true),
+  experienceId: z.number().int(),
+  curatedFields: z.array(z.string()).describe("Every field the curator now claims on the object, this edit's included."),
+}).describe("What a curator's edit of an object's fields did.");
+export type ExperienceEditResult = z.infer<typeof ExperienceEditResult>;
+
+export const ManualExperienceCreated = z.strictObject({
+  id: z.number().int(),
+  name: z.string(),
+  externalId: z.string().describe('The id the manual source gave it.'),
+}).describe('The object a curator created by hand.');
+export type ManualExperienceCreated = z.infer<typeof ManualExperienceCreated>;
+
+export const CurationLogEntry = z.strictObject({
+  id: z.number().int(),
+  action: z.enum(CURATION_LOG_ACTIONS),
+  region_id: z.number().int().nullable(),
+  region_name: z.string().nullable(),
+  details: z.record(z.string(), z.unknown()).nullable()
+    .describe('What the act changed, in the shape its action writes.'),
+  created_at: z.iso.datetime({ offset: true }).nullable(),
+  curator_name: z.string().nullable().describe('The curator as they chose to be named, null where they chose nothing.'),
+}).describe("One act of the object's curation log.");
+export type CurationLogEntry = z.infer<typeof CurationLogEntry>;
+
+export const CurationLog = z.array(CurationLogEntry)
+  .describe('The newest fifty acts on the object that the curator may see, newest first.');
+export type CurationLog = z.infer<typeof CurationLog>;

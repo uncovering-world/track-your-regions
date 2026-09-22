@@ -11,6 +11,35 @@
  * one would like.
  */
 
+/** What taking the source's value for claimed fields did. */
+export interface AcceptSourceResult {
+  /** Set when the publication landed and re-placing the object into its regions did not. */
+  placementFailed?: true;
+  /**
+   * Where the regions are stale now. Present exactly when `placementFailed` is, and never empty.
+   */
+  placementFailedWorldViews?: PlacementFailure[];
+  experienceId: number;
+  /** The fields now holding the source's value. */
+  applied: string[];
+  /** The claims given up to take it. */
+  released: string[];
+  /**
+   * The points whose own claim on the coordinate went with the object's, because the object's
+   * coordinate and its one visible point's are the same fact.
+   */
+  releasedPoints: number[];
+  /** Those of them also put back on the coordinate the run offered. */
+  movedPoints: number[];
+  /**
+   * Whether taking the source's picture also dropped the credit the curator's own edit wrote for
+   * it.
+   */
+  releasedCredit: boolean;
+  /** The run whose proposal was taken. */
+  fromSyncLogId: number;
+}
+
 /** What answering a refusal did. */
 export interface AdmissionResult {
   experienceId: number;
@@ -69,6 +98,58 @@ export interface AppliedPart {
  * (`treasures`).
  */
 export type ContentKind = "locations" | "treasures";
+
+/** The newest fifty acts on the object that the curator may see, newest first. */
+export type CurationLog = CurationLogEntry[];
+
+/** One act of the object's curation log. */
+export interface CurationLogEntry {
+  id: number;
+  action: "created" | "rejected" | "unrejected" | "edited" | "added_to_region" | "removed_from_region" | "marked_former" | "marked_lost" | "state_restored" | "accepted_source" | "declined_source" | "declined_held" | "missing_dismissed" | "admission_confirmed" | "admission_overridden" | "published" | "location_marked_former" | "location_marked_lost" | "location_state_restored" | "location_missing_dismissed" | "location_edited" | "work_edited" | "arrival_refused" | "contents_refused" | "contents_unrefused";
+  region_id: number | null;
+  region_name: string | null;
+  /** What the act changed, in the shape its action writes. */
+  details: Record<string, unknown> | null;
+  created_at: string | null;
+  /** The curator as they chose to be named, null where they chose nothing. */
+  curator_name: string | null;
+}
+
+/** One part a refusal of held rows reached. */
+export interface DeclinedPart {
+  kind: ContentKind;
+  /** The part as the record names it. */
+  name: string;
+  fields: string[];
+}
+
+/** What refusing held rows of a gated proposal settled. */
+export interface DeclineHeldResult {
+  experienceId: number;
+  /** The object's own fields refused now. */
+  declinedFields: string[];
+  /** The parts refused now, grouped as the card grouped them. */
+  declinedParts: DeclinedPart[];
+  fromSyncLogId: number;
+  /** Held rows still open. Zero means the card is gone and the pointer with it. */
+  heldLeftOpen: number;
+}
+
+/** What standing by the curator's own value did. */
+export interface DeclineSourceResult {
+  experienceId: number;
+  /** The fields whose proposal was turned down, the curator's value kept. */
+  declined: string[];
+  fromSyncLogId: number;
+}
+
+/** What a curator's edit of an object's fields did. */
+export interface ExperienceEditResult {
+  success: true;
+  experienceId: number;
+  /** Every field the curator now claims on the object, this edit's included. */
+  curatedFields: string[];
+}
 
 /** One point of an object. */
 export interface ExperienceLocation {
@@ -137,11 +218,75 @@ export interface ExperienceLocationWithState {
   refused_at: string | null;
 }
 
+/** An object's lifecycle as a curator's verdict left it. */
+export interface ExperienceStateResult {
+  experienceId: number;
+  /** Whether the source still lists it: `former` once it has delisted it. */
+  sourceMembership: "present" | "former";
+  /** Whether it is still there to visit: `lost` once it is gone. */
+  existence: "extant" | "lost";
+}
+
+/** Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043). */
+export interface ImageCredit {
+  /** The photographer or uploader, as plain text. */
+  author: string | null;
+  /** The licence in the words its own name uses: "CC BY-SA 3.0", "Public domain". */
+  license: string | null;
+  licenseUrl: string | null;
+  /** The file page or the site's own page for the object: where the full terms are. */
+  detailsUrl: string | null;
+}
+
 /**
  * Whether readers see the point yet. `pending` is shown to nobody but a curator until it is
  * published. `auto` and `verified` are shown to readers.
  */
 export type LocationCurationState = "pending" | "auto" | "verified";
+
+/** What a curator's correction to a place's name or position did. */
+export interface LocationEditResult {
+  /** Set when the publication landed and re-placing the object into its regions did not. */
+  placementFailed?: true;
+  /**
+   * Where the regions are stale now. Present exactly when `placementFailed` is, and never empty.
+   */
+  placementFailedWorldViews?: PlacementFailure[];
+  success: true;
+  locationId: number;
+  /**
+   * Whether the object's own coordinate moved with the place. True only where the object holds
+   * exactly one visible, published place and this is it.
+   */
+  anchorMoved: boolean;
+}
+
+/** A point's lifecycle as a curator's verdict left it. */
+export interface LocationStateResult {
+  /** Set when the publication landed and re-placing the object into its regions did not. */
+  placementFailed?: true;
+  /**
+   * Where the regions are stale now. Present exactly when `placementFailed` is, and never empty.
+   */
+  placementFailedWorldViews?: PlacementFailure[];
+  locationId: number;
+  experienceId: number;
+  sourceMembership: "present" | "former";
+  existence: "extant" | "lost";
+  /**
+   * Whether a reader sees the point now. A verdict can move it either way, and both axes decide it,
+   * so the answer says it rather than leaving a card to work it out.
+   */
+  offeredToReaders: boolean;
+}
+
+/** The object a curator created by hand. */
+export interface ManualExperienceCreated {
+  id: number;
+  name: string;
+  /** The id the manual source gave it. */
+  externalId: string;
+}
 
 /**
  * Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a
@@ -212,6 +357,32 @@ export interface PublishResult {
   placementFailedWorldViews?: PlacementFailure[];
 }
 
+/** A curator's no to an arrival (ADR-0053). */
+export interface RefuseArrivalResult {
+  experienceId: number;
+  admission: "refused";
+  /** The reason the kept-out list shows. */
+  reason: string;
+}
+
+/** What turning down the unread points and works of an object did. */
+export interface RefuseContentsResult {
+  /** Set when the publication landed and re-placing the object into its regions did not. */
+  placementFailed?: true;
+  /**
+   * Where the regions are stale now. Present exactly when `placementFailed` is, and never empty.
+   */
+  placementFailedWorldViews?: PlacementFailure[];
+  experienceId: number;
+  locationsRefused: number;
+  treasureLinksRefused: number;
+  /**
+   * Old pins a refused arrival had been holding on the map, now withdrawn and asking their own
+   * question.
+   */
+  withdrawalsReleased: number;
+}
+
 /** One point as the map and the region list read it. */
 export interface RegionExperienceLocation {
   id: number;
@@ -247,4 +418,44 @@ export interface RegionExperienceLocation {
 export interface RegionExperienceLocationsResponse {
   /** Every point of every object the region list shows, keyed by the object id. */
   locationsByExperience: Record<string, RegionExperienceLocation[]>;
+}
+
+/**
+ * What rejecting, unrejecting, assigning, unassigning or removing an object in a region did: it is
+ * done.
+ */
+export interface RegionMembershipResult {
+  success: true;
+  experienceId: number;
+  regionId: number;
+}
+
+/** What asking again about turned-down points and works did. */
+export interface UnrefuseContentsResult {
+  /** Set when the publication landed and re-placing the object into its regions did not. */
+  placementFailed?: true;
+  /**
+   * Where the regions are stale now. Present exactly when `placementFailed` is, and never empty.
+   */
+  placementFailedWorldViews?: PlacementFailure[];
+  experienceId: number;
+  locationsRestored: number;
+  treasureLinksRestored: number;
+  /** Exactly which points came back. */
+  locationIds: number[];
+  /** Exactly which works came back, by treasure id. */
+  treasureIds: number[];
+}
+
+/** What a curator's correction to a work did. */
+export interface WorkEditResult {
+  success: true;
+  treasureId: number;
+  /** The columns this edit took ownership of, which a later run no longer touches. */
+  claimed: ("name" | "artists" | "year" | "image_url")[];
+  /**
+   * Who is named under the new picture. Present only where the picture changed, and null where
+   * Commons named nobody in time.
+   */
+  imageCredit?: ImageCredit | null;
 }

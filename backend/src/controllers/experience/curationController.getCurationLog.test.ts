@@ -19,8 +19,11 @@ const ADMIN = { id: 1, role: 'admin' };
 
 // The leak from #442: experience 281 sits in a region the curator is scoped to
 // and in one they are not, and the log holds a row for each.
+// Shaped as the driver hands it over, a Date and a parsed object included, since
+// `respond()` holds the answer to its schema in this lane.
 const IN_SCOPE_ROW = {
   id: 1, action: 'edited', region_id: 20, region_name: 'Gyeongju', curator_name: 'Curator',
+  details: { name: { old: 'Bulguksa', new: 'Bulguksa Temple' } }, created_at: new Date('2026-08-04T15:01:24.341Z'),
 };
 
 /**
@@ -68,7 +71,7 @@ describe('getCurationLog scope', () => {
     expect(params).toEqual([REGION_CURATOR.id, EXPERIENCE_ID, false]);
 
     expect(res.status).not.toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith([IN_SCOPE_ROW]);
+    expect(res.json).toHaveBeenCalledWith([{ ...IN_SCOPE_ROW, created_at: '2026-08-04T15:01:24.341Z' }]);
   });
 
   it('resolves scope against every region the experience is assigned to, not one of them', async () => {

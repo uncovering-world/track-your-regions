@@ -19,6 +19,8 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { WorkEditResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -45,7 +47,7 @@ import { userAgent } from '../../config/userAgent.js';
  * `metadata` whenever `curated_fields ? 'image_url'`, so a second key would be
  * one nothing reads and one more thing for `accept-source` to have to release.
  */
-type Claim = 'name' | 'artists' | 'year' | 'image_url';
+type Claim = WorkEditResult['claimed'][number];
 
 /** The claims this edit adds, kept in the order the column already holds. */
 function withClaims(stored: string[], added: Claim[]): string[] {
@@ -228,10 +230,10 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
   // promised: a Commons file whose credit request timed out is stored with a
   // `null`, and a screen that assumed a name would show the picture as
   // credited to nobody without saying that is what happened.
-  res.json({
+  respond(res, WorkEditResult, {
     success: true,
     treasureId,
     claimed: claims,
-    ...(picture === undefined ? {} : { imageCredit: credit }),
+    imageCredit: picture === undefined ? undefined : credit,
   });
 }

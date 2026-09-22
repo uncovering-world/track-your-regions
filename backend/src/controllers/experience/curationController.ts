@@ -8,9 +8,14 @@
 
 import { Response } from 'express';
 import type { PoolClient } from 'pg';
+import { respond } from '../../api/respond.js';
+import {
+  CurationLog, type CurationLogEntry, ExperienceEditResult, ManualExperienceCreated, RegionMembershipResult,
+} from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
+import type { ExperienceCurationLogRow, RegionsRow, UsersRow } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import type { UserRole } from '../../types/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
@@ -89,7 +94,7 @@ export async function rejectExperience(req: AuthenticatedRequest, res: Response)
     VALUES ($1, $2, 'rejected', $3, $4)
   `, [experienceId, userId, regionId, reason ? JSON.stringify({ reason }) : null]);
 
-  res.json({ success: true, experienceId, regionId });
+  respond(res, RegionMembershipResult, { success: true, experienceId, regionId });
 }
 
 /**
@@ -138,7 +143,7 @@ export async function unrejectExperience(req: AuthenticatedRequest, res: Respons
     VALUES ($1, $2, 'unrejected', $3)
   `, [experienceId, userId, regionId]);
 
-  res.json({ success: true, experienceId, regionId });
+  respond(res, RegionMembershipResult, { success: true, experienceId, regionId });
 }
 
 /**
@@ -213,7 +218,7 @@ export async function assignExperienceToRegion(req: AuthenticatedRequest, res: R
     client.release();
   }
 
-  res.json({ success: true, experienceId, regionId });
+  respond(res, RegionMembershipResult, { success: true, experienceId, regionId });
 }
 
 /**
@@ -259,7 +264,7 @@ export async function unassignExperienceFromRegion(req: AuthenticatedRequest, re
     VALUES ($1, $2, 'removed_from_region', $3)
   `, [experienceId, userId, regionId]);
 
-  res.json({ success: true, experienceId, regionId });
+  respond(res, RegionMembershipResult, { success: true, experienceId, regionId });
 }
 
 /**
@@ -310,7 +315,7 @@ export async function removeExperienceFromRegion(req: AuthenticatedRequest, res:
     VALUES ($1, $2, 'removed_from_region', $3)
   `, [experienceId, userId, regionId]);
 
-  res.json({ success: true, experienceId, regionId });
+  respond(res, RegionMembershipResult, { success: true, experienceId, regionId });
 }
 
 interface FieldUpdate {
@@ -597,7 +602,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     client.release(unusable);
   }
 
-  res.json({ success: true, experienceId, curatedFields: newCurated });
+  respond(res, ExperienceEditResult, { success: true, experienceId, curatedFields: newCurated });
 }
 
 /**
@@ -681,7 +686,7 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
 
   // A row survives when the curator is unrestricted, when it names no region
   // (it identifies no region to leak), or when its region is one they cover.
-  const result = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+  const result = await pool.query<CurationLogRow>(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT
       cl.id,
       cl.action,
@@ -699,8 +704,23 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
     LIMIT 50
   `, [userId, experienceId, unrestricted]);
 
-  res.json(result.rows);
+  respond(res, CurationLog, result.rows.map(row => ({
+    id: row.id,
+    // The column's CHECK list is `CURATION_LOG_ACTIONS` (`curationLogActions.test.ts`).
+    action: row.action as CurationLogEntry['action'],
+    region_id: row.region_id,
+    region_name: row.region_name,
+    details: row.details as CurationLogEntry['details'],
+    created_at: row.created_at?.toISOString() ?? null,
+    curator_name: row.curator_name,
+  })));
 }
+
+/** One row of the log read, as the driver hands it over. */
+type CurationLogRow = Pick<ExperienceCurationLogRow, 'id' | 'action' | 'region_id' | 'details' | 'created_at'> & {
+  region_name: RegionsRow['name'] | null;
+  curator_name: UsersRow['display_name'];
+};
 
 interface CreateManualBody {
   name?: unknown;
@@ -896,7 +916,8 @@ export async function createManualExperience(req: AuthenticatedRequest, res: Res
     const { experienceId, externalId } =
       await insertManualExperience(client, body, userId, sourceId, imageCredit);
     await client.query('COMMIT');
-    res.status(201).json({ id: experienceId, name: body.name, externalId });
+    // The route's `createManualExperienceBodySchema` has already required a string.
+    respond(res.status(201), ManualExperienceCreated, { id: experienceId, name: body.name as string, externalId });
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

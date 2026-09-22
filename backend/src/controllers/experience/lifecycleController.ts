@@ -19,7 +19,7 @@
 import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { respond } from '../../api/respond.js';
-import { AdmissionResult } from '../../api/responses/curation.js';
+import { AdmissionResult, ExperienceStateResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
@@ -27,6 +27,7 @@ import type { CheckValue } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
+import { placementReport } from './placementReport.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 
 /** The object's two axes, as the columns' CHECK lists spell them. */
@@ -102,7 +103,7 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
     res.status(status).json(payload);
     return;
   }
-  res.json(outcome.result);
+  respond(res, ExperienceStateResult, outcome.result!);
 }
 
 /**
@@ -117,7 +118,7 @@ export async function answerStateUnderLock(
   logRegionId: number | null,
   { membership, existence, note, expected }: StateAnswer,
 ): Promise<{
-  result?: { experienceId: number; sourceMembership: Membership; existence: Existence };
+  result?: ExperienceStateResult;
   refusal?: AnswerRefusal;
 }> {
   // One client, not pool.query('BEGIN') — see the note in curationController:
@@ -605,16 +606,7 @@ export async function answerAdmissionUnderLock(
 async function placeAfterAdmissionRelease(
   experienceId: number, withdrawalsReleased: number,
 ): Promise<Pick<AdmissionResult, 'placementFailed' | 'placementFailedWorldViews'>> {
-  if (withdrawalsReleased === 0) return {};
-  const failures = await placeAfterRelease(experienceId);
-  if (failures.length === 0) return {};
-  // The world views by name, in the `{ id, name }` the publish endpoint answers
-  // with, so the page renders one sentence for both. `PlacementFailure` in the
-  // schema says why it is a list and not only a flag.
-  return {
-    placementFailed: true,
-    placementFailedWorldViews: failures.map(f => ({ id: f.worldViewId, name: f.worldViewName })),
-  };
+  return placementReport(withdrawalsReleased === 0 ? [] : await placeAfterRelease(experienceId));
 }
 
 /**

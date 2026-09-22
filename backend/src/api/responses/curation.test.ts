@@ -7,7 +7,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { AdmissionResult, PublishResult } from './curation.js';
+import {
+  AcceptSourceResult, AdmissionResult, LocationEditResult, LocationStateResult, PublishResult, RefuseContentsResult,
+  UnrefuseContentsResult,
+} from './curation.js';
 
 const publication = {
   experienceId: 6205, curationState: 'verified', appliedFields: [], claimedFieldsSkipped: [],
@@ -17,9 +20,29 @@ const publication = {
 const admission = { ...publication, admission: 'admitted', published: true };
 const stale = [{ id: 5, name: 'Administrative' }];
 
+// Every other answer whose call can re-place the object, each in the shape its
+// handler sends when the placement went through.
+const pointVerdict = {
+  locationId: 13211, experienceId: 6205, sourceMembership: 'present', existence: 'extant', offeredToReaders: true,
+};
+const pointEdit = { success: true, locationId: 13211, anchorMoved: false };
+const acceptSource = {
+  experienceId: 6205, applied: ['location'], released: [], releasedPoints: [13211], movedPoints: [13211],
+  releasedCredit: false, fromSyncLogId: 53,
+};
+const refuseContents = { experienceId: 6205, locationsRefused: 2, treasureLinksRefused: 0, withdrawalsReleased: 1 };
+const unrefuseContents = {
+  experienceId: 6205, locationsRestored: 1, treasureLinksRestored: 0, locationIds: [13211], treasureIds: [],
+};
+
 describe.each([
   ['PublishResult', PublishResult, publication],
   ['AdmissionResult', AdmissionResult, admission],
+  ['LocationStateResult', LocationStateResult, pointVerdict],
+  ['LocationEditResult', LocationEditResult, pointEdit],
+  ['AcceptSourceResult', AcceptSourceResult, acceptSource],
+  ['RefuseContentsResult', RefuseContentsResult, refuseContents],
+  ['UnrefuseContentsResult', UnrefuseContentsResult, unrefuseContents],
 ] as const)('%s', (_name, schema, answer) => {
   it('accepts neither key, and both together', () => {
     expect(schema.safeParse(answer).success).toBe(true);

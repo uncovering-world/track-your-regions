@@ -23,6 +23,8 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { DeclineHeldResult, type DeclinedPart } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
@@ -34,30 +36,6 @@ import {
   type HeldRow, type SelectedPart,
 } from './heldSelection.js';
 import type { ContentsByKind } from '../../services/sync/types.js';
-
-/** A part a refusal reached, as the response and the audit row name it. */
-interface DeclinedPart {
-  kind: string;
-  name: string;
-  fields: string[];
-}
-
-export interface DeclineResult {
-  experienceId: number;
-  /** The object's own fields refused now. */
-  declinedFields: string[];
-  /** The parts refused now, grouped as the card grouped them. */
-  declinedParts: DeclinedPart[];
-  fromSyncLogId: number;
-  /**
-   * Held rows still open after this refusal.
-   *
-   * Zero means the card is gone and the pointer with it. The page says which,
-   * because "refused, and four things are still waiting" and "refused, and that
-   * was the last of it" are different states and the refetch shows neither.
-   */
-  heldLeftOpen: number;
-}
 
 export interface DeclineRefusal {
   status: number;
@@ -110,7 +88,7 @@ export async function declineHeldValue(req: AuthenticatedRequest, res: Response)
     res.status(status).json(payload);
     return;
   }
-  res.json(outcome.result);
+  respond(res, DeclineHeldResult, outcome.result!);
 }
 
 /** The parts of a refusal, grouped by the part the record names, for the report. */
@@ -152,7 +130,7 @@ export async function refuseUnderLock(
   logRegionId: number | null,
   selection: { fields?: string[]; parts?: SelectedPart[] } | null,
   expectedSyncLogId: number,
-): Promise<{ result?: DeclineResult; refusal?: DeclineRefusal }> {
+): Promise<{ result?: DeclineHeldResult; refusal?: DeclineRefusal }> {
   const client = await pool.connect();
   let unusable: Error | undefined;
   try {

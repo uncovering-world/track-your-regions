@@ -9,6 +9,8 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { AcceptSourceResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -19,6 +21,7 @@ import { tidyNameValue } from './heldDecisions.js';
 import { columnFor } from './acceptableFields.js';
 import type { ContentItemChange } from '../../services/sync/types.js';
 import { placeAfterRelease } from './publishContents.js';
+import { placementReport } from './placementReport.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 
 /**
@@ -68,20 +71,7 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     res.status(409).json(outcome.refusal);
     return;
   }
-  res.json(outcome.result);
-}
-
-/** What accepting the source's values reports back. */
-export interface AcceptSourceResult {
-  experienceId: number;
-  applied: string[];
-  released: string[];
-  releasedPoints: number[];
-  movedPoints: number[];
-  releasedCredit: boolean;
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-  fromSyncLogId: number;
+  respond(res, AcceptSourceResult, outcome.result!);
 }
 
 /**
@@ -108,7 +98,7 @@ export async function acceptSourceUnderLock(
   // curator moving it is: the point's `auto` rows were computed from where it
   // used to be. After the commit, like every other placement here — a placement
   // inside the transaction would hold the row lock across a world-view sweep.
-  const placementFailedWorldViews = movedPoints.length > 0
+  const placementFailures = movedPoints.length > 0
     ? await placeAfterRelease(experienceId, 'A curator accepted the source coordinate for experience %d')
     : [];
 
@@ -128,11 +118,7 @@ export async function acceptSourceUnderLock(
     // what a curator needs to know is that the line under their photograph is
     // gone, and the value itself is in the `edited` row that wrote it.
     releasedCredit,
-    ...(placementFailedWorldViews.length > 0 && {
-      placementFailed: true as const,
-      placementFailedWorldViews: placementFailedWorldViews.map(
-        f => ({ id: f.worldViewId, name: f.worldViewName })),
-    }),
+    ...placementReport(placementFailures),
     fromSyncLogId,
   } };
 }

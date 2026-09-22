@@ -43,6 +43,7 @@ import type { CheckValue } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
+import { placementReport } from './placementReport.js';
 import { heldFieldWrites, publicationAssignments, type HeldFieldWrites } from './publishHeldFields.js';
 import {
   applyHeldPartWrites, planHeldPartWrites, type HeldPartPlan,
@@ -638,9 +639,7 @@ export async function publishUnderLock(
     const placementFailures = withdrawalsReleased > 0
       ? await placeAfterRelease(experienceId)
       : [];
-    const staleWorldViews = placementFailures.length === 0
-      ? undefined
-      : placementFailures.map(f => ({ id: f.worldViewId, name: f.worldViewName }));
+    const { placementFailed, placementFailedWorldViews } = placementReport(placementFailures);
 
     // Every key is written into this literal, the optional ones as `undefined`
     // (which JSON drops) rather than spread in from a conditional object:
@@ -664,8 +663,8 @@ export async function publishUnderLock(
         withdrawalsReleased,
         // Both from one condition, so the flag and the list travel together or
         // not at all (see `placementFailedWorldViews` in the schema).
-        placementFailed: staleWorldViews ? true : undefined,
-        placementFailedWorldViews: staleWorldViews,
+        placementFailed,
+        placementFailedWorldViews,
       },
     };
   } catch (error) {
