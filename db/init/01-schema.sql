@@ -68,9 +68,9 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 -- This file is the canonical schema and is re-applied by hand as it grows; the
 -- numbered files in db/migrations/ carry the one-shot changes a database that
 -- already holds data cannot get from re-applying it. Which of those a given
--- database has been through used to be nowhere: it was remembered, or it was
--- not (#435, ADR-0041). This table is where it is written down, by
--- scripts/db-migrate.sh and by nothing else.
+-- database has been through is written down here and nowhere else, by
+-- scripts/db-migrate.sh and by nothing else (#435, ADR-0041): a database
+-- says what it has seen rather than anyone remembering it.
 --
 -- ran = false records a file asserted to be applied without being executed here
 -- (npm run db:baseline) -- how a database older than the ledger states what it
@@ -522,8 +522,7 @@ CREATE OR REPLACE TRIGGER trigger_simplify_geom
 -- and computes the centre of the frame it also stores in focus_bbox. A point on the
 -- surface is a different answer, and for a region crossing the antimeridian a worse
 -- one -- it lands inside whichever component ST_PointOnSurface picks, which is where
--- the camera then goes. Nothing calls this today; regenerateDisplayGeometries did
--- until #666.
+-- the camera then goes. Nothing calls this today (#666).
 CREATE OR REPLACE FUNCTION generate_anchor_point(p_geom GEOMETRY)
 RETURNS GEOMETRY AS $$
 DECLARE
@@ -591,10 +590,11 @@ $$ LANGUAGE SQL;
 -- uses_hull is auto-detected ONLY on INSERT, preserved on UPDATE
 --
 -- The area goes with the geometry it measures. A geometry write that clears
--- geom -- ancestor invalidation (ADR-0035), a member edit -- used to leave
--- geom_area_km2 holding the area of the outline that is no longer there, so
--- Europe read as NULL and 4,095,971 km2 at once, and a Catalogue Check reading
--- the area saw a different world from one reading the geometry (#763). An
+-- geom -- ancestor invalidation (ADR-0035), a member edit -- must clear
+-- geom_area_km2 with it, or the column holds the area of an outline that is
+-- not there: Europe reading as NULL and 4,095,971 km2 at once, a Catalogue
+-- Check reading the area seeing a different world from one reading the
+-- geometry (#763). An
 -- empty geometry has no area either: geometry_focus() files it as NULL, and
 -- so does this.
 
@@ -932,10 +932,9 @@ COMMENT ON FUNCTION update_region_focus_data() IS 'Trigger function to auto-upda
 -- reports the gap meanwhile: loud and absent beats quiet and wrong (#667).
 --
 -- The rule lives here rather than at each writer because there is no count of
--- writers to keep correct. #679 enforced it in TypeScript and the review found
--- seven writers beyond the one the issue described, one round at a time; a
--- write that skipped the call consumed the NULL its own convergence depended
--- on, and the run went on reporting Complete. Here it runs inside the writing
+-- writers to keep correct: a rule spelled at each writer is one a new writer
+-- can skip, and a write that skips it consumes the NULL its own convergence
+-- depends on while the run goes on reporting Complete (#679). Here it runs inside the writing
 -- statement, so no writer can bypass it and it cannot fail separately from the
 -- write it belongs to. ADR-0035; the same reasoning that keeps the antimeridian
 -- rule in geometry_focus() rather than in each reader (#674).
@@ -1251,8 +1250,8 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_3857 geometry(MultiPolygon, 3857);
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS hull_geom_3857 geometry(MultiPolygon, 3857);
 
--- Simplified geometry at 5 km. No longer the rung a tile function reaches for —
--- the coarse rung below covers the zooms it used to serve — but still the arm
+-- Simplified geometry at 5 km. Not the rung a tile function reaches for —
+-- the coarse rung below covers zoom 3-4 — but still the arm
 -- the ladder falls through to at zoom 0-4 when a cheap rung is NULL, still the
 -- input both cheap rungs are derived from, and its 4326 twin on
 -- administrative_divisions is what the GeoJSON API answers with.
@@ -1645,9 +1644,9 @@ BEGIN
 
     -- Read before the block below writes it: simplify_coverage_regions() sets
     -- geom_simplified_low directly, touching neither geom nor hull_geom, so
-    -- nothing else here would notice. The tile functions used to simplify that
-    -- column per request and so always rendered the coverage result; the
-    -- precomputed overview has to follow it. Computed up here rather than after
+    -- nothing else here would notice. The tile functions read the precomputed
+    -- overview rather than simplifying that column per request, so the
+    -- overview has to follow it. Computed up here rather than after
     -- the write, or the trigger would see its own assignment and recompute the
     -- overview a second time on every ordinary geometry change.
     low_changed := (TG_OP = 'UPDATE'
@@ -2111,7 +2110,7 @@ BEGIN
     -- and clickable there (#660). A parent id belongs to one world view already;
     -- what the root of a world view asks for is the whole of it, and that is
     -- the request that carried nothing. The two other world-view sources
-    -- require theirs the same way, since #662.
+    -- require theirs the same way (#662).
     IF p_world_view_id IS NULL THEN
         RETURN '';
     END IF;
@@ -2271,10 +2270,9 @@ CREATE INDEX IF NOT EXISTS idx_regions_world_view_id ON regions(world_view_id);
 -- fills it on its own terms (decision 2). A *source* -- a row of
 -- experience_sources below -- is a list we read to fill a kind: a kind may
 -- have several, and one source may feed several kinds (decision 3). The kinds
--- are seeded under the ids of the sources that fill them: every reader keyed
--- on the source row until #819, and the switch to the membership's kind_id
--- was a join and not a renumbering, so a colour or an order keyed on those
--- ids reads the same either way.
+-- are seeded under the ids of the sources that fill them, so a colour or an
+-- order keyed on those ids reads the same through the membership's kind_id
+-- as it did through the source row (#819).
 CREATE TABLE IF NOT EXISTS experience_kinds (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
@@ -3126,7 +3124,7 @@ CREATE INDEX IF NOT EXISTS idx_experience_treasures_offered
 -- Guarded rather than dropped-and-added: these are new constraints, not widened
 -- ones, so the drop/add idiom used for the changeset's change_type check would
 -- be doing nothing on a fresh database and hiding a failure on an old one.
--- The object's own state is on its membership since #822, whose CREATE TABLE
+-- The object's own state is on its membership (#822), whose CREATE TABLE
 -- carries the CHECK inline; the three parts keep theirs here.
 DO $$
 BEGIN
@@ -3267,18 +3265,17 @@ COMMENT ON TABLE experience_conflict_decisions IS 'Source proposals a curator re
 --
 -- A held field is one nobody claimed and the gate kept out of the columns
 -- because a reader can already see the stored value (ADR-0025 decision 5,
--- ADR-0037 for a field of a place or a work). The card used to have one answer
--- for all of it. This table is what lets it have one per row, and it records
--- both verdicts rather than only the refusal.
+-- ADR-0037 for a field of a place or a work). This table is what gives the
+-- card one answer per held field rather than one for the whole proposal, and
+-- it records both verdicts rather than only the refusal.
 --
--- Refusing needed somewhere to live because there was nowhere: the one way to
--- turn down a single held field was to edit it, which claims it, and a claim is
--- a statement about whose value it is rather than about this value -- it also
--- outlives the question, so a source proposing something else next month meets
--- the claim and no curator.
+-- Refusing needs a row of its own because editing is not a refusal: an edit
+-- claims the field, and a claim is a statement about whose value it is rather
+-- than about this value -- it also outlives the question, so a source
+-- proposing something else next month would meet the claim and no curator.
 --
--- Publishing needed it for a different reason, and only since the answer became
--- per row. A whole-card publish clears pending_change_sync_log_id, which is what
+-- Publishing needs it for a different reason, one that exists only because the
+-- answer is per row. A whole-card publish clears pending_change_sync_log_id, which is what
 -- takes the card away; publishing one of six leaves the pointer standing for the
 -- other five, and the run's record still says the field it wrote was held. With
 -- no row here that card would go on offering a value it has already applied.
