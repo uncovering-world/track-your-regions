@@ -120,8 +120,9 @@ contents through the shared `publishContents`, so it can release a deferred
 withdrawal, and `setExperienceAdmission` then calls `placeAfterAdmissionRelease`
 → `placeAfterRelease` after releasing its client — the identical post-commit
 placement, on the identical `withdrawalsReleased > 0` trigger. An earlier version
-of this section said the four siblings had "no post-commit work"; that was true of
-three of them and the criterion decides per branch, not per endpoint.
+of this section said the siblings it then listed — `/:id/state`, `/:id/admission`,
+`/:id/accept-source` and `/review/queue` — had "no post-commit work"; that was true of
+all but `/:id/admission` and the criterion decides per branch, not per endpoint.
 
 The ones that remain — `/:id/state`, `/:id/decline-source`, `/:id/decline-held`,
 `/:id/works/:treasureId/edit`, `/review/queue` — stay exempt, checked rather than
@@ -145,7 +146,8 @@ reason given below it. That is the second time a route has left this list by
 growing post-commit work, which is why the list is re-read against the handlers
 rather than carried forward. `/review/queue` is the case that re-reading catches
 in the other direction: #805 rebuilt it into one keys statement over the union of
-the seven kinds, one hydrating statement per kind the page actually holds, and the
+the kinds — `missing`, `refused`, `conflicts`, `arrivals`, `held`, `contents` and
+`withdrawn` — one hydrating statement per kind the page actually holds, and the
 three answered lists — `keptOut`, `answeredWithdrawals` and `refusedParts`
 (#859), which are outside the union and run on every request — so it is a
 different handler under the same path.
@@ -182,7 +184,8 @@ stopped being a pure claim release. Handing the object's `location` back also ha
 back the pin that carried it, and the pin is put on the coordinate that run offered
 rather than left for the next one to retire the row — so a place moves, and a place
 that moves has to be re-placed after committing, exactly as the correction above does.
-The other five fields it accepts place nothing, and the endpoint asks the criterion per
+The other fields it accepts (`ACCEPTABLE_FIELDS` in `acceptableFields.ts`: `name`,
+`shortDescription`, `description`, `type`, `imageUrl`) place nothing, and the endpoint asks the criterion per
 request the way `/state` does; the limiter is on the route either way, because a route
 is what a limiter can be attached to.
 

@@ -21,7 +21,7 @@ implemented, and the rules that keep it honest. The decision behind it is
 | `/discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1` | …that list, with the card open |
 | `/?wv=5`, `/discover?wv=5` | The form links carried before #644 — honoured, then rewritten in place |
 | `/review` | The curator's review feed, nothing narrowed — a page rather than a place; see § The review page |
-| `/review?sort=question&q=cologne&source=1,3&kind=held&region=6737&run=98&aside=show&row=waiting:126` | …that feed's whole working set: the order, the search, the four filters, the set-aside batches shown, and the question open on the right — on the catalogue of 2026-09-07, Cologne Cathedral's held proposal from run 98 |
+| `/review?sort=question&q=cologne&source=1,3&kind=held&region=6737&run=98&aside=show&row=waiting:126` | …that feed's whole working set: the order, the search, the `source`, `kind`, `region` and `run` filters, the set-aside batches shown, and the question open on the right — on the catalogue of 2026-09-07, Cologne Cathedral's held proposal from run 98 |
 
 Two rules decide where a piece of state goes:
 
@@ -121,7 +121,8 @@ visibility, so the client learns nothing the API would not have said.
 `/review` is the curator's review feed, and it is a page rather than a place:
 `review` is in `NOT_A_PLACE`, so `parseAppUrl` answers `null` for it and none of
 the rules above about world views, regions and cards applies to it. What it does
-have is a working set — the order, the search, the four filters, whether
+have is a working set — the order, the search, the `source`, `kind`, `region`
+and `run` filters, whether
 set-aside batches are shown, and the question open on the right — and that is
 view state a curator set deliberately, so it goes in query parameters by the same
 rule Discover's `?kind=` does: [ADR-0034](../decisions/0034-a-place-has-an-address.md)
@@ -262,7 +263,7 @@ round trip. The test is what stops a parameter being added in one direction only
   `addresses.smoke.spec.ts` covers the deep link, the canonical rewrite, Back,
   the legacy form and the silent degradation.
 - The performance lane can audit a region page and a card page as page loads
-  rather than only the two shells — #669 puts them in the budgets files, with
+  rather than only the map view and Discover shells — #669 puts them in the budgets files, with
   the measurement to size them against; #646 and #647 build on the same
   addresses.
 

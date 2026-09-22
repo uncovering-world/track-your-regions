@@ -463,7 +463,7 @@ All require admin auth.
 | POST | `/matches/:worldViewId/ai-match-one` | AI-match a single region (synchronous) |
 | POST | `/matches/:worldViewId/handle-as-grouping` | Drill into children — match them independently against GADM |
 | POST | `/matches/:worldViewId/dismiss-children` | Delete child regions, make parent a leaf |
-| POST | `/matches/:worldViewId/undo` | Undo the last undoable tree operation — one of the six in § Undo for Destructive Operations (in-memory, last only) |
+| POST | `/matches/:worldViewId/undo` | Undo the last undoable tree operation — one of the operations listed in § Undo for Destructive Operations (in-memory, last only) |
 | POST | `/matches/:worldViewId/sync-instances` | Copy match decisions to other instances of same region |
 | POST | `/matches/:worldViewId/reject-remaining` | Bulk-reject all remaining suggestions for a region |
 | POST | `/matches/:worldViewId/select-map-image` | Select map image from candidates for a region |

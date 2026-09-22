@@ -444,12 +444,16 @@ puts it in front of a curator.
 **The two membership rules** (`place-without-membership`,
 `membership-source-disagrees-with-row`) state what every reader rests on since
 the place and its membership in a kind came apart (#822, ADR-0045 decision 4).
-Every reader-facing read asks the four lifecycle questions of a place through
-its memberships (`db/membership.ts`), so a row of `experiences` with no
+Every reader-facing read asks `admission` and `curation_state` of a place
+through its memberships (`db/membership.ts`; of the other two lifecycle
+questions, `existence` stays on the row itself and `missing_since` is asked of
+each point, on `experience_locations`), so a row of `experiences` with no
 membership at all is on no list, map, count or search and in no queue — not
 refused, not unread, simply never asked — and nothing on any screen says why.
-Migration 046 refuses to commit with such a row and the three writers that
-create a place write the membership with it; a row here came in by a path that
+Migration 046 refuses to commit with such a row and every writer that
+creates a place — the run's `experienceUpsert.ts`, a curator's
+`insertManualExperience` and the `e2eFixture.ts` seed — writes the membership
+with it; a row here came in by a path that
 did not. The second rule is about the two halves of the catalogue agreeing:
 `experiences.source_id` stays the row's identity arbiter until #755, and every
 reader-facing row reads its kind through that equality — the membership with
@@ -549,7 +553,9 @@ found.
 
 A rule need not live in that file. Where a subject brings several at once, they
 go in a file of their own beside it, exporting an array the registry imports and
-spreads — `regionGeometryAssertions.ts` was the first, five rules about a
+spreads — `regionGeometryAssertions.ts` was the first: `region-without-geometry`,
+`framed-as-the-world`, `anchor-far-from-its-region`,
+`parent-short-of-its-children` and `rung-unlike-its-source`, rules about a
 region's shape, its focus box, its anchor and the rungs the map draws it from;
 `divisionTreeAssertions.ts` and `objectAssertions.ts` (the danger flag, the
 refused badge, the works' makers, the public-art row typed as a building, the place

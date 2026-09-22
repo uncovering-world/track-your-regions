@@ -2,8 +2,9 @@
 
 Performance has numbers, budgets and a gate. This document says what is
 measured, how, what the numbers were when the budgets were set, and the rule
-for moving a budget. It is the reference for the two CI jobs that enforce
-them and for the local commands that run the same checks and one more —
+for moving a budget. It is the reference for the CI jobs that enforce
+them — **Build**'s bundle-size step and **Performance (Lighthouse)** — and for
+the local commands that run the same checks and one more —
 `perf:size`, `perf`, `perf:api`, and `perf:local` on the developer's own
 data.
 
@@ -244,7 +245,8 @@ backend's `/health` before anything is measured.
 What the local run cannot yet see is the interactions where the data cost
 actually lives — clicking Europe, opening a card. Both are addresses now
 (#644), so a selected region and an open card *can* be audited as page
-loads; adding them to the two budgets files is #669. What a navigation
+loads; adding them to `lighthouse-budgets.json` and
+`lighthouse-budgets.local.json` is #669. What a navigation
 still cannot show is the cost of the click itself, since Lighthouse's
 navigation mode measures page loads; #646 adds scenarios (timespans around
 scripted interactions) to it. Making the
@@ -584,7 +586,8 @@ hypotheses were measured and two of them died:
   7 828 B to spare, so **no budget was raised**. One decimal was measured too
   (26.5 kB, another 10.7 off) and refused: 11 km is 1.6 pixels at zoom 4.5,
   which is visible jitter in the last half-zoom before the pins arrive.
-- **The count badge's two layers are mounted only while the reader has folded.**
+- **The count badge's layers — `markerCountBadgeBgLayer` and
+  `markerCountBadgeTextLayer` — are mounted only while the reader has folded.**
   Their own filter would already hide them — an unfolded answer carries no
   `locationCount` — but a layer with a filter that matches nothing is still a
   layer the style walks per tile and per frame, and unfolded is the state the
@@ -704,8 +707,8 @@ The rule:
 - **Bytes are `error` from the day they are set.** They are deterministic.
   **Timings start at `warn`** when a page is first measured and move to
   `error` once CI runs have shown where they sit — a timing budget copied
-  from a developer's machine gates on the wrong hardware. The two pages
-  above went through exactly that on the pull request that added the lane:
+  from a developer's machine gates on the wrong hardware. The map view and
+  Discover went through exactly that on the pull request that added the lane:
   first run at `warn`, budgets set from its numbers, second run at `error`.
 
 When the gate goes red, read the report before touching the budget:
@@ -724,7 +727,7 @@ Filed, and linked here so the baseline is read with them in mind:
   Measured on `/wv/9001/r/9001/e/9001` (the fixture's card, not in the lane
   yet — #669): 392–830 kB over 28–34 tile requests across six runs, against
   4.0 kB of this repository's own vector tiles and 13.7 kB from the backend.
-  The two shells sit at world zoom and pay a fraction of it.
+  The map view and Discover shells sit at world zoom and pay a fraction of it.
 - #551 — the region tile LOD ladder: a z3 tile costs hundreds of
   milliseconds of Postgres time for a few kilobytes. The first known breach
   on the backend side; the probe's row for `tile_world_view_root_regions/3/4/2`
@@ -767,8 +770,9 @@ What the lane does not measure, by design or not yet:
   requests, the golden dump nightly).
 - **A loaded page, and the click itself.** Opening a continent, opening a
   card — the moments the data cost is paid — are addresses now (#644), so
-  they can be audited as page loads; #669 puts them in the two budgets
-  files, with the finding above to size them against. What a page load
+  they can be audited as page loads; #669 puts them in `lighthouse-budgets.json`
+  and `lighthouse-budgets.local.json`, with the finding above to size them
+  against. What a page load
   cannot show is the cost of the transition; #646 measures those as
   scripted scenarios in the local run.
 - **Whether the API is still compressed, in CI.** The fixture's responses
