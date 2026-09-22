@@ -255,7 +255,7 @@ function creditProposal(
  * Everywhere else the pin is null and the entries decide — the run that
  * proposes nothing about the credit included, which is the run *asserting* the
  * stored one rather than offering none. That is not a corner but the ordinary
- * case: measured on this catalogue, 1413 of the 1414 cards holding a credit hold
+ * case: measured on this catalogue, all but one of the cards holding a credit hold
  * no picture change at all — the run fetched the photographer for the picture
  * the page has been showing all along, and publishing that change is what
  * finally names them (`data-assertions.md` § picture-with-nobody-credited). A
@@ -420,7 +420,7 @@ function nextMetadata(
   // earlier, whose credit rode inside a catch-all that also carried the criteria
   // and the region and could therefore be refused on its own. Not a rule that
   // fires on every call either: `creditPin` returns null wherever the run's
-  // credit is already the stored picture's, which is 1413 of the 1414 cards
+  // credit is already the stored picture's, which is all but one of the cards
   // holding a credit on this catalogue.
   if (pin !== null) {
     if (pin.value === undefined || pin.value === null) delete next[CREDIT_KEY];

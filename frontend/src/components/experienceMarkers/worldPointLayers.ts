@@ -90,7 +90,7 @@ const onSource = { source: SOURCE_WORLD_POINTS };
  * reason written beside them there holds here. The **intensity** cannot be,
  * because the two layers are looking at different amounts of world. A region's
  * map is zoomed to that region; this one holds the whole catalogue on one
- * screen — 8 830 points, of which some 1 800 are in Europe — and at the region
+ * screen — thousands of points (8 842 on 2026-09-22), some 1 800 of them in Europe — and at the region
  * layer's overview value Europe came out as a single flat amber mass from
  * Ireland to the Caucasus, which is the exact failure the note on
  * `heatmap-intensity` next door describes: saturated density cannot be
@@ -158,7 +158,7 @@ export const worldMarkerLayer: LayerProps = {
  * stands in for. Above the band the same layer draws features that *do* carry
  * identity, and there it behaves as a pin: hover, name, card.
  *
- * Unreachable on today's catalogue (20 000 against 8 830), so this is what the
+ * Unreachable on the catalogue as it stands (20 000 against 8 842 places on 2026-09-22), so this is what the
  * map does on the day the tier design is outgrown rather than a state a reader
  * meets.
  */

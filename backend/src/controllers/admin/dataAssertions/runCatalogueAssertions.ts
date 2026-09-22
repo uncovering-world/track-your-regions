@@ -28,9 +28,10 @@ import { catalogueAssertions } from './catalogueAssertions.js';
  *
  * The count is always the whole truth; the rows are a sample, because the case
  * this lane exists for is not one row. A source re-published at full precision
- * would put a quarter of the catalogue's points into the first assertion at
- * once — 1642 of 6680 sit on a coordinate rounded to six decimals — and a
- * screen holding sixteen hundred sentences says less than ten and a number.
+ * would put a large share of the catalogue's points into the first assertion at
+ * once — about three in ten sit on a coordinate rounded to six decimals
+ * (2026-09-22) — and a screen holding thousands of sentences says less than
+ * ten and a number.
  */
 export const SAMPLE_ROWS = 10;
 

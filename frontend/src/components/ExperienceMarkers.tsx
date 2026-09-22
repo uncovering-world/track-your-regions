@@ -117,7 +117,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
    * It was `useState`, which made every hover a re-render of this component —
    * and this component is the map's sources and layers, so react-map-gl
    * reconciled all of them on every mouse move across the list. Profiled on
-   * Europe's 661 experiences, hovering an object's row cost 320 fibers against
+   * 2026-08-19 over Europe's 661 experiences, hovering an object's row cost 320 fibers against
    * a place's 109, and the difference was this: a place rings one point while
    * an object rings all of its places (93 for the Historic Centre of Saint
    * Petersburg), and the object's path also came back through React.

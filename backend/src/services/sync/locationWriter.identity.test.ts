@@ -56,8 +56,8 @@ describe('the match predicate', () => {
  * These assert the SQL rather than a result, because the decision lives in a predicate
  * the database evaluates and the unit here has no database. What they are guarding is
  * the shape that cost the catalogue its only withdrawal: a coordinate rewritten 1.2 cm
- * more precisely read as a departure, with 1642 of 6680 points sitting on a rounded
- * coordinate behind it.
+ * more precisely read as a departure, with a large share of the points sitting on a
+ * rounded coordinate behind it.
  */
 describe('writeExperienceLocations — when a stored point is the incoming one', () => {
   /** Each composing site, and the slice of its statement the fragment must be inside. */

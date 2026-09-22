@@ -9,7 +9,8 @@
  * its markers from the same array, so their pins went too.
  *
  * The route's ceiling and what the client asks for are the same number so that
- * a region is always read whole: the largest today holds 661. It used to be a
- * `5000` on each side with a comment pointing at the other (#789).
+ * a region is always read whole: the largest, Europe on the Administrative
+ * world view, held 1 805 on 2026-09-22. Declared once so the two sides cannot
+ * disagree about the ceiling (#789).
  */
 export const WHOLE_REGION_LIMIT = 5000;

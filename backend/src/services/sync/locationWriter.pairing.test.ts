@@ -41,7 +41,7 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
     mockedConnect.mockResolvedValue(client);
 
     // Same reference, a different point: the definition of a move, and the only
-    // one the data supports. 6679 of 6680 locations carry a reference, and for
+    // one the data supports. All but one location carries a reference, and for
     // museums and landmarks it is the experience's own Wikidata id — so it
     // cannot change while the experience stays the same.
     await writeExperienceLocations(1, [{ name: 'A', externalRef: 'r1', lon: 10.5, lat: 20 }]);

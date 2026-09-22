@@ -522,7 +522,7 @@ describe('the curation log accepts every action a curator endpoint writes', () =
  *
  * The review page's third answered list asks, per object, whether it holds a part
  * a curator turned down. Without the pair below that question is a sequential scan
- * of 7844 points and 1446 links per page of the queue — and it is a question asked
+ * of every point and every link in the catalogue per page of the queue — and it is a question asked
  * on every read of the page, since the list's count is stated whether or not anyone
  * opens it. Indexes drift the way columns do and nothing else compares the two files.
  */
@@ -580,7 +580,7 @@ describe('a held withdrawal has a column in both schema homes', () => {
     // The withdrawal statement asks, for each stored row, whether anything is
     // waiting on it — a predicate with no `experience_id` to narrow it, so
     // without this index every changed object of every run scans the table.
-    // Partial because the column is NULL on all 6680 rows today and every query
+    // Partial because the column is NULL on every row today and every query
     // asks only about the ones that are not.
     const index =
       'CREATE INDEX IF NOT EXISTS idx_experience_locations_deferred_withdrawal ' +

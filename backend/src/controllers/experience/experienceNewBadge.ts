@@ -32,9 +32,9 @@
  *
  * - the `EXISTS … change_type = 'created'` proof of a sighting existed only
  *   because migration 009 backfilled `first_seen_sync_log_id` to the newest run
- *   of each source, so the column alone credited 1547 of 1547 rows to a run
- *   that never inserted them. `published_at` is never backfilled — migration 018
- *   left 1603 of 1604 rows NULL on purpose — so a publication needs no proof.
+ *   of each source, so the column alone credited every row to a run that never
+ *   inserted them. `published_at` is never backfilled — migration 018 left
+ *   every row but one NULL on purpose — so a publication needs no proof.
  * - the latest-completed-run bound existed to stop chips accumulating. The
  *   source window already bounds them, and under piecemeal approval "the newest
  *   batch" has stopped being a unit: a curator answers eighteen arrivals over a

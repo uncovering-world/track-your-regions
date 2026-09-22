@@ -7,7 +7,7 @@
  * photograph, the place, or the page it was written from is guesswork with a button
  * under it.
  *
- * Everything here is optional in the data and rendered only when present: 14 of 1604
+ * Everything here is optional in the data and rendered only when present: a few dozen
  * rows carry no image, and a landmark commonly has no website. An empty frame or a dead
  * link would be worse than the absence — it would say the object has something it does
  * not.
@@ -37,8 +37,8 @@ function coordinateLabel(lat: number, lon: number): string {
  * showed that text against the site's own with nothing to say the site had parts.
  * A curator reading it has no way to know they are being shown a part.
  *
- * Silent for a single place holding nothing, which is most of the catalogue — 1119
- * of 1604 objects hold exactly one point. Saying "made of 1 place" on all of them
+ * Silent for a single place holding nothing, which is most of the catalogue — most
+ * objects hold exactly one point. Saying "made of 1 place" on all of them
  * would be a line that never carries information, and a curator learns to stop
  * reading a line like that before they meet the one that matters.
  */

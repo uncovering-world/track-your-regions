@@ -69,7 +69,7 @@ export function useWorldLayer(): WorldLayerState {
   // same flag the drop below waits for. Read against `kinds` alone, the empty
   // list that stands in while that read is in flight makes a *valid* kind read
   // as absent too — so a shared `/wv/5?kind=5` would read the all-kinds
-  // overview, the heaviest variant at 37 kB and 8 830 points, and then throw it
+  // overview, the heaviest variant (37 kB for 8 830 points on 2026-09-16), and then throw it
   // away and swap the whole source once the answer landed, flashing the full
   // catalogue across the one screen this layer is measured on.
   const kindId = !kindsAnswered || addressKindId === null || known ? addressKindId : null;

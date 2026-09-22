@@ -330,7 +330,7 @@ describe('a picture with nobody credited', () => {
   });
 
   it('says when the author is already fetched and waiting on a curator', () => {
-    // Measured: 1414 of the 1590 uncredited objects have a held change naming
+    // Measured on 2026-08-24: 1414 of the 1590 uncredited objects have a held change naming
     // imageCredit. "Publish what is waiting" and "go and fetch it" are different
     // afternoons, and a report that called them one thing sends a person to the
     // wrong one.

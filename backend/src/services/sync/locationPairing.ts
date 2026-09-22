@@ -62,10 +62,11 @@ import { pointChanges } from './contentsChangeSet.js';
  * about the experience's own coordinate. Below the width of the thing being
  * pointed at — a museum's door against its centroid — so a source re-centring a
  * park still reads as a move and still raises a card; what it absorbs is
- * arithmetic. 1642 of 6680 stored points sit on a coordinate rounded to six
+ * arithmetic. A large share of the stored points — about three in ten on
+ * 2026-09-22 — sit on a coordinate rounded to six
  * decimals, which is what the World Heritage list's degrees-minutes-seconds
- * become, so a single re-publication at full precision would otherwise withdraw a
- * quarter of the catalogue's pins in one run.
+ * become, so a single re-publication at full precision would otherwise withdraw
+ * that share of the catalogue's pins in one run.
  *
  * Exact where the incoming point carries no reference: without one there is
  * nothing to be a candidate *of*, so the tolerance would have nothing to hold it
