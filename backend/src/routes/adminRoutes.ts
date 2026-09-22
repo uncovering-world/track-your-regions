@@ -691,8 +691,8 @@ router.get('/wv-import/geoshape/:wikidataId', validate(wikidataIdParamSchema, 'p
 
 // The proxy fetches on an admin's word from a query string, so the host rule
 // is the one every server-side picture fetch shares (`pictureFetchUrl`,
-// #706): the two Commons hosts, matched exactly, where a suffix match used to
-// let any `*.wikimedia.org` / `*.wikipedia.org` through. The schema answers a
+// #706): the two Commons hosts, matched exactly — a suffix match would admit
+// any `*.wikimedia.org` / `*.wikipedia.org` host. The schema answers a
 // refused first address with 400; `fetchPicture` holds every hop after it.
 const imageProxyQuerySchema = z.object({
   url: z.string().refine((value) => pictureFetchUrl(value) !== null, { message: PICTURE_FETCH_URL_MESSAGE }),

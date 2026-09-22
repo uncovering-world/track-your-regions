@@ -153,13 +153,13 @@ router.get('/:id/curation-log', validate(idParamSchema, 'params'), requireAuth, 
 // endpoint here a client calls on its own initiative rather than in response to a
 // click.
 //
-// Not "unlike the curation routes below", which is what this comment used to say:
-// two of them carry the same limiter now (`/:id/admission`, `/:id/publish`). The
-// difference is the reason rather than the presence. This one is limited because
-// an unauthenticated-shaped user action needs a ceiling; those two are limited
-// despite `requireCurator` because one branch does post-commit region placement
-// that costs the same whoever sends it (§ 5). A curation route added here is
-// exempt by default and joins them only if it reaches that kind of work.
+// Two curation routes below carry the same limiter (`/:id/admission`,
+// `/:id/publish`), and the reason differs rather than the presence. This one is
+// limited because an unauthenticated-shaped user action needs a ceiling; those
+// two are limited despite `requireCurator` because one branch does post-commit
+// region placement that costs the same whoever sends it (§ 5). A curation route
+// added here is exempt by default and joins them only if it reaches that kind of
+// work.
 router.post('/new-badges/seen', authenticatedLimiter, requireAuth, validate(newBadgesSeenBodySchema), markNewBadgesSeen);
 
 // Decisions a sync run cannot make for itself: whether an object the source
