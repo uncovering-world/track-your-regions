@@ -35,7 +35,7 @@ import { inDangerLabel } from '../../utils/dangerLabel';
 import { useAuth } from '../../hooks/useAuth';
 import {
   type Experience,
-  type ExperienceLocation,
+  type RegionExperienceLocation,
   type ExperienceTreasure,
   type VisitedStatus,
 } from '../../api/experiences';
@@ -53,7 +53,7 @@ import { hasExtent } from '../../utils/experienceTypes';
 
 export interface ExperienceExpandedDetailsProps {
   experience: Experience;
-  locations?: ExperienceLocation[];
+  locations?: RegionExperienceLocation[];
   /** The batch settled — an in-region count derived from `locations` is meaningful. */
   locationsResolved: boolean;
   isLocationVisited: (locationId: number) => boolean;
@@ -137,8 +137,8 @@ function ExperienceExpandedDetailsComponent({
       latitude: loc.latitude,
       curatedFields: loc.curated_fields,
       isVisited: isLocationVisited(loc.id),
-      inRegion: loc.in_region !== false,
-      regionPath: loc.region_path ?? null,
+      inRegion: loc.in_region,
+      regionPath: loc.region_path,
     }));
   }, [locations, isLocationVisited]);
 

@@ -36,7 +36,7 @@ export function representablePlaces(
   locations: ExperienceLocation[] | undefined,
 ): ExperienceLocation[] {
   if (!locations || locations.length === 0) return [];
-  const inRegion = locations.filter(loc => loc.in_region !== false);
+  const inRegion = locations.filter(loc => loc.in_region);
   return inRegion.length > 0 ? inRegion : locations;
 }
 

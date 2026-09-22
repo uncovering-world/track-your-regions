@@ -18,7 +18,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router';
-import type { Experience } from '../api/experiences';
+import type { Experience, ExperienceLocationsResponse } from '../api/experiences';
 
 const { mockFetchWorldViews, mockFetchRegionAncestors, countsSpy, mockFetchByRegion, authState } = vi.hoisted(() => ({
   mockFetchWorldViews: vi.fn(),
@@ -47,7 +47,9 @@ vi.mock('../api/experiences', async (importOriginal) => {
       { id: 2, name: 'Art Museums', is_active: true },
     ]),
     fetchExperiencesByRegion: mockFetchByRegion,
-    fetchExperienceLocations: vi.fn().mockResolvedValue({ locations: [] }),
+    fetchExperienceLocations: vi.fn().mockResolvedValue({
+      experienceId: 0, experienceName: '', locations: [], totalLocations: 0, regionId: null,
+    } satisfies ExperienceLocationsResponse),
   };
 });
 vi.mock('./useAuth', () => ({ useAuth: () => authState }));

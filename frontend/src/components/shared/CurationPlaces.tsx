@@ -40,7 +40,7 @@ import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useQuery } from '@tanstack/react-query';
-import { fetchExperienceLocations, type ExperienceLocation } from '../../api/experiences';
+import { fetchExperienceLocations, type ExperienceLocationWithState } from '../../api/experiences';
 import { locationLabel } from '../../utils/locationLabel';
 import { claimLabel } from '../../utils/placeClaims';
 import { ContentsList } from './ContentsList';
@@ -59,7 +59,7 @@ const PLACES_SHOWN = 25;
  * refuses, composing `unreadPointSql` and its `refused_at IS NULL` (#859).
  */
 function unseenReason(
-  place: ExperienceLocation, objectMissingSince?: string | null,
+  place: ExperienceLocationWithState, objectMissingSince?: string | null,
 ): UnseenReason | undefined {
   if (place.refused_at) return objectMissingSince ? 'blocked' : 'refused';
   return place.curation_state === 'pending' ? 'unread' : undefined;
@@ -100,7 +100,7 @@ const UNSEEN_CHIP: Record<UnseenReason | 'seen', string | null> = {
   seen: null,
 };
 
-function coordinate(place: ExperienceLocation): string {
+function coordinate(place: ExperienceLocationWithState): string {
   return `${place.latitude.toFixed(4)}, ${place.longitude.toFixed(4)}`;
 }
 
@@ -136,7 +136,7 @@ export function CurationPlaces({
   // The place a curator opened, held as the place rather than a flag. The dialog
   // around this reconciles across objects and keys this field on the object, so
   // a place opened here never outlives the object it belongs to.
-  const [open, setOpen] = useState<ExperienceLocation | null>(null);
+  const [open, setOpen] = useState<ExperienceLocationWithState | null>(null);
   // What the last correction did, said here: this screen has no other line for it.
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -159,7 +159,7 @@ export function CurationPlaces({
   // object's name, not "Location 2" off an ordinal the source happened to give.
   // A serial site's parts keep the map's own labels, since telling them apart
   // is the point.
-  const label = (place: ExperienceLocation) =>
+  const label = (place: ExperienceLocationWithState) =>
     (single && !place.name ? experienceName : locationLabel(place));
 
   return (
@@ -231,12 +231,12 @@ function NoPlaceField() {
 
 /** The one place of a museum or a monument, as a field: where it is, and the way in. */
 function SinglePlaceField({ place, label, countryNames, objectMissingSince, onOpen }: {
-  place: ExperienceLocation;
+  place: ExperienceLocationWithState;
   label: string;
   countryNames?: string[] | null;
   /** The object's own withdrawal, which blocks the take-back under it — see `unseenReason`. */
   objectMissingSince?: string | null;
-  onOpen: (place: ExperienceLocation) => void;
+  onOpen: (place: ExperienceLocationWithState) => void;
 }) {
   const claim = claimLabel(place.curated_fields);
   const countries = countryNames && countryNames.length > 0 ? ` · ${countryNames.join(', ')}` : '';
@@ -273,11 +273,11 @@ function SinglePlaceField({ place, label, countryNames, objectMissingSince, onOp
 
 /** A serial site's parts, folded behind a count and listed on request, capped and saying so. */
 function PlacesListField({ places, label, objectMissingSince, onOpen }: {
-  places: ExperienceLocation[];
-  label: (place: ExperienceLocation) => string;
+  places: ExperienceLocationWithState[];
+  label: (place: ExperienceLocationWithState) => string;
   /** The object's own withdrawal, which blocks the take-back under it — see `unseenReason`. */
   objectMissingSince?: string | null;
-  onOpen: (place: ExperienceLocation) => void;
+  onOpen: (place: ExperienceLocationWithState) => void;
 }) {
   const [listOpen, setListOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);

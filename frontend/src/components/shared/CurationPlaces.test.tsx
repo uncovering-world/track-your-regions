@@ -39,22 +39,26 @@ vi.mock('./PointPreviewDialog', () => ({
 }));
 
 import { CurationPlaces } from './CurationPlaces';
-import { fetchExperienceLocations, type ExperienceLocation } from '../../api/experiences';
+import {
+  fetchExperienceLocations, type ExperienceLocationsResponse, type ExperienceLocationWithState,
+} from '../../api/experiences';
 
 const mockedLocations = fetchExperienceLocations as unknown as ReturnType<typeof vi.fn>;
 
-function place(over: Partial<ExperienceLocation> = {}): ExperienceLocation {
+function place(over: Partial<ExperienceLocationWithState> = {}): ExperienceLocationWithState {
   return {
     id: 9001, experience_id: 6205, name: null, external_ref: null, ordinal: 0,
     latitude: 51.5194, longitude: -0.127, created_at: '2026-08-01T00:00:00Z',
+    curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null,
     ...over,
   };
 }
 
-function answer(...locations: ExperienceLocation[]) {
+function answer(...locations: ExperienceLocationWithState[]) {
   mockedLocations.mockResolvedValue({
     experienceId: 6205, experienceName: 'British Museum', locations, totalLocations: locations.length,
-  });
+    regionId: null,
+  } satisfies ExperienceLocationsResponse);
 }
 
 function renderPlaces(

@@ -40,19 +40,11 @@ import { useExtentLayer } from './experienceMarkers/useExtentLayer';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../hooks/useHoverContext';
 import { useRegionLocations } from '../hooks/useRegionLocations';
-import type { Experience } from '../api/experiences';
+import type { Experience, ExperienceLocation } from '../api/experiences';
 import { locationLabel } from '../utils/locationLabel';
 import { experienceColor } from '../utils/kindColors';
 import { frameGeoJson } from '../utils/mapUtils';
 
-interface ExperienceLocation {
-  id: number;
-  name?: string | null;
-  /** Nullable, for the reason given on the API's `ExperienceLocation.ordinal`. */
-  ordinal: number | null;
-  longitude: number;
-  latitude: number;
-}
 
 function tryHoverSpecificLocation(
   expId: number,
@@ -222,7 +214,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     const representable = representablePlaces(locations);
     if (representable.length === 0) return null;
     if (collapsedExperienceIds.has(experienceId) && representable.length > 1) return null;
-    return representable as ExperienceLocation[];
+    return representable;
   }, [locationsByExperience, collapsedExperienceIds]);
 
   // Highlight source data (the places of the selected experience)
