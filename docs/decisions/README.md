@@ -85,6 +85,7 @@ and accepted by it.
 | [0063](0063-sql-whose-correctness-is-a-row-set-is-tested-on-postgres.md) | SQL whose correctness is a row set is tested on PostgreSQL | Accepted | 2026-09-21 |
 | [0064](0064-row-types-are-generated-from-the-schema-and-queries-stay-sql.md) | Row types are generated from the schema, and queries stay SQL | Accepted | 2026-09-21 |
 | [0065](0065-a-rule-both-sides-apply-lives-in-one-package-both-import.md) | A rule both sides apply lives in one package both import | Accepted | 2026-09-21 |
+| [0066](0066-an-endpoints-answer-is-a-backend-schema-and-the-clients-type-is-generated-from-it.md) | An endpoint's answer is a backend schema, and the client's type is generated from it | Accepted | 2026-09-22 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
