@@ -7,7 +7,9 @@
  * are `curation.ts`; the review queue's calls are `reviewQueue.ts`.
  */
 
-import type { ExperienceLocationsResponse, RegionExperienceLocationsResponse } from '@tyr/shared/api';
+import type {
+  ExperienceLocationsResponse, ImageCredit, RegionExperienceLocationsResponse,
+} from '@tyr/shared/api';
 import { API_URL, fetchJson, authFetchJson } from './fetchUtils';
 
 // The answers the backend declares as schemas (ADR-0066), generated into
@@ -18,6 +20,7 @@ export type {
   ExperienceLocation,
   ExperienceLocationsResponse,
   ExperienceLocationWithState,
+  ImageCredit,
   RegionExperienceLocation,
   RegionExperienceLocationsResponse,
 } from '@tyr/shared/api';
@@ -25,21 +28,6 @@ export type {
 // =============================================================================
 // Types
 // =============================================================================
-
-/**
- * The credit line a hosted picture has to carry.
- *
- * Every field is optional because the sources fill different ones: UNESCO names
- * a photographer and a rights holder, Commons a photographer and a licence with
- * a URL. What is common is that something must be shown.
- */
-export interface ImageCredit {
-  author: string | null;
-  license: string | null;
-  licenseUrl: string | null;
-  /** The file page or the site's own page for the object: where the full terms are. */
-  detailsUrl: string | null;
-}
 
 export interface Experience {
   id: number;

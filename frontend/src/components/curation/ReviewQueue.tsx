@@ -30,6 +30,7 @@ import {
   setExperienceAdmission,
   acceptSourceValue,
   declineSourceValue,
+  type AcceptSourceResult,
   type AdmissionResult,
 } from '../../api/curation';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
@@ -415,13 +416,7 @@ export function refusalOutcomeFor(
 /** What landed, and from which run — neither survives the refetch otherwise. */
 export function outcomeFor(
   item: { name: string },
-  data?: {
-    applied: string[]; released: string[];
-    releasedPoints?: number[]; movedPoints?: number[]; releasedCredit?: boolean;
-    placementFailed?: boolean;
-    placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-    fromSyncLogId: number;
-  },
+  data?: AcceptSourceResult,
 ): string | undefined {
   if (!data) return undefined;
   const parts: string[] = [];

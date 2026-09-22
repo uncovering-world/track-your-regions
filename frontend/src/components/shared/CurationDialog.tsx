@@ -609,7 +609,8 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
                   />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                      {entry.curator_name}
+                      {/* A curator who set no display name, or a blank one, is still somebody. */}
+                      {entry.curator_name?.trim() || 'A curator'}
                     </Typography>
                     {entry.region_name && (
                       <Typography variant="caption" color="text.secondary">
@@ -631,7 +632,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
                     color="text.secondary"
                     sx={{ flexShrink: 0, fontSize: '0.65rem' }}
                   >
-                    {formatRelativeTime(entry.created_at)}
+                    {entry.created_at && formatRelativeTime(entry.created_at)}
                   </Typography>
                 </Box>
               );
