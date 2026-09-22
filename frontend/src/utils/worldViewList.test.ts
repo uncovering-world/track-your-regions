@@ -1,6 +1,6 @@
 /**
  * Every shape the server can send for a failed re-placement, since this sentence is
- * handed to an admin as it stands. The one a second implementation got wrong twice:
+ * handed to an admin as it stands. The one easiest to get wrong:
  * `{ id: null, name: null }` is what arrives when *listing* the world views is what
  * failed, so there is no number to print and a naive template renders "world view null".
  */

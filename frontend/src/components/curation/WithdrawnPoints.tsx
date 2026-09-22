@@ -23,14 +23,13 @@
  * a centimetre apart under one reference, so the next run pairs one and withdraws the
  * other, and the card returns. Honest each time and unsettleable here — settling it means
  * deciding which of two rows a traveller's record belongs to, and no card in this file
- * asks that. **Not** what `AnsweredWithdrawalCard` below does either, which is worth
- * saying because this note used to point forward at #544 as the place it would be
- * settled: that list takes a verdict back, on the row it was given about, and the loop
- * comes round again after it exactly as before.
+ * asks that. **Not** what `AnsweredWithdrawalCard` below does either (#544): that
+ * list takes a verdict back, on the row it was given about, and the loop comes
+ * round again after it exactly as before.
  *
  * Those two are not the whole list, and the list is not the thing to memorise: the backend
  * comment above the subquery filling `replacedMetres` enumerates every route a short
- * distance takes to get here, and it has grown twice as the writer changed. What holds
+ * distance takes to get here, and that list grows with the writer. What holds
  * regardless is the rule this card is built on — inside ten metres the source is describing
  * the same place, so the card says so, whatever brought the pair about.
  *

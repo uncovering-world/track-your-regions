@@ -117,10 +117,10 @@ describe('invalidateExperiences', () => {
   });
 
   it('leaves it alone when nothing is named', () => {
-    // This assertion used to be made of `{ experienceId: 3 }`, and it was the bug
-    // written down as a rule: an object whose points just changed invalidates
-    // pins in regions the caller cannot enumerate. "No region named" is not the
-    // condition — "nothing named" is, and then there is nothing to invalidate.
+    // Not `{ experienceId: 3 }`, which would be the bug written down as a rule:
+    // an object whose points just changed invalidates pins in regions the caller
+    // cannot enumerate. "No region named" is not the condition — "nothing named"
+    // is, and then there is nothing to invalidate.
     const { client, keys } = makeClient();
 
     invalidateExperiences(client as never);

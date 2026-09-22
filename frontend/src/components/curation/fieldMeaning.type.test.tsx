@@ -1,8 +1,9 @@
 /**
  * A type is explained in the words of the vocabulary its value is from.
  *
- * One sentence for every kind, opening with UNESCO's, is what a monument's card
- * used to get (#814). The proposed value picks the vocabulary; where a proposal
+ * A type is explained in the words of the vocabulary its value is from — never
+ * one sentence for every kind, opening with UNESCO's, on a monument's card
+ * (#814). The proposed value picks the vocabulary; where a proposal
  * clears the field, the stored value does — a curator reading "monument → (none)"
  * still needs to know which vocabulary the row is about.
  */

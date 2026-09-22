@@ -56,11 +56,10 @@ function completeSelectionFromAncestor(selected: Region, ancestor: Region): Part
   // region. Completing the selection from such an answer would point this map at
   // that world view's regions. Refuse, and the map stays where it is.
   //
-  // No region layer draws unscoped now — each names either the world view or a
-  // parent id inside one — so no click should reach here with a foreign region
-  // id. (The GADM layers name neither, and need not: they draw divisions, which
-  // belong to no world view.) `tile_region_islands` named neither until #660
-  // scoped it. This is the fence behind that.
+  // No region layer draws unscoped — each names either the world view or a
+  // parent id inside one (#660) — so no click should reach here with a foreign
+  // region id. (The GADM layers name neither, and need not: they draw
+  // divisions, which belong to no world view.) This is the fence behind that.
   if (ancestor.worldViewId !== selected.worldViewId) return null;
 
   const patch: Partial<Region> = {};

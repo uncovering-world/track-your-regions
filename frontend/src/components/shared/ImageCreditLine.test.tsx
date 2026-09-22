@@ -16,8 +16,7 @@ import { creditAddsBeyond, creditLabel, creditSentence, ImageCreditLine } from '
  * The same credit as words, for a place that renders text rather than a component.
  *
  * Two callers already: the tooltip on Discover's contents tile, and the line the
- * curation history prints when an edit replaced a picture — which used to read
- * `[object Object]` where the photographer's name belonged (#801). One sentence,
+ * curation history prints when an edit replaced a picture (#801). One sentence,
  * so a credit reads the same under the picture and in the record of its removal.
  */
 describe('creditSentence', () => {

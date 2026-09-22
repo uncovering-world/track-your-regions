@@ -12,8 +12,8 @@
  * every consumer — the map included — for each event. It lives in
  * `useHoverContext`, whose provider this one nests.
  *
- * Pictures are not preloaded here any more; the block where that used to happen
- * records why, and where it happens instead.
+ * Pictures are not preloaded here; `utils/imagePreload.ts` records why, and
+ * where it happens instead.
  */
 
 import { createContext, useContext, useState, useMemo, useCallback, useEffect, useRef, type ReactNode } from 'react';
@@ -225,15 +225,12 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   // Zero for almost every region; the list offers the toggle only above zero.
   const lostHidden = data?.lostHidden ?? 0;
 
-  // Nothing preloads a region's pictures here any more, and removing it cost
-  // nothing because it warmed bytes no view ever asks for. It fetched
+  // Nothing preloads a region's pictures here: a fetch of
   // `extractImageUrl(exp.image_url)` — the original — for every experience the
-  // moment a region was explored: about 670 requests for Europe, of which roughly
-  // four in five answered 403 at the time (the portal's photographs, since
-  // replaced with Commons files — ADR-0043, #557) and the rest were full-size
-  // files. Every surface
-  // renders a `toThumbnailUrl()` variant instead (120, 250, 330, 500, 720, 960),
-  // so not one of those downloads was ever displayed.
+  // moment a region is explored is hundreds of requests for Europe, of full-size
+  // files no view renders, since every surface renders a `toThumbnailUrl()`
+  // variant instead (120, 250, 330, 500, 720, 960). Such a preload warms bytes
+  // that are never displayed (#557).
   //
   // A card's picture is warmed where it is about to be needed instead: the row
   // fetches the exact thumbnail it will render once the pointer rests on it, and a

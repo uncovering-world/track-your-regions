@@ -29,8 +29,7 @@ describe('experienceColors', () => {
   });
 
   it('gives an art museum its kind\'s colour, with no type to hang it on', () => {
-    // Every museum row used to carry the literal `art`; an art museum has no
-    // type now. Archaeology's `museum` *is* a type (ADR-0058) — of archaeology,
+    // An art museum has no type (#814). Archaeology's `museum` *is* a type (ADR-0058) — of archaeology,
     // not of museums — and it hangs on the kind below, not here.
     expect(experienceColor(ART_MUSEUMS, null)).toBe('#2563EB');
   });
@@ -82,9 +81,9 @@ describe('experienceColors', () => {
   });
 
   it('colours a kind\'s count chip in the colour its objects are drawn in', () => {
-    // The palette used to answer this by id — amber for museums, blue for public
-    // art — over cards and pins drawn blue and teal: two colours per kind, one
-    // per function. One answer now.
+    // One answer, never a palette by id — amber for museums, blue for public
+    // art — over cards and pins drawn blue and teal: that is two colours per
+    // kind, one per function.
     for (const kind of [WORLD_HERITAGE, ART_MUSEUMS, PUBLIC_ART]) {
       expect(kindColor(kind)).toBe(experienceColor(kind, null));
     }

@@ -192,9 +192,8 @@ describe('WithdrawnCard', () => {
     // The distinction, not merely the presence: the two answers that leave the point
     // hidden are outlined alike, and the one that puts it back on the map is plain
     // text. Asserted because the title claims it — three identically styled buttons
-    // would pass a check that only counts them, and this screen's own review found
-    // that arranging a card as though one answer were the default is a defect no gate
-    // can see.
+    // would pass a check that only counts them, and arranging a card as though one
+    // answer were the default is a defect no gate can see.
     expect(dropped.className).toMatch(/MuiButton-outlined/);
     expect(gone.className).toMatch(/MuiButton-outlined/);
     expect(falseAlarm.className).toMatch(/MuiButton-text/);
@@ -380,7 +379,7 @@ describe('an answered withdrawal', () => {
   it('offers both where both stand, and promises the map back from neither', () => {
     // A point recorded delisted *and* gone: taking either back leaves the other holding
     // it, so both sentences have to say so. This is the case a single "put it back"
-    // button would have got wrong twice.
+    // button gets wrong on both counts.
     renderAnswered([answered({ existence: 'lost' })]);
 
     expect(screen.getByRole('button', { name: /it is still listed/i })).toBeInTheDocument();

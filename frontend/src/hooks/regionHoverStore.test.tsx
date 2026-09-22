@@ -1,10 +1,10 @@
 /**
  * What a region hover is allowed to re-render.
  *
- * The region lists and the region map share one hovered id, and it used to be
- * React state in `NavigationContext` — so every mouse move over a region row or
- * a region polygon re-rendered all twelve consumers of that context, the map
- * with all of its sources among them. This pins the shape that fixes it, the
+ * The region lists and the region map share one hovered id through a store,
+ * never as React state in `NavigationContext` — there every mouse move over a
+ * region row or a region polygon re-renders all twelve consumers of that
+ * context, the map with all of its sources among them. This pins the shape, the
  * same one `hoverStore.test.tsx` pins for experiences: the store notifies, and
  * only the components whose own selected value changed re-render.
  *

@@ -21,10 +21,9 @@ describe('toThumbnailUrl', () => {
   });
 
   it('sends no reader to a third-party resizer', () => {
-    // What used to stand here proxied every non-Commons picture through
-    // wsrv.nl — a free service with no agreement behind it, on the path of four
-    // reader-facing pictures in five (#557). Every stored picture is a Commons
-    // file now, and Commons sizes its own files.
+    // No reader is sent through wsrv.nl or any other free resizer with no
+    // agreement behind it (#557): every stored picture is a Commons file, and
+    // Commons sizes its own files.
     const drawn = [
       'http://commons.wikimedia.org/wiki/Special:FilePath/Louvre.jpg',
       'https://upload.wikimedia.org/wikipedia/commons/a/a7/Louvre.jpg',
@@ -219,16 +218,15 @@ describe('unrenderable URLs', () => {
 
 // A region's imported map (`region_map_url`) is the other stored picture, and
 // it is wiki content too: the Wikivoyage extractor names a Commons
-// `Special:FilePath` file for every map it finds. Seven dialogs used to build
-// its `src` by hand (`${url}?width=500`) and one loader handed it to a
-// `new Image()` untouched (#694). They all go through these two functions
-// now, so what the functions make of that url is what the dialogs draw --
+// `Special:FilePath` file for every map it finds. Every dialog that draws it
+// and the loader that preloads it go through these two functions rather than
+// building the `src` by hand (#694), so what the functions make of that url is what the dialogs draw --
 // and `backend/src/types/urlSafety.test.ts` holds every component to that,
 // by reading the source, since only the backend's test tree can read files.
 describe("a region's imported map", () => {
   const COMMONS_MAP = 'https://commons.wikimedia.org/wiki/Special:FilePath/Algeria_regions_map.png';
 
-  it('is sized the way the dialogs used to size it by hand', () => {
+  it('is sized through the shared thumbnail rule, never by hand', () => {
     expect(toThumbnailUrl(COMMONS_MAP, 500)).toBe(`${COMMONS_MAP}?width=500`);
   });
 

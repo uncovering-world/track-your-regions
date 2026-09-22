@@ -35,9 +35,7 @@ export function refusalClauses(refused: Array<{ name: string; error: string }>):
     // Quoted and attributed rather than spliced in after a count, because every
     // message `publishUnderLock` produces is phrased for one row ("This row is
     // holding a proposal from a different run — reload to see it"). Reading that
-    // after "2 objects refused —" makes it a claim about a row that is not named,
-    // and the colon it used to sit behind followed a sentence that already ended in
-    // an instruction.
+    // after "2 objects refused —" makes it a claim about a row that is not named.
     // Terminated here, because the notice joins clauses with a single space and the
     // server's reason carries no full stop of its own — without these the next clause
     // ran on from "reload to see it 3 objects outside your scope".

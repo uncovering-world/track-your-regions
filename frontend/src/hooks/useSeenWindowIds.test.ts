@@ -5,8 +5,8 @@
  * recoverable: an id reported for a row nobody was shown spends that reader's
  * personal week, and an id leaked across a region change reports one region's
  * rows against another's list. The flush timer is the other half — windowing
- * made the seen-set change on every scroll, and each change used to be a
- * request against a shared rate limit.
+ * makes the seen-set change on every scroll, and without the timer each change
+ * is a request against a shared rate limit.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

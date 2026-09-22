@@ -187,10 +187,8 @@ export function kindColor(kindId: number): string {
 /**
  * Shorten a kind's display name for compact UI (chips, badges).
  *
- * The names are the kinds' (`experience_kinds.name`, #819), never a source's:
- * the World Heritage pill read "UNESCO" while it was the source row's name.
- * "Art Museums" is already the row's own name since #818 (it read "Top Art
- * Museums", the works-first rule's name, until then) and is left whole:
+ * The names are the kinds' (`experience_kinds.name`, #819), never a source's.
+ * "Art Museums" is the row's own name (#818) and is left whole:
  * archaeology and history museums are kinds of their own, so the short form
  * has to keep the word that tells them apart or two chips will read the same.
  */

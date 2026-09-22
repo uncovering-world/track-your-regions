@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  *
  * The class is "reads whose response depends on world-view visibility", not
  * "reads carrying `requireVisibleWorldView`". Those are not the same set, and
- * the difference is where this originally stopped one route short:
+ * the difference is one route a search for the guard never finds:
  * `GET /api/experiences/:id` is public by design and does the filtering inline
  * — it returns every region assignment only to an admin — so it fails the same
  * way while never appearing in a search for the guard. It is also the one most

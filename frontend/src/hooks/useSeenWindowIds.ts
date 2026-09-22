@@ -14,8 +14,8 @@
  * keep reporting the previous set.
  *
  * Flushed on a timer rather than per render, which is what windowing costs
- * here: the set used to change once per region and now changes as the reader
- * scrolls, and each change is a request. `authenticatedLimiter` allows 60 a
+ * here: the set changes as the reader scrolls, not once per region, and each
+ * change is a request. `authenticatedLimiter` allows 60 a
  * minute per IP across every authenticated call, and a curator publishing a
  * sync's arrivals in one go is precisely how a region comes to hold hundreds of
  * rows carrying the mark. Ids accumulate between flushes, so this bounds how

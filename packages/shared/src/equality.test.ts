@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { jsonEquals } from './equality.js';
 
 /**
- * The four properties a run's changeset and a review card used to state each
- * against its own copy (#570). They are the whole of what the two sides have to
- * agree on, so they are stated once, here, against the one declaration.
+ * The four properties a run's changeset and a review card have to agree on
+ * (#570), stated once, here, against the one declaration rather than once per
+ * side against its own copy (#789).
  */
 describe('the equality a run and a curation card share', () => {
   it('does not treat key order inside a value as a difference', () => {

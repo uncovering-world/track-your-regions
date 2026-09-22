@@ -64,7 +64,7 @@ test.describe('Review batch @smoke', () => {
   });
 
   /**
-   * The way back from the one answer that used to have none (#859, ADR-0053).
+   * The way back from the one answer that would otherwise have none (#859, ADR-0053).
    *
    * Runs after the batch above, and the order is the design: a turned-down part
    * is on no screen but this list, so the feed is empty while it sits there —

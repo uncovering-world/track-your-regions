@@ -1,9 +1,9 @@
 /**
  * What each curated fact means to a person, and what it means that it changed.
  *
- * A review card used to print the changeset's own names — `shortDescription`,
- * `metadata.inDanger`, `criterion_ii` — with the stored values under them, and left the
- * curator to work out what any of it was. That is the wrong reader to leave it to: a
+ * A review card must not print the changeset's own names — `shortDescription`,
+ * `metadata.inDanger`, `criterion_ii` — with the stored values under them, leaving the
+ * curator to work out what any of it is. That is the wrong reader to leave it to: a
  * curator is a traveller with the right and the duty to say what the catalogue claims
  * about the world, and the row has to answer three questions before that is possible.
  * What is this fact, on the ground? What does it mean that it changed — an event in the
@@ -104,10 +104,10 @@ const whole = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
 /**
  * A year on a change row, in the one spelling every surface uses.
  *
- * Had its own rule until #731 — no `AD` under a thousand, and `Intl` grouping on
- * large negatives — which put "38,000 BC" in a held work's change row directly
- * above "38000 BC" on the row that lists it, and "200" above "AD 200". That is
- * the disagreement `yearLabel` exists to end, so this defers to it and keeps only
+ * A rule of its own here — no `AD` under a thousand, `Intl` grouping on large
+ * negatives — puts "38,000 BC" in a held work's change row directly above
+ * "38000 BC" on the row that lists it, and "200" above "AD 200". That is
+ * the disagreement `yearLabel` exists to end (#731), so this defers to it and keeps only
  * what a change row needs: a value that is not a number at all still has to
  * render as something.
  */

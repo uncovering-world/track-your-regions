@@ -126,12 +126,11 @@ function commonsFilePathUrl(url: string): string | null {
  *   a host other than ours): rejected (returns empty string)
  * - Local paths on our own origin: pass through unchanged
  *
- * There is no third-party resizer here any more, and that is the point of #557:
- * every picture the catalogue stores is now a Commons file, and Commons sizes
- * its own files. What used to sit here was `wsrv.nl` — a free service on the
- * path of four reader-facing pictures in five, undocumented, with no agreement
- * behind it, which answered the same URL three different ways in three weeks and
- * still refuses a 71-megapixel original outright.
+ * There is no third-party resizer here, and that is the point of #557: every
+ * picture the catalogue stores is a Commons file, and Commons sizes its own
+ * files. A free service such as `wsrv.nl` — undocumented, with no agreement
+ * behind it, and free to change what it answers or refuse a large original —
+ * is nowhere on a reader's path.
  *
  * Callers pass raw stored values here as well as ones already through
  * `extractImageUrl`, so this function checks for itself rather than assuming.

@@ -68,8 +68,8 @@ function unseenReason(
 /**
  * Who sees the place, in the words its own reason decides.
  *
- * Three states rather than two since #859: a turned-down point is not unread and
- * not shown either, and the sentence a boolean produced for it was the wrong one
+ * Three states rather than two (#859): a turned-down point is not unread and
+ * not shown either, and a boolean gives it the wrong sentence
  * on both branches — "readers are sent here once it is published" of a point
  * publishing refuses, and "the one place readers are sent to" of a point nobody
  * is sent to.

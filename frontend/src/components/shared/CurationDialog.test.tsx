@@ -1,10 +1,10 @@
 /**
  * Two promises the dialog makes about a picture, on one real site.
  *
- * An emptied field is an edit, and it has to leave the browser (#696). The
- * dialog used to fold an emptied box into `undefined`, which `JSON.stringify`
- * drops: clearing the Image URL of Bamiyan and saving was answered "No fields
- * to update", and clearing it beside a name change was answered success — with
+ * An emptied field is an edit, and it has to leave the browser (#696). A
+ * dialog that folds an emptied box into `undefined` loses it to `JSON.stringify`:
+ * clearing the Image URL of Bamiyan and saving is answered "No fields
+ * to update", and clearing it beside a name change is answered success — with
  * the photograph still there. What the API needs is the empty string, which the
  * controller stores as NULL under a claim.
  *
@@ -150,8 +150,8 @@ describe('CurationDialog clearing a field', () => {
   });
 
   it('sends the removal beside the other change in the same save', async () => {
-    // The silent half: this save used to go out with the name alone and be
-    // answered success, the photograph untouched.
+    // The silent half: without the empty string this save goes out with the
+    // name alone and is answered success, the photograph untouched.
     renderDialog();
     await screen.findByDisplayValue(PORTAL_PAGE);
 
@@ -189,9 +189,9 @@ describe('CurationDialog clearing a field', () => {
 /**
  * The dialog shows the picture it edits, and names whose it is (#801).
  *
- * A curator checking what the Image URL box draws used to open the address in
- * another tab; the create dialog drew a thumbnail under the same box, so the
- * two forms disagreed. The credit is part of the picture (ADR-0043), and it is
+ * Both forms draw the picture the Image URL box names, under the box, so a
+ * curator checking what it draws opens no other tab and the two forms agree.
+ * The credit is part of the picture (ADR-0043), and it is
  * the *stored* picture's: an address typed and not yet saved has none until the
  * save resolves it.
  */

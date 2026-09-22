@@ -2,12 +2,12 @@
  * A picture row's value on a review card: the picture as readers would see it, whose
  * photograph it is, and the file it is — rather than the address as a string.
  *
- * A run that proposes a new picture used to put two Commons URLs in front of the
- * curator, one per column, and leave them to open each in a tab to learn what the
- * card was asking (#801) — on the 86 cards run 93 filed about a public-art row's
- * picture, that was the whole question. The card's own context draws the *current*
- * picture at 96 × 72 with a way to enlarge it; the proposed one was never drawn at
- * all. This draws whichever side it is handed, through the same component the
+ * A picture row that is two Commons URLs, one per column, leaves the curator to
+ * open each in a tab to learn what the card is asking (#801) — on the 86 cards
+ * run 93 filed about a public-art row's picture, that is the whole question. The
+ * card's own context draws the *current* picture at 96 × 72 with a way to
+ * enlarge it, and not the proposed one; this draws whichever side it is handed,
+ * through the same component the
  * curator dialogs preview with, so a picture that cannot be drawn — an address the
  * product may not draw from, a file that fails to load — shows no frame and no
  * credit rather than a broken one.

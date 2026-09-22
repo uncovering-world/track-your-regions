@@ -9,8 +9,7 @@
  * order would put a row on screen for a key whose value never moved, and
  * disagreeing on `null` against a missing key would put up the 17 rows this
  * catalogue's log held where a `criteria` key merely appeared as `null` (#570).
- * Each side used to hold a copy, pinned to the other by the same four cases
- * stated in both suites (#789).
+ * One declaration, so the two sides cannot answer differently (#789).
  */
 
 /**

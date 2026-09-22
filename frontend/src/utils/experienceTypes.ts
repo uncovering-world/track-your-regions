@@ -6,8 +6,8 @@
  * piece of public art is a monument or a sculpture; a place of worship is a
  * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue. An
  * art museum has no type; Archaeology has two, site and museum, because a
- * traveller browses the dig and its museum as one list (ADR-0058). The literal
- * `art` every museum row used to carry said nothing the kind does not (#814).
+ * traveller browses the dig and its museum as one list (ADR-0058). An art
+ * museum carries no literal `art`: it says nothing the kind does not (#814).
  * One closed vocabulary per kind, never one shared enum, which is why a value
  * alone says which kind's vocabulary it belongs to.
  *
@@ -103,7 +103,7 @@ const ARCHAEOLOGY_KIND_ID = 5;
  *
  * One rule, because two surfaces say it. Map mode's list (`ArtworksList`) and
  * Discover's section (`ContentsSection`) describe the same British Museum, and a
- * reader who opened it in one and then the other used to be told it held notable
+ * reader who opens it in one and then the other must not be told it holds notable
  * finds and then notable works (#885). A kind absent here holds works: the noun
  * is the art museums' and is what every kind but this one has always used.
  */

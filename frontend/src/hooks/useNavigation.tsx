@@ -358,8 +358,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     // it. Reached by editing the address bar, opening a shared link in a tab that
     // already has a selection, or going back across a switch. Placed above the
     // guard below deliberately: that guard returns whenever the selection is
-    // still visible, which is exactly when this case arises, so it used to
-    // swallow it and leave the picker and the address bar disagreeing (#465).
+    // still visible, which is exactly when this case arises, so below it this
+    // case is swallowed and the picker and the address bar disagree (#465).
     //
     // Cannot loop. Following writes nothing, and a switch writes the address it
     // selected, so the next run either finds them equal or finds no world view

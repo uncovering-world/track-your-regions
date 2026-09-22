@@ -5,9 +5,8 @@
  * Image URL box needs to see what the address draws, and the licence rule needs
  * the photographer named wherever the picture appears (ADR-0043) — the curator
  * screens included, since working on the catalogue rather than publishing it
- * does not change whose photograph it is. Both dialogs used to disagree on this:
- * the create dialog drew a thumbnail with no credit to give, and the curation
- * dialog drew nothing (#801).
+ * does not change whose photograph it is. One component, so both dialogs draw
+ * the picture and the credit together or not at all (#801).
  *
  * What it refuses is as much the point as what it draws. `toThumbnailUrl`
  * answers with an empty string for an address the product may not draw from —

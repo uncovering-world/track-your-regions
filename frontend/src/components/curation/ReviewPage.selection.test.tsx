@@ -124,9 +124,9 @@ describe('answering a selection', () => {
   });
 
   it('turns down a page of unread contents without asking, now that it has a take-back', async () => {
-    // It used to ask whatever the size, being the one answer nothing could bring
-    // back. #859 gave it the list and the take-back its neighbours had, so a page
-    // in view is answered like every other page in view.
+    // Turning down unread contents has the list and the take-back its neighbours
+    // have (#859), so a page in view is answered like every other page in view
+    // rather than asked about whatever the size.
     mockedFetch.mockResolvedValue({ contents: [CONTENTS], limit: 25 });
     renderQueue();
     await screen.findByRole('checkbox', { name: 'Select Museo del Prado' });

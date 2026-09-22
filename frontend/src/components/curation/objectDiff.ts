@@ -2,18 +2,14 @@
  * Which keys of an object actually moved.
  *
  * A field whose value is an object has named parts, and a card that prints the object
- * whole asks a curator to find the difference by eye. That is what raised this: at the
- * time, `metadata` was the most frequently changed field in the sync log — 4314 entries
- * against 124 for every named `metadata.*` key together — and 2927 of those 4314
- * differed in exactly one key. The whole of what run 68 proposed about the Bamiyan
- * Valley was `criteria` arriving and an `imageCredit` with it, asked as eight named
- * things on one side against six on the other (#570).
+ * whole asks a curator to find the difference by eye: the whole of what run 68 proposed
+ * about the Bamiyan Valley was `criteria` arriving and an `imageCredit` with it, asked as
+ * eight named things on one side against six on the other (#570).
  *
- * **Those numbers are the *before* picture now.** Since ADR-0039 a run files no bare
- * `metadata` entry at all and every key gets its own; since #728 it files no whole
- * language map either. So what reaches this function is the records filed before those
- * two, which stand until a run re-proposes (ADR-0039 decision 4) — the splitting is a
- * reader of history now rather than of what runs produce.
+ * A run files no bare `metadata` entry at all and every key gets its own (ADR-0039), and
+ * no whole language map either (#728). So what reaches this function is the records
+ * filed before those two rules, which stand until a run re-proposes (ADR-0039 decision
+ * 4) — the splitting is a reader of older records, not of what runs produce.
  *
  * The rule here is the **shape**, not the field's name. `metadata` is what raised the
  * issue; `nameLocal` is a language map with the same defect and the same remedy, and it

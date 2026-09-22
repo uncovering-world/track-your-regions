@@ -16,8 +16,8 @@
  * error' }` with the reason in a `details` array no screen reads. It is
  * reachable with an ordinary paste: a work names *Vincent van Gogh* and a
  * curator pastes `Vincent  van Gogh` off a wrapped line, or `Jean‐Luc Godard`
- * with U+2010 where the stored name has a hyphen. The two sides used to hold a
- * copy each, pinned by a test comparing the function bodies as text (#789).
+ * with U+2010 where the stored name has a hyphen. Declared once so both sides
+ * answer "is this the same name" alike (#789).
  *
  * On the storing side the same rule is also spelled for SQL
  * (`backend/src/services/sync/labelFold.ts`), where `\s` stops at ASCII.
