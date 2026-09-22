@@ -2,8 +2,8 @@
  * What the pool parse makes of an answer that names a work more than once.
  *
  * The query carries five OPTIONALs, so a work with two creators and two images
- * arrives four times, and until #720 the parse kept whichever row came first —
- * which is where the catalogue's one-name-per-work attribution came from.
+ * arrives four times; a parse keeping whichever row came first loses a maker,
+ * which is a one-name-per-work attribution (#720).
  * `parsePool` is private, so the questions are asked through `fetchClassPool`,
  * which is the whole of what it does with one answer.
  */

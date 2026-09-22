@@ -1,8 +1,8 @@
 /**
  * Classes first, then the entities, then what each of them is.
  *
- * The old import asked five direct questions and wrote whatever answered; this
- * collects the way the museum import does: it learns which classes count from
+ * Not five direct questions with whatever answers written down: this
+ * collects the way the museum import does. It learns which classes count from
  * the class tree, asks for their instances by fame, fetches the facts about
  * each candidate and about what holds it, and only then decides — so every
  * row has a reason that can be named, and every refusal is filed with one.

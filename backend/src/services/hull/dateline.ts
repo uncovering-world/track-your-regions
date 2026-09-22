@@ -1,10 +1,10 @@
 /**
  * Point splitting at the dateline.
  *
- * Whether a region crosses is not decided here: the detection that used to sit
- * beside this -- points on both sides of ±150° -- was a second rule beside the
- * database's, and read a point cloud from 151°E to 151°W as crossing whether or
- * not it did. The caller reads focus_bbox, or asks geometry_focus() (#674).
+ * Whether a region crosses is not decided here: the caller reads focus_bbox,
+ * or asks geometry_focus() (#674). A second rule beside the database's -- points
+ * on both sides of ±150° -- reads a point cloud from 151°E to 151°W as crossing
+ * whether or not it does.
  */
 
 import type { Point } from './types.js';

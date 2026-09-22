@@ -241,12 +241,11 @@ function wasHeld(result: ProcessItemResult, contents: ContentsByKind | null): bo
  * combined row read as `returned` and never turned up under the admin report's
  * `?type=held` filter, the one place a curator would go looking for it.
  *
- * `contents` is the fourth word and it needed one: a row whose own fields all came
- * through while what it holds moved (ADR-0026). It has to be named because the
- * `unchanged` catch-all used to be safe — a curated divergence was the only other
- * reason such a row was stored — and the fourth exception made that fall-through
- * claim a disagreement that never happened, which the admin report's `?type=conflict`
- * filter would then hand back as one. So the claim is now asserted rather than
+ * `contents` is the fourth word: a row whose own fields all came through while
+ * what it holds moved (ADR-0026). It has to be named because a fall-through that
+ * reads every other stored row as a curated divergence would claim a
+ * disagreement that never happened, which the admin report's `?type=conflict`
+ * filter would then hand back as one. So the claim is asserted rather than
  * inferred: `conflict` requires a `curatedConflicts` entry, and `contents` is what
  * is left. Ordered after `conflict`, because a row carrying both has an unanswered
  * question on it and the delta is news that raises none.

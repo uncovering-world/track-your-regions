@@ -125,9 +125,8 @@ function scriptWorks(...links: ScriptedWork[]) {
       // field that is the stored value rather than the source's — and nothing
       // else: what the run *compares* is the snapshot above against the source's
       // own offer, which is what lets a refusal read as one.
-      // Two columns, because `RETURNING id, name` is two: a fixture carrying the
-      // four the clause used to return would let a regression widening it back
-      // pass unnoticed.
+      // Two columns, because `RETURNING id, name` is two: a fixture carrying
+      // four would let a regression widening the clause pass unnoticed.
       rows: [{ id: 900 + index, name }],
     });
     mockedQuery.mockResolvedValueOnce({
@@ -175,7 +174,7 @@ describe('a work arrives marked as unread', () => {
       { syncLogId: 1, withdrawalSkippedReason: null, sourceId: 4 }, []);
 
     // The same statement as the test above, told a different source: the
-    // parameter follows the run rather than a constant this module used to hold.
+    // parameter follows the run rather than a module constant.
     const params = treasureCall()[1] as unknown[];
     expect(params).toContain(4);
   });

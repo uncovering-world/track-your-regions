@@ -149,12 +149,12 @@ export function commonsFilePage(url: string | null | undefined): string | null {
 /**
  * The entities a wiki text field actually carries, decoded in **one** pass.
  *
- * One pass and not a chain of replacements, which is what this was and what
- * CodeQL called a double-unescape (js/double-escaping) on the first run of this
- * branch. A chain re-reads its own output: `&amp;lt;` becomes `&lt;` when the
- * ampersand is decoded, and the next replacement then turns that into `<`. So
- * `&amp;lt;b&amp;gt;` — a wiki page displaying the literal text `<b>` — came out
- * as real markup this function had just finished stripping. A single scan with a
+ * One pass and not a chain of replacements, which CodeQL names a
+ * double-unescape (js/double-escaping). A chain re-reads its own output:
+ * `&amp;lt;` becomes `&lt;` when the ampersand is decoded, and the next
+ * replacement then turns that into `<`. So `&amp;lt;b&amp;gt;` — a wiki page
+ * displaying the literal text `<b>` — would come out as real markup this
+ * function had just finished stripping. A single scan with a
  * lookup cannot do that: the `&` it writes is behind the cursor.
  */
 const ENTITIES: Record<string, string> = {

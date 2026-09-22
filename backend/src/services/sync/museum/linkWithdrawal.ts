@@ -166,9 +166,9 @@ async function mark(
  * The museum's other links, reconciled against what the run offered here.
  *
  * An empty offered list is compared like any other, and marks every link
- * the museum holds — floor permitting, as always. It used to be read as
- * "nothing to compare", on the ground that an admitted museum with no works
- * was not a shape the pipeline produces. It is one now (#890): a museum
+ * the museum holds — floor permitting, as always. Reading it as "nothing to
+ * compare" would assume an admitted museum with no works is not a shape the
+ * pipeline produces, and it is one (#890): a museum
  * admitted for what it is holds only what the venue-side read found, and
  * when the next run refuses that object — the Bendegó meteorite at the
  * Museu Nacional, live run 128 — the museum offers nothing and the stale

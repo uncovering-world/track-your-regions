@@ -434,8 +434,8 @@ async function runMatchPhase(
   progress.statusMessage = 'Matching countries to GADM divisions...';
   console.log(`[WV Extract] ${opId} Phase 4: Matching countries to GADM...`);
 
-  // Through the dispatch, not straight to a matcher: this was the last caller
-  // naming one, and it is the same divergence re-match had — flipping a source's
+  // Through the dispatch, not straight to a matcher: a caller naming one is
+  // the divergence re-match guards against too — flipping a source's
   // policy would change every other path and silently not this one.
   //
   // The cancel flag has to be bridged, because the matcher reads it on the

@@ -71,10 +71,9 @@ export interface PoolWork {
   /**
    * Every maker the source names, deduped, in the order the answer arrived (#720).
    *
-   * A list because the query below already answers with one row per creator and
-   * the parse used to keep whichever arrived first — which is how `Morning in a
-   * Pine Forest` came to be Savitsky's alone, and `The Feast of the Gods`
-   * Titian's.
+   * A list because the query below already answers with one row per creator; a
+   * parse keeping whichever arrived first makes `Morning in a Pine Forest`
+   * Savitsky's alone, and `The Feast of the Gods` Titian's.
    *
    * **The order here is storage, not a claim** (ADR-0040). SPARQL exposes no
    * statement order, so what a query answers in is its planner's: measured
@@ -147,10 +146,9 @@ export const POOL_DETAILS = `
  * One band of one broad class.
  *
  * No `ORDER BY`: a band is already a slice of fame, so sorting inside one buys
- * nothing and costs the materialisation of every row. No anchor either — the
- * ownership requirement that used to keep this query small is what made it
- * unaffordable once the join order was fixed, and it cost the catalogue
- * Sunflowers and the Burghers of Calais on the way. A work with nowhere to hang
+ * nothing and costs the materialisation of every row. No anchor either — an
+ * ownership requirement is unaffordable at this join order, and it costs the
+ * catalogue Sunflowers and the Burghers of Calais. A work with nowhere to hang
  * is simply homeless when placement runs, which is a thing the pipeline already
  * counts and reports.
  */

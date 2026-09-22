@@ -4,9 +4,9 @@
  * carry, build the venue graph those statements name, place each work in the venue that
  * survives resolution, and fold the venues that are one visit.
  *
- * This is what `museum/pipeline.ts` used to do end to end, before a kind that admits churches for
- * the works they hold — relics, tombs — needed the same stages with its own `VenueRule` and its
- * own extra classes, asked whole beside the narrow ones without a closure. `collectWorks`
+ * These are the stages every works-first kind shares: a kind that admits churches for the works
+ * they hold — relics, tombs — needs them with its own `VenueRule` and its own extra classes,
+ * asked whole beside the narrow ones without a closure. `collectWorks`
  * parameterises the whole thing; a caller supplies its roots, its pinned classes and its rule,
  * and gets back the pool, the graph and the placements to do its own tail with — the museum's
  * art test and tier among them, still in `pipeline.ts`.

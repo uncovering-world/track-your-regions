@@ -8,9 +8,8 @@
  * has to be told — a floor that is computed and then forgotten is run 42 with
  * a withdrawal arm.
  *
- * Its own file beside `syncOrchestrator.test.ts`, which had reached the line
- * limit and has since been split by the surface under test;
- * the mocks are the same ones, restated.
+ * Its own file beside `syncOrchestrator.test.ts`: the suite is split by the
+ * surface under test; the mocks are the same ones, restated.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

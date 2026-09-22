@@ -279,7 +279,7 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
 
     await writeExperienceLocations(1, [A]);
 
-    // Two defects in one assertion, and both were shipped on this branch.
+    // Two defects in one assertion.
     //
     // As a CTE the pairing was *decided per statement*, so the keeping arm's own write —
     // moving a row onto the source's coordinate, and thereby off every other incoming
@@ -287,8 +287,8 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
     // written it had run. That row keeps its parked negative ordinal, and the next run's
     // parking collides with it on `(experience_id, ordinal)`, aborting that experience's
     // write from then on. Materialised once, every statement after it agrees about it —
-    // stated as a class rather than counted, the count having been wrong twice here as
-    // statements moved onto the pairing one at a time.
+    // stated as a class rather than counted, so a statement moving onto the pairing
+    // cannot falsify it.
     //
     // And the mocked lane cannot see the other one at all: a statement reading the
     // relation without declaring it raises `relation … does not exist` on a real database

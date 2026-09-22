@@ -441,7 +441,7 @@ function poolRows(qid: string, work: FixtureWork, clsLabel?: string): SparqlBind
   const creators = work.artists ?? [];
   if (creators.length <= 1) return [poolRow(qid, work, clsLabel, creators[0])];
   // The endpoint answers a work with two makers twice, which is the whole of
-  // what #720 is about: the parse used to keep whichever arrived first.
+  // what #720 is about.
   return creators.map(creator => poolRow(qid, work, clsLabel, creator));
 }
 

@@ -1,10 +1,10 @@
 /**
  * The fame line a source states for itself.
  *
- * The world tier's line used to be two constants in the pipeline that owned it
- * (`ENTER_SITELINKS`, `STAY_SITELINKS`), which is fine while every source
- * shares one number and wrong as soon as one does not: a kind whose sources
- * enumerate different worlds needs its own line, and moving it takes a deploy.
+ * Not two constants in the pipeline that reads them: a pair of constants is
+ * fine while every source shares one number and wrong as soon as one does
+ * not — a kind whose sources enumerate different worlds needs its own line,
+ * and moving a constant takes a deploy.
  * The line is a property of the source, so it is stored on the source row
  * (`experience_sources.api_config`) — read by the run, edited from the admin
  * panel (ADR-0052).

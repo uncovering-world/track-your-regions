@@ -1,10 +1,10 @@
 /**
  * Works first, museums second.
  *
- * The old import asked which Wikidata entity owns famous paintings and called the answer a
- * museum, which is how the catalogue ended up with four Louvre departments and no Louvre. This
- * pipeline collects the works the world knows, decides where each one actually hangs, and then
- * admits the venues holding them — so every row has a reason that can be named.
+ * Asking which Wikidata entity owns famous paintings and calling the answer a museum yields
+ * four Louvre departments and no Louvre. This pipeline collects the works the world knows,
+ * decides where each one actually hangs, and then admits the venues holding them — so every
+ * row has a reason that can be named.
  *
  * The stages every works-first kind shares — the class closure, the banded pool, the venue
  * statements, the venue graph, placement and folds — live in `worksCollector.ts`, parameterised

@@ -10,8 +10,8 @@ import type { MatchSuggestion, MatchStatus } from './types.js';
 
 /**
  * Strip a trailing parenthetical annotation (e.g. "Praia (Cape Verde)" → "Praia").
- * Linear-time replacement for the regex `\s*\([^)]*\)$` previously used; that
- * regex was flagged by sonarjs/slow-regex as potentially super-linear.
+ * Linear-time, because the regex `\s*\([^)]*\)$` is potentially super-linear
+ * (sonarjs/slow-regex).
  * Behavior: if the trimmed name ends with ")" and contains a matching "(",
  * and the content between them contains no other ")", the parenthetical
  * (along with preceding whitespace) is removed.

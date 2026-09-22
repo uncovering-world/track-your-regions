@@ -11,9 +11,8 @@
  * | `hierarchical` | `matcherHierarchicalPolicy.ts` | sources whose tree mirrors the division hierarchy, e.g. a base-layer mirror |
  * | legacy leaf | `matcherLeafPolicy.ts` | **nothing calls it** — see below |
  *
- * This used to be one 1085-line file that also held private copies of the six
- * shared name-matching helpers, which had diverged from the exported copies in
- * `matcherUtils.ts`. See ADR-0019.
+ * The shared name-matching helpers live in `matcherUtils.ts` and each policy
+ * imports them: a private copy diverges from the exported one. See ADR-0019.
  *
  * `matchLeafRegions` has no caller — not here, not on main. It is carried through
  * the split rather than deleted because "is the legacy leaf matcher still wanted"

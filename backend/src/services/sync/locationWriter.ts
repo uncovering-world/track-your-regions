@@ -2,9 +2,8 @@
  * Writing an experience's locations without destroying anything hanging off them.
  *
  * The obvious implementation — delete every location for the experience and
- * insert the incoming ones — is what the sync used to do, and it is why a full
- * region re-assignment was needed after every run.
- * `experience_location_regions.location_id` is `ON DELETE CASCADE`, so deleting
+ * insert the incoming ones — forces a full region re-assignment after every
+ * run: `experience_location_regions.location_id` is `ON DELETE CASCADE`, so deleting
  * a location silently takes its region assignments with it, `manual` ones
  * included. The recompute afterwards was not placing new objects; it was
  * rebuilding what the run had just destroyed. Measured on the live database
@@ -116,8 +115,8 @@ export interface LocationWriteResult {
   /**
    * Rows that already held this point, at this coordinate. Assignments still valid.
    *
-   * "At this coordinate" is the part ADR-0027 had to add: the keeping arm now adopts
-   * the source's value, so matching no longer implies standing still, and a row that
+   * "At this coordinate" is the part ADR-0027 adds: the keeping arm adopts
+   * the source's value, so matching does not imply standing still, and a row that
    * moved inside the tolerance belongs in `needsAssignment` instead. The distinction
    * is not cosmetic even at a centimetre — see the `RETURNING` clause of that arm.
    */
@@ -356,8 +355,7 @@ export async function writeExperienceLocations(
     // relation has to mean the same thing to everything that reads it regardless.
     //
     // Which is *every statement below this one* — stated as a class rather than a count,
-    // because the count has been wrong twice on this branch as statements moved onto the
-    // pairing one at a time. The five arms read it, the unpairing statement reads it, and
+    // so a statement moving onto the pairing cannot falsify it. The five arms read it, the unpairing statement reads it, and
     // so does the deferral's `withdrawn`, which asks it for a reason of its own.
     //
     // `ON COMMIT DROP` rather than an explicit drop: it goes on COMMIT and on ROLLBACK
@@ -573,10 +571,10 @@ export async function writeExperienceLocations(
               -- to be paired with, which is why the held-row term below is narrowed to
               -- arrivals the run keeps rather than written as the mark has it.
               --
-              -- Membership of the pairing, not nearness, and the two are no longer the
-              -- same set. Before the tolerance they were one predicate, which is what
-              -- made the count above a derivation instead of a hope: this CTE was
-              -- exactly the set the mark would mark. Nearness is now the broader
+              -- Membership of the pairing, not nearness: under a tolerance the two are
+              -- different sets, and membership is what makes the count above a
+              -- derivation instead of a hope, since this CTE is exactly the set the
+              -- mark would mark. Nearness is the broader
               -- question by one row -- the pairing's loser, which *is* near an incoming
               -- point -- so asking it here would leave that row out of the deferral
               -- while the mark marks it anyway: a visible pin withdrawn with a pending,

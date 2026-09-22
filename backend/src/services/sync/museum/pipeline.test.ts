@@ -73,8 +73,8 @@ describe('collectTier1Museums', () => {
   it('hands a work with two makers to the writer with both of them, in the source\'s order', async () => {
     const out = await run();
 
-    // Shishkin painted the forest and Savitsky the bears, and which of the two a
-    // reader was told used to be whichever row the endpoint answered with first.
+    // Shishkin painted the forest and Savitsky the bears, and both must reach the
+    // writer in the source's order (#720).
     const pine = out.items.flatMap((i) => i.artworks).find((a) => a.externalId === 'Q900201');
     expect(pine, 'the two-maker work reached no museum').toBeDefined();
     expect(pine!.artists).toEqual(['Ivan Shishkin', 'Konstantin Savitsky']);

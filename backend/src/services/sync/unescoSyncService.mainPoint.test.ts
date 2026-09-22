@@ -117,9 +117,8 @@ describe('the picture a site is shown with', () => {
   it('does not read the picture the portal offers, whatever it says about it', () => {
     // The World Heritage Centre's terms: its photographs "may not be copied or
     // retransmitted by any means without explicit authorisation", and a site
-    // may "only link to, not replicate" its content (ADR-0043, #557). 1260 rows
-    // carried one of these before this rule.
-    // The three fields are no longer even asked for (`EXPORT_FIELDS`), so a
+    // may "only link to, not replicate" its content (ADR-0043, #557).
+    // The three fields are not even asked for (`EXPORT_FIELDS`), so a
     // record carrying them is one the type does not admit — pinned all the
     // same, so a portal that sends them unasked, or an export list that grows
     // them back, still changes nothing.

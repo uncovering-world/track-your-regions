@@ -119,8 +119,8 @@ describe('reconcileLinks', () => {
   it('marks every link of a museum the run offers nothing at, floor permitting (#890)', async () => {
     // The shape exists since the venue-side read: a museum admitted for what
     // it is, holding only what that read found, and the next run refusing it
-    // — the Bendegó meteorite at the Museu Nacional. An empty offer used to
-    // be read as nothing to compare, and the meteorite stayed a pending find.
+    // — the Bendegó meteorite at the Museu Nacional. An empty offer is compared
+    // like any other, or the meteorite stays a pending find (#890).
     const client = makeClient();
     await reconcileLinks(EXPERIENCE_ID, { offered: [], placedElsewhere: [], withdraw: true });
     const statements = sent(client);

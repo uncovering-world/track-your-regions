@@ -312,9 +312,9 @@ describe('a gated source over a row a reader can already see', () => {
     const incoming = snapshot({ shortDescription: 'A summary the source now offers.' });
     const result = computeChangeSet(snapshot(), incoming, [], WROTE);
 
-    // The three sites that used to infer "held" by elimination now read this
-    // flag. A field that was actually written must therefore say so positively:
-    // `curatedConflict: false` alone no longer means anything.
+    // The three sites that decide "held" read this flag rather than inferring
+    // it by elimination. A field that was actually written must therefore say
+    // so positively: `curatedConflict: false` alone means nothing.
     expect(result.changedFields).toEqual([{
       field: 'shortDescription',
       old: 'Vast plains of the Serengeti.',
@@ -514,10 +514,9 @@ describe('a metadata key the run computes about its own pass', () => {
   });
 
   it('never meets the work that did the qualifying, which is the membership\'s', () => {
-    // `admittedFor` used to ride in metadata as a run-owned key (#570). Since
-    // #822 it is written on the place's membership (`admitted_for`) and enters
-    // neither the row's metadata nor this diff — so it is not in the run-owned
-    // list either, and a run that put it back into metadata would be proposing
+    // `admittedFor` is written on the place's membership (`admitted_for`,
+    // #822) and enters neither the row's metadata nor this diff — so it is not
+    // in the run-owned list either (#570), and a run that put it into metadata would be proposing
     // it to a curator, which is the question this list exists to keep from
     // being asked.
     expect(SYNC_OWNED_METADATA_KEYS).not.toContain('admittedFor');
@@ -609,15 +608,15 @@ describe('claimKeyFor', () => {
 /**
  * Six local names are six facts (#728).
  *
- * `name_local` is one jsonb column and used to be reported as one entry carrying the
- * whole map, so run 68's six proposed names for Getbol, Korean Tidal Flats (Phase II)
- * reached a curator under one pair of buttons: take the corrected Korean name and the
- * English one comes with it, or refuse both. That is the defect ADR-0039 removed for
- * `metadata`, one column over, and these state the same rule for the language map.
+ * `name_local` is one jsonb column, and one entry carrying the whole map puts run 68's
+ * six proposed names for Getbol, Korean Tidal Flats (Phase II) under one pair of
+ * buttons: take the corrected Korean name and the English one comes with it, or refuse
+ * both. That is the shape ADR-0039 refuses for `metadata`, one column over, and these
+ * state the same rule for the language map.
  *
- * What each entry says is what the card used to derive for itself — same equality, same
- * alphabetical order (`objectDiff.ts` § `changedKeys`) — so the rows a curator reads do
- * not move; only where the answer lands does.
+ * What each entry says is what the card derives for itself — same equality, same
+ * alphabetical order (`objectDiff.ts` § `changedKeys`) — so the rows a curator reads
+ * and the row the answer lands on agree.
  */
 describe('a local name is a fact of its own', () => {
   const named = (nameLocal: Record<string, string>) => snapshot({ nameLocal });

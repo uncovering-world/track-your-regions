@@ -33,9 +33,9 @@ async function fetchWikidataImages(
   logPrefix: string,
 ): Promise<Map<string, string>> {
   const images = new Map<string, string>();
-  // The same door as every other query this service sends. It used to be a bare
-  // `sparqlQuery` with none of the three: no cancel check, no reporter, and no
-  // shared budget — so `sparqlQuery` minted a fresh fifteen minutes *per batch*.
+  // The same door as every other query this service sends — cancel check,
+  // reporter, shared budget. A bare `sparqlQuery` has none of the three and
+  // mints a fresh fifteen minutes *per batch*.
   // At `ENTITY_BATCH = 50` that is hours for a few hundred museums, none of it
   // interruptible, while `runningSyncs` shows the card as running with a Cancel
   // button on it. Raising the retry ceiling is what made the arithmetic bite.

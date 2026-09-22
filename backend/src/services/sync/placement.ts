@@ -156,8 +156,8 @@ export async function finishPlacement(
  * Name the placement phase, when there is a window worth naming.
  *
  * Placement is a window of its own on a source's first run — the whole of it
- * lands in the moved set and every world view gets its own transaction; seconds
- * since #851, minutes before it — and through it the run is deliberately still
+ * lands in the moved set and every world view gets its own transaction, seconds
+ * apiece (#851) — and through it the run is deliberately still
  * open. Left as `processing`, the panel offers a
  * Cancel that nothing reads any more, beside a completion message and a full
  * bar. `isSyncStillRunning` treats `assigning` as running, so the poller

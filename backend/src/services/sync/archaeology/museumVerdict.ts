@@ -344,10 +344,10 @@ export function judgeAllMuseums(
       // survivor of a fold — and the candidate set is exactly those two plus
       // the pool, the members and the fold sources.
       //
-      // It used to be read off the holders at the two extreme fold sets
-      // instead, which is not the same set: the holder cap counts a find's
-      // venue list and a kept fold merges two venues into one, so a partial
-      // set can name a venue neither extreme does (#888 wave 8).
+      // Not the holders at the two extreme fold sets, which is not the same
+      // set: the holder cap counts a find's venue list and a kept fold merges
+      // two venues into one, so a partial set can name a venue neither
+      // extreme does (#888).
       //
       // Said out loud rather than dropped — a museum that vanished between two
       // stages of one run is a defect, not a verdict.
