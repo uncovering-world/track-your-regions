@@ -7,25 +7,9 @@
 import type { UserRole, AuthProvider } from '@tyr/shared/auth';
 export type { UserRole, AuthProvider };
 
-export interface User {
-  id: number;
-  uuid: string;
-  email: string | null;
-  displayName: string | null;
-  role: UserRole;
-  avatarUrl: string | null;
-  emailVerified: boolean;
-  authProvider?: AuthProvider;
-}
-
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
-
-export interface AuthResponse extends AuthTokens {
-  user: User;
-}
+// The signed-in account is an answer, declared once as a backend schema
+// (ADR-0066): `PublicUser`, re-exported from `api/auth.ts`.
+import type { PublicUser } from '@tyr/shared/api';
 
 export interface LoginCredentials {
   email: string;
@@ -39,7 +23,7 @@ export interface RegisterCredentials {
 }
 
 export interface AuthState {
-  user: User | null;
+  user: PublicUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   isAdmin: boolean;

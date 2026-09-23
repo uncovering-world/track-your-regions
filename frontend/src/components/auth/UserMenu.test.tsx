@@ -10,12 +10,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { User } from '../../types/auth';
+import type { PublicUser } from '../../api/auth';
 
 const navigate = vi.fn();
 vi.mock('react-router', () => ({ useNavigate: () => navigate }));
 
-let currentUser: User | null = null;
+let currentUser: PublicUser | null = null;
 let admin = false;
 vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({
@@ -29,7 +29,7 @@ vi.mock('../../hooks/useAuth', () => ({
 
 import { UserMenu } from './UserMenu';
 
-function user(overrides: Partial<User> = {}): User {
+function user(overrides: Partial<PublicUser> = {}): PublicUser {
   return {
     id: 1,
     uuid: '00000000-0000-0000-0000-000000000001',
