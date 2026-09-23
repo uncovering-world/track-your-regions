@@ -6,7 +6,13 @@
 
 import { Request, Response } from 'express';
 import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
+import { respond } from '../../api/respond.js';
+import {
+  ExperienceDetail, ExperienceKinds, ExperienceSearch, ExperiencesByRegionResponse, RegionExperienceCounts,
+  type ExperienceRegionRef,
+} from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
+import type { ExperienceKindsRow } from '../../db/schema.generated.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import {
   hideLostSql, hideRefusedSql, hidePendingSql, lifecycleSelectSql, includeLost,
@@ -18,6 +24,9 @@ import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
 import { dangerSelectSql, withDangerFields } from './experienceDanger.js';
+import {
+  experienceDetailOf, experienceOf, searchResultOf, type ExperienceDetailRow, type ExperienceListRow, type SearchRow,
+} from './experienceAnswerRows.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 interface ListExperiencesFilters {
@@ -196,7 +205,7 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
   // the one place the pending gate opens (ADR-0025).
   const maySeeUnread = await maySeeUnreadExperience(req.user?.id, req.user?.role, id);
 
-  const result = await pool.query(`
+  const result = await pool.query<ExperienceDetailRow>(`
     SELECT
       e.id,
       e.source_id,
@@ -269,7 +278,7 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
   }
 
   // Get assigned regions, filtered to world views visible to this caller.
-  const regionsResult = await pool.query(`
+  const regionsResult = await pool.query<ExperienceRegionRef>(`
     SELECT r.id, r.name, r.world_view_id, wv.name as world_view_name
     FROM experience_regions er
     JOIN regions r ON er.region_id = r.id
@@ -288,10 +297,7 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
     ORDER BY wv.name, r.name
   `, [id, isAdmin, maySeeUnread]);
 
-  res.json({
-    ...result.rows[0],
-    regions: regionsResult.rows,
-  });
+  respond(res, ExperienceDetail, experienceDetailOf(result.rows[0], regionsResult.rows));
 }
 
 /**
@@ -337,7 +343,7 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
   const countResult = await pool.query(countQuery, [regionId]);
 
   // Get region info
-  const regionResult = await pool.query(`
+  const regionResult = await pool.query<{ id: number; name: string; world_view_name: string }>(`
     SELECT r.id, r.name, wv.name as world_view_name
     FROM regions r
     JOIN world_views wv ON r.world_view_id = wv.id
@@ -349,9 +355,11 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
     return;
   }
 
-  res.json({
-    region: regionResult.rows[0],
-    experiences: result.rows.map(withDangerFields),
+  const region = regionResult.rows[0];
+  respond(res, ExperiencesByRegionResponse, {
+    region: { id: region.id, name: region.name, world_view_name: region.world_view_name },
+    // The driver's rows, read as the columns `buildRegionQueries` selects.
+    experiences: result.rows.map(row => experienceOf(withDangerFields(row) as ExperienceListRow)),
     total: countResult.rows[0].total,
     // How many this region holds that no longer exist *and is not showing*.
     // Zero for almost every region, which is the point: the page offers the
@@ -375,7 +383,7 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
  * when the two were one row.
  */
 export async function listKinds(_req: Request, res: Response): Promise<void> {
-  const result = await pool.query(`
+  const result = await pool.query<Pick<ExperienceKindsRow, 'id' | 'name' | 'display_priority'> & { experience_count: string }>(`
     SELECT
       k.id,
       k.name,
@@ -394,7 +402,12 @@ export async function listKinds(_req: Request, res: Response): Promise<void> {
     ORDER BY k.display_priority, k.name
   `);
 
-  res.json(result.rows);
+  respond(res, ExperienceKinds, result.rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    display_priority: row.display_priority,
+    experience_count: row.experience_count,
+  })));
 }
 
 /**
@@ -418,7 +431,7 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
     return;
   }
 
-  const result = await pool.query(`
+  const result = await pool.query<SearchRow>(`
     -- The match and its LIMIT first, the region context after it. A scalar
     -- subquery in the select list of the matching query would be carried
     -- through the sort, so the placement lookup would run for every row whose
@@ -488,9 +501,9 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
     ORDER BY m.name_contains DESC, m.relevance DESC
   `, [query, `%${query}%`, limit]);
 
-  res.json({
+  respond(res, ExperienceSearch, {
     query,
-    results: result.rows,
+    results: result.rows.map(searchResultOf),
     total: result.rows.length,
   });
 }
@@ -525,7 +538,7 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
   // two kinds is in both lists and counts once in each. The membership's own
   // admission and gate are asked, the way the list under each header asks
   // them.
-  const result = await pool.query(`
+  const result = await pool.query<{ region_id: number; kind_id: number; count: string }>(`
     SELECT
       r.id as region_id,
       r.name as region_name,
@@ -552,7 +565,9 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
   `, parentRegionId ? [worldViewId, parentRegionId] : [worldViewId]);
 
   // Also get regions with zero experiences at this level (for complete tree)
-  const allRegionsResult = await pool.query(`
+  const allRegionsResult = await pool.query<{
+    region_id: number; region_name: string; region_color: string | null; has_subregions: boolean;
+  }>(`
     SELECT
       r.id as region_id,
       r.name as region_name,
@@ -580,5 +595,5 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
     kind_counts: countMap.get(row.region_id) || {},
   }));
 
-  res.json(response);
+  respond(res, RegionExperienceCounts, response);
 }

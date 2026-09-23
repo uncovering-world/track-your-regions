@@ -3,6 +3,7 @@ import { parseBbox } from '../db/bboxEnvelopes.js';
 import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { foldLabel, tidyLabel } from '@tyr/shared/labels';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
+import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.js';
 
 // The world-view import's request schemas live in their own module (#933) and
 // are part of this barrel, so a route imports them from here as before.
@@ -321,7 +322,7 @@ export const worldPointsQuerySchema = z.object({
     .refine(value => parseBbox(value) !== null,
       { message: 'bbox must be four numbers: west,south,east,north' })
     .optional(),
-  detail: z.enum(['overview', 'markers']).default('overview'),
+  detail: z.enum(POINTS_DETAILS).default('overview'),
   folded: booleanStringSchema,
 });
 

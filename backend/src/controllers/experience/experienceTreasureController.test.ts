@@ -32,6 +32,19 @@ function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
 }
 
+/**
+ * A work row with every column the treasures read selects, as the driver hands
+ * it over: `respond()` holds the answer to its schema in this lane, and each
+ * test names only the columns it is about.
+ */
+function workRow(over: Record<string, unknown>): Record<string, unknown> {
+  return {
+    treasure_type: 'painting', artists: [], artists_curated: false, year: null, curated_fields: [], venue_count: 1,
+    image_url: null, sitelinks_count: 0, is_iconic: false, image_credit: null, found_at: null, found_at_site: null,
+    ...over,
+  };
+}
+
 describe('getExperienceTreasures gate', () => {
   beforeEach(() => mockedQuery.mockReset());
 
@@ -61,7 +74,7 @@ describe('getExperienceTreasures gate', () => {
       artists: ['Katsushika Hokusai'], artists_curated: false, year: 1830,
       curated_fields: ['name'], venue_count: 11,
     };
-    mockedQuery.mockResolvedValueOnce({ rows: [work] });
+    mockedQuery.mockResolvedValueOnce({ rows: [workRow(work)] });
     const res = makeRes();
 
     await getExperienceTreasures({ params: { id: '6187' } } as never, res as never);
@@ -89,7 +102,7 @@ describe('getExperienceTreasures gate', () => {
       artists: [], artists_curated: false, year: null,
       found_at: { qid: 'Q3077898', label: 'Fort Julien' },
     };
-    mockedQuery.mockResolvedValueOnce({ rows: [find] });
+    mockedQuery.mockResolvedValueOnce({ rows: [workRow(find)] });
     const res = makeRes();
 
     await getExperienceTreasures({ params: { id: '6187' } } as never, res as never);
@@ -115,7 +128,7 @@ describe('getExperienceTreasures gate', () => {
       found_at_site: { id: 14730, name: 'Mycenae', kind_id: 5,
         regions: [{ id: 6922, name: 'Peloponnese', world_view_id: 5, world_view_name: 'Administrative' }] },
     };
-    mockedQuery.mockResolvedValueOnce({ rows: [find] });
+    mockedQuery.mockResolvedValueOnce({ rows: [workRow(find)] });
     const res = makeRes();
 
     await getExperienceTreasures({ params: { id: '14551' } } as never, res as never);

@@ -53,7 +53,10 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { NewBadgesSeen } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
+import type { UserNewBadgeViewsRow } from '../../db/schema.generated.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { experienceOfferedToReaderSql } from './experienceLifecycle.js';
@@ -129,7 +132,7 @@ export async function markNewBadgesSeen(req: AuthenticatedRequest, res: Response
   const userId = req.user!.id;
   const { experienceIds } = req.body as { experienceIds: number[] };
 
-  const result = await pool.query(
+  const result = await pool.query<Pick<UserNewBadgeViewsRow, 'experience_id'>>(
     `INSERT INTO user_new_badge_views (user_id, experience_id)
      SELECT $1, id FROM experiences
       WHERE id = ANY($2::int[])
@@ -150,5 +153,5 @@ export async function markNewBadgesSeen(req: AuthenticatedRequest, res: Response
   // never on screen. A chip cannot legitimately be seen on an unread row: the
   // only read that renders one carries the gate. `existence` stays out, matching
   // the by-id reads — a chip seen on something since lost was still seen.
-  res.json({ recorded: result.rows.map(r => r.experience_id) });
+  respond(res, NewBadgesSeen, { recorded: result.rows.map(r => r.experience_id) });
 }

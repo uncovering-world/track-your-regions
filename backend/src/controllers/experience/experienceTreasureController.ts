@@ -5,12 +5,15 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { ExperienceTreasuresResponse } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import { rowKindJoinSql } from '../../db/membership.js';
 import {
   experienceOfferedToReaderSql, hideLostSql, hideRefusedSql, hidePendingSql, linkedForReaderSql,
   offeredLinkSql, offeredLocationSql, publishedContentSql, venueCountSql,
 } from './experienceLifecycle.js';
+import { treasureOf, type TreasureRow } from './experienceAnswerRows.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -28,7 +31,7 @@ export async function getExperienceTreasures(req: AuthenticatedRequest, res: Res
   const experienceId = parseInt(String(req.params.id));
   const maySeeUnread = await maySeeUnreadExperience(req.user?.id, req.user?.role, experienceId);
 
-  const result = await pool.query(`
+  const result = await pool.query<TreasureRow>(`
     SELECT
       t.id, t.external_id, t.name, t.treasure_type, t.artists,
       -- Whether anyone has vouched for the order the makers are stored in. The
@@ -98,9 +101,9 @@ export async function getExperienceTreasures(req: AuthenticatedRequest, res: Res
     ORDER BY t.sitelinks_count DESC
   `, [experienceId, maySeeUnread]);
 
-  res.json({
+  respond(res, ExperienceTreasuresResponse, {
     experienceId,
-    treasures: result.rows,
+    treasures: result.rows.map(treasureOf),
     total: result.rows.length,
   });
 }

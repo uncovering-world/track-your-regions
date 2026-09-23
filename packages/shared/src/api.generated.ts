@@ -204,6 +204,92 @@ export interface EarlierAnswer {
   applied: unknown;
 }
 
+/** One object in a region's list. */
+export interface Experience {
+  id: number;
+  external_id: string;
+  name: string;
+  short_description: string | null;
+  /**
+   * The type within the kind, such as `cultural` on a World Heritage site or `cathedral` on a place
+   * of worship. Null on a museum, whose kind has no types (ADR-0045).
+   */
+  type: string | null;
+  /** The kind, off the row's membership (#819): what a colour and a group are decided by. */
+  kind_id: number;
+  /** Null on a place created by hand without a country, which the columns allow. */
+  country_codes: string[] | null;
+  country_names: string[] | null;
+  image_url: string | null;
+  /**
+   * Whose photograph this is, beside the picture because a thumbnail in a list is showing it
+   * (ADR-0043).
+   */
+  image_credit: ImageCredit | null;
+  in_danger: boolean;
+  /** The year the site was listed in danger. Null where the listing carries no year. */
+  danger_since: number | null;
+  longitude: number;
+  latitude: number;
+  kind_name: string;
+  /** The kind's display order, which the list orders by. */
+  kind_priority: number;
+  location_count: number;
+  /** Offered and published links to works. */
+  treasure_count: number;
+  created_at?: string;
+  /** Only for a curator whose scope reaches the region. */
+  is_rejected?: boolean;
+  rejection_reason?: string | null;
+  source_membership: "present" | "former";
+  existence: "extant" | "lost";
+  missing_since: string | null;
+  /**
+   * Whether the reader could first see this recently: published, and inside the kind's window or
+   * this reader's own week (#529).
+   */
+  is_new: boolean;
+}
+
+/** One object, as its own page reads it. */
+export interface ExperienceDetail {
+  id: number;
+  /** The source that brought the row, beside the kind it is shown under. */
+  source_id: number;
+  external_id: string;
+  name: string;
+  name_local: Record<string, string> | null;
+  description: string | null;
+  short_description: string | null;
+  type: string | null;
+  /** Null on a place created by hand without a country, which the columns allow. */
+  country_codes: string[] | null;
+  country_names: string[] | null;
+  image_url: string | null;
+  /** The source's metadata, as an open record until #574 settles its model. */
+  metadata: Record<string, unknown> | null;
+  created_at: string | null;
+  updated_at: string | null;
+  source_membership: "present" | "former";
+  existence: "extant" | "lost";
+  missing_since: string | null;
+  longitude: number;
+  latitude: number;
+  /** The site's extent from OpenStreetMap, simplified past 5,000 vertices (ADR-0059). */
+  boundary_geojson: {
+    type: "MultiPolygon";
+    coordinates: number[][][][];
+  } | null;
+  area_km2: number | null;
+  kind_id: number;
+  kind_name: string;
+  kind_priority: number;
+  source_name: string;
+  source_description: string | null;
+  /** The regions whose own lists hold the object, in the world views the caller may see. */
+  regions: ExperienceRegionRef[];
+}
+
 /** What a curator's edit of an object's fields did. */
 export interface ExperienceEditResult {
   success: true;
@@ -211,6 +297,18 @@ export interface ExperienceEditResult {
   /** Every field the curator now claims on the object, this edit's included. */
   curatedFields: string[];
 }
+
+/** A kind of place a traveller browses by (ADR-0045). */
+export interface ExperienceKind {
+  id: number;
+  name: string;
+  display_priority: number;
+  /** How many places the kind offers. A string: PostgreSQL counts in bigint. */
+  experience_count: string;
+}
+
+/** The kinds a source fills today, in display order. */
+export type ExperienceKinds = ExperienceKind[];
 
 /** One point of an object. */
 export interface ExperienceLocation {
@@ -279,6 +377,61 @@ export interface ExperienceLocationWithState {
   refused_at: string | null;
 }
 
+/** A region an object can be opened at, in a world view the caller may see. */
+export interface ExperienceRegionRef {
+  id: number;
+  name: string;
+  world_view_id: number;
+  world_view_name: string;
+}
+
+/** A page of a region's objects. */
+export interface ExperiencesByRegionResponse {
+  region: {
+    id: number;
+    name: string;
+    world_view_name: string;
+  };
+  experiences: Experience[];
+  total: number;
+  /** How many objects this region holds that no longer exist and are not being shown. */
+  lostHidden: number;
+  limit: number;
+  offset: number;
+}
+
+/** What the catalogue search found for a name. */
+export interface ExperienceSearch {
+  query: string;
+  results: ExperienceSearchResult[];
+  total: number;
+}
+
+/** One answer of the catalogue search. */
+export interface ExperienceSearchResult {
+  id: number;
+  name: string;
+  short_description: string | null;
+  type: string | null;
+  kind_id: number;
+  kind_name: string;
+  kind_priority: number;
+  country_names: string[] | null;
+  image_url: string | null;
+  image_credit: ImageCredit | null;
+  source_membership: "present" | "former";
+  existence: "extant" | "lost";
+  missing_since: string | null;
+  longitude: number;
+  latitude: number;
+  relevance: number;
+  /**
+   * The regions whose own lists hold the object, most specific first. Empty where nothing published
+   * places it, and then the answer is not a link.
+   */
+  regions: ExperienceRegionRef[];
+}
+
 /** An object's lifecycle as a curator's verdict left it. */
 export interface ExperienceStateResult {
   experienceId: number;
@@ -286,6 +439,41 @@ export interface ExperienceStateResult {
   sourceMembership: "present" | "former";
   /** Whether it is still there to visit: `lost` once it is gone. */
   existence: "extant" | "lost";
+}
+
+/** A work inside an object: an artwork, an artifact. */
+export interface ExperienceTreasure {
+  id: number;
+  external_id: string;
+  name: string;
+  treasure_type: string;
+  /** Every maker the source names (#720). */
+  artists: string[];
+  /** Whether a curator has vouched for the order the makers are stored in (ADR-0040). */
+  artists_curated: boolean;
+  /** The columns a curator has claimed on the work. */
+  curated_fields: string[];
+  /** How many museums hang this work (ADR-0025 decision 2). */
+  venue_count: number;
+  year: number | null;
+  image_url: string | null;
+  image_credit: ImageCredit | null;
+  is_iconic: boolean;
+  /** Where the object was dug up, for the kind whose works are finds (ADR-0058). */
+  found_at: {
+    qid: string;
+    label: string;
+  } | null;
+  /** The site row that spot names, where the catalogue holds one a reader may open (#894). */
+  found_at_site: LinkedPlace | null;
+  sitelinks_count: number;
+}
+
+/** The works an object holds. */
+export interface ExperienceTreasuresResponse {
+  experienceId: number;
+  treasures: ExperienceTreasure[];
+  total: number;
 }
 
 /** Who claimed a field, and when. */
@@ -340,6 +528,15 @@ export interface ImageCredit {
   licenseUrl: string | null;
   /** The file page or the site's own page for the object: where the full terms are. */
   detailsUrl: string | null;
+}
+
+/** A place another card names, with the regions a link to it is built from (ADR-0042). */
+export interface LinkedPlace {
+  id: number;
+  name: string;
+  /** The kind the place is shown under, which Discover's address needs. */
+  kind_id: number | null;
+  regions: ExperienceRegionRef[];
 }
 
 /**
@@ -398,6 +595,12 @@ export interface ManualExperienceCreated {
  */
 export type MembershipCurationState = "pending" | "auto" | "verified";
 
+/** Which New chips were recorded as shown. */
+export interface NewBadgesSeen {
+  /** The objects whose first impression this call recorded. Only the first is kept. */
+  recorded: number[];
+}
+
 /**
  * A part the held proposal names that publishing could not write to. Nothing readers see changed.
  */
@@ -447,6 +650,9 @@ export interface PlacementFailure {
   id: number | null;
   name: string | null;
 }
+
+/** The tier asked for: `overview` is the heatmap's read, `markers` the pins'. */
+export type PointsDetail = "overview" | "markers";
 
 /** One of the object's own fields a run proposed, as its card asks about it. */
 export interface ProposedField {
@@ -629,6 +835,18 @@ export interface RefusedWork {
   note: string | null;
   missingSince: string | null;
 }
+
+/** A region's counts per kind, for Discover's tree. */
+export interface RegionExperienceCount {
+  region_id: number;
+  region_name: string;
+  region_color: string | null;
+  has_subregions: boolean;
+  /** How many places each kind counts here, keyed by kind id. */
+  kind_counts: Record<string, number>;
+}
+
+export type RegionExperienceCounts = RegionExperienceCount[];
 
 /** One point as the map and the region list read it. */
 export interface RegionExperienceLocation {
@@ -840,6 +1058,28 @@ export interface RunSetAside {
   setAside: boolean;
 }
 
+/** One find dug up at a site (#894). */
+export interface SiteFind {
+  id: number;
+  external_id: string;
+  name: string;
+  treasure_type: string;
+  year: number | null;
+  image_url: string | null;
+  image_credit: ImageCredit | null;
+  is_iconic: boolean;
+  sitelinks_count: number;
+  /** One entry per building, never empty: a find nobody can go and see is not listed. */
+  shown_at: LinkedPlace[];
+}
+
+/** The finds dug up at a site, and where they are shown. */
+export interface SiteFindsResponse {
+  experienceId: number;
+  finds: SiteFind[];
+  total: number;
+}
+
 /** What asking again about turned-down points and works did. */
 export interface UnrefuseContentsResult {
   /** Set when the publication landed and re-placing the object into its regions did not. */
@@ -889,4 +1129,29 @@ export interface WorkEditResult {
    * Commons named nobody in time.
    */
   imageCredit?: ImageCredit | null;
+}
+
+/** The map's points, one array per field, all of them the same length. */
+export interface WorldPointsResponse {
+  detail: PointsDetail;
+  /** Echoed rather than assumed, so a layer cannot draw one fold with the other's data. */
+  folded: boolean;
+  count: number;
+  /**
+   * Present only when the read hit its cap. A density picture built from a subset is wrong rather
+   * than incomplete, so this is never silent.
+   */
+  truncated?: true;
+  lng: number[];
+  lat: number[];
+  /** Markers only: the pin's identity, for hover and for opening a card. */
+  locationId?: number[];
+  experienceId?: number[];
+  name?: (string | null)[];
+  experienceName?: string[];
+  /** Markers only: what the pin is coloured by (`kindColors.ts` owns the palette). */
+  kindId?: (number | null)[];
+  type?: (string | null)[];
+  /** Folded only: how many places the pin stands for, which is the badge's number. */
+  locationCount?: number[];
 }
