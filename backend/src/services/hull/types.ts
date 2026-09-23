@@ -8,11 +8,9 @@ export interface HullParams {
   simplifyTolerance: number; // Simplification tolerance in degrees
 }
 
-export const DEFAULT_HULL_PARAMS: HullParams = {
-  bufferKm: 50,
-  concavity: 0.9,
-  simplifyTolerance: 0.02,
-};
+// The defaults are the hull editor's too, so they are stated once, beside the
+// rest of the geometry rules both sides apply (ADR-0065).
+export { DEFAULT_HULL_PARAMS } from '@tyr/shared/geometry';
 
 export interface Point {
   lng: number;
@@ -27,7 +25,7 @@ export interface GenerateSingleHullResult {
 }
 
 export interface PreviewHullResult {
-  geometry: GeoJSON.Geometry | null;
+  geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
   pointCount: number;
   crossesDateline: boolean;
   error?: string;
