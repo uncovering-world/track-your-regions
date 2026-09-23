@@ -38,7 +38,7 @@ const IGNORED = new Set([
 /** Every keyword the renderer reads. Any other one throws. */
 const KNOWN = new Set([
   ...IGNORED, 'description', '$ref', 'type', 'enum', 'const', 'anyOf', 'oneOf',
-  'items', 'properties', 'required', 'additionalProperties', 'propertyNames',
+  'items', 'prefixItems', 'properties', 'required', 'additionalProperties', 'propertyNames',
 ]);
 
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
@@ -124,12 +124,24 @@ function renderType(schema: JsonSchema, where: string, known: ReadonlySet<string
 }
 
 function renderArray(schema: JsonSchema, where: string, known: ReadonlySet<string>, indent: string): string {
+  if (Array.isArray(schema.prefixItems)) return renderTuple(schema, where, known, indent);
   if (typeof schema.items !== 'object' || schema.items === null) {
     throw new RenderError(where, 'is an array without one `items` schema');
   }
   const items = schema.items as JsonSchema;
   const item = renderType(items, `${where}[]`, known, indent);
   return isUnion(items) ? `(${item})[]` : `${item}[]`;
+}
+
+/**
+ * A `z.tuple`: one schema per position, which Zod emits as `prefixItems` and
+ * nothing else. A rest element would come as `items` beside them, and no answer
+ * has one yet.
+ */
+function renderTuple(schema: JsonSchema, where: string, known: ReadonlySet<string>, indent: string): string {
+  if (schema.items !== undefined) throw new RenderError(where, 'is a tuple with a rest element, which this renderer does not render');
+  const positions = (schema.prefixItems as JsonSchema[]).map((item, i) => renderType(item, `${where}[${i}]`, known, indent));
+  return `[${positions.join(', ')}]`;
 }
 
 /** Whether a schema renders as `A | B`, which an array suffix would otherwise bind to the last member only. */

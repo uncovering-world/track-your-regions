@@ -66,6 +66,20 @@ describe('renderApiTypes', () => {
     ].join('\n'));
   });
 
+  it('renders a tuple by its positions, and a nullable one in brackets of its own', () => {
+    expect(body({
+      Frame: strict({
+        box: { type: 'array', prefixItems: [{ type: 'number' }, { type: 'number' }, { type: 'number' }, { type: 'number' }] },
+        at: { anyOf: [{ type: 'array', prefixItems: [{ type: 'number' }, { type: 'number' }] }, { type: 'null' }] },
+      }),
+    })).toBe([
+      'export interface Frame {',
+      '  box: [number, number, number, number];',
+      '  at: [number, number] | null;',
+      '}',
+    ].join('\n'));
+  });
+
   it('sorts the declarations by name, so two runs over the same schemas are identical', () => {
     const schemas = { Zeta: strict({ z: { type: 'string' } }), Alpha: strict({ a: { type: 'string' } }) };
     const text = renderApiTypes(schemas);
@@ -125,6 +139,7 @@ describe('renderApiTypes', () => {
       ['a reference to a schema nobody exported', { Row: strict({ a: { $ref: `${REF_PREFIX}Missing` } }) }, /which no exported schema is/],
       ['an array without an items schema', { Row: strict({ a: { type: 'array' } }) }, /without one `items` schema/],
       ['a record whose keys are restricted', { Row: strict({ a: { type: 'object', propertyNames: { enum: ['x'] }, additionalProperties: { type: 'string' } } }) }, /restricts its keys/],
+      ['a tuple with a rest element', { Row: strict({ a: { type: 'array', prefixItems: [{ type: 'number' }], items: { type: 'string' } } }) }, /tuple with a rest element/],
       ['a literal that is not a scalar', { Row: strict({ a: { const: { x: 1 } } }) }, /not a JSON scalar/],
     ];
     it.each(refusals)('%s', (_label, schemas, message) => {
@@ -151,6 +166,13 @@ describe('renderApiTypes', () => {
         '  gone?: true;',
         '}',
       ].join('\n'));
+    });
+
+    it('renders a z.tuple, and refuses one with a rest element', () => {
+      const Frame = z.strictObject({ at: z.tuple([z.number(), z.number()]).nullable() });
+      expect(body(viaZod({ Frame }))).toBe(['export interface Frame {', '  at: [number, number] | null;', '}'].join('\n'));
+      expect(() => renderApiTypes(viaZod({ Open: z.strictObject({ at: z.tuple([z.number()], z.string()) }) })))
+        .toThrow(/tuple with a rest element/);
     });
 
     it('refuses a plain z.object, whose parse would strip an undeclared key and pass', () => {
