@@ -82,6 +82,23 @@ export interface AdmissionResult {
   published: boolean;
 }
 
+/** Every place of an object, or of it within a region, marked visited. */
+export interface AllLocationsMarked {
+  success: true;
+  experienceId: number;
+  /** The region the marking was limited to, or null for the whole object. */
+  regionId: number | null;
+  locationsMarked: number;
+}
+
+/** Every place of an object, or of it within a region, no longer marked visited. */
+export interface AllLocationsUnmarked {
+  success: true;
+  experienceId: number;
+  regionId: number | null;
+  locationsUnmarked: number;
+}
+
 /** A lost point a curator has answered, which no reader sees as a result (#544). */
 export interface AnsweredPoint {
   id: number;
@@ -476,6 +493,33 @@ export interface ExperienceTreasuresResponse {
   total: number;
 }
 
+/** How far through an object's places the reader is, place by place. */
+export interface ExperienceVisitedStatusResponse {
+  experienceId: number;
+  visitedStatus: VisitedStatus;
+  totalLocations: number;
+  visitedLocations: number;
+  locations: LocationWithVisitedStatus[];
+}
+
+/** An object marked visited, or its visit renewed. */
+export interface ExperienceVisitMarked {
+  success: true;
+  experienceId: number;
+  experienceName: string;
+  /** The visit's own row. */
+  id: number;
+  visited_at: string | null;
+  notes: string | null;
+  rating: number | null;
+}
+
+/** An object no longer marked visited. */
+export interface ExperienceVisitUnmarked {
+  success: true;
+  experienceId: number;
+}
+
 /** Who claimed a field, and when. */
 export interface FieldClaim {
   /** The curator, or "a curator" where they set no display name. */
@@ -579,6 +623,39 @@ export interface LocationStateResult {
    * so the answer says it rather than leaving a card to work it out.
    */
   offeredToReaders: boolean;
+}
+
+/** A place marked visited, or its visit renewed. */
+export interface LocationVisitMarked {
+  success: true;
+  locationId: number;
+  locationName: string | null;
+  experienceId: number;
+  experienceName: string;
+  /** The visit's own row. */
+  id: number;
+  visited_at: string | null;
+  notes: string | null;
+}
+
+/** A place no longer marked visited. */
+export interface LocationVisitUnmarked {
+  success: true;
+  locationId: number;
+  experienceId: number;
+}
+
+/** One place of an object, with whether the reader has been there. */
+export interface LocationWithVisitedStatus {
+  id: number;
+  name: string | null;
+  /** Nullable, for the reason given on `ExperienceLocation.ordinal`. */
+  ordinal: number | null;
+  longitude: number;
+  latitude: number;
+  isVisited: boolean;
+  visitedAt: string | null;
+  notes: string | null;
 }
 
 /** The object a curator created by hand. */
@@ -1080,6 +1157,22 @@ export interface SiteFindsResponse {
   total: number;
 }
 
+/** A work marked seen. */
+export interface TreasureViewMarked {
+  success: true;
+  treasureId: number;
+  treasureName: string;
+  /** The museum marked visited with it, where the call named one. */
+  experienceId: number | null;
+  experienceName: string | null;
+}
+
+/** A work no longer marked seen. */
+export interface TreasureViewUnmarked {
+  success: true;
+  treasureId: number;
+}
+
 /** What asking again about turned-down points and works did. */
 export interface UnrefuseContentsResult {
   /** Set when the publication landed and re-placing the object into its regions did not. */
@@ -1096,6 +1189,38 @@ export interface UnrefuseContentsResult {
   /** Exactly which works came back, by treasure id. */
   treasureIds: number[];
 }
+
+/** The works the reader has marked seen. */
+export interface ViewedTreasureIds {
+  viewedTreasureIds: number[];
+}
+
+/** The objects the reader has marked visited. */
+export interface VisitedExperienceIds {
+  visitedIds: number[];
+  total: number;
+}
+
+/** The places the reader has marked visited. */
+export interface VisitedLocationIds {
+  visitedLocationIds: number[];
+  /** The same places, keyed by the object id. */
+  byExperience: Record<string, number[]>;
+  total: number;
+}
+
+/** A region the reader has marked visited. */
+export interface VisitedRegion {
+  region_id: number;
+  visited_at: string | null;
+  notes: string | null;
+}
+
+/** The reader's visited regions, newest first. */
+export type VisitedRegions = VisitedRegion[];
+
+/** How far through an object's places the reader is. */
+export type VisitedStatus = "not_visited" | "partial" | "visited";
 
 /** A gated sub-kind a `waiting` question groups (ADR-0025). */
 export type WaitingSub = "arrival" | "held" | "contents";

@@ -228,10 +228,21 @@ describe('reads that show a point', () => {
   });
 });
 
+/**
+ * A row of the visited-status read, as the driver hands it over: `respond()`
+ * holds the answer to its schema in this lane, and each test names only the
+ * columns it is about.
+ */
+function visitStatusRow(over: Record<string, unknown>): Record<string, unknown> {
+  return {
+    name: null, ordinal: 0, longitude: 9.4, latitude: 47.5, visited_at: null, notes: null, ...over,
+  };
+}
+
 describe('a visit outlives the point', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [{ location_id: 1, visit_id: 3 }], rowCount: 1 });
+    mockedQuery.mockResolvedValue({ rows: [visitStatusRow({ location_id: 1, visit_id: 3 })], rowCount: 1 });
     pinClient();
   });
 
@@ -460,7 +471,7 @@ describe('the single-mark write and the visited-ids read — #520', () => {
     const [idsSql] = mockedQuery.mock.calls[0] as [string, unknown[]];
 
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [visitStatusRow({ location_id: 1, visit_id: null })] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     await getExperienceVisitedStatus(
       { params: { id: '42' }, user: { id: 5 } } as never, makeRes() as never);
@@ -586,7 +597,7 @@ describe('the by-id reads and a refused row', () => {
   });
 
   it('reaches the visited status through the catalogue, not past it', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ location_id: 1, visit_id: null }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [visitStatusRow({ location_id: 1, visit_id: null })] });
 
     await getExperienceVisitedStatus(
       { params: { id: '6205' }, user: { id: 5 } } as never, makeRes() as never);
@@ -605,7 +616,7 @@ describe('the by-id reads and a refused row', () => {
   });
 
   it('filters admission only here too, as the read one segment up does', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ location_id: 1, visit_id: null }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [visitStatusRow({ location_id: 1, visit_id: null })] });
 
     await getExperienceVisitedStatus(
       { params: { id: '6205' }, user: { id: 5 } } as never, makeRes() as never);
@@ -623,7 +634,7 @@ describe('the by-id reads and a refused row', () => {
   });
 
   it('keeps an unread museum out of a progress denominator, with no curator relaxation', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ location_id: 1, visit_id: null }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [visitStatusRow({ location_id: 1, visit_id: null })] });
 
     await getExperienceVisitedStatus(
       { params: { id: '6205' }, user: { id: 5 } } as never, makeRes() as never);

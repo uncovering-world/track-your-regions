@@ -1,5 +1,8 @@
 import { Router, Response } from 'express';
+import { respond } from '../api/respond.js';
+import { VisitedRegion, VisitedRegions } from '../api/responses/visited.js';
 import { pool } from '../db/index.js';
+import type { UserVisitedRegionsRow } from '../db/schema.generated.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { authenticatedLimiter } from '../middleware/rateLimiter.js';
 import { validate } from '../middleware/errorHandler.js';
@@ -97,25 +100,37 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response):
   }
 });
 
+/** A visited region as the three region statements select it. */
+type VisitedRegionRow = Pick<UserVisitedRegionsRow, 'region_id' | 'visited_at' | 'notes'>;
+
+/** A visited region as the answer declares it, key by key. */
+function visitedRegionOf(row: VisitedRegionRow): VisitedRegion {
+  return { region_id: row.region_id, visited_at: row.visited_at?.toISOString() ?? null, notes: row.notes };
+}
+
 /**
  * GET /api/users/me/visited-regions
  * Get all visited region IDs for current user
  */
 router.get('/me/visited-regions', requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  let rows: VisitedRegionRow[];
   try {
-    const result = await pool.query(
+    const result = await pool.query<VisitedRegionRow>(
       `SELECT region_id, visited_at, notes 
        FROM user_visited_regions 
        WHERE user_id = $1 
        ORDER BY visited_at DESC`,
       [req.user!.id]
     );
-
-    res.json(result.rows);
+    rows = result.rows;
   } catch (error) {
     console.error('Error getting visited regions:', error);
     res.status(500).json({ error: 'Failed to get visited regions' });
+    return;
   }
+  // Outside the try: a body that fails its schema is the named 500 `respond()`
+  // raises (ADR-0066), not this route's generic message.
+  respond(res, VisitedRegions, rows.map(visitedRegionOf));
 });
 
 /**
@@ -123,10 +138,11 @@ router.get('/me/visited-regions', requireAuth, async (req: AuthenticatedRequest,
  * Get visited region IDs for a specific world view
  */
 router.get('/me/visited-regions/by-world-view/:worldViewId', validate(worldViewIdParamSchema, 'params'), requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  let rows: VisitedRegionRow[];
   try {
     const { worldViewId } = req.params as unknown as { worldViewId: number };
 
-    const result = await pool.query(
+    const result = await pool.query<VisitedRegionRow>(
       `SELECT uvr.region_id, uvr.visited_at, uvr.notes
        FROM user_visited_regions uvr
        JOIN regions r ON r.id = uvr.region_id
@@ -134,12 +150,13 @@ router.get('/me/visited-regions/by-world-view/:worldViewId', validate(worldViewI
        ORDER BY uvr.visited_at DESC`,
       [req.user!.id, worldViewId]
     );
-
-    res.json(result.rows);
+    rows = result.rows;
   } catch (error) {
     console.error('Error getting visited regions:', error);
     res.status(500).json({ error: 'Failed to get visited regions' });
+    return;
   }
+  respond(res, VisitedRegions, rows.map(visitedRegionOf));
 });
 
 /**
@@ -147,6 +164,7 @@ router.get('/me/visited-regions/by-world-view/:worldViewId', validate(worldViewI
  * Mark a region as visited
  */
 router.post('/me/visited-regions/:regionId', validate(regionIdParamSchema, 'params'), validate(visitedRegionBodySchema), requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  let row: VisitedRegionRow;
   try {
     const { regionId } = req.params as unknown as { regionId: number };
     const { notes } = req.body || {};
@@ -163,7 +181,7 @@ router.post('/me/visited-regions/:regionId', validate(regionIdParamSchema, 'para
     }
 
     // Insert or update
-    const result = await pool.query(
+    const result = await pool.query<VisitedRegionRow>(
       `INSERT INTO user_visited_regions (user_id, region_id, notes)
        VALUES ($1, $2, $3)
        ON CONFLICT (user_id, region_id)
@@ -171,12 +189,15 @@ router.post('/me/visited-regions/:regionId', validate(regionIdParamSchema, 'para
        RETURNING region_id, visited_at, notes`,
       [req.user!.id, regionId, notes || null]
     );
-
-    res.json(result.rows[0]);
+    row = result.rows[0];
   } catch (error) {
     console.error('Error marking region as visited:', error);
     res.status(500).json({ error: 'Failed to mark region as visited' });
+    return;
   }
+  // Outside the try for the reason above, and one more: the write has committed
+  // by now, which the named 500 says and the generic message would not.
+  respond(res, VisitedRegion, visitedRegionOf(row));
 });
 
 /**

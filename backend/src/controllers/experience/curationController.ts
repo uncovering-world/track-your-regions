@@ -911,17 +911,23 @@ export async function createManualExperience(req: AuthenticatedRequest, res: Res
   // Pin all five inserts (experience, location, region link, location-region
   // link, curation log) to a single client so they form a real transaction.
   const client = await pool.connect();
+  let created: { experienceId: number; externalId: string };
   try {
     await client.query('BEGIN');
-    const { experienceId, externalId } =
-      await insertManualExperience(client, body, userId, sourceId, imageCredit);
+    created = await insertManualExperience(client, body, userId, sourceId, imageCredit);
     await client.query('COMMIT');
-    // The route's `createManualExperienceBodySchema` has already required a string.
-    respond(res.status(201), ManualExperienceCreated, { id: experienceId, name: body.name as string, externalId });
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   } finally {
     client.release();
   }
+  // After the transaction rather than inside it: a body that fails its schema is
+  // `respond()`'s named 500 about a write that has committed, not a ROLLBACK
+  // issued after the COMMIT with nothing left to undo. The route's
+  // `createManualExperienceBodySchema` has already required the name to be a
+  // string.
+  respond(res.status(201), ManualExperienceCreated, {
+    id: created.experienceId, name: body.name as string, externalId: created.externalId,
+  });
 }

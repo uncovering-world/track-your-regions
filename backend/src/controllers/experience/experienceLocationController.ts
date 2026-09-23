@@ -13,8 +13,14 @@ import {
   type ExperienceLocationWithState,
   type RegionExperienceLocation,
 } from '../../api/responses/experiences.js';
+import {
+  AllLocationsMarked, AllLocationsUnmarked, ExperienceVisitedStatusResponse, LocationVisitMarked, LocationVisitUnmarked,
+  VisitedLocationIds, type VisitedStatus,
+} from '../../api/responses/visited.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
+import type {
+  CheckValue, ExperienceLocationsRow, ExperiencesRow, UserVisitedLocationsRow,
+} from '../../db/schema.generated.js';
 import {
   hideLostSql,
   hideRefusedSql,
@@ -365,7 +371,9 @@ export async function getVisitedLocationIds(req: AuthenticatedRequest, res: Resp
     params.push(experienceId);
   }
 
-  const result = await pool.query(query, params);
+  const result = await pool.query<Pick<UserVisitedLocationsRow, 'location_id'> & Pick<ExperienceLocationsRow, 'experience_id'>>(
+    query, params,
+  );
 
   // Group by experience for easy lookup
   const byExperience: Record<number, number[]> = {};
@@ -376,7 +384,7 @@ export async function getVisitedLocationIds(req: AuthenticatedRequest, res: Resp
     byExperience[row.experience_id].push(row.location_id);
   }
 
-  res.json({
+  respond(res, VisitedLocationIds, {
     visitedLocationIds: result.rows.map(r => r.location_id),
     byExperience,
     total: result.rows.length,
@@ -408,7 +416,9 @@ export async function markLocationVisited(req: AuthenticatedRequest, res: Respon
   // place, and this endpoint is exactly the thing that can. No curator
   // relaxation here: this is the caller's own record, not one of the three
   // by-id reads, so it stays unconditional.
-  const locResult = await pool.query(`
+  const locResult = await pool.query<
+    Pick<ExperienceLocationsRow, 'id' | 'name' | 'experience_id'> & { experience_name: ExperiencesRow['name'] }
+  >(`
     SELECT el.id, el.name, el.experience_id, e.name as experience_name
     FROM experience_locations el
     JOIN experiences e ON el.experience_id = e.id
@@ -423,7 +433,7 @@ export async function markLocationVisited(req: AuthenticatedRequest, res: Respon
   const location = locResult.rows[0];
 
   // Upsert visited record
-  const result = await pool.query(`
+  const result = await pool.query<Pick<UserVisitedLocationsRow, 'id' | 'visited_at' | 'notes'>>(`
     INSERT INTO user_visited_locations (user_id, location_id, notes, visited_at)
     VALUES ($1, $2, $3, NOW())
     ON CONFLICT (user_id, location_id) DO UPDATE SET
@@ -440,13 +450,16 @@ export async function markLocationVisited(req: AuthenticatedRequest, res: Respon
     ON CONFLICT (user_id, experience_id) DO NOTHING
   `, [userId, location.experience_id]);
 
-  res.json({
+  const visit = result.rows[0];
+  respond(res, LocationVisitMarked, {
     success: true,
     locationId,
     locationName: location.name,
     experienceId: location.experience_id,
     experienceName: location.experience_name,
-    ...result.rows[0],
+    id: visit.id,
+    visited_at: visit.visited_at?.toISOString() ?? null,
+    notes: visit.notes,
   });
 }
 
@@ -510,7 +523,7 @@ export async function unmarkLocationVisited(req: AuthenticatedRequest, res: Resp
     );
   }
 
-  res.json({ success: true, locationId, experienceId });
+  respond(res, LocationVisitUnmarked, { success: true, locationId, experienceId });
 }
 
 /**
@@ -601,7 +614,7 @@ export async function markAllLocationsVisited(req: AuthenticatedRequest, res: Re
     client.release(unusable);
   }
 
-  res.json({
+  respond(res, AllLocationsMarked, {
     success: true,
     experienceId,
     regionId,
@@ -688,7 +701,7 @@ export async function unmarkAllLocationsVisited(req: AuthenticatedRequest, res: 
     client.release(unusable);
   }
 
-  res.json({
+  respond(res, AllLocationsUnmarked, {
     success: true,
     experienceId,
     regionId,
@@ -710,7 +723,12 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
   const experienceId = parseInt(String(req.params.id));
 
   // Get all locations with their visited status
-  const result = await pool.query(`
+  // The place's own columns, the two coordinates it computes, and the visit the
+  // LEFT JOIN may not find, so each visit column may be null.
+  const result = await pool.query<
+    Pick<ExperienceLocationsRow, 'name' | 'ordinal'> & { location_id: number; longitude: number; latitude: number }
+    & { visit_id: number | null; visited_at: UserVisitedLocationsRow['visited_at']; notes: UserVisitedLocationsRow['notes'] }
+  >(`
     SELECT
       el.id as location_id,
       el.name,
@@ -767,7 +785,7 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
   const visitedLocations = result.rows.filter(r => r.visit_id !== null).length;
 
   // Compute visited status
-  let visitedStatus: 'not_visited' | 'partial' | 'visited';
+  let visitedStatus: VisitedStatus;
   if (visitedLocations === 0) {
     visitedStatus = 'not_visited';
   } else if (visitedLocations === totalLocations) {
@@ -776,7 +794,7 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
     visitedStatus = 'partial';
   }
 
-  res.json({
+  respond(res, ExperienceVisitedStatusResponse, {
     experienceId,
     visitedStatus,
     totalLocations,
@@ -788,7 +806,7 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
       longitude: r.longitude,
       latitude: r.latitude,
       isVisited: r.visit_id !== null,
-      visitedAt: r.visited_at,
+      visitedAt: r.visited_at?.toISOString() ?? null,
       notes: r.notes,
     })),
   });
