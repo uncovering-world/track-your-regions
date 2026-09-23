@@ -437,6 +437,25 @@ All require admin auth.
 | POST | `/start` | Start Wikivoyage extraction + import pipeline |
 | GET | `/status` | Poll extraction progress (includes importedWorldViews) |
 | POST | `/cancel` | Cancel running extraction |
+| POST | `/answer` | Answer, accept or skip a page's pending question, or delete a rule it leaned on |
+| DELETE | `/caches/:name` | Delete a saved copy of the fetched pages |
+
+Every call `frontend/src/api/admin/wikivoyageExtract.ts` makes answers through a schema in `backend/src/api/responses/wikivoyageExtract.ts` (ADR-0066). A pending question and the regions extracted from its page are read key by key in the controller (`interviewQuestionOf`, `regionPreviewOf`), so what a model or the service adds to them stays on the server. `InterviewQuestion` and `RegionPreview` are the schemas' types in the service too (`services/wikivoyageExtract/types.ts`).
+
+### AI tools (`/api/admin/ai/`)
+
+All require admin auth. Every call `frontend/src/api/admin/ai.ts` makes answers through a schema in `backend/src/api/responses/adminAi.ts` (ADR-0066).
+
+| Method | Path | Answers |
+|--------|------|---------|
+| GET, PUT | `/settings`, `/settings/:key` | `AISettings`: the settings and the priced models they can name; `AISettingSaved` |
+| GET | `/usage` | `AIUsageSummary`: cost today, this month and in all, by feature and model |
+| POST | `/update-pricing` | `PricingUpdated`: models whose price changed, models added, models priced |
+| GET, POST, DELETE | `/rules`, `/rules/:id` | `LearnedRules` (learned and built-in), `LearnedRule`, `LearnedRuleDeleted` |
+| POST | `/rules/review`, `/rules/apply-review` | `RuleReviewResult`, `ReviewSuggestionApplied` |
+| POST | `/hierarchy-review/:worldViewId` | `HierarchyReviewResult`: the report, its actions and what it cost |
+
+What a model writes is read key by key before it is answered. A rule review's suggestion names a learned rule by its number in the prompt, which is mapped back to its id (`suggestionOf` in `ruleReviewService.ts`). A hierarchy review's action type the model made up is `other`, and an action with no id is `action-N` by its place in the list (`hierarchyActionOf` in `aiHierarchyReviewController.ts`).
 
 ### WorldView Import (`/api/admin/wv-import/`)
 
