@@ -19,7 +19,7 @@ function node(sourceUrl: string | null): MatchTreeNode {
     id: 1,
     name: 'Saharan Atlas',
     isLeaf: true,
-    matchStatus: 'matched',
+    matchStatus: 'auto_matched',
     suggestions: [],
     sourceUrl,
     regionMapUrl: null,

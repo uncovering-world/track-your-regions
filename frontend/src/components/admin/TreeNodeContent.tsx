@@ -14,7 +14,7 @@ import {
   Map as MapIcon,
   DoneAll as AcceptAndRejectRestIcon,
 } from '@mui/icons-material';
-import type { MatchTreeNode } from '../../api/admin/worldViewImport';
+import type { MatchSuggestion, MatchTreeNode } from '../../api/admin/worldViewImport';
 import { Tooltip, type ShadowInsertion } from './treeNodeShared';
 
 /** Render a single assigned division (already accepted) */
@@ -49,7 +49,7 @@ function AssignedDivisionRow({ div, regionId, onReject, onPreview, isMutating }:
 
 /** Render a suggestion with accept + reject + preview buttons */
 function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, onReject, onPreview, onAcceptTransfer, onPreviewTransfer, isMutating, checked, onToggle }: {
-  suggestion: { divisionId: number; name: string; path: string; score: number; geoSimilarity?: number | null; conflict?: { type: 'direct' | 'split'; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string } };
+  suggestion: MatchSuggestion;
   regionId: number;
   onAccept: (regionId: number, divisionId: number) => void;
   onAcceptAndRejectRest: (regionId: number, divisionId: number) => void;
@@ -110,9 +110,9 @@ function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, 
       <Tooltip title="Preview on map">
         <IconButton size="small" onClick={() => {
           if (suggestion.conflict && onPreviewTransfer) {
-            onPreviewTransfer(suggestion.divisionId, suggestion.name, suggestion.path, suggestion.conflict);
+            onPreviewTransfer(suggestion.divisionId, suggestion.name, suggestion.path ?? undefined, suggestion.conflict);
           } else {
-            onPreview(suggestion.divisionId, suggestion.name, suggestion.path);
+            onPreview(suggestion.divisionId, suggestion.name, suggestion.path ?? undefined);
           }
         }} sx={{ p: 0.25 }}>
           <MapIcon sx={{ fontSize: 16 }} />
@@ -303,7 +303,7 @@ function previewOrRunBatch(
   const firstConflict = selectedSuggestions.find(s => s.conflict)?.conflict;
   if (firstConflict && onPreviewTransfer) {
     const conflictSuggestions = selectedSuggestions.filter(s => s.conflict).map(s => ({ divisionId: s.divisionId, conflict: s.conflict! }));
-    onPreviewTransfer(selectedSuggestions[0].divisionId, selectedSuggestions[0].name, selectedSuggestions[0].path, firstConflict, node.id, [...selectedDivIds], conflictSuggestions);
+    onPreviewTransfer(selectedSuggestions[0].divisionId, selectedSuggestions[0].name, selectedSuggestions[0].path ?? undefined, firstConflict, node.id, [...selectedDivIds], conflictSuggestions);
   } else {
     fallback(node.id, [...selectedDivIds]);
   }
@@ -398,7 +398,7 @@ function SuggestionsBulkActions({ node, selectedDivIds, setSelectedDivIds, onAcc
               const firstConflict = node.suggestions.find(s => s.conflict)?.conflict;
               if (firstConflict && onPreviewTransfer) {
                 const conflictSuggestions = node.suggestions.filter(s => s.conflict).map(s => ({ divisionId: s.divisionId, conflict: s.conflict! }));
-                onPreviewTransfer(node.suggestions[0].divisionId, node.suggestions[0].name, node.suggestions[0].path, firstConflict, node.id, node.suggestions.map(s => s.divisionId), conflictSuggestions);
+                onPreviewTransfer(node.suggestions[0].divisionId, node.suggestions[0].name, node.suggestions[0].path ?? undefined, firstConflict, node.id, node.suggestions.map(s => s.divisionId), conflictSuggestions);
               } else {
                 onAcceptAll(node.suggestions.map(s => ({ regionId: node.id, divisionId: s.divisionId })));
               }

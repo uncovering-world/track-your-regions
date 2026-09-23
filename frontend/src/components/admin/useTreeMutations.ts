@@ -203,7 +203,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
           ...node,
           suggestions: remaining,
           assignedDivisions: accepted
-            ? [...node.assignedDivisions, { divisionId: accepted.divisionId, name: accepted.name, path: accepted.path, hasCustomGeom: false }]
+            ? [...node.assignedDivisions, { divisionId: accepted.divisionId, name: accepted.name, path: accepted.path ?? accepted.name, hasCustomGeom: false }]
             : node.assignedDivisions,
           memberCount: node.memberCount + 1,
           matchStatus: remaining.length > 0 ? 'needs_review' : 'manual_matched',
@@ -264,7 +264,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
           ...node,
           suggestions: [],
           assignedDivisions: accepted
-            ? [...node.assignedDivisions, { divisionId: accepted.divisionId, name: accepted.name, path: accepted.path, hasCustomGeom: false }]
+            ? [...node.assignedDivisions, { divisionId: accepted.divisionId, name: accepted.name, path: accepted.path ?? accepted.name, hasCustomGeom: false }]
             : node.assignedDivisions,
           memberCount: node.memberCount + 1,
           matchStatus: 'manual_matched',

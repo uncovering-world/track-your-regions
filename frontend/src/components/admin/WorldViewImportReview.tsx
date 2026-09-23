@@ -590,15 +590,15 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   }, [worldViewId]);
 
   const matchingDone = stats
-    && parseInt(stats.needs_review_blocking) === 0
-    && parseInt(stats.no_candidates_blocking) === 0;
+    && stats.needs_review_blocking === 0
+    && stats.no_candidates_blocking === 0;
   const coveragePassed = coverageData != null && !coverageStale && coverageData.gaps.length === 0;
 
   const coverageBlockerTooltip = useMemo(() => {
     if (!stats || matchingDone) return '';
     const parts: string[] = [];
-    const needsReview = parseInt(stats.needs_review_blocking);
-    const noCandidates = parseInt(stats.no_candidates_blocking);
+    const needsReview = stats.needs_review_blocking;
+    const noCandidates = stats.no_candidates_blocking;
     if (needsReview > 0) parts.push(`${needsReview} need review`);
     if (noCandidates > 0) parts.push(`${noCandidates} have no candidates`);
     return `Resolve first: ${parts.join(', ')}`;
@@ -651,8 +651,8 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   const closeReviewTooltip = useMemo(() => {
     if (!stats) return '';
     const blockers: string[] = [];
-    if (parseInt(stats.needs_review_blocking) > 0) blockers.push(`${stats.needs_review_blocking} need review`);
-    if (parseInt(stats.no_candidates_blocking) > 0) blockers.push(`${stats.no_candidates_blocking} have no candidates`);
+    if (stats.needs_review_blocking > 0) blockers.push(`${stats.needs_review_blocking} need review`);
+    if (stats.no_candidates_blocking > 0) blockers.push(`${stats.no_candidates_blocking} have no candidates`);
     if (blockers.length > 0) return blockers.join(', ');
     if (!coverageData) return 'Run coverage check first';
     if (coverageStale) return 'Coverage may be outdated — re-check';
@@ -755,7 +755,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
               <Chip label={`${stats.needs_review_blocking} needs review`} color="warning" />
               <Chip label={`${stats.no_candidates_blocking} no candidates`} />
               <Chip label={`${stats.manual_matched} manually matched`} color="info" />
-              {parseInt(stats.suggested) > 0 && (
+              {stats.suggested > 0 && (
                 <Chip label={`${stats.suggested} suggested`} color="secondary" />
               )}
 
@@ -785,9 +785,9 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       )}
 
       {/* Hierarchy warnings banner */}
-      {stats && parseInt(stats.hierarchy_warnings_count) > 0 && (
+      {stats && stats.hierarchy_warnings_count > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          {stats.hierarchy_warnings_count} region{parseInt(stats.hierarchy_warnings_count) !== 1 ? 's have' : ' has'} parsing ambiguities — some sub-regions may have been dropped during extraction.
+          {stats.hierarchy_warnings_count} region{stats.hierarchy_warnings_count !== 1 ? 's have' : ' has'} parsing ambiguities — some sub-regions may have been dropped during extraction.
           Use the <strong>Hierarchy Warnings</strong> button in the tree toolbar to review.
         </Alert>
       )}
