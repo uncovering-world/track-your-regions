@@ -28,6 +28,15 @@ This table is the authoritative administrative boundary dataset used by:
 - region member composition (`region_members.division_id`)
 - geometry merges for user-defined regions
 
+## What the division API answers
+
+Every call `frontend/src/api/divisions.ts` makes answers through a schema in `backend/src/api/responses/divisions.ts` (ADR-0066):
+- **A division is one shape wherever it is answered** (`AdministrativeDivision`): its id, name, parent, whether it has children, and the stored `focusBbox` and `anchorPoint` the map frames it by (null while it has no geometry). The roots, one division, its children, its ancestors and its siblings all select `DIVISION_COLUMNS` and map with `divisionOf` (`backend/src/controllers/division/divisionAnswerRows.ts`).
+- **A search match** (`DivisionSearchResult`) adds its `path` from the root and how the asked-for world view already uses it: `usageCount`, `usedAsSubdivisionCount`, `hasUsedSubdivisions`. All three are 0 or false when no world view was named.
+- **A division's boundary** (`DivisionGeometry`) is a GeoJSON feature of the stored `MultiPolygon`. It is always at full resolution: the read accepts a `detail` it does not act on, which is #1010.
+
+On the client, `AdministrativeDivision` in `frontend/src/types/index.ts` is derived from the answer, looser past the four keys every selection sets, as a region is. The two collection reads, `/api/divisions/root/geometries` and `/api/divisions/:divisionId/subdivisions/geometries`, have no caller on the web and declare no answer (#1006).
+
 ## Hierarchy Strategy
 
 GADM’s denormalized level columns are converted into a normalized tree:
