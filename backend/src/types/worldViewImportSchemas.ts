@@ -106,6 +106,25 @@ export const wvImportAcceptBatchSchema = z.object({
   })).min(1).max(1000),
 });
 
+/**
+ * What the CV match dialog asks a model to pair up: the colour clusters it
+ * found on a region's map, each with the divisions under it, and the region's
+ * children. `model` overrides the model set for the feature.
+ */
+export const wvImportAiSuggestClustersSchema = z.object({
+  clusters: z.array(z.object({
+    clusterId: z.coerce.number().int(),
+    color: z.string().max(64),
+    pixelShare: z.number().min(0).max(1),
+    divisionNames: z.array(z.string().max(500)).max(5000),
+  })).min(1).max(200),
+  childRegions: z.array(z.object({
+    id: z.coerce.number().int().positive(),
+    name: z.string().max(500),
+  })).max(1000),
+  model: z.string().max(100).optional(),
+});
+
 /** A verdict on a selection of a region's suggestions (`wvImportMatchDecisions.ts`). */
 export const wvImportDecideBatchSchema = z.object({
   regionId: z.coerce.number().int().positive(),

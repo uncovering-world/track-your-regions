@@ -45,6 +45,7 @@ import {
   wvImportAcceptMatchSchema,
   wvImportAcceptBatchSchema,
   wvImportDecideBatchSchema,
+  wvImportAiSuggestClustersSchema,
   wvImportUnionGeometrySchema,
   wvImportSplitDeeperSchema,
   wvImportVisionMatchSchema,
@@ -665,7 +666,7 @@ router.post('/wv-import/matches/:worldViewId/dismiss-hierarchy-warnings', valida
 router.post('/wv-import/matches/:worldViewId/ai-suggest-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), aiSuggestChildren);
 
 // AI suggest cluster-to-region mapping (CV match pipeline)
-router.post('/wv-import/matches/:worldViewId/ai-suggest-clusters', validate(worldViewIdParamSchema, 'params'), aiSuggestClusterRegions);
+router.post('/wv-import/matches/:worldViewId/ai-suggest-clusters', validate(worldViewIdParamSchema, 'params'), validate(wvImportAiSuggestClustersSchema), aiSuggestClusterRegions);
 
 // Children coverage % (how much of parent's geometry children cover)
 router.get('/wv-import/matches/:worldViewId/children-coverage', validate(worldViewIdParamSchema, 'params'), validate(childrenCoverageQuerySchema, 'query'), getChildrenCoverage);
