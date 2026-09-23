@@ -8,7 +8,7 @@ import {
   type DisplayGeometryStatus,
   type ComputeProgressEvent,
 } from '../../../api';
-import type { WorldView } from '../../../types';
+import type { WorldView } from '../../../api/worldViews';
 
 interface UseComputationStatusOptions {
   worldView: WorldView;

@@ -8,6 +8,8 @@
  * - RegionMember: A member of a Region (can be division or subregion)
  */
 
+import type { Region as RegionAnswer } from '@tyr/shared/api';
+
 // =============================================================================
 // Administrative Divisions (GADM boundaries)
 // =============================================================================
@@ -32,54 +34,22 @@ export interface AdministrativeDivisionWithPath extends AdministrativeDivision {
 }
 
 // =============================================================================
-// World Views
-// =============================================================================
-
-/** A custom way of organizing administrative divisions */
-export interface WorldView {
-  id: number;
-  name: string;
-  description: string | null;
-  source: string | null;
-  isDefault: boolean;
-  /** False = admin-only. The server returns this to every caller; non-admins
-   *  just never receive a world view where it's false, since the listing
-   *  filters those out server-side. */
-  isPublic?: boolean;
-  tileVersion?: number;
-}
-
-// =============================================================================
 // Regions (user-defined groupings within a WorldView)
 // =============================================================================
 
 /**
- * A user-defined grouping within a WorldView
- * Examples: "Europe", "Baltic States", "Nordic Countries"
+ * A region as the client holds it.
+ *
+ * Every read and write answers with the whole row, `Region` in
+ * `@tyr/shared/api` (ADR-0066). A selection made on the map starts from less:
+ * a vector tile carries a region's id, name, colour and, in most layers, its
+ * parent, and the ancestors read completes the rest (`useAddressedRegion`). So
+ * past the six keys every selection sets, the world view's and a null
+ * description among them, any of the row's keys may still be missing. An
+ * answer is assignable to this, and nothing here declares a key of its own.
  */
-export interface Region {
-  id: number;
-  worldViewId: number;
-  name: string;
-  description: string | null;
-  parentRegionId: number | null;
-  color: string | null;
-  hasSubregions?: boolean;
-  isCustomBoundary?: boolean;
-  usesHull?: boolean;
-  hasHullChildren?: boolean;
-  // Pre-computed bounding box [west, south, east, north] for instant fitBounds. West > east = antimeridian crossing.
-  focusBbox?: [number, number, number, number] | null;
-  // Pre-computed anchor point [lng, lat] - centroid, used for antimeridian-crossing regions
-  anchorPoint?: [number, number] | null;
-  // Import source metadata (present on regions imported from external sources)
-  sourceUrl?: string | null;
-  regionMapUrl?: string | null;
-}
-
-export interface RegionWithMembers extends Region {
-  memberCount: number;
-}
+export type Region =
+  Pick<RegionAnswer, 'id' | 'worldViewId' | 'name' | 'description' | 'parentRegionId' | 'color'> & Partial<RegionAnswer>;
 
 // =============================================================================
 // Region Members (contents of a user-defined region)

@@ -101,7 +101,7 @@ export function HierarchySwitcher() {
     if (selectedWorldView) {
       setEditName(selectedWorldView.name);
       setEditDescription(selectedWorldView.description || '');
-      setEditIsPublic(selectedWorldView.isPublic ?? false);
+      setEditIsPublic(selectedWorldView.isPublic);
       setSettingsDialogOpen(true);
     }
   };
