@@ -82,6 +82,28 @@ export interface AdmissionResult {
   published: boolean;
 }
 
+/** A lost point a curator has answered, which no reader sees as a result (#544). */
+export interface AnsweredPoint {
+  id: number;
+  name: string | null;
+  externalRef: string | null;
+  /** Null where a later run found the point again and cleared the flag. */
+  missingSince: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  sourceMembership: "present" | "former";
+  existence: "extant" | "lost";
+  decidedAt: string | null;
+  note: string | null;
+  /**
+   * Who last decided, read from the curation log under the log's own scope. Null where the act
+   * belongs to a region this reader does not cover, or predates the log.
+   */
+  decidedBy: string | null;
+  visited: boolean;
+  curatedFields?: string[];
+}
+
 /** One part publishing wrote to, such as a place renamed or a work re-attributed (ADR-0037). */
 export interface AppliedPart {
   kind: ContentKind;
@@ -93,11 +115,40 @@ export interface AppliedPart {
   claimedFieldsSkipped: string[];
 }
 
+/** One field a run proposed to change. */
+export interface ChangedField {
+  field: string;
+  /** The stored value the run found. Absent where there was none. */
+  old: unknown;
+  /** The value the source offered. */
+  new: unknown;
+  significance?: "major" | "minor";
+  /** A curator had claimed the field, so the stored value won on purpose. */
+  curatedConflict?: boolean;
+  /**
+   * The source's gate kept the write out of a row readers see, so a verdict is waiting (ADR-0025).
+   */
+  held?: boolean;
+}
+
 /**
  * Which of an object's contents a part is: one of its points (`locations`) or one of its works
  * (`treasures`).
  */
 export type ContentKind = "locations" | "treasures";
+
+/** A famous work the kind's rule weighed. */
+export interface CountedWork {
+  name: string;
+  type: string | null;
+  artists: string[];
+  artistsCurated: boolean;
+  imageUrl: string | null;
+  imageCredit?: ImageCredit | null;
+  year: number | null;
+  /** The source's own id for the work: a Wikidata QID for everything stored today. */
+  externalId: string;
+}
 
 /** The newest fifty acts on the object that the curator may see, newest first. */
 export type CurationLog = CurationLogEntry[];
@@ -141,6 +192,16 @@ export interface DeclineSourceResult {
   /** The fields whose proposal was turned down, the curator's value kept. */
   declined: string[];
   fromSyncLogId: number;
+}
+
+/** An earlier answer on the same field. */
+export interface EarlierAnswer {
+  by: string;
+  at: string;
+  /** Which answer it was. Absent on rows written before refusing was possible. */
+  action?: "accepted_source" | "declined_source";
+  /** What that answer was about: the value taken, or the one refused. */
+  applied: unknown;
 }
 
 /** What a curator's edit of an object's fields did. */
@@ -227,6 +288,49 @@ export interface ExperienceStateResult {
   existence: "extant" | "lost";
 }
 
+/** Who claimed a field, and when. */
+export interface FieldClaim {
+  /** The curator, or "a curator" where they set no display name. */
+  by: string;
+  at: string;
+}
+
+/**
+ * One part of an object whose field a gated run held (ADR-0037), with what the stored row adds. The
+ * row's fields are null where no offered row answers to the record.
+ */
+export interface HeldPart {
+  kind: ContentKind;
+  /** The part as the record names it: the name as the run saw it, never rewritten (ADR-0026). */
+  item: {
+    name: string | null;
+    ref: string | null;
+  };
+  /**
+   * The stored row's name now, where the row was found, since a part corrected since has another.
+   */
+  storedName?: string | null;
+  /** The held fields of the part. */
+  fields: ChangedField[];
+  locationId?: number | null;
+  /** The fields a curator has claimed on the stored place. */
+  curatedFields?: string[] | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  ordinal?: number | null;
+  treasureId?: number | null;
+  artists?: string[] | null;
+  artistsCurated?: boolean | null;
+  /** The fields a curator has claimed on the stored work. */
+  workCuratedFields?: string[] | null;
+  /** How many museums hang the work. */
+  venueCount?: number | null;
+  year?: number | null;
+  imageUrl?: string | null;
+  imageCredit?: ImageCredit | null;
+  treasureType?: string | null;
+}
+
 /** Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043). */
 export interface ImageCredit {
   /** The photographer or uploader, as plain text. */
@@ -308,6 +412,33 @@ export interface PartNotFound {
   reason: "withdrawn" | "ambiguous";
 }
 
+/** An unread point under a row readers already see. */
+export interface PendingPoint {
+  id: number;
+  name: string | null;
+  externalRef: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  curatedFields?: string[];
+}
+
+/** An unread work under a row readers already see. */
+export interface PendingWork {
+  id: number;
+  name: string | null;
+  artists: string[];
+  artistsCurated: boolean;
+  year: number | null;
+  imageUrl: string | null;
+  iconic: boolean;
+  /** The work's own Wikidata id, where the row opens the item from (#806). */
+  externalId?: string;
+  treasureType?: string | null;
+  imageCredit?: ImageCredit | null;
+  curatedFields?: string[] | null;
+  venueCount?: number | null;
+}
+
 /** A world view whose regions the publication could not recompute. */
 export interface PlacementFailure {
   /**
@@ -315,6 +446,34 @@ export interface PlacementFailure {
    */
   id: number | null;
   name: string | null;
+}
+
+/** One of the object's own fields a run proposed, as its card asks about it. */
+export interface ProposedField {
+  field: string;
+  /** The stored value the run found. Absent where there was none. */
+  old: unknown;
+  /** The value the source offered. */
+  new: unknown;
+  significance?: "major" | "minor";
+  /** A curator had claimed the field, so the stored value won on purpose. */
+  curatedConflict?: boolean;
+  /**
+   * The source's gate kept the write out of a row readers see, so a verdict is waiting (ADR-0025).
+   */
+  held?: boolean;
+  /**
+   * False where accepting releases the claim and the next run writes it. On a `conflict` field
+   * only: a `held` field carries `held` instead, and publishing is what applies it.
+   */
+  acceptable?: boolean;
+  /**
+   * Who claimed the field. Absent where the claim predates the log, or where the gate holds the
+   * field.
+   */
+  claim?: FieldClaim | null;
+  /** Every earlier answer on this field, newest first, refusals as well as acceptances. */
+  decidedBefore?: EarlierAnswer[];
 }
 
 /** What a publication did, so the page can say it before the refetch. */
@@ -357,6 +516,62 @@ export interface PublishResult {
   placementFailedWorldViews?: PlacementFailure[];
 }
 
+/** What each chip would leave, counted over the union under every other filter the curator set. */
+export interface QueueFacets {
+  kind: {
+    kind: "conflict" | "waiting" | "withdrawn" | "refused" | "missing" | "arrival" | "held" | "contents";
+    count: number;
+  }[];
+  source: {
+    id: number;
+    name: string;
+    count: number;
+  }[];
+  region: {
+    /** Null is the unplaced bucket: keys with no region row at all. */
+    id: number | null;
+    name: string;
+    /**
+     * The world view this root is a root of, null on the unplaced row. A name does not identify a
+     * root on its own: two of them are called Europe.
+     */
+    worldView: string | null;
+    count: number;
+  }[];
+  /**
+   * The runs with open questions, counted before the set-aside exclusion, because a hidden batch is
+   * exactly the one the chip has to name, or there is no way back to it. The search still narrows
+   * this list.
+   */
+  run: {
+    id: number;
+    sourceId: number;
+    /** Null for a run still in flight. */
+    completedAt: string | null;
+    count: number;
+    /** Whether this curator has already hidden the batch. */
+    setAside: boolean;
+  }[];
+  /** How many runs this curator has set aside, which is the unit the chip names. */
+  setAside: {
+    batches: number;
+  };
+}
+
+/** The class of an open question, which a batch answer names a row by. */
+export type QueueKind = "conflict" | "waiting" | "withdrawn" | "refused" | "missing";
+
+/** One open question, in the order the page draws them (ADR-0051). */
+export interface QueueOrderEntry {
+  kind: QueueKind;
+  id: number;
+  /** When the run that raised this question completed. Null for one still in flight. */
+  askedAt: string | null;
+  runId: number | null;
+  /** The gated sub-kinds a `waiting` row groups. An arrival is always alone. */
+  subs: WaitingSub[];
+}
+
 /** A curator's no to an arrival (ADR-0053). */
 export interface RefuseArrivalResult {
   experienceId: number;
@@ -381,6 +596,38 @@ export interface RefuseContentsResult {
    * question.
    */
   withdrawalsReleased: number;
+}
+
+/** A point a curator turned down (#859). */
+export interface RefusedPoint {
+  id: number;
+  name: string | null;
+  externalRef: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  curatedFields?: string[];
+  refusedAt: string | null;
+  refusedBy: string | null;
+  note: string | null;
+  /** Set where the source has stopped listing the point since it was turned down. */
+  missingSince: string | null;
+  visited: boolean;
+}
+
+/** A work link a curator turned down (#859). */
+export interface RefusedWork {
+  /** The treasure id, which the take-back takes. */
+  id: number;
+  name: string | null;
+  artists: string[];
+  artistsCurated: boolean;
+  year: number | null;
+  externalId?: string;
+  curatedFields?: string[] | null;
+  refusedAt: string | null;
+  refusedBy: string | null;
+  note: string | null;
+  missingSince: string | null;
 }
 
 /** One point as the map and the region list read it. */
@@ -430,6 +677,169 @@ export interface RegionMembershipResult {
   regionId: number;
 }
 
+/** The two answers every review row has, and the third two kinds have (#852). */
+export type ReviewAnswer = "accept" | "reject" | "lost";
+
+/** What one answer did, counted. The notice sums these per kind and answer. */
+export interface ReviewAnswerDid {
+  /** 1 where this answer made the object visible to readers. */
+  published?: number;
+  locations?: number;
+  treasureLinks?: number;
+  treasures?: number;
+  withdrawalsReleased?: number;
+  /**
+   * Held or claimed fields this answer applied, released or refused, the parts' rows counted with
+   * the object's.
+   */
+  fields?: number;
+  /** Points answered, for a withdrawn row. */
+  points?: number;
+  /** Points on the same row that refused the answer, for a withdrawn row. */
+  pointsRefused?: number;
+}
+
+/** The report of one batch answer (#852). */
+export interface ReviewAnswerResult {
+  answer: ReviewAnswer;
+  answered: {
+    kind: QueueKind;
+    id: number;
+    name: string;
+    answer: ReviewAnswer;
+    did: ReviewAnswerDid;
+  }[];
+  /** The rows the server would not answer, each with its reason. The batch goes on without them. */
+  refused: {
+    kind: QueueKind;
+    id: number;
+    name: string;
+    error: string;
+  }[];
+  /** Rows outside the curator's scope, counted rather than named. */
+  outOfScope: number;
+  /** The objects whose answer landed and whose re-placement did not. */
+  placementFailed: {
+    id: number;
+    name: string;
+    worldViews: PlacementFailure[];
+  }[];
+}
+
+/** A page of the curator's review queue (ADR-0051). */
+export interface ReviewQueue {
+  missing: ReviewQueueItem[];
+  /** Rows a rule turned down and nobody has answered yet. */
+  refused: ReviewQueueItem[];
+  /** Refusals a curator confirmed, carried because no other surface shows them. */
+  keptOut: ReviewQueueItem[];
+  conflicts: ReviewQueueItem[];
+  arrivals: ReviewQueueItem[];
+  held: ReviewQueueItem[];
+  contents: ReviewQueueItem[];
+  withdrawn: ReviewQueueItem[];
+  answeredWithdrawals: ReviewQueueItem[];
+  refusedParts: ReviewQueueItem[];
+  limit: number;
+  /** The page, in the one order across all seven kinds. The arrays above are a lookup by id. */
+  order: QueueOrderEntry[];
+  total: number;
+  facets: QueueFacets;
+  /**
+   * The one cursor the seven open kinds share, beside the three offsets the answered lists page by.
+   */
+  paging: {
+    cursor: string | null;
+    nextCursor: string | null;
+    keptOut: {
+      offset: number;
+      hasMore: boolean;
+    };
+    answeredWithdrawals: {
+      offset: number;
+      hasMore: boolean;
+    };
+    refusedParts: {
+      offset: number;
+      hasMore: boolean;
+    };
+  };
+}
+
+/** An object waiting on a curator, or one a curator can take a verdict back from. */
+export interface ReviewQueueItem {
+  id: number;
+  external_id: string;
+  name: string;
+  kind_id: number;
+  kind_name: string;
+  missing_since: string | null;
+  source_membership: "present" | "former";
+  existence: "extant" | "lost";
+  kind: "missing" | "conflict" | "refused" | "kept-out" | "arrival" | "held" | "contents" | "withdrawn" | "withdrawn-answered" | "contents-refused";
+  image_url?: string | null;
+  image_credit?: ImageCredit | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  website_url?: string | null;
+  wikipedia_url?: string | null;
+  region_names?: string[] | null;
+  /** The run's own question about a row it could not settle by its rule (ADR-0058). */
+  admission_note?: string | null;
+  in_danger?: boolean;
+  /** The year the site was listed in danger. */
+  danger_since?: number | null;
+  /** Why this kind turned the row down, in the rule's own words. */
+  admission_reason?: string | null;
+  /** When a curator answered. Kept-out items only. */
+  state_decided_at?: string | null;
+  state_note?: string | null;
+  /** The fields a run proposed. Null on every kind that carries no proposal, never absent. */
+  proposed: ProposedField[] | null;
+  /** When the run whose proposal this is finished. Conflicts only. */
+  run_completed_at?: string | null;
+  /**
+   * The held fields of the object's parts. `held` items only, beside `proposed`, which is the
+   * object's own.
+   */
+  proposed_parts?: HeldPart[] | null;
+  /** The famous works the kind's rule weighed, most widely known first, capped at twelve. */
+  counted_works?: CountedWork[] | null;
+  /** How many works the object holds. */
+  counted_works_total?: number | null;
+  /**
+   * The run this card is about. For an `arrival` it is the run that first saw the row and not a
+   * pointer to anything held, and null for a row with no first run recorded.
+   */
+  sync_log_id?: number | null;
+  pending_locations?: number;
+  pending_treasures?: number;
+  pending_points?: PendingPoint[];
+  pending_works?: PendingWork[];
+  /** Whether anyone has passed the row. `arrival` items only. */
+  curation_state?: string;
+  /** How many points the object still offers. */
+  offered_locations?: number;
+  withdrawn_points?: WithdrawnPoint[] | null;
+  answered_points?: AnsweredPoint[] | null;
+  answered_points_total?: number;
+  refused_points?: RefusedPoint[] | null;
+  refused_points_total?: number;
+  refused_works?: RefusedWork[] | null;
+  refused_works_total?: number;
+  /** Whether the take-back would be accepted at all. `contents-refused` items only. */
+  takeable?: boolean;
+  object_admission?: string | null;
+  object_curation_state?: string | null;
+}
+
+/** A run's batch set aside for this curator, or brought back (ADR-0051 decision 4). */
+export interface RunSetAside {
+  syncLogId: number;
+  /** The state the caller asked for, whether or not a row changed. */
+  setAside: boolean;
+}
+
 /** What asking again about turned-down points and works did. */
 export interface UnrefuseContentsResult {
   /** Set when the publication landed and re-placing the object into its regions did not. */
@@ -445,6 +855,27 @@ export interface UnrefuseContentsResult {
   locationIds: number[];
   /** Exactly which works came back, by treasure id. */
   treasureIds: number[];
+}
+
+/** A gated sub-kind a `waiting` question groups (ADR-0025). */
+export type WaitingSub = "arrival" | "held" | "contents";
+
+/** A point the object lost, waiting on its own verdict. */
+export interface WithdrawnPoint {
+  id: number;
+  name: string | null;
+  externalRef: string | null;
+  missingSince: string;
+  latitude: number | null;
+  longitude: number | null;
+  /** Whether anyone had been there. The visit survives either answer (ADR-0022). */
+  visited: boolean;
+  /**
+   * How far away the source now offers this same part, in metres, rounded to two decimals. Null
+   * where it offers it nowhere.
+   */
+  replacedMetres: number | null;
+  curatedFields?: string[];
 }
 
 /** What a curator's correction to a work did. */

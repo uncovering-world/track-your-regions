@@ -44,8 +44,13 @@ import {
 } from './reviewQueuePredicates.js';
 import { arrivalWaitingSql, contentsWaitingSql, heldWaitingSql } from './waitingCounts.js';
 
-export type AnswerKind = 'conflict' | 'waiting' | 'withdrawn' | 'refused' | 'missing';
-export type Answer = 'accept' | 'reject' | 'lost';
+// A batch names a row by its question's class and answers with one of the three
+// answers, in the queue's own words (`reviewQueueVocabulary.ts`).
+import type { PlacementFailure, PublishResult } from '../../api/responses/curation.js';
+import type { ReviewAnswerDid } from '../../api/responses/reviewQueue.js';
+import type { QueueKind as AnswerKind, ReviewAnswer as Answer } from './reviewQueueVocabulary.js';
+
+export type { AnswerKind, Answer };
 
 export interface AnswerRow {
   kind: AnswerKind;
@@ -54,24 +59,12 @@ export interface AnswerRow {
   runId: number | null;
 }
 
-/** What one answer did, counted; the notice sums these per kind and answer. */
-export interface Did {
-  /** 1 where this answer made the object visible to readers. */
-  published?: number;
-  locations?: number;
-  treasureLinks?: number;
-  treasures?: number;
-  withdrawalsReleased?: number;
-  /** Held or claimed fields this answer applied, released or refused — the parts' rows counted with the object's. */
-  fields?: number;
-  /** Points answered, for a withdrawn row. */
-  points?: number;
-  /** Points on the same row that refused the answer, for a withdrawn row. */
-  pointsRefused?: number;
-}
+/** What one answer did, counted: the answer's schema, `ReviewAnswerDid` (ADR-0066). */
+export type Did = ReviewAnswerDid;
 
+/** The world views an answer's re-placement failed for, in `PublishResult`'s words. */
 export interface Placement {
-  worldViews: Array<{ id: number | null; name: string | null }>;
+  worldViews: PlacementFailure[];
 }
 
 export type Outcome =
@@ -107,10 +100,9 @@ function refusedBy(refusal: { status?: number; error: string }): Outcome {
   return { refusal: { ...refusal, status: refusal.status ?? 409 } };
 }
 
-function placementOf(result: {
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}): Placement | undefined {
+function placementOf(
+  result: Pick<PublishResult, 'placementFailed' | 'placementFailedWorldViews'>,
+): Placement | undefined {
   return result.placementFailed ? { worldViews: result.placementFailedWorldViews ?? [] } : undefined;
 }
 

@@ -65,9 +65,31 @@ const EVERY_KIND = [
 function mockQueue(rows: (sql: string) => unknown[] = () => []) {
   mockedQuery.mockImplementation(async (sql: string) => (
     String(sql).includes('AS page')
-      ? { rows: [{ page: EVERY_KIND, total: EVERY_KIND.length, facets: {} }] }
-      : { rows: rows(String(sql)) }
+      ? { rows: [{ page: pageOf(EVERY_KIND), total: EVERY_KIND.length, facets: {} }] }
+      : { rows: rows(String(sql)).map(row => cardRow(String(sql), row as Record<string, unknown>)) }
   ));
+}
+
+/**
+ * The keys phase's page entries with the columns its statement selects beside
+ * the kind and the id, which the tests below do not vary.
+ */
+function pageOf(keys: ReadonlyArray<Record<string, unknown>>): Array<Record<string, unknown>> {
+  return keys.map(key => ({ asked_at: null, run_id: null, subs: [], ...key }));
+}
+
+/**
+ * A card row with the columns every card statement selects, as the driver hands
+ * them over: `respond()` holds the answer to its schema in this lane, and each
+ * test names only the columns it is about. The kind is the statement's own label.
+ */
+function cardRow(sql: string, row: Record<string, unknown>): Record<string, unknown> {
+  const kind = /'([a-z-]+)' AS kind/.exec(sql)?.[1];
+  return {
+    external_id: `ext-${String(row.id)}`, name: 'An object', kind_id: 1, kind_name: 'World Heritage Sites',
+    missing_since: null, source_membership: 'present', existence: 'extant', kind, proposed: null,
+    ...row,
+  };
 }
 
 describe('getReviewQueue', () => {
@@ -348,10 +370,10 @@ describe('getReviewQueue', () => {
       String(sql).includes('AS page')
         ? {
           rows: [{
-            page: [
+            page: pageOf([
               { kind: 'refused', id: 6218 },
               { kind: 'waiting', id: 11586, subs: ['arrival'] },
-            ],
+            ]),
             total: 2,
             facets: {},
           }],
@@ -1065,7 +1087,7 @@ describe('getReviewQueue', () => {
       String(sql).includes('AS page')
         ? {
           rows: [{
-            page: [{ kind: 'waiting', id: 6205, subs: ['contents'] }], total: 1, facets: {},
+            page: pageOf([{ kind: 'waiting', id: 6205, subs: ['contents'] }]), total: 1, facets: {},
           }],
         }
         : { rows: [] }

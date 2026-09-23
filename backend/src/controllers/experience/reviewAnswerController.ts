@@ -25,41 +25,19 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { ReviewAnswerResult } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import {
-  answerRow, type Answer, type AnswerRow, type Did, type Placement,
+  answerRow, type Answer, type AnswerRow,
 } from './reviewAnswerDispatch.js';
 
 // The most rows one request answers — the queue's own page maximum, 100 — is
 // bound where it is enforced, `reviewAnswerBodySchema` in `types/index.ts`;
 // the client's `REVIEW_ANSWER_ROWS_MAX` mirrors it, and `docs/tech/experiences.md`
 // names it beside the route.
-
-export interface AnsweredRow {
-  kind: AnswerRow['kind'];
-  id: number;
-  name: string;
-  answer: Answer;
-  did: Did;
-}
-
-export interface RefusedRow {
-  kind: AnswerRow['kind'];
-  id: number;
-  name: string;
-  error: string;
-}
-
-export interface ReviewAnswerResult {
-  answer: Answer;
-  answered: AnsweredRow[];
-  refused: RefusedRow[];
-  outOfScope: number;
-  /** Objects whose answer changed what a reader sees and whose re-placement failed. */
-  placementFailed: Array<{ id: number; name: string } & Placement>;
-}
 
 /**
  * Answer a selection of review rows with one answer.
@@ -124,7 +102,7 @@ export async function answerReviewRows(req: AuthenticatedRequest, res: Response)
     }
   }
 
-  res.json(result);
+  respond(res, ReviewAnswerResult, result);
 }
 
 /** The rows once each, in the order first named — the order the report keeps. */

@@ -180,7 +180,7 @@ describe('queryQueueKeys', () => {
 
   it('names the next page from the last row of this one, and only when there is one', async () => {
     const row = (id: number) => ({
-      kind: 'waiting', rank: KIND_RANK.waiting, id, source_id: 1, run_id: 98,
+      kind: 'waiting', rank: KIND_RANK.waiting, id, run_id: 98,
       asked_at: '2026-09-05T19:01:19.748023+00:00', subs: ['held'],
     });
     mockedQuery.mockResolvedValue({ rows: [{ page: [row(1), row(2), row(3)], total: 3, facets: null }] });
@@ -203,7 +203,7 @@ describe('queryQueueKeys', () => {
     // rounded down to .748Z asks for rows strictly older than that instant, so
     // the boundary would fall inside the group and drop its tail.
     const row = (id: number) => ({
-      kind: 'waiting', rank: KIND_RANK.waiting, id, source_id: 1, run_id: 98,
+      kind: 'waiting', rank: KIND_RANK.waiting, id, run_id: 98,
       asked_at: '2026-09-05T19:01:19.748023+00:00', subs: ['held'],
     });
     mockedQuery.mockResolvedValue({ rows: [{ page: [row(1), row(2)], total: 2, facets: null }] });
@@ -355,13 +355,15 @@ describe('queryQueueKeys', () => {
 
     // The hydration side, from the controller: one id per kind, so every
     // per-kind statement below actually runs (Task 4's `EVERY_KIND` shape).
+    // With the columns the keys statement selects beside the kind and the id,
+    // since `respond()` holds the answer's order to its schema in this lane.
     const page = [
       { kind: 'conflict', id: 1239 },
       { kind: 'waiting', id: 11586, subs: ['arrival', 'held', 'contents'] },
       { kind: 'withdrawn', id: 502 },
       { kind: 'refused', id: 6205 },
       { kind: 'missing', id: 208 },
-    ];
+    ].map(key => ({ asked_at: null, run_id: null, subs: [], ...key }));
     mockedQuery.mockClear();
     mockedQuery.mockImplementation(async (sql: string) => (
       String(sql).includes('AS page')

@@ -10,6 +10,9 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { ReviewQueue, type ReviewQueueItem } from '../../api/responses/reviewQueue.js';
+import { queueItemOf, type QueueRow } from './reviewQueueItem.js';
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, admissionPinnedSql, rowKindJoinSql } from '../../db/membership.js';
@@ -671,17 +674,17 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // then a lookup by id, not an order of its own); `total` and `facets` are counted over
   // the union under the filter; and `paging` is the one cursor the seven kinds share,
   // beside the three offsets that are not part of it.
-  res.json({
-    missing,
-    refused,
-    keptOut: keptOutPage.items,
-    conflicts,
-    arrivals,
-    held,
-    contents,
-    withdrawn,
-    answeredWithdrawals: answeredPage.items,
-    refusedParts: refusedPartsPage.items,
+  respond(res, ReviewQueue, {
+    missing: cards(missing),
+    refused: cards(refused),
+    keptOut: cards(keptOutPage.items),
+    conflicts: cards(conflicts),
+    arrivals: cards(arrivals),
+    held: cards(held),
+    contents: cards(contents),
+    withdrawn: cards(withdrawn),
+    answeredWithdrawals: cards(answeredPage.items),
+    refusedParts: cards(refusedPartsPage.items),
     limit,
     order: keys.map(k => ({
       kind: k.kind, id: k.id, askedAt: k.askedAt, runId: k.runId, subs: k.subs,
@@ -700,4 +703,12 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       },
     },
   });
+}
+
+/**
+ * A query's rows as cards. The one place the queue's rows, which the driver
+ * hands over untyped, are read as the columns its queries select (`QueueRow`).
+ */
+function cards(rows: readonly unknown[]): ReviewQueueItem[] {
+  return rows.map(row => queueItemOf(row as QueueRow));
 }
