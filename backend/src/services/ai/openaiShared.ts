@@ -10,6 +10,11 @@
 import OpenAI from 'openai';
 import { calculateCost, loadPricing } from './pricingService.js';
 import { chatCompletion } from './chatCompletion.js';
+import type { AIModel, EscalationLevel, TokenUsage } from '../../api/responses/ai.js';
+
+// The model list, a request's cost and its escalation level are what the AI
+// endpoints answer with, so their types are the answers' schemas (ADR-0066).
+export type { AIModel, EscalationLevel, TokenUsage };
 
 // =============================================================================
 // Client state + init
@@ -43,13 +48,6 @@ export function isOpenAIAvailable(): boolean {
 // =============================================================================
 // Model selection
 // =============================================================================
-
-// Model type
-export interface AIModel {
-  id: string;
-  name: string;
-  description: string;
-}
 
 // Current selected model (default to gpt-4.1, will be updated when models are fetched)
 let currentModel: string = 'gpt-4.1';
@@ -181,30 +179,6 @@ export async function fetchAvailableModelsFromAPI(): Promise<AIModel[]> {
 // =============================================================================
 // Shared types used across suggestion/description/vision paths
 // =============================================================================
-
-/**
- * Token usage information from API call
- */
-export interface TokenUsage {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-  cost: {
-    inputCost: number;
-    outputCost: number;
-    webSearchCost: number;
-    totalCost: number;
-  };
-  model: string;
-}
-
-/**
- * Escalation level for AI requests
- * - 'fast': Cheap model, only answer if super confident
- * - 'reasoning': More expensive model with reasoning, still strict confidence
- * - 'reasoning_search': Reasoning + web search for maximum accuracy
- */
-export type EscalationLevel = 'fast' | 'reasoning' | 'reasoning_search';
 
 /**
  * Result of a raw model invocation — captures content and token stats in a

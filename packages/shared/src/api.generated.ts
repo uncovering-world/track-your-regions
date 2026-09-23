@@ -99,6 +99,51 @@ export interface AdmissionResult {
   published: boolean;
 }
 
+/** A place a curator described in words, located by the model. */
+export interface AIGeocodeResult {
+  lat: number;
+  lng: number;
+  /** The place the model resolved the description to. */
+  name: string;
+  confidence: Confidence;
+}
+
+/** A chat model the configured API key can use. */
+export interface AIModel {
+  /** The provider's model id, which is what a model is chosen by. */
+  id: string;
+  /** The name to list it under, which is its id. */
+  name: string;
+  /** The date the provider published it, as the server's locale writes it. */
+  description: string;
+}
+
+/** The models in use and the ones that can be chosen. */
+export interface AIModels {
+  /** The model id the AI features use. */
+  currentModel: string;
+  /** The model id a request with web search uses. */
+  webSearchModel: string;
+  availableModels: AIModel[];
+  /** The models that can search the web. */
+  webSearchModels: AIModel[];
+}
+
+/** Whether the AI features are on, and the models they use. */
+export interface AIStatus {
+  /** Whether an API key is configured, so the AI features can answer. */
+  available: boolean;
+  /** The sentence to show beside the AI controls. */
+  message: string;
+  /** The model id the AI features use. */
+  currentModel: string;
+  /** The model id a request with web search uses. */
+  webSearchModel: string;
+  availableModels: AIModel[];
+  /** The models that can search the web. */
+  webSearchModels: AIModel[];
+}
+
 /** Every place of an object, or of it within a region, marked visited. */
 export interface AllLocationsMarked {
   success: true;
@@ -164,6 +209,42 @@ export type AreaGeometry = Polygon | MultiPolygon;
  */
 export interface AuthMessage {
   message: string;
+}
+
+/** Which group one region of a batch belongs to, as the model suggests it. */
+export interface BatchGroupSuggestion {
+  /**
+   * One of the groups the request offered, or null when none fits or the region should be split.
+   */
+  suggestedGroup: string | null;
+  confidence: Confidence;
+  /** The region spans more than one group. */
+  shouldSplit: boolean;
+  /**
+   * When the region should be split: the offered groups it spans. Names the request did not offer
+   * are dropped.
+   */
+  splitGroups?: string[];
+  reasoning: string;
+  /** Geographic or cultural context the model added. */
+  context?: string;
+  /** The pages a web search read. */
+  sources?: string[];
+}
+
+/**
+ * Group suggestions for a batch of regions, and what they cost, summed over every request the batch
+ * made.
+ */
+export interface BatchSuggestions {
+  /** By region name. A region the model did not answer for has no entry. */
+  suggestions: Record<string, BatchGroupSuggestion>;
+  usage: TokenUsage;
+  /**
+   * The requests the model answered, twenty regions to a request. An answer that could not be read
+   * is counted and costed but suggests nothing; a request that failed before any answer is neither.
+   */
+  apiRequestsCount: number;
 }
 
 /** One field a run proposed to change. */
@@ -288,6 +369,9 @@ export interface ComputeResult {
   /** The world view's tile version after the run bumped it. */
   tileVersion?: number;
 }
+
+/** How sure the model is: `high` is assigned without asking, `low` is a guess. */
+export type Confidence = "high" | "medium" | "low";
 
 /**
  * Which of an object's contents a part is: one of its points (`locations`) or one of its works
@@ -490,6 +574,12 @@ export interface EarlierAnswer {
   /** What that answer was about: the value taken, or the one refused. */
   applied: unknown;
 }
+
+/**
+ * How hard a suggestion was asked for: a cheap model, a reasoning one, or reasoning with web
+ * search.
+ */
+export type EscalationLevel = "fast" | "reasoning" | "reasoning_search";
 
 /** One object in a region's list. */
 export interface Experience {
@@ -800,6 +890,38 @@ export interface FieldClaim {
  */
 export type FocusBbox = [number, number, number, number];
 
+/** Short descriptions of the groups, and what writing them cost. */
+export interface GroupDescriptions {
+  /** A short description per group name, to offer the model beside the names. */
+  descriptions: Record<string, string>;
+  usage: TokenUsage;
+}
+
+/** Which group one region belongs to, as the model suggests it, and what asking cost. */
+export interface GroupSuggestion {
+  /**
+   * One of the groups the request offered, or null when none fits or the region should be split.
+   */
+  suggestedGroup: string | null;
+  confidence: Confidence;
+  /** The region spans more than one group. */
+  shouldSplit: boolean;
+  /**
+   * When the region should be split: the offered groups it spans. Names the request did not offer
+   * are dropped.
+   */
+  splitGroups?: string[];
+  reasoning: string;
+  /** Geographic or cultural context the model added. */
+  context?: string;
+  /** The pages a web search read. */
+  sources?: string[];
+  usage: TokenUsage;
+  escalationLevel: EscalationLevel;
+  /** The model advises asking again one level up, since it was not sure at this one. */
+  needsEscalation: boolean;
+}
+
 /**
  * One part of an object whose field a gated run held (ADR-0037), with what the stored row adds. The
  * row's fields are null where no offered row answers to the record.
@@ -872,6 +994,27 @@ export interface ImageCredit {
   licenseUrl: string | null;
   /** The file page or the site's own page for the object: where the full terms are. */
   detailsUrl: string | null;
+}
+
+/** A picture for a new experience, from the Wikidata item it most likely is. */
+export interface ImageSuggestion {
+  /** The Wikimedia Commons file of the item's image statement. */
+  imageUrl: string;
+  /**
+   * How the item was found: by the id the curator gave, by the nearest item to the point, or by the
+   * name.
+   */
+  source: "wikidata_direct" | "wikidata_spatial" | "wikidata_search";
+  /**
+   * The item's English label, or its id when it has none, so the curator can tell whether it is the
+   * place they meant.
+   */
+  entityLabel: string;
+  wikidataId: string;
+  /** The item's English description. */
+  description?: string;
+  /** The item's English Wikipedia article. */
+  wikipediaUrl?: string;
 }
 
 /** A place another card names, with the regions a link to it is built from (ADR-0042). */
@@ -1009,6 +1152,13 @@ export interface MemberMoved {
  */
 export type MembershipCurationState = "pending" | "auto" | "verified";
 
+/** The model the AI features use, chosen. */
+export interface ModelSet {
+  success: true;
+  /** The model id now in use. */
+  currentModel: string;
+}
+
 /** An area on the map, one piece or several, in GeoJSON. */
 export interface MultiPolygon {
   type: "MultiPolygon";
@@ -1093,6 +1243,24 @@ export interface PlacementFailure {
    */
   id: number | null;
   name: string | null;
+}
+
+/** One place found by name. */
+export interface PlaceResult {
+  /** The place's full name as OpenStreetMap writes it, country last. */
+  display_name: string;
+  lat: number;
+  lng: number;
+  /** OpenStreetMap's word for what the place is: `city`, `museum`, `peak`, … */
+  type: string;
+  /** The Wikidata item OpenStreetMap links the place to, when it links one. */
+  wikidataId: string | null;
+}
+
+/** Places found by name. */
+export interface PlaceSearch {
+  /** Best match first, as Nominatim ranks them. */
+  results: PlaceResult[];
 }
 
 /** The tier asked for: `overview` is the heatmap's read, `markers` the pins'. */
@@ -1719,6 +1887,22 @@ export interface SubregionsExpanded {
   expandedCount: number;
 }
 
+/** The tokens a request spent and what they cost. */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  /** In US dollars, from the model's price per token. */
+  cost: {
+    inputCost: number;
+    outputCost: number;
+    webSearchCost: number;
+    totalCost: number;
+  };
+  /** The model id the request was sent to. */
+  model: string;
+}
+
 /** A work marked seen. */
 export interface TreasureViewMarked {
   success: true;
@@ -1786,6 +1970,13 @@ export type VisitedStatus = "not_visited" | "partial" | "visited";
 
 /** A gated sub-kind a `waiting` question groups (ADR-0025). */
 export type WaitingSub = "arrival" | "held" | "contents";
+
+/** The model a request with web search uses, chosen. */
+export interface WebSearchModelSet {
+  success: true;
+  /** The model id a request with web search now uses. */
+  webSearchModel: string;
+}
 
 /** A point the object lost, waiting on its own verdict. */
 export interface WithdrawnPoint {

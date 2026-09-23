@@ -3,6 +3,17 @@
  */
 
 import type { Request, Response } from 'express';
+import { respond } from '../api/respond.js';
+import {
+  AIGeocodeResult,
+  AIModels,
+  AIStatus,
+  BatchSuggestions,
+  GroupDescriptions,
+  GroupSuggestion,
+  ModelSet,
+  WebSearchModelSet,
+} from '../api/responses/ai.js';
 import {
   suggestGroupForRegion,
   suggestGroupsForMultipleRegions,
@@ -15,7 +26,6 @@ import {
   getWebSearchModel,
   setWebSearchModel,
   getWebSearchCapableModels,
-  type GroupSuggestionResponse,
 } from '../services/ai/openaiService.js';
 
 /**
@@ -25,7 +35,7 @@ export async function checkAIStatus(_req: Request, res: Response) {
   const availableModels = await fetchAvailableModelsFromAPI();
   const webSearchModels = getWebSearchCapableModels();
 
-  res.json({
+  respond(res, AIStatus, {
     available: isOpenAIAvailable(),
     message: isOpenAIAvailable()
       ? 'AI features are available'
@@ -44,7 +54,7 @@ export async function getModels(_req: Request, res: Response) {
   const availableModels = await fetchAvailableModelsFromAPI();
   const webSearchModels = getWebSearchCapableModels();
 
-  res.json({
+  respond(res, AIModels, {
     currentModel: getModel(),
     webSearchModel: getWebSearchModel(),
     availableModels,
@@ -63,7 +73,7 @@ export async function setCurrentModel(req: Request, res: Response) {
   }
 
   setModel(modelId);
-  res.json({ success: true, currentModel: getModel() });
+  respond(res, ModelSet, { success: true, currentModel: getModel() });
 }
 
 /**
@@ -77,7 +87,7 @@ export async function setCurrentWebSearchModel(req: Request, res: Response) {
   }
 
   setWebSearchModel(modelId);
-  res.json({ success: true, webSearchModel: getWebSearchModel() });
+  respond(res, WebSearchModelSet, { success: true, webSearchModel: getWebSearchModel() });
 }
 
 /**
@@ -119,8 +129,9 @@ export async function suggestGroup(req: Request, res: Response) {
     });
   }
 
+  let suggestion: GroupSuggestion;
   try {
-    const suggestion = await suggestGroupForRegion(
+    suggestion = await suggestGroupForRegion(
       regionPath,
       regionName,
       availableGroups,
@@ -130,8 +141,6 @@ export async function suggestGroup(req: Request, res: Response) {
       worldViewSource,
       escalationLevel || 'fast'
     );
-
-    res.json(suggestion);
   } catch (error: unknown) {
     console.error('AI suggestion error:', error);
 
@@ -149,7 +158,9 @@ export async function suggestGroup(req: Request, res: Response) {
       error: 'Failed to get AI suggestion',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
+  respond(res, GroupSuggestion, suggestion);
 }
 
 /**
@@ -187,8 +198,9 @@ export async function suggestGroupsBatch(req: Request, res: Response) {
     });
   }
 
+  let result: BatchSuggestions;
   try {
-    const result = await suggestGroupsForMultipleRegions(
+    result = await suggestGroupsForMultipleRegions(
       regions,
       availableGroups,
       parentRegion,
@@ -197,14 +209,6 @@ export async function suggestGroupsBatch(req: Request, res: Response) {
       useWebSearch,
       groupDescriptions
     );
-
-    // Convert Map to object for JSON response
-    const suggestions: Record<string, GroupSuggestionResponse> = {};
-    for (const [name, suggestion] of result.suggestions) {
-      suggestions[name] = suggestion;
-    }
-
-    res.json({ suggestions, usage: result.totalUsage, apiRequestsCount: result.apiRequestsCount });
   } catch (error: unknown) {
     console.error('AI batch suggestion error:', error);
 
@@ -222,7 +226,9 @@ export async function suggestGroupsBatch(req: Request, res: Response) {
       error: 'Failed to get AI suggestions',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
+  respond(res, BatchSuggestions, result);
 }
 
 /**
@@ -255,15 +261,14 @@ export async function generateDescriptions(req: Request, res: Response) {
     });
   }
 
+  let result: GroupDescriptions;
   try {
-    const result = await generateGroupDescriptions(
+    result = await generateGroupDescriptions(
       groups,
       worldViewDescription,
       worldViewSource,
       useWebSearch
     );
-
-    res.json({ descriptions: result.descriptions, usage: result.usage });
   } catch (error: unknown) {
     console.error('AI description generation error:', error);
 
@@ -280,7 +285,9 @@ export async function generateDescriptions(req: Request, res: Response) {
       error: 'Failed to generate group descriptions',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
+  respond(res, GroupDescriptions, result);
 }
 
 /**
@@ -303,9 +310,9 @@ export async function geocodeWithAI(req: Request, res: Response) {
     });
   }
 
+  let result: AIGeocodeResult;
   try {
-    const result = await geocodeDescription(description.trim());
-    res.json(result);
+    result = await geocodeDescription(description.trim());
   } catch (error: unknown) {
     console.error('AI geocode error:', error);
 
@@ -322,5 +329,7 @@ export async function geocodeWithAI(req: Request, res: Response) {
       error: 'Failed to geocode description',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
+  respond(res, AIGeocodeResult, result);
 }

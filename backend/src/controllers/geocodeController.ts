@@ -8,6 +8,8 @@
  */
 
 import type { Request, Response } from 'express';
+import { respond } from '../api/respond.js';
+import { ImageSuggestion, PlaceSearch } from '../api/responses/geocode.js';
 import { userAgent } from '../config/userAgent.js';
 
 // No bot marker: both lookups here run while a curator waits on the dialog.
@@ -50,6 +52,7 @@ export async function searchPlaces(req: Request, res: Response) {
   }
   lastRequestTime = Date.now();
 
+  let body: PlaceSearch;
   try {
     const url = new URL('https://nominatim.openstreetmap.org/search');
     url.searchParams.set('q', q);
@@ -78,19 +81,21 @@ export async function searchPlaces(req: Request, res: Response) {
       extratags?: Record<string, string>;
     }>;
 
-    const results = data.map((item) => ({
-      display_name: item.display_name,
-      lat: parseFloat(item.lat),
-      lng: parseFloat(item.lon),
-      type: item.type,
-      wikidataId: item.extratags?.wikidata ?? null,
-    }));
-
-    res.json({ results });
+    body = {
+      results: data.map((item) => ({
+        display_name: item.display_name,
+        lat: parseFloat(item.lat),
+        lng: parseFloat(item.lon),
+        type: item.type,
+        wikidataId: item.extratags?.wikidata ?? null,
+      })),
+    };
   } catch (error) {
     console.error('Nominatim search error:', error);
     res.status(500).json({ error: 'Geocode search failed' });
+    return;
   }
+  respond(res, PlaceSearch, body);
 }
 
 // ---------------------------------------------------------------------------
@@ -250,15 +255,6 @@ async function lookupByName(name: string, signal: AbortSignal): Promise<{ imageU
   return null;
 }
 
-interface SuggestImagePayload {
-  imageUrl: string | undefined;
-  source: 'wikidata_direct' | 'wikidata_spatial' | 'wikidata_search';
-  entityLabel: string | undefined;
-  description: string | undefined;
-  wikipediaUrl: string | undefined;
-  wikidataId: string | undefined;
-}
-
 function isValidLatLng(lat: number | undefined, lng: number | undefined): lat is number {
   return lat != null && lng != null
     && !isNaN(lat) && !isNaN(lng)
@@ -266,7 +262,7 @@ function isValidLatLng(lat: number | undefined, lng: number | undefined): lat is
     && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
-async function suggestByQid(wikidataId: string | undefined, signal: AbortSignal): Promise<SuggestImagePayload | null> {
+async function suggestByQid(wikidataId: string | undefined, signal: AbortSignal): Promise<ImageSuggestion | null> {
   if (!wikidataId || !/^Q\d+$/.test(wikidataId)) return null;
   const result = await lookupByQid(wikidataId, signal);
   if (!result) return null;
@@ -284,7 +280,7 @@ async function suggestBySpatial(
   lat: number | undefined,
   lng: number | undefined,
   signal: AbortSignal,
-): Promise<SuggestImagePayload | null> {
+): Promise<ImageSuggestion | null> {
   if (!isValidLatLng(lat, lng)) return null;
   const result = await lookupBySpatial(lat, lng as number, signal);
   if (!result) return null;
@@ -312,7 +308,7 @@ async function suggestBySpatial(
   };
 }
 
-async function suggestByName(name: string | undefined, signal: AbortSignal): Promise<SuggestImagePayload | null> {
+async function suggestByName(name: string | undefined, signal: AbortSignal): Promise<ImageSuggestion | null> {
   if (!name) return null;
   const result = await lookupByName(name, signal);
   if (!result) return null;
@@ -340,6 +336,7 @@ export async function suggestImage(req: Request, res: Response) {
     return res.status(400).json({ error: 'Provide at least one of: name, wikidataId, or lat+lng' });
   }
 
+  let suggestion: ImageSuggestion | null = null;
   try {
     // One deadline for the walk, made here and shared by every layer: a curator asked
     // one question, and three layers each free to take as long as they like is what
@@ -351,12 +348,17 @@ export async function suggestImage(req: Request, res: Response) {
       () => suggestByName(name, signal),
     ];
     for (const layer of layers) {
-      const payload = await layer();
-      if (payload) return res.json(payload);
+      suggestion = await layer();
+      if (suggestion) break;
     }
-    res.status(404).json({ error: 'No image found' });
   } catch (error) {
     console.error('Image suggestion error:', error);
     res.status(500).json({ error: 'Image suggestion failed' });
+    return;
   }
+  if (!suggestion) {
+    res.status(404).json({ error: 'No image found' });
+    return;
+  }
+  respond(res, ImageSuggestion, suggestion);
 }
