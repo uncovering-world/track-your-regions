@@ -75,6 +75,15 @@ const bamiyan: Experience = {
   longitude: 67.82,
   latitude: 34.84,
   kind_name: 'UNESCO World Heritage',
+  kind_priority: 1,
+  location_count: 1,
+  treasure_count: 0,
+  source_membership: 'present',
+  existence: 'extant',
+  missing_since: null,
+  is_new: false,
+  image_credit: null,
+  danger_since: null,
 };
 
 function renderDialog(experience: Experience = bamiyan) {
@@ -274,13 +283,5 @@ describe('CurationDialog showing the picture it edits', () => {
     renderDialog(bamiyan);
 
     expect(preview()).not.toBeInTheDocument();
-  });
-
-  it('takes the credit from the detail read when the row does not carry one', async () => {
-    const rowWithoutCredit: Experience = { ...bamiyan, image_url: COMMONS_PICTURE };
-    mockedDetail.mockResolvedValue({ ...rowWithoutCredit, metadata: { imageCredit: CREDIT } });
-    renderDialog(rowWithoutCredit);
-
-    expect(await screen.findByText('Carl Montgomery')).toBeInTheDocument();
   });
 });

@@ -14,10 +14,12 @@
  * whole collection on the GPU thread for nothing.
  */
 
+import type { PointsDetail, WorldPointsResponse } from '@tyr/shared/api';
 import { API_URL, fetchJson } from './fetchUtils';
 
-/** How much of each point the answer carries; the endpoint's two tiers. */
-export type PointsDetail = 'overview' | 'markers';
+// What the call answers is declared once, as a backend schema (ADR-0066), and
+// generated into `@tyr/shared/api`. Passed on from here.
+export type { PointsDetail, WorldPointsResponse } from '@tyr/shared/api';
 
 /** A box as the endpoint spells it. */
 export interface PointsBox {
@@ -32,31 +34,6 @@ export interface WorldPointsQuery {
   detail: PointsDetail;
   folded: boolean;
   box: PointsBox | null;
-}
-
-/** One array per field, all of them the same length. */
-export interface WorldPointsResponse {
-  detail: PointsDetail;
-  folded: boolean;
-  count: number;
-  /**
-   * Present, and true, only when the endpoint hit its row cap.
-   *
-   * It cannot fire on the catalogue as it stands — the cap is more than twice
-   * its size (8 842 places on 2026-09-22) — and it is
-   * in the type so that the day it does, the layer is drawing a subset
-   * knowingly rather than a wrong density picture silently.
-   */
-  truncated?: true;
-  lng: number[];
-  lat: number[];
-  locationId?: number[];
-  experienceId?: number[];
-  name?: (string | null)[];
-  experienceName?: string[];
-  kindId?: (number | null)[];
-  type?: (string | null)[];
-  locationCount?: number[];
 }
 
 /** What a pin carries into hover, the popup and the address. */

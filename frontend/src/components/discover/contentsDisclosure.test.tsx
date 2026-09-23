@@ -48,6 +48,12 @@ function works(n: number): ExperienceTreasure[] {
     year: null,
     image_url: null,
     sitelinks_count: 0,
+    is_iconic: false,
+    curated_fields: [],
+    venue_count: 1,
+    image_credit: null,
+    found_at: null,
+    found_at_site: null,
   }));
 }
 

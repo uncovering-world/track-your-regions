@@ -99,7 +99,7 @@ export function ObjectPreview({ experienceId }: { experienceId: number }) {
           </Typography>
           <Typography variant="caption" color="text.secondary" display="block">
             {data.latitude.toFixed(4)}, {data.longitude.toFixed(4)}
-            {data.country_names?.length > 0 ? ` — ${data.country_names.join(', ')}` : ''}
+            {data.country_names && data.country_names.length > 0 ? ` — ${data.country_names.join(', ')}` : ''}
           </Typography>
           {/* `fetchExperience` (`GET /api/experiences/:id`) carries no
               `location_count` at all — that column exists only on the region

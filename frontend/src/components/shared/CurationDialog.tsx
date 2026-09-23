@@ -45,7 +45,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchExperience,
   type Experience,
-  type ExperienceDetail,
   type ImageCredit,
 } from '../../api/experiences';
 import {
@@ -81,16 +80,12 @@ interface CurationDialogProps {
  * typed and not yet saved has no credit until the save resolves one
  * (`PATCH /experiences/:id/edit` writes `metadata.imageCredit` beside
  * `image_url`), and a credit under somebody else's photograph names a person
- * for a picture that is not theirs. Read off the row where the row carries it —
- * every list this dialog opens from sends `image_credit` beside `image_url` —
- * and off the detail's metadata otherwise, the read this dialog already makes.
+ * for a picture that is not theirs. Read off the row, which every list this
+ * dialog opens from sends beside `image_url` (the region list's `Experience`).
  */
-function creditForPreview(
-  editImageUrl: string, row: Experience, detail: ExperienceDetail | undefined,
-): ImageCredit | null {
+function creditForPreview(editImageUrl: string, row: Experience): ImageCredit | null {
   if (editImageUrl !== (row.image_url || '')) return null;
-  if (row.image_credit !== undefined) return row.image_credit;
-  return (detail?.metadata?.imageCredit as ImageCredit | null | undefined) ?? null;
+  return row.image_credit;
 }
 
 function CurationDialogComponent({ experience, regionId, onClose }: CurationDialogProps) {
@@ -268,7 +263,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
 
   const currentWebsite = (detailQuery.data?.metadata?.website as string) || '';
   const currentWikipedia = (detailQuery.data?.metadata?.wikipediaUrl as string) || '';
-  const previewCredit = creditForPreview(editImageUrl, experience, detailQuery.data);
+  const previewCredit = creditForPreview(editImageUrl, experience);
   const hasChanges =
     renamed ||
     editDescription !== (experience.short_description || '') ||
