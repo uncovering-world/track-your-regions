@@ -8,6 +8,8 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { respond } from '../../api/respond.js';
+import { InstancesSynced } from '../../api/responses/worldViewImport.js';
 import {
   matchChildrenAsCountries,
 } from '../../services/worldViewImport/index.js';
@@ -511,6 +513,7 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/sync-instances — regionId=${regionId}`);
 
+  let syncedCount: number;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -548,7 +551,7 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
 
     if (siblings.rows.length === 0) {
       await client.query('ROLLBACK');
-      res.json({ synced: 0 });
+      respond(res, InstancesSynced, { synced: 0 });
       return;
     }
 
@@ -604,15 +607,15 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
 
     await client.query('COMMIT');
 
-    const syncedCount = siblings.rows.length;
+    syncedCount = siblings.rows.length;
     console.log(`[WV Import] Synced ${syncedCount} instances of ${sourceUrl}`);
-    res.json({ synced: syncedCount });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+  respond(res, InstancesSynced, { synced: syncedCount });
 }
 
 /**

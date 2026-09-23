@@ -9,6 +9,8 @@
 
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { respond } from '../../api/respond.js';
+import { ImportStarted } from '../../api/responses/worldViewImport.js';
 import { startBaseLayerImport, getLatestImportStatus } from '../../services/worldViewImport/index.js';
 
 /**
@@ -29,5 +31,5 @@ export async function startBaseLayerImportEndpoint(
 
   const operationId = await startBaseLayerImport({ name, providerLabel, maxDepth });
   console.log(`[Base Layer Import] POST /base-layer — started opId=${operationId}`);
-  res.json({ started: true, operationId });
+  respond(res, ImportStarted, { started: true, operationId });
 }

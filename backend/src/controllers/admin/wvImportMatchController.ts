@@ -8,6 +8,18 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { acceptDivisionsRejectRest, rejectDivisions } from './wvImportMatchDecisions.js';
+import { matchTreeNodeOf, type MatchTreeRow } from './wvImportAnswerRows.js';
+import { respond } from '../../api/respond.js';
+import {
+  MatchAccepted,
+  MatchAcceptedRestRejected,
+  MatchesAccepted,
+  MatchStats,
+  MatchTree,
+  RemainingRejected,
+  SuggestionRejected,
+  type MatchTreeNode,
+} from '../../api/responses/worldViewImport.js';
 // Re-export review API for adminRoutes (keeps existing import path working)
 export {
   resolveWaterReview,
@@ -30,7 +42,7 @@ export async function getMatchStats(req: AuthenticatedRequest, res: Response): P
   const worldViewId = parseInt(String(req.params.worldViewId));
   console.log(`[WV Import] GET /matches/${worldViewId}/stats`);
 
-  const result = await pool.query(`
+  const result = await pool.query<MatchStats>(`
     WITH RECURSIVE ancestor_walk AS (
       -- Seed: each region's direct parent
       SELECT r.id AS region_id, r.parent_region_id AS ancestor_id
@@ -73,34 +85,34 @@ export async function getMatchStats(req: AuthenticatedRequest, res: Response): P
       WHERE r.parent_region_id IS NOT NULL
     )
     SELECT
-      COUNT(*) FILTER (WHERE ris.match_status = 'auto_matched') AS auto_matched,
-      COUNT(*) FILTER (WHERE ris.match_status = 'children_matched') AS children_matched,
-      COUNT(*) FILTER (WHERE ris.match_status = 'needs_review') AS needs_review,
+      COUNT(*) FILTER (WHERE ris.match_status = 'auto_matched')::int AS auto_matched,
+      COUNT(*) FILTER (WHERE ris.match_status = 'children_matched')::int AS children_matched,
+      COUNT(*) FILTER (WHERE ris.match_status = 'needs_review')::int AS needs_review,
       COUNT(*) FILTER (
         WHERE ris.match_status = 'needs_review'
           AND r.id NOT IN (SELECT region_id FROM covered_by_ancestor)
-      ) AS needs_review_blocking,
-      COUNT(*) FILTER (WHERE ris.match_status = 'no_candidates') AS no_candidates,
+      )::int AS needs_review_blocking,
+      COUNT(*) FILTER (WHERE ris.match_status = 'no_candidates')::int AS no_candidates,
       COUNT(*) FILTER (
         WHERE ris.match_status = 'no_candidates'
           AND r.id NOT IN (SELECT region_id FROM covered_by_ancestor)
           AND r.id IN (SELECT region_id FROM has_unresolved_desc)
-      ) AS no_candidates_blocking,
-      COUNT(*) FILTER (WHERE ris.match_status = 'manual_matched') AS manual_matched,
-      COUNT(*) FILTER (WHERE ris.match_status = 'suggested') AS suggested,
-      COUNT(*) FILTER (WHERE ris.match_status IS NOT NULL) AS total_matched,
-      COUNT(*) FILTER (WHERE r.is_leaf = true) AS total_leaves,
-      COUNT(*) AS total_regions,
+      )::int AS no_candidates_blocking,
+      COUNT(*) FILTER (WHERE ris.match_status = 'manual_matched')::int AS manual_matched,
+      COUNT(*) FILTER (WHERE ris.match_status = 'suggested')::int AS suggested,
+      COUNT(*) FILTER (WHERE ris.match_status IS NOT NULL)::int AS total_matched,
+      COUNT(*) FILTER (WHERE r.is_leaf = true)::int AS total_leaves,
+      COUNT(*)::int AS total_regions,
       COUNT(*) FILTER (
         WHERE array_length(ris.hierarchy_warnings, 1) > 0
           AND ris.hierarchy_reviewed = false
-      ) AS hierarchy_warnings_count
+      )::int AS hierarchy_warnings_count
     FROM regions r
     LEFT JOIN region_import_state ris ON ris.region_id = r.id
     WHERE r.world_view_id = $1
   `, [worldViewId]);
 
-  res.json(result.rows[0]);
+  respond(res, MatchStats, result.rows[0]);
 }
 
 /**
@@ -149,7 +161,7 @@ export async function acceptMatch(req: AuthenticatedRequest, res: Response): Pro
     [newStatus, regionId],
   );
 
-  res.json({ accepted: true });
+  respond(res, MatchAccepted, { accepted: true });
 }
 
 /**
@@ -165,7 +177,7 @@ export async function rejectMatch(req: AuthenticatedRequest, res: Response): Pro
     res.status(404).json({ error: 'Region not found in this world view' });
     return;
   }
-  res.json({ rejected: true });
+  respond(res, SuggestionRejected, { rejected: true });
 }
 
 /**
@@ -194,7 +206,7 @@ export async function rejectRemaining(req: AuthenticatedRequest, res: Response):
   const suggestionCount = parseInt(countResult.rows[0].count as string);
 
   if (suggestionCount === 0) {
-    res.json({ rejected: 0 });
+    respond(res, RemainingRejected, { rejected: 0 });
     return;
   }
 
@@ -217,7 +229,7 @@ export async function rejectRemaining(req: AuthenticatedRequest, res: Response):
     [newStatus, regionId],
   );
 
-  res.json({ rejected: suggestionCount });
+  respond(res, RemainingRejected, { rejected: suggestionCount });
 }
 
 /**
@@ -273,7 +285,7 @@ export async function acceptAndRejectRest(req: AuthenticatedRequest, res: Respon
     res.status(404).json({ error: 'Region not found in this world view' });
     return;
   }
-  res.json({ accepted: true, rejected: true });
+  respond(res, MatchAcceptedRestRejected, { accepted: true, rejected: true });
 }
 
 /**
@@ -287,6 +299,7 @@ export async function acceptBatchMatches(req: AuthenticatedRequest, res: Respons
     assignments: Array<{ regionId: number; divisionId: number }>;
   };
 
+  let accepted = 0;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -297,7 +310,6 @@ export async function acceptBatchMatches(req: AuthenticatedRequest, res: Respons
     // status of regions that belong to a different world view.
     const processedRegionIds = new Set<number>();
 
-    let accepted = 0;
     for (const { regionId, divisionId } of assignments) {
       // Verify region belongs to this world view
       const check = await client.query(
@@ -340,13 +352,13 @@ export async function acceptBatchMatches(req: AuthenticatedRequest, res: Respons
     }
 
     await client.query('COMMIT');
-    res.json({ accepted });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+  respond(res, MatchesAccepted, { accepted });
 }
 
 /**
@@ -357,7 +369,7 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
   const worldViewId = parseInt(String(req.params.worldViewId));
   console.log(`[WV Import] GET /matches/${worldViewId}/tree`);
 
-  const result = await pool.query(`
+  const result = await pool.query<MatchTreeRow>(`
     SELECT
       r.id,
       r.name,
@@ -413,69 +425,19 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
     ORDER BY r.name
   `, [worldViewId]);
 
-  // Build tree in memory
-  interface TreeNode {
-    id: number;
-    name: string;
-    isLeaf: boolean;
-    matchStatus: string | null;
-    suggestions: Array<{ divisionId: number; name: string; path: string; score: number; geoSimilarity: number | null; conflict?: { type: string; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string } | null }>;
-    sourceUrl: string | null;
-    regionMapUrl: string | null;
-    mapImageCandidates: string[];
-    mapImageReviewed: boolean;
-    needsManualFix: boolean;
-    fixNote: string | null;
-    wikidataId: string | null;
-    memberCount: number;
-    assignedDivisions: Array<{ divisionId: number; name: string; path: string; hasCustomGeom: boolean }>;
-    hierarchyWarnings: string[];
-    hierarchyReviewed: boolean;
-    geoAvailable: boolean | null;
-    markerPoints: Array<{ name: string; lat: number; lon: number }> | null;
-    children: TreeNode[];
-  }
-
-  const nodesById = new Map<number, TreeNode>();
-  const roots: TreeNode[] = [];
-
-  // Create all nodes
-  for (const row of result.rows) {
-    nodesById.set(row.id as number, {
-      id: row.id as number,
-      name: row.name as string,
-      isLeaf: row.is_leaf as boolean,
-      matchStatus: row.match_status as string | null,
-      suggestions: (row.suggestions as TreeNode['suggestions']) ?? [],
-      sourceUrl: row.source_url as string | null,
-      regionMapUrl: row.region_map_url as string | null,
-      mapImageCandidates: (row.map_image_candidates as string[]) ?? [],
-      mapImageReviewed: row.map_image_reviewed === true,
-      needsManualFix: row.needs_manual_fix === true,
-      fixNote: row.fix_note as string | null,
-      wikidataId: row.wikidata_id as string | null,
-      memberCount: parseInt(row.member_count as string),
-      assignedDivisions: (row.assigned_divisions as TreeNode['assignedDivisions']) ?? [],
-      hierarchyWarnings: (row.hierarchy_warnings as string[]) ?? [],
-      hierarchyReviewed: row.hierarchy_reviewed === true,
-      geoAvailable: (row.geo_available as boolean | null) ?? null,
-      markerPoints: (row.marker_points as TreeNode['markerPoints']) ?? null,
-      children: [],
-    });
-  }
+  const nodesById = new Map<number, MatchTreeNode>();
+  for (const row of result.rows) nodesById.set(row.id, matchTreeNodeOf(row));
 
   // Wire parent-child relationships
+  const roots: MatchTreeNode[] = [];
   for (const row of result.rows) {
-    const node = nodesById.get(row.id as number)!;
-    const parentId = row.parent_region_id as number | null;
-    if (parentId && nodesById.has(parentId)) {
-      nodesById.get(parentId)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
+    const node = nodesById.get(row.id)!;
+    const parent = row.parent_region_id === null ? undefined : nodesById.get(row.parent_region_id);
+    if (parent) parent.children.push(node);
+    else roots.push(node);
   }
 
-  res.json(roots);
+  respond(res, MatchTree, roots);
 }
 
 /**
