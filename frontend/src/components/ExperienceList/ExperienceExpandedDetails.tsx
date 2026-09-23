@@ -37,8 +37,8 @@ import {
   type Experience,
   type RegionExperienceLocation,
   type ExperienceTreasure,
-  type VisitedStatus,
 } from '../../api/experiences';
+import type { VisitedStatus } from '../../api/visited';
 import { experienceContentsQuery, experienceDetailsQuery, siteFindsQuery } from '../../api/experienceCardQueries';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';

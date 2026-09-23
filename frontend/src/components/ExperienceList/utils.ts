@@ -2,7 +2,8 @@
  * Shared constants and helpers for the ExperienceList components.
  */
 
-import type { Experience, VisitedStatus } from '../../api/experiences';
+import type { Experience } from '../../api/experiences';
+import type { VisitedStatus } from '../../api/visited';
 
 export const OUT_OF_REGION_INITIAL = 3;
 

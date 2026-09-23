@@ -16,8 +16,7 @@ import { API_URL, fetchJson, authFetchJson } from './fetchUtils';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
-// imports a call's answer from the module of the call. The visit types below
-// belong to `visited.ts`'s calls, which move with their own slice of #527.
+// imports a call's answer from the module of the call.
 export type {
   Experience, ExperienceDetail, ExperienceKind, ExperienceKinds, ExperienceLocation, ExperienceLocationsResponse,
   ExperienceLocationWithState, ExperienceRegionRef, ExperienceSearch, ExperienceSearchResult,
@@ -25,42 +24,6 @@ export type {
   NewBadgesSeen, RegionExperienceCount, RegionExperienceCounts, RegionExperienceLocation,
   RegionExperienceLocationsResponse, SiteFind, SiteFindsResponse,
 } from '@tyr/shared/api';
-
-// =============================================================================
-// Types
-// =============================================================================
-
-/**
- * Location with visited status
- */
-export interface LocationWithVisitedStatus {
-  id: number;
-  name: string | null;
-  /** Nullable, for the reason given on `ExperienceLocation.ordinal`. */
-  ordinal: number | null;
-  longitude: number;
-  latitude: number;
-  isVisited: boolean;
-  visitedAt: string | null;
-  notes: string | null;
-  inRegion?: boolean; // Whether location is in the current explored region
-}
-
-/**
- * Visited status for an experience
- */
-export type VisitedStatus = 'not_visited' | 'partial' | 'visited';
-
-/**
- * Experience visited status response
- */
-export interface ExperienceVisitedStatusResponse {
-  experienceId: number;
-  visitedStatus: VisitedStatus;
-  totalLocations: number;
-  visitedLocations: number;
-  locations: LocationWithVisitedStatus[];
-}
 
 // =============================================================================
 // API Functions
