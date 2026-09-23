@@ -12,3 +12,12 @@
  * `backend/src/db/regionFocusAntimeridian.test.ts`.
  */
 export const NEAR_GLOBAL_DEG = 350;
+
+/**
+ * The hull a region is drawn with until an admin tunes its own: a 50 km buffer
+ * around its islands, a concave fit loose enough (0.9) to take in the far ones,
+ * and a 0.02° simplification. The server builds a hull with these where no
+ * parameters are saved, and the hull editor opens on them and resets to them,
+ * so the two must be the same numbers.
+ */
+export const DEFAULT_HULL_PARAMS = { bufferKm: 50, concavity: 0.9, simplifyTolerance: 0.02 } as const;
