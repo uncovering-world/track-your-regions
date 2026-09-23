@@ -50,6 +50,8 @@ beforeEach(() => {
   // Villa Farnesina's own row, as the development database holds it.
   mockedActivity.mockReset().mockResolvedValue({
     total: 1,
+    limit: 50,
+    offset: 0,
     activity: [{
       id: 41,
       action: 'admission_overridden',
@@ -92,7 +94,7 @@ describe('a curator’s activity, as an admin reads it', () => {
 
   it.each(['admin', 'curator'])('keeps real assignments revocable for a %s', async (role) => {
     vi.mocked(revokeCuratorAssignment).mockResolvedValue({
-      success: true, roleReverted: false, remainingAssignments: 0,
+      success: true, assignmentId: 12, userId: 7, roleReverted: false, remainingAssignments: 0,
     });
     mockedCurators.mockResolvedValue([{
       user_id: 7, email: 'curator@example.com', display_name: 'A curator',
