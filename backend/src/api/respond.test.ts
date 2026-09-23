@@ -7,7 +7,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
-import { respond, ResponseShapeError } from './respond.js';
+import { respond, ResponseShapeError, writeEvent } from './respond.js';
 
 const Answer = z.strictObject({
   id: z.number().int(),
@@ -135,3 +135,20 @@ function captureShapeError(send: () => void): ResponseShapeError {
   }
   throw new Error('respond() sent a body that does not match its schema');
 }
+
+describe('writeEvent', () => {
+  const Event = z.strictObject({ type: z.literal('progress'), step: z.string() });
+
+  it('writes an event that matches its schema as one server-sent data line', () => {
+    const res = { write: vi.fn(), req: undefined };
+    writeEvent(res as never, Event, { type: 'progress', step: 'Merging 26 cantons' });
+    expect(res.write).toHaveBeenCalledWith('data: {"type":"progress","step":"Merging 26 cantons"}\n\n');
+  });
+
+  it('refuses a mismatched event before writing it, since the stream can no longer answer 500', () => {
+    const res = { write: vi.fn(), req: undefined };
+    const late = { type: 'progress' as const, step: 'Merging', elapsed: 3 };
+    expect(() => writeEvent(res as never, Event, late)).toThrow(ResponseShapeError);
+    expect(res.write).not.toHaveBeenCalled();
+  });
+});
