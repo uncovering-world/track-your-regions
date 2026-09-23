@@ -15,18 +15,10 @@
 
 import { Stack, Typography } from '@mui/material';
 import { formatDateTime } from '../../utils/dateFormat';
+import type { ProposedField } from '../../api/reviewQueue';
 
-export interface FieldProvenance {
-  claim?: { by: string; at: string } | null;
-  decidedBefore?: Array<{
-    by: string;
-    at: string;
-    /** Which answer it was. Absent on rows written before refusing was possible. */
-    action?: 'accepted_source' | 'declined_source';
-    /** What that answer was about: the value taken, or the one refused. */
-    applied: unknown;
-  }>;
-}
+/** Who claimed a proposed field and every earlier answer on it, as the queue sends them. */
+export type FieldProvenance = Pick<ProposedField, 'claim' | 'decidedBefore'>;
 
 /**
  * A past answer's value, short enough for a line in the trail and marked where it is cut.

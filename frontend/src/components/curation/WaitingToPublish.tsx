@@ -359,7 +359,7 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
             <Button
               variant="text"
               disabled={answering}
-              onClick={() => publish.mutate({ fieldsOnly: true, expectedSyncLogId: held.sync_log_id })}
+              onClick={() => publish.mutate({ fieldsOnly: true, expectedSyncLogId: held.sync_log_id ?? undefined })}
             >
               Publish the change only
             </Button>
@@ -433,7 +433,9 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
  * that offers it builds it, and only where both halves are open.
  */
 function publishBodyFor({ held, contents }: GatedGroup): PublishRequest {
-  if (held) return { expectedSyncLogId: held.sync_log_id };
+  // A held card always names its run; the card type is shared with the arrival,
+  // whose run can be null, so the null is turned back into "not sent".
+  if (held) return { expectedSyncLogId: held.sync_log_id ?? undefined };
   if (contents) return { contentsOnly: true };
   return {};
 }

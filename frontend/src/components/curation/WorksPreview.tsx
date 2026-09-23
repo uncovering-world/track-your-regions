@@ -18,29 +18,11 @@ import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks'
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
-import type { ImageCredit } from '../../api/experiences';
+import type { CountedWork } from '../../api/reviewQueue';
 
-export interface CountedWork {
-  name: string;
-  type: string | null;
-  /** Every maker the source names, in no asserted order. Empty where none is recorded (#720). */
-  artists: string[];
-  /** Whether a curator has vouched for that order (ADR-0040). */
-  artistsCurated: boolean;
-  imageUrl: string | null;
-  /** Whose photograph of the work this is, when the run managed to ask. */
-  imageCredit?: ImageCredit | null;
-  year: number | null;
-  /**
-   * The source's own id — a Wikidata QID for every work in the catalogue.
-   *
-   * Not optional and not nullable, because `treasures.external_id` is
-   * `NOT NULL UNIQUE`: it is the identity the works upsert conflicts on, and it is
-   * what keys these rows below. A fallback to the name would be the unsafe key the
-   * row's own comment argues against.
-   */
-  externalId: string;
-}
+// A counted work is the queue's own `CountedWork`, which the review queue's
+// answer declares (ADR-0066).
+export type { CountedWork };
 
 /**
  * "statue · Polykleitos · 450 BC" — what it is, who made it, when.
