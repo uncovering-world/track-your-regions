@@ -10,8 +10,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Experience } from '../../api/experiences';
-import type { CuratorScope } from '../../api/admin';
-import { authFetchJson } from '../../api/fetchUtils';
+import { fetchMyAccount } from '../../api/auth';
 import { CurationDialog } from '../shared/CurationDialog';
 import { AddExperienceDialog } from '../shared/AddExperienceDialog';
 import {
@@ -31,9 +30,6 @@ import { HoverProvider } from '../../hooks/useHoverContext';
 import { DiscoverRegionList } from './DiscoverRegionList';
 import { DiscoverExperienceView } from './DiscoverExperienceView';
 import { ExperienceDetailPanel } from './ExperienceDetailPanel';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
-
 import { kindColor, shortKindName } from '../../utils/kindColors';
 
 const LEFT_PANEL_WIDTH = 380;
@@ -68,8 +64,7 @@ export function DiscoverPage() {
   // Fetch curator scopes (for determining which regions show "+" button)
   const { data: curatorScopes } = useQuery({
     queryKey: ['curator-scopes'],
-    queryFn: () => authFetchJson<{ curatorScopes?: CuratorScope[] }>(`${API_URL}/api/users/me`)
-      .then(data => data.curatorScopes ?? []),
+    queryFn: () => fetchMyAccount().then(account => account.curatorScopes ?? []),
     enabled: isCurator,
     staleTime: 300_000,
   });

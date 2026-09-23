@@ -2,6 +2,7 @@
  * Fetch utility for API calls
  */
 
+import type { SessionStarted } from '@tyr/shared/api';
 import { jwtDecode } from 'jwt-decode';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -12,14 +13,14 @@ let accessToken: string | null = null;
 
 // Deduplicates concurrent refresh calls — only one refresh request at a time.
 // Shared across authFetchJson and useAuth to prevent token rotation race conditions.
-let pendingRefresh: Promise<{ accessToken: string; [key: string]: unknown } | null> | null = null;
+let pendingRefresh: Promise<SessionStarted | null> | null = null;
 
 // Listener notified after every successful refresh — useAuth registers here
 // so its local tokenExpiresAt + user state stays in sync when refreshSession
 // is invoked from outside the hook (e.g. ensureFreshToken / authFetchJson 401
 // retry). Without this, useAuth.isTokenExpired() would still see the old
 // expiry and trigger a redundant refresh on the next request.
-type RefreshSuccessListener = (data: { accessToken: string; [key: string]: unknown }) => void;
+type RefreshSuccessListener = (data: SessionStarted) => void;
 let onRefreshSuccess: RefreshSuccessListener | null = null;
 
 export function setRefreshSuccessListener(listener: RefreshSuccessListener | null): void {
@@ -39,7 +40,7 @@ export function getAccessToken(): string | null {
  * Both authFetchJson and useAuth must use this to prevent token rotation race conditions
  * (concurrent refreshes trigger reuse detection which revokes the entire token family).
  */
-export async function refreshSession(): Promise<{ accessToken: string; [key: string]: unknown } | null> {
+export async function refreshSession(): Promise<SessionStarted | null> {
   if (pendingRefresh) return pendingRefresh;
 
   pendingRefresh = (async () => {
@@ -50,7 +51,8 @@ export async function refreshSession(): Promise<{ accessToken: string; [key: str
         credentials: 'include',
       });
       if (response.ok) {
-        const data = await response.json();
+        // The session the refresh cookie renewed, held to SessionStarted on the server.
+        const data = await response.json() as SessionStarted;
         accessToken = data.accessToken;
         // Notify useAuth so it can update its local tokenExpiresAt + user state.
         onRefreshSuccess?.(data);

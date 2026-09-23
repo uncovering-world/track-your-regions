@@ -60,5 +60,5 @@ export type GeoJSONGeometry = GeoJSON.Polygon | GeoJSON.MultiPolygon;
 // Auth Types (re-exported from auth.ts)
 // =============================================================================
 
-export type { User, UserRole, AuthResponse, AuthState, LoginCredentials, RegisterCredentials } from './auth.js';
+export type { UserRole, AuthState, LoginCredentials, RegisterCredentials } from './auth.js';
 

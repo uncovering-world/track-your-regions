@@ -8,7 +8,8 @@ import {
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { jwtDecode } from 'jwt-decode';
-import type { User, AuthState, LoginCredentials, RegisterCredentials } from '../types/auth';
+import type { AuthState, LoginCredentials, RegisterCredentials } from '../types/auth';
+import type { PublicUser } from '../api/auth';
 import {
   login as apiLogin,
   register as apiRegister,
@@ -75,7 +76,7 @@ function parseToken(token: string): JWTPayload | null {
 // =============================================================================
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<PublicUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const queryClient = useQueryClient();
 
@@ -105,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const payload = parseToken(result.accessToken);
     if (payload) {
       tokenExpiresAt = payload.exp * 1000;
-      setUser(result.user as User);
+      setUser(result.user);
       return true;
     }
 
@@ -157,10 +158,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // burn an extra /api/auth/refresh round-trip per token lifecycle.
   useEffect(() => {
     setRefreshSuccessListener((data) => {
-      accessToken = data.accessToken as string;
-      const payload = parseToken(data.accessToken as string);
+      accessToken = data.accessToken;
+      const payload = parseToken(data.accessToken);
       if (payload) tokenExpiresAt = payload.exp * 1000;
-      if (data.user) setUser(data.user as User);
+      setUser(data.user);
       // The list is now cached per identity, so a login or logout no longer needs
       // this — the new identity simply addresses a different entry. What it still
       // covers is the case the key cannot see: a refresh that returns the same
