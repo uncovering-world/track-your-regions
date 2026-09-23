@@ -52,6 +52,8 @@
  */
 
 import { pool } from '../../db/index.js';
+import type { QueueFacets, QueueOrderEntry } from '../../api/responses/reviewQueue.js';
+import { QUEUE_KINDS, WAITING_SUBS, type QueueKind, type WaitingSub } from './reviewQueueVocabulary.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
@@ -62,8 +64,6 @@ import {
   missingOpenSql, refusedOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
 
-export type QueueKind = 'conflict' | 'waiting' | 'withdrawn' | 'refused' | 'missing';
-export type WaitingSub = 'arrival' | 'held' | 'contents';
 
 /**
  * The class order: what a curator works down when they sort by question rather
@@ -75,10 +75,11 @@ export const KIND_RANK: Record<QueueKind, number> = {
   conflict: 1, waiting: 2, withdrawn: 3, refused: 4, missing: 5,
 };
 
-/** The words a `kind` chip may carry, and the only ones. Exported because the
- *  controller drops anything else out of the request before it gets here. */
-export const QUEUE_KINDS = Object.keys(KIND_RANK) as QueueKind[];
-export const WAITING_SUBS: WaitingSub[] = ['arrival', 'held', 'contents'];
+// The words a `kind` chip may carry, and the only ones, are `QUEUE_KINDS` and
+// `WAITING_SUBS` (`reviewQueueVocabulary.ts`). Passed on from here because the
+// controller drops anything else out of the request before it gets here.
+export { QUEUE_KINDS, WAITING_SUBS };
+export type { QueueKind, WaitingSub };
 
 export interface QueueFilters {
   q?: string;
@@ -94,40 +95,11 @@ export interface QueueFilters {
   limit: number;
 }
 
-export interface QueueKey {
-  kind: QueueKind;
-  id: number;
-  askedAt: string | null;
-  runId: number | null;
-  sourceId: number;
-  subs: WaitingSub[];
-}
+/** One open question as the keys phase answers it: the entry the answer's `order` carries. */
+export type QueueKey = QueueOrderEntry;
 
-export interface QueueFacets {
-  kind: Array<{ kind: QueueKind | WaitingSub; count: number }>;
-  source: Array<{ id: number; name: string; count: number }>;
-  /**
-   * `id` null is the unplaced bucket: keys with no region row at all.
-   *
-   * `worldView` is the world view this root is a root of — null on the unplaced
-   * row, which is in none. A name does not identify a root on its own: two of
-   * them are called Europe (world views 2 and 5), so the control needs
-   * something to tell them apart with.
-   */
-  region: Array<{ id: number | null; name: string; worldView: string | null; count: number }>;
-  /**
-   * The runs with open questions, counted **before** the set-aside exclusion
-   * and each saying whether this curator set it aside: a batch that is hidden
-   * is exactly the one the chip has to name, with its number, or there is no
-   * way back to it. The search still narrows this list, like every other
-   * facet. `completedAt` is null for a run still in flight.
-   */
-  run: Array<{
-    id: number; sourceId: number; completedAt: string | null; count: number; setAside: boolean;
-  }>;
-  /** How many runs this curator has set aside — the unit the chip names. */
-  setAside: { batches: number };
-}
+// The facets are the answer's own `QueueFacets` (`api/responses/reviewQueue.ts`).
+export type { QueueFacets };
 
 interface Cursor { askedAt: string | null; rank: number; id: number }
 
@@ -392,8 +364,8 @@ interface Bound {
 /** Every filter as a predicate over `scoped k`, with its values bound. */
 function boundFilters(filters: QueueFilters, bind: (value: unknown) => string): Bound {
   const kinds = filters.kinds ?? [];
-  const top = kinds.filter(k => (QUEUE_KINDS as string[]).includes(k));
-  const subs = kinds.filter(k => (WAITING_SUBS as string[]).includes(k));
+  const top = kinds.filter(k => (QUEUE_KINDS as readonly string[]).includes(k));
+  const subs = kinds.filter(k => (WAITING_SUBS as readonly string[]).includes(k));
   const cursor = filters.cursor === undefined ? null : decodeCursor(filters.cursor);
   const region = regionFilter(filters.regionId, bind);
   return {
@@ -586,7 +558,6 @@ interface KeyRow {
   id: number;
   asked_at: StoredDate;
   run_id: number | null;
-  source_id: number;
   subs: WaitingSub[] | null;
 }
 
@@ -628,7 +599,6 @@ function toKey(row: KeyRow): QueueKey {
     id: row.id,
     askedAt: isoOrNull(row.asked_at),
     runId: row.run_id,
-    sourceId: row.source_id,
     subs: row.subs ?? [],
   };
 }
@@ -680,7 +650,7 @@ export async function queryQueueKeys(
     SELECT k.* FROM searched k WHERE ${f.aside}
   )${f.regionCte}${REGION_ROOTS_CTE}
 , page_rows AS (
-    SELECT k.kind, k.rank, k.id, k.source_id, k.run_id, k.asked_at, k.subs
+    SELECT k.kind, k.rank, k.id, k.run_id, k.asked_at, k.subs
     FROM scoped k
     WHERE ${f.source} AND ${f.kind} AND ${f.region} AND ${f.run} AND ${f.cursor}
     ORDER BY ${orderSql(filters.sort)}

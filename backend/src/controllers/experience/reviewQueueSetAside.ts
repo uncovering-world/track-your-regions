@@ -29,6 +29,8 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { RunSetAside } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
@@ -66,7 +68,7 @@ export async function setRunAside(req: AuthenticatedRequest, res: Response): Pro
       return;
     }
   }
-  res.json({ syncLogId, setAside: true });
+  respond(res, RunSetAside, { syncLogId, setAside: true });
 }
 
 /**
@@ -86,5 +88,5 @@ export async function bringRunBack(req: AuthenticatedRequest, res: Response): Pr
     `DELETE FROM curator_queue_set_aside WHERE user_id = $1 AND sync_log_id = $2`,
     [userId, syncLogId],
   );
-  res.json({ syncLogId, setAside: false });
+  respond(res, RunSetAside, { syncLogId, setAside: false });
 }
