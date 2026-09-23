@@ -106,7 +106,11 @@ jobs:
           # A major bump with a wide usage surface costs more, and running
           # out mid-analysis posts a truncated verdict rather than failing
           # loudly — so leave headroom. Unused turns cost nothing.
+          #
+          # --effort is set explicitly: Opus 5.5 defaults to medium, so the
+          # level is chosen here rather than inherited.
           claude_args: |
-            --model claude-opus-5
+            --model claude-opus-5-5
+            --effort high
             --max-turns 40
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(grep:*),Bash(rg:*)"
