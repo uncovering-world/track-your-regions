@@ -5,7 +5,12 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { RegionMembers } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
+import {
+  divisionMemberOf, subregionMemberOf, type DivisionMemberRow, type SubregionMemberRow,
+} from './regionMemberAnswerRows.js';
 
 /**
  * Get all member admin divisions of a region, plus any subregions
@@ -16,13 +21,9 @@ export async function getRegionMembers(req: Request, res: Response): Promise<voi
   const regionId = parseInt(String(req.params.regionId));
 
   // Get subregions first (child regions of this region)
-  const subregions = await pool.query(`
-    SELECT id, name, NULL as "parentId",
-           false as "hasChildren",
-           'subregion' as "memberType",
-           color,
-           name as path
-    FROM regions cg
+  const subregions = await pool.query<SubregionMemberRow>(`
+    SELECT id, name, color
+    FROM regions
     WHERE parent_region_id = $1
     ORDER BY name
   `, [regionId]);
@@ -32,7 +33,7 @@ export async function getRegionMembers(req: Request, res: Response): Promise<voi
 
   // Get admin division members with their full path, excluding those that match subregion names
   // Also include whether they have a custom geometry (partial admin division)
-  const divisions = await pool.query(`
+  const divisions = await pool.query<DivisionMemberRow>(`
     WITH RECURSIVE division_path AS (
       -- Start with the member admin divisions
       SELECT
@@ -67,12 +68,11 @@ export async function getRegionMembers(req: Request, res: Response): Promise<voi
     )
     SELECT DISTINCT ON (member_row_id)
       member_id as id,
-      member_row_id as "memberRowId",
+      member_row_id,
       name,
-      has_children as "hasChildren",
-      'division' as "memberType",
+      has_children,
       path,
-      has_custom_geom as "hasCustomGeometry"
+      has_custom_geom
     FROM division_path
     ORDER BY member_row_id, depth DESC
   `, [regionId]);
@@ -80,13 +80,10 @@ export async function getRegionMembers(req: Request, res: Response): Promise<voi
   // Filter out admin divisions that have a matching subregion (added with checkbox)
   const filteredDivisions = divisions.rows.filter(d => !subregionNames.has(d.name));
 
-  // Combine and return both
-  const allMembers = [
-    ...subregions.rows.map(r => ({ ...r, isSubregion: true })),
-    ...filteredDivisions.map(d => ({ ...d, isSubregion: false })),
-  ];
-
-  res.json(allMembers);
+  respond(res, RegionMembers, [
+    ...subregions.rows.map(subregionMemberOf),
+    ...filteredDivisions.map(divisionMemberOf),
+  ]);
 }
 
 /**
