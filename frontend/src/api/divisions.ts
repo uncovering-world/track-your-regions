@@ -5,7 +5,7 @@
 import type {
   AdministrativeDivision, AdministrativeDivisions, DivisionGeometry, DivisionSearchResults,
 } from '@tyr/shared/api';
-import { API_URL, authFetchJson } from './fetchUtils.js';
+import { API_URL, authFetchJson, authFetchOptionalJson } from './fetchUtils.js';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -58,7 +58,7 @@ export async function fetchDivisionGeometry(
     resolveEmpty: String(options.resolveEmpty ?? true),
   });
   try {
-    return await authFetchJson<DivisionGeometry>(`${API_URL}/api/divisions/${divisionId}/geometry?${params}`);
+    return await authFetchOptionalJson<DivisionGeometry>(`${API_URL}/api/divisions/${divisionId}/geometry?${params}`);
   } catch {
     return null;
   }
