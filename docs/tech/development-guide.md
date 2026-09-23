@@ -427,7 +427,7 @@ The full inventory of shared components and utilities — including a "use this,
 
 ### API Layer
 
-All API calls live in `frontend/src/api/`. Use `authFetchJson()` from `fetchUtils.ts` for authenticated requests.
+All API calls live in `frontend/src/api/`. Use `authFetchJson()` from `fetchUtils.ts` for authenticated requests. A read whose endpoint answers 204 for "there is none", as the geometry reads do for a region or division with no stored outline, uses `authFetchOptionalJson()` beside it, which reads the 204 as `null`. `authFetchJson` reads a 204 as an empty list, since that is what a list read means by it, and an empty array passes a caller's null test while carrying none of the answer's keys.
 
 The one deliberate exception is `changePassword` (`api/auth.ts`): its endpoint answers a wrong *current password* with 401, and `authFetchJson` reads every 401 as an expired token — so the shared path would rotate the refresh family on each wrong attempt and eventually sign the user out under the sentence saying the session is fine. It builds its request by hand and takes its token from `requireFreshToken()`. The reasoning is in [authentication.md](authentication.md) § Password Security; do not "clean it up" back onto the shared path. Other hand-built authenticated calls (`getCurrentUser`, the `image-proxy` fetches in `useImageColorPicker` and `ImageOverlayDialog`) record no reason and are debt, not precedent.
 
