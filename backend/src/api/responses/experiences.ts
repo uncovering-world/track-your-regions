@@ -158,12 +158,14 @@ export const ExperiencesByRegionResponse = z.strictObject({
 }).describe("A page of a region's objects.");
 export type ExperiencesByRegionResponse = z.infer<typeof ExperiencesByRegionResponse>;
 
-// A site's extent, as `ST_AsGeoJSON` writes the column: `experiences.boundary`
-// is `geometry(MultiPolygon, 4326)`, so there is one geometry type to declare.
-const MultiPolygon = z.strictObject({
+// Every area the API draws is stored as `geometry(MultiPolygon, 4326)` (a site's
+// extent, a region's outline and hull, a division and a part cut from it), and
+// what `ST_AsGeoJSON` writes of one is this.
+export const MultiPolygon = z.strictObject({
   type: z.literal('MultiPolygon'),
-  coordinates: z.array(z.array(z.array(z.array(z.number())))),
-});
+  coordinates: z.array(z.array(z.array(z.array(z.number())))).describe('Polygons, their rings, the rings\' [lng, lat] positions.'),
+}).describe('An area on the map, one piece or several, in GeoJSON.');
+export type MultiPolygon = z.infer<typeof MultiPolygon>;
 
 export const ExperienceDetail = z.strictObject({
   id: z.number().int(),

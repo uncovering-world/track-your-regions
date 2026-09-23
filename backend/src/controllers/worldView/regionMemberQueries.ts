@@ -6,11 +6,14 @@
 
 import { Request, Response } from 'express';
 import { respond } from '../../api/respond.js';
-import { RegionMembers } from '../../api/responses/regions.js';
+import { DescendantMemberGeometries, MemberGeometries, RegionMembers } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import {
   divisionMemberOf, subregionMemberOf, type DivisionMemberRow, type SubregionMemberRow,
 } from './regionMemberAnswerRows.js';
+import {
+  descendantMemberGeometryOf, hasGeometry, memberGeometryOf, type DescendantMemberGeometryRow, type MemberGeometryRow,
+} from './regionGeometryAnswerRows.js';
 
 /**
  * Get all member admin divisions of a region, plus any subregions
@@ -93,7 +96,7 @@ export async function getRegionMembers(req: Request, res: Response): Promise<voi
 export async function getRegionMemberGeometries(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
 
-  const result = await pool.query(`
+  const result = await pool.query<MemberGeometryRow>(`
     SELECT
       rm.id as member_row_id,
       ad.id as division_id,
@@ -122,22 +125,9 @@ export async function getRegionMemberGeometries(req: Request, res: Response): Pr
       AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
   `, [regionId]);
 
-  const features = result.rows
-    .filter(row => row.geometry)
-    .map(row => ({
-      type: 'Feature',
-      properties: {
-        memberRowId: row.member_row_id,
-        divisionId: row.division_id,
-        name: row.name,
-        hasCustomGeom: row.has_custom_geom,
-      },
-      geometry: row.geometry,
-    }));
-
-  res.json({
+  respond(res, MemberGeometries, {
     type: 'FeatureCollection',
-    features,
+    features: result.rows.filter(hasGeometry).map(memberGeometryOf),
   });
 }
 
@@ -149,7 +139,7 @@ export async function getRegionMemberGeometries(req: Request, res: Response): Pr
 export async function getDescendantMemberGeometries(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
 
-  const result = await pool.query(`
+  const result = await pool.query<DescendantMemberGeometryRow>(`
     WITH RECURSIVE descendant_regions AS (
       SELECT id, name, id as root_ancestor_id FROM regions WHERE parent_region_id = $1
       UNION ALL
@@ -184,24 +174,8 @@ export async function getDescendantMemberGeometries(req: Request, res: Response)
     WHERE (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
   `, [regionId]);
 
-  const features = result.rows
-    .filter(row => row.geometry)
-    .map(row => ({
-      type: 'Feature',
-      properties: {
-        memberRowId: row.member_row_id,
-        divisionId: row.division_id,
-        name: row.name,
-        regionName: row.region_name,
-        regionId: row.region_id,
-        rootAncestorId: row.root_ancestor_id,
-        hasCustomGeom: row.has_custom_geom,
-      },
-      geometry: row.geometry,
-    }));
-
-  res.json({
+  respond(res, DescendantMemberGeometries, {
     type: 'FeatureCollection',
-    features,
+    features: result.rows.filter(hasGeometry).map(descendantMemberGeometryOf),
   });
 }

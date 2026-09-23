@@ -138,6 +138,9 @@ export interface AppliedPart {
   claimedFieldsSkipped: string[];
 }
 
+/** An area as a simplifying read draws it: one piece or several. */
+export type AreaGeometry = Polygon | MultiPolygon;
+
 /** One field a run proposed to change. */
 export interface ChangedField {
   field: string;
@@ -252,6 +255,32 @@ export interface DeleteImpact {
   isDefault: boolean;
 }
 
+/**
+ * The division members of every region beneath a region, drawn as read-only context in the editor.
+ */
+export interface DescendantMemberGeometries {
+  type: "FeatureCollection";
+  features: DescendantMemberGeometry[];
+}
+
+/** One division member of a region's descendants, drawn as context. */
+export interface DescendantMemberGeometry {
+  type: "Feature";
+  properties: {
+    memberRowId: number;
+    divisionId: number;
+    name: string;
+    /** The descendant region the member belongs to. */
+    regionName: string;
+    regionId: number;
+    /** The subregion of the asked-for region that this member sits under. */
+    rootAncestorId: number;
+    hasCustomGeom: boolean;
+  };
+  /** Simplified for context, at a tolerance of 0.005°. */
+  geometry: AreaGeometry;
+}
+
 /** Divisions added to a region, directly or as subregions of it. */
 export interface DivisionsAdded {
   /** How many divisions the call named. */
@@ -354,10 +383,7 @@ export interface ExperienceDetail {
   longitude: number;
   latitude: number;
   /** The site's extent from OpenStreetMap, simplified past 5,000 vertices (ADR-0059). */
-  boundary_geojson: {
-    type: "MultiPolygon";
-    coordinates: number[][][][];
-  } | null;
+  boundary_geojson: MultiPolygon | null;
   area_km2: number | null;
   kind_id: number;
   kind_name: string;
@@ -733,6 +759,27 @@ export interface ManualExperienceCreated {
   externalId: string;
 }
 
+/** A region's division members, drawn, for the editor. */
+export interface MemberGeometries {
+  type: "FeatureCollection";
+  features: MemberGeometry[];
+}
+
+/** One division member of a region, drawn. */
+export interface MemberGeometry {
+  type: "Feature";
+  properties: {
+    memberRowId: number;
+    divisionId: number;
+    /** The member's custom name where it has one, as for a part cut from the division. */
+    name: string;
+    /** The geometry is a part cut from the division rather than the division. */
+    hasCustomGeom: boolean;
+  };
+  /** Simplified for editing, at a tolerance of 0.001°. */
+  geometry: AreaGeometry;
+}
+
 /**
  * A division member moved to another region. The row keeps its custom name and cut geometry; the
  * answer names it and the two regions.
@@ -749,6 +796,13 @@ export interface MemberMoved {
  * curator. `auto` and `verified` are shown to readers, `verified` because a person passed it.
  */
 export type MembershipCurationState = "pending" | "auto" | "verified";
+
+/** An area on the map, one piece or several, in GeoJSON. */
+export interface MultiPolygon {
+  type: "MultiPolygon";
+  /** Polygons, their rings, the rings' [lng, lat] positions. */
+  coordinates: number[][][][];
+}
 
 /** Which New chips were recorded as shown. */
 export interface NewBadgesSeen {
@@ -808,6 +862,13 @@ export interface PlacementFailure {
 
 /** The tier asked for: `overview` is the heatmap's read, `markers` the pins'. */
 export type PointsDetail = "overview" | "markers";
+
+/** An area in one piece, in GeoJSON. */
+export interface Polygon {
+  type: "Polygon";
+  /** Rings, the outer first, of [lng, lat] positions. */
+  coordinates: number[][][];
+}
 
 /** One of the object's own fields a run proposed, as its card asks about it. */
 export interface ProposedField {
@@ -1062,6 +1123,27 @@ export interface RegionExperienceLocation {
 export interface RegionExperienceLocationsResponse {
   /** Every point of every object the region list shows, keyed by the object id. */
   locationsByExperience: Record<string, RegionExperienceLocation[]>;
+}
+
+/** A region's stored outline, or its hull where that was asked for and exists. */
+export interface RegionGeometry {
+  type: "Feature";
+  properties: RegionGeometryProperties;
+  geometry: MultiPolygon;
+}
+
+export interface RegionGeometryProperties {
+  id: number;
+  isCustomBoundary: boolean;
+  usesHull: boolean;
+  anchorPoint: AnchorPoint | null;
+  /**
+   * Sent when the hull was asked for: `real` where the region has none and its outline came
+   * instead.
+   */
+  displayMode?: "hull" | "real";
+  /** Sent with the hull: whether it crosses the antimeridian, read off the stored focus frame. */
+  crossesDateline?: boolean;
 }
 
 /** One member of a region: a division, or a part cut from one, or a subregion. */
