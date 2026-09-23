@@ -4,7 +4,21 @@
  * All admin endpoints require authentication with admin role.
  */
 
+import type {
+  AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorAssignmentCreated,
+  CuratorAssignmentRevoked, Curators, PlacementCounts, UserSearchResults,
+} from '@tyr/shared/api';
 import { authFetchJson } from '../fetchUtils';
+
+// What the migrated calls here answer is declared once, as a backend schema
+// (ADR-0066), and generated into `@tyr/shared/api`. Passed on from here, so a
+// component imports a call's answer from the module of the call. The sync
+// screens' calls are the next slice of #989.
+export type {
+  AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorActivityEntry,
+  CuratorAssignmentCreated, CuratorAssignmentRevoked, CuratorInfo, Curators, CuratorScope, PlacementCount,
+  PlacementCounts, UserSearchResult, UserSearchResults,
+} from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -217,16 +231,6 @@ export interface SyncLogsResponse {
   total: number;
   limit: number;
   offset: number;
-}
-
-export interface AssignmentStatus {
-  running: boolean;
-  status?: string;
-  statusMessage?: string;
-  directAssignments?: number;
-  ancestorAssignments?: number;
-  totalAssignments?: number;
-  errors?: number;
 }
 
 // =============================================================================
@@ -520,8 +524,8 @@ export async function getSyncLogChanges(
 export async function startRegionAssignment(
   worldViewId: number,
   sourceId?: number
-): Promise<{ started: boolean; message: string }> {
-  return authFetchJson(`${API_URL}/api/admin/experiences/assign-regions`, {
+): Promise<AssignmentStarted> {
+  return authFetchJson<AssignmentStarted>(`${API_URL}/api/admin/experiences/assign-regions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ worldViewId, sourceId }),
@@ -540,8 +544,8 @@ export async function getAssignmentStatus(worldViewId: number): Promise<Assignme
 /**
  * Cancel region assignment
  */
-export async function cancelAssignment(worldViewId: number): Promise<{ cancelled: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/experiences/assign-regions/cancel`, {
+export async function cancelAssignment(worldViewId: number): Promise<AssignmentCancelled> {
+  return authFetchJson<AssignmentCancelled>(`${API_URL}/api/admin/experiences/assign-regions/cancel`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ worldViewId }),
@@ -554,53 +558,22 @@ export async function cancelAssignment(worldViewId: number): Promise<{ cancelled
 export async function getExperienceCountsByRegion(
   worldViewId: number,
   sourceId?: number
-): Promise<{ regionId: number; regionName: string; count: number }[]> {
+): Promise<PlacementCounts> {
   const params = new URLSearchParams({ worldViewId: String(worldViewId) });
   if (sourceId) params.set('sourceId', String(sourceId));
 
-  return authFetchJson(`${API_URL}/api/admin/experiences/counts-by-region?${params}`);
+  return authFetchJson<PlacementCounts>(`${API_URL}/api/admin/experiences/counts-by-region?${params}`);
 }
 
 // =============================================================================
 // Curator Management API
 // =============================================================================
 
-export interface CuratorScope {
-  id: number;
-  scopeType: 'region' | 'source' | 'global';
-  regionId: number | null;
-  regionName: string | null;
-  sourceId: number | null;
-  sourceName: string | null;
-  assignedAt: string;
-  notes: string | null;
-}
-
-export interface CuratorInfo {
-  user_id: number;
-  display_name: string | null;
-  email: string | null;
-  role: string;
-  avatar_url: string | null;
-  scopes: CuratorScope[];
-}
-
-export interface CuratorActivityEntry {
-  id: number;
-  action: string;
-  created_at: string;
-  details: Record<string, unknown> | null;
-  experience_id: number;
-  experience_name: string;
-  region_id: number | null;
-  region_name: string | null;
-}
-
 /**
  * List all curators with their scopes
  */
-export async function listCurators(): Promise<CuratorInfo[]> {
-  return authFetchJson<CuratorInfo[]>(`${API_URL}/api/admin/curators`);
+export async function listCurators(): Promise<Curators> {
+  return authFetchJson<Curators>(`${API_URL}/api/admin/curators`);
 }
 
 /**
@@ -612,8 +585,8 @@ export async function createCuratorAssignment(data: {
   regionId?: number;
   sourceId?: number;
   notes?: string;
-}): Promise<{ id: number; userId: number; scopeType: string; rolePromoted: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/curators`, {
+}): Promise<CuratorAssignmentCreated> {
+  return authFetchJson<CuratorAssignmentCreated>(`${API_URL}/api/admin/curators`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
@@ -624,8 +597,8 @@ export async function createCuratorAssignment(data: {
  */
 export async function revokeCuratorAssignment(
   assignmentId: number,
-): Promise<{ success: boolean; roleReverted: boolean; remainingAssignments: number }> {
-  return authFetchJson(`${API_URL}/api/admin/curators/${assignmentId}`, {
+): Promise<CuratorAssignmentRevoked> {
+  return authFetchJson<CuratorAssignmentRevoked>(`${API_URL}/api/admin/curators/${assignmentId}`, {
     method: 'DELETE',
   });
 }
@@ -637,8 +610,8 @@ export async function getCuratorActivity(
   userId: number,
   limit = 50,
   offset = 0,
-): Promise<{ activity: CuratorActivityEntry[]; total: number }> {
-  return authFetchJson(`${API_URL}/api/admin/curators/${userId}/activity?limit=${limit}&offset=${offset}`);
+): Promise<CuratorActivity> {
+  return authFetchJson<CuratorActivity>(`${API_URL}/api/admin/curators/${userId}/activity?limit=${limit}&offset=${offset}`);
 }
 
 /**
@@ -646,6 +619,6 @@ export async function getCuratorActivity(
  */
 export async function searchUsers(
   query: string,
-): Promise<{ id: number; display_name: string | null; email: string | null; role: string }[]> {
-  return authFetchJson(`${API_URL}/api/admin/users/search?q=${encodeURIComponent(query)}`);
+): Promise<UserSearchResults> {
+  return authFetchJson<UserSearchResults>(`${API_URL}/api/admin/users/search?q=${encodeURIComponent(query)}`);
 }
