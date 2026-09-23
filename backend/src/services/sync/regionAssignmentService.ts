@@ -10,11 +10,13 @@
  * ancestor's row comes from the tree (`directPlacementSql`, ADR-0054).
  */
 
+import type { AssignmentStatus, PlacementCounts } from '../../api/responses/admin.js';
 import { pool } from '../../db/index.js';
 
 export interface AssignmentProgress {
   cancel: boolean;
-  status: 'assigning' | 'propagating' | 'denormalizing' | 'complete' | 'failed' | 'cancelled';
+  /** The status endpoint answers this word, so its type is the answer's. */
+  status: NonNullable<AssignmentStatus['status']>;
   statusMessage: string;
   directAssignments: number;       // Location-region assignments
   ancestorAssignments: number;     // Propagated to parent regions
@@ -371,7 +373,7 @@ export function cancelAssignment(worldViewId: number): boolean {
 export async function getExperienceCountsByRegion(
   worldViewId: number,
   sourceId?: number
-): Promise<{ regionId: number; regionName: string; count: number }[]> {
+): Promise<PlacementCounts> {
   const result = await pool.query(`
     SELECT
       r.id as region_id,

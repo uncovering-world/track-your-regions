@@ -18,6 +18,8 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { DataAssertion, DataAssertionReport } from '../../api/responses/dataAssertions.js';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { catalogueAssertions } from './dataAssertions/catalogueAssertions.js';
@@ -98,7 +100,7 @@ export async function getDataAssertions(_req: AuthenticatedRequest, res: Respons
     readAcceptedNumbers(),
   ]);
   const entries = toReport(assess(outcomes, accepted.numbers));
-  res.json({
+  respond(res, DataAssertionReport, {
     assertions: entries,
     // Counted here rather than in the panel: the rule for what needs a person
     // is the server's, and two places deciding it is how the badge and the list
@@ -216,5 +218,5 @@ export async function acceptDataAssertion(req: AuthenticatedRequest, res: Respon
     );
   }
   const number = ledger.numbers[assertion.id] ?? { count: found, acceptedAt, acceptedBy: null };
-  res.json(toReport(assess([outcome], { [assertion.id]: number }))[0]);
+  respond(res, DataAssertion, toReport(assess([outcome], { [assertion.id]: number }))[0]);
 }

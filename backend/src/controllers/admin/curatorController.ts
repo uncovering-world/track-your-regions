@@ -6,42 +6,53 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import {
+  CuratorActivity,
+  CuratorAssignmentCreated,
+  CuratorAssignmentRevoked,
+  Curators,
+  type CuratorActivityEntry,
+  type CuratorInfo,
+} from '../../api/responses/admin.js';
+import type { CuratorScope } from '../../api/responses/auth.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import type {
+  ExperienceCurationLogRow, ExperiencesRow, RegionsRow, UsersRow,
+} from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import type { CuratorScopeType } from '../../types/auth.js';
+import { CURATOR_SCOPES_SQL, curatorScopeOf, type CuratorScopeOfUserRow } from './curatorScopeRows.js';
 
 /**
  * List all curators with their scopes
  * GET /api/admin/curators
  */
 export async function listCurators(_req: AuthenticatedRequest, res: Response): Promise<void> {
-  const result = await pool.query(`
-    SELECT
-      u.id as user_id,
-      u.display_name,
-      u.email,
-      u.role,
-      u.avatar_url,
-      COALESCE(json_agg(json_build_object(
-        'id', ca.id,
-        'scopeType', ca.scope_type,
-        'regionId', ca.region_id,
-        'regionName', r.name,
-        'sourceId', ca.source_id,
-        'sourceName', es.name,
-        'assignedAt', ca.assigned_at,
-        'notes', ca.notes
-      ) ORDER BY ca.assigned_at DESC) FILTER (WHERE ca.id IS NOT NULL), '[]'::json) as scopes
+  const users = await pool.query<Pick<UsersRow, 'id' | 'display_name' | 'email' | 'role' | 'avatar_url'>>(`
+    SELECT u.id, u.display_name, u.email, u.role, u.avatar_url
     FROM users u
-    LEFT JOIN curator_assignments ca ON u.id = ca.user_id
-    LEFT JOIN regions r ON ca.region_id = r.id
-    LEFT JOIN experience_sources es ON ca.source_id = es.id
-    WHERE u.role = 'admin' OR (u.role = 'curator' AND ca.id IS NOT NULL)
-    GROUP BY u.id, u.display_name, u.email, u.role, u.avatar_url
+    WHERE u.role = 'admin'
+       OR (u.role = 'curator' AND EXISTS (SELECT 1 FROM curator_assignments ca WHERE ca.user_id = u.id))
     ORDER BY u.display_name
   `);
+  const scopes = await pool.query<CuratorScopeOfUserRow>(CURATOR_SCOPES_SQL, [users.rows.map(u => u.id)]);
 
-  res.json(result.rows);
+  const scopesByUser = new Map<number, CuratorScope[]>();
+  for (const row of scopes.rows) {
+    const list = scopesByUser.get(row.user_id) ?? [];
+    list.push(curatorScopeOf(row));
+    scopesByUser.set(row.user_id, list);
+  }
+
+  respond(res, Curators, users.rows.map((u): CuratorInfo => ({
+    user_id: u.id,
+    display_name: u.display_name,
+    email: u.email,
+    role: u.role,
+    avatar_url: u.avatar_url,
+    scopes: scopesByUser.get(u.id) ?? [],
+  })));
 }
 
 interface AssignmentInput {
@@ -122,7 +133,7 @@ async function verifyAssignmentReferences(body: AssignmentInput): Promise<Valida
 async function insertAssignmentAndPromote(
   body: AssignmentInput,
   assignedBy: number,
-): Promise<{ id: number; assignedAt: Date; rolePromoted: boolean }> {
+): Promise<{ id: number; assignedAt: Date | null; rolePromoted: boolean }> {
   // One client, not pool.query('BEGIN') — see the note in curationController:
   // pg.Pool hands out an arbitrary idle client per call, so a transaction has
   // to be pinned or its statements land on different connections. The scope row
@@ -200,17 +211,9 @@ export async function createCuratorAssignment(req: AuthenticatedRequest, res: Re
     return;
   }
 
+  let inserted: Awaited<ReturnType<typeof insertAssignmentAndPromote>>;
   try {
-    const inserted = await insertAssignmentAndPromote(body, assignedBy);
-    res.status(201).json({
-      id: inserted.id,
-      userId: body.userId,
-      scopeType: body.scopeType,
-      regionId: body.regionId || null,
-      sourceId: body.sourceId || null,
-      assignedAt: inserted.assignedAt,
-      rolePromoted: inserted.rolePromoted,
-    });
+    inserted = await insertAssignmentAndPromote(body, assignedBy);
   } catch (error: unknown) {
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === '23505') {
       res.status(409).json({ error: 'This curator assignment already exists' });
@@ -218,6 +221,15 @@ export async function createCuratorAssignment(req: AuthenticatedRequest, res: Re
     }
     throw error;
   }
+  respond(res.status(201), CuratorAssignmentCreated, {
+    id: inserted.id,
+    userId: body.userId,
+    scopeType: body.scopeType,
+    regionId: body.regionId || null,
+    sourceId: body.sourceId || null,
+    assignedAt: inserted.assignedAt === null ? null : inserted.assignedAt.toISOString(),
+    rolePromoted: inserted.rolePromoted,
+  });
 }
 
 /**
@@ -297,13 +309,35 @@ export async function revokeCuratorAssignment(req: AuthenticatedRequest, res: Re
     client.release(unusable);
   }
 
-  res.json({
+  respond(res, CuratorAssignmentRevoked, {
     success: true,
     assignmentId,
     userId,
     remainingAssignments: remaining,
     roleReverted,
   });
+}
+
+/** One act of the log as the activity read selects it. */
+type ActivityRow = Pick<ExperienceCurationLogRow, 'id' | 'details' | 'created_at' | 'region_id'> & {
+  action: CuratorActivityEntry['action'];
+  experience_id: ExperiencesRow['id'];
+  experience_name: ExperiencesRow['name'];
+  region_name: RegionsRow['name'] | null;
+};
+
+/** Key by key, the timestamp as the wire carries it and `details` as the object its action wrote. */
+function activityEntryOf(row: ActivityRow): CuratorActivityEntry {
+  return {
+    id: row.id,
+    action: row.action,
+    created_at: row.created_at === null ? null : row.created_at.toISOString(),
+    details: row.details as CuratorActivityEntry['details'],
+    experience_id: row.experience_id,
+    experience_name: row.experience_name,
+    region_id: row.region_id,
+    region_name: row.region_name,
+  };
 }
 
 /**
@@ -316,7 +350,7 @@ export async function getCuratorActivity(req: AuthenticatedRequest, res: Respons
   const limit = Math.min(parseInt(String(req.query.limit)) || 50, 200);
   const offset = parseInt(String(req.query.offset)) || 0;
 
-  const result = await pool.query(`
+  const result = await pool.query<ActivityRow>(`
     SELECT
       cl.id,
       cl.action,
@@ -339,8 +373,8 @@ export async function getCuratorActivity(req: AuthenticatedRequest, res: Respons
     [userId],
   );
 
-  res.json({
-    activity: result.rows,
+  respond(res, CuratorActivity, {
+    activity: result.rows.map(activityEntryOf),
     total: parseInt(countResult.rows[0].count),
     limit,
     offset,

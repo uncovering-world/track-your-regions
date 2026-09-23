@@ -19,6 +19,8 @@
  * rules and the registry that lists them need not import each other.
  */
 
+import type { AssertionArea, AssertionKind } from '../../../api/responses/dataAssertions.js';
+
 /** A row of a violation, as `pg` hands it back. */
 export type AssertionRow = Record<string, unknown>;
 
@@ -38,7 +40,7 @@ export interface CatalogueAssertion {
    * *together* -- a bad placement run breaks several at once -- next to each
    * other, where a person can see them as one event rather than five.
    */
-  area: 'places' | 'regions' | 'boundaries' | 'objects' | 'pictures';
+  area: AssertionArea;
   /** What must be true, in the words of the thing rather than of a rule. */
   title: string;
   /**
@@ -56,7 +58,7 @@ export interface CatalogueAssertion {
    * open water, and the frame is right). What they share is that there is
    * nothing to answer for, and that a number moving is the news.
    */
-  kind: 'invariant' | 'watch';
+  kind: AssertionKind;
   /** What a matching row means, and who has to do what about it. */
   meaning: string;
   sql: string;
