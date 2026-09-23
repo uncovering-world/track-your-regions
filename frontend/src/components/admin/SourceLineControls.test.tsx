@@ -45,6 +45,8 @@ function source(overrides: Partial<ExperienceSource> = {}): ExperienceSource {
     stay_sitelinks: 18,
     find_enter_sitelinks: null,
     find_stay_sitelinks: null,
+    caches: true,
+    repairsPictures: false,
     ...overrides,
   };
 }

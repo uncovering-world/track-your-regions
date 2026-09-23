@@ -6,18 +6,23 @@
 
 import type {
   AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorAssignmentCreated,
-  CuratorAssignmentRevoked, Curators, PlacementCounts, UserSearchResults,
+  CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, PictureRepairStarted, PlacementCounts,
+  PublishWaitingResult, SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs,
+  SyncStarted, SyncStatus, UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
 } from '@tyr/shared/api';
 import { authFetchJson } from '../fetchUtils';
 
-// What the migrated calls here answer is declared once, as a backend schema
-// (ADR-0066), and generated into `@tyr/shared/api`. Passed on from here, so a
-// component imports a call's answer from the module of the call. The sync
-// screens' calls are the next slice of #989.
+// What every call here answers is declared once, as a backend schema (ADR-0066),
+// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// imports a call's answer from the module of the call.
 export type {
-  AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorActivityEntry,
-  CuratorAssignmentCreated, CuratorAssignmentRevoked, CuratorInfo, Curators, CuratorScope, PlacementCount,
-  PlacementCounts, UserSearchResult, UserSearchResults,
+  AssignmentCancelled, AssignmentStarted, AssignmentStatus, ChangedField, CuratorActivity, CuratorActivityEntry,
+  CuratorAssignmentCreated, CuratorAssignmentRevoked, CuratorInfo, Curators, CuratorScope, CurationGateSet,
+  ExperienceSource, ExperienceSources, PictureRepairStarted, PlacementCount, PlacementCounts,
+  PublishedWaitingObject, PublishWaitingResult, RefusedWaitingObject, SourceLineSet, SourcesReordered,
+  SyncCancelled, SyncChange, SyncChanges, SyncContentItem, SyncContentsDelta, SyncErrorDetail, SyncLog,
+  SyncLogDetail, SyncLogs, SyncStarted, SyncStatus, UserSearchResult, UserSearchResults, WaitingCounts,
+  WikidataCache, WikidataCacheCleared, WikidataCacheKind, WikidataCacheTtlSet,
 } from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -25,71 +30,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 // =============================================================================
 // Types
 // =============================================================================
-
-/** What one source is holding, in the three kinds the review queue asks about. */
-export interface WaitingCounts {
-  /** Rows nobody has read yet. */
-  arrivals: number;
-  /** Visible rows holding a change the gate refused — answered per card, not in a batch. */
-  held: number;
-  /** Visible rows holding unread points or works. */
-  contents: number;
-}
-
-export interface ExperienceSource {
-  id: number;
-  name: string;
-  description: string | null;
-  is_active: boolean;
-  /** Does a run from this source hold its new and changed content for review (ADR-0025)? */
-  requires_curation: boolean;
-  last_sync_at: string | null;
-  last_sync_status: string | null;
-  display_priority: number;
-  created_at: string;
-  /**
-   * Whether this source keeps anything between runs.
-   *
-   * False for a source whose collector describes no questions — the UNESCO
-   * run, which reads its own API (ADR-0030 decision 4) — and what decides
-   * whether "Sync without cache" is offered at all: on a source with no cache
-   * it would promise to bypass something that does not exist.
-   */
-  caches?: boolean;
-  /**
-   * Whether this source's pictures can be repaired from the panel: the museums'
-   * missing ones, and the World Heritage ones whose host does not license them
-   * to us (ADR-0043). Read from the server rather than from a list of ids here,
-   * so the button is offered exactly where the route acts on it.
-   */
-  repairsPictures?: boolean;
-  /**
-   * Three zeros for a source holding nothing — never an absent key, so a panel
-   * deciding whether to show "nothing waiting" compares numbers — and `null` when the
-   * server could not count. The counts are an addition to this endpoint and the source
-   * list is what it is for, so a failed aggregate answers `null` beside intact sources
-   * rather than failing the request; a panel that showed `null` as three zeros would
-   * make a claim about the source that nothing checked.
-   */
-  waiting: WaitingCounts | null;
-  /** Wikipedia languages an item needs to enter this kind; `null` for a source with no line. */
-  enter_sitelinks: number | null;
-  /** Wikipedia languages an item already in this kind must keep, to stay; `null` alongside `enter_sitelinks`. */
-  stay_sitelinks: number | null;
-  /**
-   * The second door's pair, and `null` for a source with one door.
-   *
-   * Archaeology admits both the site a traveller stands on and the famous find
-   * a museum holds, and a find is written up in fewer languages than its
-   * museum, so its row carries a lower line for the finds beside the main one
-   * (ADR-0058 decision 5). This is what tells the panel that a source has a
-   * finds line at all: without it an admin could move the line a run reads for
-   * the museums while the one it reads for the finds stayed out of reach.
-   */
-  find_enter_sitelinks: number | null;
-  /** Sitelinks a find already in this kind must keep, to stay; `null` alongside `find_enter_sitelinks`. */
-  find_stay_sitelinks: number | null;
-}
 
 /**
  * A source's fame line as the panel sends it: the main pair always, the finds
@@ -104,135 +44,6 @@ export interface SourceLineBody {
   findStaySitelinks?: number;
 }
 
-export interface SyncStatus {
-  running: boolean;
-  /** A sync, or a picture repair started from the same card; absent from a status read off the database. */
-  kind?: 'sync' | 'repair';
-  status?: string;
-  statusMessage?: string;
-  progress?: number;
-  total?: number;
-  percent?: number;
-  created?: number;
-  updated?: number;
-  unchanged?: number;
-  missing?: number;
-  curatedConflicts?: number;
-  /** Rows the gate held whole so far — inside `unchanged`, and the part of it that is waiting on a person. */
-  held?: number;
-  filtered?: number;
-  errors?: number;
-  currentItem?: string;
-  logId?: number | null;
-  /** A preview run: no experiences were written, so no assignment is due. */
-  dryRun?: boolean;
-  /** Whether a Cancel press would be acted on — the server's rule, not a copy. */
-  cancellable?: boolean;
-}
-
-export interface SyncLog {
-  id: number;
-  source_id: number;
-  source_name: string;
-  started_at: string;
-  completed_at: string | null;
-  status: string;
-  total_fetched: number;
-  total_created: number;
-  /** Rows whose fields actually changed. Runs before migration 009 counted every row that passed through the upsert, so old logs are not comparable. */
-  total_updated: number;
-  total_unchanged: number;
-  total_missing: number;
-  total_curated_conflicts: number;
-  /**
-   * Rows a reader can already see whose every proposed change the gate kept out: a
-   * verdict is waiting on each. A subset of `total_unchanged`, counted again (#523).
-   */
-  total_held: number;
-  total_filtered: number;
-  total_errors: number;
-  is_dry_run: boolean;
-  detection_skipped_reason: string | null;
-  /**
-   * Why the run marked none of the works its museums stopped holding: the works
-   * coverage floor refused it (ADR-0044). A run carrying one is `partial`, and a
-   * run with none either withdrew what left or had no floor to clear.
-   */
-  withdrawal_skipped_reason: string | null;
-  /** False on runs that predate change provenance, whose counters mean something else. */
-  has_changeset: boolean;
-  /**
-   * The changeset insert threw, so the per-object record is missing or short — it
-   * goes in batches with no transaction around them. Derived from the marker the
-   * run leaves, which is the evidence `has_changeset` and the counters are not.
-   */
-  changeset_lost: boolean;
-  triggered_by: number | null;
-  triggered_by_name: string | null;
-}
-
-export interface SyncFieldChange {
-  field: string;
-  old: unknown;
-  new: unknown;
-  significance: 'major' | 'minor';
-  /** A curator had claimed this field: the stored value won on purpose. */
-  curatedConflict: boolean;
-  /**
-   * The source's gate kept this write out of a row readers can already see, so
-   * `new` is a proposal waiting on a curator and `old` is what is live. Absent on
-   * rows recorded before the flag existed, which is when nothing was ever held.
-   */
-  held?: boolean;
-}
-
-export interface SyncChange {
-  id: number;
-  experience_id: number | null;
-  external_id: string;
-  name_snapshot: string | null;
-  change_type: 'created' | 'updated' | 'conflict' | 'held' | 'contents' | 'missing' | 'returned' | 'failed' | 'filtered';
-  changed_fields: SyncFieldChange[] | null;
-  /**
-   * What the run did to what the object holds, by kind of contents (ADR-0026), or
-   * `null` where it moved none. A `contents` row carries no `changed_fields` at all —
-   * every field came through — so without this the row would name an object and say
-   * nothing about why it is in the report.
-   */
-  contents: Partial<Record<'locations' | 'treasures', {
-    added: Array<{ name: string | null; ref: string | null }>;
-    withdrawn: Array<{ name: string | null; ref: string | null }>;
-    returned: Array<{ name: string | null; ref: string | null }>;
-    /**
-     * Rows the run kept and rewrote: a point that moved, a component renamed.
-     *
-     * The three above say what the object holds; this says that something it
-     * already held is not what it was — the fortnight a site's coordinates were
-     * re-surveyed, membership had not changed and the record was empty.
-     */
-    changed?: Array<{
-      item: { name: string | null; ref: string | null };
-      fields: SyncFieldChange[];
-    }>;
-  }>> | null;
-  significance: 'major' | 'minor' | null;
-  error: string | null;
-}
-
-export interface SyncChangesResponse {
-  changes: SyncChange[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-export interface SyncLogsResponse {
-  logs: SyncLog[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
 // =============================================================================
 // Sync API
 // =============================================================================
@@ -240,8 +51,8 @@ export interface SyncLogsResponse {
 /**
  * Get all experience sources
  */
-export async function getSources(): Promise<ExperienceSource[]> {
-  return authFetchJson<ExperienceSource[]>(`${API_URL}/api/admin/sync/sources`);
+export async function getSources(): Promise<ExperienceSources> {
+  return authFetchJson<ExperienceSources>(`${API_URL}/api/admin/sync/sources`);
 }
 
 /**
@@ -253,8 +64,8 @@ export async function getSources(): Promise<ExperienceSource[]> {
 export async function startSync(
   sourceId: number,
   options: { dryRun?: boolean; refreshCache?: boolean } = {},
-): Promise<{ started: boolean; message: string; dryRun?: boolean; refreshCache?: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/start`, {
+): Promise<SyncStarted> {
+  return authFetchJson<SyncStarted>(`${API_URL}/api/admin/sync/sources/${sourceId}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -275,46 +86,26 @@ export async function startSync(
  * curator owns is never touched. Reports through the same status endpoint a
  * sync does.
  */
-export async function fixPictures(sourceId: number): Promise<{ started: boolean; message: string }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/fix-images`, {
+export async function fixPictures(sourceId: number): Promise<PictureRepairStarted> {
+  return authFetchJson<PictureRepairStarted>(`${API_URL}/api/admin/sync/sources/${sourceId}/fix-images`, {
     method: 'POST',
   });
-}
-
-/** One kind of question we keep the source's answer to. */
-export interface WikidataCacheKind {
-  kind: string;
-  entries: number;
-  rows: number;
-  /** How many are past their expiry and would be fetched again on the next run. */
-  expired: number;
-  /** The oldest answer of this kind — what "how stale is this" means. */
-  oldestFetchedAt: string | null;
-  /** When the soonest one stops being used. */
-  nextExpiresAt: string | null;
-  bytes: number;
-  /** A few of the questions themselves, so a kind is not just a word. */
-  labels: string[];
-  /** How long an answer of this kind stays fresh, in force right now. */
-  ttlMs: number;
-  /** Whether that is our default or somebody's decision. */
-  ttlSource: 'default' | 'set by an admin';
 }
 
 /**
  * What we are keeping from the source, so an admin can see its age rather than
  * discover it while debugging an answer from last week.
  */
-export async function getWikidataCache(sourceId: number): Promise<{ kinds: WikidataCacheKind[] }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/cache`);
+export async function getWikidataCache(sourceId: number): Promise<WikidataCache> {
+  return authFetchJson<WikidataCache>(`${API_URL}/api/admin/sync/sources/${sourceId}/cache`);
 }
 
 /** Forget one kind, or everything when `kind` is absent. */
 export async function clearWikidataCache(
   sourceId: number, kind?: string,
-): Promise<{ removed: number }> {
+): Promise<WikidataCacheCleared> {
   const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
-  return authFetchJson(
+  return authFetchJson<WikidataCacheCleared>(
     `${API_URL}/api/admin/sync/sources/${sourceId}/cache${query}`, { method: 'DELETE' },
   );
 }
@@ -328,8 +119,8 @@ export async function clearWikidataCache(
  */
 export async function setWikidataCacheTtl(
   sourceId: number, kind: string, hours: number,
-): Promise<{ kind: string; hours: number; restamped: number }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/cache/${encodeURIComponent(kind)}/ttl`, {
+): Promise<WikidataCacheTtlSet> {
+  return authFetchJson<WikidataCacheTtlSet>(`${API_URL}/api/admin/sync/sources/${sourceId}/cache/${encodeURIComponent(kind)}/ttl`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ hours }),
@@ -346,8 +137,8 @@ export async function getSyncStatus(sourceId: number): Promise<SyncStatus> {
 /**
  * Cancel sync for a source
  */
-export async function cancelSync(sourceId: number): Promise<{ cancelled: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/cancel`, {
+export async function cancelSync(sourceId: number): Promise<SyncCancelled> {
+  return authFetchJson<SyncCancelled>(`${API_URL}/api/admin/sync/sources/${sourceId}/cancel`, {
     method: 'POST',
   });
 }
@@ -365,8 +156,8 @@ export async function cancelSync(sourceId: number): Promise<{ cancelled: boolean
  */
 export async function setCurationGate(
   sourceId: number, requiresCuration: boolean,
-): Promise<{ sourceId: number; name: string; requiresCuration: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/curation-gate`, {
+): Promise<CurationGateSet> {
+  return authFetchJson<CurationGateSet>(`${API_URL}/api/admin/sync/sources/${sourceId}/curation-gate`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ requiresCuration }),
@@ -382,52 +173,12 @@ export async function setCurationGate(
  */
 export async function setSourceLine(
   sourceId: number, line: SourceLineBody,
-): Promise<{ sourceId: number; name: string } & SourceLineBody> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/line`, {
+): Promise<SourceLineSet> {
+  return authFetchJson<SourceLineSet>(`${API_URL}/api/admin/sync/sources/${sourceId}/line`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(line),
   });
-}
-
-/** One object the batch released, and what came with it. */
-export interface PublishedWaitingObject {
-  id: number;
-  name: string;
-  locationsPublished: number;
-  /**
-   * Works released, from both axes, because either can be zero while a work was.
-   *
-   * A work reviewed in one venue and unread in another publishes as a link and not as a
-   * row, so a consumer reading one number reports zero works for an object that
-   * released one — which is why `publishOutcomeFor` takes the `Math.max` of the pair on
-   * the single-object path, and why the batch's notice takes it per object too. Declared
-   * here so the batch cannot be the form that reports fewer works than the card does for
-   * the same act.
-   */
-  treasureLinksPublished: number;
-  treasuresPublished: number;
-  /**
-   * Points a source replaced whose old pin this publication took off the map.
-   *
-   * The twin of `placementFailed`, and declared for the same reason: releasing a
-   * visible row's unread points releases the withdrawals deferred behind them, so a
-   * pin a reader could see yesterday is gone — and "40 objects published." says
-   * nothing about it. The single-object notice has carried this sentence since the
-   * publish endpoint landed; a batch that dropped it would be the one form of the
-   * same act that stays silent about it.
-   */
-  withdrawalsReleased: number;
-  /**
-   * The publication landed and re-placing the object into its regions did not.
-   *
-   * Declared here because dropping it is how a publication with stale regions
-   * reads as an unqualified success — and this is the only caller that could
-   * report it. Rebuilding a world view is an admin's job, so the curator's one
-   * useful act is naming the object and the world views to an admin.
-   */
-  placementFailed?: true;
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
 }
 
 /**
@@ -443,14 +194,8 @@ export interface PublishedWaitingObject {
  * count it — the publications had already committed by then, so the report is sent
  * with the count missing rather than replaced by a `0` nothing checked.
  */
-export async function publishWaiting(sourceId: number): Promise<{
-  sourceId: number;
-  published: PublishedWaitingObject[];
-  refused: Array<{ id: number; name: string; error: string }>;
-  outOfScope: number;
-  heldLeftForReview: number | null;
-}> {
-  return authFetchJson(`${API_URL}/api/experiences/sources/${sourceId}/publish-waiting`, {
+export async function publishWaiting(sourceId: number): Promise<PublishWaitingResult> {
+  return authFetchJson<PublishWaitingResult>(`${API_URL}/api/experiences/sources/${sourceId}/publish-waiting`, {
     method: 'POST',
   });
 }
@@ -458,8 +203,8 @@ export async function publishWaiting(sourceId: number): Promise<{
 /**
  * Reorder experience sources (set display_priority)
  */
-export async function reorderSources(sourceIds: number[]): Promise<{ success: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/reorder`, {
+export async function reorderSources(sourceIds: number[]): Promise<SourcesReordered> {
+  return authFetchJson<SourcesReordered>(`${API_URL}/api/admin/sync/sources/reorder`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sourceIds }),
@@ -473,20 +218,20 @@ export async function getSyncLogs(
   sourceId?: number,
   limit = 20,
   offset = 0
-): Promise<SyncLogsResponse> {
+): Promise<SyncLogs> {
   const params = new URLSearchParams();
   if (sourceId) params.set('sourceId', String(sourceId));
   params.set('limit', String(limit));
   params.set('offset', String(offset));
 
-  return authFetchJson<SyncLogsResponse>(`${API_URL}/api/admin/sync/logs?${params}`);
+  return authFetchJson<SyncLogs>(`${API_URL}/api/admin/sync/logs?${params}`);
 }
 
 /**
  * Get single sync log with details
  */
-export async function getSyncLogDetails(logId: number): Promise<SyncLog & { error_details?: unknown[] }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/logs/${logId}`);
+export async function getSyncLogDetails(logId: number): Promise<SyncLogDetail> {
+  return authFetchJson<SyncLogDetail>(`${API_URL}/api/admin/sync/logs/${logId}`);
 }
 
 /**
@@ -501,7 +246,7 @@ export async function getSyncLogChanges(
     type?: string; significance?: string; significantOnly?: boolean;
     limit?: number; offset?: number;
   } = {},
-): Promise<SyncChangesResponse> {
+): Promise<SyncChanges> {
   const search = new URLSearchParams();
   if (params.type) search.set('type', params.type);
   if (params.significance) search.set('significance', params.significance);
@@ -509,7 +254,7 @@ export async function getSyncLogChanges(
   if (params.limit !== undefined) search.set('limit', String(params.limit));
   if (params.offset !== undefined) search.set('offset', String(params.offset));
 
-  return authFetchJson<SyncChangesResponse>(
+  return authFetchJson<SyncChanges>(
     `${API_URL}/api/admin/sync/logs/${logId}/changes?${search}`
   );
 }

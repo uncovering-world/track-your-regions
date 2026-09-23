@@ -16,11 +16,9 @@
  * reaching the alert.
  */
 
-import { type publishWaiting } from '../../api/admin';
+import type { PublishWaitingResult } from '../../api/admin';
 import { plural } from '../../utils/plural';
 import { outOfScopeClause, refusalClauses, stalePlacementClause } from '../../utils/noticeClauses';
-
-type PublishWaitingResult = Awaited<ReturnType<typeof publishWaiting>>;
 
 /**
  * The opening clause: what happened to the source, not to the request.
