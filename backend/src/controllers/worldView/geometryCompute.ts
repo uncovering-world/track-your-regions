@@ -3,6 +3,8 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { RegenerateDisplayGeometriesResult, RegionReset } from '../../api/responses/geometry.js';
 import { pool } from '../../db/index.js';
 
 /**
@@ -129,11 +131,10 @@ export async function regenerateDisplayGeometries(req: Request, res: Response): 
 
   console.log(`[Metadata] Regenerated metadata for ${regeneratedCount} regions`);
 
-  const response = {
+  respond(res, RegenerateDisplayGeometriesResult, {
     regenerated: regeneratedCount,
     message: `Regenerated metadata for ${regeneratedCount} region${regeneratedCount !== 1 ? 's' : ''}`,
-  };
-  res.json(response);
+  });
 }
 
 
@@ -193,7 +194,7 @@ export async function resetRegionToGADM(req: Request, res: Response): Promise<vo
   `, [regionId]);
 
   // Now compute the geometry from member divisions and update all related columns
-  const result = await pool.query(`
+  const result = await pool.query<{ points: number }>(`
     WITH direct_member_geoms AS (
       SELECT ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)) as geom
       FROM region_members rm
@@ -223,7 +224,7 @@ export async function resetRegionToGADM(req: Request, res: Response): Promise<vo
 
   const points = result.rows[0]?.points || 0;
 
-  res.json({
+  respond(res, RegionReset, {
     reset: true,
     points,
     message: 'Region reset to GADM boundaries',
