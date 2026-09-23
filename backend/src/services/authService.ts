@@ -2,7 +2,8 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { pool } from '../db/index.js';
-import type { User, JWTPayload, AuthTokens, PublicUser, UserRole, AuthProvider } from '../types/auth.js';
+import type { PublicUser } from '../api/responses/auth.js';
+import type { User, JWTPayload, AuthTokens, UserRole, AuthProvider } from '../types/auth.js';
 import { maybePromoteToAdmin } from './adminBootstrap.js';
 import { userAgent } from '../config/userAgent.js';
 
@@ -453,7 +454,7 @@ export function toPublicUser(user: User): PublicUser {
     role: user.role,
     avatarUrl: user.avatarUrl,
     emailVerified: user.emailVerified,
-    authProvider: user.authProvider ?? undefined,
+    authProvider: user.authProvider,
   };
 }
 

@@ -1,8 +1,10 @@
 import { Router, Response } from 'express';
 import { respond } from '../api/respond.js';
+import { MyAccount, type CuratorScope } from '../api/responses/auth.js';
 import { VisitedRegion, VisitedRegions } from '../api/responses/visited.js';
+import { curatorScopeOf, type CuratorScopeRow } from '../controllers/admin/curatorScopeRows.js';
 import { pool } from '../db/index.js';
-import type { UserVisitedRegionsRow } from '../db/schema.generated.js';
+import type { UsersRow, UserVisitedRegionsRow } from '../db/schema.generated.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { authenticatedLimiter } from '../middleware/rateLimiter.js';
 import { validate } from '../middleware/errorHandler.js';
@@ -51,9 +53,10 @@ router.use(authenticatedLimiter);
  * Get current user info (includes curatorScopes for curators/admins)
  */
 router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  let body: MyAccount;
   try {
     // Fetch full profile from DB (the JWT carries no PII)
-    const userResult = await pool.query(
+    const userResult = await pool.query<Pick<UsersRow, 'id' | 'uuid' | 'email' | 'display_name' | 'role' | 'avatar_url'>>(
       `SELECT id, uuid, email, display_name, role, avatar_url FROM users WHERE id = $1`,
       [req.user!.id],
     );
@@ -62,42 +65,38 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response):
       return;
     }
     const u = userResult.rows[0];
-    const userInfo: Record<string, unknown> = {
-      id: u.id,
-      uuid: u.uuid,
-      email: u.email,
-      displayName: u.display_name,
-      role: u.role,
-      avatarUrl: u.avatar_url,
-    };
 
     // Include curator scopes for curators and admins
+    let curatorScopes: CuratorScope[] | undefined;
     if (req.user!.role === 'curator' || req.user!.role === 'admin') {
-      const scopesResult = await pool.query(`
+      const scopesResult = await pool.query<CuratorScopeRow>(`
         SELECT
-          ca.id,
-          ca.scope_type as "scopeType",
-          ca.region_id as "regionId",
-          r.name as "regionName",
-          ca.source_id as "sourceId",
-          es.name as "sourceName",
-          ca.assigned_at as "assignedAt",
-          ca.notes
+          ca.id, ca.scope_type, ca.region_id, r.name AS region_name,
+          ca.source_id, es.name AS source_name, ca.assigned_at, ca.notes
         FROM curator_assignments ca
         LEFT JOIN regions r ON ca.region_id = r.id
         LEFT JOIN experience_sources es ON ca.source_id = es.id
         WHERE ca.user_id = $1
         ORDER BY ca.assigned_at DESC
       `, [req.user!.id]);
-
-      userInfo.curatorScopes = scopesResult.rows;
+      curatorScopes = scopesResult.rows.map(curatorScopeOf);
     }
 
-    res.json(userInfo);
+    body = {
+      id: u.id,
+      uuid: u.uuid,
+      email: u.email,
+      displayName: u.display_name,
+      role: u.role,
+      avatarUrl: u.avatar_url,
+      curatorScopes,
+    };
   } catch (error) {
     console.error('Error getting user:', error);
     res.status(500).json({ error: 'Failed to get user' });
+    return;
   }
+  respond(res, MyAccount, body);
 });
 
 /** A visited region as the three region statements select it. */
