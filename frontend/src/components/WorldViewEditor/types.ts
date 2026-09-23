@@ -1,4 +1,5 @@
-import type { WorldView, RegionMember } from '../../types';
+import type { RegionMember } from '../../types';
+import type { WorldView } from '../../api/worldViews';
 
 // Display mode for hull visualization
 export type DisplayMode = 'real' | 'hull';

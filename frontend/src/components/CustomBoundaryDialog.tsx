@@ -21,6 +21,7 @@ import { GuardedMap as MapGL } from './shared/GuardedMap';
 import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../constants/mapStyles';
 import { frameGeoJson, smartFitBounds } from '../utils/mapUtils';
+import type { AnchorPoint, FocusBbox } from '../api/regions';
 
 type PolyFeature = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
 
@@ -65,9 +66,9 @@ interface CustomBoundaryDialogProps {
   onConfirm: (customGeometry: GeoJSON.Polygon | GeoJSON.MultiPolygon) => void;
   sourceGeometries: GeoJSON.FeatureCollection | null;
   /** Pre-computed focusBbox for proper antimeridian handling */
-  focusBbox?: [number, number, number, number] | null;
+  focusBbox?: FocusBbox | null;
   /** Its centre. Required with a crossing focusBbox — smartFitBounds reads it only there. */
-  anchorPoint?: [number, number] | null;
+  anchorPoint?: AnchorPoint | null;
   title?: string;
 }
 

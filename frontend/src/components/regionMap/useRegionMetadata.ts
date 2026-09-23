@@ -11,6 +11,7 @@ import {
   fetchSubdivisions,
 } from '../../api';
 import type { AdministrativeDivision, Region } from '../../types';
+import type { AnchorPoint, FocusBbox } from '../../api/regions';
 
 interface MetadataEntry {
   name: string;
@@ -18,8 +19,8 @@ interface MetadataEntry {
   hasSubregions?: boolean;
   color?: string;
   parentRegionId?: number | null;
-  focusBbox?: [number, number, number, number] | null;
-  anchorPoint?: [number, number] | null;
+  focusBbox?: FocusBbox | null;
+  anchorPoint?: AnchorPoint | null;
 }
 
 type MetadataLookup = Record<number, MetadataEntry>;

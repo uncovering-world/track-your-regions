@@ -12,6 +12,7 @@ import { smartFitBounds } from '../../utils/mapUtils';
 import { WORLD_MARKER_LAYERS } from '../experienceMarkers/worldPointLayers';
 import { isAnswerablePin } from '../../api/worldPoints';
 import type { Region } from '../../types';
+import type { AnchorPoint, FocusBbox } from '../../api/regions';
 
 interface ClickMeta {
   name?: string;
@@ -19,8 +20,8 @@ interface ClickMeta {
   hasSubregions?: boolean;
   color?: string;
   parentRegionId?: number | null;
-  focusBbox?: [number, number, number, number] | null;
-  anchorPoint?: [number, number] | null;
+  focusBbox?: FocusBbox | null;
+  anchorPoint?: AnchorPoint | null;
 }
 
 function flyToClickedFeature(
@@ -90,8 +91,8 @@ interface UseMapInteractionsOptions {
     hasSubregions?: boolean;
     color?: string;
     parentRegionId?: number | null;
-    focusBbox?: [number, number, number, number] | null;
-    anchorPoint?: [number, number] | null;
+    focusBbox?: FocusBbox | null;
+    anchorPoint?: AnchorPoint | null;
   }>;
   viewingRegionId: 'all-leaf' | number;
   contextLayerCount: number;
@@ -203,7 +204,7 @@ export function useMapInteractions({
     // by-id read, which carries it: still a read, never a measurement.
     const { id, name, focusBbox, anchorPoint } = selectedDivision;
     const map = mapRef.current;
-    const fly = (bbox: [number, number, number, number], anchor: [number, number] | null | undefined) => {
+    const fly = (bbox: FocusBbox, anchor: AnchorPoint | null | undefined) => {
       console.log('[RegionMapVT] Flying to division from list selection:', id, name);
       smartFitBounds(map, bbox, { padding: 100, duration: 500, anchorPoint: anchor });
     };

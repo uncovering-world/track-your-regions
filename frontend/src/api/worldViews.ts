@@ -2,8 +2,13 @@
  * World Views API
  */
 
-import type { WorldView } from '../types';
+import type { DeleteImpact, WorldView, WorldViews } from '@tyr/shared/api';
 import { API_URL, authFetchJson } from './fetchUtils.js';
+
+// What every call here answers is declared once, as a backend schema (ADR-0066),
+// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// imports a call's answer from the module of the call.
+export type { DeleteImpact, WorldView, WorldViews } from '@tyr/shared/api';
 
 /**
  * Longest description the server keeps: `world_views.description` is
@@ -13,8 +18,8 @@ import { API_URL, authFetchJson } from './fetchUtils.js';
  */
 export const WORLD_VIEW_DESCRIPTION_MAX_LENGTH = 1000;
 
-export async function fetchWorldViews(): Promise<WorldView[]> {
-  return authFetchJson<WorldView[]>(`${API_URL}/api/world-views`);
+export async function fetchWorldViews(): Promise<WorldViews> {
+  return authFetchJson<WorldViews>(`${API_URL}/api/world-views`);
 }
 
 export async function createWorldView(data: { name: string; description?: string; source?: string }): Promise<WorldView> {
@@ -34,17 +39,11 @@ export async function updateWorldView(
   });
 }
 
-export interface DeleteImpact {
-  regionCount: number;
-  experienceAssignmentCount: number;
-  userVisitCount: number;
-  isDefault: boolean;
-}
-
 export async function getDeleteImpact(worldViewId: number): Promise<DeleteImpact> {
   return authFetchJson<DeleteImpact>(`${API_URL}/api/world-views/${worldViewId}/delete-impact`);
 }
 
+/** The answer is a 204 with no body. */
 export async function deleteWorldView(worldViewId: number): Promise<void> {
   await authFetchJson<void>(`${API_URL}/api/world-views/${worldViewId}`, {
     method: 'DELETE',

@@ -19,7 +19,8 @@ import { useRegionHoverActions, useRegionHoverSelector } from '../hooks/useRegio
 import { useVisitedRegions } from '../hooks/useVisitedRegions';
 import { fetchRootDivisions, fetchSubdivisions, fetchSubregions, fetchRootRegions } from '../api';
 import { LoadingSpinner } from './shared/LoadingSpinner';
-import type { AdministrativeDivision, Region, WorldView } from '../types';
+import type { AdministrativeDivision, Region } from '../types';
+import type { WorldView } from '../api/worldViews';
 
 async function fetchDivisionsForView(
   worldView: WorldView | null,

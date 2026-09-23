@@ -9,7 +9,7 @@ import {
   ClickAwayListener,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
-import type { WorldView } from '../../../types';
+import type { WorldView } from '../../../api/worldViews';
 import { WORLD_VIEW_DESCRIPTION_MAX_LENGTH } from '../../../api/worldViews';
 import { useAppTheme } from '../../../theme';
 

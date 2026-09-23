@@ -24,7 +24,8 @@ import {
   fetchRegionGeometry,
   type ComputeProgressEvent,
 } from '../../../api';
-import type { Region, WorldView } from '../../../types';
+import type { Region } from '../../../types';
+import type { WorldView } from '../../../api/worldViews';
 import type { DisplayMode } from '../types';
 import { useComputationStatus } from '../hooks';
 import { CustomBoundaryDialog } from '../../CustomBoundaryDialog';
@@ -41,11 +42,8 @@ import {
  * Resolve which geometry to stage when entering the "redefine boundaries"
  * flow. Returns null when no geometry is available (caller alerts).
  */
-interface ComputedRegionPatch {
-  usesHull?: boolean;
-  focusBbox?: [number, number, number, number] | null;
-  anchorPoint?: [number, number] | null;
-}
+/** What a compute run tells the selection about the region it just drew. */
+type ComputedRegionPatch = Pick<Region, 'usesHull' | 'focusBbox' | 'anchorPoint'>;
 
 async function runSingleRegionCompute(
   regionId: number,

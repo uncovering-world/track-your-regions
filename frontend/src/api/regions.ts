@@ -2,29 +2,26 @@
  * Regions API (user-defined regions within a WorldView)
  */
 
-import type { Region, RegionMember, GeoJSONFeature } from '../types';
+import type { RegionMember, GeoJSONFeature } from '../types';
+import type { Region, Regions, RegionSearchResults, RegionUpdated } from '@tyr/shared/api';
 import { API_URL, authFetchJson } from './fetchUtils.js';
 import type { GeoJSONFeatureCollection } from './types.js';
 
-export interface RegionSearchResult {
-  id: number;
-  name: string;
-  parentRegionId: number | null;
-  description: string | null;
-  color: string | null;
-  usesHull: boolean;
-  focusBbox: [number, number, number, number] | null;
-  anchorPoint: [number, number] | null;
-  hasSubregions: boolean;
-  path: string;
-  relevance_score: number;
-}
+// What every call here answers is declared once, as a backend schema (ADR-0066),
+// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// imports a call's answer from the module of the call. `Region` itself is the
+// one exception: the client holds a region in the looser shape `types/index.ts`
+// derives from it, since a selection made on the map starts from what a tile
+// knows, and every answer here is assignable to that.
+export type {
+  AnchorPoint, FocusBbox, Regions, RegionSearchResult, RegionSearchResults, RegionUpdated,
+} from '@tyr/shared/api';
 
 export async function searchRegions(
   worldViewId: number,
   query: string,
   limit: number = 50
-): Promise<RegionSearchResult[]> {
+): Promise<RegionSearchResults> {
   if (!query || query.length < 2) {
     return [];
   }
@@ -32,23 +29,23 @@ export async function searchRegions(
     query,
     limit: String(limit),
   });
-  return authFetchJson<RegionSearchResult[]>(`${API_URL}/api/world-views/${worldViewId}/regions/search?${params}`);
+  return authFetchJson<RegionSearchResults>(`${API_URL}/api/world-views/${worldViewId}/regions/search?${params}`);
 }
 
-export async function fetchRegions(worldViewId: number): Promise<Region[]> {
-  return authFetchJson<Region[]>(`${API_URL}/api/world-views/${worldViewId}/regions`);
+export async function fetchRegions(worldViewId: number): Promise<Regions> {
+  return authFetchJson<Regions>(`${API_URL}/api/world-views/${worldViewId}/regions`);
 }
 
-export async function fetchRootRegions(worldViewId: number): Promise<Region[]> {
-  return authFetchJson<Region[]>(`${API_URL}/api/world-views/${worldViewId}/regions/root`);
+export async function fetchRootRegions(worldViewId: number): Promise<Regions> {
+  return authFetchJson<Regions>(`${API_URL}/api/world-views/${worldViewId}/regions/root`);
 }
 
-export async function fetchSubregions(regionId: number): Promise<Region[]> {
-  return authFetchJson<Region[]>(`${API_URL}/api/world-views/regions/${regionId}/subregions`);
+export async function fetchSubregions(regionId: number): Promise<Regions> {
+  return authFetchJson<Regions>(`${API_URL}/api/world-views/regions/${regionId}/subregions`);
 }
 
-export async function fetchRegionAncestors(regionId: number): Promise<Region[]> {
-  return authFetchJson<Region[]>(`${API_URL}/api/world-views/regions/${regionId}/ancestors`);
+export async function fetchRegionAncestors(regionId: number): Promise<Regions> {
+  return authFetchJson<Regions>(`${API_URL}/api/world-views/regions/${regionId}/ancestors`);
 }
 
 export async function createRegion(
@@ -76,8 +73,8 @@ export async function createRegion(
 export async function updateRegion(
   regionId: number,
   data: { name?: string; description?: string; color?: string; parentRegionId?: number | null; usesHull?: boolean }
-): Promise<Region> {
-  return authFetchJson<Region>(`${API_URL}/api/world-views/regions/${regionId}`, {
+): Promise<RegionUpdated> {
+  return authFetchJson<RegionUpdated>(`${API_URL}/api/world-views/regions/${regionId}`, {
     method: 'PUT',
     body: JSON.stringify({
       name: data.name,

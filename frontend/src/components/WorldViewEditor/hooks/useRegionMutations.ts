@@ -11,7 +11,8 @@ import {
   expandToSubregions,
   updateWorldView,
 } from '../../../api';
-import type { Region, WorldView } from '../../../types';
+import type { Region } from '../../../types';
+import type { WorldView } from '../../../api/worldViews';
 
 interface InvalidationOptions {
   regionsChanged?: boolean;

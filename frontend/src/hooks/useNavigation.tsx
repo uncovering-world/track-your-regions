@@ -1,7 +1,8 @@
 // @refresh reset - This file exports both a Provider component and a hook
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { AdministrativeDivision, WorldView, Region } from '../types';
+import type { AdministrativeDivision, Region } from '../types';
+import type { WorldView } from '../api/worldViews';
 import { fetchWorldViews, fetchDivisionAncestors, fetchRootRegions } from '../api';
 import { useAuth } from './useAuth';
 import { useAppAddress } from './useAppAddress';
@@ -210,7 +211,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // had the chance to restore it.
   const applyWorldView = useCallback((worldView: WorldView, write: 'push' | 'replace' | 'none') => {
     setSelectedWorldView(worldView);
-    setTileVersion(worldView.tileVersion ?? 0);
+    setTileVersion(worldView.tileVersion);
     clearWorldViewContext();
     if (write !== 'none') writeWorldView(worldView, write === 'replace');
   }, [clearWorldViewContext, writeWorldView]);
@@ -306,7 +307,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   /** First pick, not a change: take the world view without clearing anything. */
   const adoptWorldView = useCallback((worldView: WorldView) => {
     setSelectedWorldView(worldView);
-    setTileVersion(worldView.tileVersion ?? 0);
+    setTileVersion(worldView.tileVersion);
 
     // The address must name the world view that was adopted, whenever it does
     // not already. A bare `/` stays bare only for the default world view, which

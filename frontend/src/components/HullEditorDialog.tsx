@@ -23,13 +23,14 @@ import {
   DEFAULT_HULL_PARAMS,
 } from '../api';
 import type { HullParams } from '../api';
+import type { AnchorPoint, FocusBbox } from '../api/regions';
 
 interface HullEditorDialogProps {
   open: boolean;
   onClose: () => void;
   regionId: number;
-  focusBbox?: [number, number, number, number] | null;
-  anchorPoint?: [number, number] | null;
+  focusBbox?: FocusBbox | null;
+  anchorPoint?: AnchorPoint | null;
   onSaved: () => void;
 }
 
