@@ -17,14 +17,7 @@ import {
   UNTRUSTED_DATA_RULE,
   type TokenUsage,
 } from './openaiShared.js';
-
-/**
- * Result from generating group descriptions
- */
-export interface GroupDescriptionsResult {
-  descriptions: Record<string, string>;
-  usage: TokenUsage;
-}
+import type { GroupDescriptions } from '../../api/responses/ai.js';
 
 /**
  * Build the system + user prompts for group description generation.
@@ -118,7 +111,7 @@ function logDescriptionsResponse(
 /**
  * Build an empty descriptions result for the trivial no-groups case.
  */
-function emptyDescriptionsResult(): GroupDescriptionsResult {
+function emptyDescriptionsResult(): GroupDescriptions {
   return {
     descriptions: {},
     usage: {
@@ -132,6 +125,17 @@ function emptyDescriptionsResult(): GroupDescriptionsResult {
 }
 
 /**
+ * Read the descriptions out of the model's JSON: one string per group name, and
+ * a value that is not a string is no description.
+ */
+function descriptionsOf(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  );
+}
+
+/**
  * Generate short descriptions for each group to assist in classification
  */
 export async function generateGroupDescriptions(
@@ -139,7 +143,7 @@ export async function generateGroupDescriptions(
   worldViewDescription?: string,
   worldViewSource?: string,
   useWebSearch?: boolean
-): Promise<GroupDescriptionsResult> {
+): Promise<GroupDescriptions> {
   if (!getOpenAIClient()) {
     throw new Error('OpenAI API is not configured. Please set OPENAI_API_KEY in .env');
   }
@@ -185,6 +189,5 @@ export async function generateGroupDescriptions(
     ),
   );
 
-  const descriptions = parseJsonResponse<Record<string, string>>(raw.content);
-  return { descriptions, usage };
+  return { descriptions: descriptionsOf(parseJsonResponse<unknown>(raw.content)), usage };
 }

@@ -13,6 +13,7 @@
  */
 
 import { chatCompletion } from './chatCompletion.js';
+import { Confidence, type AIGeocodeResult } from '../../api/responses/ai.js';
 import {
   getOpenAIClient,
   getModel,
@@ -40,14 +41,9 @@ export {
 export {
   suggestGroupForRegion,
   suggestGroupsForMultipleRegions,
-  type GroupSuggestionResponse,
-  type BatchSuggestionResult,
 } from './openaiGroupSuggestion.js';
 
-export {
-  generateGroupDescriptions,
-  type GroupDescriptionsResult,
-} from './openaiGroupDescriptions.js';
+export { generateGroupDescriptions } from './openaiGroupDescriptions.js';
 
 export {
   matchDivisionsByVision,
@@ -60,16 +56,30 @@ export {
 // =============================================================================
 
 /**
+ * Read the model's geocode out of its JSON, key by key. A point that is not on
+ * the globe is no answer at all; a missing name is the curator's own
+ * description, and a confidence outside the vocabulary is `low`.
+ */
+function geocodeOf(value: unknown, description: string): AIGeocodeResult {
+  const answer = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+  const { lat, lng } = answer;
+  if (typeof lat !== 'number' || typeof lng !== 'number'
+    || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    throw new Error('The model did not locate the place');
+  }
+  const confidence = Confidence.safeParse(answer.confidence);
+  return {
+    lat,
+    lng,
+    name: typeof answer.name === 'string' && answer.name ? answer.name : description,
+    confidence: confidence.success ? confidence.data : 'low',
+  };
+}
+
+/**
  * Use AI to geocode a natural-language place description.
  * Returns coordinates, a resolved name, and a confidence level.
  */
-export interface AIGeocodeResult {
-  lat: number;
-  lng: number;
-  name: string;
-  confidence: 'high' | 'medium' | 'low';
-}
-
 export async function geocodeDescription(description: string): Promise<AIGeocodeResult> {
   const openai = getOpenAIClient();
   if (!openai) {
@@ -96,5 +106,5 @@ Respond with valid JSON only, no markdown. Format:
   const content = response.choices[0]?.message?.content;
   if (!content) throw new Error('Empty response from OpenAI');
 
-  return parseJsonResponse<AIGeocodeResult>(content);
+  return geocodeOf(parseJsonResponse<unknown>(content), description);
 }

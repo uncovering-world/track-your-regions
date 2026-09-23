@@ -24,33 +24,12 @@ import {
   type EscalationLevel,
   type RawModelResult,
 } from './openaiShared.js';
-
-/**
- * Response from AI suggesting group assignment
- */
-export interface GroupSuggestionResponse {
-  suggestedGroup: string | null;
-  confidence: 'high' | 'medium' | 'low';
-  shouldSplit: boolean;
-  splitGroups?: string[];
-  reasoning: string;
-  context?: string;
-  sources?: string[];
-  usage?: TokenUsage;
-  /** The escalation level used for this response */
-  escalationLevel?: EscalationLevel;
-  /** If true, AI recommends escalating to next level for better accuracy */
-  needsEscalation?: boolean;
-}
-
-/**
- * Batch result with total usage
- */
-export interface BatchSuggestionResult {
-  suggestions: Map<string, GroupSuggestionResponse>;
-  totalUsage: TokenUsage;
-  apiRequestsCount: number;
-}
+import {
+  Confidence,
+  type BatchGroupSuggestion,
+  type BatchSuggestions,
+  type GroupSuggestion,
+} from '../../api/responses/ai.js';
 
 // =============================================================================
 // suggestGroupForRegion (single-region classification)
@@ -160,50 +139,72 @@ function logSingleSuggestionResponse(
 }
 
 /**
- * Normalise a parsed response, validating the suggested group against the
- * authoritative list and deriving `needsEscalation` when not explicit.
+ * Validate a group name against the authoritative list. Returns the canonical
+ * name (case-insensitive resolution) or null if no match.
  */
-function normalizeParsedSuggestion(
-  parsed: GroupSuggestionResponse,
+function resolveGroupName(name: unknown, availableGroups: string[]): string | null {
+  if (typeof name !== 'string' || !name) return null;
+  if (availableGroups.includes(name)) return name;
+  return availableGroups.find(g => g.toLowerCase() === name.toLowerCase()) ?? null;
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Read one region's suggestion out of the model's JSON, key by key.
+ *
+ * The model writes that JSON and nothing holds it to a shape, so each key is
+ * read for the type the answer declares (`BatchGroupSuggestion`) and anything
+ * else becomes the empty reading of that key. A group name is resolved against
+ * the groups the request offered, so a name the model invented is dropped from
+ * `splitGroups`, and as the suggested group it leaves no group and `low`
+ * confidence: the model was sure of a group that is not on offer.
+ */
+function suggestionOf(answer: unknown, availableGroups: string[]): BatchGroupSuggestion | null {
+  if (!isJsonObject(answer)) return null;
+  const suggestedGroup = resolveGroupName(answer.suggestedGroup, availableGroups);
+  const invented = Boolean(answer.suggestedGroup) && suggestedGroup === null;
+  const confidence = Confidence.safeParse(answer.confidence);
+  return {
+    suggestedGroup,
+    confidence: confidence.success && !invented ? confidence.data : 'low',
+    shouldSplit: answer.shouldSplit === true,
+    splitGroups: Array.isArray(answer.splitGroups)
+      ? answer.splitGroups
+        .map(name => resolveGroupName(name, availableGroups))
+        .filter((name): name is string => name !== null)
+      : undefined,
+    reasoning: typeof answer.reasoning === 'string' ? answer.reasoning : '',
+    context: typeof answer.context === 'string' ? answer.context : undefined,
+    sources: Array.isArray(answer.sources)
+      ? answer.sources.filter((source): source is string => typeof source === 'string')
+      : undefined,
+  };
+}
+
+/**
+ * The single-region answer: the suggestion, what asking cost, and whether to
+ * ask again one level up — the model's own advice when it gave one, otherwise
+ * whenever the fast level was less than sure.
+ */
+function singleSuggestionOf(
+  answer: unknown,
   availableGroups: string[],
   escalationLevel: EscalationLevel,
   usage: TokenUsage,
-): GroupSuggestionResponse {
-  // Validate suggested group exists in the authoritative list.
-  if (parsed.suggestedGroup && !availableGroups.includes(parsed.suggestedGroup)) {
-    const match = availableGroups.find(
-      g => g.toLowerCase() === parsed.suggestedGroup?.toLowerCase(),
-    );
-    parsed.suggestedGroup = match || null;
-    if (!match) parsed.confidence = 'low';
-  }
-
-  // Same authoritative check for splitGroups — drop hallucinated entries
-  // (case-insensitive resolution back to the canonical name when possible).
-  if (parsed.splitGroups && Array.isArray(parsed.splitGroups)) {
-    parsed.splitGroups = parsed.splitGroups
-      .map(name => {
-        if (availableGroups.includes(name)) return name;
-        const match = availableGroups.find(g => g.toLowerCase() === name?.toLowerCase());
-        return match ?? null;
-      })
-      .filter((name): name is string => name !== null);
-  }
-
-  const needsEscalation =
-    parsed.needsEscalation ?? (escalationLevel === 'fast' && parsed.confidence !== 'high');
-
+): GroupSuggestion {
+  const suggestion = suggestionOf(answer, availableGroups);
+  if (!suggestion || !isJsonObject(answer)) throw new Error('The model did not answer with a suggestion');
+  const advice = answer.needsEscalation;
   return {
-    suggestedGroup: parsed.suggestedGroup ?? null,
-    confidence: parsed.confidence ?? 'low',
-    shouldSplit: parsed.shouldSplit ?? false,
-    splitGroups: parsed.splitGroups,
-    reasoning: parsed.reasoning ?? '',
-    context: parsed.context,
-    sources: parsed.sources,
+    ...suggestion,
     usage,
     escalationLevel,
-    needsEscalation,
+    needsEscalation: typeof advice === 'boolean'
+      ? advice
+      : escalationLevel === 'fast' && suggestion.confidence !== 'high',
   };
 }
 
@@ -224,7 +225,7 @@ export async function suggestGroupForRegion(
   useWebSearch?: boolean,
   worldViewSource?: string,
   escalationLevel: EscalationLevel = 'fast'
-): Promise<GroupSuggestionResponse> {
+): Promise<GroupSuggestion> {
   if (!getOpenAIClient()) {
     throw new Error('OpenAI API is not configured. Please set OPENAI_API_KEY in .env');
   }
@@ -293,8 +294,7 @@ export async function suggestGroupForRegion(
       console.warn('[OpenAI] Failed to log usage:', err instanceof Error ? err.message : err),
     );
 
-    const parsed = parseJsonResponse<GroupSuggestionResponse>(raw.content);
-    return normalizeParsedSuggestion(parsed, availableGroups, escalationLevel, usage);
+    return singleSuggestionOf(parseJsonResponse<unknown>(raw.content), availableGroups, escalationLevel, usage);
   } catch (error) {
     console.log('❌ AI Error:', error instanceof Error ? error.message : error);
     throw error;
@@ -428,43 +428,19 @@ function logBatchResponse(
 }
 
 /**
- * Validate a group name against the authoritative list. Returns the canonical
- * name (case-insensitive resolution) or null if no match.
- */
-function resolveGroupName(name: string | null | undefined, availableGroups: string[]): string | null {
-  if (!name) return null;
-  if (availableGroups.includes(name)) return name;
-  return availableGroups.find(g => g.toLowerCase() === name.toLowerCase()) ?? null;
-}
-
-/**
- * Merge a parsed batch response into the accumulated results map. Validates
- * `suggestedGroup` and every entry in `splitGroups` against the authoritative
- * list — drops hallucinated names so downstream code can't silently emit them.
+ * Merge a parsed batch response, keyed by region name, into the accumulated
+ * results — each entry read by `suggestionOf`, so a group the model invented
+ * never reaches the curator as a suggestion.
  */
 function mergeBatchSuggestions(
-  parsed: Record<string, GroupSuggestionResponse>,
-  target: Map<string, GroupSuggestionResponse>,
+  parsed: unknown,
+  target: Map<string, BatchGroupSuggestion>,
   availableGroups: string[],
 ): void {
-  for (const [name, suggestion] of Object.entries(parsed)) {
-    if (suggestion && typeof suggestion === 'object') {
-      const validatedSuggested = resolveGroupName(suggestion.suggestedGroup, availableGroups);
-      const validatedSplits = Array.isArray(suggestion.splitGroups)
-        ? suggestion.splitGroups
-            .map(g => resolveGroupName(g, availableGroups))
-            .filter((g): g is string => g !== null)
-        : suggestion.splitGroups;
-      target.set(name, {
-        suggestedGroup: validatedSuggested,
-        confidence: suggestion.confidence ?? 'low',
-        shouldSplit: suggestion.shouldSplit ?? false,
-        splitGroups: validatedSplits,
-        reasoning: suggestion.reasoning ?? '',
-        context: suggestion.context,
-        sources: suggestion.sources,
-      });
-    }
+  if (!isJsonObject(parsed)) return;
+  for (const [name, value] of Object.entries(parsed)) {
+    const suggestion = suggestionOf(value, availableGroups);
+    if (suggestion) target.set(name, suggestion);
   }
 }
 
@@ -478,7 +454,7 @@ async function processBatch(
   totalBatches: number,
   args: BatchContextArgs,
   contextInfo: string,
-  allResults: Map<string, GroupSuggestionResponse>,
+  allResults: Map<string, BatchGroupSuggestion>,
 ): Promise<
   | { success: true; raw: RawModelResult; batchCost: ReturnType<typeof calculateCost>; modelToUse: string }
   | { success: false }
@@ -488,37 +464,44 @@ async function processBatch(
 
   const modelToUse = args.useWebSearch ? getWebSearchModel() : getModel();
 
+  let raw: RawModelResult;
   try {
-    const raw = await invokeModel(systemPrompt, userPrompt, {
+    raw = await invokeModel(systemPrompt, userPrompt, {
       useWebSearch: args.useWebSearch,
       modelToUse,
       temperature: 0.1,
     });
-
-    if (!raw.content) {
-      console.log(`❌ Empty response for batch ${batchNum}`);
-      return { success: false };
-    }
-
-    const batchCost = calculateCost(
-      raw.promptTokens,
-      raw.completionTokens,
-      modelToUse,
-      raw.webSearchWasUsed,
-    );
-
-    logBatchResponse(batchNum, batch, raw.content, raw, batchCost, args.useWebSearch);
-
-    const parsed = parseJsonResponse<Record<string, GroupSuggestionResponse>>(raw.content);
-    mergeBatchSuggestions(parsed, allResults, args.availableGroups);
-
-    return { success: true, raw, batchCost, modelToUse };
   } catch (error) {
     const message = error instanceof Error ? error.message : error;
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- batchNum is a number
     console.log(`❌ AI Batch Error (batch ${batchNum}):`, message);
     return { success: false };
   }
+
+  // An answer is paid for whether or not it can be read, so it is counted and
+  // costed from here on; one that cannot be read suggests nothing.
+  const batchCost = calculateCost(
+    raw.promptTokens,
+    raw.completionTokens,
+    modelToUse,
+    raw.webSearchWasUsed,
+  );
+
+  if (!raw.content) {
+    console.log(`❌ Empty response for batch ${batchNum}`);
+    return { success: true, raw, batchCost, modelToUse };
+  }
+
+  logBatchResponse(batchNum, batch, raw.content, raw, batchCost, args.useWebSearch);
+
+  try {
+    mergeBatchSuggestions(parseJsonResponse<unknown>(raw.content), allResults, args.availableGroups);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : error;
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- batchNum is a number
+    console.log(`❌ AI Batch answer unreadable (batch ${batchNum}):`, message);
+  }
+  return { success: true, raw, batchCost, modelToUse };
 }
 
 /**
@@ -533,7 +516,7 @@ export async function suggestGroupsForMultipleRegions(
   worldViewSource?: string,
   useWebSearch?: boolean,
   groupDescriptions?: Record<string, string>
-): Promise<BatchSuggestionResult> {
+): Promise<BatchSuggestions> {
   if (!getOpenAIClient()) {
     throw new Error('OpenAI API is not configured. Please set OPENAI_API_KEY in .env');
   }
@@ -543,7 +526,7 @@ export async function suggestGroupsForMultipleRegions(
   }
 
   const BATCH_SIZE = 20;
-  const allResults = new Map<string, GroupSuggestionResponse>();
+  const allResults = new Map<string, BatchGroupSuggestion>();
   let apiRequestsCount = 0;
 
   const useWebSearchFlag = Boolean(useWebSearch);
@@ -623,5 +606,5 @@ export async function suggestGroupsForMultipleRegions(
     ),
   );
 
-  return { suggestions: allResults, totalUsage, apiRequestsCount };
+  return { suggestions: Object.fromEntries(allResults), usage: totalUsage, apiRequestsCount };
 }
