@@ -471,13 +471,15 @@ Handle countries spanning multiple continents:
 
 ## API Endpoints
 
-Every call `frontend/src/api/worldViews.ts` makes, and the region reads and writes of `frontend/src/api/regions.ts`, answers through a schema in `backend/src/api/responses/worldViews.ts` or `responses/regions.ts` (ADR-0066). The member and geometry calls of `regions.ts` still declare their answers on both sides (#985).
+Every call `frontend/src/api/worldViews.ts` makes, and the region and member calls of `frontend/src/api/regions.ts`, answers through a schema in `backend/src/api/responses/worldViews.ts` or `responses/regions.ts` (ADR-0066). The geometry calls of `regions.ts` still declare their answers on both sides (#985).
 
 - **A region is one shape wherever it is answered.** The tree, the roots, a branch, the ancestors, and the region a create or an update leaves are all read by `REGION_SELECT_SQL` and mapped by `regionOf` (`controllers/worldView/regionAnswerRows.ts`).
   - The last ancestor is the selected region's whole row. It is what the client completes a selection clicked on the map from, and all a region restored from the address has.
   - A write answers with the row the tree would list, as the triggers and the rest of the handler left it, rather than with its own `RETURNING`. An update that flips `usesHull` adds the world view's bumped `tileVersion`.
 - **A world view carries its `tileVersion` in every answer**, a create's and an update's included. The client selects the world view a settings save hands back, and keys every tile URL on that number. Every world view answer is mapped by `worldViewOf`, and the delete impact by `deleteImpactOf` (`controllers/worldView/worldViewAnswerRows.ts`).
 - **A search match is its own shape** (`RegionSearchResult`): the region's `path` from the root and the `relevance_score` it was ranked by.
+- **A member is a subregion or a division, in one shape** (`RegionMember`). A subregion carries its `color`; a division carries its `memberRowId` and `hasCustomGeometry`, since a division cut into parts is a member once per part. Each kind leaves the other's keys absent, and the schema's refinement holds that, with `isSubregion` agreeing with `memberType`. `subregionMemberOf` and `divisionMemberOf` (`controllers/worldView/regionMemberAnswerRows.ts`) map the two.
+- **The member edits answer with what they did.** A removal counts the rows that went, not the ids the call named. Adding a division's children counts the children it placed, less any whose assignment to an existing subregion failed, and `removedOriginal` says whether a row of the division itself went. Adding divisions still counts the divisions the call named: in its child-selection mode it adds children rather than the named division, so no one count says what it placed. A move answers with the member row's id and the two regions, never the row itself, whose cut geometry can run to megabytes. Every subregion an edit creates, whether by adding divisions, adding a division's children or expanding the members, is a `CreatedSubregion` naming the division it was made for.
 - On the client, `Region` in `frontend/src/types/index.ts` is derived from the answer. Past the six keys every selection sets, the rest of the row is optional, because a selection made on the map starts from what the vector tile carries.
 
 ### World Views
