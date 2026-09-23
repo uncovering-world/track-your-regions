@@ -3150,7 +3150,13 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 | GET | `/api/admin/curators/:userId/activity` — answers `CuratorActivity`, each entry mapped key by key |
 | GET | `/api/admin/users/search` — answers `UserSearchResults`, up to twenty accounts |
 
-The rows above from `assign-regions` down answer through schemas in `backend/src/api/responses/admin.ts` (ADR-0066), and so do Catalogue Checks' (`docs/tech/data-assertions.md` § Where it sits). The sync rows above them do not yet; they are the next slice of #989.
+Every row above answers through a schema in `backend/src/api/responses/admin.ts` (ADR-0066), and so do Catalogue Checks' (`docs/tech/data-assertions.md` § Where it sits). The sync screens' answers are mapped key by key in `controllers/admin/syncAnswerRows.ts`:
+
+- **A source** (`ExperienceSource`) carries its gate, its fame lines, `waiting` (null where the counts failed) and whether it `caches` and `repairsPictures`.
+- **A run's status** (`SyncStatus`) is the in-memory run's figures, or `running: false` with `lastSyncAt` and `lastSyncStatus` from the source row when no run is known since the server started.
+- **A run's log** (`SyncLog`) reads its counters through `COALESCE(…, 0)` in `SYNC_LOG_COLUMNS_SQL`, the one column list both log reads select. The columns are nullable, but every writer sets them and they default to 0. The detail read (`SyncLogDetail`) adds `error_details`, each entry read as its `externalId` and `error`.
+- **What a run did** (`SyncChange`) carries its bigint `id` as a string. The stored `changed_fields` and `contents` are read out one key at a time: a field through `changedFieldOf` (`controllers/experience/reviewQueueItem.ts`), the review queue's reader, and a contents item as its `name` and `ref`.
+- **A backlog released** (`PublishWaitingResult`, row `publish-waiting` above) holds each published object's `placementFailed` pair to the rule `PublishResult` is held to, `placementTogether` (`backend/src/api/placementTogether.ts`).
 
 ### Field limits
 
