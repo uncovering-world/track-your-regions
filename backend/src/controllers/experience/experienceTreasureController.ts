@@ -7,7 +7,9 @@
 import { Response } from 'express';
 import { respond } from '../../api/respond.js';
 import { ExperienceTreasuresResponse } from '../../api/responses/experiences.js';
+import { TreasureViewMarked, TreasureViewUnmarked, ViewedTreasureIds } from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
+import type { TreasuresRow, UserViewedTreasuresRow } from '../../db/schema.generated.js';
 import { rowKindJoinSql } from '../../db/membership.js';
 import {
   experienceOfferedToReaderSql, hideLostSql, hideRefusedSql, hidePendingSql, linkedForReaderSql,
@@ -143,9 +145,9 @@ export async function getViewedTreasureIds(req: AuthenticatedRequest, res: Respo
     query += ' WHERE uvt.user_id = $1';
   }
 
-  const result = await pool.query(query, params);
+  const result = await pool.query<Pick<UserViewedTreasuresRow, 'treasure_id'>>(query, params);
 
-  res.json({
+  respond(res, ViewedTreasureIds, {
     viewedTreasureIds: result.rows.map(r => r.treasure_id),
   });
 }
@@ -171,7 +173,7 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
   // name echoed back below, and have written a `user_viewed_treasures` row for
   // something no read ever offered them (#520's reasoning, unchanged from
   // location to treasure).
-  const treasureResult = await pool.query(
+  const treasureResult = await pool.query<Pick<TreasuresRow, 'id' | 'name'>>(
     `SELECT t.id, t.name FROM treasures t WHERE t.id = $1 AND ${publishedContentSql('t')}`,
     [treasureId],
   );
@@ -200,8 +202,10 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
     // location auto-mark below carries, for the same reason: without them, a
     // caller who could see this treasure (checked above) but not this
     // particular museum, or not this particular link, would auto-mark a
-    // `pending` experience visited at :139 and have its name echoed back at
-    // :161, from a lookup this join never scoped to what the caller may see.
+    // `pending` experience visited through the auto-mark's `INSERT INTO
+    // user_visited_experiences` below and have its name echoed back by the
+    // `experienceName` lookup after it, which this join never scoped to what
+    // the caller may see.
     const linkResult = await pool.query(
       `SELECT 1 FROM experience_treasures et
          JOIN experiences e ON e.id = et.experience_id
@@ -238,7 +242,7 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
     }
   }
 
-  res.json({
+  respond(res, TreasureViewMarked, {
     success: true,
     treasureId,
     treasureName: treasure.name,
@@ -271,5 +275,5 @@ export async function unmarkTreasureViewed(req: AuthenticatedRequest, res: Respo
     return;
   }
 
-  res.json({ success: true, treasureId });
+  respond(res, TreasureViewUnmarked, { success: true, treasureId });
 }

@@ -5,7 +5,10 @@
  */
 
 import { Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { ExperienceVisitMarked, ExperienceVisitUnmarked, VisitedExperienceIds } from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
+import type { ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.generated.js';
 import { experienceOfferedToReaderSql, hidePendingSql, lifecycleSelectSql, readerPositionSql } from './experienceLifecycle.js';
 import { rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -132,7 +135,7 @@ export async function markVisited(req: AuthenticatedRequest, res: Response): Pro
   // Gating the write does not touch that exemption: a visit already recorded
   // stays visible after a refusal, and the note on it is edited through
   // `updateVisit`, which only ever updates a row this reader already has.
-  const expResult = await pool.query(
+  const expResult = await pool.query<Pick<ExperiencesRow, 'name'>>(
     `SELECT e.id, e.name FROM experiences e WHERE e.id = $1 AND ${experienceOfferedToReaderSql()}`,
     [experienceId],
   );
@@ -142,7 +145,7 @@ export async function markVisited(req: AuthenticatedRequest, res: Response): Pro
   }
 
   // Upsert visited record
-  const result = await pool.query(`
+  const result = await pool.query<Pick<UserVisitedExperiencesRow, 'id' | 'visited_at' | 'notes' | 'rating'>>(`
     INSERT INTO user_visited_experiences (user_id, experience_id, notes, rating, visited_at)
     VALUES ($1, $2, $3, $4, NOW())
     ON CONFLICT (user_id, experience_id) DO UPDATE SET
@@ -152,11 +155,15 @@ export async function markVisited(req: AuthenticatedRequest, res: Response): Pro
     RETURNING id, visited_at, notes, rating
   `, [userId, experienceId, notes, rating]);
 
-  res.json({
+  const visit = result.rows[0];
+  respond(res, ExperienceVisitMarked, {
     success: true,
     experienceId,
     experienceName: expResult.rows[0].name,
-    ...result.rows[0],
+    id: visit.id,
+    visited_at: visit.visited_at?.toISOString() ?? null,
+    notes: visit.notes,
+    rating: visit.rating,
   });
 }
 
@@ -183,7 +190,7 @@ export async function unmarkVisited(req: AuthenticatedRequest, res: Response): P
     return;
   }
 
-  res.json({ success: true, experienceId });
+  respond(res, ExperienceVisitUnmarked, { success: true, experienceId });
 }
 
 /**
@@ -283,9 +290,9 @@ export async function getVisitedIds(req: AuthenticatedRequest, res: Response): P
     query += ' WHERE uve.user_id = $1';
   }
 
-  const result = await pool.query(query, params);
+  const result = await pool.query<Pick<UserVisitedExperiencesRow, 'experience_id'>>(query, params);
 
-  res.json({
+  respond(res, VisitedExperienceIds, {
     visitedIds: result.rows.map(r => r.experience_id),
     total: result.rows.length,
   });

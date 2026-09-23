@@ -77,7 +77,7 @@ describe('markVisited — #520', () => {
   it('writes the visit once the row passes the gate', async () => {
     mockedQuery
       .mockResolvedValueOnce({ rows: [{ id: 281, name: 'Published Site' }] })
-      .mockResolvedValueOnce({ rows: [{ id: 9, visited_at: '2026-01-01', notes: null, rating: null }] });
+      .mockResolvedValueOnce({ rows: [{ id: 9, visited_at: new Date('2026-01-01T00:00:00.000Z'), notes: null, rating: null }] });
     const res = makeRes();
 
     await markVisited(
