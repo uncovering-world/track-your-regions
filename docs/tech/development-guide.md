@@ -437,6 +437,7 @@ The schema describes the wire, meaning what `JSON.parse` yields on the client:
 - Every object is a `z.strictObject`. The generator refuses a plain `z.object`, whose parse would strip an undeclared key and pass while the key still went out.
 - A timestamp is `z.iso.datetime({ offset: true })`, and the handler converts its `Date` with `toISOString()`.
 - A vocabulary is read from where it is stated: `z.enum(CHECK_VALUES.…)` for a CHECK list, or the backend constant that holds it.
+- A fixed-length array is a `z.tuple`, which the generator renders as `[number, number]`, and a tuple with a rest element is refused. `FocusBbox` and `AnchorPoint` in `responses/regions.ts` are the camera frame the map's reads carry.
 - A field's meaning goes in `.describe()`, which reaches the generated type as JSDoc and later the OpenAPI document. Why the handler does what it does stays in comments.
 - A rule across keys is a refinement (`superRefine`) on the schema. An example is a flag that comes only with a non-empty list, as with the placement pair in `responses/curation.ts`.
   - Zod's `toJSONSchema` does not carry a refinement, so the rule reaches neither the generated type nor the JSON Schema. Only `respond()`'s parse holds it, and only outside production.
@@ -450,6 +451,7 @@ TypeScript checks only the keys a literal writes itself, so build the body to wr
 - A fragment spread into the body is typed as a `Pick` of the schema's type.
   - The placement pair is one such fragment. An answer whose call re-places the object spreads `placementReport(failures)` (`controllers/experience/placementReport.ts`), which is typed as `PublishResult`'s two keys, rather than mapping `placeAfterRelease`'s failures itself.
 - Rows are typed from the generated row types (§ Database Queries) and mapped key by key, never passed through as `result.rows`. An untyped row is `any`, and `any` satisfies every type.
+- A resource that several endpoints answer with is one schema and one mapper over one SELECT. Every region answer is `regionOf` over `REGION_SELECT_SQL` (`controllers/worldView/regionAnswerRows.ts`), and a write answers with that read rather than with its own `RETURNING`. A narrower copy for one endpoint drifts from what the client does with the answer, which is the same thing whichever endpoint it came from.
 
 The runtime parse catches what the compiler cannot, on every path a lane exercises. Error bodies stay `{ error }`, and #793's route declarations are where they will be declared.
 

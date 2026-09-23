@@ -471,10 +471,20 @@ Handle countries spanning multiple continents:
 
 ## API Endpoints
 
+Every call `frontend/src/api/worldViews.ts` makes, and the region reads and writes of `frontend/src/api/regions.ts`, answers through a schema in `backend/src/api/responses/worldViews.ts` or `responses/regions.ts` (ADR-0066). The member and geometry calls of `regions.ts` still declare their answers on both sides (#985).
+
+- **A region is one shape wherever it is answered.** The tree, the roots, a branch, the ancestors, and the region a create or an update leaves are all read by `REGION_SELECT_SQL` and mapped by `regionOf` (`controllers/worldView/regionAnswerRows.ts`).
+  - The last ancestor is the selected region's whole row. It is what the client completes a selection clicked on the map from, and all a region restored from the address has.
+  - A write answers with the row the tree would list, as the triggers and the rest of the handler left it, rather than with its own `RETURNING`. An update that flips `usesHull` adds the world view's bumped `tileVersion`.
+- **A world view carries its `tileVersion` in every answer**, a create's and an update's included. The client selects the world view a settings save hands back, and keys every tile URL on that number. Every world view answer is mapped by `worldViewOf`, and the delete impact by `deleteImpactOf` (`controllers/worldView/worldViewAnswerRows.ts`).
+- **A search match is its own shape** (`RegionSearchResult`): the region's `path` from the root and the `relevance_score` it was ranked by.
+- On the client, `Region` in `frontend/src/types/index.ts` is derived from the answer. Past the six keys every selection sets, the rest of the row is optional, because a selection made on the map starts from what the vector tile carries.
+
 ### World Views
 - `GET /api/world-views` - List all world views
 - `POST /api/world-views` - Create world view
 - `PUT /api/world-views/:worldViewId` - Update world view
+- `GET /api/world-views/:worldViewId/delete-impact` - What a delete would destroy: its regions, the object assignments and the readers' visits that go with them
 - `DELETE /api/world-views/:worldViewId` - Delete world view
 
 ### Regions
@@ -482,6 +492,7 @@ Handle countries spanning multiple continents:
 - `GET /api/world-views/:worldViewId/regions/root` - List root regions
 - `GET /api/world-views/:worldViewId/regions/search` - Search regions
 - `GET /api/world-views/regions/:regionId/subregions` - List a region's children (what the map and the list read one level at a time; there is deliberately no "every leaf in the world view" read — see `experience-map-ui.md` § What the map reads at each level)
+- `GET /api/world-views/regions/:regionId/ancestors` - The region and its ancestors, root first
 - `POST /api/world-views/:worldViewId/regions` - Create region
 - `PUT /api/world-views/regions/:regionId` - Update region
 - `DELETE /api/world-views/regions/:regionId` - Delete region
