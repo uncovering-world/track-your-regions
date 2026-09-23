@@ -42,7 +42,7 @@ describe('division geometry reads keep the browser its revalidation', () => {
   });
 
   it('sets private, no-cache on a division geometry, rows or none', async () => {
-    for (const rows of [[{ geometry: { type: 'Polygon', coordinates: [] } }], []]) {
+    for (const rows of [[{ geometry: { type: 'MultiPolygon', coordinates: [] } }], []]) {
       mockedQuery.mockResolvedValueOnce({ rows });
       const res = makeRes();
       await getGeometry({ params: { divisionId: '1' }, query: {} } as never, res as never);
@@ -94,7 +94,7 @@ describe('the relaxation wins over requireAuth on the wire', () => {
     // handler. `setHeader` replaces, so the handler's value is what ships —
     // asserting it on the wire is the only way to hold that, since a unit
     // call never sees the middleware's header at all.
-    app.get('/geometry', authenticatedLimiter, requireAuth, getGeometry);
+    app.get('/geometry/:divisionId', authenticatedLimiter, requireAuth, getGeometry);
     server = app.listen(0);
     await new Promise<void>((resolve) => server.once('listening', resolve));
     port = (server.address() as AddressInfo).port;
@@ -105,11 +105,11 @@ describe('the relaxation wins over requireAuth on the wire', () => {
   });
 
   it('answers private, no-cache, not the middleware\'s no-store', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ geometry: { type: 'Polygon', coordinates: [] } }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ geometry: { type: 'MultiPolygon', coordinates: [] } }] });
 
     const headers = await new Promise<Record<string, string | string[] | undefined>>((resolve, reject) => {
       const req = request(
-        { port, path: '/geometry?divisionId=1', method: 'GET', headers: { authorization: 'Bearer x' } },
+        { port, path: '/geometry/1', method: 'GET', headers: { authorization: 'Bearer x' } },
         (res) => {
           res.resume();
           res.on('end', () => resolve(res.headers));
