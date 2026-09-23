@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import type { Region, RegionMember } from '../../../../../types';
+import type { Region } from '../../../../../types';
+import type { RegionMember } from '../../../../../api/regions';
 import { getMemberKey } from '../../../types';
 import type { SubdivisionGroup, MapTool } from './types';
 import { removeMemberAtIndex, addMemberAtIndex } from './groupMutations';
@@ -105,7 +106,6 @@ export function useDivisionOperations({
       const childMembers: RegionMember[] = children.map(child => ({
         id: child.id,
         name: child.name,
-        parentId: div.id,
         hasChildren: child.hasChildren,
         memberType: 'division' as const,
         isSubregion: false,
@@ -166,7 +166,6 @@ export function useDivisionOperations({
       const newMembers: RegionMember[] = cutParts.map((part, idx) => ({
         id: cuttingDivision.id,
         name: part.name,
-        parentId: cuttingDivision.parentId,
         hasChildren: false, // Custom geometry parts don't have children
         memberType: 'division' as const,
         isSubregion: false,

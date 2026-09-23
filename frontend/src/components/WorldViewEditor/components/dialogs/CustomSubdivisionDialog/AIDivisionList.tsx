@@ -27,7 +27,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import type { RegionMember } from '@/types';
+import type { RegionMember } from '@/api/regions';
 import type { SubdivisionGroup } from './types';
 import { getGroupColor } from './types';
 import type { RegionSuggestion } from './aiAssistTypes';

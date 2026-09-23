@@ -4,7 +4,7 @@
  * chains so the call sites don't trip the no-nested-functions rule.
  */
 
-import type { RegionMember } from '../../../../../types';
+import type { RegionMember } from '../../../../../api/regions';
 import { getMemberKey } from '../../../types';
 import type { SubdivisionGroup } from './types';
 

@@ -15,7 +15,8 @@ import ContentCutIcon from '@mui/icons-material/ContentCut';
 import PaletteIcon from '@mui/icons-material/Palette';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CloseIcon from '@mui/icons-material/Close';
-import type { Region, RegionMember } from '../../../types';
+import type { Region } from '../../../types';
+import type { RegionMember } from '../../../api/regions';
 import { useAppTheme } from '../../../theme';
 
 export interface ActionStripProps {

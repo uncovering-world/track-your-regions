@@ -5,7 +5,6 @@
  * - AdministrativeDivision: Official GADM boundary (Germany, Bavaria, Munich)
  * - WorldView: Custom hierarchy for organizing regions
  * - Region: User-defined grouping within a WorldView
- * - RegionMember: A member of a Region (can be division or subregion)
  */
 
 import type { Region as RegionAnswer } from '@tyr/shared/api';
@@ -50,27 +49,6 @@ export interface AdministrativeDivisionWithPath extends AdministrativeDivision {
  */
 export type Region =
   Pick<RegionAnswer, 'id' | 'worldViewId' | 'name' | 'description' | 'parentRegionId' | 'color'> & Partial<RegionAnswer>;
-
-// =============================================================================
-// Region Members (contents of a user-defined region)
-// =============================================================================
-
-/**
- * A member of a user-defined region
- * Can be either an administrative division or a subregion
- */
-export interface RegionMember {
-  id: number;
-  memberRowId?: number; // Unique row ID for division members (allows duplicates of same division with different geometries)
-  name: string;
-  parentId: number | null;
-  hasChildren: boolean;
-  memberType: 'division' | 'subregion';
-  isSubregion: boolean;
-  color?: string;
-  path?: string;
-  hasCustomGeometry?: boolean;
-}
 
 // =============================================================================
 // GeoJSON Types

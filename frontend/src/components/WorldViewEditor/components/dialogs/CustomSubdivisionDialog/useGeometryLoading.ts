@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
-import type { Region, RegionMember } from '../../../../../types';
+import type { Region } from '../../../../../types';
+import type { RegionMember } from '../../../../../api/regions';
 import type { SubdivisionGroup } from './types';
 import { fetchDivisionGeometry, fetchRegionMemberGeometries, fetchDescendantMemberGeometries } from '../../../../../api';
 import { focusFromGeoJson, frameGeoJson } from '../../../../../utils/mapUtils';
