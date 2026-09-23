@@ -4,6 +4,7 @@
 
 import { Request, Response } from 'express';
 import { respond } from '../../api/respond.js';
+import { DisplayGeometryStatus } from '../../api/responses/geometry.js';
 import { RegionGeometry } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import { regionGeometryOf, type RegionGeometryRow } from './regionGeometryAnswerRows.js';
@@ -15,27 +16,25 @@ import { regionGeometryOf, type RegionGeometryRow } from './regionGeometryAnswer
 export async function getDisplayGeometryStatus(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
 
-  const result = await pool.query(`
+  const result = await pool.query<{ total: number; with_geom: number; with_anchor: number; hull_regions: number; with_hull: number }>(`
     SELECT
-      COUNT(*) as total,
-      COUNT(CASE WHEN geom IS NOT NULL THEN 1 END) as with_geom,
-      COUNT(CASE WHEN anchor_point IS NOT NULL THEN 1 END) as with_anchor,
-      COUNT(CASE WHEN uses_hull = true THEN 1 END) as hull_regions,
-      COUNT(CASE WHEN hull_geom IS NOT NULL THEN 1 END) as with_hull
+      COUNT(*)::int as total,
+      COUNT(CASE WHEN geom IS NOT NULL THEN 1 END)::int as with_geom,
+      COUNT(CASE WHEN anchor_point IS NOT NULL THEN 1 END)::int as with_anchor,
+      COUNT(CASE WHEN uses_hull = true THEN 1 END)::int as hull_regions,
+      COUNT(CASE WHEN hull_geom IS NOT NULL THEN 1 END)::int as with_hull
     FROM regions
     WHERE world_view_id = $1
   `, [worldViewId]);
 
   const row = result.rows[0];
-  const status = {
-    total: parseInt(row.total),
-    withGeom: parseInt(row.with_geom),
-    withAnchor: parseInt(row.with_anchor),
-    hullRegions: parseInt(row.hull_regions),
-    withHull: parseInt(row.with_hull),
-    complete: parseInt(row.with_geom) > 0,
-  };
-  res.json(status);
+  respond(res, DisplayGeometryStatus, {
+    total: row.total,
+    withGeom: row.with_geom,
+    withAnchor: row.with_anchor,
+    hullRegions: row.hull_regions,
+    withHull: row.with_hull,
+  });
 }
 
 /**

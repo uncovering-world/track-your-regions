@@ -131,7 +131,7 @@ function generateWestDatelineHull(
 function combineDatelineHulls(
   eastHull: GeoJSON.Polygon | null,
   westHull: GeoJSON.Polygon | null
-): GeoJSON.Geometry | null {
+): GeoJSON.Polygon | GeoJSON.MultiPolygon | null {
   let east = eastHull;
   let west = westHull;
   if (east && west) {
@@ -177,7 +177,7 @@ export function generateHullFromPoints(
   points: Point[],
   params: HullParams,
   crossesDateline: boolean,
-): GeoJSON.Geometry | null {
+): GeoJSON.Polygon | GeoJSON.MultiPolygon | null {
   if (!points || points.length < 1) return null;
 
   if (crossesDateline) {

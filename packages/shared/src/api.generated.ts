@@ -190,6 +190,88 @@ export interface ChildDivisionsAdded {
   createdRegions: CreatedSubregion[];
 }
 
+/** A stop asked of a world view's computation; a run in flight ends at its next region. */
+export interface ComputationCancelled {
+  cancelled: true;
+}
+
+/** A world view's computation, started in the background or found unnecessary. */
+export interface ComputationStartResult {
+  /** False when every region already had a geometry, so there was nothing to run. */
+  started: boolean;
+  /** Regions in the world view. */
+  total: number;
+  needsComputation: number;
+  alreadyComputed: number;
+  message: string;
+}
+
+/**
+ * A world view's computation as it stands. Only `running` is sent while no run is known, since the
+ * server started or since the last one was cleared.
+ */
+export interface ComputationStatus {
+  running: boolean;
+  progress?: number;
+  total?: number;
+  /** The step in words; `Complete`, `Cancelled` or `Error: …` once it has ended. */
+  status?: string;
+  percent?: number;
+  computed?: number;
+  skipped?: number;
+  errors?: number;
+  currentRegion?: string;
+  currentMembers?: number;
+}
+
+export interface ComputeComplete {
+  type: "complete";
+  elapsed?: number;
+  message?: string;
+  data: ComputeResult;
+}
+
+export interface ComputeFailed {
+  type: "error";
+  message: string;
+  elapsed?: number;
+}
+
+export interface ComputeProgress {
+  type: "progress";
+  /** What the computation is doing, as a line of the progress log. */
+  step: string;
+  /** Seconds since the stream opened. */
+  elapsed: number;
+  /** The step's own figures, shown as they come: each step logs its own. */
+  data?: Record<string, unknown>;
+}
+
+/** One event of a region's computation stream: a step, the result, or the failure that ends it. */
+export type ComputeProgressEvent = ComputeProgress | ComputeComplete | ComputeFailed;
+
+/** What a finished computation of one region left. */
+export interface ComputeResult {
+  computed: true;
+  /**
+   * Sent alone beside `computed` when the region keeps a hand-drawn boundary, so nothing was
+   * computed.
+   */
+  preserved?: true;
+  /** Vertices in the computed outline. */
+  points?: number;
+  usesHull?: boolean;
+  /** A hull was rebuilt with the outline, for a region drawn as one. */
+  hullGenerated?: boolean;
+  numPolygons?: number;
+  numHoles?: number;
+  /** The region's frame as the computed outline left it. */
+  focusBbox?: FocusBbox | null;
+  anchorPoint?: AnchorPoint | null;
+  /** The world view's tile version after the run bumped it. */
+  tileVersion?: number;
+}
+
 /**
  * Which of an object's contents a part is: one of its points (`locations`) or one of its works
  * (`treasures`).
@@ -296,6 +378,20 @@ export interface DescendantMemberGeometry {
   };
   /** Simplified for context, at a tolerance of 0.005°. */
   geometry: AreaGeometry;
+}
+
+/** How much of a world view has its geometry and the frame metadata that goes with it. */
+export interface DisplayGeometryStatus {
+  /** Regions in the world view. */
+  total: number;
+  /** Regions with a computed outline. */
+  withGeom: number;
+  /** Regions whose frame and anchor are set, which is what a run's regeneration step writes. */
+  withAnchor: number;
+  /** Regions drawn as a hull. */
+  hullRegions: number;
+  /** Regions with a hull built. */
+  withHull: number;
 }
 
 /** A division's boundary, as GADM draws it. */
@@ -710,6 +806,33 @@ export interface HeldPart {
   treasureType?: string | null;
 }
 
+/** The parameters a region's hull is built with. */
+export interface HullParams {
+  /** Buffer around the islands, in km. */
+  bufferKm: number;
+  /** How loosely the hull fits: higher takes in far islands. */
+  concavity: number;
+  /** Simplification, in degrees. */
+  simplifyTolerance: number;
+}
+
+/** A hull built with the given parameters and not saved. */
+export interface HullPreview {
+  geometry: AreaGeometry | null;
+  /** Points the hull was built around. */
+  pointCount: number;
+  crossesDateline: boolean;
+  params: HullParams;
+}
+
+/** A hull built with the given parameters and stored with them. */
+export interface HullSaved {
+  saved: boolean;
+  pointCount: number;
+  crossesDateline: boolean;
+  params: HullParams;
+}
+
 /** Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043). */
 export interface ImageCredit {
   /** The photographer or uploader, as plain text. */
@@ -1106,6 +1229,12 @@ export interface RefusedWork {
   missingSince: string | null;
 }
 
+/** Regions whose area, frame and anchor were recomputed from their stored outline. */
+export interface RegenerateDisplayGeometriesResult {
+  regenerated: number;
+  message: string;
+}
+
 /** A region of a world view: a named grouping of divisions, or of other regions. */
 export interface Region {
   id: number;
@@ -1241,6 +1370,14 @@ export interface RegionMembershipResult {
 
 /** What a member of a region is: a GADM division, or one of its own subregions. */
 export type RegionMemberType = "division" | "subregion";
+
+/** A region's hand-drawn boundary and hull dropped, and its outline rebuilt from its members. */
+export interface RegionReset {
+  reset: true;
+  /** Vertices of the outline rebuilt from its members; 0 where it has none. */
+  points: number;
+  message: string;
+}
 
 /** Regions, by name; or a region's ancestors, from the root to the region itself. */
 export type Regions = Region[];
@@ -1455,6 +1592,12 @@ export interface RunSetAside {
   syncLogId: number;
   /** The state the caller asked for, whether or not a row changed. */
   setAside: boolean;
+}
+
+/** The parameters a region's hull was saved with. */
+export interface SavedHullParams {
+  /** Null where the region's hull has never been tuned: it is built with the defaults. */
+  params: HullParams | null;
 }
 
 /** One find dug up at a site (#894). */

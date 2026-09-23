@@ -3,6 +3,8 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { ComputationCancelled, ComputationStartResult, ComputationStatus } from '../../api/responses/geometry.js';
 import { pool } from '../../db/index.js';
 import { runningComputations } from './types.js';
 import type { ComputationProgress } from './types.js';
@@ -16,7 +18,7 @@ export async function getComputationStatus(req: Request, res: Response): Promise
 
   const status = runningComputations.get(worldViewId);
   if (!status) {
-    res.json({ running: false });
+    respond(res, ComputationStatus, { running: false });
     return;
   }
 
@@ -28,7 +30,7 @@ export async function getComputationStatus(req: Request, res: Response): Promise
     || status.status === 'Cancelled'
     || status.status.startsWith('Error:');
 
-  res.json({
+  respond(res, ComputationStatus, {
     running: !isFinished,
     progress: status.progress,
     total: status.total,
@@ -37,9 +39,6 @@ export async function getComputationStatus(req: Request, res: Response): Promise
     computed: status.computed,
     skipped: status.skipped,
     errors: status.errors,
-    // The key the client reads (`ComputationStatus.currentRegion`). It was sent
-    // as `currentGroup`, which nothing reads, so the progress line's region name
-    // never rendered and world-views.md described a screen that did not exist.
     currentRegion: status.currentGroup,
     currentMembers: status.currentMembers,
   });
@@ -57,7 +56,7 @@ export async function cancelComputation(req: Request, res: Response): Promise<vo
     status.status = 'Cancelling...';
   }
 
-  res.json({ cancelled: true });
+  respond(res, ComputationCancelled, { cancelled: true });
 }
 
 interface GroupRow {
@@ -285,20 +284,20 @@ export async function computeWorldViewGeometries(req: Request, res: Response): P
   runningComputations.set(worldViewId, progressState);
 
   const groups = await loadGroupsToCompute(worldViewId, forceRecompute);
-  const totalCount = await pool.query(
-    'SELECT COUNT(*) as count FROM regions WHERE world_view_id = $1',
+  const totalCount = await pool.query<{ count: number }>(
+    'SELECT COUNT(*)::int as count FROM regions WHERE world_view_id = $1',
     [worldViewId],
   );
-  const total = parseInt(totalCount.rows[0].count);
+  const total = totalCount.rows[0].count;
   const alreadyComputed = total - groups.length;
 
   if (groups.length === 0) {
     runningComputations.delete(worldViewId);
-    res.json({
+    respond(res, ComputationStartResult, {
+      started: false,
       total,
       needsComputation: 0,
       alreadyComputed,
-      status: 'complete',
       message: 'All groups already have computed geometries',
     });
     return;
@@ -307,7 +306,7 @@ export async function computeWorldViewGeometries(req: Request, res: Response): P
   progressState.total = groups.length;
   progressState.skipped = alreadyComputed;
 
-  res.json({
+  respond(res, ComputationStartResult, {
     started: true,
     total,
     needsComputation: groups.length,

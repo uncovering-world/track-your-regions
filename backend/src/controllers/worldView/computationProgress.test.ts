@@ -29,7 +29,7 @@ const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
  */
 function stubDatabase(): void {
   mockedQuery.mockImplementation((sql: string) => {
-    if (String(sql).includes('COUNT(*) as count')) return Promise.resolve({ rows: [{ count: '0' }] });
+    if (String(sql).includes('COUNT(*)::int as count')) return Promise.resolve({ rows: [{ count: 0 }] });
     return Promise.resolve({ rows: [] });
   });
 }
