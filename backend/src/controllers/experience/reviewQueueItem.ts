@@ -75,13 +75,13 @@ export interface QueueRow {
  * before 2026-08-31 also stored the writer's own `protectedByClaim`, which
  * `changedFieldOf` leaves behind.
  */
-type StoredProposal = ProposedField & Record<string, unknown>;
+export type StoredProposal = ProposedField & Record<string, unknown>;
 
 /** A held part as its statement builds it, the part's record included whole. */
 type StoredPart = Omit<HeldPart, 'fields'> & { fields: StoredProposal[] };
 
 /** A stored field change, key by key, so a key the writer once leaked into the record stays there. */
-function changedFieldOf(f: StoredProposal): ChangedField {
+export function changedFieldOf(f: StoredProposal): ChangedField {
   return {
     field: f.field,
     old: f.old,

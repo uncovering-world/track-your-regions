@@ -9,6 +9,9 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
+import { respond } from '../../api/respond.js';
+import { CurationGateSet } from '../../api/responses/admin.js';
+import type { ExperienceSourcesRow } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
@@ -48,7 +51,7 @@ export async function setCurationGate(req: AuthenticatedRequest, res: Response):
   // `is_active` in the guard, not only the id: the panel lists active sources,
   // so a request naming an inactive one is either stale or hand-made, and
   // silently gating a source nobody can run is worse than a 404.
-  const result = await pool.query(
+  const result = await pool.query<Pick<ExperienceSourcesRow, 'id' | 'name' | 'requires_curation'>>(
     `UPDATE experience_sources
         SET requires_curation = $1
       WHERE id = $2 AND is_active = true
@@ -69,7 +72,7 @@ export async function setCurationGate(req: AuthenticatedRequest, res: Response):
     `[curation-gate] ${source.name} (${source.id}) -> ${source.requires_curation ? 'held for review' : 'published on arrival'} by user ${req.user?.id}`,
   );
 
-  res.json({
+  respond(res, CurationGateSet, {
     sourceId: source.id,
     name: source.name,
     requiresCuration: source.requires_curation,

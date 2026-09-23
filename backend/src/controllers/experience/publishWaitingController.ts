@@ -32,45 +32,12 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { respond } from '../../api/respond.js';
+import { PublishWaitingResult, type PublishedWaitingObject, type RefusedWaitingObject } from '../../api/responses/admin.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishUnderLock } from './publishController.js';
 import { arrivalWaitingSql, contentsWaitingSql, heldWaitingSql } from './waitingCounts.js';
-
-/** One object's outcome, named so a curator can tell what happened to what. */
-interface PublishedObject {
-  id: number;
-  name: string;
-  locationsPublished: number;
-  /**
-   * Works released, from both axes, because either can be zero while a work was.
-   *
-   * The link says this work has been passed as being *here*, the row says it has been
-   * passed at all (ADR-0025 decision 2), and `contentsWaitingSql` asks both for the
-   * case that separates them: a work reviewed in one venue and unread in another
-   * publishes `treasureLinksPublished: 1, treasuresPublished: 0`. Carrying only the
-   * second would report zero works for an object that released one — which is why the
-   * single-object notice reads them as `Math.max` rather than picking one.
-   */
-  treasureLinksPublished: number;
-  treasuresPublished: number;
-  /**
-   * Points a source replaced whose old pin this publication took off the map.
-   *
-   * Carried for the same reason as `placementFailed`, and reachable the same way:
-   * publishing a visible row's unread points releases every withdrawal deferred
-   * behind them (`publishContents`), so a curator releasing forty museums can pull
-   * old pins for several of them and read "40 objects published." — a change to
-   * what readers see that nothing else in the reply mentions. It survives per
-   * object in the audit log, which is the forty-clicks answer this endpoint exists
-   * to avoid.
-   */
-  withdrawalsReleased: number;
-  /** Present only when the post-commit region placement failed for this object. */
-  placementFailed?: true;
-  /** Which world views it failed for — the half only an admin can act on. */
-  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
-}
 
 /**
  * Publish everything waiting for one source.
@@ -109,8 +76,8 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
     [sourceId],
   );
 
-  const published: PublishedObject[] = [];
-  const refused: Array<{ id: number; name: string; error: string }> = [];
+  const published: PublishedWaitingObject[] = [];
+  const refused: RefusedWaitingObject[] = [];
   let outOfScope = 0;
 
   for (const row of waiting.rows) {
@@ -239,7 +206,7 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
     console.error('[publish-waiting] held count failed for source %d:', sourceId, error);
   }
 
-  res.json({
+  respond(res, PublishWaitingResult, {
     sourceId,
     published,
     refused,
