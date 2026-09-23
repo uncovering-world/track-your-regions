@@ -34,7 +34,7 @@ In the World View editor geometry panel:
 - `POST /api/world-views/regions/:regionId/hull/preview`
 - `POST /api/world-views/regions/:regionId/hull/save`
 - `GET /api/world-views/regions/:regionId/hull/params`
-- `GET /api/world-views/regions/:regionId/geometry?detail=high|hull|anchor`
+- `GET /api/world-views/regions/:regionId/geometry?detail=high|hull`
 
 ## Where It Is Used
 
