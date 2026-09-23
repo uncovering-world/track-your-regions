@@ -10,6 +10,9 @@ import { Response } from 'express';
 import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { respond } from '../../api/respond.js';
+import type { AreaGeometry } from '../../api/responses/regions.js';
+import { TransferAccepted, TransferPreview } from '../../api/responses/worldViewImport.js';
 import { invalidateRegionGeometry } from '../worldView/helpers.js';
 
 interface TransferRequestBody {
@@ -195,7 +198,7 @@ export async function acceptWithTransfer(req: AuthenticatedRequest, res: Respons
     console.error('[acceptWithTransfer] post-commit geometry invalidation failed:', geomErr);
   }
 
-  res.json({ transferred: divisionIds.length, transferType });
+  respond(res, TransferAccepted, { transferred: divisionIds.length, transferType });
 }
 
 /**
@@ -235,9 +238,9 @@ export async function getTransferPreview(req: AuthenticatedRequest, res: Respons
     .filter(r => r.geometry != null)
     .map(r => ({
       type: 'Feature' as const,
-      properties: { role: r.role as string, name: r.name as string },
-      geometry: r.geometry,
+      properties: { role: r.role as TransferPreview['features'][number]['properties']['role'], name: r.name as string },
+      geometry: r.geometry as AreaGeometry,
     }));
 
-  res.json({ type: 'FeatureCollection', features });
+  respond(res, TransferPreview, { type: 'FeatureCollection', features });
 }

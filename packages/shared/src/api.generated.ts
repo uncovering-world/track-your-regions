@@ -262,6 +262,16 @@ export type AssertionKind = "invariant" | "watch";
  */
 export type AssertionStatus = "clear" | "holding" | "improved" | "regressed" | "unanswered" | "watch" | "error";
 
+/** A division a region holds. */
+export interface AssignedDivision {
+  divisionId: number;
+  name: string;
+  /** The division's administrative path, root first. */
+  path: string;
+  /** The region holds only a part of the division. */
+  hasCustomGeom: boolean;
+}
+
 /** A stop asked of a world view's placement. */
 export interface AssignmentCancelled {
   /** False when no placement was running to stop. */
@@ -1351,6 +1361,12 @@ export interface ImageSuggestion {
   wikipediaUrl?: string;
 }
 
+/** A stop asked of the import. */
+export interface ImportCancelled {
+  /** False when no import was running. */
+  cancelled: boolean;
+}
+
 /** A world view an extraction imported. */
 export interface ImportedWorldView {
   id: number;
@@ -1358,6 +1374,40 @@ export interface ImportedWorldView {
   sourceType: string;
   /** The import's review is finished. */
   reviewComplete: boolean;
+}
+
+/** An import, started in the background. */
+export interface ImportStarted {
+  started: true;
+  operationId: string;
+}
+
+/**
+ * The latest import as it stands, and the imported world views. Only `running` and the list are
+ * sent while no import is known since the server started.
+ */
+export interface ImportStatus {
+  running: boolean;
+  operationId?: string;
+  status?: "importing" | "matching" | "complete" | "failed" | "cancelled";
+  statusMessage?: string;
+  createdRegions?: number;
+  totalRegions?: number;
+  matchedRegions?: number;
+  totalCountries?: number;
+  countriesMatched?: number;
+  subdivisionsDrilled?: number;
+  noCandidates?: number;
+  /** The world view the import creates, once it exists. */
+  worldViewId?: number | null;
+  /** Every imported world view, newest first, finished ones included. */
+  importedWorldViews: ImportedWorldView[];
+}
+
+/** A region's match decisions copied to its other instances in the tree. */
+export interface InstancesSynced {
+  /** Other instances of the same region the decisions were copied to. */
+  synced: number;
 }
 
 /** A question a model asks the admin about a page, with options to click. */
@@ -1494,6 +1544,115 @@ export interface ManualExperienceCreated {
   name: string;
   /** The id the manual source gave it. */
   externalId: string;
+}
+
+/** A place the region's Wikivoyage article marks on its map. */
+export interface MarkerPoint {
+  name: string;
+  lat: number;
+  lon: number;
+}
+
+/** One suggestion accepted; the region's other suggestions stay open. */
+export interface MatchAccepted {
+  accepted: true;
+}
+
+/** One suggestion accepted and the region's other open ones rejected. */
+export interface MatchAcceptedRestRejected {
+  accepted: true;
+  rejected: true;
+}
+
+/** A batch of region and division pairs accepted. */
+export interface MatchesAccepted {
+  /** Assignments written. */
+  accepted: number;
+}
+
+/** A region's suggestions, rejections and members cleared. */
+export interface MatchReset {
+  reset: true;
+}
+
+/** How far a world view's match review has come. */
+export interface MatchStats {
+  auto_matched: number;
+  children_matched: number;
+  needs_review: number;
+  /** Regions needing review that no ancestor's match already covers. */
+  needs_review_blocking: number;
+  no_candidates: number;
+  /**
+   * Regions with no candidates that no ancestor covers and that still have an unresolved leaf
+   * below.
+   */
+  no_candidates_blocking: number;
+  manual_matched: number;
+  suggested: number;
+  /** Regions with any match status. */
+  total_matched: number;
+  total_leaves: number;
+  total_regions: number;
+  /** Regions whose hierarchy review surfaced warnings nobody has dismissed. */
+  hierarchy_warnings_count: number;
+}
+
+/**
+ * Where a region's match stands: matched by the matcher, through its children, or by hand;
+ * candidates to review; none found. `suggested` is an older matcher's word for a parent with
+ * candidates.
+ */
+export type MatchStatus = "auto_matched" | "children_matched" | "needs_review" | "no_candidates" | "manual_matched" | "suggested";
+
+/** A division offered as a region's match. */
+export interface MatchSuggestion {
+  divisionId: number;
+  name: string;
+  /** The division's administrative path, country first. */
+  path: string | null;
+  score: number | null;
+  /** How much of the region's shape the division covers, where a shape was compared. */
+  geoSimilarity: number | null;
+  /**
+   * The sibling region already holding the division, or its parent: accepting it moves it from
+   * there (ADR-0012).
+   */
+  conflict: {
+    type: "direct" | "split";
+    donorRegionId: number;
+    donorRegionName: string;
+    donorDivisionId: number;
+    donorDivisionName: string;
+  } | null;
+}
+
+/** The imported tree's roots, by name. */
+export type MatchTree = MatchTreeNode[];
+
+/** A region of the imported tree, with its match and its children. */
+export interface MatchTreeNode {
+  id: number;
+  name: string;
+  isLeaf: boolean;
+  matchStatus: MatchStatus | null;
+  /** Open suggestions, best first. */
+  suggestions: MatchSuggestion[];
+  sourceUrl: string | null;
+  regionMapUrl: string | null;
+  mapImageCandidates: string[];
+  mapImageReviewed: boolean;
+  needsManualFix: boolean;
+  fixNote: string | null;
+  wikidataId: string | null;
+  memberCount: number;
+  assignedDivisions: AssignedDivision[];
+  /** Whether Wikidata has a shape for the region, or null where nobody has asked. */
+  geoAvailable: boolean | null;
+  markerPoints: MarkerPoint[] | null;
+  hierarchyWarnings: string[];
+  hierarchyReviewed: boolean;
+  children: MatchTreeNode[];
 }
 
 /** A region's division members, drawn, for the editor. */
@@ -2153,6 +2312,11 @@ export interface RegionUpdated {
   tileVersion?: number;
 }
 
+/** A region's remaining open suggestions rejected. */
+export interface RemainingRejected {
+  rejected: number;
+}
+
 /** The two answers every review row has, and the third two kinds have (#852). */
 export type ReviewAnswer = "accept" | "reject" | "lost";
 
@@ -2430,6 +2594,11 @@ export interface SubregionsExpanded {
   expandedCount: number;
 }
 
+/** One suggestion rejected, and taken out of the region's members. */
+export interface SuggestionRejected {
+  rejected: true;
+}
+
 /** A stop asked of a source's run. */
 export interface SyncCancelled {
   /** False when no run was going that a stop could reach. */
@@ -2641,6 +2810,28 @@ export interface TokenUsage {
   };
   /** The model id the request was sent to. */
   model: string;
+}
+
+/** Divisions moved from their donor region to the target, in one transaction (ADR-0012). */
+export interface TransferAccepted {
+  transferred: number;
+  transferType: "direct" | "split";
+}
+
+/**
+ * What a transfer would do, drawn: the donor's division, the divisions that would move, and the
+ * target's outline (ADR-0012).
+ */
+export interface TransferPreview {
+  type: "FeatureCollection";
+  features: {
+    type: "Feature";
+    properties: {
+      role: "donor" | "moving" | "target_outline";
+      name: string;
+    };
+    geometry: AreaGeometry;
+  }[];
 }
 
 /** A work marked seen. */

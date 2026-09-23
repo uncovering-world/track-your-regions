@@ -2,6 +2,8 @@
  * Types for WorldView import and matching
  */
 
+import type { MatchStatus } from '../../api/responses/worldViewImport.js';
+
 /** A node in the import region hierarchy JSON */
 export interface ImportTreeNode {
   name: string;
@@ -28,14 +30,9 @@ export interface ImportTreeNode {
  */
 export type MatchingPolicy = 'country-based' | 'hierarchical' | 'none';
 
-/** Match status for a region */
-export type MatchStatus =
-  | 'auto_matched'       // Region matched to a GADM division (region_member created)
-  | 'children_matched'   // All children matched to GADM subdivisions (no direct assignment)
-  | 'needs_review'       // Candidates found but no confident auto-match
-  | 'no_candidates'      // No matching GADM division found
-  | 'manual_matched'     // Manually accepted by admin
-  | 'suggested';         // Non-leaf with candidates (legacy, not produced by new matcher)
+// A region's match status is what the review's tree answers, so its type is
+// that answer's schema (ADR-0066).
+export type { MatchStatus };
 
 /** A candidate GADM division for matching */
 export interface MatchSuggestion {

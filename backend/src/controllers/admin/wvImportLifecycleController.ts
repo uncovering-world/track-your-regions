@@ -8,6 +8,8 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { respond } from '../../api/respond.js';
+import { ImportCancelled, ImportStarted, ImportStatus } from '../../api/responses/worldViewImport.js';
 import { markPublicReferenceBody } from '../../middleware/cacheHeaders.js';
 import {
   startImport,
@@ -130,7 +132,7 @@ export async function startWorldViewImport(req: AuthenticatedRequest, res: Respo
     source: 'File upload',
   });
   console.log(`[WV Import] POST /import — started opId=${opId}`);
-  res.json({ started: true, operationId: opId });
+  respond(res, ImportStarted, { started: true, operationId: opId });
 }
 
 /**
@@ -150,23 +152,36 @@ export async function getWorldViewImportStatus(_req: AuthenticatedRequest, res: 
     WHERE source_type = ANY($1)
     ORDER BY id DESC
   `, [IMPORT_SOURCE_TYPES_ALL]);
-  const importedWorldViews = result.rows.length > 0
-    ? result.rows.map(r => ({
-        id: r.id as number,
-        name: r.name as string,
-        sourceType: r.source_type as string,
-        reviewComplete: (r.source_type as string).endsWith('_done'),
-      }))
-    : undefined;
+  const importedWorldViews = result.rows.map(r => ({
+    id: r.id as number,
+    name: r.name as string,
+    sourceType: r.source_type as string,
+    reviewComplete: (r.source_type as string).endsWith('_done'),
+  }));
 
   if (status) {
     const isActive = status.progress.status === 'importing' || status.progress.status === 'matching';
     console.log(`[WV Import] GET /import/status — opId=${status.opId}, status=${status.progress.status}, running=${isActive}, regions=${status.progress.createdRegions}/${status.progress.totalRegions}, countries=${status.progress.countriesMatched}/${status.progress.totalCountries}`);
-    res.json({ running: isActive, operationId: status.opId, ...status.progress, importedWorldViews });
+    const { progress } = status;
+    respond(res, ImportStatus, {
+      running: isActive,
+      operationId: status.opId,
+      status: progress.status,
+      statusMessage: progress.statusMessage,
+      createdRegions: progress.createdRegions,
+      totalRegions: progress.totalRegions,
+      matchedRegions: progress.matchedRegions,
+      totalCountries: progress.totalCountries,
+      countriesMatched: progress.countriesMatched,
+      subdivisionsDrilled: progress.subdivisionsDrilled,
+      noCandidates: progress.noCandidates,
+      worldViewId: progress.worldViewId,
+      importedWorldViews,
+    });
     return;
   }
 
-  res.json({ running: false, importedWorldViews });
+  respond(res, ImportStatus, { running: false, importedWorldViews });
 }
 
 /**
@@ -177,5 +192,5 @@ export async function cancelWorldViewImport(_req: AuthenticatedRequest, res: Res
   console.log(`[WV Import] POST /import/cancel`);
   const cancelled = cancelImport();
   console.log(`[WV Import] POST /import/cancel — result: ${cancelled}`);
-  res.json({ cancelled });
+  respond(res, ImportCancelled, { cancelled });
 }

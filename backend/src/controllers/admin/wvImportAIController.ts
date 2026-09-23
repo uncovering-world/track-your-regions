@@ -10,6 +10,8 @@ import OpenAI from 'openai';
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { respond } from '../../api/respond.js';
+import { MatchReset } from '../../api/responses/worldViewImport.js';
 import {
   startAIMatching,
   getAIMatchProgress,
@@ -235,16 +237,17 @@ export async function resetMatch(req: AuthenticatedRequest, res: Response): Prom
       [regionId],
     );
     await client.query('COMMIT');
-    res.json({ reset: true });
   } catch (err) {
     if (client) {
       try { await client.query('ROLLBACK'); } catch { /* connection dead; PG auto-rolls back */ }
     }
     console.error(`[WV Import] Reset match failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Reset match failed' });
+    return;
   } finally {
     client?.release();
   }
+  respond(res, MatchReset, { reset: true });
 }
 
 /**
