@@ -20,8 +20,11 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown';
-import type { ReviewAction, HierarchyReviewResult } from '../../api/admin/ai';
+import type { HierarchyReviewAction, HierarchyReviewResult } from '../../api/admin/ai';
 import { linkifyRegionNames } from './importTreeLinkify';
+
+/** An action as the drawer holds it: the review's, and whether the admin has done it and which choice they picked. */
+type ReviewAction = HierarchyReviewAction & { completed: boolean; selectedChoice?: string };
 
 export interface StoredReport {
   scope: string;

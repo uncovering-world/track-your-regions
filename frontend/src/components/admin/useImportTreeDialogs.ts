@@ -411,7 +411,7 @@ export function useImportTreeDialogs(
         scope,
         regionId: regionId ?? null,
         report: result.report,
-        actions: (result.actions ?? []).map((a, i) => ({ ...a, id: a.id || `action-${i}`, completed: false })),
+        actions: result.actions.map(action => ({ ...action, completed: false })),
         stats: result.stats,
         generatedAt: new Date().toISOString(),
       };

@@ -29,7 +29,7 @@ import {
   getExtractionStatus,
   deleteCacheFile,
 } from '../../../api/admin/wikivoyageExtract';
-import type { CacheEntry } from '../../../api/admin/wikivoyageExtract';
+import type { WikivoyageCache } from '../../../api/admin/wikivoyageExtract';
 import type { ImportSourceFormProps } from './types';
 
 export function WikivoyageForm({ worldViewName }: ImportSourceFormProps) {
@@ -47,7 +47,7 @@ export function WikivoyageForm({ worldViewName }: ImportSourceFormProps) {
     },
   });
 
-  const caches: CacheEntry[] = extractStatus?.caches ?? [];
+  const caches: WikivoyageCache[] = extractStatus?.caches ?? [];
 
   const extractMutation = useMutation({
     mutationFn: () => startWikivoyageExtraction(worldViewName, selectedCache),
