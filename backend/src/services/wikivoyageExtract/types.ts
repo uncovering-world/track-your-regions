@@ -2,26 +2,11 @@
  * Types for Wikivoyage extraction service
  */
 
-/** Region preview shown to admin during AI question review */
-export interface RegionPreview {
-  name: string;
-  isLink: boolean;
-  children: string[];
-  /** Whether this region has a real Wikivoyage page */
-  pageExists?: boolean;
-  /** Page existence for children (name → exists) */
-  childPageExists?: Record<string, boolean>;
-}
+import type { InterviewQuestion, RegionPreview } from '../../api/responses/wikivoyageExtract.js';
 
-/** Structured interview question with options (HITL pattern) */
-export interface InterviewQuestionData {
-  text: string;
-  options: Array<{ label: string; value: string }>;
-  /** Index of the recommended option (AI's suggestion) */
-  recommended: number | null;
-  /** Existing rules relevant to this question (for admin to review/manage) */
-  relatedRules?: Array<{ id: number; text: string }>;
-}
+// A region preview and an interview question are what the extraction's status
+// and answers send the admin, so their types are those answers' schemas (ADR-0066).
+export type { InterviewQuestion, RegionPreview };
 
 /** A queued AI question — extraction continues, admin reviews at their pace */
 export interface PendingAIQuestion {
@@ -31,15 +16,15 @@ export interface PendingAIQuestion {
   /** Raw AI questions (kept for context in interview) */
   rawQuestions: string[];
   /** Structured interview question with options (null if interview not yet started) */
-  currentQuestion: InterviewQuestionData | null;
+  currentQuestion: InterviewQuestion | null;
   extractedRegions: RegionPreview[];
   resolved: boolean;
   /** Internal: re-run AI with admin feedback, returns updated preview (not serialized) */
   reExtract: (feedback: string) => Promise<{ regions: RegionPreview[]; questions: string[] }>;
   /** Internal: formulate next interview question or auto-resolve (not serialized) */
-  formulateNextQuestion: () => Promise<InterviewQuestionData | 'auto_resolved'>;
+  formulateNextQuestion: () => Promise<InterviewQuestion | 'auto_resolved'>;
   /** Internal: process answer and get rule + guidance (not serialized) */
-  processAnswer: (question: InterviewQuestionData, answer: string) => Promise<{
+  processAnswer: (question: InterviewQuestion, answer: string) => Promise<{
     rule: string | null;
     reExtractGuidance: string | null;
   }>;

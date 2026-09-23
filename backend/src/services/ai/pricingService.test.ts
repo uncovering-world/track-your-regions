@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateCost, getModelPricing, loadPricing, getAllPricing } from './pricingService.js';
+import { calculateCost, getModelPricing, loadPricing, getAllPricing, pricingChanges } from './pricingService.js';
 
 describe('loadPricing', () => {
   it('loads pricing data from CSV without throwing', () => {
@@ -72,5 +72,26 @@ describe('calculateCost', () => {
     const result1 = calculateCost(1_000_000, 0, 'gpt-4o');
     const result2 = calculateCost(2_000_000, 0, 'gpt-4o');
     expect(result2.inputCost).toBeCloseTo(result1.inputCost * 2, 10);
+  });
+});
+
+describe('pricingChanges', () => {
+  const price = (model: string, inputPer1M: number, outputPer1M: number, cachedInputPer1M: number | null = null) =>
+    [model, { model, inputPer1M, cachedInputPer1M, outputPer1M, serviceTier: 'standard' }] as const;
+
+  it('counts a model new to the list as added, and one whose price moved as changed', () => {
+    const before = new Map([price('gpt-4.1', 2, 8), price('gpt-4.1-mini', 0.4, 1.6), price('gpt-4o', 2.5, 10, 1.25)]);
+    const after = new Map([
+      price('gpt-4.1', 2, 8),
+      price('gpt-4.1-mini', 0.4, 1.8),
+      price('gpt-4o', 2.5, 10, 1.1),
+      price('gpt-6-luna', 1, 4),
+    ]);
+    expect(pricingChanges(before, after)).toEqual({ added: 1, changed: 2 });
+  });
+
+  it('counts nothing when the list came back the same', () => {
+    const list = new Map([price('gpt-4.1', 2, 8)]);
+    expect(pricingChanges(list, new Map(list))).toEqual({ added: 0, changed: 0 });
   });
 });

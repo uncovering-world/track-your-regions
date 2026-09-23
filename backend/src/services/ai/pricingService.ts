@@ -5,12 +5,13 @@
  * Can auto-update from litellm's community-maintained pricing database.
  */
 
+import type { PricingUpdated } from '../../api/responses/adminAi.js';
 import { readFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { userAgent } from '../../config/userAgent.js';
 
-interface ModelPricing {
+export interface ModelPricing {
   model: string;
   inputPer1M: number;
   cachedInputPer1M: number | null;
@@ -250,14 +251,23 @@ function writePricingCsv(csv: string): void {
 }
 
 /**
- * Count how many models in the cache are new compared to a prior snapshot.
+ * What a reload did to the prices: models priced for the first time, and models
+ * priced before whose input, cached-input or output price moved.
  */
-function countNewModels(previousKeys: Set<string>): number {
+export function pricingChanges(
+  before: ReadonlyMap<string, ModelPricing>,
+  after: ReadonlyMap<string, ModelPricing>,
+): { added: number; changed: number } {
   let added = 0;
-  for (const m of pricingCache.keys()) {
-    if (!previousKeys.has(m)) added++;
+  let changed = 0;
+  for (const [model, now] of after) {
+    const was = before.get(model);
+    if (!was) added++;
+    else if (was.inputPer1M !== now.inputPer1M
+      || was.cachedInputPer1M !== now.cachedInputPer1M
+      || was.outputPer1M !== now.outputPer1M) changed++;
   }
-  return added;
+  return { added, changed };
 }
 
 /**
@@ -266,11 +276,7 @@ function countNewModels(previousKeys: Set<string>): number {
  *
  * Returns { modelsUpdated, modelsAdded } counts.
  */
-export async function updatePricingFromRemote(): Promise<{
-  modelsUpdated: number;
-  modelsAdded: number;
-  totalModels: number;
-}> {
+export async function updatePricingFromRemote(): Promise<PricingUpdated> {
   // Named, with a deadline: it is somebody else's file on somebody else's CDN,
   // and a hung socket here would hold an admin request open indefinitely.
   const response = await fetch(LITELLM_PRICING_URL, {
@@ -292,19 +298,19 @@ export async function updatePricingFromRemote(): Promise<{
 
   // Count changes
   const oldCount = pricingCache.size;
-  const oldModels = new Set(pricingCache.keys());
+  const oldPricing = new Map(pricingCache);
 
   // Reload cache
   pricingLoaded = false;
   pricingCache.clear();
   loadPricing();
 
-  const added = countNewModels(oldModels);
+  const { added, changed } = pricingChanges(oldPricing, pricingCache);
 
-  console.log(`💰 Pricing updated: ${pricingCache.size} models (was ${oldCount}, +${added} new)`);
+  console.log(`💰 Pricing updated: ${pricingCache.size} models (was ${oldCount}, +${added} new, ${changed} repriced)`);
 
   return {
-    modelsUpdated: pricingCache.size,
+    modelsUpdated: changed,
     modelsAdded: added,
     totalModels: pricingCache.size,
   };

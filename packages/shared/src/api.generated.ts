@@ -118,6 +118,15 @@ export interface AIModel {
   description: string;
 }
 
+/** A model with a known price, which a feature can be set to use. */
+export interface AIModelOption {
+  id: string;
+  /** US dollars per million input tokens. */
+  inputPer1M: number;
+  /** US dollars per million output tokens. */
+  outputPer1M: number;
+}
+
 /** The models in use and the ones that can be chosen. */
 export interface AIModels {
   /** The model id the AI features use. */
@@ -127,6 +136,18 @@ export interface AIModels {
   availableModels: AIModel[];
   /** The models that can search the web. */
   webSearchModels: AIModel[];
+}
+
+/** The AI settings, and the models they can name. */
+export interface AISettings {
+  /** Each setting by its key, such as the model a feature uses. */
+  settings: Record<string, string>;
+  models: AIModelOption[];
+}
+
+/** One AI setting, written. */
+export interface AISettingSaved {
+  ok: true;
 }
 
 /** Whether the AI features are on, and the models they use. */
@@ -142,6 +163,29 @@ export interface AIStatus {
   availableModels: AIModel[];
   /** The models that can search the web. */
   webSearchModels: AIModel[];
+}
+
+/** What one feature has spent on one model. */
+export interface AIUsageByModelFeature {
+  feature: string;
+  model: string;
+  totalCalls: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  /** US dollars. */
+  totalCost: number;
+  avgCostPerCall: number;
+  lastUsed: string;
+}
+
+/** What the AI features have cost. */
+export interface AIUsageSummary {
+  /** US dollars spent since midnight, server time. */
+  today: number;
+  thisMonth: number;
+  allTime: number;
+  /** Most recently used first. */
+  byModelFeature: AIUsageByModelFeature[];
 }
 
 /** Every place of an object, or of it within a region, marked visited. */
@@ -1070,6 +1114,69 @@ export interface ExperienceVisitUnmarked {
   experienceId: number;
 }
 
+/**
+ * A page's question after the admin answered it, accepted the page, skipped it, or deleted a rule
+ * it leaned on.
+ */
+export interface ExtractionAnswer {
+  /** Absent only when a rule was deleted and its question has gone meanwhile. */
+  pageTitle?: string;
+  resolved?: boolean;
+  extractedRegions?: RegionPreview[];
+  currentQuestion?: InterviewQuestion | null;
+  /** A rule the answer taught, in general words. */
+  ruleSaved?: string | null;
+  ruleDeleted?: true;
+  /** The rule deleted. */
+  ruleId?: number;
+}
+
+/** A stop asked of the extraction. */
+export interface ExtractionCancelled {
+  /** False when no extraction was running. */
+  cancelled: boolean;
+}
+
+/** An extraction, started in the background. */
+export interface ExtractionStarted {
+  started: true;
+  operationId: string;
+}
+
+/**
+ * The latest extraction as it stands, with the world views imported and the caches kept. Only
+ * `running` and the two lists are sent while no extraction is known since the server started.
+ */
+export interface ExtractionStatus {
+  running: boolean;
+  operationId?: string;
+  status?: "extracting" | "enriching" | "importing" | "matching" | "complete" | "failed" | "cancelled";
+  statusMessage?: string;
+  regionsFetched?: number;
+  estimatedTotal?: number;
+  currentPage?: string;
+  apiRequests?: number;
+  cacheHits?: number;
+  createdRegions?: number;
+  totalRegions?: number;
+  countriesMatched?: number;
+  totalCountries?: number;
+  subdivisionsDrilled?: number;
+  noCandidates?: number;
+  worldViewId?: number | null;
+  /** Milliseconds since the epoch. */
+  startedAt?: number;
+  aiApiCalls?: number;
+  aiPromptTokens?: number;
+  aiCompletionTokens?: number;
+  aiTotalCost?: number;
+  pendingQuestions?: PendingQuestion[];
+  /** Newest first. */
+  importedWorldViews: ImportedWorldView[];
+  /** Newest first. */
+  caches: WikivoyageCache[];
+}
+
 /** Who claimed a field, and when. */
 export interface FieldClaim {
   /** The curator, or "a curator" where they set no display name. */
@@ -1151,6 +1258,40 @@ export interface HeldPart {
   treasureType?: string | null;
 }
 
+/** One change a hierarchy review recommends. */
+export interface HierarchyReviewAction {
+  /** The model's own id for the action, or `action-N` by its place in the list. */
+  id: string;
+  /** `other` for a type the model named that is not one of these. */
+  type: "rename" | "reparent" | "remove" | "merge" | "dismiss_children" | "add_child" | "other";
+  /** The region the action is about, or null where the model named none. */
+  regionId: number | null;
+  regionName: string;
+  description: string;
+  /** What the action type takes, such as `newName` for a rename. */
+  params?: Record<string, unknown>;
+  /** Where more than one answer is valid, such as two possible parents. */
+  choices?: {
+    label: string;
+    value: string;
+  }[];
+}
+
+/** A model's review of a world view's hierarchy, or of one branch of it. */
+export interface HierarchyReviewResult {
+  /** Markdown, a heading per region the review looked at. */
+  report: string;
+  actions: HierarchyReviewAction[];
+  stats: {
+    /** A branch takes one pass; the whole tree two, a survey and then the flagged branches. */
+    passes: number;
+    inputTokens: number;
+    outputTokens: number;
+    /** US dollars. */
+    cost: number;
+  };
+}
+
 /** The parameters a region's hull is built with. */
 export interface HullParams {
   /** Buffer around the islands, in km. */
@@ -1208,6 +1349,54 @@ export interface ImageSuggestion {
   description?: string;
   /** The item's English Wikipedia article. */
   wikipediaUrl?: string;
+}
+
+/** A world view an extraction imported. */
+export interface ImportedWorldView {
+  id: number;
+  name: string;
+  sourceType: string;
+  /** The import's review is finished. */
+  reviewComplete: boolean;
+}
+
+/** A question a model asks the admin about a page, with options to click. */
+export interface InterviewQuestion {
+  text: string;
+  options: {
+    label: string;
+    value: string;
+  }[];
+  /** The option the model would pick, by index. */
+  recommended: number | null;
+  /** Learned rules bearing on the question, which the admin can delete from here. */
+  relatedRules?: {
+    id: number;
+    text: string;
+  }[];
+}
+
+/** A rule an admin's answer taught the AI features. */
+export interface LearnedRule {
+  id: number;
+  /** The AI feature whose prompts carry the rule, such as `extraction`. */
+  feature: string;
+  ruleText: string;
+  /** What the rule was learned from. */
+  context: string | null;
+  createdAt: string;
+}
+
+/** A learned rule, deleted. */
+export interface LearnedRuleDeleted {
+  ok: true;
+}
+
+/** Every rule the AI prompts carry. */
+export interface LearnedRules {
+  /** By feature, then oldest first. */
+  learned: LearnedRule[];
+  predefined: PredefinedRule[];
 }
 
 /** A place another card names, with the regions a link to it is built from (ADR-0042). */
@@ -1412,6 +1601,16 @@ export interface PendingPoint {
   curatedFields?: string[];
 }
 
+/** A page waiting on the admin's answer; the extraction goes on meanwhile. */
+export interface PendingQuestion {
+  id: number;
+  pageTitle: string;
+  sourceUrl: string;
+  /** Null while the model is still writing it. */
+  currentQuestion: InterviewQuestion | null;
+  extractedRegions: RegionPreview[];
+}
+
 /** An unread work under a row readers already see. */
 export interface PendingWork {
   id: number;
@@ -1483,6 +1682,24 @@ export interface Polygon {
   type: "Polygon";
   /** Rings, the outer first, of [lng, lat] positions. */
   coordinates: number[][][];
+}
+
+/** A rule built into a prompt, shown beside the learned ones and never edited. */
+export interface PredefinedRule {
+  /** Stable, such as `extraction.5`, the rule's number in its prompt. */
+  code: string;
+  feature: string;
+  ruleText: string;
+}
+
+/** Model prices refreshed from the published price list. */
+export interface PricingUpdated {
+  /** Models whose price changed. */
+  modelsUpdated: number;
+  /** Models priced for the first time. */
+  modelsAdded: number;
+  /** Models priced now. */
+  totalModels: number;
 }
 
 /** One of the object's own fields a run proposed, as its card asks about it. */
@@ -1865,6 +2082,17 @@ export interface RegionMembershipResult {
 /** What a member of a region is: a GADM division, or one of its own subregions. */
 export type RegionMemberType = "division" | "subregion";
 
+/** One region a model read off a page, with its children. */
+export interface RegionPreview {
+  name: string;
+  /** The page names it with a link, so it has a page of its own. */
+  isLink: boolean;
+  children: string[];
+  pageExists?: boolean;
+  /** Whether each child has a page, by name. */
+  childPageExists?: Record<string, boolean>;
+}
+
 /** A region's hand-drawn boundary and hull dropped, and its outline rebuilt from its members. */
 export interface RegionReset {
   reset: true;
@@ -2079,6 +2307,34 @@ export interface ReviewQueueItem {
   takeable?: boolean;
   object_admission?: string | null;
   object_curation_state?: string | null;
+}
+
+/**
+ * One change a model proposes to the learned rules: merge duplicates, resolve a contradiction, or
+ * drop an obsolete rule.
+ */
+export interface ReviewSuggestion {
+  type: "merge" | "contradiction" | "obsolete";
+  description: string;
+  /** Learned rules to delete. */
+  deleteIds: number[];
+  /** The learned rule to keep, and to rewrite when `replacementText` is set. */
+  keepId: number;
+  replacementText: string | null;
+}
+
+/** One suggestion of a rule review, applied. */
+export interface ReviewSuggestionApplied {
+  ok: true;
+  deletedCount: number;
+}
+
+/** A model's review of the learned rules. */
+export interface RuleReviewResult {
+  suggestions: ReviewSuggestion[];
+  summary: string;
+  /** Learned rules left once every suggestion is applied. */
+  consolidatedCount: number;
 }
 
 /** A run's batch set aside for this curator, or brought back (ADR-0051 decision 4). */
@@ -2514,6 +2770,18 @@ export interface WikidataCacheTtlSet {
    * five things or five hundred.
    */
   restamped: number;
+}
+
+/** A saved copy of the pages an extraction fetched, which a later one can start from. */
+export interface WikivoyageCache {
+  name: string;
+  sizeBytes: number;
+  modifiedAt: string;
+}
+
+/** A saved copy of the pages, deleted. */
+export interface WikivoyageCacheDeleted {
+  deleted: true;
 }
 
 /** A point the object lost, waiting on its own verdict. */

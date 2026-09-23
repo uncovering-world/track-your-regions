@@ -10,23 +10,10 @@
  */
 
 // ADR-0064: raw parameterized SQL on the pool, typed by the generated rows.
+import type { LearnedRule, PredefinedRule } from '../../api/responses/adminAi.js';
 import { pool } from '../../db/index.js';
 import type { AiLearnedRulesRow } from '../../db/schema.generated.js';
 
-export interface LearnedRule {
-  id: number;
-  feature: string;
-  ruleText: string;
-  context: string | null;
-  createdAt: string;
-}
-
-export interface PredefinedRule {
-  /** Stable identifier like "extraction.5" (prompt rule number) */
-  code: string;
-  feature: string;
-  ruleText: string;
-}
 
 /**
  * Built-in rules hardcoded in AI system prompts.

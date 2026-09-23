@@ -7,6 +7,17 @@
 import type { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { respond } from '../../api/respond.js';
+import {
+  ExtractionAnswer,
+  ExtractionCancelled,
+  ExtractionStarted,
+  ExtractionStatus,
+  WikivoyageCacheDeleted,
+  type InterviewQuestion,
+  type RegionPreview,
+} from '../../api/responses/wikivoyageExtract.js';
+import type { WorldViewsRow } from '../../db/schema.generated.js';
 import {
   startExtraction,
   getLatestExtractionStatus,
@@ -17,6 +28,32 @@ import {
 } from '../../services/wikivoyageExtract/index.js';
 import { addRule, deleteRule } from '../../services/ai/learnedRulesService.js';
 import { WIKIVOYAGE_ELIGIBLE_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTypes.js';
+
+// The interview's question and the regions read off a page come from a model,
+// by way of the extraction's own objects; each is read here key by key, so a
+// key a model or the service added stays on the server.
+
+function interviewQuestionOf(question: InterviewQuestion | null): InterviewQuestion | null {
+  if (question === null) return null;
+  return {
+    text: question.text,
+    options: question.options.map(option => ({ label: option.label, value: option.value })),
+    recommended: question.recommended,
+    ...(question.relatedRules
+      ? { relatedRules: question.relatedRules.map(rule => ({ id: rule.id, text: rule.text })) }
+      : {}),
+  };
+}
+
+function regionPreviewOf(region: RegionPreview): RegionPreview {
+  return {
+    name: region.name,
+    isLink: region.isLink,
+    children: [...region.children],
+    ...(region.pageExists !== undefined ? { pageExists: region.pageExists } : {}),
+    ...(region.childPageExists ? { childPageExists: { ...region.childPageExists } } : {}),
+  };
+}
 
 /**
  * Start a Wikivoyage extraction.
@@ -39,7 +76,7 @@ export function startWikivoyageExtraction(req: AuthenticatedRequest, res: Respon
     name: name ?? 'Wikivoyage Regions',
     cacheFile: cacheFile ?? undefined,
   });
-  res.json({ started: true, operationId: opId });
+  respond(res, ExtractionStarted, { started: true, operationId: opId });
 }
 
 /**
@@ -53,7 +90,7 @@ export async function getWikivoyageExtractionStatus(
   const latest = getLatestExtractionStatus();
 
   // Query existing imported world views from DB
-  const wvResult = await pool.query(`
+  const wvResult = await pool.query<Pick<WorldViewsRow, 'id' | 'name' | 'source_type'>>(`
     SELECT wv.id, wv.name, wv.source_type
     FROM world_views wv
     WHERE wv.source_type = ANY($1)
@@ -61,16 +98,16 @@ export async function getWikivoyageExtractionStatus(
   `, [WIKIVOYAGE_ELIGIBLE_SOURCE_TYPES_ALL]);
 
   const importedWorldViews = wvResult.rows.map((row) => ({
-    id: row.id as number,
-    name: row.name as string,
-    sourceType: row.source_type as string,
-    reviewComplete: (row.source_type as string).endsWith('_done'),
+    id: row.id,
+    name: row.name,
+    sourceType: row.source_type ?? '',
+    reviewComplete: (row.source_type ?? '').endsWith('_done'),
   }));
 
   const caches = listCaches();
 
   if (!latest) {
-    res.json({ running: false, importedWorldViews, caches });
+    respond(res, ExtractionStatus, { running: false, importedWorldViews, caches });
     return;
   }
 
@@ -84,11 +121,11 @@ export async function getWikivoyageExtractionStatus(
       id: q.id,
       pageTitle: q.pageTitle,
       sourceUrl: q.sourceUrl,
-      currentQuestion: q.currentQuestion,
-      extractedRegions: q.extractedRegions,
+      currentQuestion: interviewQuestionOf(q.currentQuestion),
+      extractedRegions: q.extractedRegions.map(regionPreviewOf),
     }));
 
-  res.json({
+  respond(res, ExtractionStatus, {
     running,
     operationId: latest.opId,
     status: progress.status,
@@ -122,7 +159,7 @@ export async function getWikivoyageExtractionStatus(
  */
 export function cancelWikivoyageExtraction(_req: AuthenticatedRequest, res: Response): void {
   const cancelled = cancelExtraction();
-  res.json({ cancelled });
+  respond(res, ExtractionCancelled, { cancelled });
 }
 
 /**
@@ -133,7 +170,7 @@ export function deleteCacheFile(req: AuthenticatedRequest, res: Response): void 
   const name = req.params.name as string;
   const deleted = deleteCache(name);
   if (deleted) {
-    res.json({ deleted: true });
+    respond(res, WikivoyageCacheDeleted, { deleted: true });
   } else {
     res.status(404).json({ error: 'Cache file not found' });
   }
@@ -191,13 +228,15 @@ async function handleDeleteRuleAction(
     }
   }
 
-  res.json({
+  respond(res, ExtractionAnswer, {
     ruleDeleted: true,
     ruleId,
-    pageTitle: question?.pageTitle,
-    resolved: question?.resolved,
-    currentQuestion: question?.currentQuestion,
-    extractedRegions: question?.extractedRegions,
+    ...(question ? {
+      pageTitle: question.pageTitle,
+      resolved: question.resolved,
+      currentQuestion: interviewQuestionOf(question.currentQuestion),
+      extractedRegions: question.extractedRegions.map(regionPreviewOf),
+    } : {}),
   });
 }
 
@@ -274,11 +313,11 @@ async function handleAnswerAction(
 
   await applyAnswerResult(question, result);
 
-  res.json({
+  respond(res, ExtractionAnswer, {
     pageTitle: question.pageTitle,
     resolved: question.resolved,
-    extractedRegions: question.extractedRegions,
-    currentQuestion: question.currentQuestion,
+    extractedRegions: question.extractedRegions.map(regionPreviewOf),
+    currentQuestion: interviewQuestionOf(question.currentQuestion),
     ruleSaved,
   });
 }
@@ -316,7 +355,7 @@ export async function answerExtractionQuestion(req: AuthenticatedRequest, res: R
     await handleAnswerAction(question, answer, res);
   } else if (action === 'accept' || action === 'skip') {
     question.resolved = true;
-    res.json({ resolved: true, pageTitle: question.pageTitle });
+    respond(res, ExtractionAnswer, { resolved: true, pageTitle: question.pageTitle });
   } else {
     res.status(400).json({ error: 'Invalid action. Use: answer, accept, or skip' });
   }

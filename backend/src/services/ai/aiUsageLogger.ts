@@ -5,25 +5,9 @@
  * Provides summary queries for the admin dashboard.
  */
 
+import type { AIUsageSummary } from '../../api/responses/adminAi.js';
 import { pool } from '../../db/index.js';
 
-export interface UsageByModelFeature {
-  feature: string;
-  model: string;
-  totalCalls: number;
-  totalPromptTokens: number;
-  totalCompletionTokens: number;
-  totalCost: number;
-  avgCostPerCall: number;
-  lastUsed: string;
-}
-
-export interface UsageSummary {
-  today: number;
-  thisMonth: number;
-  allTime: number;
-  byModelFeature: UsageByModelFeature[];
-}
 
 /** Log a completed AI session. Returns the log entry ID. */
 export async function logAIUsage(entry: {
@@ -47,7 +31,7 @@ export async function logAIUsage(entry: {
 }
 
 /** Get usage summary for the admin dashboard. */
-export async function getUsageSummary(): Promise<UsageSummary> {
+export async function getUsageSummary(): Promise<AIUsageSummary> {
   const [totals, grouped] = await Promise.all([
     pool.query(`
       SELECT

@@ -5,32 +5,13 @@
  * suggests consolidation. Returns structured suggestions for admin review.
  */
 
+import { ReviewSuggestion, type RuleReviewResult } from '../../api/responses/adminAi.js';
 import { getAllRules, PREDEFINED_RULES } from './learnedRulesService.js';
 import { getModelForFeature } from './aiSettingsService.js';
 import { chatCompletion } from './chatCompletion.js';
 import { calculateCost } from './pricingService.js';
 import { logAIUsage } from './aiUsageLogger.js';
 import { getOpenAIClient } from './openaiShared.js';
-
-export interface ReviewSuggestion {
-  /** What to do: merge duplicates, resolve contradiction, or remove obsolete */
-  type: 'merge' | 'contradiction' | 'obsolete';
-  /** Human-readable explanation */
-  description: string;
-  /** Rule IDs to delete */
-  deleteIds: number[];
-  /** Rule ID to keep (and optionally update) */
-  keepId: number;
-  /** New text for the kept rule (null = keep as-is) */
-  replacementText: string | null;
-}
-
-export interface RuleReviewResult {
-  suggestions: ReviewSuggestion[];
-  summary: string;
-  /** Number of unique rules after applying all suggestions */
-  consolidatedCount: number;
-}
 
 const REVIEW_SYSTEM = `You review a set of learned rules used in AI prompts for a Wikivoyage region extraction system.
 
@@ -67,6 +48,43 @@ Rules:
 - replacementText should be concise and generic (not page-specific)
 
 Return ONLY JSON, no markdown fencing.`;
+
+/**
+ * One suggestion out of the model's JSON, key by key, or null where it names no
+ * learned rule to keep. The model numbers the rules as the prompt listed them,
+ * and those numbers are mapped back to rule ids here.
+ */
+function suggestionOf(entry: unknown, seqToDbId: Map<number, number>): ReviewSuggestion | null {
+  if (typeof entry !== 'object' || entry === null) return null;
+  const s = entry as Record<string, unknown>;
+  const keepId = typeof s.keepId === 'number' ? seqToDbId.get(s.keepId) : undefined;
+  if (keepId === undefined) return null;
+  const type = ReviewSuggestion.shape.type.safeParse(s.type);
+  return {
+    type: type.success ? type.data : 'merge',
+    description: typeof s.description === 'string' ? s.description : '',
+    deleteIds: (Array.isArray(s.deleteIds) ? s.deleteIds : [])
+      .filter((id): id is number => typeof id === 'number' && id !== s.keepId && seqToDbId.has(id))
+      .map(id => seqToDbId.get(id) as number),
+    keepId,
+    replacementText: typeof s.replacementText === 'string' ? s.replacementText : null,
+  };
+}
+
+/** The review out of the model's JSON, key by key: nothing holds what a model writes to a shape. */
+function reviewOf(parsed: unknown, seqToDbId: Map<number, number>, ruleCount: number): RuleReviewResult {
+  const answer = (typeof parsed === 'object' && parsed !== null ? parsed : {}) as Record<string, unknown>;
+  const suggestions = (Array.isArray(answer.suggestions) ? answer.suggestions : [])
+    .map(entry => suggestionOf(entry, seqToDbId))
+    .filter((suggestion): suggestion is ReviewSuggestion => suggestion !== null);
+  return {
+    suggestions,
+    summary: typeof answer.summary === 'string' ? answer.summary : `Found ${suggestions.length} suggestion(s).`,
+    consolidatedCount: typeof answer.consolidatedCount === 'number' && Number.isInteger(answer.consolidatedCount)
+      ? answer.consolidatedCount
+      : ruleCount - suggestions.reduce((n, suggestion) => n + suggestion.deleteIds.length, 0),
+  };
+}
 
 export async function reviewRules(): Promise<RuleReviewResult> {
   const allRules = await getAllRules();
@@ -149,37 +167,7 @@ Important: Only suggest changes to LEARNED rules (#${firstLearnedSeq}+). If a le
   const jsonStr = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
 
   try {
-    const parsed = JSON.parse(jsonStr) as {
-      suggestions?: Array<{
-        type?: string;
-        description?: string;
-        deleteIds?: number[];
-        keepId?: number;
-        replacementText?: string | null;
-      }>;
-      summary?: string;
-      consolidatedCount?: number;
-    };
-
-    // AI responds with sequential numbers — map back to DB IDs
-    const validSeqs = new Set(seqToDbId.keys());
-    const suggestions: ReviewSuggestion[] = (parsed.suggestions ?? [])
-      .filter(s => s.keepId != null && validSeqs.has(s.keepId))
-      .map(s => ({
-        type: (s.type === 'merge' || s.type === 'contradiction' || s.type === 'obsolete')
-          ? s.type : 'merge',
-        description: s.description ?? '',
-        deleteIds: (s.deleteIds ?? []).filter(id => validSeqs.has(id) && id !== s.keepId)
-          .map(id => seqToDbId.get(id)!),
-        keepId: seqToDbId.get(s.keepId!)!,
-        replacementText: s.replacementText ?? null,
-      }));
-
-    return {
-      suggestions,
-      summary: parsed.summary ?? `Found ${suggestions.length} suggestion(s).`,
-      consolidatedCount: parsed.consolidatedCount ?? (allRules.length - suggestions.reduce((n, s) => n + s.deleteIds.length, 0)),
-    };
+    return reviewOf(JSON.parse(jsonStr), seqToDbId, allRules.length);
   } catch {
     console.warn('[Rule Review] Failed to parse AI response:', text.slice(0, 200));
     return {

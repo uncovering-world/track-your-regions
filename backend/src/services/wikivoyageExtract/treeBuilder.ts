@@ -6,7 +6,7 @@
  * can appear under multiple parents (e.g. Caucasus under both Asia and Europe).
  */
 
-import type { TreeNode, PageData, ExtractionProgress, WikiSection, RegionPreview, PendingAIQuestion, InterviewQuestionData, CountryContext } from './types.js';
+import type { TreeNode, PageData, ExtractionProgress, WikiSection, RegionPreview, PendingAIQuestion, InterviewQuestion, CountryContext } from './types.js';
 import type { WikivoyageFetcher } from './fetcher.js';
 import {
   findRegionsSection,
@@ -394,7 +394,7 @@ function makePendingQuestion(args: {
       syncAiAccumulatorToProgress(prog, acc);
       return result.question;
     },
-    processAnswer: async (question: InterviewQuestionData, answer: string) => {
+    processAnswer: async (question: InterviewQuestion, answer: string) => {
       const result = await processInterviewAnswer(resolved, question, answer, pendingQ.rawQuestions, pendingQ.extractedRegions, openai, acc);
       syncAiAccumulatorToProgress(prog, acc);
       return result;

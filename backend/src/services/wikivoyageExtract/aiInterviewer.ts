@@ -11,22 +11,13 @@
  */
 
 import type OpenAI from 'openai';
-import type { RegionPreview } from './types.js';
+import type { InterviewQuestion, RegionPreview } from './types.js';
 import { getModelForFeature } from '../ai/aiSettingsService.js';
 import { getRules } from '../ai/learnedRulesService.js';
 import { calculateCost } from '../ai/pricingService.js';
 import { chatCompletion } from '../ai/chatCompletion.js';
 import { logAIUsage } from '../ai/aiUsageLogger.js';
 import type { AIExtractionAccumulator } from './aiRegionParser.js';
-
-export interface InterviewQuestion {
-  text: string;
-  options: Array<{ label: string; value: string }>;
-  /** Index of the recommended option (AI's suggestion) */
-  recommended: number | null;
-  /** Existing rules relevant to this question (for admin to review/manage) */
-  relatedRules?: Array<{ id: number; text: string }>;
-}
 
 /** Result of formulateQuestion: always a question for the admin */
 export type FormulateResult = { question: InterviewQuestion };
