@@ -106,6 +106,12 @@ export const wvImportAcceptBatchSchema = z.object({
   })).min(1).max(1000),
 });
 
+/** A verdict on a selection of a region's suggestions (`wvImportMatchDecisions.ts`). */
+export const wvImportDecideBatchSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(1000),
+});
+
 export const wvImportRegionIdSchema = z.object({
   regionId: z.coerce.number().int().positive(),
 });

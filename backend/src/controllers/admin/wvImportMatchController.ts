@@ -7,6 +7,7 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { acceptDivisionsRejectRest, rejectDivisions } from './wvImportMatchDecisions.js';
 // Re-export review API for adminRoutes (keeps existing import path working)
 export {
   resolveWaterReview,
@@ -160,51 +161,10 @@ export async function rejectMatch(req: AuthenticatedRequest, res: Response): Pro
   const { regionId, divisionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/reject — regionId=${regionId}, divisionId=${divisionId}`);
 
-  const region = await pool.query(
-    'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
-    [regionId, worldViewId],
-  );
-  if (region.rows.length === 0) {
+  if (!await rejectDivisions(worldViewId, regionId, [divisionId])) {
     res.status(404).json({ error: 'Region not found in this world view' });
     return;
   }
-
-  // Mark suggestion as rejected (prevents re-suggestion)
-  await pool.query(
-    `UPDATE region_match_suggestions SET rejected = true WHERE region_id = $1 AND division_id = $2`,
-    [regionId, divisionId],
-  );
-
-  // Also remove from region_members if it was assigned
-  await pool.query(
-    'DELETE FROM region_members WHERE region_id = $1 AND division_id = $2',
-    [regionId, divisionId],
-  );
-
-  // Determine new status based on remaining non-rejected suggestions and assigned members
-  const remainingResult = await pool.query(
-    `SELECT COUNT(*) FROM region_match_suggestions WHERE region_id = $1 AND rejected = false`,
-    [regionId],
-  );
-  const remainingCount = parseInt(remainingResult.rows[0].count as string);
-
-  let newStatus: string;
-  if (remainingCount > 0) {
-    newStatus = 'needs_review';
-  } else {
-    const memberCount = await pool.query(
-      'SELECT COUNT(*) FROM region_members WHERE region_id = $1',
-      [regionId],
-    );
-    const hasMembers = parseInt(memberCount.rows[0].count as string) > 0;
-    newStatus = hasMembers ? 'manual_matched' : 'no_candidates';
-  }
-
-  await pool.query(
-    `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
-    [newStatus, regionId],
-  );
-
   res.json({ rejected: true });
 }
 
@@ -300,8 +260,8 @@ export async function clearMembers(req: AuthenticatedRequest, res: Response): Pr
 }
 
 /**
- * Accept a match AND reject all remaining suggestions in a single transaction.
- * Replaces the chained acceptMatch + rejectRemaining calls.
+ * Accept a match AND reject all remaining suggestions in a single transaction
+ * (`acceptDivisionsRejectRest`, which the batch route shares).
  * POST /api/admin/wv-import/matches/:worldViewId/accept-and-reject
  */
 export async function acceptAndRejectRest(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -309,55 +269,11 @@ export async function acceptAndRejectRest(req: AuthenticatedRequest, res: Respon
   const { regionId, divisionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/accept-and-reject — regionId=${regionId}, divisionId=${divisionId}`);
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    // Verify region exists and belongs to the specified world view
-    const region = await client.query(
-      'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
-      [regionId, worldViewId],
-    );
-    if (region.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
-    }
-
-    // Create region member
-    await client.query(
-      `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)
-       ON CONFLICT DO NOTHING`,
-      [regionId, divisionId],
-    );
-
-    // Reject all remaining non-rejected suggestions (except the accepted one, which we delete)
-    await client.query(
-      `UPDATE region_match_suggestions SET rejected = true
-       WHERE region_id = $1 AND division_id != $2 AND rejected = false`,
-      [regionId, divisionId],
-    );
-
-    // Delete the accepted suggestion itself
-    await client.query(
-      `DELETE FROM region_match_suggestions WHERE region_id = $1 AND division_id = $2 AND rejected = false`,
-      [regionId, divisionId],
-    );
-
-    // Set status to manual_matched (we accepted one and rejected all others)
-    await client.query(
-      `UPDATE region_import_state SET match_status = 'manual_matched' WHERE region_id = $1`,
-      [regionId],
-    );
-
-    await client.query('COMMIT');
-    res.json({ accepted: true, rejected: true });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
+  if (!await acceptDivisionsRejectRest(worldViewId, regionId, [divisionId])) {
+    res.status(404).json({ error: 'Region not found in this world view' });
+    return;
   }
+  res.json({ accepted: true, rejected: true });
 }
 
 /**

@@ -44,6 +44,7 @@ import {
   baseLayerImportBodySchema,
   wvImportAcceptMatchSchema,
   wvImportAcceptBatchSchema,
+  wvImportDecideBatchSchema,
   wvImportUnionGeometrySchema,
   wvImportSplitDeeperSchema,
   wvImportVisionMatchSchema,
@@ -98,6 +99,7 @@ import {
   getExperienceCounts,
 } from '../controllers/admin/syncController.js';
 import { setCurationGate } from '../controllers/admin/curationGateController.js';
+import { acceptBatchAndRejectRest, rejectBatchSuggestions } from '../controllers/admin/wvImportMatchDecisions.js';
 import { setSourceLine } from '../controllers/admin/sourceLineController.js';
 import { acceptDataAssertion, getDataAssertions } from '../controllers/admin/dataAssertionsController.js';
 import {
@@ -382,6 +384,10 @@ router.post('/wv-import/matches/:worldViewId/reject-remaining', validate(worldVi
 
 // Accept a match and reject all remaining suggestions in one transaction
 router.post('/wv-import/matches/:worldViewId/accept-and-reject', validate(worldViewIdParamSchema, 'params'), validate(wvImportAcceptMatchSchema), acceptAndRejectRest);
+
+// The review's selection toolbar: the same two verdicts for several of a region's suggestions at once
+router.post('/wv-import/matches/:worldViewId/accept-batch-and-reject-rest', validate(worldViewIdParamSchema, 'params'), validate(wvImportDecideBatchSchema), acceptBatchAndRejectRest);
+router.post('/wv-import/matches/:worldViewId/reject-batch', validate(worldViewIdParamSchema, 'params'), validate(wvImportDecideBatchSchema), rejectBatchSuggestions);
 
 // Clear all assigned divisions from a region (keep suggestions)
 router.post('/wv-import/matches/:worldViewId/clear-members', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), clearMembers);
