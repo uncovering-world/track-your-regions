@@ -8,6 +8,8 @@
 
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { respond } from '../../api/respond.js';
+import { HierarchyReviewAction, HierarchyReviewResult } from '../../api/responses/adminAi.js';
 import OpenAI from 'openai';
 import { pool } from '../../db/index.js';
 import { getModelForFeature } from '../../services/ai/aiSettingsService.js';
@@ -376,9 +378,38 @@ ${ACTION_TYPES_SCHEMA}`;
 // 200 KB is safely above any realistic AI reply length.
 const JSON_FENCE_REGEX = /```(?:json)?\s*([\s\S]{0,200000}?)```/;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * One action out of the model's JSON, key by key: nothing holds what a model
+ * writes to a shape, so each key is read for the type the answer declares and
+ * anything else becomes that key's empty reading. An action type the model made
+ * up is `other`, and an action with no id takes its place in the list.
+ */
+function hierarchyActionOf(value: Record<string, unknown>, index: number): HierarchyReviewAction {
+  const type = HierarchyReviewAction.shape.type.safeParse(value.type);
+  const choices = Array.isArray(value.choices)
+    ? value.choices.filter(isRecord).flatMap(choice => (
+      typeof choice.label === 'string' && typeof choice.value === 'string'
+        ? [{ label: choice.label, value: choice.value }]
+        : []))
+    : undefined;
+  return {
+    id: typeof value.id === 'string' && value.id ? value.id : `action-${index + 1}`,
+    type: type.success ? type.data : 'other',
+    regionId: typeof value.regionId === 'number' && Number.isInteger(value.regionId) ? value.regionId : null,
+    regionName: typeof value.regionName === 'string' ? value.regionName : '',
+    description: typeof value.description === 'string' ? value.description : '',
+    ...(isRecord(value.params) ? { params: value.params } : {}),
+    ...(choices && choices.length > 0 ? { choices } : {}),
+  };
+}
+
 function parseStructuredResponse(content: string): {
   report: string;
-  actions: Array<Record<string, unknown>>;
+  actions: HierarchyReviewAction[];
 } {
   if (!content) return { report: 'No response from AI', actions: [] };
   try {
@@ -386,10 +417,11 @@ function parseStructuredResponse(content: string): {
     const fenceMatch = JSON_FENCE_REGEX.exec(content);
     if (fenceMatch) jsonStr = fenceMatch[1];
 
-    const parsed = JSON.parse(jsonStr.trim());
+    const parsed: unknown = JSON.parse(jsonStr.trim());
+    const answer = isRecord(parsed) ? parsed : {};
     return {
-      report: parsed.report ?? content,
-      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+      report: typeof answer.report === 'string' ? answer.report : content,
+      actions: Array.isArray(answer.actions) ? answer.actions.filter(isRecord).map(hierarchyActionOf) : [],
     };
   } catch {
     // Graceful degradation: treat entire content as markdown report
@@ -397,12 +429,15 @@ function parseStructuredResponse(content: string): {
   }
 }
 
-type HierarchyReviewResult = {
+/** A review as it ran: what it found, what it spent, and how its usage is logged. */
+type ReviewRun = {
   report: string;
-  actions: Array<Record<string, unknown>>;
+  actions: HierarchyReviewAction[];
   promptTokens: number;
   completionTokens: number;
   passes: number;
+  /** Set where the run's own story differs from the endpoint's default one. */
+  usageDescription?: string;
 };
 
 async function runSubtreeReview(
@@ -411,7 +446,7 @@ async function runSubtreeReview(
   worldViewId: number,
   regionId: number,
   res: Response,
-): Promise<HierarchyReviewResult | null> {
+): Promise<ReviewRun | null> {
   const rows = await queryTree(worldViewId, regionId);
   if (rows.length === 0) {
     res.status(404).json({ error: 'Region not found in this world view' });
@@ -473,41 +508,16 @@ function parsePass1Response(pass1Content: string):
   }
 }
 
-async function finalizeFullReviewWithPass1Fallback(
-  worldViewId: number,
-  model: string,
-  pass1Content: string,
-  promptTokens: number,
-  completionTokens: number,
-  startTime: number,
-  res: Response,
-): Promise<void> {
-  const report = pass1Content || 'AI returned an empty response';
-
-  const durationMs = Date.now() - startTime;
-  const cost = calculateCost(promptTokens, completionTokens, model);
-
-  await logAIUsage({
-    feature: 'hierarchy_review',
-    model,
-    apiCalls: 1,
+/** Pass 1 answered with something other than JSON: its text is the report, and there is no pass 2. */
+function pass1OnlyReview(worldViewId: number, pass1Content: string, promptTokens: number, completionTokens: number): ReviewRun {
+  return {
+    report: pass1Content || 'AI returned an empty response',
+    actions: [],
     promptTokens,
     completionTokens,
-    totalCost: cost.totalCost,
-    durationMs,
-    description: `Full tree review (pass 1 only, JSON parse failed) for world view ${worldViewId}`,
-  });
-
-  res.json({
-    report,
-    actions: [],
-    stats: {
-      passes: 1,
-      inputTokens: promptTokens,
-      outputTokens: completionTokens,
-      cost: cost.totalCost,
-    },
-  });
+    passes: 1,
+    usageDescription: `Full tree review (pass 1 only, JSON parse failed) for world view ${worldViewId}`,
+  };
 }
 
 async function runPass2(
@@ -516,7 +526,7 @@ async function runPass2(
   worldViewId: number,
   flaggedBranches: FlaggedBranch[],
   observations: string,
-): Promise<{ report: string; actions: Array<Record<string, unknown>>; promptTokens: number; completionTokens: number }> {
+): Promise<{ report: string; actions: HierarchyReviewAction[]; promptTokens: number; completionTokens: number }> {
   const flaggedIds = flaggedBranches.map((b) => b.regionId);
   const detailText = await buildSubtreeDetail(worldViewId, flaggedIds);
 
@@ -551,9 +561,7 @@ async function runFullTreeReview(
   client: OpenAI,
   model: string,
   worldViewId: number,
-  startTime: number,
-  res: Response,
-): Promise<HierarchyReviewResult | null> {
+): Promise<ReviewRun> {
   // Pass 1: summary -> flagged branches
   const summary = await buildTreeSummary(worldViewId);
   const pass1Response = await chatCompletion(client, {
@@ -576,12 +584,7 @@ async function runFullTreeReview(
   const pass1Parsed = parsePass1Response(pass1Content);
 
   if (!pass1Parsed.ok) {
-    await finalizeFullReviewWithPass1Fallback(
-      worldViewId, model, pass1Content,
-      pass1PromptTokens, pass1CompletionTokens,
-      startTime, res,
-    );
-    return null;
+    return pass1OnlyReview(worldViewId, pass1Content, pass1PromptTokens, pass1CompletionTokens);
   }
 
   const { flaggedBranches, observations } = pass1Parsed;
@@ -624,13 +627,14 @@ export async function hierarchyReview(
 
   const startTime = Date.now();
 
+  let body: HierarchyReviewResult;
   try {
     const model = await getModelForFeature('hierarchy_review');
     const client = getClient();
 
     const review = regionId != null
       ? await runSubtreeReview(client, model, worldViewId, regionId, res)
-      : await runFullTreeReview(client, model, worldViewId, startTime, res);
+      : await runFullTreeReview(client, model, worldViewId);
 
     if (!review) return; // response already sent via early-exit path
 
@@ -645,12 +649,12 @@ export async function hierarchyReview(
       completionTokens: review.completionTokens,
       totalCost: cost.totalCost,
       durationMs,
-      description: regionId
+      description: review.usageDescription ?? (regionId
         ? `Subtree review for region ${regionId} in world view ${worldViewId}`
-        : `Full tree review (${review.passes} passes) for world view ${worldViewId}`,
+        : `Full tree review (${review.passes} passes) for world view ${worldViewId}`),
     });
 
-    res.json({
+    body = {
       report: review.report,
       actions: review.actions,
       stats: {
@@ -659,7 +663,7 @@ export async function hierarchyReview(
         outputTokens: review.completionTokens,
         cost: cost.totalCost,
       },
-    });
+    };
   } catch (err) {
     console.error('[AI Hierarchy Review] Error:', err);
     res
@@ -668,5 +672,7 @@ export async function hierarchyReview(
         error:
           err instanceof Error ? err.message : 'AI hierarchy review failed',
       });
+    return;
   }
+  respond(res, HierarchyReviewResult, body);
 }

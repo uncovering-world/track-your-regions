@@ -9,6 +9,7 @@
 
 import path from 'path';
 import { existsSync, unlinkSync, statSync, readdirSync, copyFileSync } from 'fs';
+import type { WikivoyageCache } from '../../api/responses/wikivoyageExtract.js';
 import { pool } from '../../db/index.js';
 import type { ExtractionProgress, ExtractionConfig, TreeNode } from './types.js';
 import { createInitialExtractionProgress } from './types.js';
@@ -31,14 +32,9 @@ const CACHE_DIR = path.join(process.cwd(), 'data', 'cache');
 const DEFAULT_CACHE_FILE = 'wikivoyage-cache.json';
 const DEFAULT_CACHE_PATH = path.join(CACHE_DIR, DEFAULT_CACHE_FILE);
 
-export interface CacheEntry {
-  name: string;
-  sizeBytes: number;
-  modifiedAt: string;
-}
 
 /** List all cache files with metadata */
-export function listCaches(): CacheEntry[] {
+export function listCaches(): WikivoyageCache[] {
   try {
 
     if (!existsSync(CACHE_DIR)) return [];
