@@ -11,7 +11,7 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
-import { updateRegion, deleteRegion } from './regionCrud.js';
+import { updateRegion, deleteRegion, getRegionAncestors } from './regionCrud.js';
 
 /**
  * A structural change is the one thing the geometry trigger cannot see.
@@ -35,6 +35,18 @@ import { updateRegion, deleteRegion } from './regionCrud.js';
  * recoverable only by a forced run (#667).
  */
 
+/** A region as the region SELECT hands it over, for a write's answer to read back. */
+function regionRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 42, world_view_id: 5, name: 'Chile', description: null, parent_region_id: 9, color: '#3388ff',
+    is_custom_boundary: false, uses_hull: false, focus_bbox: [-109.5, -56, -66.4, -17.5], anchor_point: [-71.5, -35.7],
+    has_subregions: false, has_hull_children: false, source_url: null, region_map_url: null, ...overrides,
+  };
+}
+
+/** Whether a statement is the read every region answer is made of. */
+const isRegionRead = (sql: string) => sql.includes('LEFT JOIN region_import_state ris') && sql.includes('WHERE cg.id = $1');
+
 /** The ids the handler asked to invalidate, in order. */
 function invalidatedIds(): unknown[] {
   return poolQuery.mock.calls
@@ -53,12 +65,13 @@ describe('updateRegion invalidates both sides of a reparent (#680)', () => {
     client.query.mockResolvedValue({ rows: [] });
     poolQuery.mockImplementation(async (sql: string) => {
       const s = String(sql);
-      if (s.includes('SELECT id, world_view_id, name, parent_region_id')) {
-        return { rows: [{ id: REGION, world_view_id: 5, name: 'Chile', parent_region_id: OLD_PARENT }] };
+      if (s.includes('SELECT name, parent_region_id, uses_hull')) {
+        return { rows: [{ name: 'Chile', parent_region_id: OLD_PARENT, uses_hull: false }] };
       }
-      if (s.includes('UPDATE regions') && s.includes('RETURNING id, world_view_id')) {
-        return { rows: [{ id: REGION, worldViewId: 5, name: 'Chile', parentRegionId: NEW_PARENT }] };
+      if (s.includes('UPDATE regions') && s.includes('RETURNING world_view_id')) {
+        return { rows: [{ world_view_id: 5 }] };
       }
+      if (isRegionRead(s)) return { rows: [regionRow({ parent_region_id: NEW_PARENT })] };
       return { rows: [], rowCount: 0 };
     });
   });
@@ -163,17 +176,13 @@ describe('updateRegion bumps the tile version when the hull flag flips (#685)', 
       // The stored flag is named in the matcher, not just in the row: without it
       // a handler that stopped selecting uses_hull would still be handed one
       // here, read undefined as false, and pass the flip-off case by accident.
-      if (s.includes('SELECT id, world_view_id, name, parent_region_id, uses_hull')) {
-        return {
-          rows: [{
-            id: REGION, world_view_id: WORLD_VIEW, name: 'Fiji',
-            parent_region_id: 9, uses_hull: usesHull,
-          }],
-        };
+      if (s.includes('SELECT name, parent_region_id, uses_hull')) {
+        return { rows: [{ name: 'Fiji', parent_region_id: 9, uses_hull: usesHull }] };
       }
-      if (s.includes('UPDATE regions') && s.includes('RETURNING id, world_view_id')) {
-        return { rows: [{ id: REGION, worldViewId: WORLD_VIEW, name: 'Fiji', usesHull: !usesHull }] };
+      if (s.includes('UPDATE regions') && s.includes('RETURNING world_view_id')) {
+        return { rows: [{ world_view_id: WORLD_VIEW }] };
       }
+      if (isRegionRead(s)) return { rows: [regionRow({ name: 'Fiji', uses_hull: !usesHull })] };
       if (s.includes('UPDATE world_views SET tile_version')) {
         return { rows: [{ tile_version: 12 }] };
       }
@@ -192,9 +201,10 @@ describe('updateRegion bumps the tile version when the hull flag flips (#685)', 
   }
 
   it('bumps the world view and answers with the new version', async () => {
-    const body = await setUsesHull(true, false) as { tileVersion?: number };
+    const body = await setUsesHull(true, false) as { tileVersion?: number; usesHull: boolean };
     expect(bumpedWorldViews()).toEqual([WORLD_VIEW]);
     expect(body.tileVersion).toBe(12);
+    expect(body.usesHull).toBe(true);
   });
 
   it('bumps it turning the flag off as well as on', async () => {
@@ -214,5 +224,43 @@ describe('updateRegion bumps the tile version when the hull flag flips (#685)', 
       { json: vi.fn() } as unknown as Response,
     );
     expect(bumpedWorldViews()).toEqual([]);
+  });
+});
+
+/**
+ * The client takes the last ancestor as the selected region itself: it
+ * completes a selection made on the map from it, and a region restored from the
+ * address has nothing else to be completed from. So each ancestor is the whole
+ * row every region answer carries, read by the same SELECT.
+ */
+describe('getRegionAncestors', () => {
+  it('answers each ancestor as the whole region row, root first', async () => {
+    poolQuery.mockReset();
+    poolQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (s.includes('WITH RECURSIVE ancestors') && s.includes('LEFT JOIN region_import_state ris')) {
+        return {
+          rows: [
+            regionRow({ id: 6737, name: 'Europe', parent_region_id: null, has_subregions: true }),
+            regionRow({ id: 7323, name: 'Switzerland', parent_region_id: 6737, has_subregions: true }),
+            regionRow({ id: 7349, name: 'Zürich', parent_region_id: 7323, source_url: 'https://en.wikivoyage.org/wiki/Zürich' }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    const json = vi.fn();
+    await getRegionAncestors({ params: { regionId: '7349' } } as unknown as Request, { json } as unknown as Response);
+
+    // Root first is the query's to decide (the recursion counts depth up from
+    // the region); the mock hands the rows over in that order, so the order is
+    // held on the SQL itself.
+    expect(String(poolQuery.mock.calls[0][0])).toMatch(/ORDER BY a\.depth DESC/);
+    const answer = json.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(answer.map((r) => r.name)).toEqual(['Europe', 'Switzerland', 'Zürich']);
+    expect(answer[2]).toMatchObject({
+      isCustomBoundary: false, hasHullChildren: false, description: null,
+      sourceUrl: 'https://en.wikivoyage.org/wiki/Zürich',
+    });
   });
 });

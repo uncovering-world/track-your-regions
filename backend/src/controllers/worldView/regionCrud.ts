@@ -3,9 +3,24 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { Region, Regions, RegionSearchResults, RegionUpdated } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
+import type { RegionsRow } from '../../db/schema.generated.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import { invalidateRegionGeometry } from './helpers.js';
+import { REGION_SELECT_SQL, regionOf, regionSearchResultOf, type RegionRow, type RegionSearchRow } from './regionAnswerRows.js';
+
+/**
+ * One region as every region answer reads it. A write answers with this read
+ * rather than with its own RETURNING, so what it hands back is the row the tree
+ * would list, as the triggers and the rest of the handler left it.
+ */
+async function readRegion(regionId: number): Promise<Region> {
+  const result = await pool.query<RegionRow>(`${REGION_SELECT_SQL} WHERE cg.id = $1`, [regionId]);
+  if (result.rows.length === 0) throw notFound(`Region ${regionId} not found`);
+  return regionOf(result.rows[0]);
+}
 
 /**
  * Get all regions in a World View
@@ -13,35 +28,13 @@ import { invalidateRegionGeometry } from './helpers.js';
 export async function getRegions(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
 
-  const result = await pool.query(`
-    SELECT
-      cg.id,
-      cg.world_view_id as "worldViewId",
-      cg.name,
-      cg.description,
-      cg.parent_region_id as "parentRegionId",
-      cg.color,
-      cg.is_custom_boundary as "isCustomBoundary",
-      cg.uses_hull as "usesHull",
-      CASE WHEN cg.focus_bbox IS NOT NULL 
-        THEN json_build_array(cg.focus_bbox[1], cg.focus_bbox[2], cg.focus_bbox[3], cg.focus_bbox[4])
-        ELSE NULL 
-      END as "focusBbox",
-      CASE WHEN cg.anchor_point IS NOT NULL
-        THEN json_build_array(ST_X(cg.anchor_point), ST_Y(cg.anchor_point))
-        ELSE NULL
-      END as "anchorPoint",
-      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id) as "hasSubregions",
-      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND uses_hull = true) as "hasHullChildren",
-      ris.source_url as "sourceUrl",
-      ris.region_map_url as "regionMapUrl"
-    FROM regions cg
-    LEFT JOIN region_import_state ris ON ris.region_id = cg.id
+  const result = await pool.query<RegionRow>(`
+    ${REGION_SELECT_SQL}
     WHERE cg.world_view_id = $1
     ORDER BY cg.name
   `, [worldViewId]);
 
-  res.json(result.rows);
+  respond(res, Regions, result.rows.map(regionOf));
 }
 
 /**
@@ -50,35 +43,13 @@ export async function getRegions(req: Request, res: Response): Promise<void> {
 export async function getRootRegions(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
 
-  const result = await pool.query(`
-    SELECT
-      cg.id,
-      cg.world_view_id as "worldViewId",
-      cg.name,
-      cg.description,
-      cg.parent_region_id as "parentRegionId",
-      cg.color,
-      cg.is_custom_boundary as "isCustomBoundary",
-      cg.uses_hull as "usesHull",
-      CASE WHEN cg.focus_bbox IS NOT NULL 
-        THEN json_build_array(cg.focus_bbox[1], cg.focus_bbox[2], cg.focus_bbox[3], cg.focus_bbox[4])
-        ELSE NULL 
-      END as "focusBbox",
-      CASE WHEN cg.anchor_point IS NOT NULL
-        THEN json_build_array(ST_X(cg.anchor_point), ST_Y(cg.anchor_point))
-        ELSE NULL
-      END as "anchorPoint",
-      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id) as "hasSubregions",
-      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND uses_hull = true) as "hasHullChildren",
-      ris.source_url as "sourceUrl",
-      ris.region_map_url as "regionMapUrl"
-    FROM regions cg
-    LEFT JOIN region_import_state ris ON ris.region_id = cg.id
+  const result = await pool.query<RegionRow>(`
+    ${REGION_SELECT_SQL}
     WHERE cg.world_view_id = $1 AND cg.parent_region_id IS NULL
     ORDER BY cg.name
   `, [worldViewId]);
 
-  res.json(result.rows);
+  respond(res, Regions, result.rows.map(regionOf));
 }
 
 /**
@@ -87,35 +58,13 @@ export async function getRootRegions(req: Request, res: Response): Promise<void>
 export async function getSubregions(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
 
-  const result = await pool.query(`
-    SELECT
-      cg.id,
-      cg.world_view_id as "worldViewId",
-      cg.name,
-      cg.description,
-      cg.parent_region_id as "parentRegionId",
-      cg.color,
-      cg.is_custom_boundary as "isCustomBoundary",
-      cg.uses_hull as "usesHull",
-      CASE WHEN cg.focus_bbox IS NOT NULL 
-        THEN json_build_array(cg.focus_bbox[1], cg.focus_bbox[2], cg.focus_bbox[3], cg.focus_bbox[4])
-        ELSE NULL 
-      END as "focusBbox",
-      CASE WHEN cg.anchor_point IS NOT NULL
-        THEN json_build_array(ST_X(cg.anchor_point), ST_Y(cg.anchor_point))
-        ELSE NULL
-      END as "anchorPoint",
-      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id) as "hasSubregions",
-      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND uses_hull = true) as "hasHullChildren",
-      ris.source_url as "sourceUrl",
-      ris.region_map_url as "regionMapUrl"
-    FROM regions cg
-    LEFT JOIN region_import_state ris ON ris.region_id = cg.id
+  const result = await pool.query<RegionRow>(`
+    ${REGION_SELECT_SQL}
     WHERE cg.parent_region_id = $1
     ORDER BY cg.name
   `, [regionId]);
 
-  res.json(result.rows);
+  respond(res, Regions, result.rows.map(regionOf));
 }
 
 /**
@@ -124,34 +73,20 @@ export async function getSubregions(req: Request, res: Response): Promise<void> 
 export async function getRegionAncestors(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
 
-  const result = await pool.query(`
+  // The whole row of each, as every region answer carries it: the client's
+  // selection takes the last entry as the selected region itself, and a region
+  // restored from the address has nothing else to be completed from.
+  const result = await pool.query<RegionRow>(`
     WITH RECURSIVE ancestors AS (
-      SELECT id, parent_region_id, name, world_view_id, color,
-             uses_hull, focus_bbox, anchor_point, 1 as depth
+      SELECT id, parent_region_id, 1 AS depth
       FROM regions WHERE id = $1
       UNION ALL
-      SELECT r.id, r.parent_region_id, r.name, r.world_view_id, r.color,
-             r.uses_hull, r.focus_bbox, r.anchor_point, a.depth + 1
+      SELECT r.id, r.parent_region_id, a.depth + 1
       FROM regions r
       INNER JOIN ancestors a ON r.id = a.parent_region_id
     )
-    SELECT
-      a.id,
-      a.world_view_id as "worldViewId",
-      a.name,
-      a.parent_region_id as "parentRegionId",
-      a.color,
-      a.uses_hull as "usesHull",
-      CASE WHEN a.focus_bbox IS NOT NULL
-        THEN json_build_array(a.focus_bbox[1], a.focus_bbox[2], a.focus_bbox[3], a.focus_bbox[4])
-        ELSE NULL
-      END as "focusBbox",
-      CASE WHEN a.anchor_point IS NOT NULL
-        THEN json_build_array(ST_X(a.anchor_point), ST_Y(a.anchor_point))
-        ELSE NULL
-      END as "anchorPoint",
-      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = a.id) as "hasSubregions"
-    FROM ancestors a
+    ${REGION_SELECT_SQL}
+    JOIN ancestors a ON a.id = cg.id
     ORDER BY a.depth DESC
   `, [regionId]);
 
@@ -159,7 +94,7 @@ export async function getRegionAncestors(req: Request, res: Response): Promise<v
     throw notFound(`Region ${regionId} not found`);
   }
 
-  res.json(result.rows);
+  respond(res, Regions, result.rows.map(regionOf));
 }
 
 /**
@@ -172,7 +107,7 @@ export async function searchRegions(req: Request, res: Response): Promise<void> 
   const limit = parseInt(String(req.query.limit ?? '50'));
 
   if (inputQuery.length < 2) {
-    res.json([]);
+    respond(res, RegionSearchResults, []);
     return;
   }
 
@@ -261,26 +196,24 @@ export async function searchRegions(req: Request, res: Response): Promise<void> 
       SELECT DISTINCT ON (target_id)
         target_id as id,
         name,
-        parent_region_id as "parentRegionId",
+        parent_region_id,
         description,
         color,
-        uses_hull as "usesHull",
+        uses_hull,
         CASE WHEN focus_bbox IS NOT NULL
           THEN json_build_array(focus_bbox[1], focus_bbox[2], focus_bbox[3], focus_bbox[4])
-          ELSE NULL
-        END as "focusBbox",
+        END as focus_bbox,
         CASE WHEN anchor_point IS NOT NULL
           THEN json_build_array(ST_X(anchor_point), ST_Y(anchor_point))
-          ELSE NULL
-        END as "anchorPoint",
-        (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = target_id) as "hasSubregions",
+        END as anchor_point,
+        EXISTS (SELECT 1 FROM regions WHERE parent_region_id = target_id) as has_subregions,
         path,
         relevance_score
       FROM scored
       ORDER BY target_id, relevance_score DESC
     `;
 
-    return pool.query(query, params);
+    return pool.query<RegionSearchRow>(query, params);
   };
 
   let result = await executeSearch('regular');
@@ -292,10 +225,10 @@ export async function searchRegions(req: Request, res: Response): Promise<void> 
   }
 
   const sorted = result.rows
-    .sort((a: { relevance_score: number }, b: { relevance_score: number }) => b.relevance_score - a.relevance_score)
+    .sort((a, b) => b.relevance_score - a.relevance_score)
     .slice(0, limit);
 
-  res.json(sorted);
+  respond(res, RegionSearchResults, sorted.map(regionSearchResultOf));
 }
 
 /**
@@ -308,7 +241,7 @@ export async function createRegion(req: Request, res: Response): Promise<void> {
 
   console.log(`[CreateRegion] name=${name}, hasCustomGeometry=${!!customGeometry}, customGeometryType=${customGeometry?.type}`);
 
-  let result;
+  let createdId: number;
 
   if (customGeometry) {
     // If custom geometry is provided, store it directly and mark as custom boundary
@@ -316,29 +249,28 @@ export async function createRegion(req: Request, res: Response): Promise<void> {
     console.log(`[CreateRegion] Saving custom geometry with ${geomJson.length} chars, first 200: ${geomJson.substring(0, 200)}`);
 
     try {
-      result = await pool.query(`
+      const inserted = await pool.query<Pick<RegionsRow, 'id'> & { has_geom: boolean; geom_points: number | null }>(`
         INSERT INTO regions (world_view_id, name, description, parent_region_id, color, geom, is_custom_boundary)
         VALUES ($1, $2, $3, $4, $5, validate_multipolygon(ST_GeomFromGeoJSON($6)), true)
-        RETURNING id, world_view_id as "worldViewId", name, description,
-                  parent_region_id as "parentRegionId", color, is_custom_boundary as "isCustomBoundary",
-                  geom IS NOT NULL as "hasGeom", ST_NPoints(geom) as "geomPoints"
+        RETURNING id, geom IS NOT NULL AS has_geom, ST_NPoints(geom) AS geom_points
       `, [worldViewId, name, description || null, parentId || null, color || '#3388ff', geomJson]);
+      createdId = inserted.rows[0].id;
 
-      console.log(`[CreateRegion] Result: id=${result.rows[0]?.id}, hasGeom=${result.rows[0]?.hasGeom}, geomPoints=${result.rows[0]?.geomPoints}`);
+      console.log(`[CreateRegion] Result: id=${createdId}, hasGeom=${inserted.rows[0].has_geom}, geomPoints=${inserted.rows[0].geom_points}`);
     } catch (err) {
       console.error(`[CreateRegion] SQL Error:`, err);
       throw err;
     }
   } else {
-    result = await pool.query(`
+    const inserted = await pool.query<Pick<RegionsRow, 'id'>>(`
       INSERT INTO regions (world_view_id, name, description, parent_region_id, color)
       VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, world_view_id as "worldViewId", name, description,
-                parent_region_id as "parentRegionId", color
+      RETURNING id
     `, [worldViewId, name, description || null, parentId || null, color || '#3388ff']);
+    createdId = inserted.rows[0].id;
   }
 
-  res.status(201).json(result.rows[0]);
+  respond(res.status(201), Region, await readRegion(createdId));
 }
 
 interface UpdateRegionBody {
@@ -426,8 +358,8 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
   const body = req.body as UpdateRegionBody;
   const newParentId = body.parentRegionId;
 
-  const currentRegion = await pool.query(`
-    SELECT id, world_view_id, name, parent_region_id, uses_hull
+  const currentRegion = await pool.query<Pick<RegionsRow, 'name' | 'parent_region_id' | 'uses_hull'>>(`
+    SELECT name, parent_region_id, uses_hull
     FROM regions WHERE id = $1
   `, [regionId]);
   if (currentRegion.rows.length === 0) {
@@ -439,24 +371,17 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
 
   const { setClauses, values } = buildRegionUpdateClauses(body);
   if (setClauses.length === 0) {
-    res.json({
-      id: currentRegion.rows[0].id,
-      worldViewId: currentRegion.rows[0].world_view_id,
-      name: currentRegion.rows[0].name,
-      parentRegionId: currentRegion.rows[0].parent_region_id,
-    });
+    respond(res, RegionUpdated, await readRegion(regionId));
     return;
   }
 
   const idIdx = values.length + 1;
   values.push(regionId);
-  const result = await pool.query(`
+  const result = await pool.query<Pick<RegionsRow, 'world_view_id'>>(`
     UPDATE regions
     SET ${setClauses.join(', ')}
     WHERE id = $${idIdx}
-    RETURNING id, world_view_id as "worldViewId", name, description,
-              parent_region_id as "parentRegionId", color,
-              uses_hull as "usesHull"
+    RETURNING world_view_id
   `, values);
   if (result.rows.length === 0) {
     throw notFound(`Region ${regionId} not found`);
@@ -502,15 +427,15 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
   // membership move above has its own, for the same failure class, and commits
   // independently of the invalidations that follow it.
   if (body.usesHull !== undefined && Boolean(body.usesHull) !== oldUsesHull) {
-    const bumped = await pool.query(
+    const bumped = await pool.query<{ tile_version: number }>(
       'UPDATE world_views SET tile_version = COALESCE(tile_version, 0) + 1 WHERE id = $1 RETURNING tile_version',
-      [result.rows[0].worldViewId],
+      [result.rows[0].world_view_id],
     );
-    res.json({ ...result.rows[0], tileVersion: bumped.rows[0]?.tile_version });
+    respond(res, RegionUpdated, { ...await readRegion(regionId), tileVersion: bumped.rows[0].tile_version });
     return;
   }
 
-  res.json(result.rows[0]);
+  respond(res, RegionUpdated, await readRegion(regionId));
 }
 
 /**
