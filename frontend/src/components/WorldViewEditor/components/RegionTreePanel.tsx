@@ -38,7 +38,8 @@ import {
 } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Region, RegionMember } from '../../../types';
+import type { Region } from '../../../types';
+import type { RegionMember } from '../../../api/regions';
 import { useAppTheme } from '../../../theme';
 
 // ─── Props ──────────────────────────────────────────────────────────

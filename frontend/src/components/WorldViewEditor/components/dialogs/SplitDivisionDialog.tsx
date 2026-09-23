@@ -21,7 +21,8 @@ import DrawIcon from '@mui/icons-material/Draw';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { LoadingSpinner } from '../../../shared/LoadingSpinner';
 import * as turf from '@turf/turf';
-import type { Region, RegionMember } from '../../../../types';
+import type { Region } from '../../../../types';
+import type { RegionMember } from '../../../../api/regions';
 import { CustomBoundaryDialog } from '../../../CustomBoundaryDialog';
 import {
   fetchRegionMemberGeometries,

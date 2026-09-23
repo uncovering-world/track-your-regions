@@ -2,7 +2,7 @@
  * Shared types for AI Assist Tab and related components.
  */
 
-import type { RegionMember } from '@/types';
+import type { RegionMember } from '@/api/regions';
 import type { GroupSuggestion } from '@/api';
 
 /** Cumulative usage stats for a session (single or batch). */

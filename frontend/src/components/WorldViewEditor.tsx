@@ -15,7 +15,8 @@ import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchSubdivisions } from '../api';
-import type { Region, AdministrativeDivision, RegionMember } from '../types';
+import type { Region, AdministrativeDivision } from '../types';
+import type { RegionMember } from '../api/regions';
 import type { WorldView } from '../api/worldViews';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import {

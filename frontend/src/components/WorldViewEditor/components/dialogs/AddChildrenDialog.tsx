@@ -24,7 +24,8 @@ import {
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { LoadingSpinner } from '../../../shared/LoadingSpinner';
 import FolderCopyIcon from '@mui/icons-material/FolderCopy';
-import type { RegionMember, Region } from '../../../../types';
+import type { Region } from '../../../../types';
+import type { RegionMember } from '../../../../api/regions';
 import { fetchSubdivisions, fetchDivisionUsageCounts, fetchRegionMembers } from '../../../../api';
 
 export interface ChildToAdd {

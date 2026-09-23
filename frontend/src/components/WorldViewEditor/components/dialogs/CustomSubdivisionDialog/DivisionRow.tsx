@@ -6,7 +6,7 @@
 
 import { Box, IconButton, ListItem, ListItemText, Tooltip } from '@mui/material';
 import MapIcon from '@mui/icons-material/Map';
-import type { RegionMember } from '../../../../../types';
+import type { RegionMember } from '../../../../../api/regions';
 import { getMemberKey } from '../../../types';
 import type { SubdivisionGroup } from './types';
 import { removeMemberAtIndex, addMemberAtIndex } from './groupMutations';

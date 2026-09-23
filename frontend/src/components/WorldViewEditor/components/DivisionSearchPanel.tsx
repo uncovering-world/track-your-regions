@@ -16,7 +16,8 @@ import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import DrawIcon from '@mui/icons-material/Draw';
 import MapIcon from '@mui/icons-material/Map';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import type { Region, AdministrativeDivision, AdministrativeDivisionWithPath, RegionMember } from '../../../types';
+import type { Region, AdministrativeDivision, AdministrativeDivisionWithPath } from '../../../types';
+import type { RegionMember } from '../../../api/regions';
 import { fetchDivisionGeometry } from '../../../api';
 import {
   DivisionPreviewDialog,
