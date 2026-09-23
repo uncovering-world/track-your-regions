@@ -3,9 +3,15 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { DeleteImpact, WorldView, WorldViews } from '../../api/responses/worldViews.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { pool } from '../../db/index.js';
+import type { WorldViewsRow } from '../../db/schema.generated.js';
 import { notFound } from '../../middleware/errorHandler.js';
+import {
+  deleteImpactOf, WORLD_VIEW_COLUMNS_SQL, worldViewOf, type DeleteImpactRow, type WorldViewRow,
+} from './worldViewAnswerRows.js';
 
 /**
  * Get all World Views visible to the caller.
@@ -19,17 +25,15 @@ export async function getWorldViews(req: AuthenticatedRequest, res: Response): P
   // from serving an admin's list to a visitor come from `optionalAuth` on the
   // route, as on every read whose answer is shaped by the caller.
   const isAdmin = req.user?.role === 'admin';
-  const result = await pool.query(`
-    SELECT id, name, description, source, is_default as "isDefault",
-           is_public as "isPublic",
-           COALESCE(tile_version, 0) as "tileVersion"
+  const result = await pool.query<WorldViewRow>(`
+    SELECT ${WORLD_VIEW_COLUMNS_SQL}
     FROM world_views
     WHERE is_active = true
       AND ($1::boolean OR is_public)
     ORDER BY is_default DESC, name
   `, [isAdmin]);
 
-  res.json(result.rows);
+  respond(res, WorldViews, result.rows.map(worldViewOf));
 }
 
 /**
@@ -38,15 +42,14 @@ export async function getWorldViews(req: AuthenticatedRequest, res: Response): P
 export async function createWorldView(req: Request, res: Response): Promise<void> {
   const { name, description, source } = req.body;
 
-  const result = await pool.query(
+  const result = await pool.query<WorldViewRow>(
     `INSERT INTO world_views (name, description, source, is_default, is_active)
      VALUES ($1, $2, $3, false, true)
-     RETURNING id, name, description, source, is_default as "isDefault",
-               is_public as "isPublic"`,
+     RETURNING ${WORLD_VIEW_COLUMNS_SQL}`,
     [name, description || null, source || null]
   );
 
-  res.status(201).json(result.rows[0]);
+  respond(res.status(201), WorldView, worldViewOf(result.rows[0]));
 }
 
 /**
@@ -56,7 +59,7 @@ export async function updateWorldView(req: Request, res: Response): Promise<void
   const worldViewId = parseInt(String(req.params.worldViewId));
   const { name, description, source, isPublic } = req.body;
 
-  const result = await pool.query(
+  const result = await pool.query<WorldViewRow>(
     `UPDATE world_views
      SET name = COALESCE($1, name),
          description = COALESCE($2, description),
@@ -64,8 +67,7 @@ export async function updateWorldView(req: Request, res: Response): Promise<void
          is_public = COALESCE($4, is_public),
          updated_at = NOW()
      WHERE id = $5
-     RETURNING id, name, description, source, is_default as "isDefault",
-               is_public as "isPublic"`,
+     RETURNING ${WORLD_VIEW_COLUMNS_SQL}`,
     // `?? null`, not `|| null`: false is a meaningful value here.
     [name || null, description || null, source || null, isPublic ?? null, worldViewId]
   );
@@ -74,7 +76,7 @@ export async function updateWorldView(req: Request, res: Response): Promise<void
     throw notFound(`World View ${worldViewId} not found`);
   }
 
-  res.json(result.rows[0]);
+  respond(res, WorldView, worldViewOf(result.rows[0]));
 }
 
 /**
@@ -85,7 +87,7 @@ export async function updateWorldView(req: Request, res: Response): Promise<void
 export async function getDeleteImpact(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
 
-  const check = await pool.query(
+  const check = await pool.query<Pick<WorldViewsRow, 'is_default'>>(
     'SELECT is_default FROM world_views WHERE id = $1',
     [worldViewId],
   );
@@ -93,7 +95,7 @@ export async function getDeleteImpact(req: Request, res: Response): Promise<void
     throw notFound(`World View ${worldViewId} not found`);
   }
 
-  const result = await pool.query(`
+  const result = await pool.query<DeleteImpactRow>(`
     SELECT
       (SELECT COUNT(*) FROM regions WHERE world_view_id = $1)::int AS region_count,
       (SELECT COUNT(*) FROM experience_regions er
@@ -104,13 +106,7 @@ export async function getDeleteImpact(req: Request, res: Response): Promise<void
        WHERE r.world_view_id = $1)::int AS user_visit_count
   `, [worldViewId]);
 
-  const row = result.rows[0];
-  res.json({
-    regionCount: row.region_count,
-    experienceAssignmentCount: row.experience_assignment_count,
-    userVisitCount: row.user_visit_count,
-    isDefault: check.rows[0].is_default,
-  });
+  respond(res, DeleteImpact, deleteImpactOf(result.rows[0], check.rows[0].is_default));
 }
 
 /**

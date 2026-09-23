@@ -9,6 +9,14 @@ import { getWorldViews, createWorldView, updateWorldView } from './worldViewCrud
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
+/** A world view as the driver hands it over: the custom one of the dev data, hidden. */
+function worldViewRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 5, name: 'Travel regions', description: null, source: null,
+    is_default: false, is_public: false, tile_version: 7, ...overrides,
+  };
+}
+
 function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
 }
@@ -42,37 +50,51 @@ describe('getWorldViews visibility', () => {
   // route sets them for every caller-shaped read (middleware/auth.test.ts),
   // and routes/callerShapedReads.test.ts holds that this route carries it.
 
-  it('returns isPublic to the client', async () => {
+  it('answers with each world view\'s visibility and tile version', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [worldViewRow({ is_default: true, is_public: true, tile_version: null })] });
     const res = makeRes();
     await getWorldViews({} as never, res as never);
 
-    const [sql] = mockedQuery.mock.calls[0] as [string];
-    expect(sql).toMatch(/is_public as "isPublic"/);
+    expect(res.json).toHaveBeenCalledWith([{
+      id: 5, name: 'Travel regions', description: null, source: null, isDefault: true, isPublic: true, tileVersion: 0,
+    }]);
   });
 });
 
 describe('createWorldView', () => {
   beforeEach(() => {
     mockedQuery.mockClear();
-    mockedQuery.mockResolvedValue({ rows: [{ id: 9, isDefault: false, isPublic: false }] });
+    mockedQuery.mockResolvedValue({ rows: [worldViewRow({ id: 9, tile_version: 0 })] });
   });
 
-  it('returns isPublic to the client, symmetric with updateWorldView', async () => {
+  it('answers with the world view the list would show, visibility and tile version included', async () => {
     const res = makeRes();
     await createWorldView(
       { body: { name: 'New World View' } } as never,
       res as never,
     );
 
-    const [sql] = mockedQuery.mock.calls[0] as [string];
-    expect(sql).toMatch(/is_public as "isPublic"/);
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: 9, isPublic: false, tileVersion: 0 }));
   });
 });
 
 describe('updateWorldView visibility', () => {
   beforeEach(() => {
     mockedQuery.mockClear();
-    mockedQuery.mockResolvedValue({ rows: [{ id: 5 }] });
+    mockedQuery.mockResolvedValue({ rows: [worldViewRow()] });
+  });
+
+  // The client selects the world view it gets back, and takes its tile version
+  // from it: an answer without one would point every tile URL at version 0.
+  it('answers with the tile version, which the client keys its tile URLs on', async () => {
+    const res = makeRes();
+    await updateWorldView(
+      { params: { worldViewId: '5' }, body: { isPublic: true } } as never,
+      res as never,
+    );
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: 5, tileVersion: 7 }));
   });
 
   it('passes isPublic: false through instead of collapsing it to null', async () => {

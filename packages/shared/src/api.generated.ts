@@ -99,6 +99,12 @@ export interface AllLocationsUnmarked {
   locationsUnmarked: number;
 }
 
+/**
+ * The centre of the focus frame, [lng, lat]: where the camera goes for a frame that crosses the
+ * antimeridian.
+ */
+export type AnchorPoint = [number, number];
+
 /** A lost point a curator has answered, which no reader sees as a result (#544). */
 export interface AnsweredPoint {
   id: number;
@@ -209,6 +215,17 @@ export interface DeclineSourceResult {
   /** The fields whose proposal was turned down, the curator's value kept. */
   declined: string[];
   fromSyncLogId: number;
+}
+
+/** What deleting a world view would destroy, for the admin to read before confirming. */
+export interface DeleteImpact {
+  regionCount: number;
+  /** Object-to-region assignments that go with the regions. */
+  experienceAssignmentCount: number;
+  /** Readers' visits to its regions that go with them. */
+  userVisitCount: number;
+  /** True means the delete will be refused. */
+  isDefault: boolean;
 }
 
 /** An earlier answer on the same field. */
@@ -526,6 +543,12 @@ export interface FieldClaim {
   by: string;
   at: string;
 }
+
+/**
+ * The frame a camera fits, [west, south, east, north], stored from `geometry_focus()`. West greater
+ * than east means the frame crosses the antimeridian.
+ */
+export type FocusBbox = [number, number, number, number];
 
 /**
  * One part of an object whose field a gated run held (ADR-0037), with what the stored row adds. The
@@ -913,6 +936,30 @@ export interface RefusedWork {
   missingSince: string | null;
 }
 
+/** A region of a world view: a named grouping of divisions, or of other regions. */
+export interface Region {
+  id: number;
+  worldViewId: number;
+  name: string;
+  description: string | null;
+  parentRegionId: number | null;
+  color: string | null;
+  /** Its outline was drawn by hand rather than made of its members. */
+  isCustomBoundary: boolean;
+  /** Drawn as the hull around its members, as for an archipelago. */
+  usesHull: boolean;
+  /** Null while the region has no geometry. */
+  focusBbox: FocusBbox | null;
+  anchorPoint: AnchorPoint | null;
+  hasSubregions: boolean;
+  /** At least one of its subregions is drawn as a hull. */
+  hasHullChildren: boolean;
+  /** The page the region was imported from, where it was imported. */
+  sourceUrl: string | null;
+  /** The map image that import read, where it read one. */
+  regionMapUrl: string | null;
+}
+
 /** A region's counts per kind, for Discover's tree. */
 export interface RegionExperienceCount {
   region_id: number;
@@ -970,6 +1017,58 @@ export interface RegionMembershipResult {
   success: true;
   experienceId: number;
   regionId: number;
+}
+
+/** Regions, by name; or a region's ancestors, from the root to the region itself. */
+export type Regions = Region[];
+
+/** A region found by name. */
+export interface RegionSearchResult {
+  id: number;
+  name: string;
+  parentRegionId: number | null;
+  description: string | null;
+  color: string | null;
+  usesHull: boolean;
+  focusBbox: FocusBbox | null;
+  anchorPoint: AnchorPoint | null;
+  hasSubregions: boolean;
+  /** The region's place in the tree, root first: `Europe > Western Europe > France`. */
+  path: string;
+  /** How well it matched; the results come sorted by it, best first. */
+  relevance_score: number;
+}
+
+/** The best matches, at most as many as asked for. */
+export type RegionSearchResults = RegionSearchResult[];
+
+/** A region as an edit left it. */
+export interface RegionUpdated {
+  id: number;
+  worldViewId: number;
+  name: string;
+  description: string | null;
+  parentRegionId: number | null;
+  color: string | null;
+  /** Its outline was drawn by hand rather than made of its members. */
+  isCustomBoundary: boolean;
+  /** Drawn as the hull around its members, as for an archipelago. */
+  usesHull: boolean;
+  /** Null while the region has no geometry. */
+  focusBbox: FocusBbox | null;
+  anchorPoint: AnchorPoint | null;
+  hasSubregions: boolean;
+  /** At least one of its subregions is drawn as a hull. */
+  hasHullChildren: boolean;
+  /** The page the region was imported from, where it was imported. */
+  sourceUrl: string | null;
+  /** The map image that import read, where it read one. */
+  regionMapUrl: string | null;
+  /**
+   * The world view's new tile version, sent when the edit changed what its tiles draw (a hull
+   * flip).
+   */
+  tileVersion?: number;
 }
 
 /** The two answers every review row has, and the third two kinds have (#852). */
@@ -1280,3 +1379,23 @@ export interface WorldPointsResponse {
   /** Folded only: how many places the pin stands for, which is the badge's number. */
   locationCount?: number[];
 }
+
+/** A way of dividing the world into regions: GADM itself, or a hierarchy built over it. */
+export interface WorldView {
+  id: number;
+  name: string;
+  description: string | null;
+  source: string | null;
+  /** The GADM world view itself, which cannot be deleted. */
+  isDefault: boolean;
+  /** False for an admin-only world view, which the listing hides from everyone else. */
+  isPublic: boolean;
+  /**
+   * Bumped whenever the world view's tiles are rebuilt at unchanged URLs, so a tile URL carrying it
+   * misses the stale cache.
+   */
+  tileVersion: number;
+}
+
+/** The world views the caller may see, the default first. */
+export type WorldViews = WorldView[];
