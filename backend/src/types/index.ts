@@ -1,3 +1,8 @@
+/**
+ * What the API accepts: the query and body schemas its routes validate with.
+ * What it answers is declared in `api/responses/`, once (ADR-0066).
+ */
+
 import { z } from 'zod';
 import { parseBbox } from '../db/bboxEnvelopes.js';
 import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
@@ -8,97 +13,6 @@ import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.
 // The world-view import's request schemas live in their own module (#933) and
 // are part of this barrel, so a route imports them from here as before.
 export * from './worldViewImportSchemas.js';
-
-/**
- * Types for Track Your Regions Backend
- *
- * Terminology:
- * - AdministrativeDivision: Official GADM boundary (Germany, Bavaria, Munich)
- * - WorldView: Custom hierarchy for organizing regions
- * - Region: User-defined grouping within a WorldView
- * - RegionMember: A member of a Region (can be division or subregion)
- */
-
-// =============================================================================
-// Administrative Divisions (GADM boundaries)
-// =============================================================================
-
-export interface AdministrativeDivision {
-  id: number;
-  name: string;
-  parentId: number | null;
-  hasChildren: boolean;
-  /** [west, south, east, north]; west > east = antimeridian crossing. Stored, from geometry_focus() (#674) */
-  focusBbox?: [number, number, number, number] | null;
-  /** [lng, lat] -- the centre of that frame; the camera goes here for a crossing box */
-  anchorPoint?: [number, number] | null;
-}
-
-export interface AdministrativeDivisionWithPath extends AdministrativeDivision {
-  path: string;
-  relevance?: number;
-  usageCount?: number;
-  usedAsSubdivisionCount?: number;
-  hasUsedSubdivisions?: boolean;
-}
-
-// =============================================================================
-// World Views
-// =============================================================================
-
-export interface WorldView {
-  id: number;
-  name: string;
-  description: string | null;
-  source: string | null;
-  isDefault: boolean;
-}
-
-// =============================================================================
-// Regions (user-defined groupings within a WorldView)
-// =============================================================================
-
-export interface Region {
-  id: number;
-  worldViewId: number;
-  name: string;
-  description: string | null;
-  parentRegionId: number | null;
-  color: string | null;
-  hasSubregions?: boolean;
-  isCustomBoundary?: boolean;
-}
-
-// =============================================================================
-// Region Members
-// =============================================================================
-
-export interface RegionMember {
-  id: number;
-  name: string;
-  parentId: number | null;
-  hasChildren: boolean;
-  memberType: 'division' | 'subregion';
-  isSubregion: boolean;
-  color?: string;
-  path?: string;
-  hasCustomGeometry?: boolean;
-}
-
-// =============================================================================
-// GeoJSON types
-// =============================================================================
-
-export interface GeoJSONGeometry {
-  type: 'MultiPolygon' | 'Polygon';
-  coordinates: number[][][] | number[][][][];
-}
-
-export interface GeoJSONFeature {
-  type: 'Feature';
-  properties: Record<string, unknown>;
-  geometry: GeoJSONGeometry;
-}
 
 // =============================================================================
 // API query params
