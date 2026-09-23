@@ -31,7 +31,7 @@ import type { RegionMember } from '@/api/regions';
 import type { SubdivisionGroup } from './types';
 import { getGroupColor } from './types';
 import type { RegionSuggestion } from './aiAssistTypes';
-import type { EscalationLevel } from './useAISuggestions';
+import type { EscalationLevel } from '@/api';
 
 interface AIDivisionListProps {
   allDivisions: RegionMember[];

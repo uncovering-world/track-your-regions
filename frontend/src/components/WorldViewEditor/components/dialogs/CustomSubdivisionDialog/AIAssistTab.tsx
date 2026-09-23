@@ -164,7 +164,6 @@ export function AIAssistTab({
     suggestions,
     setSuggestions,
     aiAvailable,
-    currentModel,
     setSingleRequestStats,
     setBatchRequestStats,
     setLastOperation,

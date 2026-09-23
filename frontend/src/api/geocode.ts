@@ -2,40 +2,18 @@
  * Geocode API client — place search (Nominatim) and AI geocoding.
  */
 
+import type { AIGeocodeResult, ImageSuggestion, PlaceResult, PlaceSearch } from '@tyr/shared/api';
 import { fetchJson, authFetchJson, API_URL } from './fetchUtils';
 
-export interface PlaceResult {
-  display_name: string;
-  lat: number;
-  lng: number;
-  type: string;
-  wikidataId?: string | null;
-}
-
-export interface ImageSuggestion {
-  imageUrl: string;
-  source: 'wikidata_direct' | 'wikidata_spatial' | 'wikidata_search';
-  entityLabel: string;
-  wikidataId: string;
-  description?: string;
-  wikipediaUrl?: string;
-}
-
-interface SearchResponse {
-  results: PlaceResult[];
-}
-
-export interface AIGeocodeResult {
-  lat: number;
-  lng: number;
-  name: string;
-  confidence: string;
-}
+// What every call here answers is declared once, as a backend schema (ADR-0066),
+// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// imports a call's answer from the module of the call.
+export type { AIGeocodeResult, ImageSuggestion, PlaceResult, PlaceSearch } from '@tyr/shared/api';
 
 /** Search places by name via Nominatim proxy */
 export async function searchPlaces(query: string, limit = 5): Promise<PlaceResult[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
-  const data = await fetchJson<SearchResponse>(`${API_URL}/api/geocode/search?${params}`);
+  const data = await fetchJson<PlaceSearch>(`${API_URL}/api/geocode/search?${params}`);
   return data.results;
 }
 

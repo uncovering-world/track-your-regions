@@ -93,10 +93,11 @@ export {
   setWebSearchModel,
   type EscalationLevel,
   type GroupSuggestion,
-  type AIStatusResponse,
+  type BatchGroupSuggestion,
+  type AIStatus,
   type AIModel,
   type TokenUsage,
-  type BatchSuggestionResult,
+  type BatchSuggestions,
 } from './ai.js';
 
 // Authentication
