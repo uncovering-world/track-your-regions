@@ -3118,9 +3118,9 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 
 | Method | Endpoint | Notes |
 |--------|----------|-------|
-| GET | `/api/geocode/search` | Nominatim proxy. Params: `q`, `limit` (default 5). Rate-limited 1 req/sec. Returns `wikidataId` from Nominatim extratags |
-| POST | `/api/geocode/ai` | AI geocoding (curator/admin). Body: `{ description }`. Returns `{ lat, lng, name, confidence }` |
-| GET | `/api/geocode/suggest-image` | Wikidata image suggestion (curator/admin). Params: `name`, `lat`, `lng`, `wikidataId` (at least one required). Layered lookup: direct QID → SPARQL spatial → name search. Returns `{ imageUrl, source, entityLabel, wikidataId, wikipediaUrl?, description? }`. `wikipediaUrl` is extracted from Wikidata entity sitelinks (enwiki) |
+| GET | `/api/geocode/search` | Nominatim proxy. Params: `q`, `limit` (default 5). Rate-limited 1 req/sec. Answers `PlaceSearch` (ADR-0066): `{ results }`, each with its point as numbers and the `wikidataId` from Nominatim's extratags, `null` where OpenStreetMap links no item |
+| POST | `/api/geocode/ai` | AI geocoding (curator/admin). Body: `{ description }`. Answers `AIGeocodeResult`: `{ lat, lng, name, confidence }`, read out of the model's JSON key by key. A point off the globe is a 500, a missing name is the curator's own description, and a confidence outside `high`, `medium` and `low` is `low` |
+| GET | `/api/geocode/suggest-image` | Wikidata image suggestion (curator/admin). Params: `name`, `lat`, `lng`, `wikidataId` (at least one required). Layered lookup: direct QID → SPARQL spatial → name search. Answers `ImageSuggestion`: `{ imageUrl, source, entityLabel, wikidataId, wikipediaUrl?, description? }`, or 404 when no layer finds a picture. `wikipediaUrl` is extracted from Wikidata entity sitelinks (enwiki) |
 
 ### Admin (`/api/admin`, admin-only)
 
