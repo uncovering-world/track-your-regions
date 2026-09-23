@@ -5,11 +5,14 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import {
+  ChildDivisionsAdded, DivisionUsageCounts, SubregionFlattened, SubregionsExpanded, type CreatedSubregion,
+} from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import { ensureRegionMember, invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
 
 interface ChildRow { id: number; name: string }
-interface CreatedRow { id: number; name: string; divisionId: number }
 
 async function loadChildrenToAdd(
   gadmDivisionId: number,
@@ -34,7 +37,7 @@ interface SubregionResolutionCtx {
   userRegionId: number;
   colorToUse: string;
   assignmentMap: Map<number, number>;
-  createdRegions: CreatedRow[];
+  createdRegions: CreatedSubregion[];
 }
 
 /**
@@ -80,17 +83,21 @@ async function resolveChildSubregion(
   return newRegion.rows[0].id;
 }
 
+/** Place each child in its subregion; answers how many were placed. */
 async function addChildrenAsSubregions(
   children: ChildRow[],
   ctx: SubregionResolutionCtx,
   affectedRegionIds: Set<number>,
-): Promise<void> {
+): Promise<number> {
+  let placed = 0;
   for (const child of children) {
     const childSubregionId = await resolveChildSubregion(child, ctx);
     if (childSubregionId === null) continue;
     await ensureRegionMember(childSubregionId, child.id);
     affectedRegionIds.add(childSubregionId);
+    placed++;
   }
+  return placed;
 }
 
 async function addChildrenAsFlatMembers(
@@ -169,11 +176,14 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
     return;
   }
 
-  const createdRegions: CreatedRow[] = [];
+  const createdRegions: CreatedSubregion[] = [];
   const affectedRegionIds = new Set<number>();
 
+  // Every child is placed as a flat member; as subregions, a child whose
+  // explicit assignment fails verification is skipped, and not counted.
+  let added = childrenToAdd.length;
   if (createAsSubregions) {
-    await addChildrenAsSubregions(
+    added = await addChildrenAsSubregions(
       childrenToAdd,
       {
         worldViewId: regionInfo.rows[0].world_view_id,
@@ -189,12 +199,14 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
   }
 
   // Removing the original prevents double-counting parent + child geometry.
+  let removedOriginal = false;
   if (removeOriginal) {
-    await pool.query(
+    const removed = await pool.query(
       'DELETE FROM region_members WHERE region_id = $1 AND division_id = $2',
       [userRegionId, gadmDivisionId],
     );
-    console.log(`[AddChildren] Removed original division ${gadmDivisionId} from region ${userRegionId}`);
+    removedOriginal = (removed.rowCount ?? 0) > 0;
+    console.log(`[AddChildren] Removed ${removed.rowCount ?? 0} row(s) of original division ${gadmDivisionId} from region ${userRegionId}`);
   }
 
   await invalidateRegionGeometry(userRegionId);
@@ -202,9 +214,9 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
     await syncImportMatchStatus(rid);
   }
 
-  res.status(201).json({
-    added: childrenToAdd.length,
-    removedOriginal: removeOriginal,
+  respond(res.status(201), ChildDivisionsAdded, {
+    added,
+    removedOriginal,
     createdRegions,
   });
 }
@@ -305,7 +317,7 @@ export async function flattenSubregion(req: Request, res: Response): Promise<voi
   // Sync import match status for the parent (which now has the divisions)
   await syncImportMatchStatus(parentRegionId);
 
-  res.status(200).json({
+  respond(res, SubregionFlattened, {
     movedDivisions: movedCount,
     deletedRegion: true,
   });
@@ -348,7 +360,7 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
 
   console.log(`[Expand] Expanding ${members.rows.length} GADM members to subregions in region ${regionId}`);
 
-  const createdRegions: { id: number; name: string }[] = [];
+  const createdRegions: CreatedSubregion[] = [];
 
   for (const member of members.rows) {
     // Create a subregion for this division
@@ -359,7 +371,7 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
     `, [region.world_view_id, member.name, regionId, inheritColor ? region.color : '#3388ff']);
 
     const newRegionId = newRegion.rows[0].id;
-    createdRegions.push({ id: newRegionId, name: newRegion.rows[0].name });
+    createdRegions.push({ id: newRegionId, name: newRegion.rows[0].name, divisionId: member.division_id });
 
     // Add the division to the new subregion
     await pool.query(
@@ -385,7 +397,7 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
     await syncImportMatchStatus(cr.id);
   }
 
-  res.status(200).json({
+  respond(res, SubregionsExpanded, {
     createdRegions,
     expandedCount: createdRegions.length,
   });
@@ -400,15 +412,15 @@ export async function getDivisionUsageCounts(req: Request, res: Response): Promi
   const { divisionIds } = req.body;
 
   if (!Array.isArray(divisionIds) || divisionIds.length === 0) {
-    res.json({});
+    respond(res, DivisionUsageCounts, {});
     return;
   }
 
   // Query to count how many groups each division belongs to within this hierarchy
-  const result = await pool.query(`
+  const result = await pool.query<{ division_id: number; usage_count: number }>(`
     SELECT
       rm.division_id,
-      COUNT(DISTINCT rm.region_id) as usage_count
+      COUNT(DISTINCT rm.region_id)::int as usage_count
     FROM region_members rm
     JOIN regions cg ON rm.region_id = cg.id
     WHERE cg.world_view_id = $1
@@ -416,10 +428,10 @@ export async function getDivisionUsageCounts(req: Request, res: Response): Promi
     GROUP BY rm.division_id
   `, [worldViewId, divisionIds]);
 
-  const usageCounts: Record<number, number> = {};
+  const usageCounts: DivisionUsageCounts = {};
   for (const row of result.rows) {
-    usageCounts[row.division_id] = parseInt(row.usage_count);
+    usageCounts[String(row.division_id)] = row.usage_count;
   }
 
-  res.json(usageCounts);
+  respond(res, DivisionUsageCounts, usageCounts);
 }

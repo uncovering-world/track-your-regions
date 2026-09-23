@@ -154,6 +154,22 @@ export interface ChangedField {
   held?: boolean;
 }
 
+/** A division member's children added to the region, as subregions or as members. */
+export interface ChildDivisionsAdded {
+  /**
+   * How many of the division's children now sit in the region: the ones the call named, or all of
+   * them where it named none, less any whose assignment to an existing subregion failed.
+   */
+  added: number;
+  /**
+   * The division itself was taken out of the region, so it is not counted twice beside its
+   * children.
+   */
+  removedOriginal: boolean;
+  /** The subregions made for them; empty when they went in as division members. */
+  createdRegions: CreatedSubregion[];
+}
+
 /**
  * Which of an object's contents a part is: one of its points (`locations`) or one of its works
  * (`treasures`).
@@ -171,6 +187,14 @@ export interface CountedWork {
   year: number | null;
   /** The source's own id for the work: a Wikidata QID for everything stored today. */
   externalId: string;
+}
+
+/** A subregion an edit created for a division. */
+export interface CreatedSubregion {
+  id: number;
+  name: string;
+  /** The division the subregion was made for. */
+  divisionId: number;
 }
 
 /** The newest fifty acts on the object that the curator may see, newest first. */
@@ -227,6 +251,26 @@ export interface DeleteImpact {
   /** True means the delete will be refused. */
   isDefault: boolean;
 }
+
+/** Divisions added to a region, directly or as subregions of it. */
+export interface DivisionsAdded {
+  /** How many divisions the call named. */
+  added: number;
+  /** Sent when the divisions were added as subregions: the ones that did not exist yet. */
+  createdRegions?: CreatedSubregion[];
+}
+
+/** Division members removed from a region. */
+export interface DivisionsRemoved {
+  /** How many member rows went. */
+  removed: number;
+}
+
+/**
+ * For each division asked about that some region of the world view holds, how many regions hold it,
+ * by division id.
+ */
+export type DivisionUsageCounts = Record<string, number>;
 
 /** An earlier answer on the same field. */
 export interface EarlierAnswer {
@@ -690,6 +734,17 @@ export interface ManualExperienceCreated {
 }
 
 /**
+ * A division member moved to another region. The row keeps its custom name and cut geometry; the
+ * answer names it and the two regions.
+ */
+export interface MemberMoved {
+  moved: true;
+  memberRowId: number;
+  fromRegionId: number;
+  toRegionId: number;
+}
+
+/**
  * Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a
  * curator. `auto` and `verified` are shown to readers, `verified` because a person passed it.
  */
@@ -1009,6 +1064,35 @@ export interface RegionExperienceLocationsResponse {
   locationsByExperience: Record<string, RegionExperienceLocation[]>;
 }
 
+/** One member of a region: a division, or a part cut from one, or a subregion. */
+export interface RegionMember {
+  /** The division's id, or the subregion's. */
+  id: number;
+  /**
+   * A division member's own row. A division can be a member twice, as parts cut from it, so the
+   * division's id alone does not name one.
+   */
+  memberRowId?: number;
+  /** A division member's custom name where it has one, as for a part cut from it. */
+  name: string;
+  /** The division has divisions beneath it. Always false for a subregion. */
+  hasChildren: boolean;
+  memberType: RegionMemberType;
+  isSubregion: boolean;
+  /** A subregion's colour. */
+  color?: string | null;
+  /** A division's place in GADM, root first (`Europe > Germany > Bavaria`); a subregion's name. */
+  path: string;
+  /** The division member is a part cut from the division rather than all of it. */
+  hasCustomGeometry?: boolean;
+}
+
+/**
+ * A region's subregions by name, then its division members. A division a subregion of the same name
+ * stands for is left out.
+ */
+export type RegionMembers = RegionMember[];
+
 /**
  * What rejecting, unrejecting, assigning, unassigning or removing an object in a region did: it is
  * done.
@@ -1018,6 +1102,9 @@ export interface RegionMembershipResult {
   experienceId: number;
   regionId: number;
 }
+
+/** What a member of a region is: a GADM division, or one of its own subregions. */
+export type RegionMemberType = "division" | "subregion";
 
 /** Regions, by name; or a region's ancestors, from the root to the region itself. */
 export type Regions = Region[];
@@ -1254,6 +1341,22 @@ export interface SiteFindsResponse {
   experienceId: number;
   finds: SiteFind[];
   total: number;
+}
+
+/**
+ * A subregion folded into its parent: its divisions, and its descendants', moved up, and the
+ * subregion deleted.
+ */
+export interface SubregionFlattened {
+  /** Divisions the parent gained; one it already held is not counted. */
+  movedDivisions: number;
+  deletedRegion: true;
+}
+
+/** Each division member of a region turned into a subregion holding it. */
+export interface SubregionsExpanded {
+  createdRegions: CreatedSubregion[];
+  expandedCount: number;
 }
 
 /** A work marked seen. */
