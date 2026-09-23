@@ -2,13 +2,12 @@
  * Regions API (user-defined regions within a WorldView)
  */
 
-import type { GeoJSONFeature } from '../types';
 import type {
-  ChildDivisionsAdded, DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, MemberMoved, Region, RegionMembers,
-  Regions, RegionSearchResults, RegionUpdated, SubregionFlattened, SubregionsExpanded,
+  ChildDivisionsAdded, DescendantMemberGeometries, DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, MemberGeometries,
+  MemberMoved, Region, RegionGeometry, RegionMembers, Regions, RegionSearchResults, RegionUpdated, SubregionFlattened,
+  SubregionsExpanded,
 } from '@tyr/shared/api';
 import { API_URL, authFetchJson } from './fetchUtils.js';
-import type { GeoJSONFeatureCollection } from './types.js';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -17,9 +16,10 @@ import type { GeoJSONFeatureCollection } from './types.js';
 // derives from it, since a selection made on the map starts from what a tile
 // knows, and every answer here is assignable to that.
 export type {
-  AnchorPoint, ChildDivisionsAdded, CreatedSubregion, DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, FocusBbox,
-  MemberMoved, RegionMember, RegionMembers, RegionMemberType, Regions, RegionSearchResult, RegionSearchResults,
-  RegionUpdated, SubregionFlattened, SubregionsExpanded,
+  AnchorPoint, AreaGeometry, ChildDivisionsAdded, CreatedSubregion, DescendantMemberGeometries, DescendantMemberGeometry,
+  DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, FocusBbox, MemberGeometries, MemberGeometry, MemberMoved,
+  RegionGeometry, RegionGeometryProperties, RegionMember, RegionMembers, RegionMemberType, Regions, RegionSearchResult,
+  RegionSearchResults, RegionUpdated, SubregionFlattened, SubregionsExpanded,
 } from '@tyr/shared/api';
 
 export async function searchRegions(
@@ -110,10 +110,11 @@ export async function deleteRegion(regionId: number, options?: { moveChildrenToP
   });
 }
 
-export async function fetchRegionGeometry(regionId: number, detail?: 'high' | 'display' | 'hull' | 'anchor'): Promise<GeoJSONFeature | null> {
+/** A region's stored outline, or its hull; null where it has none computed yet. */
+export async function fetchRegionGeometry(regionId: number, detail?: 'high' | 'hull'): Promise<RegionGeometry | null> {
   try {
     const params = detail ? `?detail=${detail}` : '';
-    return await authFetchJson<GeoJSONFeature>(`${API_URL}/api/world-views/regions/${regionId}/geometry${params}`);
+    return await authFetchJson<RegionGeometry>(`${API_URL}/api/world-views/regions/${regionId}/geometry${params}`);
   } catch {
     return null;
   }
@@ -127,17 +128,17 @@ export async function fetchRegionMembers(regionId: number): Promise<RegionMember
   return authFetchJson<RegionMembers>(`${API_URL}/api/world-views/regions/${regionId}/members`);
 }
 
-export async function fetchRegionMemberGeometries(regionId: number): Promise<GeoJSON.FeatureCollection | null> {
+export async function fetchRegionMemberGeometries(regionId: number): Promise<MemberGeometries | null> {
   try {
-    return await authFetchJson<GeoJSON.FeatureCollection>(`${API_URL}/api/world-views/regions/${regionId}/members/geometries`);
+    return await authFetchJson<MemberGeometries>(`${API_URL}/api/world-views/regions/${regionId}/members/geometries`);
   } catch {
     return null;
   }
 }
 
-export async function fetchDescendantMemberGeometries(regionId: number): Promise<GeoJSON.FeatureCollection | null> {
+export async function fetchDescendantMemberGeometries(regionId: number): Promise<DescendantMemberGeometries | null> {
   try {
-    return await authFetchJson<GeoJSON.FeatureCollection>(`${API_URL}/api/world-views/regions/${regionId}/members/descendant-geometries`);
+    return await authFetchJson<DescendantMemberGeometries>(`${API_URL}/api/world-views/regions/${regionId}/members/descendant-geometries`);
   } catch {
     return null;
   }
@@ -270,34 +271,4 @@ export async function fetchDivisionUsageCounts(
       body: JSON.stringify({ divisionIds: divisionIds }),
     }
   );
-}
-
-// =============================================================================
-// Region Geometries
-// =============================================================================
-
-export async function fetchRootRegionGeometries(worldViewId: number): Promise<GeoJSONFeatureCollection | null> {
-  try {
-    return await authFetchJson<GeoJSONFeatureCollection>(`${API_URL}/api/world-views/${worldViewId}/regions/root/geometries`);
-  } catch {
-    return null;
-  }
-}
-
-export async function fetchSubregionGeometries(
-  regionId: number,
-  options?: { useDisplay?: boolean }
-): Promise<GeoJSONFeatureCollection | null> {
-  try {
-    const params = new URLSearchParams();
-    if (options?.useDisplay) {
-      params.set('useDisplay', 'true');
-    }
-    const queryString = params.toString();
-    const querySuffix = queryString ? `?${queryString}` : '';
-    const url = `${API_URL}/api/world-views/regions/${regionId}/subregions/geometries${querySuffix}`;
-    return await authFetchJson<GeoJSONFeatureCollection>(url);
-  } catch {
-    return null;
-  }
 }
