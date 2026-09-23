@@ -10,7 +10,7 @@ import HubIcon from '@mui/icons-material/Hub';
 import SettingsIcon from '@mui/icons-material/Settings';
 import type { Region } from '../../../types';
 import type { DisplayMode } from '../types';
-import type { ComputationStatus } from '../../../api/types';
+import type { ComputationStatus } from '../../../api/geometry';
 
 export interface ToolbarStyles {
   surface: string;

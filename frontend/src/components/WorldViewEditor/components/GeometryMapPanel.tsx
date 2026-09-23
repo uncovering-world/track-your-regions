@@ -27,6 +27,7 @@ import {
 import type { Region } from '../../../types';
 import type { WorldView } from '../../../api/worldViews';
 import type { RegionGeometry } from '../../../api/regions';
+import type { ComputeResult } from '../../../api/geometry';
 import type { DisplayMode } from '../types';
 import { useComputationStatus } from '../hooks';
 import { CustomBoundaryDialog } from '../../CustomBoundaryDialog';
@@ -39,29 +40,28 @@ import {
   type ToolbarStyles,
 } from './GeometryMapPanelParts';
 
-/**
- * Resolve which geometry to stage when entering the "redefine boundaries"
- * flow. Returns null when no geometry is available (caller alerts).
- */
-/** What a compute run tells the selection about the region it just drew. */
-type ComputedRegionPatch = Pick<Region, 'usesHull' | 'focusBbox' | 'anchorPoint'>;
+/** What a compute run tells the selection about the region it just drew, or kept. */
+type ComputedRegionPatch = Pick<ComputeResult, 'preserved' | 'usesHull' | 'focusBbox' | 'anchorPoint'>;
 
 async function runSingleRegionCompute(
   regionId: number,
   forceRecompute: boolean,
   skipSnapping: boolean,
   onEvent: (event: ComputeProgressEvent) => void,
-): Promise<ComputedRegionPatch | undefined> {
+): Promise<ComputedRegionPatch> {
   const result = await computeRegionGeometryWithProgress(
     regionId, forceRecompute, onEvent, skipSnapping,
   );
-  return result.data as ComputedRegionPatch | undefined;
+  return result.data;
 }
 
 function mergeComputedRegion(region: Region, data: ComputedRegionPatch): Region {
   return {
     ...region,
-    isCustomBoundary: false,
+    // A hand-drawn boundary with no cut members is kept, not computed
+    // (`preserved`), and the server leaves it marked custom. Otherwise the
+    // outline is now derived from the members.
+    isCustomBoundary: data.preserved ? region.isCustomBoundary : false,
     ...(data.usesHull !== undefined && { usesHull: data.usesHull }),
     ...(data.focusBbox !== undefined && { focusBbox: data.focusBbox }),
     ...(data.anchorPoint !== undefined && { anchorPoint: data.anchorPoint }),
@@ -94,11 +94,13 @@ interface ComputeProgressBarProps {
 function pickProgressMeta(logs: ComputeProgressEvent[]) {
   const lastLog = logs[logs.length - 1];
   const elapsed = lastLog?.elapsed || 0;
-  const stepMatch = lastLog?.step?.match(/Step (\d+)\/(\d+)/);
+  // Only a progress event names a step; the result and the failure do not.
+  const lastStep = lastLog?.type === 'progress' ? lastLog.step : undefined;
+  const stepMatch = lastStep?.match(/Step (\d+)\/(\d+)/);
   const current = stepMatch ? parseInt(stepMatch[1]) : 0;
   const total = stepMatch ? parseInt(stepMatch[2]) : 6;
   const remaining = current > 0 ? Math.max(0, ((elapsed / current) * total) - elapsed) : 0;
-  const step = lastLog?.step?.replace(/\(\d+\.\d+s\)/, '').trim() || 'Processing...';
+  const step = lastStep?.replace(/\(\d+\.\d+s\)/, '').trim() || 'Processing...';
   return { step, elapsed, current, total, remaining };
 }
 
@@ -125,8 +127,6 @@ interface ComputeProgressOutcomeProps {
   onDismiss: () => void;
 }
 
-interface ComputeCompleteData { points?: number; numPolygons?: number; numHoles?: number }
-
 function ComputeProgressOutcome({ logs, onDismiss }: ComputeProgressOutcomeProps) {
   const lastLog = logs[logs.length - 1];
   if (lastLog?.type === 'error') {
@@ -137,12 +137,12 @@ function ComputeProgressOutcome({ logs, onDismiss }: ComputeProgressOutcomeProps
     );
   }
   if (lastLog?.type === 'complete') {
-    const data = lastLog.data as ComputeCompleteData | undefined;
+    const { data } = lastLog;
     return (
       <Alert severity="success" sx={{ mx: 2, my: 0.5, py: 0 }} onClose={onDismiss}>
         Done in {lastLog.elapsed?.toFixed(1)}s
-        {data?.points && ` | ${data.points.toLocaleString()} pts`}
-        {data?.numPolygons && ` | ${data.numPolygons} polys`}
+        {data.points && ` | ${data.points.toLocaleString()} pts`}
+        {data.numPolygons && ` | ${data.numPolygons} polys`}
       </Alert>
     );
   }
@@ -275,7 +275,7 @@ export function GeometryMapPanel({
         skipSnapping,
         event => setComputeProgressLogs(prev => [...prev, event]),
       );
-      if (data) onSelectedRegionChange(mergeComputedRegion(selectedRegion, data));
+      onSelectedRegionChange(mergeComputedRegion(selectedRegion, data));
       onInvalidateQueries({ regionGeometryId: selectedRegion.id, regions: true });
     } catch (e) {
       console.error('Failed to compute:', e);
@@ -394,7 +394,7 @@ export function GeometryMapPanel({
             </Tooltip>
             {displayGeomStatus && (
               <Typography sx={{ fontFamily: P.font.mono, fontSize: '0.65rem', color: P.light.textMuted, ml: 'auto' }}>
-                Display geoms: {displayGeomStatus.withDisplayGeom}/{displayGeomStatus.withGeom}
+                Outlines: {displayGeomStatus.withGeom}/{displayGeomStatus.total}
                 {displayGeomStatus.hullRegions > 0 && ` | ${displayGeomStatus.hullRegions} hull`}
               </Typography>
             )}
