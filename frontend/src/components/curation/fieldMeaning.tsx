@@ -27,6 +27,7 @@
 import type { ReactNode } from 'react';
 import { Chip, Link, Stack, Tooltip } from '@mui/material';
 import type { ImageCredit } from '../../api/experiences';
+import type { ChangedField } from '../../api/reviewQueue';
 import { parseCriteria } from '../../utils/unescoCriteria';
 import { inDangerLabel } from '../../utils/dangerLabel';
 import { safeHref } from '../../utils/safeHref';
@@ -38,12 +39,8 @@ import { yearLabel } from '../../utils/yearLabel';
 import { extentLabel } from '../shared/ExtentLine';
 import { PictureFact } from './PictureFact';
 
-/** One field of a proposal, as the queue carries it. */
-export interface ProposedField {
-  field: string;
-  old: unknown;
-  new: unknown;
-}
+/** One field of a proposal, as the queue carries it: the part of its `ChangedField` a rendering reads. */
+export type ProposedField = Pick<ChangedField, 'field' | 'old' | 'new'>;
 
 /**
  * What a rendering or a change sentence may look at beyond its own two values.

@@ -6,6 +6,7 @@
  */
 
 import { Box, Card, CardContent, Stack, Typography } from '@mui/material';
+import type { QueueFacets } from '../../../api/reviewQueue';
 import type { QueueRow } from '../queueRows';
 import {
   ANSWER_WORDS, answerVerb, KIND_NOUN, type AnswerableKind,
@@ -21,12 +22,12 @@ function countBy<T extends string | number>(rows: QueueRow[], by: (row: QueueRow
   return [...counts].sort((a, b) => b[1] - a[1]);
 }
 
-/** The queue's facet counts the summary reads under all matching, and the filters they were counted without. */
-interface Facets {
-  source: Array<{ id: number; name: string; count: number }>;
-  /** Counted *before* the set-aside exclusion, so the chip can name a hidden batch; `setAside` says which. */
-  run: Array<{ id: number; count: number; setAside: boolean }>;
-}
+/**
+ * The queue's facet counts the summary reads under all matching. The runs are
+ * counted *before* the set-aside exclusion, so the chip can name a hidden batch;
+ * `setAside` says which.
+ */
+type Facets = Pick<QueueFacets, 'source' | 'run'>;
 
 export function SelectionSummary({
   rows, allMatching, reach, facets, sourceIds, runId, showAside, lost, total,
