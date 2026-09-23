@@ -10,9 +10,30 @@ import {
   AssignmentCancelled,
   AssignmentStarted,
   AssignmentStatus,
+  ExperienceSources,
+  PictureRepairStarted,
   PlacementCounts,
+  SourcesReordered,
+  SyncCancelled,
+  SyncChanges,
+  SyncLogDetail,
+  SyncLogs,
+  SyncStarted,
+  SyncStatus,
+  WikidataCache,
+  WikidataCacheCleared,
+  WikidataCacheTtlSet,
 } from '../../api/responses/admin.js';
-import type { WorldViewsRow } from '../../db/schema.generated.js';
+import type { ExperienceSourcesRow, WorldViewsRow } from '../../db/schema.generated.js';
+import {
+  experienceSourceOf,
+  syncChangeOf,
+  syncLogDetailOf,
+  syncLogOf,
+  type SourceRow,
+  type SyncChangeRow,
+  type SyncLogRow,
+} from './syncAnswerRows.js';
 import { isTerminalSyncStatus } from '../../services/sync/types.js';
 import { isCancellable } from '../../services/sync/syncOrchestrator.js';
 import { CHANGESET_LOST_MARKER } from '../../services/sync/syncLogMarkers.js';
@@ -80,7 +101,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
   const sourceId = parseInt(String(req.params.sourceId));
 
   // Validate source exists
-  const source = await pool.query(
+  const source = await pool.query<Pick<ExperienceSourcesRow, 'id' | 'name' | 'is_active'>>(
     'SELECT id, name, is_active FROM experience_sources WHERE id = $1',
     [sourceId]
   );
@@ -123,7 +144,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
     console.error(`[Sync Controller] Sync error for source ${sourceId}:`, err);
   });
 
-  res.json({
+  respond(res, SyncStarted, {
     started: true,
     sourceId,
     sourceName: source.rows[0].name,
@@ -152,7 +173,7 @@ function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean }): st
  */
 export async function getWikidataCache(req: Request, res: Response): Promise<void> {
   const sourceId = parseInt(String(req.params.sourceId));
-  res.json({ kinds: await cacheSummary(sourceId) });
+  respond(res, WikidataCache, { kinds: await cacheSummary(sourceId) });
 }
 
 /**
@@ -166,7 +187,7 @@ export async function clearWikidataCache(req: Request, res: Response): Promise<v
   const sourceId = parseInt(String(req.params.sourceId));
   const kind = typeof req.query.kind === 'string' ? req.query.kind : undefined;
   const removed = await clearCache(sourceId, kind);
-  res.json({ removed, kind: kind ?? null });
+  respond(res, WikidataCacheCleared, { removed, kind: kind ?? null });
 }
 
 /**
@@ -200,7 +221,7 @@ export async function setWikidataCacheTtl(req: Request, res: Response): Promise<
   }
 
   const { restamped } = await setCacheTtl(sourceId, kind, Math.round(hours * 60 * 60 * 1000));
-  res.json({ kind, hours, restamped });
+  respond(res, WikidataCacheTtlSet, { kind, hours, restamped });
 }
 
 /**
@@ -220,7 +241,7 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
     // and a copy that lags shows up as a button promising what the server
     // refuses.
     const cancellable = isCancellable(status);
-    res.json({
+    respond(res, SyncStatus, {
       running: isRunning,
       cancellable,
       kind: status.kind,
@@ -245,7 +266,7 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
   }
 
   // No in-memory status - check the database for last sync status
-  const source = await pool.query(
+  const source = await pool.query<Pick<ExperienceSourcesRow, 'last_sync_at' | 'last_sync_status'>>(
     'SELECT last_sync_at, last_sync_status FROM experience_sources WHERE id = $1',
     [sourceId]
   );
@@ -255,9 +276,9 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  res.json({
+  respond(res, SyncStatus, {
     running: false,
-    lastSyncAt: source.rows[0].last_sync_at,
+    lastSyncAt: source.rows[0].last_sync_at === null ? null : source.rows[0].last_sync_at.toISOString(),
     lastSyncStatus: source.rows[0].last_sync_status,
   });
 }
@@ -279,7 +300,7 @@ export async function cancelSync(req: Request, res: Response): Promise<void> {
   }
 
   const cancelled = cancelServiceSync(sourceId);
-  res.json({ cancelled });
+  respond(res, SyncCancelled, { cancelled });
 }
 
 /**
@@ -332,35 +353,33 @@ export async function fixImages(req: AuthenticatedRequest, res: Response): Promi
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- sourceId is a parseInt result, so it cannot carry a format specifier
     console.error(`[Sync Controller] Fix images error for source ${sourceId}:`, err);
   });
-  res.json({ started: true, message: 'Fixing pictures. Poll /status endpoint for progress.' });
+  respond(res, PictureRepairStarted, { started: true, message: 'Fixing pictures. Poll /status endpoint for progress.' });
 }
 
 /**
- * Get sync history/logs
- * GET /api/admin/sync/logs
+ * A run's columns as both log reads select them.
+ *
+ * The counters are read through `COALESCE(…, 0)`: every writer sets them and
+ * the columns default to 0, so they are nullable only because the schema never
+ * said NOT NULL, and a null would be a count of nothing rather than a count
+ * nobody took.
  */
-export async function getSyncLogs(req: Request, res: Response): Promise<void> {
-  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : null;
-  const limit = Math.min(parseInt(String(req.query.limit)) || 20, 100);
-  const offset = parseInt(String(req.query.offset)) || 0;
-
-  let query = `
-    SELECT
+const SYNC_LOG_COLUMNS_SQL = `
       l.id,
       l.source_id,
       s.name as source_name,
       l.started_at,
       l.completed_at,
       l.status,
-      l.total_fetched,
-      l.total_created,
-      l.total_updated,
-      l.total_unchanged,
-      l.total_missing,
-      l.total_curated_conflicts,
-      l.total_held,
-      l.total_filtered,
-      l.total_errors,
+      COALESCE(l.total_fetched, 0) AS total_fetched,
+      COALESCE(l.total_created, 0) AS total_created,
+      COALESCE(l.total_updated, 0) AS total_updated,
+      COALESCE(l.total_unchanged, 0) AS total_unchanged,
+      COALESCE(l.total_missing, 0) AS total_missing,
+      COALESCE(l.total_curated_conflicts, 0) AS total_curated_conflicts,
+      COALESCE(l.total_held, 0) AS total_held,
+      COALESCE(l.total_filtered, 0) AS total_filtered,
+      COALESCE(l.total_errors, 0) AS total_errors,
       l.is_dry_run,
       l.detection_skipped_reason,
       l.withdrawal_skipped_reason,
@@ -377,6 +396,19 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
       -- orchestrator leaves, because has_changeset alone cannot tell a lost
       -- record from an old run, nor a partial landing from a whole one.
       COALESCE(l.error_details @> '[${JSON.stringify(CHANGESET_LOST_MARKER)}]', FALSE) AS changeset_lost
+`;
+
+/**
+ * Get sync history/logs
+ * GET /api/admin/sync/logs
+ */
+export async function getSyncLogs(req: Request, res: Response): Promise<void> {
+  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : null;
+  const limit = Math.min(parseInt(String(req.query.limit)) || 20, 100);
+  const offset = parseInt(String(req.query.offset)) || 0;
+
+  let query = `
+    SELECT ${SYNC_LOG_COLUMNS_SQL}
     FROM experience_sync_logs l
     JOIN experience_sources s ON l.source_id = s.id
     LEFT JOIN users u ON l.triggered_by = u.id
@@ -393,7 +425,7 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
   query += ` ORDER BY l.started_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
   params.push(limit, offset);
 
-  const result = await pool.query(query, params);
+  const result = await pool.query<SyncLogRow>(query, params);
 
   // Get total count
   let countQuery = 'SELECT COUNT(*) FROM experience_sync_logs';
@@ -404,8 +436,8 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
   }
   const countResult = await pool.query(countQuery, countParams);
 
-  res.json({
-    logs: result.rows,
+  respond(res, SyncLogs, {
+    logs: result.rows.map(syncLogOf),
     total: parseInt(countResult.rows[0].count),
     limit,
     offset,
@@ -419,13 +451,8 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
 export async function getSyncLogDetails(req: Request, res: Response): Promise<void> {
   const logId = parseInt(String(req.params.logId));
 
-  const result = await pool.query(
-    `SELECT
-      l.*,
-      s.name as source_name,
-      u.display_name as triggered_by_name,
-      EXISTS (SELECT 1 FROM experience_sync_changes c WHERE c.sync_log_id = l.id) AS has_changeset,
-      COALESCE(l.error_details @> '[${JSON.stringify(CHANGESET_LOST_MARKER)}]', FALSE) AS changeset_lost
+  const result = await pool.query<SyncLogRow & { error_details: unknown }>(
+    `SELECT ${SYNC_LOG_COLUMNS_SQL}, l.error_details
      FROM experience_sync_logs l
      JOIN experience_sources s ON l.source_id = s.id
      LEFT JOIN users u ON l.triggered_by = u.id
@@ -438,7 +465,7 @@ export async function getSyncLogDetails(req: Request, res: Response): Promise<vo
     return;
   }
 
-  res.json(result.rows[0]);
+  respond(res, SyncLogDetail, syncLogDetailOf(result.rows[0]));
 }
 
 /**
@@ -505,7 +532,7 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
     params
   );
 
-  const rowsResult = await pool.query(
+  const rowsResult = await pool.query<SyncChangeRow>(
     // `contents` travels with the rest: a `contents` row carries no `changed_fields`
     // at all — every field of the object came through — so without this column the
     // report would name an object and give no reason it is in the list (ADR-0026).
@@ -529,8 +556,8 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
     [...params, limit, offset]
   );
 
-  res.json({
-    changes: rowsResult.rows,
+  respond(res, SyncChanges, {
+    changes: rowsResult.rows.map(syncChangeOf),
     total: Number(countResult.rows[0]?.total ?? 0),
     limit: Number(limit),
     offset: Number(offset),
@@ -547,7 +574,7 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
  */
 export async function getSources(req: Request, res: Response): Promise<void> {
   // Get sources
-  const sourcesResult = await pool.query(`
+  const sourcesResult = await pool.query<SourceRow>(`
     SELECT
       id,
       name,
@@ -615,8 +642,7 @@ export async function getSources(req: Request, res: Response): Promise<void> {
   // existed to feed that comparison and no client ever read it on its own. The
   // column is still written by `assignExperiencesToRegions` and still available
   // to whatever wants it later.
-  res.json(sourcesResult.rows.map(source => ({
-    ...source,
+  respond(res, ExperienceSources, sourcesResult.rows.map(source => experienceSourceOf(source, {
     // Three zeros for a source the aggregate returned no row for — it groups, so a
     // source with nothing waiting is absent rather than zero — but `null` when the
     // aggregate itself did not answer. A zero there would be a claim about the source
@@ -630,11 +656,11 @@ export async function getSources(req: Request, res: Response): Promise<void> {
     // its own API and does not, and on it that button would promise to
     // bypass something that does not exist — the same pretence the cache
     // panel below it refuses to make.
-    caches: (CACHED_KINDS_BY_SOURCE[source.id as number] ?? []).length > 0,
+    caches: (CACHED_KINDS_BY_SOURCE[source.id] ?? []).length > 0,
     // Whether this source's pictures can be repaired from here, read from the
     // same registry the route answers from — the museums' missing pictures, and
     // the World Heritage ones the Centre's terms do not let us show (ADR-0043).
-    repairsPictures: (source.id as number) in PICTURE_REPAIRS,
+    repairsPictures: source.id in PICTURE_REPAIRS,
   })));
 }
 
@@ -782,5 +808,5 @@ export async function reorderSources(req: Request, res: Response): Promise<void>
     client.release(unusable);
   }
 
-  res.json({ success: true, order: sourceIds });
+  respond(res, SourcesReordered, { success: true, order: sourceIds });
 }

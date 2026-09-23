@@ -451,6 +451,14 @@ export interface CreatedSubregion {
   divisionId: number;
 }
 
+/** A source's curation gate, switched. */
+export interface CurationGateSet {
+  sourceId: number;
+  name: string;
+  /** The gate as it is now stored, which is what a switch that lost a race should show. */
+  requiresCuration: boolean;
+}
+
 /** The newest fifty acts on the object that the curator may see, newest first. */
 export type CurationLog = CurationLogEntry[];
 
@@ -952,6 +960,45 @@ export interface ExperienceSearchResult {
   regions: ExperienceRegionRef[];
 }
 
+/** One active source, with its gate, its line and what it is holding. */
+export interface ExperienceSource {
+  id: number;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  /** Whether a run holds its new and changed content for review (ADR-0025). */
+  requires_curation: boolean;
+  last_sync_at: string | null;
+  last_sync_status: string | null;
+  display_priority: number;
+  created_at: string | null;
+  /** Wikipedia languages an item needs to enter this kind; null for a source with no line. */
+  enter_sitelinks: number | null;
+  /** Wikipedia languages an item already in this kind must keep, to stay. */
+  stay_sitelinks: number | null;
+  /**
+   * The finds line, for a source that admits famous finds beside its sites (ADR-0058 decision 5);
+   * null for a source with one door.
+   */
+  find_enter_sitelinks: number | null;
+  find_stay_sitelinks: number | null;
+  /**
+   * Three zeros for a source holding nothing, and null when the server could not count, so a panel
+   * never shows a count nothing checked.
+   */
+  waiting: WaitingCounts | null;
+  /**
+   * Whether this source keeps answers between runs, which decides whether "Sync without cache" is
+   * offered.
+   */
+  caches: boolean;
+  /** Whether this source's pictures can be repaired from the panel (ADR-0043). */
+  repairsPictures: boolean;
+}
+
+/** The active sources, in display order. */
+export type ExperienceSources = ExperienceSource[];
+
 /** An object's lifecycle as a curator's verdict left it. */
 export interface ExperienceStateResult {
   experienceId: number;
@@ -1382,6 +1429,15 @@ export interface PendingWork {
   venueCount?: number | null;
 }
 
+/**
+ * A repair of one source's pictures, started in the background and followed through the sync
+ * status.
+ */
+export interface PictureRepairStarted {
+  started: true;
+  message: string;
+}
+
 /** How many experiences are placed in one region. */
 export interface PlacementCount {
   regionId: number;
@@ -1470,6 +1526,27 @@ export interface PublicUser {
   authProvider: "local" | "google" | "apple" | null;
 }
 
+/** One object a source's backlog released, and what came with it. */
+export interface PublishedWaitingObject {
+  id: number;
+  name: string;
+  locationsPublished: number;
+  /**
+   * Works passed as being here. With `treasuresPublished`, because a work passed in one venue and
+   * unread in another moves the link and not the row.
+   */
+  treasureLinksPublished: number;
+  treasuresPublished: number;
+  /** Points the source had replaced whose old pin this took off the map. */
+  withdrawalsReleased: number;
+  /** The publication landed and re-placing the object into its regions did not. */
+  placementFailed?: true;
+  /**
+   * Where the regions are stale now. Present exactly when `placementFailed` is, and never empty.
+   */
+  placementFailedWorldViews?: PlacementFailure[];
+}
+
 /** What a publication did, so the page can say it before the refetch. */
 export interface PublishResult {
   experienceId: number;
@@ -1508,6 +1585,20 @@ export interface PublishResult {
    * Where the regions are stale now. Present exactly when `placementFailed` is, and never empty.
    */
   placementFailedWorldViews?: PlacementFailure[];
+}
+
+/** A source's backlog released, object by object, except the changes it is holding. */
+export interface PublishWaitingResult {
+  sourceId: number;
+  published: PublishedWaitingObject[];
+  refused: RefusedWaitingObject[];
+  /** Objects waiting outside the caller's scope, left as they were. */
+  outOfScope: number;
+  /**
+   * Held changes the caller's scope still has, left on purpose for their own cards; null when they
+   * could not be counted.
+   */
+  heldLeftForReview: number | null;
 }
 
 /** What each chip would leave, counted over the union under every other filter the curator set. */
@@ -1606,6 +1697,14 @@ export interface RefusedPoint {
   /** Set where the source has stopped listing the point since it was turned down. */
   missingSince: string | null;
   visited: boolean;
+}
+
+/** One object the release did not publish. */
+export interface RefusedWaitingObject {
+  id: number;
+  name: string;
+  /** Why it was not published, in a sentence for the curator. */
+  error: string;
 }
 
 /** A work link a curator turned down (#859). */
@@ -2027,6 +2126,24 @@ export interface SiteFindsResponse {
   total: number;
 }
 
+/** The fame line a source's next run reads, written: the keys the request wrote. */
+export interface SourceLineSet {
+  sourceId: number;
+  name: string;
+  enterSitelinks: number;
+  staySitelinks: number;
+  /** Sent only when the request wrote the finds pair. */
+  findEnterSitelinks?: number;
+  findStaySitelinks?: number;
+}
+
+/** The sources' display order, written. */
+export interface SourcesReordered {
+  success: true;
+  /** The source ids, first shown first. */
+  order: number[];
+}
+
 /**
  * A subregion folded into its parent: its divisions, and its descendants', moved up, and the
  * subregion deleted.
@@ -2041,6 +2158,203 @@ export interface SubregionFlattened {
 export interface SubregionsExpanded {
   createdRegions: CreatedSubregion[];
   expandedCount: number;
+}
+
+/** A stop asked of a source's run. */
+export interface SyncCancelled {
+  /** False when no run was going that a stop could reach. */
+  cancelled: boolean;
+}
+
+/** What one run did to one object. */
+export interface SyncChange {
+  /** A bigint, sent as a string. */
+  id: string;
+  experience_id: number | null;
+  external_id: string;
+  name_snapshot: string | null;
+  change_type: "created" | "updated" | "conflict" | "held" | "contents" | "missing" | "returned" | "failed" | "filtered";
+  changed_fields: ChangedField[] | null;
+  /** What the run did to what the object holds (ADR-0026), or null where it moved none. */
+  contents: {
+    locations?: SyncContentsDelta;
+    treasures?: SyncContentsDelta;
+  } | null;
+  significance: "major" | "minor" | null;
+  error: string | null;
+}
+
+/**
+ * A page of what a run did, object by object. Rows that came through unchanged are only a count on
+ * the log.
+ */
+export interface SyncChanges {
+  /** The significant first. */
+  changes: SyncChange[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** One thing an object holds, as the record names it: never a database id (ADR-0026). */
+export interface SyncContentItem {
+  name: string | null;
+  ref: string | null;
+}
+
+/** What a run did to one kind of an object's contents. */
+export interface SyncContentsDelta {
+  added: SyncContentItem[];
+  withdrawn: SyncContentItem[];
+  returned: SyncContentItem[];
+  /** Items the run kept and rewrote, such as a point that moved. Absent on older records. */
+  changed?: {
+    item: SyncContentItem;
+    fields: ChangedField[];
+  }[];
+}
+
+/** One error a run recorded. */
+export interface SyncErrorDetail {
+  /** The object the error is about, or a marker such as `changeset` for the run itself. */
+  externalId: string;
+  error?: string;
+}
+
+/** One run of a source. */
+export interface SyncLog {
+  id: number;
+  source_id: number;
+  source_name: string;
+  started_at: string | null;
+  completed_at: string | null;
+  status: string | null;
+  total_fetched: number;
+  total_created: number;
+  /**
+   * Rows whose fields changed. Runs before change provenance counted every row the upsert touched.
+   */
+  total_updated: number;
+  total_unchanged: number;
+  total_missing: number;
+  total_curated_conflicts: number;
+  /**
+   * Visible rows whose every proposed change the gate kept out, a subset of `total_unchanged`
+   * (#523).
+   */
+  total_held: number;
+  total_filtered: number;
+  total_errors: number;
+  is_dry_run: boolean;
+  detection_skipped_reason: string | null;
+  /**
+   * Why the run marked none of the works its museums stopped holding: the works coverage floor
+   * refused it (ADR-0044).
+   */
+  withdrawal_skipped_reason: string | null;
+  triggered_by: number | null;
+  triggered_by_name: string | null;
+  /** False on runs that predate change provenance, whose counters mean something else. */
+  has_changeset: boolean;
+  /** The changeset insert threw, so the per-object record is missing or short. */
+  changeset_lost: boolean;
+}
+
+/** One run of a source, with the errors it recorded. */
+export interface SyncLogDetail {
+  id: number;
+  source_id: number;
+  source_name: string;
+  started_at: string | null;
+  completed_at: string | null;
+  status: string | null;
+  total_fetched: number;
+  total_created: number;
+  /**
+   * Rows whose fields changed. Runs before change provenance counted every row the upsert touched.
+   */
+  total_updated: number;
+  total_unchanged: number;
+  total_missing: number;
+  total_curated_conflicts: number;
+  /**
+   * Visible rows whose every proposed change the gate kept out, a subset of `total_unchanged`
+   * (#523).
+   */
+  total_held: number;
+  total_filtered: number;
+  total_errors: number;
+  is_dry_run: boolean;
+  detection_skipped_reason: string | null;
+  /**
+   * Why the run marked none of the works its museums stopped holding: the works coverage floor
+   * refused it (ADR-0044).
+   */
+  withdrawal_skipped_reason: string | null;
+  triggered_by: number | null;
+  triggered_by_name: string | null;
+  /** False on runs that predate change provenance, whose counters mean something else. */
+  has_changeset: boolean;
+  /** The changeset insert threw, so the per-object record is missing or short. */
+  changeset_lost: boolean;
+  error_details: SyncErrorDetail[] | null;
+}
+
+/** A page of runs. */
+export interface SyncLogs {
+  /** Newest first. */
+  logs: SyncLog[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** A run of one source, started in the background. */
+export interface SyncStarted {
+  started: true;
+  sourceId: number;
+  sourceName: string;
+  /** A preview: the changeset is recorded, experiences are not written. */
+  dryRun: boolean;
+  /** Answers the source gave before are not used, so the collection runs at full length. */
+  refreshCache: boolean;
+  message: string;
+}
+
+/**
+ * A source's run as it stands: the figures of the run the server knows of, or the last run the
+ * database recorded.
+ */
+export interface SyncStatus {
+  running: boolean;
+  /** Whether a Cancel press would be acted on: the server's rule, not a copy. */
+  cancellable?: boolean;
+  /** A sync, or a picture repair started from the same card. */
+  kind?: "sync" | "repair";
+  /** `partial` is terminal like `complete`: the run finished and placing what it moved did not. */
+  status?: "fetching" | "processing" | "assigning" | "complete" | "partial" | "failed" | "cancelled";
+  statusMessage?: string;
+  progress?: number;
+  total?: number;
+  percent?: number;
+  created?: number;
+  updated?: number;
+  unchanged?: number;
+  missing?: number;
+  curatedConflicts?: number;
+  /** Rows the gate held whole so far, inside `unchanged`. */
+  held?: number;
+  filtered?: number;
+  errors?: number;
+  currentItem?: string;
+  logId?: number | null;
+  dryRun?: boolean;
+  /**
+   * Sent instead of the run's figures when no run is known since the server started: the source's
+   * last run as the database holds it.
+   */
+  lastSyncAt?: string | null;
+  lastSyncStatus?: string | null;
 }
 
 /** The tokens a request spent and what they cost. */
@@ -2138,6 +2452,16 @@ export type VisitedRegions = VisitedRegion[];
 /** How far through an object's places the reader is. */
 export type VisitedStatus = "not_visited" | "partial" | "visited";
 
+/** What one source is holding, in the three kinds the review queue asks about. */
+export interface WaitingCounts {
+  /** Rows nobody has read yet. */
+  arrivals: number;
+  /** Visible rows holding a change the gate kept out, answered per card rather than in a batch. */
+  held: number;
+  /** Visible rows holding unread points or works. */
+  contents: number;
+}
+
 /** A gated sub-kind a `waiting` question groups (ADR-0025). */
 export type WaitingSub = "arrival" | "held" | "contents";
 
@@ -2146,6 +2470,50 @@ export interface WebSearchModelSet {
   success: true;
   /** The model id a request with web search now uses. */
   webSearchModel: string;
+}
+
+/** What a source keeps between runs. */
+export interface WikidataCache {
+  /** Every kind the source asks, and any it kept before, by name. */
+  kinds: WikidataCacheKind[];
+}
+
+/** Kept answers dropped, so the next run asks the source again. */
+export interface WikidataCacheCleared {
+  /** Answers dropped. */
+  removed: number;
+  /** The kind cleared, or null for all of them. */
+  kind: string | null;
+}
+
+/** One kind of question whose answers a source keeps. */
+export interface WikidataCacheKind {
+  kind: string;
+  entries: number;
+  rows: number;
+  /** Answers past their expiry, which the next run fetches again. */
+  expired: number;
+  /** The oldest answer of this kind, which is what "how stale is this" means. */
+  oldestFetchedAt: string | null;
+  /** When the soonest answer stops being used. */
+  nextExpiresAt: string | null;
+  bytes: number;
+  /** A few of the questions themselves, newest first, so a kind is not just a word. */
+  labels: string[];
+  /** How long an answer of this kind stays fresh, in force now. */
+  ttlMs: number;
+  ttlSource: "default" | "set by an admin";
+}
+
+/** How long one kind stays fresh, changed. */
+export interface WikidataCacheTtlSet {
+  kind: string;
+  hours: number;
+  /**
+   * Kept answers re-dated from their own fetch time, which says whether the next run re-fetches
+   * five things or five hundred.
+   */
+  restamped: number;
 }
 
 /** A point the object lost, waiting on its own verdict. */

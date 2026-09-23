@@ -34,6 +34,8 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
+import { respond } from '../../api/respond.js';
+import { SourceLineSet } from '../../api/responses/admin.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
@@ -108,9 +110,13 @@ export async function setSourceLine(req: AuthenticatedRequest, res: Response): P
   // The keys this request wrote, so the panel's own fields answer with what it
   // just sent. A body that left the finds pair out left the stored one where it
   // was: this route moves a line, it does not take a door away.
-  res.json({
+  respond(res, SourceLineSet, {
     sourceId: source.id,
     name: source.name,
-    ...line,
+    enterSitelinks,
+    staySitelinks,
+    ...(findEnterSitelinks !== undefined && findStaySitelinks !== undefined
+      ? { findEnterSitelinks, findStaySitelinks }
+      : {}),
   });
 }

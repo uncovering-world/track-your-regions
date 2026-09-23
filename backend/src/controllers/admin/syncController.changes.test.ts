@@ -25,14 +25,25 @@ function makeReq(query: Record<string, string> = {}) {
 }
 
 const CHANGE_ROW = {
-  id: 1,
+  id: '1',
   experience_id: 501,
   external_id: '156',
   name_snapshot: 'Serengeti National Park',
   change_type: 'updated',
   changed_fields: [{ field: 'metadata.inDanger', old: false, new: true, significance: 'major', curatedConflict: false }],
   significance: 'major',
+  contents: null,
   error: null,
+};
+
+/** A run as the log reads select it: bigint ids and counters arrive as the driver sends them. */
+const LOG_ROW = {
+  id: 9, source_id: 1, source_name: 'UNESCO World Heritage Sites',
+  started_at: new Date('2026-09-20T08:00:00Z'), completed_at: new Date('2026-09-20T08:14:00Z'), status: 'success',
+  total_fetched: 1248, total_created: 0, total_updated: 3, total_unchanged: 1245, total_missing: 0,
+  total_curated_conflicts: 0, total_held: 0, total_filtered: 0, total_errors: 0, is_dry_run: false,
+  detection_skipped_reason: null, withdrawal_skipped_reason: null, triggered_by: 1, triggered_by_name: 'admin',
+  has_changeset: true, changeset_lost: false, error_details: null,
 };
 
 describe('sync log queries', () => {
@@ -58,7 +69,7 @@ describe('sync log queries', () => {
     mockedQuery.mockReset();
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     mockedQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 9 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [LOG_ROW] });
 
     await getSyncLogs({ query: {} } as never, makeRes() as never);
     await getSyncLogDetails(makeReq(), makeRes() as never);
@@ -148,7 +159,7 @@ describe('getSyncLogChanges', () => {
 
   it('keeps a row whose contents moved beside a minor edit, and hands it back', async () => {
     const contentsRow = {
-      id: 7, experience_id: 96, external_id: '1239', name_snapshot: 'Berlin Modernism Housing Estates',
+      id: '7', experience_id: 96, external_id: '1239', name_snapshot: 'Berlin Modernism Housing Estates',
       change_type: 'updated', significance: 'minor',
       changed_fields: [{ field: 'nameLocal.en', old: 'a', new: 'b', significance: 'minor' }],
       contents: { locations: { added: [{ name: 'Waldsiedlung Zehlendorf', ref: '1239-006' }], withdrawn: [], returned: [] } },
@@ -215,7 +226,7 @@ describe('getSyncLogChanges', () => {
     // in the run where a machine and a person disagreed. Not a counter beside the
     // claim: `artworkCount` is sync-owned and reported nowhere (#571).
     const conflictRow = {
-      id: 11, experience_id: 6184, external_id: 'Q19675', name_snapshot: 'Louvre',
+      id: '11', experience_id: 6184, external_id: 'Q19675', name_snapshot: 'Louvre',
       change_type: 'updated', significance: 'minor',
       changed_fields: [
         { field: 'nameLocal.en', old: 'Musée du Louvre', new: 'Louvre', significance: 'minor', curatedConflict: false, held: false },
