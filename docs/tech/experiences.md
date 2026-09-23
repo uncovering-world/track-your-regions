@@ -3140,14 +3140,17 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 | GET | `/api/admin/sync/logs` |
 | GET | `/api/admin/sync/logs/:logId` |
 | GET | `/api/admin/sync/logs/:logId/changes` |
-| POST | `/api/admin/experiences/assign-regions` |
-| GET | `/api/admin/experiences/assign-regions/status` |
-| POST | `/api/admin/experiences/assign-regions/cancel` |
-| GET | `/api/admin/experiences/counts-by-region` |
-| GET | `/api/admin/curators` |
-| POST | `/api/admin/curators` |
-| DELETE | `/api/admin/curators/:assignmentId` |
-| GET | `/api/admin/curators/:userId/activity` |
+| POST | `/api/admin/experiences/assign-regions` — answers `AssignmentStarted` |
+| GET | `/api/admin/experiences/assign-regions/status` — answers `AssignmentStatus`: `running` alone while no run is known since the server started |
+| POST | `/api/admin/experiences/assign-regions/cancel` — answers `AssignmentCancelled` |
+| GET | `/api/admin/experiences/counts-by-region` — answers `PlacementCounts`, the regions holding at least one experience, most first |
+| GET | `/api/admin/curators` — answers `Curators` (`authentication.md` § Administrators in the curator directory) |
+| POST | `/api/admin/curators` — answers `CuratorAssignmentCreated` |
+| DELETE | `/api/admin/curators/:assignmentId` — answers `CuratorAssignmentRevoked` |
+| GET | `/api/admin/curators/:userId/activity` — answers `CuratorActivity`, each entry mapped key by key |
+| GET | `/api/admin/users/search` — answers `UserSearchResults`, up to twenty accounts |
+
+The rows above from `assign-regions` down answer through schemas in `backend/src/api/responses/admin.ts` (ADR-0066), and so do Catalogue Checks' (`docs/tech/data-assertions.md` § Where it sits). The sync rows above them do not yet; they are the next slice of #989.
 
 ### Field limits
 

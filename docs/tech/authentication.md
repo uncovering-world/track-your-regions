@@ -231,9 +231,13 @@ from deadlocking rather than merely serialising.
 ### Administrators in the curator directory (#905)
 
 `GET /api/admin/curators` includes every administrator, even without a
-`curator_assignments` row, alongside curators with assigned scopes. The
-left join aggregates only real assignments, returning `scopes: []` when
-there are none. The panel derives a non-revocable **Global, by role**
+`curator_assignments` row, alongside curators with assigned scopes. It
+reads the people first (every admin, and every curator with an
+assignment), then their assignments with `CURATOR_SCOPES_SQL`, the
+statement the account read uses too, each mapped by `curatorScopeOf`
+(`controllers/admin/curatorScopeRows.ts`). A person with none answers
+`scopes: []`. The answer is `Curators` in `backend/src/api/responses/admin.ts`
+(ADR-0066), whose `CuratorScope` is the account read's. The panel derives a non-revocable **Global, by role**
 scope from `role = 'admin'`; it has no assignment id or grant date.
 Existing assignments remain visible and revocable, but revoking one
 does not remove an administrator's role-based authority.
