@@ -606,6 +606,14 @@ Two endpoints, both admin-only, rate-limited apart from each other:
   finds. Refuses an unknown id, refuses a `watch`, and records nothing for an
   assertion whose query could not run.
 
+Both answer through schemas in `backend/src/api/responses/dataAssertions.ts`
+(ADR-0066): the report is `DataAssertionReport` and an assertion is
+`DataAssertion`. The vocabulary an assertion is filed and judged by,
+`AssertionArea`, `AssertionKind` and `AssertionStatus`, is declared there
+as well. `dataAssertions/assertion.ts` and `runCatalogueAssertions.ts`
+take their types from it, so a new area or status reaches the answer's
+schema before it can reach the panel.
+
 The report carries `expensiveAdminLimiter` (5/min), with the other expensive
 admin work; the acceptance carries `authenticatedLimiter` (60/min) instead,
 because the state this screen exists for is a database where nobody has
