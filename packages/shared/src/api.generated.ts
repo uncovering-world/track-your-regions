@@ -2350,6 +2350,20 @@ export interface SavedHullParams {
   params: HullParams | null;
 }
 
+/** A selection of a region's suggestions accepted, and the rest rejected. */
+export interface SelectionAccepted {
+  /** Divisions of the selection that are the region's members now. */
+  accepted: number;
+  /** The region's other open suggestions, rejected. */
+  rejected: number;
+}
+
+/** A selection of a region's suggestions rejected, and taken out of its members. */
+export interface SelectionRejected {
+  /** Suggestions of the selection marked rejected. */
+  rejected: number;
+}
+
 /** A session started by signing in or verifying an email, or renewed from the refresh cookie. */
 export interface SessionStarted {
   /**
