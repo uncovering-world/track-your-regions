@@ -309,7 +309,7 @@ describe('the CI outputs', () => {
       docs: 'docs/tech/x.md',
       shell: 'tools/release.sh',
       docker: 'Dockerfile',
-      workflows: '.github/workflows/claude-qa.yml',
+      workflows: '.github/workflows/claude-review.yml',
       prose: '.github/ISSUE_TEMPLATE/task.yml',
       tooling: 'package.json',
     };
