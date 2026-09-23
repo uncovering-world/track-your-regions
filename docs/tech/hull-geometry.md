@@ -36,6 +36,8 @@ In the World View editor geometry panel:
 - `GET /api/world-views/regions/:regionId/hull/params`
 - `GET /api/world-views/regions/:regionId/geometry?detail=high|hull`
 
+Their answers are `HullPreview`, `HullSaved` and `SavedHullParams` in `backend/src/api/responses/geometry.ts`. The default parameters, a 50 km buffer, 0.9 concavity and 0.02° simplification, are `DEFAULT_HULL_PARAMS` in `@tyr/shared/geometry`: the server builds an untuned hull with them, and the hull editor opens on them and resets to them.
+
 ## Where It Is Used
 
 - Editor hull tooling: `frontend/src/components/HullEditorDialog.tsx`
