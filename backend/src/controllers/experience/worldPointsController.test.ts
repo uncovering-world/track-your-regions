@@ -261,7 +261,8 @@ describe('getWorldPoints', () => {
 
     it('carries no truncated flag on an answer that is whole', async () => {
       const body = await answer([{ lng: 1, lat: 2 }]);
-      expect(body).not.toHaveProperty('truncated');
+      // On the wire: the answer writes the key as `undefined`, which JSON drops.
+      expect(JSON.parse(JSON.stringify(body))).not.toHaveProperty('truncated');
     });
   });
 

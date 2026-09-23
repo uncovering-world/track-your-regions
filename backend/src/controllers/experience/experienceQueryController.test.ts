@@ -22,17 +22,59 @@ function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
 }
 
+// Every column the by-id read selects, as the driver hands it over: `respond()`
+// holds the answer to its schema in this lane.
 const EXPERIENCE_ROW = {
   id: 281,
   source_id: 1,
   external_id: 'ext-281',
   name: 'Seowon, Korean Neo-Confucian Academies',
+  name_local: null,
+  description: null,
+  short_description: null,
   type: 'cultural',
+  country_codes: ['KR'],
+  country_names: ['Republic of Korea'],
+  image_url: null,
+  metadata: {},
+  created_at: new Date('2026-08-04T15:01:24.341Z'),
+  updated_at: new Date('2026-08-04T15:01:24.341Z'),
+  source_membership: 'present',
+  existence: 'extant',
+  missing_since: null,
+  longitude: 128.6,
+  latitude: 35.9,
+  boundary_geojson: null,
+  area_km2: null,
+  kind_id: 1,
   kind_name: 'UNESCO',
+  kind_priority: 1,
+  source_name: 'UNESCO World Heritage Sites',
+  source_description: null,
 };
 
 // Mirrors the confirmed leak: experience 281 assigned to a region in hidden
 // world view 5 ("Administrative") and a region in a visible world view.
+/**
+ * Answers each statement with a row of the shape it asks for, or with none.
+ *
+ * The tests that call this read the SQL a path sends, not its answer, but
+ * `respond()` holds every answer to its schema in this lane, so a list row
+ * made of a count's columns is refused before the assertions run. A count
+ * gets its count row, since its reader dereferences it; the region lookup gets
+ * its region, or the list answers 404; every list gets no rows.
+ */
+function answerEveryRead() {
+  mockedQuery.mockImplementation(async (sql: string) => {
+    const text = String(sql);
+    if (/AS lost_hidden|SELECT COUNT\(\*\) FROM/.test(text)) return { rows: [{ count: '0', total: 0, lost_hidden: 0 }] };
+    if (/wv\.name as world_view_name\s+FROM regions r/.test(text)) {
+      return { rows: [{ id: 1, name: 'Europe', world_view_name: 'Administrative' }] };
+    }
+    return { rows: [] };
+  });
+}
+
 const HIDDEN_WV_REGION = { id: 10, name: 'Daegu', world_view_id: 5, world_view_name: 'Administrative' };
 const PUBLIC_WV_REGION = { id: 20, name: 'Gyeongju', world_view_id: 1, world_view_name: 'GADM' };
 
@@ -211,7 +253,7 @@ describe('lifecycle visibility across the read paths', () => {
     // Every path here runs a list and a count; the count reader dereferences
     // its row, so an empty result would fail for a reason unrelated to what
     // these tests are about.
-    mockedQuery.mockResolvedValue({ rows: [{ count: '0', total: 0 }] });
+    answerEveryRead();
   });
 
   /**
@@ -514,7 +556,7 @@ describe('lifecycle visibility across the read paths', () => {
 describe('the bbox filter', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [{ count: '0', total: 0 }] });
+    answerEveryRead();
   });
 
   const listWithBbox = () => listExperiences(
@@ -606,7 +648,7 @@ describe('the bbox filter', () => {
 describe('region membership a reader can see', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [{ count: '0', total: 0 }] });
+    answerEveryRead();
   });
 
   /** The membership predicate, recognised by the aliases only it uses. */

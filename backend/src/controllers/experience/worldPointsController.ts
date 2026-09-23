@@ -49,20 +49,13 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { WorldPointsResponse } from '../../api/responses/worldPoints.js';
+import type { PointsDetail } from './worldPointsVocabulary.js';
 import { pool } from '../../db/index.js';
 import { placeOfferedSql, rowKindJoinSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from './experienceLifecycle.js';
-
-/**
- * How much of a point the answer carries.
- *
- * `overview` is the heatmap's read and `markers` the pins'. The band between
- * them is the map's own (MARKER_FADE_START in the markers' `layers.ts`), and it
- * is named there rather than here: the server answers what it was asked for,
- * and a zoom the client never sends is not a contract.
- */
-export type PointsDetail = 'overview' | 'markers';
 
 /**
  * Decimals a coordinate is rounded to, per tier.
@@ -109,42 +102,6 @@ const MAX_POINTS = 20000;
 /** A coordinate as the wire carries it: rounded in the database, sent as a number. */
 function coordinateSql(axis: 'X' | 'Y', column: string, detail: PointsDetail): string {
   return `round(ST_${axis}(${column})::numeric, ${DECIMALS[detail]})::float8`;
-}
-
-/** The answer's shape: one array per field, all of them the same length. */
-export interface WorldPointsResponse {
-  detail: PointsDetail;
-  /** Echoed rather than assumed, so a layer cannot draw one fold with the other's data. */
-  folded: boolean;
-  count: number;
-  /**
-   * Present, and true, only when the read hit `MAX_POINTS`.
-   *
-   * Absent is the normal answer, so a reader that ignores it is reading a
-   * complete one; a density picture built from a subset is wrong rather than
-   * incomplete, so this can never be silent.
-   */
-  truncated?: true;
-  lng: number[];
-  lat: number[];
-  /** Markers only — the pin's identity, for hover and for opening a card. */
-  locationId?: number[];
-  experienceId?: number[];
-  name?: (string | null)[];
-  experienceName?: string[];
-  /** Markers only — what the pin is coloured by (`kindColors.ts` owns the palette). */
-  kindId?: (number | null)[];
-  type?: (string | null)[];
-  /**
-   * Folded only — how many places the pin stands for; the badge's number.
-   *
-   * `locationCount` rather than a word of its own, because the badge that draws
-   * it is the region layer's own layer (`markerCountBadgeBgLayer`), whose filter
-   * and text field already read that property. A second name here would mean
-   * restating the filter, which is how the two layers start disagreeing about
-   * what a count means.
-   */
-  locationCount?: number[];
 }
 
 interface PointRow {
@@ -260,7 +217,7 @@ export async function getWorldPoints(req: Request, res: Response): Promise<void>
   // One more than the cap, so hitting it is distinguishable from filling it.
   const { rows } = await pool.query<PointRow>(query, params);
   const truncated = rows.length > MAX_POINTS;
-  res.json(toColumns(truncated ? rows.slice(0, MAX_POINTS) : rows, detail, folded, truncated));
+  respond(res, WorldPointsResponse, toColumns(truncated ? rows.slice(0, MAX_POINTS) : rows, detail, folded, truncated));
 }
 
 /**
@@ -339,7 +296,7 @@ function toColumns(
     detail,
     folded,
     count,
-    ...(truncated ? { truncated: true as const } : {}),
+    truncated: truncated ? true : undefined,
     lng: new Array<number>(count),
     lat: new Array<number>(count),
   };

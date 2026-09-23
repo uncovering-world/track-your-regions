@@ -16,11 +16,14 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { SiteFindsResponse } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import { rowKindJoinSql } from '../../db/membership.js';
 import {
   experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql,
 } from './experienceLifecycle.js';
+import { siteFindOf, type SiteFindRow } from './experienceAnswerRows.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
 
 /**
@@ -45,7 +48,7 @@ import { readerRegionsJsonSql } from './readerRegions.js';
 export async function getSiteFinds(req: Request, res: Response): Promise<void> {
   const experienceId = parseInt(String(req.params.id));
 
-  const result = await pool.query(`
+  const result = await pool.query<SiteFindRow>(`
     SELECT f.*
     FROM (
       SELECT
@@ -93,9 +96,9 @@ export async function getSiteFinds(req: Request, res: Response): Promise<void> {
     ORDER BY f.sitelinks_count DESC, f.id
   `, [experienceId]);
 
-  res.json({
+  respond(res, SiteFindsResponse, {
     experienceId,
-    finds: result.rows,
+    finds: result.rows.map(siteFindOf),
     total: result.rows.length,
   });
 }
