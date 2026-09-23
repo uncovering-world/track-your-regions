@@ -34,7 +34,7 @@ Level 3 requirements are tracked but optional for now.
   - Internal CV microservice (FastAPI, Python 3.12, port 8000). Routes: `POST /pipeline/phase1`, `/pipeline/phase2`, `/pipeline/match`, `/pipeline/respond/{review_id}`, `GET /health`. **Internal-only** — reachable only from the Node backend over the Docker bridge network; no CORSMiddleware; not exposed externally
 - **File handling**: Server-side image downloads from Wikimedia (Node side; the World Heritage portal's photographs are no longer read, ADR-0043). cv-python accepts curator-submitted map images via multipart upload (`UploadFile`) for the OCR/clustering pipeline; it processes the bytes in memory, never writes them to disk under user-controlled names
 - **Frontend**: MapLibre GL (WebGL) map rendering, SPA with React + MUI
-- **Sessions**: JWT access tokens (15min, in-memory) + refresh tokens (httpOnly cookie, hashed in DB)
+- **Sessions**: JWT access tokens (15min, in-memory) + refresh tokens (httpOnly cookie, hashed in DB). What a sign-in answers is declared as a schema (`backend/src/api/responses/auth.ts`, ADR-0066): the access token and the public account, never the refresh token, a hash or a provider id, and the parse outside production refuses any other key
 - **Roles**: user, curator (scope-based), admin
 
 ## Relevant ASVS Chapters (Priority Order)
