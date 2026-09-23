@@ -7,17 +7,6 @@
  * - Region: User-defined grouping within a WorldView
  */
 
-// Re-export types
-export type {
-  HullParams,
-  ComputationStatus,
-  ComputationStartResult,
-  DisplayGeometryStatus,
-  RegenerateDisplayGeometriesResult,
-} from './types.js';
-
-export { DEFAULT_HULL_PARAMS } from './types.js';
-
 // Re-export World Views API
 export {
   fetchWorldViews,
@@ -64,7 +53,6 @@ export {
 
 // Re-export Geometry API
 export {
-  computeRegionGeometry,
   computeRegionGeometryWithProgress,
   resetRegionToGADM,
   startWorldViewGeometryComputation,
@@ -75,7 +63,11 @@ export {
   previewHull,
   saveHull,
   fetchSavedHullParams,
+  DEFAULT_HULL_PARAMS,
+  type ComputationStatus,
   type ComputeProgressEvent,
+  type DisplayGeometryStatus,
+  type HullParams,
 } from './geometry.js';
 
 // Visited regions
