@@ -7,7 +7,7 @@ import type {
   MemberMoved, Region, RegionGeometry, RegionMembers, Regions, RegionSearchResults, RegionUpdated, SubregionFlattened,
   SubregionsExpanded,
 } from '@tyr/shared/api';
-import { API_URL, authFetchJson } from './fetchUtils.js';
+import { API_URL, authFetchJson, authFetchOptionalJson } from './fetchUtils.js';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -114,7 +114,7 @@ export async function deleteRegion(regionId: number, options?: { moveChildrenToP
 export async function fetchRegionGeometry(regionId: number, detail?: 'high' | 'hull'): Promise<RegionGeometry | null> {
   try {
     const params = detail ? `?detail=${detail}` : '';
-    return await authFetchJson<RegionGeometry>(`${API_URL}/api/world-views/regions/${regionId}/geometry${params}`);
+    return await authFetchOptionalJson<RegionGeometry>(`${API_URL}/api/world-views/regions/${regionId}/geometry${params}`);
   } catch {
     return null;
   }
@@ -130,7 +130,7 @@ export async function fetchRegionMembers(regionId: number): Promise<RegionMember
 
 export async function fetchRegionMemberGeometries(regionId: number): Promise<MemberGeometries | null> {
   try {
-    return await authFetchJson<MemberGeometries>(`${API_URL}/api/world-views/regions/${regionId}/members/geometries`);
+    return await authFetchOptionalJson<MemberGeometries>(`${API_URL}/api/world-views/regions/${regionId}/members/geometries`);
   } catch {
     return null;
   }
@@ -138,7 +138,7 @@ export async function fetchRegionMemberGeometries(regionId: number): Promise<Mem
 
 export async function fetchDescendantMemberGeometries(regionId: number): Promise<DescendantMemberGeometries | null> {
   try {
-    return await authFetchJson<DescendantMemberGeometries>(`${API_URL}/api/world-views/regions/${regionId}/members/descendant-geometries`);
+    return await authFetchOptionalJson<DescendantMemberGeometries>(`${API_URL}/api/world-views/regions/${regionId}/members/descendant-geometries`);
   } catch {
     return null;
   }
