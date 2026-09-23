@@ -17,17 +17,6 @@ export type { UserRole, AuthProvider };
 /** `curator_assignments.scope_type`, as its CHECK lists it. */
 export type CuratorScopeType = CheckValue<'curator_assignments', 'scope_type'>;
 
-export interface CuratorScope {
-  id: number;
-  scopeType: CuratorScopeType;
-  regionId: number | null;
-  regionName: string | null;
-  sourceId: number | null;
-  sourceName: string | null;
-  assignedAt: string;
-  notes: string | null;
-}
-
 export interface User {
   id: number;
   uuid: string;
@@ -78,24 +67,14 @@ export interface JWTPayload {
 // API Request/Response Types
 // =============================================================================
 
+/**
+ * The pair a sign-in issues. Only the access token reaches a response body
+ * (`SessionStarted` in `api/responses/auth.ts`); the refresh token goes into its
+ * httpOnly cookie.
+ */
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
-}
-
-export interface AuthResponse extends AuthTokens {
-  user: PublicUser;
-}
-
-export interface PublicUser {
-  id: number;
-  uuid: string;
-  email: string | null;
-  displayName: string | null;
-  role: UserRole;
-  avatarUrl: string | null;
-  emailVerified: boolean;
-  authProvider?: AuthProvider;
 }
 
 // =============================================================================

@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
+import { z } from 'zod/v4';
 
 const SRC = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -136,6 +137,41 @@ function namesAccessToken(arg: ts.Expression): boolean {
   });
 }
 
+/**
+ * The answer schemas that carry an access token, read off the schemas
+ * themselves rather than listed: a new one that declares `accessToken` is
+ * covered the moment it exists.
+ */
+const RESPONSES = join(SRC, 'api', 'responses');
+const responseModules = await Promise.all(
+  readdirSync(RESPONSES)
+    .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+    .map((file) => import(pathToFileURL(join(RESPONSES, file)).href) as Promise<Record<string, unknown>>),
+);
+const TOKEN_SCHEMAS = new Set(
+  responseModules.flatMap((exports) => Object.entries(exports))
+    .filter(([, schema]) => schema instanceof z.ZodObject && 'accessToken' in schema.shape)
+    .map(([name]) => name),
+);
+
+/**
+ * A response that hands back an access token: `res.json({ accessToken, … })`,
+ * or `respond(res, Schema, body)` / `writeEvent(res, Schema, event)` with a
+ * schema that declares one.
+ */
+function answersWithToken(node: ts.CallExpression): boolean {
+  const callee = node.expression;
+  if (ts.isPropertyAccessExpression(callee) && callee.name.text === 'json') {
+    const [arg] = node.arguments;
+    return arg !== undefined && namesAccessToken(arg);
+  }
+  if (ts.isIdentifier(callee) && (callee.text === 'respond' || callee.text === 'writeEvent')) {
+    const schema = node.arguments[1];
+    return schema !== undefined && ts.isIdentifier(schema) && TOKEN_SCHEMAS.has(schema.text);
+  }
+  return false;
+}
+
 /** The nearest enclosing function, which is the scope a mark has to share. */
 function enclosingFunction(node: ts.Node): ts.Node | undefined {
   let current: ts.Node | undefined = node.parent;
@@ -225,10 +261,7 @@ describe('the overrides that answer with something other than no-store', () => {
       const marks = helperCalls(source, 'markTokenResponse');
 
       eachNode(source, (node) => {
-        if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
-        if (node.expression.name.text !== 'json') return;
-        const [arg] = node.arguments;
-        if (arg === undefined || !namesAccessToken(arg)) return;
+        if (!ts.isCallExpression(node) || !answersWithToken(node)) return;
 
         payloads += 1;
         // The mark has to run before this response and in the same handler: a

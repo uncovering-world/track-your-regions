@@ -35,6 +35,10 @@ import { sendVerificationEmail } from '../services/emailService.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { markTokenResponse } from '../middleware/cacheHeaders.js';
 import { validate } from '../middleware/errorHandler.js';
+import { respond } from '../api/respond.js';
+import {
+  AuthMessage, CodeExchanged, LoggedOut, PasswordChanged, PublicUser, SessionStarted,
+} from '../api/responses/auth.js';
 import { registerSchema, loginSchema, changePasswordSchema, verifyEmailSchema, resendVerificationSchema } from '../types/auth.js';
 
 const router = Router();
@@ -123,6 +127,9 @@ setInterval(() => {
 router.post('/register', registerLimiter, validate(registerSchema), async (req: Request, res: Response): Promise<void> => {
   const REGISTER_SUCCESS_MESSAGE = 'Check your email to verify your account';
 
+  // Each handler here answers after its try, whose catch answers with a message
+  // of its own: a body that fails its schema must reach the error handler as
+  // the named 500 (development guide § API Layer).
   try {
     const { email, password, displayName } = req.body;
 
@@ -140,39 +147,38 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req: 
           // Silently fail — don't leak that the account exists
         }
       }
-      // Always return the same response (no 409, no leak)
-      res.json({ message: REGISTER_SUCCESS_MESSAGE });
-      return;
-    }
+      // Always return the same response (no 409, no leak), below
+    } else {
+      // Check against breached password database (HIBP k-Anonymity)
+      const breachCount = await checkBreachedPassword(password);
+      if (breachCount > 0) {
+        res.status(400).json({
+          error: `This password has appeared in ${breachCount.toLocaleString()} data breaches. Please choose a different password.`,
+        });
+        return;
+      }
 
-    // Check against breached password database (HIBP k-Anonymity)
-    const breachCount = await checkBreachedPassword(password);
-    if (breachCount > 0) {
-      res.status(400).json({
-        error: `This password has appeared in ${breachCount.toLocaleString()} data breaches. Please choose a different password.`,
+      // Hash password and create user (email_verified = false)
+      const passwordHash = await hashPassword(password);
+      const user = await createUser({
+        email,
+        passwordHash,
+        displayName,
+        authProvider: 'local',
+        emailVerified: false,
       });
-      return;
+
+      // Create verification token and send email
+      const token = await createVerificationToken(user.id);
+      await sendVerificationEmail(email, token);
     }
-
-    // Hash password and create user (email_verified = false)
-    const passwordHash = await hashPassword(password);
-    const user = await createUser({
-      email,
-      passwordHash,
-      displayName,
-      authProvider: 'local',
-      emailVerified: false,
-    });
-
-    // Create verification token and send email
-    const token = await createVerificationToken(user.id);
-    await sendVerificationEmail(email, token);
-
-    res.json({ message: REGISTER_SUCCESS_MESSAGE });
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed' });
+    return;
   }
+
+  respond(res, AuthMessage, { message: REGISTER_SUCCESS_MESSAGE });
 });
 
 /**
@@ -182,7 +188,9 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req: 
  * frontend can show a "resend verification email" option.
  */
 router.post('/login', loginLimiter, validate(loginSchema), (req: Request, res: Response, next: NextFunction): void => {
-  passport.authenticate('local', { session: false }, async (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
+  // Passport discards what its callback returns, so a rejection there would not
+  // reach the error handler on its own: the callback's promise is handed to next.
+  const answer = async (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
     if (err) {
       return res.status(500).json({ error: 'Authentication failed' });
     }
@@ -191,6 +199,7 @@ router.post('/login', loginLimiter, validate(loginSchema), (req: Request, res: R
       return res.status(401).json({ error: info?.message || 'Invalid credentials' });
     }
 
+    let body: SessionStarted;
     try {
       // Get full user data for token generation
       const fullUser = await findUserById(user.id);
@@ -212,15 +221,16 @@ router.post('/login', loginLimiter, validate(loginSchema), (req: Request, res: R
       setRefreshCookie(res, tokens.refreshToken);
 
       markTokenResponse(res);
-      return res.json({
-        accessToken: tokens.accessToken,
-        user: toPublicUser(fullUser),
-      });
+      body = { accessToken: tokens.accessToken, user: toPublicUser(fullUser) };
     } catch (error) {
       console.error('Login error:', error);
       return res.status(500).json({ error: 'Login failed' });
     }
-  })(req, res, next);
+    respond(res, SessionStarted, body);
+  };
+  passport.authenticate('local', { session: false }, (
+    err: Error | null, user: Express.User | false, info: { message: string } | undefined,
+  ) => { answer(err, user, info).catch(next); })(req, res, next);
 });
 
 // =============================================================================
@@ -233,6 +243,7 @@ router.post('/login', loginLimiter, validate(loginSchema), (req: Request, res: R
  * On success: auto-logs in the user (generates token pair).
  */
 router.post('/verify-email', verifyEmailLimiter, validate(verifyEmailSchema), async (req: Request, res: Response): Promise<void> => {
+  let body: SessionStarted;
   try {
     const { token } = req.body;
 
@@ -247,14 +258,13 @@ router.post('/verify-email', verifyEmailLimiter, validate(verifyEmailSchema), as
     setRefreshCookie(res, tokens.refreshToken);
 
     markTokenResponse(res);
-    res.json({
-      accessToken: tokens.accessToken,
-      user: toPublicUser(user),
-    });
+    body = { accessToken: tokens.accessToken, user: toPublicUser(user) };
   } catch (error) {
     console.error('Email verification error:', error);
     res.status(500).json({ error: 'Email verification failed' });
+    return;
   }
+  respond(res, SessionStarted, body);
 });
 
 /**
@@ -277,12 +287,13 @@ router.post('/resend-verification', resendLimiter, validate(resendVerificationSc
       await sendVerificationEmail(email, token);
     }
 
-    // Always return the same response (credential enumeration resistance)
-    res.json({ message: RESEND_MESSAGE });
   } catch (error) {
     console.error('Resend verification error:', error);
     res.status(500).json({ error: 'Failed to resend verification email' });
+    return;
   }
+  // Always return the same response (credential enumeration resistance)
+  respond(res, AuthMessage, { message: RESEND_MESSAGE });
 });
 
 /**
@@ -291,6 +302,7 @@ router.post('/resend-verification', resendLimiter, validate(resendVerificationSc
  * Reads refresh token from httpOnly cookie (or body for migration)
  */
 router.post('/refresh', refreshLimiter, async (req: Request, res: Response): Promise<void> => {
+  let body: SessionStarted;
   try {
     const refreshToken = getRefreshToken(req);
     if (!refreshToken) {
@@ -329,14 +341,13 @@ router.post('/refresh', refreshLimiter, async (req: Request, res: Response): Pro
     setRefreshCookie(res, newRefreshToken);
 
     markTokenResponse(res);
-    res.json({
-      accessToken,
-      user: toPublicUser(user),
-    });
+    body = { accessToken, user: toPublicUser(user) };
   } catch (error) {
     console.error('Refresh error:', error);
     res.status(500).json({ error: 'Token refresh failed' });
+    return;
   }
+  respond(res, SessionStarted, body);
 });
 
 /**
@@ -356,15 +367,12 @@ router.post('/logout', async (req: Request, res: Response): Promise<void> => {
     if (refreshToken) {
       await revokeRefreshToken(refreshToken);
     }
-
-    clearRefreshCookie(res);
-    res.json({ success: true });
   } catch (error) {
     console.error('Logout error:', error);
-    // Still return success and clear cookie - we don't want to leak info
-    clearRefreshCookie(res);
-    res.json({ success: true });
+    // Still answer success - we don't want to leak info
   }
+  clearRefreshCookie(res);
+  respond(res, LoggedOut, { success: true });
 });
 
 /**
@@ -372,18 +380,20 @@ router.post('/logout', async (req: Request, res: Response): Promise<void> => {
  * Get current user profile
  */
 router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  let body: PublicUser;
   try {
     const user = await findUserById(req.user!.id);
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
-
-    res.json(toPublicUser(user));
+    body = toPublicUser(user);
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ error: 'Failed to get profile' });
+    return;
   }
+  respond(res, PublicUser, body);
 });
 
 // =============================================================================
@@ -396,6 +406,7 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response):
  * Revokes all existing refresh tokens (forces re-login on other devices).
  */
 router.post('/change-password', requireAuth, validate(changePasswordSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  let body: PasswordChanged;
   try {
     const { currentPassword, newPassword } = req.body;
     const userId = req.user!.id;
@@ -447,14 +458,16 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     setRefreshCookie(res, tokens.refreshToken);
 
     markTokenResponse(res);
-    res.json({
+    body = {
       accessToken: tokens.accessToken,
       message: 'Password changed successfully. All other sessions have been logged out.',
-    });
+    };
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ error: 'Password change failed' });
+    return;
   }
+  respond(res, PasswordChanged, body);
 });
 
 // =============================================================================
@@ -483,7 +496,7 @@ router.post('/exchange-code', exchangeCodeLimiter, async (req: Request, res: Res
   setRefreshCookie(res, pending.refreshToken);
 
   markTokenResponse(res);
-  res.json({ accessToken: pending.accessToken });
+  respond(res, CodeExchanged, { accessToken: pending.accessToken });
 });
 
 // =============================================================================

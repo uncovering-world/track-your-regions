@@ -158,6 +158,14 @@ export interface AppliedPart {
 /** An area as a simplifying read draws it: one piece or several. */
 export type AreaGeometry = Polygon | MultiPolygon;
 
+/**
+ * What registration and a resent verification answer, the same whether or not the address has an
+ * account.
+ */
+export interface AuthMessage {
+  message: string;
+}
+
 /** One field a run proposed to change. */
 export interface ChangedField {
   field: string;
@@ -188,6 +196,15 @@ export interface ChildDivisionsAdded {
   removedOriginal: boolean;
   /** The subregions made for them; empty when they went in as division members. */
   createdRegions: CreatedSubregion[];
+}
+
+/** An OAuth sign-in's one-time code exchanged for a session. The account is read afterwards. */
+export interface CodeExchanged {
+  /**
+   * The short-lived access token, held in memory and sent as a Bearer token. The refresh token is
+   * not in the body: it is set as an httpOnly cookie.
+   */
+  accessToken: string;
 }
 
 /** A stop asked of a world view's computation; a run in flight ends at its next region. */
@@ -313,6 +330,19 @@ export interface CurationLogEntry {
   created_at: string | null;
   /** The curator as they chose to be named, null where they chose nothing. */
   curator_name: string | null;
+}
+
+/** One curator assignment. */
+export interface CuratorScope {
+  id: number;
+  /** What the assignment reaches: one region, one source, or everything. */
+  scopeType: "region" | "source" | "global";
+  regionId: number | null;
+  regionName: string | null;
+  sourceId: number | null;
+  sourceName: string | null;
+  assignedAt: string | null;
+  notes: string | null;
 }
 
 /** One part a refusal of held rows reached. */
@@ -928,6 +958,11 @@ export interface LocationWithVisitedStatus {
   notes: string | null;
 }
 
+/** A session ended: the refresh token revoked and its cookie cleared. */
+export interface LoggedOut {
+  success: true;
+}
+
 /** The object a curator created by hand. */
 export interface ManualExperienceCreated {
   id: number;
@@ -981,6 +1016,18 @@ export interface MultiPolygon {
   coordinates: number[][][][];
 }
 
+/** The signed-in account, with what a curator's assignments reach. */
+export interface MyAccount {
+  id: number;
+  uuid: string;
+  email: string | null;
+  displayName: string | null;
+  role: "user" | "curator" | "admin";
+  avatarUrl: string | null;
+  /** Sent to a curator or an admin: what their curation reaches. */
+  curatorScopes?: CuratorScope[];
+}
+
 /** Which New chips were recorded as shown. */
 export interface NewBadgesSeen {
   /** The objects whose first impression this call recorded. Only the first is kept. */
@@ -999,6 +1046,17 @@ export interface PartNotFound {
    * nothing tells them apart, such as a component listed once per country under one reference.
    */
   reason: "withdrawn" | "ambiguous";
+}
+
+/** A password changed: every refresh token revoked, and a new session for this device. */
+export interface PasswordChanged {
+  /**
+   * The short-lived access token, held in memory and sent as a Bearer token. The refresh token is
+   * not in the body: it is set as an httpOnly cookie.
+   */
+  accessToken: string;
+  /** The sentence to show, which says the other sessions were signed out. */
+  message: string;
 }
 
 /** An unread point under a row readers already see. */
@@ -1073,6 +1131,19 @@ export interface ProposedField {
   claim?: FieldClaim | null;
   /** Every earlier answer on this field, newest first, refusals as well as acceptances. */
   decidedBefore?: EarlierAnswer[];
+}
+
+/** The signed-in account, as the app shows it: never a hash, a provider id or a token. */
+export interface PublicUser {
+  id: number;
+  uuid: string;
+  email: string | null;
+  displayName: string | null;
+  role: "user" | "curator" | "admin";
+  avatarUrl: string | null;
+  emailVerified: boolean;
+  /** How the account signs in: a password, or an OAuth provider. */
+  authProvider: "local" | "google" | "apple" | null;
 }
 
 /** What a publication did, so the page can say it before the refetch. */
@@ -1598,6 +1669,16 @@ export interface RunSetAside {
 export interface SavedHullParams {
   /** Null where the region's hull has never been tuned: it is built with the defaults. */
   params: HullParams | null;
+}
+
+/** A session started by signing in or verifying an email, or renewed from the refresh cookie. */
+export interface SessionStarted {
+  /**
+   * The short-lived access token, held in memory and sent as a Bearer token. The refresh token is
+   * not in the body: it is set as an httpOnly cookie.
+   */
+  accessToken: string;
+  user: PublicUser;
 }
 
 /** One find dug up at a site (#894). */
