@@ -13,7 +13,8 @@ import {
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import FolderCopyIcon from '@mui/icons-material/FolderCopy';
-import type { Region, RegionMember } from '../../../../../types';
+import type { Region } from '../../../../../types';
+import type { RegionMember } from '../../../../../api/regions';
 import { getMemberKey } from '../../../types';
 import type { SubdivisionGroup } from './types';
 import { removeMemberAtIndex } from './groupMutations';

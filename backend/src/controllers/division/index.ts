@@ -4,9 +4,6 @@
  * Handles all operations related to administrative divisions (GADM data).
  */
 
-// Types
-export type { AdministrativeDivision, AdministrativeDivisionWithPath } from './types.js';
-
 // CRUD operations
 export {
   getRootDivisions,

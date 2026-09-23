@@ -5,14 +5,11 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { DivisionsAdded, DivisionsRemoved, MemberMoved, type CreatedSubregion } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
+import type { RegionMembersRow } from '../../db/schema.generated.js';
 import { ensureRegionMember, invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
-
-interface CreatedRegionEntry {
-  id: number;
-  name: string;
-  divisionId: number;
-}
 
 interface AddDivisionsCtx {
   worldViewId: number;
@@ -23,7 +20,7 @@ interface AddDivisionsCtx {
   includeChildren?: boolean;
   customName?: string;
   customGeometry?: unknown;
-  createdRegions: CreatedRegionEntry[];
+  createdRegions: CreatedSubregion[];
   affectedRegionIds: Set<number>;
 }
 
@@ -226,7 +223,7 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
     await syncImportMatchStatus(rid);
   }
 
-  res.status(201).json({
+  respond(res.status(201), DivisionsAdded, {
     added: divisionIds.length,
     createdRegions: createAsSubregions ? ctx.createdRegions : undefined,
   });
@@ -243,17 +240,21 @@ export async function removeDivisionsFromRegion(req: Request, res: Response): Pr
   const { divisionIds, memberRowIds } = req.body;
 
   // If memberRowIds provided, delete by row ID (for custom geometry parts)
+  // The answer counts the rows that went, not the ids the call named: an id
+  // that names no member of this region removes nothing.
+  let removed = 0;
   if (Array.isArray(memberRowIds) && memberRowIds.length > 0) {
     for (const rowId of memberRowIds) {
-      await pool.query(
+      const deleted = await pool.query(
         'DELETE FROM region_members WHERE id = $1 AND region_id = $2',
         [rowId, regionId]
       );
+      removed += deleted.rowCount ?? 0;
     }
     // Invalidate geometry after removing members
     await invalidateRegionGeometry(regionId);
     await syncImportMatchStatus(regionId);
-    res.status(200).json({ removed: memberRowIds.length });
+    respond(res, DivisionsRemoved, { removed });
     return;
   }
 
@@ -265,17 +266,18 @@ export async function removeDivisionsFromRegion(req: Request, res: Response): Pr
   for (const divisionId of divisionIds) {
     // Only delete records WITHOUT custom_geom (original divisions)
     // Records with custom_geom are split parts and should be deleted via memberRowIds
-    await pool.query(
+    const deleted = await pool.query(
       'DELETE FROM region_members WHERE region_id = $1 AND division_id = $2 AND custom_geom IS NULL',
       [regionId, divisionId]
     );
+    removed += deleted.rowCount ?? 0;
   }
 
   // Invalidate geometry for this region and all ancestors
   await invalidateRegionGeometry(regionId);
   await syncImportMatchStatus(regionId);
 
-  res.status(200).json({ removed: divisionIds.length });
+  respond(res, DivisionsRemoved, { removed });
 }
 
 /**
@@ -292,8 +294,8 @@ export async function moveMemberToRegion(req: Request, res: Response): Promise<v
   }
 
   // Update the region_id of the member record
-  const result = await pool.query(
-    'UPDATE region_members SET region_id = $1 WHERE id = $2 AND region_id = $3 RETURNING *',
+  const result = await pool.query<Pick<RegionMembersRow, 'id' | 'region_id'>>(
+    'UPDATE region_members SET region_id = $1 WHERE id = $2 AND region_id = $3 RETURNING id, region_id',
     [toRegionId, memberRowId, fromRegionId]
   );
 
@@ -310,5 +312,10 @@ export async function moveMemberToRegion(req: Request, res: Response): Promise<v
   await syncImportMatchStatus(fromRegionId);
   await syncImportMatchStatus(toRegionId);
 
-  res.status(200).json({ moved: true, member: result.rows[0] });
+  respond(res, MemberMoved, {
+    moved: true,
+    memberRowId: result.rows[0].id,
+    fromRegionId,
+    toRegionId: result.rows[0].region_id,
+  });
 }

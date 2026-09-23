@@ -2,53 +2,30 @@
  * Geometry and Hull API
  */
 
-import { API_URL, authFetchJson, ensureFreshToken } from './fetchUtils.js';
 import type {
-  HullParams,
-  ComputationStatus,
-  ComputationStartResult,
-  DisplayGeometryStatus,
-  RegenerateDisplayGeometriesResult,
-} from './types.js';
+  ComputationCancelled, ComputationStartResult, ComputationStatus, ComputeComplete, ComputeProgressEvent,
+  DisplayGeometryStatus, HullParams, HullPreview, HullSaved, RegenerateDisplayGeometriesResult, RegionReset,
+  SavedHullParams,
+} from '@tyr/shared/api';
+import { API_URL, authFetchJson, ensureFreshToken } from './fetchUtils.js';
 
-// =============================================================================
-// Types for SSE streaming
-// =============================================================================
+// What every call here answers is declared once, as a backend schema (ADR-0066),
+// and generated into `@tyr/shared/api`; the compute stream's events too. Passed
+// on from here, so a component imports a call's answer from the module of the
+// call.
+export type {
+  ComputationCancelled, ComputationStartResult, ComputationStatus, ComputeComplete, ComputeFailed, ComputeProgress,
+  ComputeProgressEvent, ComputeResult, DisplayGeometryStatus, HullParams, HullPreview, HullSaved,
+  RegenerateDisplayGeometriesResult, RegionReset, SavedHullParams,
+} from '@tyr/shared/api';
 
-export interface ComputeProgressEvent {
-  type: 'progress' | 'complete' | 'error';
-  step?: string;
-  stepNumber?: number;
-  totalSteps?: number;
-  elapsed?: number;
-  message?: string;
-  data?: Record<string, unknown>;
-}
+// The hull a region is drawn with until it is tuned, the same numbers the server
+// builds with (ADR-0065).
+export { DEFAULT_HULL_PARAMS } from '@tyr/shared/geometry';
 
 // =============================================================================
 // Geometry Computation
 // =============================================================================
-
-export async function computeRegionGeometry(regionId: number, force?: boolean): Promise<{
-  computed: boolean;
-  points?: number;
-  message?: string;
-  childrenComputed?: number;
-  usesHull?: boolean;
-  crossesDateline?: boolean;
-}> {
-  const url = force
-    ? `${API_URL}/api/world-views/regions/${regionId}/geometry/compute?force=true`
-    : `${API_URL}/api/world-views/regions/${regionId}/geometry/compute`;
-  return authFetchJson<{
-    computed: boolean;
-    points?: number;
-    message?: string;
-    childrenComputed?: number;
-    usesHull?: boolean;
-    crossesDateline?: boolean;
-  }>(url, { method: 'POST' });
-}
 
 /**
  * Compute region geometry with SSE streaming for progress updates
@@ -63,7 +40,7 @@ export function computeRegionGeometryWithProgress(
   force: boolean,
   onProgress: (event: ComputeProgressEvent) => void,
   skipSnapping?: boolean
-): Promise<ComputeProgressEvent> {
+): Promise<ComputeComplete> {
   return new Promise((resolve, reject) => {
     const params = new URLSearchParams();
     if (force) params.append('force', 'true');
@@ -79,16 +56,16 @@ export function computeRegionGeometryWithProgress(
 
       eventSource.onmessage = (event) => {
         try {
+          // Each event is held to ComputeProgressEvent on the server (writeEvent).
           const data = JSON.parse(event.data) as ComputeProgressEvent;
           onProgress(data);
 
-          if (data.type === 'complete' || data.type === 'error') {
+          if (data.type === 'error') {
             eventSource.close();
-            if (data.type === 'error') {
-              reject(new Error(data.message || 'Computation failed'));
-            } else {
-              resolve(data);
-            }
+            reject(new Error(data.message || 'Computation failed'));
+          } else if (data.type === 'complete') {
+            eventSource.close();
+            resolve(data);
           }
         } catch (e) {
           console.error('Failed to parse SSE event:', e);
@@ -104,16 +81,8 @@ export function computeRegionGeometryWithProgress(
   });
 }
 
-export async function resetRegionToGADM(regionId: number): Promise<{
-  reset: boolean;
-  points: number;
-  message: string;
-}> {
-  return authFetchJson<{
-    reset: boolean;
-    points: number;
-    message: string;
-  }>(`${API_URL}/api/world-views/regions/${regionId}/geometry/reset`, { method: 'POST' });
+export async function resetRegionToGADM(regionId: number): Promise<RegionReset> {
+  return authFetchJson<RegionReset>(`${API_URL}/api/world-views/regions/${regionId}/geometry/reset`, { method: 'POST' });
 }
 
 export async function startWorldViewGeometryComputation(
@@ -133,8 +102,8 @@ export async function fetchWorldViewComputationStatus(worldViewId: number): Prom
   return authFetchJson<ComputationStatus>(`${API_URL}/api/world-views/${worldViewId}/compute-geometries/status`);
 }
 
-export async function cancelWorldViewGeometryComputation(worldViewId: number): Promise<void> {
-  await authFetchJson<void>(`${API_URL}/api/world-views/${worldViewId}/compute-geometries/cancel`, {
+export async function cancelWorldViewGeometryComputation(worldViewId: number): Promise<ComputationCancelled> {
+  return authFetchJson<ComputationCancelled>(`${API_URL}/api/world-views/${worldViewId}/compute-geometries/cancel`, {
     method: 'POST',
   });
 }
@@ -168,39 +137,28 @@ export async function previewHull(
   regionId: number,
   params: HullParams,
   customGeometry?: GeoJSON.Geometry
-): Promise<{
-  geometry: GeoJSON.Geometry | null;
-  pointCount: number;
-  crossesDateline: boolean;
-  params: HullParams;
-}> {
-  return authFetchJson(`${API_URL}/api/world-views/regions/${regionId}/hull/preview`, {
+): Promise<HullPreview> {
+  return authFetchJson<HullPreview>(`${API_URL}/api/world-views/regions/${regionId}/hull/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...params, customGeometry }),
   });
 }
 
-export async function saveHull(regionId: number, params: HullParams): Promise<{
-  saved: boolean;
-  pointCount: number;
-  crossesDateline: boolean;
-  params: HullParams;
-}> {
-  return authFetchJson(`${API_URL}/api/world-views/regions/${regionId}/hull/save`, {
+export async function saveHull(regionId: number, params: HullParams): Promise<HullSaved> {
+  return authFetchJson<HullSaved>(`${API_URL}/api/world-views/regions/${regionId}/hull/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });
 }
 
+/** The parameters a region's hull was saved with, or null where it was never tuned or the read failed. */
 export async function fetchSavedHullParams(regionId: number): Promise<HullParams | null> {
   try {
-    const result = await authFetchJson<{ params: HullParams | null }>(`${API_URL}/api/world-views/regions/${regionId}/hull/params`);
+    const result = await authFetchJson<SavedHullParams>(`${API_URL}/api/world-views/regions/${regionId}/hull/params`);
     return result.params;
   } catch {
     return null;
   }
 }
-
-

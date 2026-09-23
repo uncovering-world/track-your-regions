@@ -20,7 +20,7 @@ const PROVIDER_LABEL: Record<AuthProvider, string> = {
  * server's own refusal is recoverable; withholding it from someone who has a
  * password to change is not.
  */
-function signsInWithProvider(provider: AuthProvider | undefined): boolean {
+function signsInWithProvider(provider: AuthProvider | null): boolean {
   return provider === 'google' || provider === 'apple';
 }
 

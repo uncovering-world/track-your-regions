@@ -3,7 +3,11 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { DivisionGeometry } from '../../api/responses/divisions.js';
+import type { MultiPolygon } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
+import { divisionGeometryOf } from './divisionAnswerRows.js';
 import { markPublicReferenceBody } from '../../middleware/cacheHeaders.js';
 
 /**
@@ -24,21 +28,17 @@ export async function getGeometry(req: Request, res: Response): Promise<void> {
 
   const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
 
-  const result = await pool.query(
+  const result = await pool.query<{ geometry: MultiPolygon }>(
     `SELECT ST_AsGeoJSON(geom)::json as geometry FROM administrative_divisions WHERE id = $1 AND geom IS NOT NULL`,
     [divisionId]
   );
 
-  if (result.rows.length === 0 || !result.rows[0].geometry) {
+  if (result.rows.length === 0) {
     res.status(204).send();
     return;
   }
 
-  res.json({
-    type: 'Feature',
-    properties: { id: divisionId },
-    geometry: result.rows[0].geometry,
-  });
+  respond(res, DivisionGeometry, divisionGeometryOf(divisionId, result.rows[0].geometry));
 }
 
 /**

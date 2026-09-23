@@ -11,19 +11,14 @@ import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
 import { collectUnionInputs, CollectedUnionInputs } from './collectUnionInputs.js';
 import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
 import { markStreamBody } from '../../middleware/cacheHeaders.js';
-
-interface ProgressEvent {
-  type: 'progress' | 'complete' | 'error';
-  step?: string;
-  elapsed?: number;
-  data?: Record<string, unknown>;
-  message?: string;
-}
+import { writeEvent } from '../../api/respond.js';
+import { ComputeProgressEvent } from '../../api/responses/geometry.js';
+import type { AnchorPoint, FocusBbox } from '../../api/responses/regions.js';
 
 const GEOMETRY_QUERY_TIMEOUT_MS = 300000;
 
 type LogStep = (step: string, data?: Record<string, unknown>) => void;
-type SendEvent = (event: ProgressEvent) => void;
+type SendEvent = (event: ComputeProgressEvent) => void;
 
 interface SSEContext {
   sendEvent: SendEvent;
@@ -43,9 +38,8 @@ function startSSEStream(res: Response, regionId: number): SSEContext {
   res.flushHeaders();
 
   const startTime = Date.now();
-  const sendEvent: SendEvent = (event) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
-  };
+  // ADR-0066: every event is held to the stream's schema, as respond() holds a body.
+  const sendEvent: SendEvent = (event) => writeEvent(res, ComputeProgressEvent, event);
   const logStep: LogStep = (step, data) => {
     const elapsed = (Date.now() - startTime) / 1000;
     const dataStr = data ? ` ${JSON.stringify(data)}` : '';
@@ -320,7 +314,7 @@ async function applyHullPostStep(
 async function applyCoverageAndFetchFocus(
   regionId: number,
   logStep: LogStep,
-): Promise<{ focusBbox: unknown; anchorPoint: [number, number] | null; tileVersion: number }> {
+): Promise<{ focusBbox: FocusBbox | null; anchorPoint: AnchorPoint | null; tileVersion: number }> {
   const parentResult = await pool.query(
     'SELECT parent_region_id FROM regions WHERE id = $1',
     [regionId],
@@ -344,7 +338,7 @@ async function applyCoverageAndFetchFocus(
     // (#667).
   }
 
-  const focusResult = await pool.query(`
+  const focusResult = await pool.query<{ focus_bbox: FocusBbox | null; anchor_point: AnchorPoint | null; world_view_id: number }>(`
     SELECT
       focus_bbox,
       CASE WHEN anchor_point IS NOT NULL

@@ -1,4 +1,4 @@
-import type { RegionMember } from '../../../../../types';
+import type { RegionMember } from '../../../../../api/regions';
 
 export interface SubdivisionGroup {
   name: string;

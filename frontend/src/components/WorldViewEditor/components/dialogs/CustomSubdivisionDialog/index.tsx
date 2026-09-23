@@ -15,7 +15,8 @@ import {
 import MapIcon from '@mui/icons-material/Map';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SaveIcon from '@mui/icons-material/Save';
-import type { Region, RegionMember } from '../../../../../types';
+import type { Region } from '../../../../../types';
+import type { RegionMember } from '../../../../../api/regions';
 import type { SubdivisionGroup } from './types';
 import { ListViewTab } from './ListViewTab';
 import { MapViewTab } from './MapViewTab';
@@ -456,7 +457,7 @@ export function CustomSubdivisionDialog({
     setPreviewGeometry(null);
     try {
       const geom = await fetchDivisionGeometry(div.id, 1);
-      setPreviewGeometry(geom?.geometry as GeoJSON.Geometry || null);
+      setPreviewGeometry(geom?.geometry ?? null);
     } catch {
       setPreviewGeometry(null);
     } finally {

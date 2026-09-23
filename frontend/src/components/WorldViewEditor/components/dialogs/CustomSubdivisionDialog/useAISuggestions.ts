@@ -7,7 +7,7 @@ import {
   suggestGroupForRegion,
   suggestGroupsForMultipleRegions,
 } from '@/api';
-import type { RegionMember } from '@/types';
+import type { RegionMember } from '@/api/regions';
 import type { SubdivisionGroup } from './types';
 import type { UsageStats, LastOperation, RegionSuggestion } from './aiAssistTypes';
 

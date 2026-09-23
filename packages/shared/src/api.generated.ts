@@ -40,6 +40,23 @@ export interface AcceptSourceResult {
   fromSyncLogId: number;
 }
 
+/** An official boundary from GADM: a continent, a country, a province, down to a municipality. */
+export interface AdministrativeDivision {
+  id: number;
+  name: string;
+  parentId: number | null;
+  hasChildren: boolean;
+  /** Null while the division has no geometry. */
+  focusBbox: FocusBbox | null;
+  anchorPoint: AnchorPoint | null;
+}
+
+/**
+ * Divisions: roots, children or siblings; or a division's ancestors, from the root to the division
+ * itself.
+ */
+export type AdministrativeDivisions = AdministrativeDivision[];
+
 /** What answering a refusal did. */
 export interface AdmissionResult {
   experienceId: number;
@@ -138,6 +155,17 @@ export interface AppliedPart {
   claimedFieldsSkipped: string[];
 }
 
+/** An area as a simplifying read draws it: one piece or several. */
+export type AreaGeometry = Polygon | MultiPolygon;
+
+/**
+ * What registration and a resent verification answer, the same whether or not the address has an
+ * account.
+ */
+export interface AuthMessage {
+  message: string;
+}
+
 /** One field a run proposed to change. */
 export interface ChangedField {
   field: string;
@@ -152,6 +180,113 @@ export interface ChangedField {
    * The source's gate kept the write out of a row readers see, so a verdict is waiting (ADR-0025).
    */
   held?: boolean;
+}
+
+/** A division member's children added to the region, as subregions or as members. */
+export interface ChildDivisionsAdded {
+  /**
+   * How many of the division's children now sit in the region: the ones the call named, or all of
+   * them where it named none, less any whose assignment to an existing subregion failed.
+   */
+  added: number;
+  /**
+   * The division itself was taken out of the region, so it is not counted twice beside its
+   * children.
+   */
+  removedOriginal: boolean;
+  /** The subregions made for them; empty when they went in as division members. */
+  createdRegions: CreatedSubregion[];
+}
+
+/** An OAuth sign-in's one-time code exchanged for a session. The account is read afterwards. */
+export interface CodeExchanged {
+  /**
+   * The short-lived access token, held in memory and sent as a Bearer token. The refresh token is
+   * not in the body: it is set as an httpOnly cookie.
+   */
+  accessToken: string;
+}
+
+/** A stop asked of a world view's computation; a run in flight ends at its next region. */
+export interface ComputationCancelled {
+  cancelled: true;
+}
+
+/** A world view's computation, started in the background or found unnecessary. */
+export interface ComputationStartResult {
+  /** False when every region already had a geometry, so there was nothing to run. */
+  started: boolean;
+  /** Regions in the world view. */
+  total: number;
+  needsComputation: number;
+  alreadyComputed: number;
+  message: string;
+}
+
+/**
+ * A world view's computation as it stands. Only `running` is sent while no run is known, since the
+ * server started or since the last one was cleared.
+ */
+export interface ComputationStatus {
+  running: boolean;
+  progress?: number;
+  total?: number;
+  /** The step in words; `Complete`, `Cancelled` or `Error: …` once it has ended. */
+  status?: string;
+  percent?: number;
+  computed?: number;
+  skipped?: number;
+  errors?: number;
+  currentRegion?: string;
+  currentMembers?: number;
+}
+
+export interface ComputeComplete {
+  type: "complete";
+  elapsed?: number;
+  message?: string;
+  data: ComputeResult;
+}
+
+export interface ComputeFailed {
+  type: "error";
+  message: string;
+  elapsed?: number;
+}
+
+export interface ComputeProgress {
+  type: "progress";
+  /** What the computation is doing, as a line of the progress log. */
+  step: string;
+  /** Seconds since the stream opened. */
+  elapsed: number;
+  /** The step's own figures, shown as they come: each step logs its own. */
+  data?: Record<string, unknown>;
+}
+
+/** One event of a region's computation stream: a step, the result, or the failure that ends it. */
+export type ComputeProgressEvent = ComputeProgress | ComputeComplete | ComputeFailed;
+
+/** What a finished computation of one region left. */
+export interface ComputeResult {
+  computed: true;
+  /**
+   * Sent alone beside `computed` when the region keeps a hand-drawn boundary, so nothing was
+   * computed.
+   */
+  preserved?: true;
+  /** Vertices in the computed outline. */
+  points?: number;
+  usesHull?: boolean;
+  /** A hull was rebuilt with the outline, for a region drawn as one. */
+  hullGenerated?: boolean;
+  numPolygons?: number;
+  numHoles?: number;
+  /** The region's frame as the computed outline left it. */
+  focusBbox?: FocusBbox | null;
+  anchorPoint?: AnchorPoint | null;
+  /** The world view's tile version after the run bumped it. */
+  tileVersion?: number;
 }
 
 /**
@@ -173,6 +308,14 @@ export interface CountedWork {
   externalId: string;
 }
 
+/** A subregion an edit created for a division. */
+export interface CreatedSubregion {
+  id: number;
+  name: string;
+  /** The division the subregion was made for. */
+  divisionId: number;
+}
+
 /** The newest fifty acts on the object that the curator may see, newest first. */
 export type CurationLog = CurationLogEntry[];
 
@@ -187,6 +330,19 @@ export interface CurationLogEntry {
   created_at: string | null;
   /** The curator as they chose to be named, null where they chose nothing. */
   curator_name: string | null;
+}
+
+/** One curator assignment. */
+export interface CuratorScope {
+  id: number;
+  /** What the assignment reaches: one region, one source, or everything. */
+  scopeType: "region" | "source" | "global";
+  regionId: number | null;
+  regionName: string | null;
+  sourceId: number | null;
+  sourceName: string | null;
+  assignedAt: string | null;
+  notes: string | null;
 }
 
 /** One part a refusal of held rows reached. */
@@ -227,6 +383,103 @@ export interface DeleteImpact {
   /** True means the delete will be refused. */
   isDefault: boolean;
 }
+
+/**
+ * The division members of every region beneath a region, drawn as read-only context in the editor.
+ */
+export interface DescendantMemberGeometries {
+  type: "FeatureCollection";
+  features: DescendantMemberGeometry[];
+}
+
+/** One division member of a region's descendants, drawn as context. */
+export interface DescendantMemberGeometry {
+  type: "Feature";
+  properties: {
+    memberRowId: number;
+    divisionId: number;
+    name: string;
+    /** The descendant region the member belongs to. */
+    regionName: string;
+    regionId: number;
+    /** The subregion of the asked-for region that this member sits under. */
+    rootAncestorId: number;
+    hasCustomGeom: boolean;
+  };
+  /** Simplified for context, at a tolerance of 0.005°. */
+  geometry: AreaGeometry;
+}
+
+/** How much of a world view has its geometry and the frame metadata that goes with it. */
+export interface DisplayGeometryStatus {
+  /** Regions in the world view. */
+  total: number;
+  /** Regions with a computed outline. */
+  withGeom: number;
+  /** Regions whose frame and anchor are set, which is what a run's regeneration step writes. */
+  withAnchor: number;
+  /** Regions drawn as a hull. */
+  hullRegions: number;
+  /** Regions with a hull built. */
+  withHull: number;
+}
+
+/** A division's boundary, as GADM draws it. */
+export interface DivisionGeometry {
+  type: "Feature";
+  properties: {
+    id: number;
+  };
+  /** At full resolution, whatever detail the call asked for (#1010). */
+  geometry: MultiPolygon;
+}
+
+/** Divisions added to a region, directly or as subregions of it. */
+export interface DivisionsAdded {
+  /** How many divisions the call named. */
+  added: number;
+  /** Sent when the divisions were added as subregions: the ones that did not exist yet. */
+  createdRegions?: CreatedSubregion[];
+}
+
+/** A division found by name, with how the world view already uses it. */
+export interface DivisionSearchResult {
+  id: number;
+  name: string;
+  parentId: number | null;
+  hasChildren: boolean;
+  /** Null while the division has no geometry. */
+  focusBbox: FocusBbox | null;
+  anchorPoint: AnchorPoint | null;
+  /** The division's place in GADM, root first: `Europe > France > Brittany`. */
+  path: string;
+  /**
+   * How many regions of the world view hold the division itself. 0 when no world view was named.
+   */
+  usageCount: number;
+  /**
+   * How many regions of the world view hold one of its ancestors, and so hold it as part of
+   * something larger.
+   */
+  usedAsSubdivisionCount: number;
+  /** Some division beneath it is held by a region of the world view. */
+  hasUsedSubdivisions: boolean;
+}
+
+/** The best matches, at most as many as asked for. */
+export type DivisionSearchResults = DivisionSearchResult[];
+
+/** Division members removed from a region. */
+export interface DivisionsRemoved {
+  /** How many member rows went. */
+  removed: number;
+}
+
+/**
+ * For each division asked about that some region of the world view holds, how many regions hold it,
+ * by division id.
+ */
+export type DivisionUsageCounts = Record<string, number>;
 
 /** An earlier answer on the same field. */
 export interface EarlierAnswer {
@@ -310,10 +563,7 @@ export interface ExperienceDetail {
   longitude: number;
   latitude: number;
   /** The site's extent from OpenStreetMap, simplified past 5,000 vertices (ADR-0059). */
-  boundary_geojson: {
-    type: "MultiPolygon";
-    coordinates: number[][][][];
-  } | null;
+  boundary_geojson: MultiPolygon | null;
   area_km2: number | null;
   kind_id: number;
   kind_name: string;
@@ -586,6 +836,33 @@ export interface HeldPart {
   treasureType?: string | null;
 }
 
+/** The parameters a region's hull is built with. */
+export interface HullParams {
+  /** Buffer around the islands, in km. */
+  bufferKm: number;
+  /** How loosely the hull fits: higher takes in far islands. */
+  concavity: number;
+  /** Simplification, in degrees. */
+  simplifyTolerance: number;
+}
+
+/** A hull built with the given parameters and not saved. */
+export interface HullPreview {
+  geometry: AreaGeometry | null;
+  /** Points the hull was built around. */
+  pointCount: number;
+  crossesDateline: boolean;
+  params: HullParams;
+}
+
+/** A hull built with the given parameters and stored with them. */
+export interface HullSaved {
+  saved: boolean;
+  pointCount: number;
+  crossesDateline: boolean;
+  params: HullParams;
+}
+
 /** Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043). */
 export interface ImageCredit {
   /** The photographer or uploader, as plain text. */
@@ -681,6 +958,11 @@ export interface LocationWithVisitedStatus {
   notes: string | null;
 }
 
+/** A session ended: the refresh token revoked and its cookie cleared. */
+export interface LoggedOut {
+  success: true;
+}
+
 /** The object a curator created by hand. */
 export interface ManualExperienceCreated {
   id: number;
@@ -689,11 +971,62 @@ export interface ManualExperienceCreated {
   externalId: string;
 }
 
+/** A region's division members, drawn, for the editor. */
+export interface MemberGeometries {
+  type: "FeatureCollection";
+  features: MemberGeometry[];
+}
+
+/** One division member of a region, drawn. */
+export interface MemberGeometry {
+  type: "Feature";
+  properties: {
+    memberRowId: number;
+    divisionId: number;
+    /** The member's custom name where it has one, as for a part cut from the division. */
+    name: string;
+    /** The geometry is a part cut from the division rather than the division. */
+    hasCustomGeom: boolean;
+  };
+  /** Simplified for editing, at a tolerance of 0.001°. */
+  geometry: AreaGeometry;
+}
+
+/**
+ * A division member moved to another region. The row keeps its custom name and cut geometry; the
+ * answer names it and the two regions.
+ */
+export interface MemberMoved {
+  moved: true;
+  memberRowId: number;
+  fromRegionId: number;
+  toRegionId: number;
+}
+
 /**
  * Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a
  * curator. `auto` and `verified` are shown to readers, `verified` because a person passed it.
  */
 export type MembershipCurationState = "pending" | "auto" | "verified";
+
+/** An area on the map, one piece or several, in GeoJSON. */
+export interface MultiPolygon {
+  type: "MultiPolygon";
+  /** Polygons, their rings, the rings' [lng, lat] positions. */
+  coordinates: number[][][][];
+}
+
+/** The signed-in account, with what a curator's assignments reach. */
+export interface MyAccount {
+  id: number;
+  uuid: string;
+  email: string | null;
+  displayName: string | null;
+  role: "user" | "curator" | "admin";
+  avatarUrl: string | null;
+  /** Sent to a curator or an admin: what their curation reaches. */
+  curatorScopes?: CuratorScope[];
+}
 
 /** Which New chips were recorded as shown. */
 export interface NewBadgesSeen {
@@ -713,6 +1046,17 @@ export interface PartNotFound {
    * nothing tells them apart, such as a component listed once per country under one reference.
    */
   reason: "withdrawn" | "ambiguous";
+}
+
+/** A password changed: every refresh token revoked, and a new session for this device. */
+export interface PasswordChanged {
+  /**
+   * The short-lived access token, held in memory and sent as a Bearer token. The refresh token is
+   * not in the body: it is set as an httpOnly cookie.
+   */
+  accessToken: string;
+  /** The sentence to show, which says the other sessions were signed out. */
+  message: string;
 }
 
 /** An unread point under a row readers already see. */
@@ -754,6 +1098,13 @@ export interface PlacementFailure {
 /** The tier asked for: `overview` is the heatmap's read, `markers` the pins'. */
 export type PointsDetail = "overview" | "markers";
 
+/** An area in one piece, in GeoJSON. */
+export interface Polygon {
+  type: "Polygon";
+  /** Rings, the outer first, of [lng, lat] positions. */
+  coordinates: number[][][];
+}
+
 /** One of the object's own fields a run proposed, as its card asks about it. */
 export interface ProposedField {
   field: string;
@@ -780,6 +1131,19 @@ export interface ProposedField {
   claim?: FieldClaim | null;
   /** Every earlier answer on this field, newest first, refusals as well as acceptances. */
   decidedBefore?: EarlierAnswer[];
+}
+
+/** The signed-in account, as the app shows it: never a hash, a provider id or a token. */
+export interface PublicUser {
+  id: number;
+  uuid: string;
+  email: string | null;
+  displayName: string | null;
+  role: "user" | "curator" | "admin";
+  avatarUrl: string | null;
+  emailVerified: boolean;
+  /** How the account signs in: a password, or an OAuth provider. */
+  authProvider: "local" | "google" | "apple" | null;
 }
 
 /** What a publication did, so the page can say it before the refetch. */
@@ -936,6 +1300,12 @@ export interface RefusedWork {
   missingSince: string | null;
 }
 
+/** Regions whose area, frame and anchor were recomputed from their stored outline. */
+export interface RegenerateDisplayGeometriesResult {
+  regenerated: number;
+  message: string;
+}
+
 /** A region of a world view: a named grouping of divisions, or of other regions. */
 export interface Region {
   id: number;
@@ -1009,6 +1379,56 @@ export interface RegionExperienceLocationsResponse {
   locationsByExperience: Record<string, RegionExperienceLocation[]>;
 }
 
+/** A region's stored outline, or its hull where that was asked for and exists. */
+export interface RegionGeometry {
+  type: "Feature";
+  properties: RegionGeometryProperties;
+  geometry: MultiPolygon;
+}
+
+export interface RegionGeometryProperties {
+  id: number;
+  isCustomBoundary: boolean;
+  usesHull: boolean;
+  anchorPoint: AnchorPoint | null;
+  /**
+   * Sent when the hull was asked for: `real` where the region has none and its outline came
+   * instead.
+   */
+  displayMode?: "hull" | "real";
+  /** Sent with the hull: whether it crosses the antimeridian, read off the stored focus frame. */
+  crossesDateline?: boolean;
+}
+
+/** One member of a region: a division, or a part cut from one, or a subregion. */
+export interface RegionMember {
+  /** The division's id, or the subregion's. */
+  id: number;
+  /**
+   * A division member's own row. A division can be a member twice, as parts cut from it, so the
+   * division's id alone does not name one.
+   */
+  memberRowId?: number;
+  /** A division member's custom name where it has one, as for a part cut from it. */
+  name: string;
+  /** The division has divisions beneath it. Always false for a subregion. */
+  hasChildren: boolean;
+  memberType: RegionMemberType;
+  isSubregion: boolean;
+  /** A subregion's colour. */
+  color?: string | null;
+  /** A division's place in GADM, root first (`Europe > Germany > Bavaria`); a subregion's name. */
+  path: string;
+  /** The division member is a part cut from the division rather than all of it. */
+  hasCustomGeometry?: boolean;
+}
+
+/**
+ * A region's subregions by name, then its division members. A division a subregion of the same name
+ * stands for is left out.
+ */
+export type RegionMembers = RegionMember[];
+
 /**
  * What rejecting, unrejecting, assigning, unassigning or removing an object in a region did: it is
  * done.
@@ -1017,6 +1437,17 @@ export interface RegionMembershipResult {
   success: true;
   experienceId: number;
   regionId: number;
+}
+
+/** What a member of a region is: a GADM division, or one of its own subregions. */
+export type RegionMemberType = "division" | "subregion";
+
+/** A region's hand-drawn boundary and hull dropped, and its outline rebuilt from its members. */
+export interface RegionReset {
+  reset: true;
+  /** Vertices of the outline rebuilt from its members; 0 where it has none. */
+  points: number;
+  message: string;
 }
 
 /** Regions, by name; or a region's ancestors, from the root to the region itself. */
@@ -1234,6 +1665,22 @@ export interface RunSetAside {
   setAside: boolean;
 }
 
+/** The parameters a region's hull was saved with. */
+export interface SavedHullParams {
+  /** Null where the region's hull has never been tuned: it is built with the defaults. */
+  params: HullParams | null;
+}
+
+/** A session started by signing in or verifying an email, or renewed from the refresh cookie. */
+export interface SessionStarted {
+  /**
+   * The short-lived access token, held in memory and sent as a Bearer token. The refresh token is
+   * not in the body: it is set as an httpOnly cookie.
+   */
+  accessToken: string;
+  user: PublicUser;
+}
+
 /** One find dug up at a site (#894). */
 export interface SiteFind {
   id: number;
@@ -1254,6 +1701,22 @@ export interface SiteFindsResponse {
   experienceId: number;
   finds: SiteFind[];
   total: number;
+}
+
+/**
+ * A subregion folded into its parent: its divisions, and its descendants', moved up, and the
+ * subregion deleted.
+ */
+export interface SubregionFlattened {
+  /** Divisions the parent gained; one it already held is not counted. */
+  movedDivisions: number;
+  deletedRegion: true;
+}
+
+/** Each division member of a region turned into a subregion holding it. */
+export interface SubregionsExpanded {
+  createdRegions: CreatedSubregion[];
+  expandedCount: number;
 }
 
 /** A work marked seen. */

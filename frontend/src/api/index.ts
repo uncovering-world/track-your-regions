@@ -7,18 +7,6 @@
  * - Region: User-defined grouping within a WorldView
  */
 
-// Re-export types
-export type {
-  GeoJSONFeatureCollection,
-  HullParams,
-  ComputationStatus,
-  ComputationStartResult,
-  DisplayGeometryStatus,
-  RegenerateDisplayGeometriesResult,
-} from './types.js';
-
-export { DEFAULT_HULL_PARAMS } from './types.js';
-
 // Re-export World Views API
 export {
   fetchWorldViews,
@@ -35,8 +23,6 @@ export {
   fetchDivisionAncestors,
   fetchDivisionSiblings,
   fetchDivisionGeometry,
-  fetchSubdivisionGeometries,
-  fetchRootDivisionGeometries,
   searchDivisions,
 } from './divisions.js';
 
@@ -63,13 +49,10 @@ export {
   flattenSubregion,
   expandToSubregions,
   fetchDivisionUsageCounts,
-  fetchRootRegionGeometries,
-  fetchSubregionGeometries,
 } from './regions.js';
 
 // Re-export Geometry API
 export {
-  computeRegionGeometry,
   computeRegionGeometryWithProgress,
   resetRegionToGADM,
   startWorldViewGeometryComputation,
@@ -80,7 +63,11 @@ export {
   previewHull,
   saveHull,
   fetchSavedHullParams,
+  DEFAULT_HULL_PARAMS,
+  type ComputationStatus,
   type ComputeProgressEvent,
+  type DisplayGeometryStatus,
+  type HullParams,
 } from './geometry.js';
 
 // Visited regions
@@ -117,7 +104,6 @@ export {
   login,
   register,
   logout,
-  refreshTokens,
   getCurrentUser,
   getGoogleAuthUrl,
   getAppleAuthUrl,

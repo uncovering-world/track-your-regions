@@ -331,8 +331,7 @@ files the suite already reads.
   map does not chase, because the change touched no Markdown. The next full run —
   any `tooling` change, or the next docs edit — finds it.
 - **A workflow's syntax is read; what it needs from GitHub is not.** The gap ADR-0062
-  recorded here — `claude-review.yml`, `claude-qa.yml` and `claude-dependabot.yml`
-  in no input class, `ci.yml` held
+  recorded here — the Claude workflows in no input class, `ci.yml` held
   only to the fail-safe contract and never to the syntax of a workflow file — is
   closed: `lint:actions` runs actionlint over the `workflows` class, which is
   `.github/workflows/` whole (#951). It parses each file, type-checks the `${{ }}`

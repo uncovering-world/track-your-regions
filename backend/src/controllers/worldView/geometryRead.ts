@@ -3,7 +3,11 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { DisplayGeometryStatus } from '../../api/responses/geometry.js';
+import { RegionGeometry } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
+import { regionGeometryOf, type RegionGeometryRow } from './regionGeometryAnswerRows.js';
 
 /**
  * Get geometry status for a world view
@@ -12,163 +16,61 @@ import { pool } from '../../db/index.js';
 export async function getDisplayGeometryStatus(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
 
-  const result = await pool.query(`
+  const result = await pool.query<{ total: number; with_geom: number; with_anchor: number; hull_regions: number; with_hull: number }>(`
     SELECT
-      COUNT(*) as total,
-      COUNT(CASE WHEN geom IS NOT NULL THEN 1 END) as with_geom,
-      COUNT(CASE WHEN anchor_point IS NOT NULL THEN 1 END) as with_anchor,
-      COUNT(CASE WHEN uses_hull = true THEN 1 END) as hull_regions,
-      COUNT(CASE WHEN hull_geom IS NOT NULL THEN 1 END) as with_hull
+      COUNT(*)::int as total,
+      COUNT(CASE WHEN geom IS NOT NULL THEN 1 END)::int as with_geom,
+      COUNT(CASE WHEN anchor_point IS NOT NULL THEN 1 END)::int as with_anchor,
+      COUNT(CASE WHEN uses_hull = true THEN 1 END)::int as hull_regions,
+      COUNT(CASE WHEN hull_geom IS NOT NULL THEN 1 END)::int as with_hull
     FROM regions
     WHERE world_view_id = $1
   `, [worldViewId]);
 
   const row = result.rows[0];
-  const status = {
-    total: parseInt(row.total),
-    withGeom: parseInt(row.with_geom),
-    withAnchor: parseInt(row.with_anchor),
-    hullRegions: parseInt(row.hull_regions),
-    withHull: parseInt(row.with_hull),
-    complete: parseInt(row.with_geom) > 0,
-  };
-  res.json(status);
+  respond(res, DisplayGeometryStatus, {
+    total: row.total,
+    withGeom: row.with_geom,
+    withAnchor: row.with_anchor,
+    hullRegions: row.hull_regions,
+    withHull: row.with_hull,
+  });
 }
 
 /**
  * Get geometry for a region
  * Query params:
- * - detail: 'high' (real geom - default), 'display' (user-customized display geom),
- *           'hull' (hull with dateline handling), 'anchor' (anchor point only)
- * Returns the cached/stored geometry if it exists, otherwise returns 204 No Content
+ * - detail: 'high' (the stored outline, the default) or 'hull' (the hull, where
+ *   the region has one, with whether it crosses the antimeridian)
+ * Returns the stored geometry if it exists, otherwise 204 No Content.
  * Does NOT auto-compute geometry - use computeWorldViewGeometries for that
  */
 export async function getRegionGeometry(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
-  const detail = req.query.detail as string | undefined;
+  const wantsHull = req.query.detail === 'hull';
 
-  // Get cached geometry (including custom boundaries and anchor point)
-  const result = await pool.query(
+  // The hull, and whether it crosses the dateline, come in the same read. That
+  // is read off focus_bbox -- west > east -- which the trigger computed from
+  // this same hull by the one rule (#674).
+  const result = await pool.query<RegionGeometryRow>(
     `SELECT
-       ST_AsGeoJSON(geom)::json as geometry,
-       is_custom_boundary as "isCustomBoundary",
-       uses_hull as "usesHull",
-       ST_X(anchor_point) as "anchorLng",
-       ST_Y(anchor_point) as "anchorLat"
+       ST_AsGeoJSON(geom)::json AS geometry,
+       CASE WHEN $2 THEN ST_AsGeoJSON(hull_geom)::json END AS hull_geometry,
+       focus_bbox[1] > focus_bbox[3] AS crosses_dateline,
+       is_custom_boundary, uses_hull,
+       ST_X(anchor_point) AS anchor_lng, ST_Y(anchor_point) AS anchor_lat
      FROM regions
      WHERE id = $1 AND geom IS NOT NULL`,
-    [regionId]
+    [regionId, wantsHull],
   );
 
-  if (result.rows.length === 0 || !result.rows[0].geometry) {
-    // No geometry computed yet - return 204 No Content
+  if (result.rows.length === 0) {
+    // No geometry computed yet
     res.status(204).send();
     return;
   }
 
-  const { isCustomBoundary, usesHull, anchorLng, anchorLat } = result.rows[0];
-  const anchorPoint = anchorLng != null && anchorLat != null ? [anchorLng, anchorLat] : null;
-
-  // For detail levels:
-  // - high (default): return real geometry
-  // - hull: return hull geometry (handles dateline properly)
-  // - anchor: return anchor point only
-  if (detail === 'hull') {
-    // Return hull geometry (handles dateline properly). Whether it crosses the
-    // dateline is read off focus_bbox -- west > east -- which the trigger
-    // computed from this same hull by the one rule (#674). The envelope test
-    // that stood here read Antarctica as crossing and any region wider than
-    // 180 degrees as crossing whether it touched the line or not.
-    const hullResult = await pool.query(
-      `SELECT
-         ST_AsGeoJSON(hull_geom)::json as geometry,
-         focus_bbox[1] > focus_bbox[3] as crosses_dateline
-       FROM regions
-       WHERE id = $1 AND hull_geom IS NOT NULL`,
-      [regionId]
-    );
-
-    if (hullResult.rows.length > 0 && hullResult.rows[0].geometry) {
-      const crossesDateline = hullResult.rows[0].crosses_dateline === true;
-
-      res.json({
-        type: 'Feature',
-        properties: {
-          id: regionId,
-          isCustomBoundary: isCustomBoundary || false,
-          usesHull: usesHull || false,
-          anchorPoint,
-          displayMode: 'hull',
-          crossesDateline,
-        },
-        geometry: hullResult.rows[0].geometry,
-      });
-    } else {
-      // Fallback to real geometry
-      res.json({
-        type: 'Feature',
-        properties: {
-          id: regionId,
-          isCustomBoundary: isCustomBoundary || false,
-          usesHull: usesHull || false,
-          anchorPoint,
-          displayMode: 'real',
-        },
-        geometry: result.rows[0].geometry,
-      });
-    }
-  } else if (detail === 'anchor') {
-    // Return anchor point only
-    const anchorResult = await pool.query(
-      `SELECT ST_AsGeoJSON(anchor_point)::json as geometry
-       FROM regions
-       WHERE id = $1 AND anchor_point IS NOT NULL`,
-      [regionId]
-    );
-
-    if (anchorResult.rows.length > 0 && anchorResult.rows[0].geometry) {
-      res.json({
-        type: 'Feature',
-        properties: {
-          id: regionId,
-          isCustomBoundary: isCustomBoundary || false,
-          usesHull: usesHull || false,
-          anchorPoint,
-        },
-        geometry: anchorResult.rows[0].geometry,
-      });
-    } else {
-      // Fallback to centroid of real geometry
-      const centroidResult = await pool.query(
-        `SELECT ST_AsGeoJSON(ST_Centroid(geom))::json as geometry
-         FROM regions
-         WHERE id = $1 AND geom IS NOT NULL`,
-        [regionId]
-      );
-      res.json({
-        type: 'Feature',
-        properties: {
-          id: regionId,
-          isCustomBoundary: isCustomBoundary || false,
-          usesHull: usesHull || false,
-          anchorPoint,
-        },
-        geometry: centroidResult.rows[0]?.geometry || { type: 'Point', coordinates: [0, 0] },
-      });
-    }
-  } else {
-    // Default: return real geometry (geom)
-    res.json({
-      type: 'Feature',
-      properties: {
-        id: regionId,
-        isCustomBoundary: isCustomBoundary || false,
-        usesHull: usesHull || false,
-        anchorPoint,
-      },
-      geometry: result.rows[0].geometry,
-    });
-  }
+  respond(res, RegionGeometry, regionGeometryOf(regionId, result.rows[0], wantsHull));
 }
 
 /**

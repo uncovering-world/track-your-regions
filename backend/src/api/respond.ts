@@ -107,11 +107,28 @@ function requestLineOf(res: Response): RequestLine | null {
  * route declarations of #793 are where error bodies get declared.
  */
 export function respond<S extends z.ZodType>(res: Response, schema: S, body: NoInfer<z.output<S>>): void {
-  if (checksBodies()) {
-    const parsed = schema.safeParse(body);
-    if (!parsed.success) {
-      throw new ResponseShapeError(requestLineOf(res), parsed.error.issues as readonly ShapeIssue[]);
-    }
-  }
+  checkShape(res, schema, body);
   res.json(body);
+}
+
+/**
+ * Write one server-sent event, held to `schema` the way `respond()` holds a
+ * body: typed at compile time, parsed outside production.
+ *
+ * A stream's headers are out before its first event, so a mismatch cannot turn
+ * into a 500. It throws `ResponseShapeError` into the handler instead, whose own
+ * catch ends the stream with an error event, and that error event goes through
+ * here too.
+ */
+export function writeEvent<S extends z.ZodType>(res: Response, schema: S, event: NoInfer<z.output<S>>): void {
+  checkShape(res, schema, event);
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function checkShape(res: Response, schema: z.ZodType, value: unknown): void {
+  if (!checksBodies()) return;
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) {
+    throw new ResponseShapeError(requestLineOf(res), parsed.error.issues as readonly ShapeIssue[]);
+  }
 }

@@ -2,33 +2,24 @@
  * Authentication API functions
  */
 
-import { API_URL, requireFreshToken } from './fetchUtils';
-import type { LoginCredentials, RegisterCredentials, User } from '../types/auth';
+import type {
+  AuthMessage, CodeExchanged, MyAccount, PasswordChanged, PublicUser, SessionStarted,
+} from '@tyr/shared/api';
+import { API_URL, authFetchJson, requireFreshToken } from './fetchUtils';
+import type { LoginCredentials, RegisterCredentials } from '../types/auth';
 
-/** Auth response for cookie-based flow (no refresh token in body) */
-export interface CookieAuthResponse {
-  accessToken: string;
-  user: User;
-}
+// What every call here answers is declared once, as a backend schema (ADR-0066),
+// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// imports a call's answer from the module of the call. None of them carries a
+// refresh token: that travels only in its httpOnly cookie.
+export type {
+  AuthMessage, CodeExchanged, CuratorScope, MyAccount, PasswordChanged, PublicUser, SessionStarted,
+} from '@tyr/shared/api';
 
 /** What the change-password form sends */
 export interface ChangePasswordInput {
   currentPassword: string;
   newPassword: string;
-}
-
-/**
- * Change-password answer: a fresh access token for this session (the old
- * refresh family is revoked) plus the message to show the user.
- */
-export interface ChangePasswordResponse {
-  accessToken: string;
-  message: string;
-}
-
-/** Response from register endpoint (no tokens — must verify email first) */
-interface RegisterResponse {
-  message: string;
 }
 
 /** Error response with optional error code */
@@ -41,7 +32,7 @@ interface ErrorResponse {
  * Register a new user with email/password.
  * No auto-login — returns a message telling user to check their email.
  */
-export async function register(credentials: RegisterCredentials): Promise<RegisterResponse> {
+export async function register(credentials: RegisterCredentials): Promise<AuthMessage> {
   const response = await fetch(`${API_URL}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -73,7 +64,7 @@ export class AuthError extends Error {
  * Login with email/password
  * Refresh token is set as httpOnly cookie by the server.
  */
-export async function login(credentials: LoginCredentials): Promise<CookieAuthResponse> {
+export async function login(credentials: LoginCredentials): Promise<SessionStarted> {
   const response = await fetch(`${API_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -93,7 +84,7 @@ export async function login(credentials: LoginCredentials): Promise<CookieAuthRe
  * Verify email address using the token from the verification link.
  * On success: auto-logs in (returns access token + user, sets refresh cookie).
  */
-export async function verifyEmail(token: string): Promise<CookieAuthResponse> {
+export async function verifyEmail(token: string): Promise<SessionStarted> {
   const response = await fetch(`${API_URL}/api/auth/verify-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -113,7 +104,7 @@ export async function verifyEmail(token: string): Promise<CookieAuthResponse> {
  * Resend verification email. Always returns the same message
  * regardless of whether the email exists (credential enumeration resistance).
  */
-export async function resendVerification(email: string): Promise<{ message: string }> {
+export async function resendVerification(email: string): Promise<AuthMessage> {
   const response = await fetch(`${API_URL}/api/auth/resend-verification`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -130,28 +121,10 @@ export async function resendVerification(email: string): Promise<{ message: stri
 }
 
 /**
- * Refresh tokens via httpOnly cookie.
- * Server reads refresh token from cookie and returns new access token + sets new cookie.
- */
-export async function refreshTokens(): Promise<CookieAuthResponse> {
-  const response = await fetch(`${API_URL}/api/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Token refresh failed');
-  }
-
-  return response.json();
-}
-
-/**
  * Exchange OAuth authorization code for tokens.
  * Server sets refresh token as httpOnly cookie and returns access token.
  */
-export async function exchangeAuthCode(code: string): Promise<CookieAuthResponse> {
+export async function exchangeAuthCode(code: string): Promise<CodeExchanged> {
   const response = await fetch(`${API_URL}/api/auth/exchange-code`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -183,7 +156,7 @@ export async function logout(): Promise<void> {
 /**
  * Get current user profile
  */
-export async function getCurrentUser(accessToken: string): Promise<User> {
+export async function getCurrentUser(accessToken: string): Promise<PublicUser> {
   const response = await fetch(`${API_URL}/api/auth/me`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -195,6 +168,11 @@ export async function getCurrentUser(accessToken: string): Promise<User> {
   }
 
   return response.json();
+}
+
+/** The signed-in account, with what a curator's assignments reach. */
+export async function fetchMyAccount(): Promise<MyAccount> {
+  return authFetchJson<MyAccount>(`${API_URL}/api/users/me`);
 }
 
 /**
@@ -224,7 +202,7 @@ export async function getCurrentUser(accessToken: string): Promise<User> {
  * point spending one — and it is the only place a 401-shaped outcome here signs
  * the user out.
  */
-export async function changePassword(input: ChangePasswordInput): Promise<ChangePasswordResponse> {
+export async function changePassword(input: ChangePasswordInput): Promise<PasswordChanged> {
   const token = await requireFreshToken();
   if (!token) {
     // Same event `authFetchJson` fires on a dead session, so the app leaves the

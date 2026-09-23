@@ -256,7 +256,7 @@ export function OverlapResolutionDialog({
         setDivisionGeometries(prev => {
           const next = new Map(prev);
           for (const { id, feat } of results) {
-            if (feat?.geometry) next.set(id, feat.geometry as GeoJSONGeometry);
+            if (feat?.geometry) next.set(id, feat.geometry);
           }
           return next;
         });

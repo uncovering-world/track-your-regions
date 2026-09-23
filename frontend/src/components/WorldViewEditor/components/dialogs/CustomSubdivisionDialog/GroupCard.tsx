@@ -7,7 +7,7 @@
 import { Box, Chip, IconButton, Paper, TextField, Tooltip, Typography } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import type { RegionMember } from '../../../../../types';
+import type { RegionMember } from '../../../../../api/regions';
 import { getMemberKey } from '../../../types';
 import type { SubdivisionGroup } from './types';
 import { removeMemberAtIndex, addMemberAtIndex } from './groupMutations';

@@ -21,7 +21,8 @@ import DrawIcon from '@mui/icons-material/Draw';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { LoadingSpinner } from '../../../shared/LoadingSpinner';
 import * as turf from '@turf/turf';
-import type { Region, RegionMember } from '../../../../types';
+import type { Region } from '../../../../types';
+import type { RegionMember } from '../../../../api/regions';
 import { CustomBoundaryDialog } from '../../../CustomBoundaryDialog';
 import {
   fetchRegionMemberGeometries,
@@ -55,7 +56,7 @@ async function loadDivisionGeometryForSplit(
     if (memberFeature?.geometry) return memberFeature.geometry;
   }
   const geom = await fetchDivisionGeometry(member.id, 1);
-  return (geom?.geometry as GeoJSON.Geometry | undefined) ?? null;
+  return geom?.geometry ?? null;
 }
 
 type PolyFeatureSDD = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;

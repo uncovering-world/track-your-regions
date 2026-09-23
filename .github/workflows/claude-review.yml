@@ -68,9 +68,7 @@ jobs:
   review:
     # The four ways in (see the header), and never Dependabot --
     # claude-dependabot.yml owns those (different prompt focused on
-    # version-bump risk + codebase impact). Comment-based @claude
-    # interactions are handled separately by claude-qa.yml (tag mode);
-    # `/review` carries no @claude, so the two never both fire.
+    # version-bump risk + codebase impact).
     # Action enforces "users with write access only" on every event here
     # (docs/security.md), and GitHub strips secrets for a fork's
     # `pull_request` events. The `author_association` filter on the comment
@@ -537,16 +535,15 @@ jobs:
             - Be terse. Actionable findings only, no narration of what the PR does.
 
           # Grep/Glob/Read come from the action's own base tool set; the
-          # grep/rg shell entries mirror claude-qa.yml + claude-dependabot.yml
-          # so the Phase 4 repo search has a path either way. `gh api` is one
+          # grep/rg shell entries mirror claude-dependabot.yml so the Phase 4
+          # repo search has a path either way. `gh api` is one
           # entry, not `gh api graphql` plus `gh api repos`: a REST path is a
           # single shell token, so a prefix rule ending in `repos` is followed
           # by `/` and never matches, so every `gh api repos/…` read is
           # refused next to an allowed `gh api graphql` (#962). graphql
           # already permits mutations
           # (resolveReviewThread), so the wider entry adds no write the
-          # narrower withheld. claude-qa.yml carries the same single entry
-          # for the same reason.
+          # narrower withheld.
           # `gh issue list` is what lets a `[pre-existing]` note name the open
           # issue that already covers it, so the author links rather than
           # files twice (#924); it reads, and the summary is still the one

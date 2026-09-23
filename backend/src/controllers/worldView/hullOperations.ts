@@ -3,9 +3,16 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { HullPreview, HullSaved, SavedHullParams } from '../../api/responses/geometry.js';
 import { pool } from '../../db/index.js';
+import type { RegionsRow } from '../../db/schema.generated.js';
 import { previewHull, previewHullFromGeometry, generateSingleHull, DEFAULT_HULL_PARAMS } from '../../services/hull/index.js';
-import type { HullParams } from '../../services/hull/index.js';
+import type { HullParams, PreviewHullResult } from '../../services/hull/index.js';
+
+// Each handler answers after its try: the catch answers with a message of its
+// own, and a body that fails its schema must reach the error handler as the
+// named 500 instead (development guide § API Layer).
 
 /**
  * Preview hull with custom parameters without saving.
@@ -26,32 +33,31 @@ export async function previewHullGeometry(req: Request, res: Response): Promise<
   // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
   console.log(`[Hull] Preview request for region ${regionId} with params:`, params, customGeometry ? '(with custom geometry)' : '');
 
+  let result: PreviewHullResult;
   try {
     // If customGeometry provided, use it instead of fetching from DB
-    let result;
-    if (customGeometry) {
-      result = await previewHullFromGeometry(customGeometry, params);
-    } else {
-      result = await previewHull(regionId, params);
-    }
-
-    if (result.error) {
-      res.status(400).json({ error: result.error });
-      return;
-    }
-
-    res.json({
-      geometry: result.geometry,
-      pointCount: result.pointCount,
-      crossesDateline: result.crossesDateline,
-      params,
-      // Include source bounds for debugging - shows what geometry was used
-      sourceBounds: result.sourceBounds,
-    });
+    result = customGeometry
+      ? await previewHullFromGeometry(customGeometry, params)
+      : await previewHull(regionId, params);
   } catch (e) {
     console.error(`[Hull] Preview error:`, e);
     res.status(500).json({ error: 'Failed to preview hull' });
+    return;
   }
+
+  if (result.error) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  // The source bounds the preview also returns are logged by the service and
+  // not sent: no reader draws them.
+  respond(res, HullPreview, {
+    geometry: result.geometry,
+    pointCount: result.pointCount,
+    crossesDateline: result.crossesDateline,
+    params,
+  });
 }
 
 /**
@@ -72,24 +78,26 @@ export async function saveHullGeometry(req: Request, res: Response): Promise<voi
   // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
   console.log(`[Hull] Save request for region ${regionId} with params:`, params);
 
+  let result: Awaited<ReturnType<typeof generateSingleHull>>;
   try {
-    const result = await generateSingleHull(regionId, params);
-
-    if (result.error) {
-      res.status(400).json({ error: result.error });
-      return;
-    }
-
-    res.json({
-      saved: result.generated,
-      pointCount: result.pointCount,
-      crossesDateline: result.crossesDateline,
-      params,
-    });
+    result = await generateSingleHull(regionId, params);
   } catch (e) {
     console.error(`[Hull] Save error:`, e);
     res.status(500).json({ error: 'Failed to save hull' });
+    return;
   }
+
+  if (result.error) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  respond(res, HullSaved, {
+    saved: result.generated,
+    pointCount: result.pointCount ?? 0,
+    crossesDateline: result.crossesDateline ?? false,
+    params,
+  });
 }
 
 /**
@@ -99,8 +107,9 @@ export async function saveHullGeometry(req: Request, res: Response): Promise<voi
 export async function getSavedHullParams(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
 
+  let saved: HullParams | null;
   try {
-    const result = await pool.query(
+    const result = await pool.query<Pick<RegionsRow, 'hull_params'>>(
       'SELECT hull_params FROM regions WHERE id = $1',
       [regionId]
     );
@@ -109,12 +118,17 @@ export async function getSavedHullParams(req: Request, res: Response): Promise<v
       res.status(404).json({ error: 'Region not found' });
       return;
     }
-
-    res.json({
-      params: result.rows[0].hull_params || null,
-    });
+    saved = result.rows[0].hull_params as HullParams | null;
   } catch (e) {
     console.error(`[Hull] Error fetching params:`, e);
     res.status(500).json({ error: 'Failed to fetch hull params' });
+    return;
   }
+
+  // Stored JSON reaches a reader only through the keys its schema names.
+  respond(res, SavedHullParams, {
+    params: saved
+      ? { bufferKm: saved.bufferKm, concavity: saved.concavity, simplifyTolerance: saved.simplifyTolerance }
+      : null,
+  });
 }

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
-import type { Region, RegionMember } from '../../../../../types';
+import type { Region } from '../../../../../types';
+import type { RegionMember } from '../../../../../api/regions';
 import type { SubdivisionGroup } from './types';
 import { fetchDivisionGeometry, fetchRegionMemberGeometries, fetchDescendantMemberGeometries } from '../../../../../api';
 import { focusFromGeoJson, frameGeoJson } from '../../../../../utils/mapUtils';
@@ -74,7 +75,7 @@ export function useGeometryLoading({
         try {
           const geom = await fetchDivisionGeometry(div.id, worldViewId);
           if (!geom?.geometry) return null;
-          return buildDivisionFeature(div, geom.geometry as GeoJSON.Geometry);
+          return buildDivisionFeature(div, geom.geometry);
         } catch (e) {
           // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- div.id is a number
           console.error(`Failed to load geometry for division ${div.id}:`, e);

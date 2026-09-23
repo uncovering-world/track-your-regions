@@ -1080,7 +1080,7 @@ export const regenerateDisplayQuerySchema = z.object({
 });
 
 export const regionGeometryDetailQuerySchema = z.object({
-  detail: z.enum(['high', 'display', 'hull', 'anchor']).optional(),
+  detail: z.enum(['high', 'hull']).optional(),
 });
 
 // =============================================================================

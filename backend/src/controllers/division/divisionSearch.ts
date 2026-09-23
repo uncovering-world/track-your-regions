@@ -3,9 +3,14 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import { DivisionSearchResults } from '../../api/responses/divisions.js';
 import { pool } from '../../db/index.js';
-import type { AdministrativeDivisionWithPath } from './types.js';
+import { divisionSearchResultOf, type DivisionRow } from './divisionAnswerRows.js';
 import { FOCUS_JSON_COLUMNS } from './focusColumns.js';
+
+/** One match, as the search's final SELECT lists it. */
+type DivisionSearchRow = DivisionRow & { path: string; relevance_score: number };
 
 /**
  * Search for regions by name with optional fuzzy matching
@@ -26,7 +31,7 @@ export async function searchDivisions(req: Request, res: Response): Promise<void
   const limit = parseInt(String(req.query.limit ?? '50'));
 
   if (inputQuery.length < 2) {
-    res.json([]);
+    respond(res, DivisionSearchResults, []);
     return;
   }
 
@@ -153,7 +158,7 @@ export async function searchDivisions(req: Request, res: Response): Promise<void
       ORDER BY target_id, relevance_score DESC
     `;
 
-    return pool.query(query, params);
+    return pool.query<DivisionSearchRow>(query, params);
   };
 
   // Use accent-insensitive search as default (unaccent is a no-op on ASCII,
@@ -271,18 +276,9 @@ export async function searchDivisions(req: Request, res: Response): Promise<void
     }
   }
 
-  const divisionList: AdministrativeDivisionWithPath[] = sorted.map(d => ({
-    id: d.id,
-    name: d.name,
-    parentId: d.parent_id,
-    hasChildren: d.has_children,
-    focusBbox: d.focus_bbox_json,
-    anchorPoint: d.anchor_point_json,
-    path: d.path,
+  respond(res, DivisionSearchResults, sorted.map(d => divisionSearchResultOf(d, {
     usageCount: usageCounts[d.id] || 0,
     usedAsSubdivisionCount: usedAsSubdivisionCount[d.id] || 0,
     hasUsedSubdivisions: hasUsedSubdivisions[d.id] || false,
-  }));
-
-  res.json(divisionList);
+  })));
 }

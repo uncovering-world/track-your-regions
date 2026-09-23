@@ -39,7 +39,8 @@ import {
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import type { Region, RegionMember } from '@/types';
+import type { Region } from '@/types';
+import type { RegionMember } from '@/api/regions';
 import type { SubdivisionGroup } from './types';
 import { getGroupColor } from './types';
 import type { UsageStats, LastOperation, RegionSuggestion } from './aiAssistTypes';

@@ -2,6 +2,7 @@
  * Fetch utility for API calls
  */
 
+import type { SessionStarted } from '@tyr/shared/api';
 import { jwtDecode } from 'jwt-decode';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -12,14 +13,14 @@ let accessToken: string | null = null;
 
 // Deduplicates concurrent refresh calls — only one refresh request at a time.
 // Shared across authFetchJson and useAuth to prevent token rotation race conditions.
-let pendingRefresh: Promise<{ accessToken: string; [key: string]: unknown } | null> | null = null;
+let pendingRefresh: Promise<SessionStarted | null> | null = null;
 
 // Listener notified after every successful refresh — useAuth registers here
 // so its local tokenExpiresAt + user state stays in sync when refreshSession
 // is invoked from outside the hook (e.g. ensureFreshToken / authFetchJson 401
 // retry). Without this, useAuth.isTokenExpired() would still see the old
 // expiry and trigger a redundant refresh on the next request.
-type RefreshSuccessListener = (data: { accessToken: string; [key: string]: unknown }) => void;
+type RefreshSuccessListener = (data: SessionStarted) => void;
 let onRefreshSuccess: RefreshSuccessListener | null = null;
 
 export function setRefreshSuccessListener(listener: RefreshSuccessListener | null): void {
@@ -39,7 +40,7 @@ export function getAccessToken(): string | null {
  * Both authFetchJson and useAuth must use this to prevent token rotation race conditions
  * (concurrent refreshes trigger reuse detection which revokes the entire token family).
  */
-export async function refreshSession(): Promise<{ accessToken: string; [key: string]: unknown } | null> {
+export async function refreshSession(): Promise<SessionStarted | null> {
   if (pendingRefresh) return pendingRefresh;
 
   pendingRefresh = (async () => {
@@ -50,7 +51,8 @@ export async function refreshSession(): Promise<{ accessToken: string; [key: str
         credentials: 'include',
       });
       if (response.ok) {
-        const data = await response.json();
+        // The session the refresh cookie renewed, held to SessionStarted on the server.
+        const data = await response.json() as SessionStarted;
         accessToken = data.accessToken;
         // Notify useAuth so it can update its local tokenExpiresAt + user state.
         onRefreshSuccess?.(data);
@@ -181,8 +183,8 @@ function buildJsonHeaders(options?: RequestInit): Headers {
   return headers;
 }
 
-async function parseJsonResponse<T>(response: Response): Promise<T> {
-  if (response.status === 204) return [] as unknown as T;
+async function parseJsonResponse<T>(response: Response, noContent: () => T): Promise<T> {
+  if (response.status === 204) return noContent();
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
     throw new Error(error.error || `HTTP ${response.status}`);
@@ -195,11 +197,27 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
  * On 401, attempts a silent refresh via httpOnly cookie then retries.
  */
 export async function authFetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  // A 204 reads as an empty list: what the list reads answer when they have nothing.
+  return authFetchParsed<T>(url, options, () => [] as unknown as T);
+}
+
+/**
+ * An authenticated read whose endpoint answers 204 when there is nothing to
+ * send, as the geometry reads do for a region or a division with no stored
+ * outline. The 204 reads as null here, never as the empty array
+ * `authFetchJson` makes of it, which is truthy and has none of the answer's
+ * keys.
+ */
+export async function authFetchOptionalJson<T>(url: string, options?: RequestInit): Promise<T | null> {
+  return authFetchParsed<T | null>(url, options, () => null);
+}
+
+async function authFetchParsed<T>(url: string, options: RequestInit | undefined, noContent: () => T): Promise<T> {
   // Proactively refresh token before it expires (prevents 401 round-trip)
   await ensureFreshToken();
 
   const response = await fetch(url, { ...options, headers: buildJsonHeaders(options) });
-  if (response.status !== 401) return parseJsonResponse<T>(response);
+  if (response.status !== 401) return parseJsonResponse<T>(response, noContent);
 
   // Token may have expired, try centralized refresh. Uses shared
   // refreshSession() to prevent token rotation race conditions.
@@ -207,11 +225,11 @@ export async function authFetchJson<T>(url: string, options?: RequestInit): Prom
   if (!result) {
     // Session is completely dead — notify the app so useAuth can clear state.
     window.dispatchEvent(new CustomEvent('auth:session-expired'));
-    return parseJsonResponse<T>(response);
+    return parseJsonResponse<T>(response, noContent);
   }
 
   const retryResponse = await fetch(url, { ...options, headers: buildJsonHeaders(options) });
-  return parseJsonResponse<T>(retryResponse);
+  return parseJsonResponse<T>(retryResponse, noContent);
 }
 
 /**
