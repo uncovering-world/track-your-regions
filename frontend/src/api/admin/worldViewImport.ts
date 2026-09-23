@@ -484,7 +484,6 @@ export {
   mapshapeMatch,
   clusterPreviewUrl,
   clusterHighlightUrl,
-  clusterOverlayUrl,
   respondToClusterReview,
   waterCropUrl,
   respondToWaterReview,

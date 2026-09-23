@@ -6,7 +6,12 @@
  * fix, select map image, smart simplify (detect + apply).
  */
 
+import type { SelectionAccepted, SelectionRejected } from '@tyr/shared/api';
 import { authFetchJson } from '../fetchUtils';
+
+// The answers this module's calls already declare as backend schemas (ADR-0066),
+// generated into `@tyr/shared/api`; the rest of the module is #992's.
+export type { SelectionAccepted, SelectionRejected } from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -320,7 +325,7 @@ export async function mergeChildIntoParent(
   worldViewId: number,
   regionId: number,
 ): Promise<{ merged: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/merge-child-into-parent`, {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/merge-child`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -385,7 +390,7 @@ export async function clearRegionMembers(
   worldViewId: number,
   regionId: number,
 ): Promise<{ cleared: number }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/clear-region-members`, {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/clear-members`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -399,8 +404,8 @@ export async function acceptBatchAndRejectRest(
   worldViewId: number,
   regionId: number,
   divisionIds: number[],
-): Promise<{ accepted: number; rejected: number }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/accept-batch-and-reject-rest`, {
+): Promise<SelectionAccepted> {
+  return authFetchJson<SelectionAccepted>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/accept-batch-and-reject-rest`, {
     method: 'POST',
     body: JSON.stringify({ regionId, divisionIds }),
   });
@@ -410,8 +415,8 @@ export async function rejectBatchSuggestions(
   worldViewId: number,
   regionId: number,
   divisionIds: number[],
-): Promise<{ rejected: number }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/reject-batch`, {
+): Promise<SelectionRejected> {
+  return authFetchJson<SelectionRejected>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/reject-batch`, {
     method: 'POST',
     body: JSON.stringify({ regionId, divisionIds }),
   });
@@ -450,7 +455,7 @@ export async function checkDivisionOverlap(
   worldViewId: number,
   parentRegionId: number,
 ): Promise<DivisionOverlapResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/check-division-overlap`, {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/check-overlap`, {
     method: 'POST',
     body: JSON.stringify({ parentRegionId }),
   });
@@ -461,9 +466,9 @@ export async function getOverlapDivisionChildren(
   divisionId: number,
   regionIds: number[],
 ): Promise<{ children: OverlapGadmChild[] }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/overlap-division-children`, {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/overlap-children`, {
     method: 'POST',
-    body: JSON.stringify({ divisionId, regionIds }),
+    body: JSON.stringify({ divisionId, childRegionIds: regionIds }),
   });
 }
 

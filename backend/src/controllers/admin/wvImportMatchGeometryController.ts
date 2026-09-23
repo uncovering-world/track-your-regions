@@ -7,10 +7,6 @@
  * article marks, where a deeper shape does not exist — and, failing both, look
  * at the pictures and say which divisions a map shows.
  *
- * Two of those three do not answer today: the screen posts to
- * `split-divisions-deeper` and `vision-match-divisions`, and the routes are
- * `split-deeper` and `vision-match` — #945, found when this file was made.
- *
  * Its own file beside `wvImportMatchController.ts`, which had reached the
  * length the lint draws the line at (#933); the review's own endpoints stay
  * there and re-export these, so no route moves.
