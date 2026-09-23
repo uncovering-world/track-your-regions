@@ -40,6 +40,23 @@ export interface AcceptSourceResult {
   fromSyncLogId: number;
 }
 
+/** An official boundary from GADM: a continent, a country, a province, down to a municipality. */
+export interface AdministrativeDivision {
+  id: number;
+  name: string;
+  parentId: number | null;
+  hasChildren: boolean;
+  /** Null while the division has no geometry. */
+  focusBbox: FocusBbox | null;
+  anchorPoint: AnchorPoint | null;
+}
+
+/**
+ * Divisions: roots, children or siblings; or a division's ancestors, from the root to the division
+ * itself.
+ */
+export type AdministrativeDivisions = AdministrativeDivision[];
+
 /** What answering a refusal did. */
 export interface AdmissionResult {
   experienceId: number;
@@ -281,6 +298,16 @@ export interface DescendantMemberGeometry {
   geometry: AreaGeometry;
 }
 
+/** A division's boundary, as GADM draws it. */
+export interface DivisionGeometry {
+  type: "Feature";
+  properties: {
+    id: number;
+  };
+  /** At full resolution, whatever detail the call asked for (#1010). */
+  geometry: MultiPolygon;
+}
+
 /** Divisions added to a region, directly or as subregions of it. */
 export interface DivisionsAdded {
   /** How many divisions the call named. */
@@ -288,6 +315,33 @@ export interface DivisionsAdded {
   /** Sent when the divisions were added as subregions: the ones that did not exist yet. */
   createdRegions?: CreatedSubregion[];
 }
+
+/** A division found by name, with how the world view already uses it. */
+export interface DivisionSearchResult {
+  id: number;
+  name: string;
+  parentId: number | null;
+  hasChildren: boolean;
+  /** Null while the division has no geometry. */
+  focusBbox: FocusBbox | null;
+  anchorPoint: AnchorPoint | null;
+  /** The division's place in GADM, root first: `Europe > France > Brittany`. */
+  path: string;
+  /**
+   * How many regions of the world view hold the division itself. 0 when no world view was named.
+   */
+  usageCount: number;
+  /**
+   * How many regions of the world view hold one of its ancestors, and so hold it as part of
+   * something larger.
+   */
+  usedAsSubdivisionCount: number;
+  /** Some division beneath it is held by a region of the world view. */
+  hasUsedSubdivisions: boolean;
+}
+
+/** The best matches, at most as many as asked for. */
+export type DivisionSearchResults = DivisionSearchResult[];
 
 /** Division members removed from a region. */
 export interface DivisionsRemoved {
