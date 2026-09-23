@@ -6,12 +6,11 @@ import { useState, useCallback } from 'react';
 import {
   suggestGroupForRegion,
   suggestGroupsForMultipleRegions,
+  type EscalationLevel,
 } from '@/api';
 import type { RegionMember } from '@/api/regions';
 import type { SubdivisionGroup } from './types';
 import type { UsageStats, LastOperation, RegionSuggestion } from './aiAssistTypes';
-
-export type EscalationLevel = 'fast' | 'reasoning' | 'reasoning_search';
 
 interface UseAISuggestionsOptions {
   selectedRegionName: string;
@@ -26,7 +25,6 @@ interface UseAISuggestionsOptions {
   suggestions: Map<number, RegionSuggestion>;
   setSuggestions: React.Dispatch<React.SetStateAction<Map<number, RegionSuggestion>>>;
   aiAvailable: boolean | null;
-  currentModel: string;
   // Stats
   setSingleRequestStats: React.Dispatch<React.SetStateAction<UsageStats>>;
   setBatchRequestStats: React.Dispatch<React.SetStateAction<UsageStats>>;
@@ -46,7 +44,6 @@ export function useAISuggestions({
   suggestions,
   setSuggestions,
   aiAvailable,
-  currentModel,
   setSingleRequestStats,
   setBatchRequestStats,
   setLastOperation,
@@ -96,35 +93,30 @@ export function useAISuggestions({
       }));
 
       // Track single request usage
-      if (suggestion.usage) {
-        const tokens = suggestion.usage.totalTokens;
-        const inputCost = suggestion.usage.cost?.inputCost ?? 0;
-        const outputCost = suggestion.usage.cost?.outputCost ?? 0;
-        const webSearchCost = suggestion.usage.cost?.webSearchCost ?? 0;
-        const totalCost = suggestion.usage.cost?.totalCost ?? 0;
+      const { totalTokens: tokens, cost, model } = suggestion.usage;
+      const { inputCost, outputCost, webSearchCost, totalCost } = cost;
 
-        setSingleRequestStats(prev => ({
-          tokens: prev.tokens + tokens,
-          inputCost: prev.inputCost + inputCost,
-          outputCost: prev.outputCost + outputCost,
-          webSearchCost: (prev.webSearchCost || 0) + webSearchCost,
-          totalCost: prev.totalCost + totalCost,
-          requests: prev.requests + 1,
-          regionsProcessed: (prev.regionsProcessed || 0) + 1,
-        }));
+      setSingleRequestStats(prev => ({
+        tokens: prev.tokens + tokens,
+        inputCost: prev.inputCost + inputCost,
+        outputCost: prev.outputCost + outputCost,
+        webSearchCost: (prev.webSearchCost || 0) + webSearchCost,
+        totalCost: prev.totalCost + totalCost,
+        requests: prev.requests + 1,
+        regionsProcessed: (prev.regionsProcessed || 0) + 1,
+      }));
 
-        setLastOperation({
-          type: 'single',
-          tokens,
-          inputCost,
-          outputCost,
-          webSearchCost,
-          totalCost,
-          regionsCount: 1,
-          model: suggestion.usage.model || currentModel,
-          timestamp: new Date(),
-        });
-      }
+      setLastOperation({
+        type: 'single',
+        tokens,
+        inputCost,
+        outputCost,
+        webSearchCost,
+        totalCost,
+        regionsCount: 1,
+        model,
+        timestamp: new Date(),
+      });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       if (errorMessage.includes('hamsters') || errorMessage.includes('quota') || errorMessage.includes('429')) {
@@ -139,7 +131,7 @@ export function useAISuggestions({
       }));
     }
   }, [aiAvailable, groupNames, quotaError, escalationLevel, useWebSearch, selectedRegionName,
-      groupDescriptions, hasDescriptions, worldViewSource, currentModel,
+      groupDescriptions, hasDescriptions, worldViewSource,
       setSuggestions, setSingleRequestStats, setLastOperation]);
 
   // Batch process all unassigned divisions
@@ -178,36 +170,30 @@ export function useAISuggestions({
       );
 
       // Track batch usage
-      if (result.usage) {
-        const tokens = result.usage.totalTokens;
-        const inputCost = result.usage.cost?.inputCost ?? 0;
-        const outputCost = result.usage.cost?.outputCost ?? 0;
-        const webSearchCost = result.usage.cost?.webSearchCost ?? 0;
-        const totalCost = result.usage.cost?.totalCost ?? 0;
-        const actualRequests = result.apiRequestsCount || 1;
+      const { totalTokens: tokens, cost, model } = result.usage;
+      const { inputCost, outputCost, webSearchCost, totalCost } = cost;
 
-        setBatchRequestStats(prev => ({
-          tokens: prev.tokens + tokens,
-          inputCost: prev.inputCost + inputCost,
-          outputCost: prev.outputCost + outputCost,
-          webSearchCost: (prev.webSearchCost || 0) + webSearchCost,
-          totalCost: prev.totalCost + totalCost,
-          requests: prev.requests + actualRequests,
-          regionsProcessed: (prev.regionsProcessed || 0) + regions.length,
-        }));
+      setBatchRequestStats(prev => ({
+        tokens: prev.tokens + tokens,
+        inputCost: prev.inputCost + inputCost,
+        outputCost: prev.outputCost + outputCost,
+        webSearchCost: (prev.webSearchCost || 0) + webSearchCost,
+        totalCost: prev.totalCost + totalCost,
+        requests: prev.requests + result.apiRequestsCount,
+        regionsProcessed: (prev.regionsProcessed || 0) + regions.length,
+      }));
 
-        setLastOperation({
-          type: 'batch',
-          tokens,
-          inputCost,
-          outputCost,
-          webSearchCost,
-          totalCost,
-          regionsCount: regions.length,
-          model: result.usage.model || currentModel,
-          timestamp: new Date(),
-        });
-      }
+      setLastOperation({
+        type: 'batch',
+        tokens,
+        inputCost,
+        outputCost,
+        webSearchCost,
+        totalCost,
+        regionsCount: regions.length,
+        model,
+        timestamp: new Date(),
+      });
 
       // Update suggestions map
       const newSuggestions = new Map(suggestions);
@@ -235,7 +221,7 @@ export function useAISuggestions({
     }
   }, [aiAvailable, groupNames, unassignedDivisions, quotaError, forceReprocess,
       suggestions, selectedRegionName, worldViewDescription, worldViewSource,
-      effectiveWebSearch, groupDescriptions, hasDescriptions, currentModel,
+      effectiveWebSearch, groupDescriptions, hasDescriptions,
       setSuggestions, setBatchRequestStats, setLastOperation]);
 
   // Auto-assign all high-confidence suggestions

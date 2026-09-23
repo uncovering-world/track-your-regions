@@ -2,106 +2,39 @@
  * AI API Client for region grouping suggestions
  */
 
+import type {
+  AIModels, AIStatus, BatchSuggestions, EscalationLevel, GroupDescriptions, GroupSuggestion, ModelSet,
+  WebSearchModelSet,
+} from '@tyr/shared/api';
 import { authFetchJson, API_URL } from './fetchUtils.js';
 
-/**
- * Available AI models
- */
-export interface AIModel {
-  id: string;
-  name: string;
-  description: string;
-}
-
-/**
- * Token usage information from API call
- */
-export interface TokenUsage {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-  cost: {
-    inputCost: number;
-    outputCost: number;
-    webSearchCost: number;
-    totalCost: number;
-  };
-  model: string;
-}
-
-/**
- * Escalation level for AI requests
- */
-export type EscalationLevel = 'fast' | 'reasoning' | 'reasoning_search';
-
-/**
- * Response from AI suggesting group assignment
- */
-export interface GroupSuggestion {
-  /** The suggested group name (null if no match or split needed) */
-  suggestedGroup: string | null;
-  /** Confidence level: 'high' (auto-assign), 'medium' (suggest), 'low' (uncertain) */
-  confidence: 'high' | 'medium' | 'low';
-  /** Whether the region should be split across multiple groups */
-  shouldSplit: boolean;
-  /** If shouldSplit is true, list of groups to split into */
-  splitGroups?: string[];
-  /** AI's reasoning for the suggestion */
-  reasoning: string;
-  /** Any additional geographic or cultural context */
-  context?: string;
-  /** URLs of sources used (when web search is enabled) */
-  sources?: string[];
-  /** Token usage for this request */
-  usage?: TokenUsage;
-  /** The escalation level used for this response */
-  escalationLevel?: EscalationLevel;
-  /** If true, AI recommends escalating to next level for better accuracy */
-  needsEscalation?: boolean;
-}
-
-/**
- * Batch suggestion result with usage info
- */
-export interface BatchSuggestionResult {
-  suggestions: Record<string, GroupSuggestion>;
-  usage: TokenUsage;
-  apiRequestsCount: number;
-}
-
-export interface AIStatusResponse {
-  available: boolean;
-  message: string;
-  currentModel?: string;
-  webSearchModel?: string;
-  availableModels?: AIModel[];
-  webSearchModels?: AIModel[];
-}
+// What every call here answers is declared once, as a backend schema (ADR-0066),
+// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// imports a call's answer from the module of the call.
+export type {
+  AIModel, AIModels, AIStatus, BatchGroupSuggestion, BatchSuggestions, Confidence, EscalationLevel,
+  GroupDescriptions, GroupSuggestion, ModelSet, TokenUsage, WebSearchModelSet,
+} from '@tyr/shared/api';
 
 /**
  * Check if AI features are available
  */
-export async function checkAIStatus(): Promise<AIStatusResponse> {
-  return authFetchJson<AIStatusResponse>(`${API_URL}/api/ai/status`);
+export async function checkAIStatus(): Promise<AIStatus> {
+  return authFetchJson<AIStatus>(`${API_URL}/api/ai/status`);
 }
 
 /**
  * Get available models
  */
-export async function getAIModels(): Promise<{
-  currentModel: string;
-  webSearchModel: string;
-  availableModels: AIModel[];
-  webSearchModels: AIModel[];
-}> {
-  return authFetchJson(`${API_URL}/api/ai/models`);
+export async function getAIModels(): Promise<AIModels> {
+  return authFetchJson<AIModels>(`${API_URL}/api/ai/models`);
 }
 
 /**
  * Set the current AI model
  */
-export async function setAIModel(modelId: string): Promise<{ success: boolean; currentModel: string }> {
-  return authFetchJson(`${API_URL}/api/ai/models`, {
+export async function setAIModel(modelId: string): Promise<ModelSet> {
+  return authFetchJson<ModelSet>(`${API_URL}/api/ai/models`, {
     method: 'POST',
     body: JSON.stringify({ modelId }),
   });
@@ -110,8 +43,8 @@ export async function setAIModel(modelId: string): Promise<{ success: boolean; c
 /**
  * Set the web search AI model
  */
-export async function setWebSearchModel(modelId: string): Promise<{ success: boolean; webSearchModel: string }> {
-  return authFetchJson(`${API_URL}/api/ai/models/web-search`, {
+export async function setWebSearchModel(modelId: string): Promise<WebSearchModelSet> {
+  return authFetchJson<WebSearchModelSet>(`${API_URL}/api/ai/models/web-search`, {
     method: 'POST',
     body: JSON.stringify({ modelId }),
   });
@@ -156,12 +89,8 @@ export async function suggestGroupsForMultipleRegions(
   worldViewSource?: string,
   useWebSearch?: boolean,
   groupDescriptions?: Record<string, string>
-): Promise<BatchSuggestionResult> {
-  const data = await authFetchJson<{
-    suggestions: Record<string, GroupSuggestion>;
-    usage?: TokenUsage;
-    apiRequestsCount?: number;
-  }>(`${API_URL}/api/ai/suggest-groups-batch`, {
+): Promise<BatchSuggestions> {
+  return authFetchJson<BatchSuggestions>(`${API_URL}/api/ai/suggest-groups-batch`, {
     method: 'POST',
     body: JSON.stringify({
       regions,
@@ -173,12 +102,6 @@ export async function suggestGroupsForMultipleRegions(
       groupDescriptions,
     }),
   });
-
-  return {
-    suggestions: data.suggestions,
-    usage: data.usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: { inputCost: 0, outputCost: 0, webSearchCost: 0, totalCost: 0 }, model: '' },
-    apiRequestsCount: data.apiRequestsCount || 1,
-  };
 }
 
 /**
@@ -190,8 +113,8 @@ export async function generateGroupDescriptions(
   worldViewDescription?: string,
   worldViewSource?: string,
   useWebSearch?: boolean
-): Promise<{ descriptions: Record<string, string>; usage?: TokenUsage }> {
-  return authFetchJson(`${API_URL}/api/ai/generate-group-descriptions`, {
+): Promise<GroupDescriptions> {
+  return authFetchJson<GroupDescriptions>(`${API_URL}/api/ai/generate-group-descriptions`, {
     method: 'POST',
     body: JSON.stringify({
       groups,

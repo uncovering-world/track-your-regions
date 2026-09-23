@@ -25,10 +25,9 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import PaidIcon from '@mui/icons-material/Paid';
-import type { AIModel } from '@/api';
+import type { AIModel, EscalationLevel } from '@/api';
 import type { UsageStats, LastOperation } from './aiAssistTypes';
 import { AIUsagePopover } from './AIUsagePopover';
-import type { EscalationLevel } from './useAISuggestions';
 
 // Helper: compute the "Ask AI" button label
 function getAskAIButtonLabel(

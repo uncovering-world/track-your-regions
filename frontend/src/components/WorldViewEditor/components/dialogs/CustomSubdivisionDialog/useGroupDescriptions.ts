@@ -76,18 +76,16 @@ export function useGroupDescriptions({
       setGroupDescriptions(result.descriptions);
       setShowDescriptions(true);
 
-      // Track usage if available
-      if (result.usage) {
-        setSingleRequestStats(prev => ({
-          tokens: prev.tokens + result.usage!.totalTokens,
-          inputCost: prev.inputCost + (result.usage!.cost?.inputCost ?? 0),
-          outputCost: prev.outputCost + (result.usage!.cost?.outputCost ?? 0),
-          webSearchCost: (prev.webSearchCost || 0) + (result.usage!.cost?.webSearchCost ?? 0),
-          totalCost: prev.totalCost + (result.usage!.cost?.totalCost ?? 0),
-          requests: prev.requests + 1,
-          regionsProcessed: prev.regionsProcessed,
-        }));
-      }
+      const { totalTokens, cost } = result.usage;
+      setSingleRequestStats(prev => ({
+        tokens: prev.tokens + totalTokens,
+        inputCost: prev.inputCost + cost.inputCost,
+        outputCost: prev.outputCost + cost.outputCost,
+        webSearchCost: (prev.webSearchCost || 0) + cost.webSearchCost,
+        totalCost: prev.totalCost + cost.totalCost,
+        requests: prev.requests + 1,
+        regionsProcessed: prev.regionsProcessed,
+      }));
     } catch (error) {
       console.error('Failed to generate descriptions:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

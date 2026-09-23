@@ -29,18 +29,10 @@ export function useAIModelManager() {
         const status = await checkAIStatus();
         setAiAvailable(status.available);
         setAiMessage(status.message);
-        if (status.currentModel) {
-          setCurrentModel(status.currentModel);
-        }
-        if (status.availableModels) {
-          setAvailableModels(status.availableModels);
-        }
-        if (status.webSearchModel) {
-          setWebSearchModelId(status.webSearchModel);
-        }
-        if (status.webSearchModels) {
-          setWebSearchModels(status.webSearchModels);
-        }
+        setCurrentModel(status.currentModel);
+        setAvailableModels(status.availableModels);
+        setWebSearchModelId(status.webSearchModel);
+        setWebSearchModels(status.webSearchModels);
       } catch {
         setAiAvailable(false);
         setAiMessage('Failed to connect to AI service');

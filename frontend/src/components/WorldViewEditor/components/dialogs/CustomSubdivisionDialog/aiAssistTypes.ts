@@ -3,7 +3,7 @@
  */
 
 import type { RegionMember } from '@/api/regions';
-import type { GroupSuggestion } from '@/api';
+import type { BatchGroupSuggestion, GroupSuggestion } from '@/api';
 
 /** Cumulative usage stats for a session (single or batch). */
 export interface UsageStats {
@@ -32,7 +32,8 @@ export interface LastOperation {
 /** Per-division suggestion state. */
 export interface RegionSuggestion {
   division: RegionMember;
-  suggestion: GroupSuggestion | null;
+  /** A batch answers a suggestion without the cost and the escalation keys a single ask carries. */
+  suggestion: (BatchGroupSuggestion & Partial<GroupSuggestion>) | null;
   loading: boolean;
   error: string | null;
 }
