@@ -386,7 +386,7 @@ Hooks in `frontend/src/hooks/` are app-wide concerns shared across many componen
 | `useRegionHover` | Which region the pointer is over — the same store shape, mounted by `NavigationProvider`. As context state it re-rendered every `useNavigation` consumer per mouse move |
 | `useSeenWindowIds` | Which rows a windowed list's viewport has held, accumulated and flushed on a timer — what New-badge impressions may honestly report |
 | `useVisitedRegions` | Region visit tracking |
-| `useVisitedExperiences` | Experience visit tracking, mutations |
+| `useVisitedExperiences` | Experience visit tracking, mutations, over the calls in `api/visited.ts` |
 | `useDiscoverExperiences` | Discover mode queries |
 | `useRegionLocations` | Batch location fetching; takes `includeLost` and `includeChildren` so the markers follow the list they belong to — both are part of the query key |
 | `useNewBadgeImpressions` | Reports which "New" chips actually rendered, so the reader's personal window starts from a real impression |
@@ -443,7 +443,7 @@ The schema describes the wire, meaning what `JSON.parse` yields on the client:
   - A refinement that a second module needs lives beside `respond()` in `backend/src/api/`, because a response module exports schemas only.
 - A schema module imports only `zod/v4`, the generated row types, vocabulary constants, the schemas of other response modules, and the pure helpers beside `respond()` in `backend/src/api/`. The generator imports every schema module, so nothing a schema imports may open a pool or read the environment.
 
-The handler sends the body with `respond(res, Schema, body)`, from `backend/src/api/respond.ts`. The body is typed from the schema, so an undeclared key in the literal, a `Date` where the wire says string, a value outside a vocabulary or a missing key fails `tsc`. Outside production, the body is also parsed strictly before it is sent, which covers both unit lanes, the dev stack, the smoke lane and `test:db`. A mismatch is a 500 that names the route and the issue paths.
+The handler sends the body with `respond(res, Schema, body)`, from `backend/src/api/respond.ts`. The body is typed from the schema, so an undeclared key in the literal, a `Date` where the wire says string, a value outside a vocabulary or a missing key fails `tsc`. Outside production, the body is also parsed strictly before it is sent, which covers both unit lanes, the dev stack, the smoke lane and `test:db`. A mismatch is a 500 that names the route and the issue paths. Call `respond()` outside any `try` whose `catch` answers with its own message, and after a transaction's `COMMIT` rather than inside it: otherwise that catch swallows the named 500, or answers a committed write with a `ROLLBACK` that has nothing left to undo.
 
 TypeScript checks only the keys a literal writes itself, so build the body to write every key:
 - An optional key is written as `key: cond ? value : undefined`, never as `...(cond ? { key } : {})`. JSON drops the `undefined`.
