@@ -11,7 +11,7 @@ import {
   Box, Typography, Chip, FormControlLabel, Switch, TablePagination, Stack,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { getSyncLogChanges, type SyncChange, type SyncFieldChange } from '../../api/admin';
+import { getSyncLogChanges, type ChangedField, type SyncChange } from '../../api/admin';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 
 const PAGE_SIZE = 25;
@@ -56,7 +56,7 @@ function itemLabel(item: { name: string | null; ref: string | null }): string {
  * with a curator rather than how often anything changed.
  */
 function rewriteSummary(
-  changed: Array<{ fields: SyncFieldChange[] }>,
+  changed: Array<{ fields: ChangedField[] }>,
 ): string | null {
   if (changed.length === 0) return null;
   const verbs: Record<string, string> = {
@@ -118,7 +118,7 @@ function describeValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function FieldRow({ change }: { change: SyncFieldChange }) {
+function FieldRow({ change }: { change: ChangedField }) {
   const oldText = describeValue(change.old);
   const newText = describeValue(change.new);
   const isLong = oldText.length > INLINE_VALUE_LIMIT || newText.length > INLINE_VALUE_LIMIT;

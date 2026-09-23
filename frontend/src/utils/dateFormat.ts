@@ -40,8 +40,8 @@ export function formatRelativeTime(
  * Format a duration between two ISO date strings as a human-readable string.
  * Returns '-' if end is null (still running).
  */
-export function formatDuration(start: string, end: string | null): string {
-  if (!end) return '-';
+export function formatDuration(start: string | null, end: string | null): string {
+  if (!start || !end) return '-';
   const ms = new Date(end).getTime() - new Date(start).getTime();
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;

@@ -48,6 +48,8 @@ const UNESCO: ExperienceSource = {
   stay_sitelinks: null,
   find_enter_sitelinks: null,
   find_stay_sitelinks: null,
+  // The UNESCO run reads its own API and keeps nothing between runs.
+  caches: false,
   repairsPictures: true,
 };
 

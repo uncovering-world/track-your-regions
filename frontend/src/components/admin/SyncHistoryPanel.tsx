@@ -160,10 +160,10 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
       </TableCell>
       <TableCell>{formatDateTime(log.started_at)}</TableCell>
       <TableCell>{formatDuration(log.started_at, log.completed_at)}</TableCell>
-      <TableCell align="right">{(log.total_fetched ?? 0).toLocaleString()}</TableCell>
-      <TableCell align="right">{(log.total_created ?? 0).toLocaleString()}</TableCell>
+      <TableCell align="right">{log.total_fetched.toLocaleString()}</TableCell>
+      <TableCell align="right">{log.total_created.toLocaleString()}</TableCell>
       <TableCell align="right">
-        {(log.total_updated ?? 0).toLocaleString()}
+        {log.total_updated.toLocaleString()}
         {/* Not on a lost record: that run counted the new way and merely
             failed to keep its changeset, and its card says so. Starring it
             here would have the list and the card disagree about one run. */}
@@ -297,12 +297,10 @@ export function changesetNote(log: SyncLog) {
   );
 }
 
-function Tile({ value, label, bg }: { value: number | null; label: string; bg: string }) {
+function Tile({ value, label, bg }: { value: number; label: string; bg: string }) {
   return (
     <Box sx={{ p: 2, bgcolor: bg, borderRadius: 1 }}>
-      {/* Counters are nullable in the database; a run that failed before it
-          could write them should show a zero, not take the card down. */}
-      <Typography variant="h4">{(value ?? 0).toLocaleString()}</Typography>
+      <Typography variant="h4">{value.toLocaleString()}</Typography>
       <Typography variant="body2" color="text.secondary">{label}</Typography>
     </Box>
   );
