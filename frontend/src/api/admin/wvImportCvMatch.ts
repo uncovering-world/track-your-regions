@@ -193,9 +193,9 @@ export async function aiSuggestClusterRegions(
   childRegions: Array<{ id: number; name: string }>,
   modelOverride?: string,
 ): Promise<AISuggestClusterRegionsResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-suggest-cluster-regions`, {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-suggest-clusters`, {
     method: 'POST',
-    body: JSON.stringify({ clusters, childRegions, modelOverride }),
+    body: JSON.stringify({ clusters, childRegions, model: modelOverride }),
   });
 }
 
@@ -219,11 +219,6 @@ export function clusterPreviewUrl(reviewId: string): string {
 /** URL for per-cluster highlight image (red-outline overlay for selected cluster) */
 export function clusterHighlightUrl(reviewId: string, label: number): string {
   return withTokenQuery(`${API_URL}/api/admin/wv-import/cluster-highlight/${reviewId}/${label}`);
-}
-
-/** URL for cluster overlay image (RGBA, all clusters in their colors on transparent bg) */
-export function clusterOverlayUrl(reviewId: string): string {
-  return withTokenQuery(`${API_URL}/api/admin/wv-import/cluster-overlay/${reviewId}`);
 }
 
 /** Respond to cluster review during CV match */

@@ -267,9 +267,8 @@ export async function analyzeCoverageGaps(
   worldViewId: number,
   regionId: number,
 ): Promise<AnalyzeCoverageGapsResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/analyze-coverage-gaps`, {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/coverage-gap-analysis/${regionId}`, {
     method: 'POST',
-    body: JSON.stringify({ regionId }),
   });
 }
 
@@ -305,7 +304,7 @@ export async function splitDivisionsDeeper(
   regionId: number,
   source?: 'geoshape' | 'points' | 'image',
 ): Promise<SplitDeeperResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/split-divisions-deeper`, {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/split-deeper`, {
     method: 'POST',
     body: JSON.stringify({ divisionIds, wikidataId, regionId, source }),
   });
@@ -325,8 +324,8 @@ export async function visionMatchDivisions(
   regionId: number,
   regionMapUrl: string,
 ): Promise<VisionMatchDivisionsResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/vision-match-divisions`, {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/vision-match`, {
     method: 'POST',
-    body: JSON.stringify({ divisionIds, regionId, regionMapUrl }),
+    body: JSON.stringify({ divisionIds, regionId, imageUrl: regionMapUrl }),
   });
 }
