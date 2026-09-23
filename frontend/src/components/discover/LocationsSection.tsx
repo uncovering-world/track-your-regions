@@ -36,20 +36,18 @@ import { EmptyState } from '../shared/EmptyState';
 import { locationLabel } from '../../utils/locationLabel';
 import { claimLabel } from '../../utils/placeClaims';
 import { foldLabel } from '@tyr/shared/labels';
+import type { LocationWithVisitedStatus } from '../../api/visited';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 
-/** One place the object has, as a row in the section's location list. */
-export interface PanelLocation {
-  id: number;
-  name: string | null;
-  ordinal: number | null;
-  longitude: number;
-  latitude: number;
-  isVisited: boolean;
-  /** The fields a curator has claimed on the place, so the row can say it is corrected. */
-  curatedFields?: string[];
-}
+/**
+ * One place the object has, as a row in the section's location list: the visit
+ * read's place, and the fields a curator has claimed on it, so the row can say
+ * it is corrected.
+ */
+export type PanelLocation = Pick<
+  LocationWithVisitedStatus, 'id' | 'name' | 'ordinal' | 'longitude' | 'latitude' | 'isVisited'
+> & { curatedFields?: string[] };
 
 interface LocationsSectionProps {
   /** Whose places these are — a row hover names the object and the place. */

@@ -5,22 +5,12 @@
 import { useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
-import { authFetchJson } from '../api/fetchUtils';
 import { invalidateVisitedStatus } from '../utils/queryInvalidation';
-import type { VisitedStatus, ExperienceVisitedStatusResponse } from '../api/experiences';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-interface VisitedExperienceIds {
-  visitedIds: number[];
-  total: number;
-}
-
-interface VisitedLocationIds {
-  visitedLocationIds: number[];
-  byExperience: Record<number, number[]>;
-  total: number;
-}
+import {
+  fetchExperienceVisitedStatus, fetchViewedTreasureIds, fetchVisitedExperienceIds, fetchVisitedLocationIds,
+  markAllLocationsVisited, markExperienceVisited, markLocationVisited, markTreasureViewed, unmarkAllLocationsVisited,
+  unmarkExperienceVisited, unmarkLocationVisited, unmarkTreasureViewed, type VisitedStatus,
+} from '../api/visited';
 
 /**
  * Hook for managing experience-level visited status (backward compatible)
@@ -32,10 +22,7 @@ export function useVisitedExperiences(kindId?: number) {
   // Fetch visited experience IDs
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['visited-experiences', 'ids', kindId],
-    queryFn: async (): Promise<VisitedExperienceIds> => {
-      const params = kindId ? `?kindId=${kindId}` : '';
-      return authFetchJson(`${API_URL}/api/users/me/visited-experiences/ids${params}`);
-    },
+    queryFn: () => fetchVisitedExperienceIds(kindId),
     enabled: isAuthenticated,
     staleTime: 60000, // 1 minute
   });
@@ -47,11 +34,7 @@ export function useVisitedExperiences(kindId?: number) {
 
   // Mark as visited mutation
   const markVisitedMutation = useMutation({
-    mutationFn: async (experienceId: number) => {
-      return authFetchJson(`${API_URL}/api/users/me/visited-experiences/${experienceId}`, {
-        method: 'POST',
-      });
-    },
+    mutationFn: markExperienceVisited,
     onSuccess: () => {
       invalidateVisitedStatus(queryClient);
     },
@@ -59,11 +42,7 @@ export function useVisitedExperiences(kindId?: number) {
 
   // Unmark as visited mutation
   const unmarkVisitedMutation = useMutation({
-    mutationFn: async (experienceId: number) => {
-      return authFetchJson(`${API_URL}/api/users/me/visited-experiences/${experienceId}`, {
-        method: 'DELETE',
-      });
-    },
+    mutationFn: unmarkExperienceVisited,
     onSuccess: () => {
       invalidateVisitedStatus(queryClient);
     },
@@ -91,10 +70,7 @@ export function useVisitedLocations(experienceId?: number) {
   // Fetch visited location IDs
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['visited-locations', 'ids', experienceId],
-    queryFn: async (): Promise<VisitedLocationIds> => {
-      const params = experienceId ? `?experienceId=${experienceId}` : '';
-      return authFetchJson(`${API_URL}/api/users/me/visited-locations/ids${params}`);
-    },
+    queryFn: () => fetchVisitedLocationIds(experienceId),
     enabled: isAuthenticated,
     staleTime: 60000, // 1 minute
   });
@@ -111,11 +87,7 @@ export function useVisitedLocations(experienceId?: number) {
 
   // Mark location as visited mutation
   const markLocationVisitedMutation = useMutation({
-    mutationFn: async (locationId: number) => {
-      return authFetchJson(`${API_URL}/api/users/me/visited-locations/${locationId}`, {
-        method: 'POST',
-      });
-    },
+    mutationFn: markLocationVisited,
     onSuccess: () => {
       invalidateVisitedStatus(queryClient);
     },
@@ -123,11 +95,7 @@ export function useVisitedLocations(experienceId?: number) {
 
   // Unmark location as visited mutation
   const unmarkLocationVisitedMutation = useMutation({
-    mutationFn: async (locationId: number) => {
-      return authFetchJson(`${API_URL}/api/users/me/visited-locations/${locationId}`, {
-        method: 'DELETE',
-      });
-    },
+    mutationFn: unmarkLocationVisited,
     onSuccess: () => {
       invalidateVisitedStatus(queryClient);
     },
@@ -135,12 +103,8 @@ export function useVisitedLocations(experienceId?: number) {
 
   // Mark locations of an experience as visited (optionally filtered by region)
   const markAllLocationsMutation = useMutation({
-    mutationFn: async ({ experienceId, regionId }: { experienceId: number; regionId?: number }) => {
-      const params = regionId ? `?regionId=${regionId}` : '';
-      return authFetchJson(`${API_URL}/api/users/me/experiences/${experienceId}/mark-all-locations${params}`, {
-        method: 'POST',
-      });
-    },
+    mutationFn: ({ experienceId, regionId }: { experienceId: number; regionId?: number }) =>
+      markAllLocationsVisited(experienceId, regionId),
     onSuccess: () => {
       invalidateVisitedStatus(queryClient);
     },
@@ -148,12 +112,8 @@ export function useVisitedLocations(experienceId?: number) {
 
   // Unmark locations of an experience as visited (optionally filtered by region)
   const unmarkAllLocationsMutation = useMutation({
-    mutationFn: async ({ experienceId, regionId }: { experienceId: number; regionId?: number }) => {
-      const params = regionId ? `?regionId=${regionId}` : '';
-      return authFetchJson(`${API_URL}/api/users/me/experiences/${experienceId}/mark-all-locations${params}`, {
-        method: 'DELETE',
-      });
-    },
+    mutationFn: ({ experienceId, regionId }: { experienceId: number; regionId?: number }) =>
+      unmarkAllLocationsVisited(experienceId, regionId),
     onSuccess: () => {
       invalidateVisitedStatus(queryClient);
     },
@@ -201,10 +161,7 @@ export function useViewedTreasures(experienceId?: number) {
 
   const { data, isLoading } = useQuery({
     queryKey: ['viewed-treasures', experienceId],
-    queryFn: async (): Promise<{ viewedTreasureIds: number[] }> => {
-      const params = experienceId ? `?experienceId=${experienceId}` : '';
-      return authFetchJson(`${API_URL}/api/users/me/viewed-treasures/ids${params}`);
-    },
+    queryFn: () => fetchViewedTreasureIds(experienceId),
     enabled: isAuthenticated,
     staleTime: 60000,
   });
@@ -214,13 +171,8 @@ export function useViewedTreasures(experienceId?: number) {
   }, [data?.viewedTreasureIds]);
 
   const markViewedMutation = useMutation({
-    mutationFn: async ({ treasureId, experienceId }: { treasureId: number; experienceId?: number }) => {
-      return authFetchJson(`${API_URL}/api/users/me/viewed-treasures/${treasureId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ experienceId }),
-      });
-    },
+    mutationFn: ({ treasureId, experienceId }: { treasureId: number; experienceId?: number }) =>
+      markTreasureViewed(treasureId, experienceId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['viewed-treasures'] });
       invalidateVisitedStatus(queryClient);
@@ -228,11 +180,7 @@ export function useViewedTreasures(experienceId?: number) {
   });
 
   const unmarkViewedMutation = useMutation({
-    mutationFn: async (treasureId: number) => {
-      return authFetchJson(`${API_URL}/api/users/me/viewed-treasures/${treasureId}`, {
-        method: 'DELETE',
-      });
-    },
+    mutationFn: unmarkTreasureViewed,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['viewed-treasures'] });
     },
@@ -257,9 +205,7 @@ export function useExperienceVisitedStatus(experienceId: number | null) {
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['experience-visited-status', experienceId],
-    queryFn: async (): Promise<ExperienceVisitedStatusResponse> => {
-      return authFetchJson(`${API_URL}/api/users/me/experiences/${experienceId}/visited-status`);
-    },
+    queryFn: () => fetchExperienceVisitedStatus(experienceId!),
     enabled: isAuthenticated && experienceId !== null,
     staleTime: 60000,
   });

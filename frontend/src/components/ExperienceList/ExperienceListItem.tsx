@@ -32,6 +32,7 @@ import { PlacesCountChip, foldLabel } from './PlacesCountChip';
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
 import type { LocationRowData } from './LocationRow';
 import { isFoldable } from '../experienceMarkers/buildMarkers';
+import type { VisitedStatus } from '../../api/visited';
 
 /**
  * How long the pointer must rest on a row before its card is warmed.
@@ -212,7 +213,7 @@ function ExperienceListItemComponent({
   const foldTooltip = foldLabel(foldable, isCollapsed, inRegionCount || totalLocations, totalLocations);
 
   // Compute IN-REGION visited status using global isLocationVisited
-  const inRegionVisitedStatus = useMemo((): 'not_visited' | 'partial' | 'visited' => {
+  const inRegionVisitedStatus = useMemo((): VisitedStatus => {
     if (inRegionCount === 0) return 'not_visited';
 
     const inRegionVisitedCount = inRegionLocations.filter(loc => isLocationVisited(loc.id)).length;

@@ -3,7 +3,7 @@ import {
   CheckCircle as CheckCircleIcon,
   IndeterminateCheckBox as PartialIcon,
 } from '@mui/icons-material';
-import type { VisitedStatus } from '../../api/experiences';
+import type { VisitedStatus } from '../../api/visited';
 
 interface VisitedStatusButtonProps {
   visitedStatus: VisitedStatus;
