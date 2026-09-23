@@ -16,7 +16,8 @@ import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import DrawIcon from '@mui/icons-material/Draw';
 import MapIcon from '@mui/icons-material/Map';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import type { Region, AdministrativeDivision, AdministrativeDivisionWithPath } from '../../../types';
+import type { Region, AdministrativeDivision } from '../../../types';
+import type { DivisionSearchResult } from '../../../api/divisions';
 import type { RegionMember } from '../../../api/regions';
 import { fetchDivisionGeometry } from '../../../api';
 import {
@@ -34,7 +35,7 @@ export interface DivisionSearchPanelProps {
   // Search (controlled from parent — fed into useRegionQueries)
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
-  searchResults: AdministrativeDivisionWithPath[];
+  searchResults: DivisionSearchResult[];
   searchLoading: boolean;
   debouncedSearch: string;
 
@@ -86,7 +87,7 @@ export function DivisionSearchPanel({
   const [createFromStagedDialogOpen, setCreateFromStagedDialogOpen] = useState(false);
 
   // Division preview state
-  const [previewDivision, setPreviewDivision] = useState<AdministrativeDivisionWithPath | null>(null);
+  const [previewDivision, setPreviewDivision] = useState<DivisionSearchResult | null>(null);
   const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Geometry | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
@@ -117,7 +118,7 @@ export function DivisionSearchPanel({
     setStagedDivisions([]);
   }, []);
 
-  const handlePreviewDivision = useCallback(async (division: AdministrativeDivisionWithPath) => {
+  const handlePreviewDivision = useCallback(async (division: DivisionSearchResult) => {
     setPreviewDivision(division);
     setPreviewLoading(true);
     setPreviewGeometry(null);
@@ -125,7 +126,7 @@ export function DivisionSearchPanel({
     try {
       const feature = await fetchDivisionGeometry(division.id, 1);
       if (feature?.geometry) {
-        setPreviewGeometry(feature.geometry as GeoJSON.Geometry);
+        setPreviewGeometry(feature.geometry);
       }
     } catch (e) {
       console.error('Failed to fetch division geometry:', e);
@@ -418,8 +419,8 @@ export function DivisionSearchPanel({
                     }}>
                       {division.path}
                       {' \u2022 '}
-                      used: {division.usageCount ?? 0}
-                      {division.usedAsSubdivisionCount && division.usedAsSubdivisionCount > 0
+                      used: {division.usageCount}
+                      {division.usedAsSubdivisionCount > 0
                         ? ` \u2022 ${division.usedAsSubdivisionCount} as subdiv`
                         : ''}
                       {division.hasUsedSubdivisions ? ' \u2022 has used subdivs' : ''}

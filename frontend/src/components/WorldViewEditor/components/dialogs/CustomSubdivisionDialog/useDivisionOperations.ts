@@ -321,7 +321,7 @@ export function useDivisionOperations({
       if (feature?.geometry) return feature.geometry;
     }
     const geom = await fetchDivisionGeometry(div.id, selectedRegion?.worldViewId ?? 1);
-    return (geom?.geometry as GeoJSON.Geometry | undefined) ?? null;
+    return geom?.geometry ?? null;
   }, [mapGeometries, selectedRegion]);
 
   const openCutDialogForDivision = useCallback(async (

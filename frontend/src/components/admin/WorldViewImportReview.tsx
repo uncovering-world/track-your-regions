@@ -281,7 +281,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     setPreviewLoading(true);
     try {
       const feature = await fetchDivisionGeometry(divisionId, 1, { detail: 'medium' });
-      setPreviewGeometry((feature?.geometry as GeoJSON.Geometry) ?? null);
+      setPreviewGeometry(feature?.geometry ?? null);
     } finally {
       setPreviewLoading(false);
     }

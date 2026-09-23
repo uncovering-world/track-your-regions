@@ -18,7 +18,7 @@ import { searchDivisions, searchRegions } from '../api';
 import { searchExperiences, type ExperienceRegionRef, type ExperienceSearchResult } from '../api/experiences';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ExperienceSearchResults } from './ExperienceSearchResults';
-import type { AdministrativeDivisionWithPath } from '../types';
+import type { DivisionSearchResult } from '../api/divisions';
 import type { RegionSearchResult } from '../api';
 
 /** Enough to be a name rather than a letter, and what the API itself requires. */
@@ -61,7 +61,7 @@ export function Search() {
 
   const isLoading = (isCustomWorldView ? regionsLoading : divisionsLoading) || experiencesLoading;
 
-  const handleSelectDivision = useCallback((division: AdministrativeDivisionWithPath) => {
+  const handleSelectDivision = useCallback((division: DivisionSearchResult) => {
     setSelectedDivision({
       id: division.id,
       name: division.name,

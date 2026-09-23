@@ -457,7 +457,7 @@ export function CustomSubdivisionDialog({
     setPreviewGeometry(null);
     try {
       const geom = await fetchDivisionGeometry(div.id, 1);
-      setPreviewGeometry(geom?.geometry as GeoJSON.Geometry || null);
+      setPreviewGeometry(geom?.geometry ?? null);
     } catch {
       setPreviewGeometry(null);
     } finally {
