@@ -472,6 +472,9 @@ All require admin auth.
 | POST | `/matches/:worldViewId/accept` | Accept one suggestion (additive — keeps remaining) |
 | POST | `/matches/:worldViewId/reject` | Dismiss one suggestion |
 | POST | `/matches/:worldViewId/accept-batch` | Accept batch of matches |
+| POST | `/matches/:worldViewId/accept-and-reject` | Accept one suggestion and reject the region's other open ones, in one transaction |
+| POST | `/matches/:worldViewId/accept-batch-and-reject-rest` | The same for a selection (body: `{ regionId, divisionIds }`): the review's selection toolbar |
+| POST | `/matches/:worldViewId/reject-batch` | Reject a selection of a region's suggestions (body: `{ regionId, divisionIds }`) |
 | POST | `/matches/:worldViewId/ai-match` | Start AI-assisted re-matching (batch) |
 | GET | `/matches/:worldViewId/ai-match/status` | AI matching progress |
 | POST | `/matches/:worldViewId/ai-match/cancel` | Cancel AI matching |
@@ -503,6 +506,10 @@ All require admin auth.
 | POST | `/matches/:worldViewId/rename-region` | Rename a region and optionally update its source URL / external ID |
 | POST | `/matches/:worldViewId/ai-suggest-children` | AI audit + enrichment + verification — returns `ReviewChildAction[]` |
 | GET | `/geoshape/:wikidataId` | Proxy Wikidata geoshape GeoJSON (validated `Q\d+`) |
+
+A verdict on suggestions has one writer per rule, whether it is given for one division or for a selection: `acceptDivisionsRejectRest` and `rejectDivisions` (`controllers/admin/wvImportMatchDecisions.ts`), each in one transaction. The single routes (`accept-and-reject`, `reject`) pass one division, and the batch routes pass the selection. After a rejection the region's status follows what is left: open suggestions make it `needs_review`, members `manual_matched`, and nothing `no_candidates`.
+
+**Every path the admin client calls is a route `adminRoutes.ts` registers.** `backend/src/routes/adminClientPaths.test.ts` reads each `/api/admin/…` path the modules in `frontend/src/api/admin/` spell, with its method, and fails on one the router does not register. A drifted path answers a 404 only when somebody presses its button, so nothing else notices it. The route declarations of #793 will give the paths one owner and retire the spec.
 
 ## Backend Structure
 
@@ -692,7 +699,7 @@ Border opacity slider (0–100%) controls SVG layer visibility.
 | `svgBorderUtils.ts` | Catmull-Rom path smoothing, endpoint detection, rasterization for fill, eraser hit detection |
 | `wvImportMatchBorderTrace.ts` | OpenCV findContours border extraction, Douglas-Peucker simplification |
 | `wvImportMatchReview.ts` | `ManualClusterDecision` type, `ClusterReviewResponse` union, overlay image store |
-| `adminWorldViewImport.ts` (frontend API) | `BorderPath`, `ManualClusterResponse`, `ClusterReviewCluster`, `clusterOverlayUrl()` |
+| `wvImportCvMatch.ts` (frontend API) | `BorderPath`, `ManualClusterResponse`, `ClusterReviewCluster` |
 
 Zod validation schemas: `wvImportClusterReviewBodySchema`, `wvImportClusterHighlightParamSchema` in `backend/src/types/worldViewImportSchemas.ts` (re-exported from the `types` barrel).
 
