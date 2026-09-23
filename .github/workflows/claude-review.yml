@@ -562,9 +562,15 @@ jobs:
           # findings; the cap turned a finished review into a red check on a
           # branch with nothing wrong. So the number is set on that evidence
           # rather than on a guess.
+          #
+          # --effort is set explicitly: Opus 5.5 defaults to medium, so an
+          # inherited level would be one below the high the review runs at.
+          # High rather than xhigh: Opus 5.5 thinks more per turn than Opus 5
+          # at the same level, and xhigh/max are for a measured gain, so high
+          # holds until a run shows the review missing what xhigh would catch.
           claude_args: |
-            --model claude-opus-5
-            --effort xhigh
+            --model claude-opus-5-5
+            --effort high
             --max-turns 140
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(gh issue list:*),Bash(grep:*),Bash(rg:*)"
 
