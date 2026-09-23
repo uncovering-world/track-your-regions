@@ -24,6 +24,7 @@
  */
 
 import type { LayerProps } from 'react-map-gl/maplibre';
+import type { WorldPointsResponse } from '../../api/worldPoints';
 import {
   HEATMAP_MAX_ZOOM, heatmapLayer, hoverGlowLayer, hoverRingLayer,
   markerLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
@@ -205,11 +206,7 @@ export function worldBadgeLayers(folded: boolean): LayerProps[] {
 }
 
 /** What an answer's own shape says about it, which is all these layers need. */
-export interface DrawableAnswer {
-  detail: 'overview' | 'markers';
-  folded: boolean;
-  truncated?: true;
-}
+export type DrawableAnswer = Pick<WorldPointsResponse, 'detail' | 'folded' | 'truncated'>;
 
 /**
  * The layers an answer can actually be drawn through.

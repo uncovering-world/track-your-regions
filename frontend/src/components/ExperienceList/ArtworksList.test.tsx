@@ -73,6 +73,11 @@ function work(overrides: Partial<ExperienceTreasure> = {}): ExperienceTreasure {
       author: 'Mbzt', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null,
     },
     sitelinks_count: 40,
+    is_iconic: false,
+    curated_fields: [],
+    venue_count: 1,
+    found_at: null,
+    found_at_site: null,
     ...overrides,
   };
 }
