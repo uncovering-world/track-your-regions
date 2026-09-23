@@ -57,17 +57,34 @@ const CANDIDATE = 214;
 const ADMIN = { id: 1 };
 
 describe('listing curators by role and assignment', () => {
-  it('keeps admins without assignments and emits no null assignment in their scopes', async () => {
-    mockedQuery.mockReset().mockResolvedValue({ rows: [] });
-    await listCurators({} as never, makeRes() as never);
+  it('keeps admins without assignments, with no scopes, and curators only with one', async () => {
+    const res = makeRes();
+    mockedQuery.mockReset().mockImplementation(async (sql: string) => (/FROM curator_assignments ca\s+LEFT JOIN/i.test(String(sql))
+      ? { rows: [{
+        user_id: CANDIDATE, id: 77, scope_type: 'region', region_id: ALGERIA, region_name: 'Algeria',
+        source_id: null, source_name: null, assigned_at: new Date('2026-08-23T10:00:00Z'), notes: null,
+      }] }
+      : { rows: [
+        { id: ADMIN.id, display_name: 'Admin', email: 'admin@example.org', role: 'admin', avatar_url: null },
+        { id: CANDIDATE, display_name: 'Curator', email: null, role: 'curator', avatar_url: null },
+      ] }));
+    await listCurators({} as never, res as never);
 
-    // Assert the query sent to PostgreSQL: a canned result cannot reproduce
-    // the inner join that dropped administrators with no assignment (#905).
+    // The people read keeps an admin whatever they hold, and a curator only
+    // while an assignment stands (#905).
     const sql = String(mockedQuery.mock.calls[0][0]).replace(/\s+/g, ' ');
-    expect(sql).toMatch(/LEFT JOIN curator_assignments ca ON u.id = ca.user_id/i);
-    expect(sql).toMatch(/COALESCE\(json_agg\(/i);
-    expect(sql).toMatch(/FILTER \(WHERE ca.id IS NOT NULL\), '\[\]'::json\)/i);
-    expect(sql).toMatch(/WHERE u.role = 'admin' OR \(u.role = 'curator' AND ca.id IS NOT NULL\)/i);
+    expect(sql).toMatch(/WHERE u.role = 'admin' OR \(u.role = 'curator' AND EXISTS \(SELECT 1 FROM curator_assignments ca WHERE ca.user_id = u.id\)\)/i);
+    expect(mockedQuery.mock.calls[1][1]).toEqual([[ADMIN.id, CANDIDATE]]);
+    expect(res.json).toHaveBeenCalledWith([
+      { user_id: ADMIN.id, display_name: 'Admin', email: 'admin@example.org', role: 'admin', avatar_url: null, scopes: [] },
+      {
+        user_id: CANDIDATE, display_name: 'Curator', email: null, role: 'curator', avatar_url: null,
+        scopes: [{
+          id: 77, scopeType: 'region', regionId: ALGERIA, regionName: 'Algeria',
+          sourceId: null, sourceName: null, assignedAt: '2026-08-23T10:00:00.000Z', notes: null,
+        }],
+      },
+    ]);
   });
 });
 

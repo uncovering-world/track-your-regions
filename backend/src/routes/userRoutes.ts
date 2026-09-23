@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { respond } from '../api/respond.js';
 import { MyAccount, type CuratorScope } from '../api/responses/auth.js';
 import { VisitedRegion, VisitedRegions } from '../api/responses/visited.js';
-import { curatorScopeOf, type CuratorScopeRow } from '../controllers/admin/curatorScopeRows.js';
+import { CURATOR_SCOPES_SQL, curatorScopeOf, type CuratorScopeOfUserRow } from '../controllers/admin/curatorScopeRows.js';
 import { pool } from '../db/index.js';
 import type { UsersRow, UserVisitedRegionsRow } from '../db/schema.generated.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
@@ -69,16 +69,7 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response):
     // Include curator scopes for curators and admins
     let curatorScopes: CuratorScope[] | undefined;
     if (req.user!.role === 'curator' || req.user!.role === 'admin') {
-      const scopesResult = await pool.query<CuratorScopeRow>(`
-        SELECT
-          ca.id, ca.scope_type, ca.region_id, r.name AS region_name,
-          ca.source_id, es.name AS source_name, ca.assigned_at, ca.notes
-        FROM curator_assignments ca
-        LEFT JOIN regions r ON ca.region_id = r.id
-        LEFT JOIN experience_sources es ON ca.source_id = es.id
-        WHERE ca.user_id = $1
-        ORDER BY ca.assigned_at DESC
-      `, [req.user!.id]);
+      const scopesResult = await pool.query<CuratorScopeOfUserRow>(CURATOR_SCOPES_SQL, [[req.user!.id]]);
       curatorScopes = scopesResult.rows.map(curatorScopeOf);
     }
 

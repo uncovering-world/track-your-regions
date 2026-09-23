@@ -23,12 +23,15 @@ import { CHECK_VALUES } from '../../db/schema.generated.js';
 /** A timestamp as the wire carries it: the handler converts the driver's `Date`. */
 const timestamp = z.iso.datetime({ offset: true });
 
+export const UserRole = z.enum(USER_ROLES).describe('What an account may do: read, curate, or administer.');
+export type UserRole = z.infer<typeof UserRole>;
+
 export const PublicUser = z.strictObject({
   id: z.number().int(),
   uuid: z.string(),
   email: z.string().nullable(),
   displayName: z.string().nullable(),
-  role: z.enum(USER_ROLES),
+  role: UserRole,
   avatarUrl: z.string().nullable(),
   emailVerified: z.boolean(),
   authProvider: z.enum(AUTH_PROVIDERS).nullable().describe('How the account signs in: a password, or an OAuth provider.'),
@@ -83,7 +86,7 @@ export const MyAccount = z.strictObject({
   uuid: z.string(),
   email: z.string().nullable(),
   displayName: z.string().nullable(),
-  role: z.enum(USER_ROLES),
+  role: UserRole,
   avatarUrl: z.string().nullable(),
   curatorScopes: z.array(CuratorScope).optional()
     .describe('Sent to a curator or an admin: what their curation reaches.'),

@@ -5,6 +5,14 @@
  */
 
 import { Request, Response } from 'express';
+import { respond } from '../../api/respond.js';
+import {
+  AssignmentCancelled,
+  AssignmentStarted,
+  AssignmentStatus,
+  PlacementCounts,
+} from '../../api/responses/admin.js';
+import type { WorldViewsRow } from '../../db/schema.generated.js';
 import { isTerminalSyncStatus } from '../../services/sync/types.js';
 import { isCancellable } from '../../services/sync/syncOrchestrator.js';
 import { CHANGESET_LOST_MARKER } from '../../services/sync/syncLogMarkers.js';
@@ -648,7 +656,7 @@ export async function startRegionAssignment(req: Request, res: Response): Promis
   }
 
   // Validate world view exists
-  const worldView = await pool.query(
+  const worldView = await pool.query<Pick<WorldViewsRow, 'id' | 'name'>>(
     'SELECT id, name FROM world_views WHERE id = $1',
     [worldViewId]
   );
@@ -663,7 +671,7 @@ export async function startRegionAssignment(req: Request, res: Response): Promis
     console.error('[Sync Controller] Region assignment error:', err);
   });
 
-  res.json({
+  respond(res, AssignmentStarted, {
     started: true,
     worldViewId,
     worldViewName: worldView.rows[0].name,
@@ -686,13 +694,13 @@ export async function getRegionAssignmentStatus(req: Request, res: Response): Pr
 
   const status = getAssignmentStatus(worldViewId);
   if (!status) {
-    res.json({ running: false });
+    respond(res, AssignmentStatus, { running: false });
     return;
   }
 
   const isRunning = !isTerminalSyncStatus(status.status);
 
-  res.json({
+  respond(res, AssignmentStatus, {
     running: isRunning,
     status: status.status,
     statusMessage: status.statusMessage,
@@ -716,7 +724,7 @@ export async function cancelRegionAssignment(req: Request, res: Response): Promi
   }
 
   const cancelled = cancelAssignment(worldViewId);
-  res.json({ cancelled });
+  respond(res, AssignmentCancelled, { cancelled });
 }
 
 /**
@@ -733,7 +741,7 @@ export async function getExperienceCounts(req: Request, res: Response): Promise<
   }
 
   const counts = await getExperienceCountsByRegion(worldViewId, sourceId);
-  res.json(counts);
+  respond(res, PlacementCounts, counts);
 }
 
 /**

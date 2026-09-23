@@ -203,6 +203,57 @@ export interface AppliedPart {
 /** An area as a simplifying read draws it: one piece or several. */
 export type AreaGeometry = Polygon | MultiPolygon;
 
+/** What an assertion is about, so a growing list stays readable. */
+export type AssertionArea = "places" | "regions" | "boundaries" | "objects" | "pictures";
+
+/**
+ * An `invariant` may match nothing; a `watch` is a number to watch rather than a debt, and cannot
+ * be accepted.
+ */
+export type AssertionKind = "invariant" | "watch";
+
+/**
+ * What today's number means beside the accepted one. `holding` is debt somebody has answered for;
+ * `unanswered` is a rule nobody has answered for yet.
+ */
+export type AssertionStatus = "clear" | "holding" | "improved" | "regressed" | "unanswered" | "watch" | "error";
+
+/** A stop asked of a world view's placement. */
+export interface AssignmentCancelled {
+  /** False when no placement was running to stop. */
+  cancelled: boolean;
+}
+
+/** A placement of experiences into a world view's regions, started in the background. */
+export interface AssignmentStarted {
+  started: true;
+  worldViewId: number;
+  worldViewName: string;
+  /** The one source placed, or null for every source. */
+  sourceId: number | null;
+  message: string;
+}
+
+/**
+ * A world view's placement as it stands. Only `running` is sent while no run is known since the
+ * server started.
+ */
+export interface AssignmentStatus {
+  running: boolean;
+  /**
+   * The step: each point placed in its leaf regions, then carried up to their ancestors, then an
+   * experience's regions written from its points.
+   */
+  status?: "assigning" | "propagating" | "denormalizing" | "complete" | "failed" | "cancelled";
+  statusMessage?: string;
+  /** Points placed in the regions that contain them. */
+  directAssignments?: number;
+  /** Placements carried up to those regions' ancestors. */
+  ancestorAssignments?: number;
+  totalAssignments?: number;
+  errors?: number;
+}
+
 /**
  * What registration and a resent verification answer, the same whether or not the address has an
  * account.
@@ -416,6 +467,64 @@ export interface CurationLogEntry {
   curator_name: string | null;
 }
 
+/** A page of what one curator did. */
+export interface CuratorActivity {
+  /** Newest first. */
+  activity: CuratorActivityEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** One act of a curator's, on one experience. */
+export interface CuratorActivityEntry {
+  id: number;
+  action: "created" | "rejected" | "unrejected" | "edited" | "added_to_region" | "removed_from_region" | "marked_former" | "marked_lost" | "state_restored" | "accepted_source" | "declined_source" | "declined_held" | "missing_dismissed" | "admission_confirmed" | "admission_overridden" | "published" | "location_marked_former" | "location_marked_lost" | "location_state_restored" | "location_missing_dismissed" | "location_edited" | "work_edited" | "arrival_refused" | "contents_refused" | "contents_unrefused";
+  created_at: string | null;
+  /** What the act changed, in the shape its action writes. */
+  details: Record<string, unknown> | null;
+  experience_id: number;
+  experience_name: string;
+  region_id: number | null;
+  region_name: string | null;
+}
+
+/** A curator assignment granted. */
+export interface CuratorAssignmentCreated {
+  id: number;
+  userId: number;
+  scopeType: "region" | "source" | "global";
+  regionId: number | null;
+  sourceId: number | null;
+  assignedAt: string | null;
+  /** The person was a `user`, and is a `curator` now. */
+  rolePromoted: boolean;
+}
+
+/** A curator assignment taken back. */
+export interface CuratorAssignmentRevoked {
+  success: true;
+  assignmentId: number;
+  userId: number;
+  remainingAssignments: number;
+  /** The last assignment went, and the curator is a `user` again. */
+  roleReverted: boolean;
+}
+
+/** One person who curates: every admin, and every curator with an assignment. */
+export interface CuratorInfo {
+  user_id: number;
+  display_name: string | null;
+  email: string | null;
+  role: UserRole;
+  avatar_url: string | null;
+  /** Newest first. An admin with none curates everything by role. */
+  scopes: CuratorScope[];
+}
+
+/** Everyone who curates, by display name. */
+export type Curators = CuratorInfo[];
+
 /** One curator assignment. */
 export interface CuratorScope {
   id: number;
@@ -427,6 +536,43 @@ export interface CuratorScope {
   sourceName: string | null;
   assignedAt: string | null;
   notes: string | null;
+}
+
+/** One assertion over the catalogue: what it found, and what was accepted. */
+export interface DataAssertion {
+  /** Stable across runs and across a rename of the title. */
+  id: string;
+  area: AssertionArea;
+  title: string;
+  kind: AssertionKind;
+  /** What a matching row means, and who has to do what about it. */
+  meaning: string;
+  status: AssertionStatus;
+  /** Every row that matched, not only the ones in `sample`. */
+  found: number;
+  accepted: number | null;
+  acceptedAt: string | null;
+  /** The display name of whoever accepted it, where the account still exists. */
+  acceptedBy: string | null;
+  /** Up to ten rows, each already said the way a person would say it. */
+  sample: string[];
+  /** Why the assertion's statement did not run, where it did not. */
+  error: string | null;
+  needsAttention: boolean;
+}
+
+/** Every assertion over the catalogue's rows. */
+export interface DataAssertionReport {
+  /** Every assertion, the clean ones included. */
+  assertions: DataAssertion[];
+  /** Counted by the server, so the badge and the list cannot disagree. */
+  needsAttention: number;
+  /**
+   * The sentence to show when the record of accepted numbers could not be read, so every check
+   * reports everything it finds. It says whether a migration is owed or the server log names the
+   * failure.
+   */
+  acceptancesUnavailable: string | null;
 }
 
 /** One part a refusal of held rows reached. */
@@ -1172,7 +1318,7 @@ export interface MyAccount {
   uuid: string;
   email: string | null;
   displayName: string | null;
-  role: "user" | "curator" | "admin";
+  role: UserRole;
   avatarUrl: string | null;
   /** Sent to a curator or an admin: what their curation reaches. */
   curatorScopes?: CuratorScope[];
@@ -1235,6 +1381,16 @@ export interface PendingWork {
   curatedFields?: string[] | null;
   venueCount?: number | null;
 }
+
+/** How many experiences are placed in one region. */
+export interface PlacementCount {
+  regionId: number;
+  regionName: string;
+  count: number;
+}
+
+/** Every region of the world view holding at least one experience, most first. */
+export type PlacementCounts = PlacementCount[];
 
 /** A world view whose regions the publication could not recompute. */
 export interface PlacementFailure {
@@ -1307,7 +1463,7 @@ export interface PublicUser {
   uuid: string;
   email: string | null;
   displayName: string | null;
-  role: "user" | "curator" | "admin";
+  role: UserRole;
   avatarUrl: string | null;
   emailVerified: boolean;
   /** How the account signs in: a password, or an OAuth provider. */
@@ -1935,6 +2091,20 @@ export interface UnrefuseContentsResult {
   /** Exactly which works came back, by treasure id. */
   treasureIds: number[];
 }
+
+/** What an account may do: read, curate, or administer. */
+export type UserRole = "user" | "curator" | "admin";
+
+/** One account whose name or email matched. */
+export interface UserSearchResult {
+  id: number;
+  display_name: string | null;
+  email: string | null;
+  role: UserRole;
+}
+
+/** Up to twenty accounts, by display name. */
+export type UserSearchResults = UserSearchResult[];
 
 /** The works the reader has marked seen. */
 export interface ViewedTreasureIds {

@@ -19,6 +19,7 @@
  * describe and carry who accepted them.
  */
 
+import type { AssertionStatus, DataAssertion } from '../../../api/responses/dataAssertions.js';
 import { pool } from '../../../db/index.js';
 import type { AssertionRow, CatalogueAssertion } from './catalogueAssertions.js';
 import { catalogueAssertions } from './catalogueAssertions.js';
@@ -52,23 +53,6 @@ export interface AssertionOutcome {
   /** What went wrong, for an assertion whose query could not run at all. */
   error?: Error;
 }
-
-/**
- * What today's number means beside the accepted one.
- *
- * `unanswered` is the state a newly written assertion is in: rows found, and
- * nobody has yet said whether they are being fixed or carried. It is shown as
- * needing a person on purpose — the decision is the point — and one acceptance
- * moves it to `holding`.
- */
-export type AssertionStatus =
-  | 'clear'
-  | 'holding'
-  | 'improved'
-  | 'regressed'
-  | 'unanswered'
-  | 'watch'
-  | 'error';
 
 export interface AssertionResult extends AssertionOutcome {
   status: AssertionStatus;
@@ -209,26 +193,6 @@ export function needsAttention(status: AssertionStatus): boolean {
   return status === 'regressed' || status === 'unanswered' || status === 'error';
 }
 
-/** One assertion, in the shape the panel reads. */
-export interface AssertionReportEntry {
-  id: string;
-  area: CatalogueAssertion['area'];
-  title: string;
-  kind: CatalogueAssertion['kind'];
-  meaning: string;
-  status: AssertionStatus;
-  /** Every row that matched, not only the ones sent. */
-  found: number;
-  accepted: number | null;
-  acceptedAt: string | null;
-  acceptedBy: string | null;
-  /** Up to `SAMPLE_ROWS` rows, each said the way a person would say it. */
-  sample: string[];
-  /** Why the query did not run, where it did not. */
-  error: string | null;
-  needsAttention: boolean;
-}
-
 /**
  * The report, ready to send.
  *
@@ -238,7 +202,7 @@ export interface AssertionReportEntry {
  * assertion it belongs to. The panel receives text and decides only how to
  * arrange it.
  */
-export function toReport(results: AssertionResult[]): AssertionReportEntry[] {
+export function toReport(results: AssertionResult[]): DataAssertion[] {
   return results.map(result => ({
     id: result.assertion.id,
     area: result.assertion.area,

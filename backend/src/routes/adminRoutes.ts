@@ -8,6 +8,9 @@
 import { Router, Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { pool } from '../db/index.js';
+import type { UsersRow } from '../db/schema.generated.js';
+import { respond } from '../api/respond.js';
+import { UserSearchResults } from '../api/responses/admin.js';
 import { validate } from '../middleware/errorHandler.js';
 import { authenticatedLimiter, expensiveAdminLimiter } from '../middleware/rateLimiter.js';
 import { z } from 'zod';
@@ -313,7 +316,7 @@ router.get('/curators/:userId/activity', validate(userIdParamSchema, 'params'), 
 router.get('/users/search', validate(adminUserSearchQuerySchema, 'query'), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { q } = req.query as unknown as { q: string };
 
-  const result = await pool.query(`
+  const result = await pool.query<Pick<UsersRow, 'id' | 'display_name' | 'email' | 'role'>>(`
     SELECT id, display_name, email, role
     FROM users
     WHERE display_name ILIKE $1 OR email ILIKE $1
@@ -321,7 +324,12 @@ router.get('/users/search', validate(adminUserSearchQuerySchema, 'query'), async
     LIMIT 20
   `, [`%${q}%`]);
 
-  res.json(result.rows);
+  respond(res, UserSearchResults, result.rows.map(u => ({
+    id: u.id,
+    display_name: u.display_name,
+    email: u.email,
+    role: u.role,
+  })));
 });
 
 // =============================================================================
