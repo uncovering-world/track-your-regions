@@ -56,7 +56,7 @@ async function loadDivisionGeometryForSplit(
     if (memberFeature?.geometry) return memberFeature.geometry;
   }
   const geom = await fetchDivisionGeometry(member.id, 1);
-  return (geom?.geometry as GeoJSON.Geometry | undefined) ?? null;
+  return geom?.geometry ?? null;
 }
 
 type PolyFeatureSDD = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;

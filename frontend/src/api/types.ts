@@ -2,13 +2,6 @@
  * API types
  */
 
-import type { GeoJSONFeature } from '../types';
-
-export interface GeoJSONFeatureCollection {
-  type: 'FeatureCollection';
-  features: GeoJSONFeature[];
-}
-
 export interface HullParams {
   bufferKm: number;
   concavity: number;

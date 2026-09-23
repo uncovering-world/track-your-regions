@@ -9,7 +9,6 @@
 
 // Re-export types
 export type {
-  GeoJSONFeatureCollection,
   HullParams,
   ComputationStatus,
   ComputationStartResult,
@@ -35,8 +34,6 @@ export {
   fetchDivisionAncestors,
   fetchDivisionSiblings,
   fetchDivisionGeometry,
-  fetchSubdivisionGeometries,
-  fetchRootDivisionGeometries,
   searchDivisions,
 } from './divisions.js';
 

@@ -75,7 +75,7 @@ export function useGeometryLoading({
         try {
           const geom = await fetchDivisionGeometry(div.id, worldViewId);
           if (!geom?.geometry) return null;
-          return buildDivisionFeature(div, geom.geometry as GeoJSON.Geometry);
+          return buildDivisionFeature(div, geom.geometry);
         } catch (e) {
           // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- div.id is a number
           console.error(`Failed to load geometry for division ${div.id}:`, e);
