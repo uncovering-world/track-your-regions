@@ -528,6 +528,18 @@ Every call `frontend/src/api/worldViews.ts`, `frontend/src/api/regions.ts` and `
 - `POST /api/world-views/regions/:regionId/hull/preview` - Preview hull geometry
 - `POST /api/world-views/regions/:regionId/hull/save` - Save hull geometry
 
+### AI assistance (`/api/ai`, admin-only)
+
+The subdivision dialog's AI tab sorts a region's members into its groups. Every call `frontend/src/api/ai.ts` makes answers through a schema in `backend/src/api/responses/ai.ts` (ADR-0066).
+
+- `GET /api/ai/status` - Whether an API key is configured, the sentence to show, and the models in use and on offer (`AIStatus`)
+- `GET /api/ai/models`, `POST /api/ai/models`, `POST /api/ai/models/web-search` - The models (`AIModels`), and choosing the one in use (`ModelSet`) or the one a web search uses (`WebSearchModelSet`)
+- `POST /api/ai/suggest-group` - One region's group (`GroupSuggestion`), with what asking cost (`usage`), the escalation level it was asked at, and whether to ask again one level up
+- `POST /api/ai/suggest-groups-batch` - A batch of regions, twenty to a request (`BatchSuggestions`): a suggestion per region the model answered for, the summed `usage`, and `apiRequestsCount`, the requests the model answered. An answer that could not be read is counted and costed, since it was paid for, but suggests nothing; a request that failed before any answer is neither
+- `POST /api/ai/generate-group-descriptions` - A short description per group, and what writing them cost (`GroupDescriptions`)
+
+**A model's JSON is read key by key.** Nothing holds what a model writes to a shape, so the services in `backend/src/services/ai/` read each key for the type the answer declares, and anything else becomes the empty reading of that key: a confidence outside `high`, `medium` and `low` is `low`, a `reasoning` that is not text is empty, and a source that is not a string is dropped. A group is resolved against the groups the request offered, ignoring case. A name the model invented is dropped from `splitGroups`, and as the suggested group it leaves no group and `low` confidence, in a batch as for one region.
+
 ### Field limits
 
 `VARCHAR`-backed fields are bounded by the column they are stored in, not by a
