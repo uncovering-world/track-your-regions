@@ -26,6 +26,7 @@ import {
 } from '../../../api';
 import type { Region } from '../../../types';
 import type { WorldView } from '../../../api/worldViews';
+import type { RegionGeometry } from '../../../api/regions';
 import type { DisplayMode } from '../types';
 import { useComputationStatus } from '../hooks';
 import { CustomBoundaryDialog } from '../../CustomBoundaryDialog';
@@ -69,15 +70,15 @@ function mergeComputedRegion(region: Region, data: ComputedRegionPatch): Region 
 
 async function pickStagedGeometriesForRedefine(
   selectedRegion: Region,
-  selectedRegionGeometry: unknown,
+  selectedRegionGeometry: RegionGeometry | null | undefined,
 ): Promise<GeoJSON.FeatureCollection | null> {
   if (selectedRegion.isCustomBoundary && selectedRegionGeometry) {
-    return { type: 'FeatureCollection', features: [selectedRegionGeometry as GeoJSON.Feature] };
+    return { type: 'FeatureCollection', features: [selectedRegionGeometry] };
   }
   const memberGeomsFC = await fetchRegionMemberGeometries(selectedRegion.id);
   if (memberGeomsFC && memberGeomsFC.features.length > 0) return memberGeomsFC;
   if (selectedRegionGeometry) {
-    return { type: 'FeatureCollection', features: [selectedRegionGeometry as GeoJSON.Feature] };
+    return { type: 'FeatureCollection', features: [selectedRegionGeometry] };
   }
   return null;
 }
@@ -151,7 +152,7 @@ function ComputeProgressOutcome({ logs, onDismiss }: ComputeProgressOutcomeProps
 function fitMapToRegion(
   map: MapRef,
   region: Region,
-  geometryFeature: unknown,
+  geometryFeature: RegionGeometry,
   isNewRegion: boolean,
 ): void {
   const duration = isNewRegion ? 500 : 300;
@@ -167,7 +168,7 @@ function fitMapToRegion(
   // The same region as the branch above, framed from its shape instead of its
   // stored box: the floor of 1 holds on both sides, since one region at zoom 0
   // is the globe.
-  frameGeoJson(map, geometryFeature as GeoJSON.Feature, { padding: 50, duration, minZoom: 1 });
+  frameGeoJson(map, geometryFeature, { padding: 50, duration, minZoom: 1 });
 }
 
 export interface GeometryMapPanelProps {
@@ -217,10 +218,10 @@ export function GeometryMapPanel({
   const [hullEditorOpen, setHullEditorOpen] = useState(false);
 
   const geojsonData: GeoJSON.FeatureCollection = selectedRegionGeometry?.geometry
-    ? { type: 'FeatureCollection', features: [selectedRegionGeometry as unknown as GeoJSON.Feature] }
+    ? { type: 'FeatureCollection', features: [selectedRegionGeometry] }
     : { type: 'FeatureCollection', features: [] };
 
-  const crossesDateline = selectedRegionGeometry?.properties?.crossesDateline === true;
+  const crossesDateline = selectedRegionGeometry?.properties.crossesDateline === true;
 
   const [mapLoaded, setMapLoaded] = useState(false);
 

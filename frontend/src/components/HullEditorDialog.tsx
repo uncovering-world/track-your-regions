@@ -23,7 +23,16 @@ import {
   DEFAULT_HULL_PARAMS,
 } from '../api';
 import type { HullParams } from '../api';
-import type { AnchorPoint, FocusBbox } from '../api/regions';
+import type { AnchorPoint, FocusBbox, RegionGeometry } from '../api/regions';
+
+/**
+ * The saved hull, or null where the region has none: asked for the hull, the
+ * read answers the outline instead and says so (`displayMode: 'real'`), and
+ * that outline is not a hull to draw.
+ */
+function savedHullOf(answer: RegionGeometry | null): GeoJSON.Geometry | null {
+  return answer?.properties.displayMode === 'hull' ? answer.geometry : null;
+}
 
 interface HullEditorDialogProps {
   open: boolean;
@@ -80,8 +89,8 @@ export function HullEditorDialog({
       fetchSavedHullParams(regionId),
     ]).then(([realGeom, hullGeom, savedParams]) => {
       if (cancelled) return;
-      setRealGeometry(realGeom?.geometry as GeoJSON.Geometry ?? null);
-      setSavedHullGeometry(hullGeom?.geometry as GeoJSON.Geometry ?? null);
+      setRealGeometry(realGeom?.geometry ?? null);
+      setSavedHullGeometry(savedHullOf(hullGeom));
       if (savedParams) setHullParams(savedParams);
     }).catch((e) => {
       console.error('Failed to load hull editor data:', e);
@@ -137,8 +146,7 @@ export function HullEditorDialog({
       setSaveSuccess(true);
       setPreviewGeometry(null);
       // Refetch hull to show the newly saved one
-      const hullGeom = await fetchRegionGeometry(regionId, 'hull');
-      setSavedHullGeometry(hullGeom?.geometry as GeoJSON.Geometry ?? null);
+      setSavedHullGeometry(savedHullOf(await fetchRegionGeometry(regionId, 'hull')));
       onSaved();
     } catch (e) {
       console.error('Failed to save hull:', e);

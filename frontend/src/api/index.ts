@@ -63,8 +63,6 @@ export {
   flattenSubregion,
   expandToSubregions,
   fetchDivisionUsageCounts,
-  fetchRootRegionGeometries,
-  fetchSubregionGeometries,
 } from './regions.js';
 
 // Re-export Geometry API
