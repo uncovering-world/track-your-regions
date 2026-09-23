@@ -1,8 +1,9 @@
 /**
  * What the regions client's calls answer (ADR-0066): the success bodies of the
  * endpoints `frontend/src/api/regions.ts` calls, declared once. That is the
- * regions of a world view — its tree, one branch, a region's ancestors, a
- * search — and a region created or edited.
+ * regions of a world view (its tree, one branch, a region's ancestors, a
+ * search), a region created or edited, a region's members and the edits to
+ * them, and the outlines the editor draws.
  *
  * Each exported schema is the type of the same name in `@tyr/shared/api`, and
  * the handler sends its body through `respond()`, which holds it to the schema.
@@ -11,6 +12,7 @@
  */
 
 import { z } from 'zod/v4';
+import { MultiPolygon } from './experiences.js';
 
 export const FocusBbox = z.tuple([z.number(), z.number(), z.number(), z.number()])
   .describe(
@@ -156,3 +158,73 @@ export type SubregionsExpanded = z.infer<typeof SubregionsExpanded>;
 export const DivisionUsageCounts = z.record(z.string(), z.number().int())
   .describe('For each division asked about that some region of the world view holds, how many regions hold it, by division id.');
 export type DivisionUsageCounts = z.infer<typeof DivisionUsageCounts>;
+
+export const Polygon = z.strictObject({
+  type: z.literal('Polygon'),
+  coordinates: z.array(z.array(z.array(z.number()))).describe('Rings, the outer first, of [lng, lat] positions.'),
+}).describe('An area in one piece, in GeoJSON.');
+export type Polygon = z.infer<typeof Polygon>;
+
+// A stored outline is a MultiPolygon, and a simplified one is not always:
+// `ST_SimplifyPreserveTopology` answers a Polygon for a MultiPolygon of one piece.
+export const AreaGeometry = z.union([Polygon, MultiPolygon])
+  .describe('An area as a simplifying read draws it: one piece or several.');
+export type AreaGeometry = z.infer<typeof AreaGeometry>;
+
+export const RegionGeometryProperties = z.strictObject({
+  id: z.number().int(),
+  isCustomBoundary: z.boolean(),
+  usesHull: z.boolean(),
+  anchorPoint: AnchorPoint.nullable(),
+  displayMode: z.enum(['hull', 'real']).optional()
+    .describe('Sent when the hull was asked for: `real` where the region has none and its outline came instead.'),
+  crossesDateline: z.boolean().optional()
+    .describe('Sent with the hull: whether it crosses the antimeridian, read off the stored focus frame.'),
+});
+export type RegionGeometryProperties = z.infer<typeof RegionGeometryProperties>;
+
+export const RegionGeometry = z.strictObject({
+  type: z.literal('Feature'),
+  properties: RegionGeometryProperties,
+  geometry: MultiPolygon,
+}).describe('A region\'s stored outline, or its hull where that was asked for and exists.');
+export type RegionGeometry = z.infer<typeof RegionGeometry>;
+
+export const MemberGeometry = z.strictObject({
+  type: z.literal('Feature'),
+  properties: z.strictObject({
+    memberRowId: z.number().int(),
+    divisionId: z.number().int(),
+    name: z.string().describe('The member\'s custom name where it has one, as for a part cut from the division.'),
+    hasCustomGeom: z.boolean().describe('The geometry is a part cut from the division rather than the division.'),
+  }),
+  geometry: AreaGeometry.describe('Simplified for editing, at a tolerance of 0.001°.'),
+}).describe('One division member of a region, drawn.');
+export type MemberGeometry = z.infer<typeof MemberGeometry>;
+
+export const MemberGeometries = z.strictObject({
+  type: z.literal('FeatureCollection'),
+  features: z.array(MemberGeometry),
+}).describe('A region\'s division members, drawn, for the editor.');
+export type MemberGeometries = z.infer<typeof MemberGeometries>;
+
+export const DescendantMemberGeometry = z.strictObject({
+  type: z.literal('Feature'),
+  properties: z.strictObject({
+    memberRowId: z.number().int(),
+    divisionId: z.number().int(),
+    name: z.string(),
+    regionName: z.string().describe('The descendant region the member belongs to.'),
+    regionId: z.number().int(),
+    rootAncestorId: z.number().int().describe('The subregion of the asked-for region that this member sits under.'),
+    hasCustomGeom: z.boolean(),
+  }),
+  geometry: AreaGeometry.describe('Simplified for context, at a tolerance of 0.005°.'),
+}).describe('One division member of a region\'s descendants, drawn as context.');
+export type DescendantMemberGeometry = z.infer<typeof DescendantMemberGeometry>;
+
+export const DescendantMemberGeometries = z.strictObject({
+  type: z.literal('FeatureCollection'),
+  features: z.array(DescendantMemberGeometry),
+}).describe('The division members of every region beneath a region, drawn as read-only context in the editor.');
+export type DescendantMemberGeometries = z.infer<typeof DescendantMemberGeometries>;
