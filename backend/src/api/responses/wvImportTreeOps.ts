@@ -2,9 +2,10 @@
  * What the world-view import review's tree operations answer (ADR-0066): the
  * success bodies of the endpoints `frontend/src/api/admin/wvImportTreeOps.ts`
  * calls, declared once: a reviewer's edits to the imported tree (removing,
- * merging, pruning, renaming and moving regions, simplifying their divisions,
- * resolving a container's leaves, undoing the last of these) and to a region's
- * review state, and the batch verdicts on a region's suggestions.
+ * merging, pruning, flattening, collapsing, renaming and moving regions,
+ * simplifying their divisions, resolving a container's leaves, undoing the last
+ * of these) and to a region's review state, and the batch verdicts on a
+ * region's suggestions.
  *
  * Each exported schema is the type of the same name in `@tyr/shared/api`, and
  * the handler sends its body through `respond()`, which holds it to the schema.
@@ -13,6 +14,7 @@
  */
 
 import { z } from 'zod/v4';
+import { AreaGeometry } from './regions.js';
 
 export const SelectionAccepted = z.strictObject({
   accepted: z.number().int().describe('Divisions of the selection that are the region\'s members now.'),
@@ -161,3 +163,55 @@ export const ManualFixMarked = z.strictObject({
   updated: z.literal(true),
 }).describe('A region marked as needing a manual fix, or unmarked.');
 export type ManualFixMarked = z.infer<typeof ManualFixMarked>;
+
+// ---------------------------------------------------------------------------
+// Flattening and collapsing
+// ---------------------------------------------------------------------------
+
+export const FlattenBlocked = z.strictObject({
+  blocked: z.literal(true),
+  unmatched: z.array(z.strictObject({
+    id: z.number().int(),
+    name: z.string(),
+  })).describe('Descendants with no clear GADM match by name, which have to be matched first.'),
+}).describe('A flatten refused, naming the descendants that stop it.');
+export type FlattenBlocked = z.infer<typeof FlattenBlocked>;
+
+export const FlattenPreview = z.strictObject({
+  blocked: z.literal(false),
+  geometry: AreaGeometry.nullable().describe('The descendants\' divisions unified; null where they have none drawn.'),
+  regionMapUrl: z.string().nullable().describe('The region\'s source map, to compare against.'),
+  descendants: z.number().int(),
+  divisions: z.number().int().describe('Distinct divisions the region would hold.'),
+}).describe('What flattening a region would leave it holding.');
+export type FlattenPreview = z.infer<typeof FlattenPreview>;
+
+export const FlattenPreviewResult = z.union([FlattenPreview, FlattenBlocked])
+  .describe('A flatten\'s preview, or why it cannot run. The preview already matches what it can, so the flatten finds those done.');
+export type FlattenPreviewResult = z.infer<typeof FlattenPreviewResult>;
+
+export const FlattenDone = z.strictObject({
+  blocked: z.literal(false),
+  absorbed: z.number().int().describe('Descendant regions deleted.'),
+  divisions: z.number().int().describe('Distinct divisions the region took from them.'),
+  undoAvailable: z.literal(true),
+}).describe('A region flattened: its descendants\' divisions moved into it and the descendants deleted.');
+export type FlattenDone = z.infer<typeof FlattenDone>;
+
+export const SmartFlattenResult = z.union([FlattenDone, FlattenBlocked])
+  .describe('A flatten done, or why it could not run.');
+export type SmartFlattenResult = z.infer<typeof SmartFlattenResult>;
+
+export const ChildrenCollapsed = z.strictObject({
+  collapsed: z.number().int().describe('Descendant regions whose suggestions and members were cleared; the regions stay.'),
+  parentSuggestions: z.number().int().describe('Suggestions a database search then found for the region itself.'),
+  undoAvailable: z.literal(true),
+}).describe('A region\'s descendants\' matches cleared, and its own match started over with a database search.');
+export type ChildrenCollapsed = z.infer<typeof ChildrenCollapsed>;
+
+export const ChildrenGrouped = z.strictObject({
+  matched: z.number().int(),
+  total: z.number().int(),
+  undoAvailable: z.literal(true),
+}).describe('A region\'s children matched as countries, within the divisions the region holds.');
+export type ChildrenGrouped = z.infer<typeof ChildrenGrouped>;

@@ -481,10 +481,28 @@ export interface ChildrenAutoResolved {
   undoAvailable: true;
 }
 
+/**
+ * A region's descendants' matches cleared, and its own match started over with a database search.
+ */
+export interface ChildrenCollapsed {
+  /** Descendant regions whose suggestions and members were cleared; the regions stay. */
+  collapsed: number;
+  /** Suggestions a database search then found for the region itself. */
+  parentSuggestions: number;
+  undoAvailable: true;
+}
+
 /** A region's descendants deleted, making it a leaf. */
 export interface ChildrenDismissed {
   /** Descendant regions deleted. */
   dismissed: number;
+  undoAvailable: true;
+}
+
+/** A region's children matched as countries, within the divisions the region holds. */
+export interface ChildrenGrouped {
+  matched: number;
+  total: number;
   undoAvailable: true;
 }
 
@@ -1537,6 +1555,44 @@ export interface FieldClaim {
   by: string;
   at: string;
 }
+
+/** A flatten refused, naming the descendants that stop it. */
+export interface FlattenBlocked {
+  blocked: true;
+  /** Descendants with no clear GADM match by name, which have to be matched first. */
+  unmatched: {
+    id: number;
+    name: string;
+  }[];
+}
+
+/** A region flattened: its descendants' divisions moved into it and the descendants deleted. */
+export interface FlattenDone {
+  blocked: false;
+  /** Descendant regions deleted. */
+  absorbed: number;
+  /** Distinct divisions the region took from them. */
+  divisions: number;
+  undoAvailable: true;
+}
+
+/** What flattening a region would leave it holding. */
+export interface FlattenPreview {
+  blocked: false;
+  /** The descendants' divisions unified; null where they have none drawn. */
+  geometry: AreaGeometry | null;
+  /** The region's source map, to compare against. */
+  regionMapUrl: string | null;
+  descendants: number;
+  /** Distinct divisions the region would hold. */
+  divisions: number;
+}
+
+/**
+ * A flatten's preview, or why it cannot run. The preview already matches what it can, so the
+ * flatten finds those done.
+ */
+export type FlattenPreviewResult = FlattenPreview | FlattenBlocked;
 
 /**
  * The frame a camera fits, [west, south, east, north], stored from `geometry_focus()`. West greater
@@ -3141,6 +3197,9 @@ export interface SiteFindsResponse {
   finds: SiteFind[];
   total: number;
 }
+
+/** A flatten done, or why it could not run. */
+export type SmartFlattenResult = FlattenDone | FlattenBlocked;
 
 /** The fame line a source's next run reads, written: the keys the request wrote. */
 export interface SourceLineSet {

@@ -318,7 +318,9 @@ describe('smartFlatten', () => {
     const res = makeRes();
     await smartFlatten(makeReq({ regionId: 100 }), res);
 
-    expect(res._status).toBe(400);
+    // The refusal is an answer naming the children that stop it, so the screen can list them.
+    expect(res._status).toBeUndefined();
+    expect(res._body).toEqual({ blocked: true, unmatched: [{ id: 201, name: 'A' }] });
     expect(invalidated()).toEqual([]);
   });
 });
