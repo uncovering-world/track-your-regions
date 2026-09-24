@@ -504,7 +504,7 @@ All require admin auth.
 | POST | `/matches/:worldViewId/add-child-region` | Create a new child region under a parent (sets `match_status = 'no_candidates'`) |
 | POST | `/matches/:worldViewId/remove-region` | Delete a region from the import tree (with optional child/division reparenting) |
 | POST | `/matches/:worldViewId/rename-region` | Rename a region and optionally update its source URL / external ID |
-| POST | `/matches/:worldViewId/ai-suggest-children` | AI audit + enrichment + verification — returns `ReviewChildAction[]` |
+| POST | `/matches/:worldViewId/ai-suggest-children` | AI audit + enrichment + verification — returns `ChildrenReviewed` |
 | GET | `/geoshape/:wikidataId` | Proxy Wikidata geoshape GeoJSON (validated `Q\d+`) |
 
 **What the import and the review answer.** The import's start, status and cancel, the match statistics, the match tree, the verdicts on suggestions, instance sync and the transfer answer through schemas in `backend/src/api/responses/worldViewImport.ts` (ADR-0066). The statistics are whole numbers: `COUNT` answers a `bigint`, which the driver sends as a string, so each is cast to `int` in the statement. The tree is one recursive schema, `MatchTreeNode`, and each row is mapped by `matchTreeNodeOf` (`controllers/admin/wvImportAnswerRows.ts`). A row's suggestions and assigned divisions are built as JSON in SQL, and its marker points are stored JSON, so they are read key by key. A suggestion's `path` and `score` are nullable, as their columns are, and its `conflict` is `null` where no sibling holds the division. The import status names each progress key rather than spreading the progress record, and always carries the list of imported world views, empty where there is none. The matchers answer through the same module: the database search, geocode, geoshape and point matches, the single-region AI match, the whole-world-view AI re-match and the re-match. Each suggestion a matcher returns is mapped by `foundSuggestionOf`, and each run's progress names its keys, so the run's internal `cancel` flag stays on the server. The geoshape proxy answers one `FeatureCollection` whether the shape came from the `wikidata_geoshapes` cache or from `maps.wikimedia.org`: `geoshapeOf` keeps each polygon or multipolygon, tagged with the item's id, and drops Wikimedia's own feature keys and any geometry that is not an area. No screen calls the whole-world-view AI re-match (`/ai-match`, its status and its cancel); the routes remain for a direct call.
@@ -531,7 +531,7 @@ The colour-match stream (`/color-match-stream`) writes each event through `write
 
 The pipeline's parts take its `SendEvent`, typed with that union. A traced border (`BorderPath`), a cluster's result (`ColorMatchCluster`), a spatial anomaly (`SpatialAnomaly`, also sent by smart simplify) and an adjacency edge are the schemas' types on the server as well. A water review from the Python pipeline is read key by key before it is sent.
 
-**What the tree edits answer.** The plain edits `frontend/src/api/admin/wvImportTreeOps.ts` makes answer through schemas in `backend/src/api/responses/wvImportTreeOps.ts` (ADR-0066). They cover:
+**What the tree edits answer.** Every call `frontend/src/api/admin/wvImportTreeOps.ts` makes answers through a schema in `backend/src/api/responses/wvImportTreeOps.ts` (ADR-0066). The plain edits cover:
 - removing a region (`RegionRemoved`: kept children, or the whole branch), merging its only child, dismissing its children or pruning to leaves;
 - simplifying a region's or its children's members;
 - undoing the last undoable edit, whose `operation` is the `UndoOperation` the undo store is typed with;
@@ -539,11 +539,16 @@ The pipeline's parts take its `SendEvent`, typed with that union. A traced borde
 - adding, renaming and moving a region;
 - a region's hierarchy warnings, members, map image and manual-fix mark.
 
-An edit that runs in a transaction answers after it commits; clearing a region's members is two separate statements, not one transaction. The smart simplify, overlap and AI children calls do not answer through schemas yet. No screen calls the auto-resolve preview (`/auto-resolve-children/preview`).
+An edit that runs in a transaction answers after it commits; clearing a region's members is two separate statements, not one transaction. No screen calls the auto-resolve preview (`/auto-resolve-children/preview`).
 
-Flattening a region and collapsing or grouping its children answer through the same module:
+The edits that propose or reshape more at once answer through the same module:
 - **Flattening.** The preview (`FlattenPreviewResult`) and the flatten (`SmartFlattenResult`) run the same name match on descendants without members (`autoMatchDescendants`, `controllers/admin/wvImportFlattenController.ts`). Where some are left unmatched, either one answers `FlattenBlocked` with their names, and the screen lists them. The blocked outcome is a success answer: an error body carries only its message, so the names would not reach the screen. The preview itself writes the matches it finds.
 - **Collapsing and grouping.** Collapsing a region's children clears their matches and keeps the regions (`ChildrenCollapsed`); grouping matches them as countries (`ChildrenGrouped`).
+- **Smart simplify** (`SmartSimplifyMoves`, `SmartSimplifyApplied`). A move is proposed for a GADM parent whose children are all held among the siblings, but split between them. The answer carries the spatial anomalies left by the current assignment.
+- **Overlaps between siblings** (`DivisionOverlaps`, `OverlapChildren`, `OverlapResolved`). A GADM child's `areaKm2` is `ST_Area` over the geography divided by 10⁶, since `safe_geo_area` answers square metres.
+- **A model's review of a region's children** (`ChildrenReviewed`). The audit and the enrichment are read key by key by `auditOf` and `enrichmentsOf` (`controllers/admin/wvImportChildReviewRows.ts`):
+  - an action of an unknown type, one naming no child, or a rename to nothing is left out;
+  - a Wikidata id that is not a `Q` number is read as none.
 
 A verdict on suggestions has one writer per rule, whether it is given for one division or for a selection: `acceptDivisionsRejectRest` and `rejectDivisions` (`controllers/admin/wvImportMatchDecisions.ts`), each in one transaction. The single routes (`accept-and-reject`, `reject`) pass one division, and the batch routes pass the selection. After a rejection the region's status follows what is left: open suggestions make it `needs_review`, members `manual_matched`, and nothing `no_candidates`.
 
@@ -632,35 +637,21 @@ The **AI Review Children** feature lets an admin audit the current child set of 
 
 The backend handler `aiSuggestChildren` (`wvImportAIController.ts`) runs three sequential phases:
 
-1. **AI Audit** — fetches the region's Wikivoyage article wikitext via `WikivoyageFetcher`, extracts the "Regions" section, and sends it to OpenAI together with the list of current child region names. The AI returns a JSON array of `AuditAction` objects:
+1. **AI Audit** — fetches the region's Wikivoyage article wikitext via `WikivoyageFetcher`, extracts the "Regions" section, and sends it to OpenAI together with the list of current child region names. The AI returns a JSON list of actions:
    - `type: 'add'` — child present in Wikivoyage but missing from the tree
    - `type: 'remove'` — child in the tree that no longer appears in the article
    - `type: 'rename'` — child whose name in the article differs from the stored name
 
-   The model is selected via `getModel()` with the `review_children` feature key.
+   The model is selected by `getModelForFeature('review_children')`. The reply is read key by key by `auditOf` (`wvImportChildReviewRows.ts`): an action of another type, one naming no child, or a rename to nothing is left out.
 
-2. **AI Enrichment** — for `add` and `rename` actions, a second AI call resolves each target into a canonical Wikivoyage page title and a Wikidata QID. The AI is given the article wikitext as context and asked to produce `{ name, wikivoyageTitle, wikidataId }` for each target.
+2. **AI Enrichment** — for `add` and `rename` actions, and for existing children that lack a Wikivoyage URL or a Wikidata QID, a second AI call resolves each target into a canonical Wikivoyage page title and a Wikidata QID. The AI is given the article wikitext as context and asked to produce `{ name, wikivoyageTitle, wikidataQID }` for each target. `enrichmentsOf` reads the reply, and takes a `wikidataQID` that is not a `Q` number as none.
 
 3. **Programmatic Verification** — the enriched Wikivoyage titles are verified in parallel batches via the MediaWiki `action=query&prop=info` API. Each action is marked `verified: true` if the page exists and `verified: false` otherwise.
 
-The response shape is:
-
-```typescript
-interface ReviewChildAction {
-  type: 'add' | 'remove' | 'rename';
-  name: string;        // current tree name (or add target name)
-  newName?: string;    // only for 'rename'
-  reason: string;      // AI-provided reasoning
-  sourceUrl?: string | null;   // verified Wikivoyage URL (add/rename only)
-  sourceExternalId?: string | null;  // Wikidata QID (add/rename only)
-  verified: boolean;   // whether the Wikivoyage page was confirmed to exist
-}
-
-interface AIReviewChildrenResult {
-  actions: ReviewChildAction[];
-  tokensUsed: number;
-}
-```
+The answer is `ChildrenReviewed` (`backend/src/api/responses/wvImportTreeOps.ts`). It carries:
+- `actions`: each a `ChildAction`. That is an `add`, `remove` or `rename` from the audit, or an `enrich` for an existing child that gained a Wikivoyage URL or a Wikidata QID. Each has its `sourceUrl`, `sourceExternalId` and `verified`.
+- `analysis`: the model's own account, or its reply as it came where it could not be parsed.
+- `stats`: the tokens used and their cost. It is `null` where no model was called, because the page has no Regions section.
 
 ### Frontend Dialog
 
