@@ -108,12 +108,14 @@ describe('computeRegionGeometryCore fast path', () => {
       return respond(s);
     });
 
-    await computeRegionGeometryCore(42);
+    const result = await computeRegionGeometryCore(42);
 
+    // Turned away before anything is computed or written (#439): no fast-path
+    // copy, no union, no write to regions at all.
+    expect(result).toEqual({ computed: false, error: 'Region has a hand-drawn boundary, which is kept' });
     const sqls = client.query.mock.calls.map((c) => String(c[0]));
-    expect(sqls.some((s) => s.includes('UPDATE regions') && s.includes('region_members'))).toBe(false);
-    // A custom boundary still falls through to the union path.
-    expect(sqls.some((s) => s.includes('ST_Collect'))).toBe(true);
+    expect(sqls.some((s) => s.includes('UPDATE regions'))).toBe(false);
+    expect(sqls.some((s) => s.includes('ST_Collect'))).toBe(false);
   });
 });
 
@@ -265,6 +267,23 @@ describe('the union path writes regions.geom with no tolerance of its own', () =
     client.query.mockImplementation(async (sql: string) => respondUnion(String(sql)));
     poolQuery.mockReset();
     poolQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
+  });
+
+  it('refuses at the write a boundary drawn by hand while the union ran (#439)', async () => {
+    client.query.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      // The region was checked as not drawn; by the time of the write it is,
+      // so the guarded UPDATE matches no row.
+      if (s.includes('SET geom = validate_multipolygon($2)')) return { rows: [], rowCount: 0 };
+      return respondUnion(s);
+    });
+
+    const result = await computeRegionGeometryCore(42, { skipSnapping: true });
+
+    expect(result).toEqual({ computed: false, error: 'Region was drawn by hand while it was computed; the drawing is kept' });
+    const writes = client.query.mock.calls.map((c) => String(c[0])).filter((s) => s.includes('SET geom'));
+    expect(writes.length).toBeGreaterThan(0);
+    for (const write of writes) expect(write).toContain('is_custom_boundary IS NOT TRUE');
   });
 
   it('stores what the cleaning step produced, and nothing on the way simplifies', async () => {

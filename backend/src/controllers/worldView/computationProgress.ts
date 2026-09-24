@@ -63,7 +63,6 @@ interface GroupRow {
   id: number;
   name: string;
   depth: number;
-  is_custom_boundary: boolean | null;
 }
 
 const GROUP_DEPTH_CTE = `
@@ -103,7 +102,7 @@ async function loadGroupsToCompute(worldViewId: number, forceRecompute: boolean)
   const sql = forceRecompute
     ? `
       ${GROUP_DEPTH_CTE}
-      SELECT gd.id, gd.name, gd.depth, cg.is_custom_boundary
+      SELECT gd.id, gd.name, gd.depth
       FROM group_depth gd
       JOIN regions cg ON gd.id = cg.id
       WHERE cg.is_custom_boundary IS NOT TRUE
@@ -128,7 +127,7 @@ async function loadGroupsToCompute(worldViewId: number, forceRecompute: boolean)
         JOIN needs_geometry n ON n.parent_region_id = p.id
         WHERE pr.is_custom_boundary IS NOT TRUE
       )
-      SELECT gd.id, gd.name, gd.depth, cg.is_custom_boundary
+      SELECT gd.id, gd.name, gd.depth
       FROM group_depth gd
       JOIN regions cg ON gd.id = cg.id
       WHERE cg.is_custom_boundary IS NOT TRUE
@@ -155,17 +154,14 @@ async function computeOneGroup(
   progressState.currentGroup = group.name;
   progressState.status = `Computing: ${group.name} [depth ${group.depth}]`;
 
-  // Group may have been deleted mid-computation
+  // Group may have been deleted mid-computation. A hand-drawn boundary is
+  // computeRegionGeometryCore's to turn away; it answers not computed, and is
+  // counted as skipped below.
   const exists = await pool.query(
-    'SELECT id, is_custom_boundary FROM regions WHERE id = $1',
+    'SELECT id FROM regions WHERE id = $1',
     [group.id],
   );
   if (exists.rows.length === 0) return;
-
-  if (exists.rows[0].is_custom_boundary) {
-    progressState.skipped++;
-    return;
-  }
 
   const startTime = Date.now();
   const result = await computeRegionGeometryCore(group.id, {

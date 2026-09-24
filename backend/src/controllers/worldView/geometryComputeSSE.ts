@@ -429,12 +429,17 @@ async function runUnionPipelineSteps(
   });
 
   logStep('Step 6/6: Saving to database...');
+  // The flag again at the write, for a boundary drawn while this ran (#439).
   const updateResult = await client.query(`
     UPDATE regions
     SET geom = validate_multipolygon($2)
-    WHERE id = $1
+    WHERE id = $1 AND is_custom_boundary IS NOT TRUE
     RETURNING ST_NPoints(geom) as points, uses_hull
   `, [regionId, cleaned.cleanedGeom]);
+  if (updateResult.rows.length === 0) {
+    logStep('Step 6/6: Not saved - drawn by hand meanwhile');
+    return null;
+  }
 
   const finalPoints = updateResult.rows[0]?.points;
   const usesHull = !!updateResult.rows[0]?.uses_hull;
@@ -495,10 +500,10 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
 
     await client.query(`SET statement_timeout = '${GEOMETRY_QUERY_TIMEOUT_MS}'`);
 
-    // shortCircuitForCustomBoundary above already guarantees is_custom_boundary=false;
+    // shortCircuitForCustomBoundary above has turned a hand-drawn boundary away;
     // see computeSingleMemberFastPath's docstring for the rest of the eligibility rules.
     const fastResult = await computeSingleMemberFastPath(
-      client, regionId, stats.memberCount, stats.childRowCount, false, (msg) => logStep(msg),
+      client, regionId, stats.memberCount, stats.childRowCount, (msg) => logStep(msg),
     );
 
     const pipelineResult: UnionPipelineResult | null = fastResult
@@ -510,7 +515,10 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
       // Releasing twice on the same client throws and propagates out of
       // `finally`, ending up in the outer catch that then tries to `res.write`
       // on an already-ended SSE stream ("headers already sent").
-      sendEvent({ type: 'error', message: 'No geometries to merge' });
+      sendEvent({
+        type: 'error',
+        message: 'Nothing was saved: there were no geometries to merge, or the boundary was drawn by hand while this ran',
+      });
       res.end();
       return;
     }

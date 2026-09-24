@@ -109,9 +109,9 @@ async function computeGroupGeom(
   try {
     await client.query(`SET statement_timeout = '${GEOMETRY_QUERY_TIMEOUT_MS}'`);
 
-    // Both callers already guarantee is_custom_boundary=false; see computeSingleMemberFastPath's docstring for the rest.
+    // Both callers have turned a hand-drawn boundary away; see computeSingleMemberFastPath's docstring for the rest.
     const fastResult = await computeSingleMemberFastPath(
-      client, gId, memberCount, childRowCount, false, logStep,
+      client, gId, memberCount, childRowCount, logStep,
     );
     if (fastResult) return fastResult;
 
@@ -231,18 +231,24 @@ async function computeGroupGeom(
     logStep(`Step 5/6: Complete (${holesBefore} holes -> ${numHoles}, removed ${holesBefore - numHoles}), ${numPolygons} polygons, ${numPoints} pts`);
 
     logStep('Step 6/6: Updating region...');
+    // The flag again at the write: a union can run for minutes, and a boundary
+    // drawn by hand meanwhile must not be written over (#439).
     const updateResult = await client.query(`
       UPDATE regions
       SET geom = validate_multipolygon($2)
-      WHERE id = $1
+      WHERE id = $1 AND is_custom_boundary IS NOT TRUE
       RETURNING ST_NPoints(geom) as points
     `, [gId, cleanedGeom]);
 
-    const points = updateResult.rows[0]?.points;
-    logStep(`Step 6/6: Complete! ${points} points`);
     await client.query('RESET statement_timeout');
+    if (updateResult.rows.length === 0) {
+      logStep('Step 6/6: Not saved - drawn by hand meanwhile');
+      return { computed: false, error: 'Region was drawn by hand while it was computed; the drawing is kept' };
+    }
+    const points = updateResult.rows[0].points;
+    logStep(`Step 6/6: Complete! ${points} points`);
 
-    return { computed: updateResult.rows.length > 0, points };
+    return { computed: true, points };
   } catch (err) {
     try {
       await client.query('RESET statement_timeout');
@@ -546,6 +552,14 @@ export async function computeRegionGeometryCore(
     }
 
     const regionName = regionCheck.rows[0].name;
+
+    // A hand-drawn boundary is the region's geometry: nothing computed from
+    // its members may be written over it, whichever caller asks (#439).
+    if (regionCheck.rows[0].is_custom_boundary) {
+      log('Hand-drawn boundary - kept, nothing computed');
+      return { computed: false, error: 'Region has a hand-drawn boundary, which is kept' };
+    }
+
     log(`Starting computation for: ${regionName}`);
 
     // Set statement timeout
@@ -580,7 +594,7 @@ export async function computeRegionGeometryCore(
 
     // computeSingleMemberFastPath docstring: eligibility rules, and why childRowCount (structural) not childCount (geometry-bearing).
     const fastResult = await computeSingleMemberFastPath(
-      client, regionId, memberCount, childRowCount, regionCheck.rows[0].is_custom_boundary, log,
+      client, regionId, memberCount, childRowCount, log,
     );
     // The fast path marks the ancestors stale itself, since all three callers
     // reach it and this one returns straight out of it (#667).
@@ -663,16 +677,21 @@ export async function computeRegionGeometryCore(
 
     // Step 5: Save to database
     log('Step 5: Saving to database...');
+    // The flag again at the write, for a boundary drawn while this ran (#439).
     const updateResult = await client.query(`
       UPDATE regions
       SET geom = validate_multipolygon($2)
-      WHERE id = $1
+      WHERE id = $1 AND is_custom_boundary IS NOT TRUE
       RETURNING ST_NPoints(geom) as points
     `, [regionId, cleanedGeom]);
 
     await client.query('RESET statement_timeout');
+    if (updateResult.rows.length === 0) {
+      log('Not saved - drawn by hand meanwhile');
+      return { computed: false, error: 'Region was drawn by hand while it was computed; the drawing is kept' };
+    }
 
-    const points = updateResult.rows[0]?.points;
+    const points = updateResult.rows[0].points;
     log(`Complete! ${points} points`);
 
     return { computed: true, points };
