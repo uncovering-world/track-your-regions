@@ -80,7 +80,7 @@ function applyAISuggestionsToState(
     return region ? { ...ci, regionId: region.id, regionName: region.name } : ci;
   };
   const applyToFeature = (f: GeoJSON.Feature): GeoJSON.Feature => {
-    if (!f.properties?.clusterId) return f;
+    if (typeof f.properties?.clusterId !== 'number') return f;
     const region = findRegionForCluster(f.properties.clusterId);
     if (!region) return f;
     return { ...f, properties: { ...f.properties, regionId: region.id, regionName: region.name } };
