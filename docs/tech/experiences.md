@@ -3437,9 +3437,7 @@ own*, so a chip states what picking it would leave rather than what is already o
 source, region and run, plus how much is set aside. The region facet counts through the root row
 placement already writes — `assignAncestors` propagates a point's region to every ancestor and
 step 4 of `regionAssignmentService.ts` denormalises the chain into `experience_regions` — rather
-than by walking the tree, which is a measured choice: walking cost 330 ms and took the statement's
-estimated cost past this server's `jit_above_cost` of 100 000, so PostgreSQL compiled 454
-functions for a query that then ran in 120 ms. The dependency on that propagation is confined to
+than by walking the tree, which is a measured choice: walking cost 330 ms. The dependency on that propagation is confined to
 the count; the region *filter* walks its own subtree, so what a curator filters by does not rest
 on it. The facet offers the roots of every public world view plus whatever region this curator is
 assigned, each carrying the world view it is a root of, because a name does not identify one —
