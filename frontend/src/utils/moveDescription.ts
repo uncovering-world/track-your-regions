@@ -8,8 +8,8 @@
  * must not import a feature folder to say "1.6 km east". The arithmetic and the
  * radius are the server's `distanceMeters` (`changeSet.ts`), which is what
  * decided a row was a move at all; the kilometre the warning turns on is the
- * server's `LOCATION_MAJOR_METERS`, restated rather than imported since the two
- * packages share no build (#527).
+ * server's `LOCATION_MAJOR_METERS`, restated rather than imported until #1034
+ * moves both to `@tyr/shared`.
  */
 
 export interface Coordinate {

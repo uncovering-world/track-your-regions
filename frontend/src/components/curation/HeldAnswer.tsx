@@ -71,8 +71,8 @@ export function heldSelectionFor(subject: FactSubject, field: string): HeldSelec
  * `metadata.imageCredit` as a fact and the pairing reaches it. The two levels
  * spell the picture differently — `imageUrl` on the object, the column
  * `image_url` on a part — so this mirrors `partnerOf` rather than keying on one
- * name. Backend and frontend cannot import each other (#527), so the two are
- * pinned by the same cases on both sides.
+ * name. The pairing is written once per side until #1034 moves it to
+ * `@tyr/shared`, so the two are pinned by the same cases on both sides.
  *
  * Merging the two into one cell would be the other fix, and it would put a copy
  * of the server's pairing into the table's layout rule. This says it instead.
