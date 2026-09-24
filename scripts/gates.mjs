@@ -51,10 +51,8 @@ export const INPUTS = [
       'The product is one contract surface, not two stacks. Both sides import'
       + ' packages/shared (ADR-0065), whose generated api module types the frontend'
       + " by the backend's response schemas (ADR-0066). Backend specs read db/,"
-      + ' frontend/src, martin/, packages/ and scripts/ through repoFile(). And for'
-      + ' an endpoint still declared per side, the smoke lane is the only gate that'
-      + ' sees the backend↔frontend contract. So a change to any of them asks for'
-      + ' all of it.',
+      + ' frontend/src, martin/, packages/ and scripts/ through repoFile(). So a'
+      + ' change to any of them asks for all of it.',
   },
   {
     id: 'python',

@@ -539,7 +539,7 @@ The pipeline's parts take its `SendEvent`, typed with that union. A traced borde
 - adding, renaming and moving a region;
 - a region's hierarchy warnings, members, map image and manual-fix mark.
 
-An edit that runs in a transaction answers after it commits; clearing a region's members is two separate statements, not one transaction. No screen calls the auto-resolve preview (`/auto-resolve-children/preview`).
+An edit that runs in a transaction answers after it commits; clearing a region's members is two separate statements, not one transaction. No screen calls the auto-resolve preview (`/auto-resolve-children/preview`), and its answer is declared all the same, as `AutoResolvePreview`.
 
 The edits that propose or reshape more at once answer through the same module:
 - **Flattening.** The preview (`FlattenPreviewResult`) and the flatten (`SmartFlattenResult`) run the same name match on descendants without members (`autoMatchDescendants`, `controllers/admin/wvImportFlattenController.ts`). Where some are left unmatched, either one answers `FlattenBlocked` with their names, and the screen lists them. The blocked outcome is a success answer: an error body carries only its message, so the names would not reach the screen. The preview itself writes the matches it finds.
