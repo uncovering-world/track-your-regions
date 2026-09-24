@@ -539,7 +539,11 @@ The pipeline's parts take its `SendEvent`, typed with that union. A traced borde
 - adding, renaming and moving a region;
 - a region's hierarchy warnings, members, map image and manual-fix mark.
 
-An edit that runs in a transaction answers after it commits; clearing a region's members is two separate statements, not one transaction. The flatten, smart simplify, overlap and AI children calls do not answer through schemas yet. No screen calls the auto-resolve preview (`/auto-resolve-children/preview`).
+An edit that runs in a transaction answers after it commits; clearing a region's members is two separate statements, not one transaction. The smart simplify, overlap and AI children calls do not answer through schemas yet. No screen calls the auto-resolve preview (`/auto-resolve-children/preview`).
+
+Flattening a region and collapsing or grouping its children answer through the same module:
+- **Flattening.** The preview (`FlattenPreviewResult`) and the flatten (`SmartFlattenResult`) run the same name match on descendants without members (`autoMatchDescendants`, `controllers/admin/wvImportFlattenController.ts`). Where some are left unmatched, either one answers `FlattenBlocked` with their names, and the screen lists them. The blocked outcome is a success answer: an error body carries only its message, so the names would not reach the screen. The preview itself writes the matches it finds.
+- **Collapsing and grouping.** Collapsing a region's children clears their matches and keeps the regions (`ChildrenCollapsed`); grouping matches them as countries (`ChildrenGrouped`).
 
 A verdict on suggestions has one writer per rule, whether it is given for one division or for a selection: `acceptDivisionsRejectRest` and `rejectDivisions` (`controllers/admin/wvImportMatchDecisions.ts`), each in one transaction. The single routes (`accept-and-reject`, `reject`) pass one division, and the batch routes pass the selection. After a rejection the region's status follows what is left: open suggestions make it `needs_review`, members `manual_matched`, and nothing `no_candidates`.
 
