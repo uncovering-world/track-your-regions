@@ -11,8 +11,16 @@ import {
   clusterPreviewUrl,
   mapshapeMatch,
   waterCropUrl,
-  type ColorMatchSSEEvent,
+  type ClusterReviewRequested,
+  type ColorMatchComplete,
+  type ColorMatchDebugImage,
+  type ColorMatchEvent,
+  type ColorMatchFailed,
+  type ColorMatchProgress,
   type ColorMatchCluster,
+  type IcpAdjustmentOffered,
+  type WaterComponent,
+  type WaterReviewRequested,
   type MatchTreeNode,
   type ClusterReviewCluster,
   type ClusterGeoInfo,
@@ -119,15 +127,12 @@ export interface UseCvMatchPipelineResult {
 
 type DialogSetter = React.Dispatch<React.SetStateAction<CvMatchDialogState | null>>;
 
-function applyProgressEvent(setDialog: DialogSetter, event: ColorMatchSSEEvent) {
-  if (!event.step) return;
-  const elapsed = event.elapsed?.toFixed(1);
-  const progressText = `${event.step} (${elapsed}s)`;
+function applyProgressEvent(setDialog: DialogSetter, event: ColorMatchProgress) {
+  const progressText = `${event.step} (${event.elapsed.toFixed(1)}s)`;
   setDialog(prev => prev ? { ...prev, progressText } : prev);
 }
 
-function applyDebugImageEvent(setDialog: DialogSetter, event: ColorMatchSSEEvent) {
-  if (!event.debugImage) return;
+function applyDebugImageEvent(setDialog: DialogSetter, event: ColorMatchDebugImage) {
   const img = event.debugImage;
   setDialog(prev => prev ? { ...prev, debugImages: [...prev.debugImages, img] } : prev);
 }
@@ -143,24 +148,23 @@ function applyDebugImageEvent(setDialog: DialogSetter, event: ColorMatchSSEEvent
  */
 function buildWaterReviewComponents(
   rid: string,
-  rawComponents: NonNullable<ColorMatchSSEEvent['waterComponents']>,
+  rawComponents: WaterComponent[],
 ) {
-  const resolveCrop = (incoming: string | undefined, cId: number, subIdx: number): string =>
-    incoming && incoming.startsWith('data:') ? incoming : waterCropUrl(rid, cId, subIdx);
+  const resolveCrop = (incoming: string, cId: number, subIdx: number): string =>
+    incoming.startsWith('data:') ? incoming : waterCropUrl(rid, cId, subIdx);
 
-  const mapSubCluster = (cId: number) => (sc: { idx: number; pct: number; cropDataUrl?: string }) => ({
+  const mapSubCluster = (cId: number) => (sc: WaterComponent['subClusters'][number]) => ({
     ...sc,
     cropDataUrl: resolveCrop(sc.cropDataUrl, cId, sc.idx),
   });
   return rawComponents.map(c => ({
     ...c,
     cropDataUrl: resolveCrop(c.cropDataUrl, c.id, -1),
-    subClusters: (c.subClusters ?? []).map(mapSubCluster(c.id)),
+    subClusters: c.subClusters.map(mapSubCluster(c.id)),
   }));
 }
 
-function applyWaterReviewEvent(setDialog: DialogSetter, event: ColorMatchSSEEvent) {
-  if (!event.reviewId) return;
+function applyWaterReviewEvent(setDialog: DialogSetter, event: WaterReviewRequested) {
   const rid = event.reviewId;
   setDialog(prev => {
     if (!prev) return prev;
@@ -172,7 +176,7 @@ function applyWaterReviewEvent(setDialog: DialogSetter, event: ColorMatchSSEEven
     const waterImg = inlineMask
       ? undefined
       : [...prev.debugImages].reverse().find(img => img.label.startsWith('Water mask'));
-    const components = buildWaterReviewComponents(rid, event.waterComponents ?? []);
+    const components = buildWaterReviewComponents(rid, event.waterComponents);
     const decisions = new Map<number, 'water' | 'region' | 'mix'>();
     for (const c of components) decisions.set(c.id, 'water');
     return {
@@ -180,7 +184,7 @@ function applyWaterReviewEvent(setDialog: DialogSetter, event: ColorMatchSSEEven
       waterReview: {
         reviewId: rid,
         waterMaskImage: inlineMask ?? waterImg?.dataUrl ?? '',
-        waterPxPercent: event.waterPxPercent ?? 0,
+        waterPxPercent: event.waterPxPercent,
         components,
         decisions,
         mixApproved: new Map<number, Set<number>>(),
@@ -257,12 +261,11 @@ function restoreClusterReviewState(
   };
 }
 
-function applyClusterReviewEvent(setDialog: DialogSetter, event: ColorMatchSSEEvent) {
-  if (!event.reviewId) return;
+function applyClusterReviewEvent(setDialog: DialogSetter, event: ClusterReviewRequested) {
   const rid = event.reviewId;
   setDialog(prev => {
     if (!prev) return prev;
-    const clusters = event.data?.clusters ?? [];
+    const { clusters } = event.data;
     const { restoredMerges, restoredExcludes, restoredRegionAssignments } =
       restoreClusterReviewState(prev, clusters);
 
@@ -275,8 +278,8 @@ function applyClusterReviewEvent(setDialog: DialogSetter, event: ColorMatchSSEEv
         merges: restoredMerges,
         excludes: restoredExcludes,
         regionAssignments: restoredRegionAssignments,
-        borderPaths: event.data?.borderPaths ?? [],
-        pipelineSize: event.data?.pipelineSize,
+        borderPaths: event.data.borderPaths,
+        pipelineSize: event.data.pipelineSize,
       },
       savedRegionAssignments: undefined,
       savedMerges: undefined,
@@ -287,21 +290,15 @@ function applyClusterReviewEvent(setDialog: DialogSetter, event: ColorMatchSSEEv
   });
 }
 
-function applyIcpAdjustmentEvent(setDialog: DialogSetter, event: ColorMatchSSEEvent) {
-  if (!event.reviewId) return;
-  const rid = event.reviewId;
+function applyIcpAdjustmentEvent(setDialog: DialogSetter, event: IcpAdjustmentOffered) {
   setDialog(prev => {
     if (!prev) return prev;
     return {
       ...prev,
       icpAdjustment: {
-        reviewId: rid,
-        message: event.message ?? 'Alignment quality is lower than expected.',
-        metrics: {
-          overflow: event.metrics?.overflow ?? 0,
-          error: event.metrics?.error ?? 0,
-          icpOption: event.metrics?.icpOption ?? '',
-        },
+        reviewId: event.reviewId,
+        message: event.message,
+        metrics: event.metrics,
       },
       progressText: 'ICP alignment — adjustment available',
       progressColor: '#ed6c02',
@@ -309,36 +306,26 @@ function applyIcpAdjustmentEvent(setDialog: DialogSetter, event: ColorMatchSSEEv
   });
 }
 
-function buildCompleteStatsText(
-  elapsed: number | undefined,
-  stats: {
-    cvAssignedDivisions?: number;
-    assignedDivisions?: number;
-    cvUnsplittable?: number;
-    cvOutOfBounds?: number;
-  },
-): string {
-  const elapsedText = elapsed?.toFixed(1);
-  const cvAssigned = stats.cvAssignedDivisions ?? 0;
+function buildCompleteStatsText(elapsed: number, stats: ColorMatchComplete['data']['stats']): string {
+  const elapsedText = elapsed.toFixed(1);
+  const cvAssigned = stats.cvAssignedDivisions;
   const preAssignedPart = stats.assignedDivisions ? `, ${stats.assignedDivisions} pre-assigned` : '';
   const unsplittablePart = stats.cvUnsplittable ? `, ${stats.cvUnsplittable} unsplittable` : '';
   const outOfBoundsPart = stats.cvOutOfBounds ? `, ${stats.cvOutOfBounds} outside map` : '';
   return `Done in ${elapsedText}s — ${cvAssigned} matched${preAssignedPart}${unsplittablePart}${outOfBoundsPart}`;
 }
 
-function applyCompleteEvent(setDialog: DialogSetter, event: ColorMatchSSEEvent) {
-  if (!event.data?.stats) return;
-  const stats = event.data.stats;
-  const clusters = event.data.clusters ?? [];
+function applyCompleteEvent(setDialog: DialogSetter, event: ColorMatchComplete) {
+  const { stats, clusters } = event.data;
   const title = stats.countryName
-    ? `CV Match — ${stats.countryName} (${stats.cvAssignedDivisions ?? 0} divisions → ${stats.cvClusters ?? 0} clusters)`
+    ? `CV Match — ${stats.countryName} (${stats.cvAssignedDivisions} divisions → ${stats.cvClusters} clusters)`
     : 'CV Match';
 
   setDialog(prev => {
     if (!prev) return prev;
     // Apply region assignments from cluster review (user picked regions during review)
     const savedAssignments = prev.savedRegionAssignments ?? prev.clusterReview?.regionAssignments;
-    const childRegionsList = event.data?.childRegions ?? prev.childRegions;
+    const childRegionsList = event.data.childRegions;
     const applyAssignmentToCluster = (c: ColorMatchCluster): ColorMatchCluster => {
       const assignedRegionId = savedAssignments?.get(c.clusterId);
       if (assignedRegionId == null) return c;
@@ -353,10 +340,10 @@ function applyCompleteEvent(setDialog: DialogSetter, event: ColorMatchSSEEvent) 
       title,
       clusters: finalClusters,
       childRegions: childRegionsList,
-      outOfBounds: event.data?.outOfBounds ?? prev.outOfBounds,
-      geoPreview: event.data?.geoPreview,
-      spatialAnomalies: event.data?.spatialAnomalies,
-      adjacencyEdges: event.data?.adjacencyEdges,
+      outOfBounds: event.data.outOfBounds ?? prev.outOfBounds,
+      geoPreview: event.data.geoPreview,
+      spatialAnomalies: event.data.spatialAnomalies,
+      adjacencyEdges: event.data.adjacencyEdges,
       progressText: buildCompleteStatsText(event.elapsed, stats),
       progressColor: '#2e7d32',
       done: true,
@@ -364,7 +351,7 @@ function applyCompleteEvent(setDialog: DialogSetter, event: ColorMatchSSEEvent) 
   });
 }
 
-function applyErrorEvent(setDialog: DialogSetter, event: ColorMatchSSEEvent) {
+function applyErrorEvent(setDialog: DialogSetter, event: ColorMatchFailed) {
   setDialog(prev => prev ? {
     ...prev,
     progressText: `Error: ${event.message}`,
@@ -432,7 +419,7 @@ export function useCvMatchPipeline(
       done: false,
     });
 
-    const handleSseEvent = (event: ColorMatchSSEEvent) => {
+    const handleSseEvent = (event: ColorMatchEvent) => {
       switch (event.type) {
         case 'progress':
           applyProgressEvent(setCVMatchDialog, event);

@@ -6,12 +6,13 @@
  * fix, select map image, smart simplify (detect + apply).
  */
 
-import type { SelectionAccepted, SelectionRejected } from '@tyr/shared/api';
+import type { SelectionAccepted, SelectionRejected, SpatialAnomaly } from '@tyr/shared/api';
 import { authFetchJson } from '../fetchUtils';
 
 // The answers this module's calls already declare as backend schemas (ADR-0066),
-// generated into `@tyr/shared/api`; the rest of the module is #992's.
-export type { SelectionAccepted, SelectionRejected } from '@tyr/shared/api';
+// generated into `@tyr/shared/api`; the rest of the module is #992's. A spatial
+// anomaly is declared with the colour-match stream, which sends it too.
+export type { SelectionAccepted, SelectionRejected, SpatialAnomaly, SpatialAnomalyDivision } from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -214,23 +215,6 @@ export interface SmartSimplifyMove {
   ownerRegionId: number;
   ownerRegionName: string;
   divisions: SmartSimplifyDivision[];
-}
-
-export interface SpatialAnomalyDivision {
-  divisionId: number;
-  name: string;
-  memberRowId: number | null;
-  sourceRegionId: number;
-  sourceRegionName: string;
-}
-
-export interface SpatialAnomaly {
-  divisions: SpatialAnomalyDivision[];
-  suggestedTargetRegionId: number;
-  suggestedTargetRegionName: string;
-  fragmentSize: number;
-  totalRegionSize: number;
-  score: number;
 }
 
 export interface SmartSimplifyResult {
