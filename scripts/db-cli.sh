@@ -561,6 +561,18 @@ cmd_restore() {
         "DROP DATABASE \"$active\";" > /dev/null 2>&1
     docker exec -i "$container" psql -U "$DB_USER" -d postgres -c \
         "CREATE DATABASE \"$active\";" > /dev/null 2>&1
+    # The dump's own database settings (ALTER DATABASE ... SET, such as
+    # jit = off from migration 057) are restored only with --create, which
+    # this restore does not use, since the dump may come from a database of
+    # another name. Without them the restored ledger would say 057 ran on a
+    # database that has JIT back. pg_restore -C writes them already quoted
+    # (a list, a quote inside a value); only the name is swapped for this one.
+    # No ON_ERROR_STOP: a setting this server does not know prints its error
+    # and the rest still land, rather than stopping the restore here and
+    # leaving the database just created empty.
+    docker exec -i "$container" pg_restore -C -s -f - < "$dump_file" \
+        | sed -nE 's/^ALTER DATABASE ("([^"]|"")+"|[^ ]+) SET /ALTER DATABASE "'"$active"'" SET /p' \
+        | docker exec -i "$container" psql -U "$DB_USER" -d postgres -q
 
     # Restore into the clean database
     docker exec -i "$container" pg_restore \
