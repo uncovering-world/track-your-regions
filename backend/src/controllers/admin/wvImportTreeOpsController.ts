@@ -52,18 +52,12 @@ export { checkDivisionOverlap, getOverlapDivisionChildren, resolveOverlap } from
 // Complete. It is harmless only while the tree has no geometry yet, which stops
 // being true the moment a curator presses Compute Geometries mid-review.
 //
-// The call is made after COMMIT, and after the undo entry where the handler
-// stores one -- dismissChildren and pruneToLeaves do; mergeChildIntoParent and
-// removeRegionFromImport offer no undo at all. Matching `regionCrud`, it is a
-// second statement that can fail on its own, and the operation it follows has
-// already happened. It is the one thing here that can
-// throw past a COMMIT, so a failure reaches the handler's catch and asks a
-// closed transaction to ROLLBACK -- a no-op the server answers with a warning
-// -- and then answers 500 for an operation that did happen. That is the trade
-// ADR-0035 records rather than an oversight: a swallowed failure would leave
-// exactly the silent stale outline this call exists to prevent, and loud beats
-// quiet and wrong. `invalidateRegionGeometry` still swallows a lock or
-// deadlock, the tolerance it carries from #283.
+// The call is made inside the operation's transaction, on its client, before
+// COMMIT (#1026). A failure then rolls the whole operation back and the handler
+// answers the error for an operation that did not happen, rather than 500 for
+// one that did; inside a transaction `invalidateRegionGeometry` swallows
+// nothing. A member change needs no call at all: the member trigger clears the
+// region whose union it changed, in the same statement (ADR-0068).
 
 /**
  * Merge a single-child parent's only child into the parent.
@@ -190,12 +184,12 @@ export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Respo
     // Delete the child (CASCADE handles region_import_state, suggestions, map_images)
     await client.query('DELETE FROM regions WHERE id = $1', [childId]);
 
-    await client.query('COMMIT');
-
     // The parent absorbed the child's members and grandchildren. The
     // grandchildren changed parents but kept every member they had, so their
     // own outlines still hold; the child no longer exists.
-    await invalidateRegionGeometry(regionId);
+    await invalidateRegionGeometry(regionId, client);
+
+    await client.query('COMMIT');
 
     console.log(`[WV Import] Merged child "${childName}" (${childId}) into parent ${regionId}`);
     body = { merged: true, childId, childName };
@@ -256,13 +250,13 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
       // Delete the region itself (CASCADE cleans up region_import_state, suggestions, map_images, members)
       await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
 
-      await client.query('COMMIT');
-
       // The parent lost a child and gained its children, and may have gained
       // its divisions as well. The children that moved up kept their own
       // members, so only the parent's union changed. A removed root has no
       // parent to go stale.
-      if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId);
+      if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId, client);
+
+      await client.query('COMMIT');
 
       console.log(`[WV Import] Removed region "${regionName}" (${regionId}), reparented ${reparented.rowCount} children, ${divisionsReparented} divisions`);
       body = { removed: true, regionName, childrenReparented: reparented.rowCount ?? 0, divisionsReparented };
@@ -290,10 +284,10 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
       // Delete the region itself
       await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
 
-      await client.query('COMMIT');
-
       // The whole branch is gone, so the parent covers less than it did.
-      if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId);
+      if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId, client);
+
+      await client.query('COMMIT');
 
       console.log(`[WV Import] Removed region "${regionName}" (${regionId}) and ${descendantIds.length} descendant(s)`);
       body = { removed: true, regionName, descendantsRemoved: descendantIds.length };
@@ -424,6 +418,10 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
       [regionId],
     );
 
+    // The descendants are deleted outright and nothing moves up, so the region
+    // they were part of now covers only its own members.
+    await invalidateRegionGeometry(regionId, client);
+
     await client.query('COMMIT');
 
     // Store undo entry
@@ -439,10 +437,6 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
       descendantMembers: descMembersResult.rows as Array<{ region_id: number; division_id: number }>,
       childSnapshots: [],
     });
-
-    // The descendants are deleted outright and nothing moves up, so the region
-    // they were part of now covers only its own members.
-    await invalidateRegionGeometry(regionId);
 
     console.log(`[WV Import] Dismissed ${descendantIds.length} descendants of region ${regionId}`);
     body = { dismissed: descendantIds.length, undoAvailable: true };
@@ -553,6 +547,17 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
       DELETE FROM regions WHERE id IN (SELECT id FROM desc_regions ORDER BY depth DESC)
     `, [childIds]);
 
+    // The children that lost descendants, and only those: it is their unions
+    // that changed rather than the pruned region's own -- and clearing a child
+    // is a geometry write, so the trigger takes the news up from there. A child
+    // with a hand-drawn boundary is skipped by the helper and stops the walk,
+    // which is right: its outline is drawn rather than unioned, so deleting what
+    // was under it does not move it, and nothing above it moved either (#283).
+    const prunedChildIds = [...new Set(grandDescendants.rows.map(r => r.root_child as number))];
+    for (const childId of prunedChildIds) {
+      await invalidateRegionGeometry(childId, client);
+    }
+
     await client.query('COMMIT');
 
     // Store undo entry
@@ -568,17 +573,6 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
       descendantMembers: descMembersResult.rows as Array<{ region_id: number; division_id: number }>,
       childSnapshots: [],
     });
-
-    // The children that lost descendants, and only those: it is their unions
-    // that changed rather than the pruned region's own -- and clearing a child
-    // is a geometry write, so the trigger takes the news up from there. A child
-    // with a hand-drawn boundary is skipped by the helper and stops the walk,
-    // which is right: its outline is drawn rather than unioned, so deleting what
-    // was under it does not move it, and nothing above it moved either (#283).
-    const prunedChildIds = [...new Set(grandDescendants.rows.map(r => r.root_child as number))];
-    for (const childId of prunedChildIds) {
-      await invalidateRegionGeometry(childId);
-    }
 
     console.log(`[WV Import] Pruned ${grandDescIds.length} grandchildren+ from region ${regionId} (kept ${childIds.length} direct children)`);
     body = { pruned: grandDescIds.length, undoAvailable: true };
@@ -613,9 +607,9 @@ export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response
 
   const { replacements } = await runSimplifyHierarchy(regionId, worldViewId);
 
-  // Post-transaction: invalidate geometry and sync match status
+  // The member trigger cleared the geometry of every region whose members
+  // were folded (ADR-0068); the match status is this handler's to sync.
   if (replacements.length > 0) {
-    await invalidateRegionGeometry(regionId);
     await syncImportMatchStatus(regionId);
   }
 
@@ -656,9 +650,8 @@ export async function simplifyChildren(req: AuthenticatedRequest, res: Response)
     }
   }
 
-  // Post-transaction: invalidate geometry and sync match status for affected regions
+  // Geometry is the member trigger's (ADR-0068); match status is synced here.
   for (const id of affectedRegionIds) {
-    await invalidateRegionGeometry(id);
     await syncImportMatchStatus(id);
   }
 

@@ -211,7 +211,13 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
     console.log(`[AddChildren] Removed ${removed.rowCount ?? 0} row(s) of original division ${gadmDivisionId} from region ${userRegionId}`);
   }
 
-  await invalidateRegionGeometry(userRegionId);
+  // The member trigger clears every region whose members changed (ADR-0068),
+  // and carries it upward from a region that had an outline. A subregion
+  // created here has none, so nothing reaches the parent through it, while the
+  // parent's union now holds what was placed there: a structural change, which
+  // names its parent. The original need not be a member of this region, so
+  // the union can grow as well as be redrawn.
+  if (createAsSubregions) await invalidateRegionGeometry(userRegionId);
   for (const rid of affectedRegionIds) {
     await syncImportMatchStatus(rid);
   }
@@ -289,7 +295,9 @@ export async function flattenSubregion(req: Request, res: Response): Promise<voi
   await deleteRegionRecursive(subregionId);
   console.log(`[Flatten] Deleted subregion ${subregionId} and all descendants`);
 
-  // Invalidate geometry for parent
+  // Named here although the moved rows cleared the parent already (ADR-0068):
+  // deleting the branch is a structural change, and a branch that moved no
+  // row — a drawn subregion with no members — changes the parent's union too.
   await invalidateRegionGeometry(parentRegionId);
 
   // Sync import match status for the parent (which now has the divisions)
@@ -363,8 +371,8 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
 
   console.log(`[Expand] Created ${createdRegions.length} subregions`);
 
-  // Invalidate geometry for parent and new subregions
-  await invalidateRegionGeometry(regionId);
+  // The rows moving out cleared the parent through the member trigger
+  // (ADR-0068); the new subregions have no geometry yet.
 
   // Sync import match status — parent lost members, new subregions gained them
   await syncImportMatchStatus(regionId);

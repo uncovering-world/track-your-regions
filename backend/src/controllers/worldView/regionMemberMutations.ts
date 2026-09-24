@@ -9,7 +9,7 @@ import { respond } from '../../api/respond.js';
 import { DivisionsAdded, DivisionsRemoved, MemberMoved, type CreatedSubregion } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import type { RegionMembersRow } from '../../db/schema.generated.js';
-import { ensureRegionMember, invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
+import { ensureRegionMember, syncImportMatchStatus } from './helpers.js';
 
 interface AddDivisionsCtx {
   worldViewId: number;
@@ -218,7 +218,8 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
     }
   }
 
-  await invalidateRegionGeometry(regionId);
+  // The regions whose members changed are cleared by the member trigger, in
+  // the statements above (ADR-0068).
   for (const rid of ctx.affectedRegionIds) {
     await syncImportMatchStatus(rid);
   }
@@ -251,8 +252,6 @@ export async function removeDivisionsFromRegion(req: Request, res: Response): Pr
       );
       removed += deleted.rowCount ?? 0;
     }
-    // Invalidate geometry after removing members
-    await invalidateRegionGeometry(regionId);
     await syncImportMatchStatus(regionId);
     respond(res, DivisionsRemoved, { removed });
     return;
@@ -273,8 +272,6 @@ export async function removeDivisionsFromRegion(req: Request, res: Response): Pr
     removed += deleted.rowCount ?? 0;
   }
 
-  // Invalidate geometry for this region and all ancestors
-  await invalidateRegionGeometry(regionId);
   await syncImportMatchStatus(regionId);
 
   respond(res, DivisionsRemoved, { removed });
@@ -304,9 +301,8 @@ export async function moveMemberToRegion(req: Request, res: Response): Promise<v
     return;
   }
 
-  // Invalidate geometry for both regions
-  await invalidateRegionGeometry(fromRegionId);
-  await invalidateRegionGeometry(toRegionId);
+  // Both regions' geometry is cleared by the member trigger, which sees the
+  // row leave one and arrive at the other (ADR-0068).
 
   // Sync match status for both regions
   await syncImportMatchStatus(fromRegionId);

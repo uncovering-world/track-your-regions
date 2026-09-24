@@ -75,11 +75,22 @@ function answering(answers: Answer[]) {
   };
 }
 
-/** The region ids a handler asked the database to clear, in the order it asked. */
+/**
+ * The region ids a handler asked the database to clear, in the order it asked
+ * — on its transaction's client (the tree operations, #1026) or on the pool.
+ */
 function invalidated(): number[] {
-  return mockPoolQuery.mock.calls
+  return [...mockClientQuery.mock.calls, ...mockPoolQuery.mock.calls]
     .filter(call => /SET\s+geom = NULL/.test(String(call[0])))
     .map(call => (call[1] as unknown[])[0] as number);
+}
+
+/** Whether every clearing on the client came before its COMMIT (#1026). */
+function clearedBeforeCommit(): boolean {
+  const sqls = mockClientQuery.mock.calls.map(call => String(call[0]));
+  const commit = sqls.indexOf('COMMIT');
+  const clears = sqls.flatMap((sql, i) => (/SET\s+geom = NULL/.test(sql) ? [i] : []));
+  return commit !== -1 && clears.length > 0 && clears.every(i => i < commit);
 }
 
 function makeReq(body: Row, worldViewId = '31'): AuthenticatedRequest {
@@ -120,6 +131,21 @@ describe('reparentRegion', () => {
     await reparentRegion(makeReq({ regionId: 200, newParentId: 300 }), makeRes());
 
     expect(invalidated()).toEqual([100, 300]);
+    expect(clearedBeforeCommit()).toBe(true);
+  });
+
+  it('fails whole when clearing a parent fails, rather than answering 500 for a move that committed (#1026)', async () => {
+    mockPoolQuery.mockImplementation(answering(POOL));
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/SET\s+geom = NULL/.test(String(sql))) throw new Error('canceling statement due to statement timeout');
+      return { rows: [], rowCount: 0 };
+    });
+
+    await expect(reparentRegion(makeReq({ regionId: 200, newParentId: 300 }), makeRes())).rejects.toThrow('statement timeout');
+
+    const sqls = mockClientQuery.mock.calls.map(call => String(call[0]));
+    expect(sqls).toContain('ROLLBACK');
+    expect(sqls).not.toContain('COMMIT');
   });
 
   it('clears the old parent alone when a region is moved out to the root', async () => {
@@ -178,6 +204,24 @@ describe('mergeChildIntoParent', () => {
     await mergeChildIntoParent(makeReq({ regionId: 100 }), makeRes());
 
     expect(invalidated()).toEqual([100]);
+    expect(clearedBeforeCommit()).toBe(true);
+  });
+
+  it('fails whole when clearing the parent fails, rather than answering 500 for a merge that committed (#1026)', async () => {
+    const answer = answering([
+      [/SELECT id, name FROM regions WHERE parent_region_id/, [{ id: 201, name: 'Child' }]],
+      [/SELECT id, name FROM regions WHERE id = \$1 AND world_view_id/, [{ id: 100, name: 'Parent' }]],
+    ]);
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/SET\s+geom = NULL/.test(String(sql))) throw new Error('canceling statement due to statement timeout');
+      return answer(sql);
+    });
+
+    await expect(mergeChildIntoParent(makeReq({ regionId: 100 }), makeRes())).rejects.toThrow('statement timeout');
+
+    const sqls = mockClientQuery.mock.calls.map(call => String(call[0]));
+    expect(sqls).toContain('ROLLBACK');
+    expect(sqls).not.toContain('COMMIT');
   });
 
   it('clears nothing when the merge is refused for having the wrong child count', async () => {

@@ -1,14 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Request, Response } from 'express';
 
-const poolQuery = vi.fn();
+const { poolQuery, invalidateRegionGeometry } = vi.hoisted(() => ({
+  poolQuery: vi.fn(),
+  invalidateRegionGeometry: vi.fn(),
+}));
 
 vi.mock('../../db/index.js', () => ({
   pool: { query: (...args: unknown[]) => poolQuery(...args) },
 }));
 vi.mock('./helpers.js', () => ({
   ensureRegionMember: vi.fn(),
-  invalidateRegionGeometry: vi.fn(),
+  invalidateRegionGeometry,
   syncImportMatchStatus: vi.fn(),
 }));
 
@@ -23,6 +26,7 @@ function call(handler: (req: Request, res: Response) => Promise<void>, req: Reco
 
 beforeEach(() => {
   poolQuery.mockReset();
+  invalidateRegionGeometry.mockReset();
 });
 
 describe('removeDivisionsFromRegion', () => {
@@ -113,5 +117,19 @@ describe('addChildDivisionsAsSubregions', () => {
     mockCyprus(0);
     const answer = await call(addChildDivisionsAsSubregions, request) as { removedOriginal: boolean };
     expect(answer.removedOriginal).toBe(false);
+  });
+
+  it('clears Cyprus, whose union gained a Limassol that has no outline for a trigger to carry up', async () => {
+    // Nothing was removed from Cyprus itself, so no member trigger fires on
+    // it, and the new Limassol subregion has no geometry to cascade from.
+    mockCyprus(0);
+    await call(addChildDivisionsAsSubregions, { ...request, body: { ...request.body, removeOriginal: false } });
+    expect(invalidateRegionGeometry).toHaveBeenCalledWith(5377);
+  });
+
+  it('names nothing when the children join Cyprus as flat members, which the member trigger clears', async () => {
+    mockCyprus(1);
+    await call(addChildDivisionsAsSubregions, { ...request, body: { createAsSubregions: false } });
+    expect(invalidateRegionGeometry).not.toHaveBeenCalled();
   });
 });
