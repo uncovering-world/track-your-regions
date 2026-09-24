@@ -323,12 +323,14 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
 
   const region = regionInfo.rows[0];
 
-  // Get all GADM division members (not subregions)
-  const members = await pool.query(`
-    SELECT rm.division_id, ad.name
+  // Every member row, a cut part included: each becomes a subregion holding
+  // what that row held, under the name the curator gave it (#1004).
+  const members = await pool.query<{ id: number; division_id: number; name: string }>(`
+    SELECT rm.id, rm.division_id, COALESCE(rm.custom_name, ad.name) AS name
     FROM region_members rm
     JOIN administrative_divisions ad ON rm.division_id = ad.id
     WHERE rm.region_id = $1
+    ORDER BY rm.id
   `, [regionId]);
 
   if (members.rows.length === 0) {
@@ -351,16 +353,11 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
     const newRegionId = newRegion.rows[0].id;
     createdRegions.push({ id: newRegionId, name: newRegion.rows[0].name, divisionId: member.division_id });
 
-    // Add the division to the new subregion
+    // Move the row itself, so a cut keeps its geometry and a division held as
+    // two parts stays two parts (#1004).
     await pool.query(
-      'INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)',
-      [newRegionId, member.division_id]
-    );
-
-    // Remove the division from the parent region
-    await pool.query(
-      'DELETE FROM region_members WHERE region_id = $1 AND division_id = $2',
-      [regionId, member.division_id]
+      'UPDATE region_members SET region_id = $1 WHERE id = $2',
+      [newRegionId, member.id]
     );
   }
 
