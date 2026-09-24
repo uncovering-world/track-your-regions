@@ -57,7 +57,7 @@ import { CvMatchDialog } from './CvMatchDialog';
 import { AIReviewDrawer } from './AIReviewDrawer';
 import { SmartSimplifyDialog } from './SmartSimplifyDialog';
 import { OverlapResolutionDialog } from './OverlapResolutionDialog';
-import type { DivisionOverlapResult } from '../../api/admin/worldViewImport';
+import type { DivisionOverlaps } from '../../api/admin/worldViewImport';
 
 /** Find a child region's ID by name under a specific parent */
 function findChildIdByName(nodes: MatchTreeNode[], parentId: number, childName: string): number | undefined {
@@ -114,7 +114,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     regionId: number;
     regionName: string;
     regionMapUrl: string | null;
-    data: DivisionOverlapResult;
+    data: DivisionOverlaps;
   } | null>(null);
 
   // Clear the dirty marker once coverage refetch completes

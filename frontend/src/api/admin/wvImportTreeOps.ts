@@ -8,22 +8,25 @@
 
 import type {
   ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenCollapsed, ChildrenDismissed, ChildrenGrouped,
-  ChildrenSimplified, DescendantsPruned, FlattenPreviewResult, HierarchySimplified, HierarchyWarningsDismissed,
-  ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone, RegionRemoved, RegionRenamed, RegionReparented,
-  SelectionAccepted, SelectionRejected, SmartFlattenResult, SpatialAnomaly,
+  ChildrenReviewed, ChildrenSimplified, DescendantsPruned, DivisionOverlaps, FlattenPreviewResult, HierarchySimplified,
+  HierarchyWarningsDismissed, ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone, OverlapChildren,
+  OverlapResolved, RegionRemoved, RegionRenamed, RegionReparented, SelectionAccepted, SelectionRejected,
+  SmartFlattenResult, SmartSimplifyApplied, SmartSimplifyMoves,
 } from '@tyr/shared/api';
 import { authFetchJson } from '../fetchUtils';
 
-// The answers this module's calls already declare as backend schemas (ADR-0066),
-// generated into `@tyr/shared/api`; the rest of the module is #992's. A spatial
+// What this module's calls answer is declared once, as a backend schema
+// (ADR-0066), and generated into `@tyr/shared/api`. Passed on from here, so a
+// component imports a call's answer from the module of the call. A spatial
 // anomaly is declared with the colour-match stream, which sends it too.
 export type {
-  ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenCollapsed, ChildrenDismissed, ChildrenGrouped,
-  ChildrenSimplified, DescendantsPruned, FlattenBlocked, FlattenDone, FlattenPreview, FlattenPreviewResult,
-  HierarchySimplified, HierarchyWarningsDismissed, ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone,
-  RegionRemoved, RegionRemovedKeepingChildren, RegionRemovedWithBranch, RegionRenamed, RegionReparented,
-  SelectionAccepted, SelectionRejected, SimplifyReplacement, SmartFlattenResult, SpatialAnomaly, SpatialAnomalyDivision,
-  UndoOperation,
+  ChildAction, ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenCollapsed, ChildrenDismissed,
+  ChildrenGrouped, ChildrenReviewed, ChildrenSimplified, DescendantsPruned, DivisionOverlap, DivisionOverlaps,
+  FlattenBlocked, FlattenDone, FlattenPreview, FlattenPreviewResult, HierarchySimplified, HierarchyWarningsDismissed,
+  ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone, OverlapChildren, OverlapGadmChild, OverlapKept,
+  OverlapResolved, OverlapSplit, RegionRemoved, RegionRemovedKeepingChildren, RegionRemovedWithBranch, RegionRenamed,
+  RegionReparented, SelectionAccepted, SelectionRejected, SimplifyReplacement, SmartFlattenResult, SmartSimplifyApplied,
+  SmartSimplifyMove, SmartSimplifyMoves, SpatialAnomaly, SpatialAnomalyDivision, UndoOperation,
 } from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -138,30 +141,11 @@ export async function renameRegion(
 // AI Review / Suggest Children
 // =============================================================================
 
-export interface ReviewChildAction {
-  type: 'add' | 'remove' | 'rename' | 'enrich';
-  name: string;
-  newName?: string;
-  reason: string;
-  sourceUrl?: string | null;
-  sourceExternalId?: string | null;
-  verified: boolean;
-}
-
-export interface AIReviewChildrenResult {
-  actions: ReviewChildAction[];
-  analysis: string;
-  stats: { inputTokens: number; outputTokens: number; cost: number } | null;
-}
-
-/** Same shape as AIReviewChildrenResult — modern alias used by the suggest-children dialog */
-export type AISuggestChildrenResult = AIReviewChildrenResult;
-
 export async function aiReviewChildren(
   worldViewId: number,
   regionId: number,
-): Promise<AIReviewChildrenResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-suggest-children`, {
+): Promise<ChildrenReviewed> {
+  return authFetchJson<ChildrenReviewed>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-suggest-children`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -201,38 +185,11 @@ export async function selectMapImage(
 // Smart Simplify
 // =============================================================================
 
-export interface SmartSimplifyDivision {
-  divisionId: number;
-  name: string;
-  fromRegionId: number;
-  fromRegionName: string;
-  memberRowId: number;
-}
-
-export interface SmartSimplifyMove {
-  gadmParentId: number;
-  gadmParentName: string;
-  gadmParentPath: string;
-  totalChildren: number;
-  ownerRegionId: number;
-  ownerRegionName: string;
-  divisions: SmartSimplifyDivision[];
-}
-
-export interface SmartSimplifyResult {
-  moves: SmartSimplifyMove[];
-  spatialAnomalies: SpatialAnomaly[];
-}
-
-export interface ApplySmartSimplifyResult {
-  moved: number;
-}
-
 export async function detectSmartSimplify(
   worldViewId: number,
   parentRegionId: number,
-): Promise<SmartSimplifyResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-simplify`, {
+): Promise<SmartSimplifyMoves> {
+  return authFetchJson<SmartSimplifyMoves>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-simplify`, {
     method: 'POST',
     body: JSON.stringify({ parentRegionId }),
   });
@@ -243,8 +200,8 @@ export async function applySmartFlatten(
   parentRegionId: number,
   ownerRegionId: number,
   memberRowIds: number[],
-): Promise<ApplySmartSimplifyResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-simplify/apply-move`, {
+): Promise<SmartSimplifyApplied> {
+  return authFetchJson<SmartSimplifyApplied>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-simplify/apply-move`, {
     method: 'POST',
     body: JSON.stringify({ parentRegionId, ownerRegionId, memberRowIds }),
   });
@@ -378,36 +335,11 @@ export async function rejectBatchSuggestions(
 // Division Overlap Detection / Resolution
 // =============================================================================
 
-export interface DivisionOverlapResult {
-  overlaps: Array<{
-    divisionId: number;
-    divisionName: string;
-    /** GADM hierarchy path (e.g., "World > France > Île-de-France") for display */
-    divisionPath: string;
-    regions: Array<{
-      regionId: number;
-      regionName: string;
-      viaDivisionId: number;
-      viaDivisionName: string;
-      /** True for direct (region's own member); false when this region holds the
-       * division via a coarser ancestor (containment overlap). */
-      isDirect: boolean;
-    }>;
-  }>;
-}
-
-export interface OverlapGadmChild {
-  divisionId: number;
-  name: string;
-  areaKm2?: number;
-  assignedToRegionId?: number;
-}
-
 export async function checkDivisionOverlap(
   worldViewId: number,
   parentRegionId: number,
-): Promise<DivisionOverlapResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/check-overlap`, {
+): Promise<DivisionOverlaps> {
+  return authFetchJson<DivisionOverlaps>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/check-overlap`, {
     method: 'POST',
     body: JSON.stringify({ parentRegionId }),
   });
@@ -417,8 +349,8 @@ export async function getOverlapDivisionChildren(
   worldViewId: number,
   divisionId: number,
   regionIds: number[],
-): Promise<{ children: OverlapGadmChild[] }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/overlap-children`, {
+): Promise<OverlapChildren> {
+  return authFetchJson<OverlapChildren>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/overlap-children`, {
     method: 'POST',
     body: JSON.stringify({ divisionId, childRegionIds: regionIds }),
   });
@@ -437,8 +369,8 @@ export type OverlapResolution =
 export async function resolveOverlap(
   worldViewId: number,
   resolution: OverlapResolution,
-): Promise<{ resolved: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/resolve-overlap`, {
+): Promise<OverlapResolved> {
+  return authFetchJson<OverlapResolved>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/resolve-overlap`, {
     method: 'POST',
     body: JSON.stringify(resolution),
   });

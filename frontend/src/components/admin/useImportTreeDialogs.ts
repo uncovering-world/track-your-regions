@@ -13,7 +13,7 @@ import {
   getCoverageGeometry,
   analyzeCoverageGaps as apiAnalyzeCoverageGaps,
   type MatchTreeNode,
-  type AISuggestChildrenResult,
+  type ChildrenReviewed,
   type CoverageGapDivision,
   type SiblingRegionGeometry,
 } from '../../api/admin/worldViewImport';
@@ -39,7 +39,7 @@ export interface ReparentDialogState {
 export interface SuggestChildrenState {
   regionId: number;
   regionName: string;
-  result: AISuggestChildrenResult;
+  result: ChildrenReviewed;
   selected: Set<string>;
 }
 
