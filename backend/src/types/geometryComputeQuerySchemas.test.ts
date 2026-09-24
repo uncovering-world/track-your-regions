@@ -8,25 +8,23 @@
  * default, which is how an absent `skipSnapping` came to mean *snap* on the
  * bulk writer while both UI callers passed "skip" explicitly (#736).
  *
- * The three writers of `regions.geom` disagreed about this. The stream honoured
- * the parameter; the bulk endpoint read it off an unvalidated query; and
- * `POST /geometry/compute` took none at all, so the same region ended up with a
- * different outline depending on which caller asked. They read one parameter
- * with one default now, and the default is the behaviour every one of them
- * already had: absent means snap.
+ * The writers of `regions.geom` disagreed about this. The stream honoured the
+ * parameter and the bulk endpoint read it off an unvalidated query, so the same
+ * region ended up with a different outline depending on which caller asked.
+ * They read one parameter with one default now, and the default is the
+ * behaviour each already had: absent means snap.
  */
 
 import { describe, it, expect } from 'vitest';
 import { computeGeometryQuerySchema, computeSSEQuerySchema } from './index.js';
 
 /**
- * The schema each writer mounts. Two of the three mount the same object — the
- * single-region endpoint and the bulk one — and the stream extends it with the
- * token `EventSource` cannot send as a header. Listed by endpoint rather than
- * by object, because what the rows are about is what reaches each endpoint.
+ * The schema each writer mounts. The bulk endpoint mounts the object itself,
+ * and the stream extends it with the token `EventSource` cannot send as a
+ * header. Listed by endpoint rather than by object, because what the rows are
+ * about is what reaches each endpoint.
  */
 const writersThatSnap = [
-  ['the compute endpoint', computeGeometryQuerySchema],
   ['the bulk endpoint', computeGeometryQuerySchema],
   ['the progress stream', computeSSEQuerySchema],
 ] as const;
@@ -38,7 +36,7 @@ describe('skipSnapping survives validation on every writer that snaps', () => {
     });
 
     it(`means snap when ${name} is asked without it`, () => {
-      // The behaviour all three already had, kept: a caller that says nothing
+      // The behaviour both already had, kept: a caller that says nothing
       // gets the borders cleaned, not a faster run it never asked for.
       expect(schema.parse({})).toHaveProperty('skipSnapping', 'false');
     });
@@ -51,8 +49,8 @@ describe('skipSnapping survives validation on every writer that snaps', () => {
     });
   }
 
-  it('answers the stream and the two endpoints identically, token aside', () => {
-    // The claim is one rule, not three that happen to agree today: a default
+  it('answers the stream and the bulk endpoint identically, token aside', () => {
+    // The claim is one rule, not two that happen to agree today: a default
     // changed on one schema and forgotten on another is the shape #736 was
     // about, and the stream extends the shared object rather than restating it.
     // `token` is optional with no default, so an empty query leaves it off

@@ -1,5 +1,5 @@
 /**
- * The collect step of the union pipeline, shared by all three writers of
+ * The collect step of the union pipeline, shared by the writers of
  * `regions.geom`.
  *
  * A region's geometry is made of two kinds of shape and the step gathers both:

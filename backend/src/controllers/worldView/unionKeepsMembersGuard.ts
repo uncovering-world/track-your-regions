@@ -1,5 +1,5 @@
 /**
- * One definition of the second rule the three union writers of `regions.geom`
+ * One definition of the second rule the union writers of `regions.geom`
  * are held to, shared by their guards: **the union sees every input the collect
  * step gathered.**
  *
@@ -121,7 +121,7 @@ function chainStatements(calls: Array<[unknown, unknown[]?]>) {
 }
 
 /**
- * Every check the three union writers' guards make on a run that snaps, in one
+ * Every check the union writers' guards make on a run that snaps, in one
  * place. Returns the problems rather than asserting them, so the rule stays in
  * `src/` without pulling a test framework in with it.
  *

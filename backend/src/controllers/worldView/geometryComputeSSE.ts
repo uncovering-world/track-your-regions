@@ -257,8 +257,8 @@ async function cleanupStep(
 
 /**
  * The shared snap step, with the progress line this writer's stream carries.
- * The statement itself lives in snapChildRegionsForGroup, held by all three
- * writers, so the rule that it hands the members back with the snapped
+ * The statement itself lives in snapChildRegionsForGroup, held by every
+ * writer, so the rule that it hands the members back with the snapped
  * children is decided once (#736).
  */
 async function snapChildRegionsSSE(

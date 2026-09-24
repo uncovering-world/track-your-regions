@@ -28,10 +28,7 @@ import {
   getRegionGeometry,
   updateRegionGeometry,
   resetRegionToGADM,
-  computeSingleRegionGeometry,
   computeSingleRegionGeometrySSE,
-  getRootRegionGeometries,
-  getSubregionGeometries,
   computeWorldViewGeometries,
   getComputationStatus,
   cancelComputation,
@@ -61,7 +58,6 @@ import {
   hullPreviewBodySchema,
   hullSaveBodySchema,
   updateGeometryBodySchema,
-  subregionGeometriesQuerySchema,
   computeGeometryQuerySchema,
   computeSSEQuerySchema,
   regenerateDisplayQuerySchema,
@@ -93,7 +89,6 @@ router.post('/:worldViewId/regions', validate(worldViewIdParamSchema, 'params'),
 // =============================================================================
 // World View geometry operations
 // =============================================================================
-router.get('/:worldViewId/regions/root/geometries', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getRootRegionGeometries);
 router.post('/:worldViewId/compute-geometries', validate(worldViewIdParamSchema, 'params'), validate(computeGeometryQuerySchema, 'query'), requireAuth, requireAdmin, computeWorldViewGeometries);
 router.get('/:worldViewId/compute-geometries/status', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getComputationStatus);
 router.post('/:worldViewId/compute-geometries/cancel', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, cancelComputation);
@@ -129,10 +124,8 @@ router.post('/regions/:regionId/expand', validate(regionIdParamSchema, 'params')
 // =============================================================================
 router.get('/regions/:regionId/geometry', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(regionGeometryDetailQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdParam'), getRegionGeometry);
 router.put('/regions/:regionId/geometry', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(updateGeometryBodySchema), updateRegionGeometry);
-router.post('/regions/:regionId/geometry/compute', validate(regionIdParamSchema, 'params'), validate(computeGeometryQuerySchema, 'query'), requireAuth, requireAdmin, computeSingleRegionGeometry);
 router.get('/regions/:regionId/geometry/compute-stream', validate(regionIdParamSchema, 'params'), validate(computeSSEQuerySchema, 'query'), requireAuth, requireAdmin, computeSingleRegionGeometrySSE);
 router.post('/regions/:regionId/geometry/reset', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, resetRegionToGADM);
-router.get('/regions/:regionId/subregions/geometries', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(subregionGeometriesQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdParam'), getSubregionGeometries);
 
 // Hull preview and save (with custom parameters)
 router.post('/regions/:regionId/hull/preview', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(hullPreviewBodySchema), previewHullGeometry);

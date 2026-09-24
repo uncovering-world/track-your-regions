@@ -1105,15 +1105,6 @@ export interface CuratorScope {
   notes: string | null;
 }
 
-/** A region with a hand-drawn boundary, left as drawn. */
-export interface CustomBoundaryPreserved {
-  computed: true;
-  regionId: number;
-  name: string;
-  usesHull: boolean;
-  message: string;
-}
-
 /** A division drawn in the colour of the cluster it was matched to. */
 export interface CvPreviewFeature {
   type: "Feature";
@@ -2593,14 +2584,6 @@ export interface NewBadgesSeen {
   recorded: number[];
 }
 
-/** A region whose members and children hold no geometry to merge. */
-export interface NothingToMerge {
-  computed: false;
-  message: string;
-  /** Child regions computed on the way, before the region itself found nothing to merge. */
-  childrenComputed: number;
-}
-
 /** The world view's last undoable tree edit, reverted. */
 export interface OperationUndone {
   undone: true;
@@ -3046,19 +3029,6 @@ export interface Region {
   sourceUrl: string | null;
   /** The map image that import read, where it read one. */
   regionMapUrl: string | null;
-}
-
-/** A region's outline computed, its children's first. */
-export interface RegionComputed {
-  computed: true;
-  /** Vertices in the computed outline. */
-  points: number;
-  childrenComputed: number;
-  usesHull?: boolean;
-  hullGenerated?: boolean;
-  crossesDateline?: boolean;
-  /** The world view's tile version after the run bumped it. */
-  tileVersion?: number;
 }
 
 /**
@@ -3565,12 +3535,6 @@ export interface SimplifyReplacement {
   /** The member divisions that together cover the parent, replaced by it. */
   replacedCount: number;
 }
-
-/**
- * One region's computation, answered at its end rather than streamed. No screen calls it; the
- * editor streams.
- */
-export type SingleRegionComputed = RegionComputed | CustomBoundaryPreserved | NothingToMerge;
 
 /** One find dug up at a site (#894). */
 export interface SiteFind {

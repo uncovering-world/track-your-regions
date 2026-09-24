@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Request, Response } from 'express';
 
 const client = { query: vi.fn(), release: vi.fn() };
 const poolQuery = vi.fn();
@@ -8,7 +7,7 @@ vi.mock('../../db/index.js', () => ({
   pool: { connect: vi.fn(async () => client), query: (...args: unknown[]) => poolQuery(...args) },
 }));
 
-import { computeRegionGeometryCore, computeSingleRegionGeometry } from './geometryComputeSingle.js';
+import { computeRegionGeometryCore } from './geometryComputeSingle.js';
 import { UNION_SHAPE, coarseningProblems } from './unionGeomToleranceGuard.js';
 import { droppedMemberProblems } from './unionKeepsMembersGuard.js';
 
@@ -119,71 +118,6 @@ describe('computeRegionGeometryCore fast path', () => {
   });
 });
 
-// Regression test: computeSingleRegionGeometry (the
-// POST /geometry/compute HTTP handler) reaches the same fast path through
-// computeGroupGeom — this pins the two writers to agree on a single-division
-// region instead of one copying the member geometry and the other unioning it.
-describe('computeSingleRegionGeometry (HTTP handler) reaches the same fast path', () => {
-  function respondPool(sql: string) {
-    const s = String(sql);
-    if (s.includes('is_custom_boundary') && s.includes('uses_hull')) {
-      // Initial region check.
-      return { rows: [{ is_custom_boundary: false, name: 'Bavaria', usesHull: false, has_geom: false }] };
-    }
-    if (s.includes('is_custom_boundary') && s.includes('parent_region_id')) {
-      // computeBottomUp's children lookup — no children.
-      return { rows: [] };
-    }
-    if (s.includes('"geomPoints"')) {
-      // Post-compute status check.
-      return { rows: [{ id: 42, name: 'Bavaria', usesHull: false, hasGeom: true, hasHull: false, geomPoints: 5000, hullPoints: null }] };
-    }
-    if (s.includes('hull_geom = NULL')) {
-      return { rows: [], rowCount: 0 };
-    }
-    if (s.includes('parent_region_id FROM regions')) {
-      return { rows: [{ parent_region_id: null }] };
-    }
-    if (s.includes('world_view_id FROM regions')) {
-      return { rows: [{ world_view_id: null }] };
-    }
-    return { rows: [], rowCount: 0 };
-  }
-
-  beforeEach(() => {
-    client.query.mockReset();
-    client.query.mockImplementation(async (sql: string) => respond(String(sql)));
-    poolQuery.mockReset();
-    poolQuery.mockImplementation(async (sql: string) => respondPool(String(sql)));
-  });
-
-  it('copies the member geometry for a region that is exactly one division', async () => {
-    const req = { params: { regionId: '42' }, query: {} } as unknown as Request;
-    const json = vi.fn();
-    const res = { json, status: vi.fn(() => ({ json })) } as unknown as Response;
-
-    await computeSingleRegionGeometry(req, res);
-
-    expect(json).toHaveBeenCalledWith(expect.objectContaining({ computed: true, points: 5000 }));
-
-    const sqls = client.query.mock.calls.map((c) => String(c[0]));
-    expect(sqls.some((s) => s.includes('UPDATE regions') && s.includes('region_members'))).toBe(true);
-    // Same guarantee as computeRegionGeometryCore: the union machinery must not run at all.
-    expect(sqls.some((s) => s.includes('ST_Collect'))).toBe(false);
-  });
-});
-
-/**
- * A failed pipeline is answered softly, because it wrote nothing: the region
- * stays NULL and the next run takes it, so `{ computed: false, error }` is the
- * right answer and `computeOneGroup` tallying it as *skipped* with the run
- * reporting Complete is right with it.
- *
- * There is no second kind of failure to tell apart from it: the database
- * marks the ancestors stale inside the `UPDATE` itself (#680, ADR-0035), so
- * there is no separate statement after the commit whose loss would have to be
- * raised rather than softened.
- */
 describe('computeRegionGeometryCore answers a failed pipeline softly', () => {
   beforeEach(() => {
     client.query.mockReset();
@@ -294,23 +228,6 @@ describe('the union path writes regions.geom with no tolerance of its own', () =
     await computeRegionGeometryCore(42, { skipSnapping: false });
     expectNoCoarsening();
   });
-
-  it('holds the same for the HTTP handler, which reaches the union through computeGroupGeom', async () => {
-    poolQuery.mockImplementation(async (sql: string) => {
-      const s = String(sql);
-      if (s.includes('is_custom_boundary') && s.includes('uses_hull')) {
-        return { rows: [{ is_custom_boundary: false, name: 'Bavaria', usesHull: false, has_geom: false }] };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-
-    const req = { params: { regionId: '42' }, query: {} } as unknown as Request;
-    const json = vi.fn();
-    const res = { json, status: vi.fn(() => ({ json })) } as unknown as Response;
-    await computeSingleRegionGeometry(req, res);
-
-    expectNoCoarsening();
-  });
 });
 
 /**
@@ -377,87 +294,5 @@ describe('the snap keeps the direct members a mixed region holds', () => {
   it('carries the members through the snap into the union', async () => {
     await computeRegionGeometryCore(42, { skipSnapping: false });
     expectMembersKept();
-  });
-
-  it('holds the same for the HTTP handler, which snaps whenever there are children', async () => {
-    poolQuery.mockImplementation(async (sql: string) => {
-      const s = String(sql);
-      if (s.includes('is_custom_boundary') && s.includes('uses_hull')) {
-        return { rows: [{ is_custom_boundary: false, name: 'Andorra', usesHull: false, has_geom: false }] };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-
-    const req = { params: { regionId: '42' }, query: {} } as unknown as Request;
-    const json = vi.fn();
-    const res = { json, status: vi.fn(() => ({ json })) } as unknown as Response;
-    await computeSingleRegionGeometry(req, res);
-
-    expectMembersKept();
-  });
-});
-
-/**
- * The compute endpoint takes the same instruction the stream does.
- *
- * `computeGroupGeom` snapped whenever the region had children and its handler
- * carried no parameter to say otherwise, so the one writer an admin can reach
- * by API had no say in the most expensive step of its own pipeline — on a large
- * region, the difference between a run that finishes and one that hits the
- * five-minute statement timeout. The other two writers already read
- * `skipSnapping`; this one now reads it too, with the default it already had
- * (#736).
- */
-describe('the compute endpoint can be told not to snap', () => {
-  function respondMixed(sql: string) {
-    const s = String(sql);
-    if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
-    if (s.includes('direct_member_geoms')) {
-      return { rows: [{ collected_geom: { sentinel: 'collected' }, member_geom: { sentinel: 'members' }, geom_count: '4' }] };
-    }
-    if (s.includes('ST_UnaryUnion')) return { rows: [{ union_geom: { sentinel: 'unioned' } }] };
-    if (s.includes('holes_filtered')) {
-      return {
-        rows: [{
-          cleaned_geom: { sentinel: 'cleaned' }, holes_before: '4',
-          num_polygons: '2', num_rings: '3', num_points: '7000',
-        }],
-      };
-    }
-    return respond(s);
-  }
-
-  async function computeWith(query: Record<string, string>) {
-    const req = { params: { regionId: '42' }, query } as unknown as Request;
-    const json = vi.fn();
-    const res = { json, status: vi.fn(() => ({ json })) } as unknown as Response;
-    await computeSingleRegionGeometry(req, res);
-    return client.query.mock.calls.map((c) => String(c[0]));
-  }
-
-  beforeEach(() => {
-    client.query.mockReset();
-    client.query.mockImplementation(async (sql: string) => respondMixed(String(sql)));
-    poolQuery.mockReset();
-    poolQuery.mockImplementation(async (sql: string) => {
-      const s = String(sql);
-      if (s.includes('is_custom_boundary') && s.includes('uses_hull')) {
-        return { rows: [{ is_custom_boundary: false, name: 'Andorra', usesHull: false, has_geom: false }] };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-  });
-
-  it('skips the snap when the caller asks it to, on a region that has children', async () => {
-    const sqls = await computeWith({ skipSnapping: 'true' });
-
-    expect(sqls.some((s) => s.includes('direct_member_geoms'))).toBe(true);
-    expect(sqls.some((s) => s.includes('ST_Snap('))).toBe(false);
-  });
-
-  it('snaps when the caller does not, which is what the schema default says', async () => {
-    const sqls = await computeWith({ skipSnapping: 'false' });
-
-    expect(sqls.some((s) => s.includes('ST_Snap('))).toBe(true);
   });
 });

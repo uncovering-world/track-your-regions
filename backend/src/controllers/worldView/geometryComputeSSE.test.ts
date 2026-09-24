@@ -63,8 +63,8 @@ function parseEvents(chunks: string[]): Array<{ type: string; data?: Record<stri
 
 // Regression test: computeSingleRegionGeometrySSE (the
 // GET /geometry/compute-stream endpoint) reaches the same fast path as
-// computeRegionGeometryCore and computeSingleRegionGeometry — this pins the
-// third writer to agree with the other two on a single-division region.
+// computeRegionGeometryCore — this pins the two writers to agree on a
+// single-division region.
 describe('computeSingleRegionGeometrySSE reaches the same fast path', () => {
   beforeEach(() => {
     client.query.mockReset();

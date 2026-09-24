@@ -9,7 +9,7 @@
  * most children — 153 under New South Wales, 28 under North America — so the
  * verbose shape sends a continent's union across the wire once per child.
  *
- * The three writers share this statement, the bulk one — the writer that
+ * Both writers share this statement, the bulk one — the writer that
  * walks every region of a world view — included. Nothing about the geometry
  * it stores would change if the payload were repeated per child again, which
  * is why the shape is pinned here rather than left to be noticed on a continent.

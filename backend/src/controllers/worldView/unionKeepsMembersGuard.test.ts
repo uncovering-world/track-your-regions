@@ -1,7 +1,7 @@
 /**
  * The guard's own blind spots, asked of it directly.
  *
- * The three writers' tests hold it against the real statements, which answers
+ * The writers' tests hold it against the real statements, which answers
  * "does the pipeline keep the members" but not "would this guard notice if it
  * stopped". The distinction has already cost two narrowings: from the statement
  * to the `collected` CTE, after a snap that counted the members' points in a

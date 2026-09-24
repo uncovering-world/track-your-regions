@@ -43,8 +43,6 @@ export { addChildDivisionsAsSubregions, flattenSubregion, expandToSubregions, ge
 export {
   getDisplayGeometryStatus,
   getRegionGeometry,
-  getRootRegionGeometries,
-  getSubregionGeometries,
 } from './geometryRead.js';
 
 // Geometry Compute Operations (CRUD)
@@ -53,9 +51,6 @@ export {
   updateRegionGeometry,
   resetRegionToGADM,
 } from './geometryCompute.js';
-
-// Geometry Compute Operations (single region computation)
-export { computeSingleRegionGeometry } from './geometryComputeSingle.js';
 
 // Geometry Compute with SSE streaming
 export { computeSingleRegionGeometrySSE } from './geometryComputeSSE.js';
