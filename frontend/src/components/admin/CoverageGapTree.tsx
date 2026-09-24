@@ -22,7 +22,7 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import Undo from '@mui/icons-material/Undo';
 import type {
   CoverageGap,
-  SubtreeNode,
+  GapSubtreeNode,
   GeoSuggestResult,
   RegionContextNode,
 } from '../../api/admin/worldViewImport';
@@ -224,7 +224,7 @@ export function GapNodeRow({
 // =============================================================================
 
 interface SubtreeNodeRowProps {
-  node: SubtreeNode;
+  node: GapSubtreeNode;
   depth: number;
   selectedNodeId: number | null;
   expandedNodes: Set<number>;
