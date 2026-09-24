@@ -235,9 +235,9 @@ describe('the overrides that answer with something other than no-store', () => {
     ).toBe(writes);
   });
 
-  it.each(MUST_CALL_HELPER.map((h) => [h.file, h.helper, h.handlers] as const))(
+  it.each(MUST_CALL_HELPER.map((h) => [h.file, h.handlers, h.helper] as const))(
     '%s marks %i handler(s) through %s',
-    (file, helper, handlers) => {
+    (file, handlers, helper) => {
       // Distinct enclosing functions, not calls: three in one handler and
       // none in the other two is the shape a plain count would pass, and
       // exactly the regression this is here to catch.
