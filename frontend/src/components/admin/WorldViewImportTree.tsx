@@ -58,6 +58,8 @@ import { AIReviewDrawer } from './AIReviewDrawer';
 import { SmartSimplifyDialog } from './SmartSimplifyDialog';
 import { OverlapResolutionDialog } from './OverlapResolutionDialog';
 import type { DivisionOverlaps } from '../../api/admin/worldViewImport';
+import { EditRefusedSnackbar } from '../shared/EditRefusedSnackbar';
+import { failedActionsError } from './suggestChildrenOutcome';
 
 /** Find a child region's ID by name under a specific parent */
 function findChildIdByName(nodes: MatchTreeNode[], parentId: number, childName: string): number | undefined {
@@ -163,7 +165,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     simplifyHierarchyMutation, simplifyChildrenMutation, overlapCheckMutation, undoMutation,
     selectMapMutation, manualFixMutation, addChildMutation, renameMutation, reparentMutation,
     renamingRegionId, reparentingRegionId, geocodeProgress, undoSnackbar, setUndoSnackbar,
-    isMutating, invalidateTree,
+    treeEditError, setTreeEditError, isMutating, invalidateTree,
   } = mutations;
 
   // ── Extracted hooks ────────────────────────────────────────────────────────
@@ -320,15 +322,10 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     }
 
     const results = await Promise.allSettled(promises);
-    const failures = results.filter(r => r.status === 'rejected');
-    if (failures.length > 0) {
-      for (const f of failures) {
-        console.error('[AI Review Children] action failed:', (f as PromiseRejectedResult).reason);
-      }
-      alert(`AI Review Children: ${failures.length} of ${results.length} action(s) failed. See browser console for details. The tree will refresh to reflect the partial result.`);
-    }
+    const failed = failedActionsError(results);
+    if (failed) setTreeEditError(failed);
     invalidateTree(parentId);
-  }, [dialogs, buildSuggestChildrenActionPromise, invalidateTree]);
+  }, [dialogs, buildSuggestChildrenActionPromise, invalidateTree, setTreeEditError]);
 
   const { duplicateUrls, syncedUrls } = useMemo(
     () => duplicateSourceUrls(tree ?? []), [tree],
@@ -579,6 +576,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
           loading={selectMapMutation.isPending}
         />
       )}
+      <EditRefusedSnackbar error={treeEditError} onClose={() => setTreeEditError(null)} />
       <Snackbar
         open={!!undoSnackbar?.open}
         autoHideDuration={15000}
