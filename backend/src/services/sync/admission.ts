@@ -366,6 +366,10 @@ export async function markRefused(
     : await pool.query(
         `UPDATE ${MEMBERSHIPS} m
             SET admission = 'refused', admission_reason = v.reason,
+                -- A refusal that comes back after the row was admitted is a
+                -- new question (ADR-0067); one that stands is still answered.
+                admission_answered_at = CASE WHEN m.admission = 'admitted'
+                  THEN NULL ELSE m.admission_answered_at END,
                 ${CLEAR_ICONIC},
                 updated_at = NOW()
            FROM experiences e, ${named}
@@ -408,7 +412,8 @@ export async function restoreAdmission(
       )
     : await pool.query(
         `UPDATE ${MEMBERSHIPS} m
-            SET admission = 'admitted', admission_reason = NULL, updated_at = NOW()
+            SET admission = 'admitted', admission_reason = NULL,
+                admission_answered_at = NULL, updated_at = NOW()
            FROM experiences e
           WHERE e.id = m.experience_id
             AND ${predicate}
@@ -452,6 +457,9 @@ export async function markNotAdmitted(
     : await pool.query(
         `UPDATE ${MEMBERSHIPS} m
             SET admission = 'refused', admission_reason = $3,
+                -- Every row here was admitted: its refusal is a new question
+                -- (ADR-0067).
+                admission_answered_at = NULL,
                 ${CLEAR_ICONIC},
                 updated_at = NOW()
            FROM experiences e

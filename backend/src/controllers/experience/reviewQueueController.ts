@@ -15,7 +15,7 @@ import { ReviewQueue, type ReviewQueueItem } from '../../api/responses/reviewQue
 import { queueItemOf, type QueueRow } from './reviewQueueItem.js';
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, admissionPinnedSql, rowKindJoinSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, admissionAnsweredSql, rowKindJoinSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { lifecycleSelectSql } from './experienceLifecycle.js';
@@ -347,7 +347,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
     JOIN ${KINDS} kd ON kd.id = m.kind_id
     WHERE m.admission = 'refused'
-      AND ${admissionPinnedSql('m')}
+      AND ${admissionAnsweredSql('m')}
       ${sourceFilter}
       ${nameFilter}
       AND ${scopeFilter}

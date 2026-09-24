@@ -17,7 +17,7 @@
  * the other (`experienceLifecycle.ts` sets the same rule).
  */
 
-import { admissionPinnedSql, membershipAdmittedSql } from '../../db/membership.js';
+import { admissionAnsweredSql, membershipAdmittedSql } from '../../db/membership.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
   hidePendingSql, hideRefusedSql, offeredLinkSql, offeredLocationSql,
@@ -44,13 +44,14 @@ export function missingOpenSql(e = 'e'): string {
 
 /**
  * `refused`: a rule turned this membership down (ADR-0024) and nobody has
- * pinned an answer to it. An answered row leaves this question because both
- * answers pin `admission` in the membership's `curated_fields` (#822) —
- * `admissionPinnedSql` is that pin, and `keptOut` is the mirror that shows
- * the pinned rows instead of hiding them.
+ * answered it. A card's answer pins `admission` in the membership's
+ * `curated_fields` (#822); a batch's confirmation pins nothing and marks
+ * `admission_answered_at` instead (ADR-0067). `admissionAnsweredSql` is either,
+ * and `keptOut` is the mirror that shows the answered rows instead of hiding
+ * them.
  */
 export function refusedOpenSql(m = 'm'): string {
-  return `${m}.admission = 'refused' AND NOT ${admissionPinnedSql(m)}`;
+  return `${m}.admission = 'refused' AND NOT ${admissionAnsweredSql(m)}`;
 }
 
 /**
