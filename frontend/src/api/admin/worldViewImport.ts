@@ -9,8 +9,9 @@
  */
 
 import type {
-  ImportCancelled, ImportStarted, ImportStatus, InstancesSynced, MatchAccepted, MatchAcceptedRestRejected,
-  MatchesAccepted, MatchReset, MatchStats, MatchSuggestion, MatchTree, RemainingRejected, SuggestionRejected,
+  AIMatchOneResult, CoveringMatchResult, DbSearchResult, GeocodeMatchResult, Geoshape, ImportCancelled,
+  ImportStarted, ImportStatus, InstancesSynced, MatchAccepted, MatchAcceptedRestRejected, MatchesAccepted,
+  MatchReset, MatchStats, MatchTree, RematchStarted, RematchStatus, RemainingRejected, SuggestionRejected,
   TransferAccepted, TransferPreview,
 } from '@tyr/shared/api';
 import { authFetchJson } from '../fetchUtils';
@@ -19,53 +20,14 @@ import { authFetchJson } from '../fetchUtils';
 // (ADR-0066), and generated into `@tyr/shared/api`. Passed on from here, so a
 // component imports a call's answer from the module of the call.
 export type {
-  AssignedDivision, ImportCancelled, ImportStarted, ImportStatus, InstancesSynced, MarkerPoint, MatchAccepted,
+  AIMatchOneResult, AssignedDivision, CoveringMatchResult, DbSearchResult, FoundSuggestion, GeocodeMatchResult,
+  Geoshape, ImportCancelled, ImportStarted, ImportStatus, InstancesSynced, MarkerPoint, MatchAccepted,
   MatchAcceptedRestRejected, MatchesAccepted, MatchReset, MatchStats, MatchStatus, MatchSuggestion, MatchTree,
-  MatchTreeNode, RemainingRejected, SuggestionRejected, TransferAccepted, TransferPreview,
+  MatchTreeNode, RematchStarted, RematchStatus, RemainingRejected, SuggestionConflict, SuggestionRejected,
+  TransferAccepted, TransferPreview,
 } from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-// =============================================================================
-// Core Types
-// =============================================================================
-
-export interface AIMatchProgress {
-  status: 'running' | 'complete' | 'failed' | 'cancelled' | 'idle';
-  statusMessage?: string;
-  totalLeaves?: number;
-  processedLeaves?: number;
-  improved?: number;
-  totalCost?: number;
-}
-
-export interface DBSearchOneResult {
-  found: number;
-  suggestions: MatchSuggestion[];
-}
-
-export interface AIMatchOneResult {
-  improved: boolean;
-  suggestion?: MatchSuggestion;
-  reasoning?: string;
-  cost: number;
-}
-
-export interface GeoshapeMatchResult {
-  found: number;
-  suggestions: MatchSuggestion[];
-  totalCoverage?: number;
-  scopeAncestorName?: string;
-  nextScope?: { ancestorId: number; ancestorName: string };
-}
-
-export interface RematchStatus {
-  status: 'matching' | 'complete' | 'failed' | 'idle';
-  statusMessage?: string;
-  countriesMatched?: number;
-  totalCountries?: number;
-  noCandidates?: number;
-}
 
 // =============================================================================
 // Import Lifecycle
@@ -168,8 +130,8 @@ export async function syncInstances(
 export async function geocodeMatchRegion(
   worldViewId: number,
   regionId: number,
-): Promise<{ found: number; suggestions: MatchSuggestion[]; geocodedName?: string; searchRadiusKm?: number }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geocode-match`, {
+): Promise<GeocodeMatchResult> {
+  return authFetchJson<GeocodeMatchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geocode-match`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -179,8 +141,8 @@ export async function geoshapeMatchRegion(
   worldViewId: number,
   regionId: number,
   scopeAncestorId?: number,
-): Promise<GeoshapeMatchResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geoshape-match`, {
+): Promise<CoveringMatchResult> {
+  return authFetchJson<CoveringMatchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geoshape-match`, {
     method: 'POST',
     body: JSON.stringify({ regionId, ...(scopeAncestorId != null ? { scopeAncestorId } : {}) }),
   });
@@ -190,8 +152,8 @@ export async function pointMatchRegion(
   worldViewId: number,
   regionId: number,
   scopeAncestorId?: number,
-): Promise<GeoshapeMatchResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/point-match`, {
+): Promise<CoveringMatchResult> {
+  return authFetchJson<CoveringMatchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/point-match`, {
     method: 'POST',
     body: JSON.stringify({ regionId, ...(scopeAncestorId != null ? { scopeAncestorId } : {}) }),
   });
@@ -231,8 +193,8 @@ export async function resetMatchRegion(
 export async function dbSearchOneRegion(
   worldViewId: number,
   regionId: number,
-): Promise<DBSearchOneResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/db-search-one`, {
+): Promise<DbSearchResult> {
+  return authFetchJson<DbSearchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/db-search-one`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -242,29 +204,9 @@ export async function aiMatchOneRegion(
   worldViewId: number,
   regionId: number,
 ): Promise<AIMatchOneResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-match-one`, {
+  return authFetchJson<AIMatchOneResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-match-one`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
-  });
-}
-
-// =============================================================================
-// Bulk AI Match
-// =============================================================================
-
-export async function startAIMatch(worldViewId: number): Promise<AIMatchProgress> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-match`, {
-    method: 'POST',
-  });
-}
-
-export async function getAIMatchStatus(worldViewId: number): Promise<AIMatchProgress> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-match/status`);
-}
-
-export async function cancelAIMatch(worldViewId: number): Promise<{ cancelled: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-match/cancel`, {
-    method: 'POST',
   });
 }
 
@@ -272,8 +214,8 @@ export async function cancelAIMatch(worldViewId: number): Promise<{ cancelled: b
 // Geoshape Fetch
 // =============================================================================
 
-export async function fetchGeoshape(wikidataId: string): Promise<GeoJSON.FeatureCollection> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/geoshape/${wikidataId}`);
+export async function fetchGeoshape(wikidataId: string): Promise<Geoshape> {
+  return authFetchJson<Geoshape>(`${API_URL}/api/admin/wv-import/geoshape/${wikidataId}`);
 }
 
 // =============================================================================
@@ -282,14 +224,14 @@ export async function fetchGeoshape(wikidataId: string): Promise<GeoJSON.Feature
 
 export async function startRematch(
   worldViewId: number,
-): Promise<{ started: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/rematch`, {
+): Promise<RematchStarted> {
+  return authFetchJson<RematchStarted>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/rematch`, {
     method: 'POST',
   });
 }
 
 export async function getRematchStatus(worldViewId: number): Promise<RematchStatus> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/rematch/status`);
+  return authFetchJson<RematchStatus>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/rematch/status`);
 }
 
 // =============================================================================
