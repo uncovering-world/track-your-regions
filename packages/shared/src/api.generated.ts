@@ -425,6 +425,47 @@ export interface ChildDivisionsAdded {
   createdRegions: CreatedSubregion[];
 }
 
+/** A child region of the region being matched. */
+export interface ChildRegionRef {
+  id: number;
+  name: string;
+}
+
+/** One colour group on the preview map and the child region it stands for. */
+export interface ClusterGeoInfo {
+  clusterId: number;
+  color: string;
+  /** The child region the cluster is matched to, or null while it is matched to none. */
+  regionId: number | null;
+  regionName: string | null;
+}
+
+/** The child region a model reads one colour cluster as. */
+export interface ClusterRegionMatch {
+  clusterId: number;
+  /**
+   * Null where the model named no child region, one not among them, or one another cluster already
+   * took.
+   */
+  regionId: number | null;
+  /** The child region's own name, as the region list spells it. */
+  regionName: string | null;
+}
+
+/** A model's reading of which child region each colour cluster stands for. */
+export interface ClusterRegionSuggestions {
+  /** At most one per cluster asked about, and no child region twice. */
+  matches: ClusterRegionMatch[];
+  stats: {
+    model: string;
+    promptTokens: number;
+    completionTokens: number;
+    /** In US dollars. */
+    cost: number;
+    durationMs: number;
+  };
+}
+
 /** An OAuth sign-in's one-time code exchanged for a session. The account is read afterwards. */
 export interface CodeExchanged {
   /**
@@ -1649,6 +1690,87 @@ export interface ManualExperienceCreated {
   externalId: string;
 }
 
+/** A GADM division a shape covers. */
+export interface MapshapeDivision {
+  id: number;
+  name: string;
+  /** The share of the division the shape covers, from 0 to 1. */
+  coverage: number;
+}
+
+/** The shapes a Wikivoyage page draws in one colour, taken as one region. */
+export interface MapshapeGroup {
+  /** The matched child region's name, or the titles of the shapes in the group joined. */
+  title: string;
+  color: string;
+  /** The Wikidata items whose shapes the group draws. */
+  wikidataIds: string[];
+  matchedRegion: ChildRegionRef | null;
+  /** Largest coverage first. */
+  divisions: MapshapeDivision[];
+}
+
+/**
+ * The GADM divisions matched to the shapes a region's Wikivoyage page draws with `{{mapshape}}`.
+ */
+export type MapshapeMatchResult = MapshapesNotFound | MapshapesFound;
+
+/** A division drawn in the colour of the group that covers it best. */
+export interface MapshapePreviewFeature {
+  type: "Feature";
+  geometry: AreaGeometry;
+  properties: {
+    divisionId: number;
+    name: string;
+    color: string;
+    mapshapeTitle: string;
+    regionId: number | null;
+    regionName: string | null;
+    /** Rounded to three places. */
+    coverage: number;
+    accepted: false;
+    isUnsplittable: boolean;
+    confidence: number;
+    /** The index of the division's group in `mapshapes`. */
+    clusterId: number;
+  };
+}
+
+/**
+ * A mapshape match: the page's shapes grouped by colour, the divisions each covers, and both drawn.
+ */
+export interface MapshapesFound {
+  found: true;
+  /** At least one. */
+  mapshapes: MapshapeGroup[];
+  /** By name. */
+  childRegions: ChildRegionRef[];
+  geoPreview: {
+    featureCollection: {
+      type: "FeatureCollection";
+      features: MapshapePreviewFeature[];
+    };
+    /** One per group, in the order of `mapshapes`. */
+    clusterInfos: ClusterGeoInfo[];
+  };
+  wikivoyagePreview: {
+    type: "FeatureCollection";
+    features: WikivoyageShapeFeature[];
+  };
+  stats: {
+    totalMapshapes: number;
+    matchedMapshapes: number;
+    totalDivisions: number;
+  };
+}
+
+/** A mapshape match that found nothing to match. */
+export interface MapshapesNotFound {
+  found: false;
+  /** Why nothing was matched: no source page, no shapes on it, no divisions in scope. */
+  message: string;
+}
+
 /** A place the region's Wikivoyage article marks on its map. */
 export interface MarkerPoint {
   name: string;
@@ -2449,6 +2571,11 @@ export interface ReviewAnswerDid {
   pointsRefused?: number;
 }
 
+/** A reviewer's answer, handed to the colour-match run waiting on it. */
+export interface ReviewAnswered {
+  ok: true;
+}
+
 /** The report of one batch answer (#852). */
 export interface ReviewAnswerResult {
   answer: ReviewAnswer;
@@ -3113,6 +3240,18 @@ export interface WikivoyageCache {
 /** A saved copy of the pages, deleted. */
 export interface WikivoyageCacheDeleted {
   deleted: true;
+}
+
+/** One shape the Wikivoyage page draws, as its Wikidata items outline it. */
+export interface WikivoyageShapeFeature {
+  type: "Feature";
+  geometry: AreaGeometry;
+  properties: {
+    /** The index of the shape's group in `mapshapes`. */
+    mapshapeIndex: number;
+    title: string;
+    color: string;
+  };
 }
 
 /** A point the object lost, waiting on its own verdict. */

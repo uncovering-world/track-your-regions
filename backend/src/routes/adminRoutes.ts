@@ -11,6 +11,7 @@ import { pool } from '../db/index.js';
 import type { UsersRow } from '../db/schema.generated.js';
 import { respond } from '../api/respond.js';
 import { UserSearchResults } from '../api/responses/admin.js';
+import { ReviewAnswered } from '../api/responses/wvImportCvMatch.js';
 import { validate } from '../middleware/errorHandler.js';
 import { authenticatedLimiter, expensiveAdminLimiter } from '../middleware/rateLimiter.js';
 import { z } from 'zod';
@@ -446,7 +447,7 @@ router.post(
     if (isPythonReviewId(reviewId)) {
       const forwarded = resolvePythonReview(reviewId, body);
       if (forwarded) {
-        res.json({ ok: true });
+        respond(res, ReviewAnswered, { ok: true });
       } else {
         res.status(404).json({ error: 'Review not found or expired' });
       }
@@ -456,7 +457,7 @@ router.post(
     const { approvedIds, mixDecisions } = body;
     const found = resolveWaterReview(reviewId, { approvedIds, mixDecisions });
     if (found) {
-      res.json({ ok: true });
+      respond(res, ReviewAnswered, { ok: true });
     } else {
       res.status(404).json({ error: 'Review not found or expired' });
     }
@@ -528,7 +529,7 @@ router.post(
       const { overlayPng, palette } = parsedManual.data;
       console.log(`  [Cluster Review POST] reviewId=${reviewId} type=manual_clusters palette=${palette.length} colors`);
       const found = resolveClusterReview(reviewId, { type: 'manual_clusters', overlayPng, palette });
-      if (found) { res.json({ ok: true }); } else { res.status(404).json({ error: 'Review not found or expired' }); }
+      if (found) { respond(res, ReviewAnswered, { ok: true }); } else { res.status(404).json({ error: 'Review not found or expired' }); }
       return;
     }
 
@@ -555,7 +556,7 @@ router.post(
       split: split.length > 0 ? split : undefined,
     });
     if (found) {
-      res.json({ ok: true });
+      respond(res, ReviewAnswered, { ok: true });
     } else {
       res.status(404).json({ error: 'Review not found or expired' });
     }
@@ -572,7 +573,7 @@ router.post(
     const { action } = req.body as { action: 'adjust' | 'continue' };
     const found = resolveIcpAdjustment(reviewId, { action });
     if (found) {
-      res.json({ ok: true });
+      respond(res, ReviewAnswered, { ok: true });
     } else {
       res.status(404).json({ error: 'Review not found or expired' });
     }
