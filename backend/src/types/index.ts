@@ -1044,20 +1044,16 @@ export const updateGeometryBodySchema = z.object({
   hullGeometry: z.any().optional(),
 });
 
-export const subregionGeometriesQuerySchema = z.object({
-  useDisplay: booleanStringSchema.default('false'),
-});
-
 /**
- * What every writer of a region's geometry accepts, mounted on all three of
- * them: the single-region endpoint, the bulk one and the progress stream.
+ * What every writer of a region's geometry accepts, mounted on both of them:
+ * the bulk endpoint, and the progress stream through the extension below.
  *
  * One object rather than one per endpoint, because that is the whole point of
- * it — three declarations disagree about `skipSnapping`, one taking no such
+ * it — separate declarations disagreed about `skipSnapping`, one taking no such
  * parameter at all and one reading it off a query nothing validated, so the
- * same region comes out differently depending on which was asked (#736). Three
- * identical schemas would restore that by the ordinary route: a change made to
- * one and forgotten on the others, with nothing to fail.
+ * same region came out differently depending on which was asked (#736).
+ * Identical schemas would restore that by the ordinary route: a change made to
+ * one and forgotten on the other, with nothing to fail.
  *
  * `skipSnapping` absent means *snap*, which is what each of them already did.
  */

@@ -1,5 +1,5 @@
 /**
- * Neighbor-snapping step for the union pipeline, shared by all three writers of
+ * Neighbor-snapping step for the union pipeline, shared by the writers of
  * `regions.geom`: makes touching/near child region borders share vertices
  * before the union, so the merge has no slivers from mismatched boundary
  * points.

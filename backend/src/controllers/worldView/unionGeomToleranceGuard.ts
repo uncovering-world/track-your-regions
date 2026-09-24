@@ -1,5 +1,5 @@
 /**
- * One definition of the rule the three union writers of `regions.geom` are held
+ * One definition of the rule the union writers of `regions.geom` are held
  * to, shared by their guards.
  *
  * `regions.geom` is the authoritative shape every derived column is made from
@@ -85,8 +85,8 @@ export const UNION_SHAPE = {
  * snap, the union, or the write itself would reach the column just as surely,
  * and a guard that reads one statement passes while the shape it is about is
  * simplified in the next one. The snap belongs in that list because its result
- * *replaces* the geometry the rest of the pipeline works on — all three writers
- * assign it back over `collectedGeom` — so it is upstream of the column by the
+ * *replaces* the geometry the rest of the pipeline works on — every writer
+ * assigns it back over `collectedGeom` — so it is upstream of the column by the
  * same argument as the union.
  *
  * The collect step is the one statement `NO_COARSENING_CALL` is not applied to
@@ -142,7 +142,7 @@ function unconditionalCoarseningCalls(collectSql: string): number {
 }
 
 /**
- * Every check the three union writers' guards make, in one place.
+ * Every check the union writers' guards make, in one place.
  *
  * The pattern was shared two rounds ago; this shares the *sequence*, which is
  * the thing that actually had to be widened twice — `snapSql` and then
