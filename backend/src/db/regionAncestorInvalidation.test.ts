@@ -238,16 +238,19 @@ describe('the rule has one implementation, and no way round it', () => {
   it('is never switched off for a bulk load', () => {
     // db/init-db.py disables three triggers on administrative_divisions while it
     // loads GADM and computes their columns in one pass afterwards. Doing that
-    // to this one would lose the invalidation for every row of the load, with
-    // nothing afterwards to make up for it.
+    // to this one, or to the member triggers that clear a region whose members
+    // changed (ADR-0068), would lose the invalidation for every row of the
+    // load, with nothing afterwards to make up for it.
     for (const root of [repoFile('db'), backendSrc, repoFile('scripts')]) {
       for (const ext of ['.sql', '.py', '.ts', '.sh']) {
         for (const file of filesUnder(root, ext)) {
           if (file.endsWith('.test.ts')) continue;
           // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from literal roots
           const text = readFileSync(file, 'utf8');
-          expect(text, `${file} disables the invalidation trigger`)
-            .not.toContain('DISABLE TRIGGER trg_regions_geom');
+          for (const trigger of ['trg_regions_geom', 'trg_region_members_']) {
+            expect(text, `${file} disables an invalidation trigger`)
+              .not.toContain(`DISABLE TRIGGER ${trigger}`);
+          }
         }
       }
     }

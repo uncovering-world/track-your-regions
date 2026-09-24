@@ -1022,6 +1022,74 @@ CREATE OR REPLACE TRIGGER trg_regions_geom_insert_invalidates_parent
   WHEN (NEW.geom IS NOT NULL)
   EXECUTE FUNCTION invalidate_parent_region_geometry();
 
+-- A member change is a geometry change of its region (ADR-0068). A region's
+-- outline is the union of its children and of its own members, so a write to
+-- region_members makes that region's stored geom stale exactly as moving a
+-- child does. Nulling it here -- in the statement that changed the member --
+-- lets the trigger above carry the news to the ancestors, and leaves no writer
+-- to remember a call: the import review had a dozen that did not (#718).
+--
+-- Statement-level, with transition tables, so a bulk write (an import's match,
+-- a re-match of a world view) nulls each touched region once rather than once
+-- per row. A drawn boundary is not derived from its members and is left as
+-- drawn; a region with no geometry yet has nothing to clear.
+CREATE OR REPLACE FUNCTION invalidate_member_regions_geometry() RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE regions r
+    SET geom = NULL, geom_3857 = NULL, geom_simplified_low = NULL, geom_simplified_medium = NULL
+    WHERE r.id IN (SELECT region_id FROM new_members)
+      AND r.is_custom_boundary IS NOT TRUE AND r.geom IS NOT NULL;
+  ELSIF TG_OP = 'DELETE' THEN
+    UPDATE regions r
+    SET geom = NULL, geom_3857 = NULL, geom_simplified_low = NULL, geom_simplified_medium = NULL
+    WHERE r.id IN (SELECT region_id FROM old_members)
+      AND r.is_custom_boundary IS NOT TRUE AND r.geom IS NOT NULL;
+  ELSE
+    -- Only what changes the union: the row's region, its division or its cut.
+    -- A renamed part (custom_name) draws the same outline.
+    UPDATE regions r
+    SET geom = NULL, geom_3857 = NULL, geom_simplified_low = NULL, geom_simplified_medium = NULL
+    WHERE r.id IN (
+        SELECT o.region_id FROM old_members o JOIN new_members n ON n.id = o.id
+         WHERE o.region_id IS DISTINCT FROM n.region_id
+            OR o.division_id IS DISTINCT FROM n.division_id
+            OR o.custom_geom IS DISTINCT FROM n.custom_geom
+        UNION
+        SELECT n.region_id FROM old_members o JOIN new_members n ON n.id = o.id
+         WHERE o.region_id IS DISTINCT FROM n.region_id
+            OR o.division_id IS DISTINCT FROM n.division_id
+            OR o.custom_geom IS DISTINCT FROM n.custom_geom
+      )
+      AND r.is_custom_boundary IS NOT TRUE AND r.geom IS NOT NULL;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION invalidate_member_regions_geometry() IS 'Trigger function: a write to region_members marks the regions whose union it changed stale, and the geom trigger carries it to their ancestors (ADR-0068).';
+
+-- Three triggers on one function: a statement trigger with transition tables
+-- takes one event, and an UPDATE one cannot take a column list, which is why
+-- the UPDATE arm compares the rows itself.
+CREATE OR REPLACE TRIGGER trg_region_members_insert_invalidates_region
+  AFTER INSERT ON region_members
+  REFERENCING NEW TABLE AS new_members
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION invalidate_member_regions_geometry();
+
+CREATE OR REPLACE TRIGGER trg_region_members_delete_invalidates_region
+  AFTER DELETE ON region_members
+  REFERENCING OLD TABLE AS old_members
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION invalidate_member_regions_geometry();
+
+CREATE OR REPLACE TRIGGER trg_region_members_update_invalidates_region
+  AFTER UPDATE ON region_members
+  REFERENCING OLD TABLE AS old_members NEW TABLE AS new_members
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION invalidate_member_regions_geometry();
+
 -- =============================================================================
 -- Table + Trigger: a leaf region's geometry, cut into pieces for placement
 -- =============================================================================
