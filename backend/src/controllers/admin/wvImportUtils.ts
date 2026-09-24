@@ -6,6 +6,7 @@
 
 import { pool } from '../../db/index.js';
 import { computeGeoSimilarityForRegion } from '../../services/worldViewImport/geoshapeCache.js';
+import type { UndoOperation } from '../../api/responses/wvImportTreeOps.js';
 
 // =============================================================================
 // Undo infrastructure
@@ -34,7 +35,7 @@ export interface SuggestionSnapshot {
 }
 
 export interface UndoEntry {
-  operation: 'dismiss-children' | 'handle-as-grouping' | 'smart-flatten' | 'collapse-to-parent' | 'auto-resolve-children' | 'prune-to-leaves';
+  operation: UndoOperation;
   regionId: number;
   timestamp: number;
   // Import state snapshots

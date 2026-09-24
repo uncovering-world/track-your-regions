@@ -9,6 +9,8 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { IMPORT_SOURCE_TYPES } from '../../services/worldViewImport/sourceTypes.js';
+import { respond } from '../../api/respond.js';
+import { ChildRegionAdded, HierarchyWarningsDismissed } from '../../api/responses/wvImportTreeOps.js';
 
 /**
  * Finalize review -- mark the world view as done.
@@ -111,6 +113,7 @@ export async function addChildRegion(req: AuthenticatedRequest, res: Response): 
   };
   console.log(`[WV Import] POST /matches/${worldViewId}/add-child-region — parent=${parentRegionId}, name="${name}"`);
 
+  let body: ChildRegionAdded;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -149,13 +152,14 @@ export async function addChildRegion(req: AuthenticatedRequest, res: Response): 
     );
 
     await client.query('COMMIT');
-    res.json({ created: true, regionId });
+    body = { created: true, regionId };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+  respond(res, ChildRegionAdded, body);
 }
 
 /**
@@ -182,5 +186,5 @@ export async function dismissHierarchyWarnings(req: AuthenticatedRequest, res: R
     [regionId],
   );
 
-  res.json({ dismissed: true });
+  respond(res, HierarchyWarningsDismissed, { dismissed: true });
 }

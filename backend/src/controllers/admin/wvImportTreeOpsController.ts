@@ -21,6 +21,10 @@ import {
 } from './wvImportUtils.js';
 import { invalidateRegionGeometry, syncImportMatchStatus } from '../worldView/helpers.js';
 import { runSimplifyHierarchy } from './wvImportSimplifyShared.js';
+import { respond } from '../../api/respond.js';
+import {
+  ChildMerged, ChildrenDismissed, ChildrenSimplified, DescendantsPruned, HierarchySimplified, RegionRemoved,
+} from '../../api/responses/wvImportTreeOps.js';
 
 // Re-export smart-simplify and overlap handlers (callers import from this module)
 export { detectSmartSimplify, applySmartSimplifyMove } from './wvImportSmartSimplifyController.js';
@@ -158,6 +162,7 @@ export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Respo
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/merge-child — regionId=${regionId}`);
 
+  let body: ChildMerged;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -201,13 +206,14 @@ export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Respo
     await invalidateRegionGeometry(regionId);
 
     console.log(`[WV Import] Merged child "${childName}" (${childId}) into parent ${regionId}`);
-    res.json({ merged: true, childId, childName });
+    body = { merged: true, childId, childName };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+  respond(res, ChildMerged, body);
 }
 
 /**
@@ -222,6 +228,7 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
   const { regionId, reparentChildren, reparentDivisions } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/remove-region — regionId=${regionId}, reparentChildren=${reparentChildren}, reparentDivisions=${reparentDivisions ?? false}`);
 
+  let body: RegionRemoved;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -271,7 +278,7 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
       if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId);
 
       console.log(`[WV Import] Removed region "${regionName}" (${regionId}), reparented ${reparented.rowCount} children, ${divisionsReparented} divisions`);
-      res.json({ removed: true, regionName, childrenReparented: reparented.rowCount, divisionsReparented });
+      body = { removed: true, regionName, childrenReparented: reparented.rowCount ?? 0, divisionsReparented };
     } else {
       // Delete entire branch: all descendants first (depth-ordered), then the region
       const descendants = await client.query(`
@@ -302,7 +309,7 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
       if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId);
 
       console.log(`[WV Import] Removed region "${regionName}" (${regionId}) and ${descendantIds.length} descendant(s)`);
-      res.json({ removed: true, regionName, descendantsRemoved: descendantIds.length });
+      body = { removed: true, regionName, descendantsRemoved: descendantIds.length };
     }
   } catch (err) {
     await client.query('ROLLBACK');
@@ -310,6 +317,7 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
   } finally {
     client.release();
   }
+  respond(res, RegionRemoved, body);
 }
 
 /**
@@ -321,6 +329,7 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/dismiss-children — regionId=${regionId}`);
 
+  let body: ChildrenDismissed;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -449,13 +458,14 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
     await invalidateRegionGeometry(regionId);
 
     console.log(`[WV Import] Dismissed ${descendantIds.length} descendants of region ${regionId}`);
-    res.json({ dismissed: descendantIds.length, undoAvailable: true });
+    body = { dismissed: descendantIds.length, undoAvailable: true };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+  respond(res, ChildrenDismissed, body);
 }
 
 /**
@@ -468,6 +478,7 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/prune-to-leaves — regionId=${regionId}`);
 
+  let body: DescendantsPruned;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -583,13 +594,14 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
     }
 
     console.log(`[WV Import] Pruned ${grandDescIds.length} grandchildren+ from region ${regionId} (kept ${childIds.length} direct children)`);
-    res.json({ pruned: grandDescIds.length, undoAvailable: true });
+    body = { pruned: grandDescIds.length, undoAvailable: true };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+  respond(res, DescendantsPruned, body);
 }
 
 /**
@@ -621,7 +633,7 @@ export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response
   }
 
   const totalReduced = replacements.reduce((sum, r) => sum + r.replacedCount, 0) - replacements.length;
-  res.json({ replacements, totalReduced });
+  respond(res, HierarchySimplified, { replacements, totalReduced });
 }
 
 /**
@@ -643,7 +655,7 @@ export async function simplifyChildren(req: AuthenticatedRequest, res: Response)
     [regionId, worldViewId],
   );
 
-  const results: Array<{ regionId: number; regionName: string; replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }>; totalReduced: number }> = [];
+  const results: ChildrenSimplified['results'] = [];
   const affectedRegionIds: number[] = [];
 
   for (const child of childrenResult.rows) {
@@ -663,5 +675,5 @@ export async function simplifyChildren(req: AuthenticatedRequest, res: Response)
     await syncImportMatchStatus(id);
   }
 
-  res.json({ results, totalSimplified: results.length });
+  respond(res, ChildrenSimplified, { results, totalSimplified: results.length });
 }

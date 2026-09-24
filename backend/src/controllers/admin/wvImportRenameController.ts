@@ -9,6 +9,8 @@ import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { pool } from '../../db/index.js';
 import { invalidateRegionGeometry } from '../worldView/helpers.js';
+import { respond } from '../../api/respond.js';
+import { RegionRenamed, RegionReparented } from '../../api/responses/wvImportTreeOps.js';
 
 // ---------------------------------------------------------------------------
 // Rename
@@ -76,7 +78,7 @@ export async function renameRegion(
     client.release();
   }
 
-  res.json({ renamed: true, regionId, oldName, newName: name.trim() });
+  respond(res, RegionRenamed, { renamed: true, regionId, oldName, newName: name.trim() });
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +108,7 @@ export async function reparentRegion(
   const oldParentId = check.rows[0].parent_region_id as number | null;
 
   if (newParentId === oldParentId) {
-    res.json({ reparented: true, regionId, oldParentId, newParentId, noChange: true });
+    respond(res, RegionReparented, { reparented: true, regionId, oldParentId, newParentId, noChange: true });
     return;
   }
 
@@ -156,5 +158,5 @@ export async function reparentRegion(
   if (oldParentId != null) await invalidateRegionGeometry(oldParentId);
   if (newParentId != null) await invalidateRegionGeometry(newParentId);
 
-  res.json({ reparented: true, regionId, oldParentId, newParentId });
+  respond(res, RegionReparented, { reparented: true, regionId, oldParentId, newParentId });
 }

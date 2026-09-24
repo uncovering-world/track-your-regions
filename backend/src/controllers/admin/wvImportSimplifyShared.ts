@@ -7,6 +7,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
+import type { SimplifyReplacement } from '../../api/responses/wvImportTreeOps.js';
 
 type TreeDbClient = PoolClient;
 
@@ -51,7 +52,7 @@ async function applySimplifyReplacement(
   client: TreeDbClient,
   regionId: number,
   rep: { parentId: number; memberIds: number[]; count: number },
-): Promise<{ parentName: string; parentPath: string; replacedCount: number }> {
+): Promise<SimplifyReplacement> {
   await client.query(
     'DELETE FROM region_members WHERE id = ANY($1::int[])',
     [rep.memberIds],
@@ -94,12 +95,12 @@ async function applySimplifyReplacement(
 export async function runSimplifyHierarchy(
   regionId: number,
   _worldViewId: number,
-): Promise<{ replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }> }> {
+): Promise<{ replacements: Array<SimplifyReplacement> }> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const allReplacements: Array<{ parentName: string; parentPath: string; replacedCount: number }> = [];
+    const allReplacements: Array<SimplifyReplacement> = [];
 
     for (;;) {
       const replacements = await findFullyCoveredParents(client, regionId);
