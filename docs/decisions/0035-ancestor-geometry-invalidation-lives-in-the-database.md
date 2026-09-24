@@ -1,7 +1,7 @@
 # ADR-0035: Ancestor geometry invalidation lives in the database
 
 **Date:** 2026-08-27
-**Status:** Accepted
+**Status:** Accepted — the member half of a region's own invalidation narrowed by [ADR-0068](0068-a-member-change-invalidates-its-region-in-the-database.md)
 
 ---
 

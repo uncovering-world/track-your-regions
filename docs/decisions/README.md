@@ -54,7 +54,7 @@ and accepted by it.
 | [0032](0032-a-rule-stays-absolute-and-the-debt-is-recorded.md) | A rule about the catalogue stays absolute, and the debt is recorded beside it | Accepted | 2026-08-24 |
 | [0033](0033-lighthouse-through-its-node-api-with-lighthouse-ci-budgets.md) | Lighthouse is driven through its Node API, and the budgets keep Lighthouse CI's syntax | Accepted | 2026-08-24 |
 | [0034](0034-a-place-has-an-address.md) | A place has an address, and ids decide it | Accepted | 2026-08-25 |
-| [0035](0035-ancestor-geometry-invalidation-lives-in-the-database.md) | Ancestor geometry invalidation lives in the database | Accepted | 2026-08-27 |
+| [0035](0035-ancestor-geometry-invalidation-lives-in-the-database.md) | Ancestor geometry invalidation lives in the database | Accepted — narrowed by ADR-0068 | 2026-08-27 |
 | [0036](0036-a-rung-carries-the-holes-its-source-has.md) | A rung carries the holes its source has | Accepted | 2026-08-27 |
 | [0037](0037-a-part-field-readers-see-is-held-like-the-objects.md) | A field of a part readers can see is held like the object's own | Accepted — decision 6 narrowed by [0050](0050-a-renamed-component-is-found-by-its-claim.md) | 2026-08-30 |
 | [0038](0038-a-held-proposal-is-answered-per-field.md) | A held proposal is answered per field, and the answer is recorded by value | Accepted — decisions 1 and 1a narrowed by ADR-0039 | 2026-08-30 |
@@ -87,6 +87,7 @@ and accepted by it.
 | [0065](0065-a-rule-both-sides-apply-lives-in-one-package-both-import.md) | A rule both sides apply lives in one package both import | Accepted | 2026-09-21 |
 | [0066](0066-an-endpoints-answer-is-a-backend-schema-and-the-clients-type-is-generated-from-it.md) | An endpoint's answer is a backend schema, and the client's type is generated from it | Accepted | 2026-09-22 |
 | [0067](0067-accepting-a-refusal-keeps-it-and-a-batch-answer-pins-nothing.md) | Accepting a refusal keeps it, and a batch answer pins nothing | Accepted | 2026-09-24 |
+| [0068](0068-a-member-change-invalidates-its-region-in-the-database.md) | A member change invalidates its region in the database | Accepted | 2026-09-25 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
