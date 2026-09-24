@@ -8,7 +8,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { MatchTreeNode, ChildrenCoverageResult } from '../../api/admin/worldViewImport';
+import type { MatchTreeNode, ChildrenCoverage } from '../../api/admin/worldViewImport';
 import type { ShadowInsertion } from './treeNodeShared';
 import {
   collectAncestorsOfIds,
@@ -70,7 +70,7 @@ function coverageKeyChar(cov: number | undefined, geoCov: number | undefined): s
 export function useNavigationState(
   tree: MatchTreeNode[] | undefined,
   shadowInsertions: ShadowInsertion[] | undefined,
-  coverageData: ChildrenCoverageResult | undefined,
+  coverageData: ChildrenCoverage | undefined,
 ): UseNavigationStateResult {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const parentRef = useRef<HTMLDivElement>(null);

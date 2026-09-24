@@ -21,7 +21,6 @@ import { useQuery } from '@tanstack/react-query';
 import {
   getChildrenRegionGeometry,
   type CoverageGapDivision,
-  type SiblingRegionGeometry,
 } from '../../api/admin/worldViewImport';
 import { searchRegions } from '../../api/regions';
 import { Tooltip, type ShadowInsertion } from './treeNodeShared';
@@ -29,6 +28,7 @@ import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
 import { plural } from '../../utils/plural';
 import { frameGeoJson } from '../../utils/mapUtils';
+import type { DrawnSiblingRegion } from './CvMatchMap';
 
 /**
  * The basemap every map of the import screen's coverage draws on, shared with
@@ -256,7 +256,7 @@ const SIBLING_COLORS = ['#3388ff', '#33aa55', '#9955cc', '#cc7733', '#5599dd', '
 /** Map showing gap divisions in context of existing sibling regions, with drill-down */
 export function GapContextMap({ gapDivisions, siblingRegions, worldViewId, highlightedGapId, onHighlight, onRegionSelect, selectedRegionId }: {
   gapDivisions: CoverageGapDivision[];
-  siblingRegions: SiblingRegionGeometry[];
+  siblingRegions: DrawnSiblingRegion[];
   worldViewId: number;
   highlightedGapId: number | null;
   onHighlight: (id: number | null) => void;
@@ -267,7 +267,7 @@ export function GapContextMap({ gapDivisions, siblingRegions, worldViewId, highl
 }) {
   const mapRef = useRef<MapRef>(null);
   // Drill-down state: stack of { regionId, regionName, regions }
-  const [drillStack, setDrillStack] = useState<Array<{ regionId: number; regionName: string; regions: SiblingRegionGeometry[] }>>([]);
+  const [drillStack, setDrillStack] = useState<Array<{ regionId: number; regionName: string; regions: DrawnSiblingRegion[] }>>([]);
   const [drillLoading, setDrillLoading] = useState(false);
 
   // Active regions: either the original siblings or the drill-down level
