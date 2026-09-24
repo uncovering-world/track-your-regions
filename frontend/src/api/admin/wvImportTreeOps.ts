@@ -6,13 +6,22 @@
  * fix, select map image, smart simplify (detect + apply).
  */
 
-import type { SelectionAccepted, SelectionRejected, SpatialAnomaly } from '@tyr/shared/api';
+import type {
+  ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenDismissed, ChildrenSimplified, DescendantsPruned,
+  HierarchySimplified, HierarchyWarningsDismissed, ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone,
+  RegionRemoved, RegionRenamed, RegionReparented, SelectionAccepted, SelectionRejected, SpatialAnomaly,
+} from '@tyr/shared/api';
 import { authFetchJson } from '../fetchUtils';
 
 // The answers this module's calls already declare as backend schemas (ADR-0066),
 // generated into `@tyr/shared/api`; the rest of the module is #992's. A spatial
 // anomaly is declared with the colour-match stream, which sends it too.
-export type { SelectionAccepted, SelectionRejected, SpatialAnomaly, SpatialAnomalyDivision } from '@tyr/shared/api';
+export type {
+  ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenDismissed, ChildrenSimplified, DescendantsPruned,
+  HierarchySimplified, HierarchyWarningsDismissed, ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone,
+  RegionRemoved, RegionRemovedKeepingChildren, RegionRemovedWithBranch, RegionRenamed, RegionReparented,
+  SelectionAccepted, SelectionRejected, SimplifyReplacement, SpatialAnomaly, SpatialAnomalyDivision, UndoOperation,
+} from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -33,8 +42,8 @@ export async function handleAsGrouping(
 export async function dismissChildren(
   worldViewId: number,
   regionId: number,
-): Promise<{ dismissed: number; undoAvailable?: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/dismiss-children`, {
+): Promise<ChildrenDismissed> {
+  return authFetchJson<ChildrenDismissed>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/dismiss-children`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -44,16 +53,11 @@ export async function dismissChildren(
 // Simplify Hierarchy
 // =============================================================================
 
-export interface SimplifyHierarchyResult {
-  replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }>;
-  totalReduced: number;
-}
-
 export async function simplifyHierarchy(
   worldViewId: number,
   regionId: number,
-): Promise<SimplifyHierarchyResult> {
-  return authFetchJson(
+): Promise<HierarchySimplified> {
+  return authFetchJson<HierarchySimplified>(
     `${API_URL}/api/admin/wv-import/matches/${worldViewId}/simplify-hierarchy`,
     { method: 'POST', body: JSON.stringify({ regionId }) },
   );
@@ -63,16 +67,11 @@ export async function simplifyHierarchy(
 // Simplify Children
 // =============================================================================
 
-export interface SimplifyChildrenResult {
-  results: Array<{ regionId: number; regionName: string; replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }>; totalReduced: number }>;
-  totalSimplified: number;
-}
-
 export async function simplifyChildren(
   worldViewId: number,
   parentRegionId: number,
-): Promise<SimplifyChildrenResult> {
-  return authFetchJson(
+): Promise<ChildrenSimplified> {
+  return authFetchJson<ChildrenSimplified>(
     `${API_URL}/api/admin/wv-import/matches/${worldViewId}/simplify-children`,
     { method: 'POST', body: JSON.stringify({ regionId: parentRegionId }) },
   );
@@ -84,8 +83,8 @@ export async function simplifyChildren(
 
 export async function undoLastOperation(
   worldViewId: number,
-): Promise<{ undone: boolean; operation: string }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/undo`, {
+): Promise<OperationUndone> {
+  return authFetchJson<OperationUndone>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/undo`, {
     method: 'POST',
   });
 }
@@ -100,8 +99,8 @@ export async function addChildRegion(
   name: string,
   sourceUrl?: string,
   sourceExternalId?: string,
-): Promise<{ created: boolean; regionId: number }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/add-child-region`, {
+): Promise<ChildRegionAdded> {
+  return authFetchJson<ChildRegionAdded>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/add-child-region`, {
     method: 'POST',
     body: JSON.stringify({ parentRegionId, name, sourceUrl, sourceExternalId }),
   });
@@ -112,8 +111,8 @@ export async function removeRegionFromImport(
   regionId: number,
   reparentChildren: boolean,
   reparentDivisions?: boolean,
-): Promise<{ removed: boolean; regionName: string }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/remove-region`, {
+): Promise<RegionRemoved> {
+  return authFetchJson<RegionRemoved>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/remove-region`, {
     method: 'POST',
     body: JSON.stringify({ regionId, reparentChildren, reparentDivisions }),
   });
@@ -125,8 +124,8 @@ export async function renameRegion(
   name: string,
   sourceUrl?: string,
   sourceExternalId?: string,
-): Promise<{ renamed: boolean; regionId: number; oldName: string; newName: string }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/rename-region`, {
+): Promise<RegionRenamed> {
+  return authFetchJson<RegionRenamed>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/rename-region`, {
     method: 'POST',
     body: JSON.stringify({ regionId, name, sourceUrl, sourceExternalId }),
   });
@@ -177,8 +176,8 @@ export async function markManualFix(
   regionId: number,
   needsManualFix: boolean,
   fixNote?: string,
-): Promise<{ updated: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/mark-manual-fix`, {
+): Promise<ManualFixMarked> {
+  return authFetchJson<ManualFixMarked>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/mark-manual-fix`, {
     method: 'POST',
     body: JSON.stringify({ regionId, needsManualFix, fixNote }),
   });
@@ -188,8 +187,8 @@ export async function selectMapImage(
   worldViewId: number,
   regionId: number,
   imageUrl: string | null,
-): Promise<{ selected: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/select-map-image`, {
+): Promise<MapImageSelected> {
+  return authFetchJson<MapImageSelected>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/select-map-image`, {
     method: 'POST',
     body: JSON.stringify({ regionId, imageUrl }),
   });
@@ -255,16 +254,11 @@ export const applySmartSimplifyMove = applySmartFlatten;
 // Prune / Smart Flatten / Merge / Collapse / Auto-Resolve
 // =============================================================================
 
-export interface PruneResult {
-  pruned: number;
-  undoAvailable?: boolean;
-}
-
 export async function pruneToLeaves(
   worldViewId: number,
   regionId: number,
-): Promise<PruneResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/prune-to-leaves`, {
+): Promise<DescendantsPruned> {
+  return authFetchJson<DescendantsPruned>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/prune-to-leaves`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -308,8 +302,8 @@ export async function smartFlattenPreview(
 export async function mergeChildIntoParent(
   worldViewId: number,
   regionId: number,
-): Promise<{ merged: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/merge-child`, {
+): Promise<ChildMerged> {
+  return authFetchJson<ChildMerged>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/merge-child`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -331,19 +325,11 @@ export async function collapseToParent(
   });
 }
 
-export interface AutoResolveChildrenResult {
-  resolved: number;
-  review: number;
-  failed: Array<{ id: number; name: string }>;
-  total: number;
-  undoAvailable?: boolean;
-}
-
 export async function autoResolveChildren(
   worldViewId: number,
   regionId: number,
-): Promise<AutoResolveChildrenResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/auto-resolve-children`, {
+): Promise<ChildrenAutoResolved> {
+  return authFetchJson<ChildrenAutoResolved>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/auto-resolve-children`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -353,8 +339,8 @@ export async function reparentRegion(
   worldViewId: number,
   regionId: number,
   newParentId: number | null,
-): Promise<{ reparented: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/reparent-region`, {
+): Promise<RegionReparented> {
+  return authFetchJson<RegionReparented>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/reparent-region`, {
     method: 'POST',
     body: JSON.stringify({ regionId, newParentId }),
   });
@@ -363,8 +349,8 @@ export async function reparentRegion(
 export async function dismissHierarchyWarnings(
   worldViewId: number,
   regionId: number,
-): Promise<{ dismissed: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/dismiss-hierarchy-warnings`, {
+): Promise<HierarchyWarningsDismissed> {
+  return authFetchJson<HierarchyWarningsDismissed>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/dismiss-hierarchy-warnings`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -373,8 +359,8 @@ export async function dismissHierarchyWarnings(
 export async function clearRegionMembers(
   worldViewId: number,
   regionId: number,
-): Promise<{ cleared: number }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/clear-members`, {
+): Promise<MembersCleared> {
+  return authFetchJson<MembersCleared>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/clear-members`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
