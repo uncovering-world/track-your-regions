@@ -531,6 +531,16 @@ The colour-match stream (`/color-match-stream`) writes each event through `write
 
 The pipeline's parts take its `SendEvent`, typed with that union. A traced border (`BorderPath`), a cluster's result (`ColorMatchCluster`), a spatial anomaly (`SpatialAnomaly`, also sent by smart simplify) and an adjacency edge are the schemas' types on the server as well. A water review from the Python pipeline is read key by key before it is sent.
 
+**What the tree edits answer.** The plain edits `frontend/src/api/admin/wvImportTreeOps.ts` makes answer through schemas in `backend/src/api/responses/wvImportTreeOps.ts` (ADR-0066). They cover:
+- removing a region (`RegionRemoved`: kept children, or the whole branch), merging its only child, dismissing its children or pruning to leaves;
+- simplifying a region's or its children's members;
+- undoing the last undoable edit, whose `operation` is the `UndoOperation` the undo store is typed with;
+- resolving a container's unmatched leaves;
+- adding, renaming and moving a region;
+- a region's hierarchy warnings, members, map image and manual-fix mark.
+
+An edit that runs in a transaction answers after it commits; clearing a region's members is two separate statements, not one transaction. The flatten, smart simplify, overlap and AI children calls do not answer through schemas yet. No screen calls the auto-resolve preview (`/auto-resolve-children/preview`).
+
 A verdict on suggestions has one writer per rule, whether it is given for one division or for a selection: `acceptDivisionsRejectRest` and `rejectDivisions` (`controllers/admin/wvImportMatchDecisions.ts`), each in one transaction. The single routes (`accept-and-reject`, `reject`) pass one division, and the batch routes pass the selection. After a rejection the region's status follows what is left: open suggestions make it `needs_review`, members `manual_matched`, and nothing `no_candidates`.
 
 **Every path the admin client calls is a route `adminRoutes.ts` registers.** `backend/src/routes/adminClientPaths.test.ts` reads each `/api/admin/…` path the modules in `frontend/src/api/admin/` spell, with its method, and fails on one the router does not register. A drifted path answers a 404 only when somebody presses its button, so nothing else notices it. The route declarations of #793 will give the paths one owner and retire the spec.
