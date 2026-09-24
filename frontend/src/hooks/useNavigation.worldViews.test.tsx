@@ -166,9 +166,14 @@ describe('useNavigation world view fetching', () => {
     mockFetchWorldViews.mockResolvedValue([PUBLIC_WV]);
     rerender();
 
-    await waitFor(() => expect(result.current.selectedWorldView?.id).toBe(2));
-    expect(result.current.selectedRegion).toBeNull();
-    expect(result.current.regionBreadcrumbs).toEqual([]);
+    // One settled state, asked for whole: the world view is component state,
+    // while the region follows the address, which the router writes in a
+    // transition and so commits a render later (#499).
+    await waitFor(() => {
+      expect(result.current.selectedWorldView?.id).toBe(2);
+      expect(result.current.selectedRegion).toBeNull();
+      expect(result.current.regionBreadcrumbs).toEqual([]);
+    });
   });
 
   it('clears the old context when the list comes back empty, not just the world view', async () => {
@@ -193,10 +198,15 @@ describe('useNavigation world view fetching', () => {
     mockFetchWorldViews.mockResolvedValue([]);
     rerender();
 
-    await waitFor(() => expect(result.current.selectedWorldView).toBeNull());
-    expect(result.current.selectedRegion).toBeNull();
-    expect(result.current.regionBreadcrumbs).toEqual([]);
-    expect(result.current.selectedWorldViewId).toBeNull();
+    // Asked for whole, as in the switch above: selectedWorldViewId and the
+    // region follow the address, and a render with the selection dropped but
+    // the address not yet rewritten is committed in between (#499).
+    await waitFor(() => {
+      expect(result.current.selectedWorldView).toBeNull();
+      expect(result.current.selectedRegion).toBeNull();
+      expect(result.current.regionBreadcrumbs).toEqual([]);
+      expect(result.current.selectedWorldViewId).toBeNull();
+    });
   });
 
   it('does not wipe a region chosen before the list arrives', async () => {
