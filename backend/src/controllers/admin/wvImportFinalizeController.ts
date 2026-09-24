@@ -11,6 +11,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { IMPORT_SOURCE_TYPES } from '../../services/worldViewImport/sourceTypes.js';
 import { respond } from '../../api/respond.js';
 import { ChildRegionAdded, HierarchyWarningsDismissed } from '../../api/responses/wvImportTreeOps.js';
+import { ReviewFinalized } from '../../api/responses/wvImportCoverage.js';
 
 /**
  * Finalize review -- mark the world view as done.
@@ -96,7 +97,7 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
   }
 
   console.log(`[WV Import] Finalized review for worldView ${worldViewId}`);
-  res.json({ finalized: true, worldViewId });
+  respond(res, ReviewFinalized, { finalized: true, worldViewId });
 }
 
 /**

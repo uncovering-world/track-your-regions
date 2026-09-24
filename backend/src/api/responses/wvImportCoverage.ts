@@ -1,0 +1,136 @@
+/**
+ * What the world-view import's coverage check answers (ADR-0066): the success
+ * bodies of the endpoints `frontend/src/api/admin/wvImportCoverage.ts` calls,
+ * declared once. That is the check itself and its stream, a gap's geographic
+ * suggestion, a reviewer's verdicts on gaps, and closing the review.
+ *
+ * The stream's events are one union, `CoverageEvent`, each written with
+ * `writeEvent()`, which holds it to the schema as `respond()` holds a body.
+ *
+ * Each exported schema is the type of the same name in `@tyr/shared/api`, and
+ * the handler sends its body through `respond()`, which holds it to the schema.
+ * Imports are held to the list in the header of `curation.ts` beside this file,
+ * which also says why.
+ */
+
+import { z } from 'zod/v4';
+
+// ---------------------------------------------------------------------------
+// The coverage check
+// ---------------------------------------------------------------------------
+
+export const CoverageSuggestion = z.strictObject({
+  action: z.enum(['add_member', 'create_region']).describe('Add the gap to the region, or create a region for it under this one.'),
+  targetRegionId: z.number().int(),
+  targetRegionName: z.string(),
+}).describe('Where a coverage gap could go.');
+export type CoverageSuggestion = z.infer<typeof CoverageSuggestion>;
+
+export const GapSubtreeNode = z.strictObject({
+  id: z.number().int(),
+  name: z.string(),
+  get children(): z.ZodArray<typeof GapSubtreeNode> {
+    return z.array(GapSubtreeNode);
+  },
+}).describe('A GADM division under a gap, with its own.');
+export type GapSubtreeNode = z.infer<typeof GapSubtreeNode>;
+
+export const CoverageGap = z.strictObject({
+  id: z.number().int().describe('The uncovered GADM division.'),
+  name: z.string(),
+  parentName: z.string().nullable(),
+  suggestion: CoverageSuggestion.nullable().describe('From a sibling division a region holds, else from the nearest covered cousin; null where neither exists.'),
+  subtree: z.array(GapSubtreeNode).optional().describe('Sent for a gap with GADM divisions under it, by name.'),
+}).describe('A GADM division no region covers, whose parent is covered or is a root.');
+export type CoverageGap = z.infer<typeof CoverageGap>;
+
+export const DismissedGap = z.strictObject({
+  id: z.number().int(),
+  name: z.string(),
+  parentName: z.string().nullable(),
+}).describe('A gap the reviewer dismissed, which coverage no longer counts.');
+export type DismissedGap = z.infer<typeof DismissedGap>;
+
+export const CoverageResult = z.strictObject({
+  gaps: z.array(CoverageGap),
+  dismissedCount: z.number().int(),
+  dismissedGaps: z.array(DismissedGap),
+}).describe('The GADM divisions a world view does not cover yet.');
+export type CoverageResult = z.infer<typeof CoverageResult>;
+
+export const CoverageProgress = z.strictObject({
+  type: z.literal('progress'),
+  step: z.string(),
+  elapsed: z.number().describe('Seconds since the check started.'),
+}).describe('A step of the coverage check, begun.');
+export type CoverageProgress = z.infer<typeof CoverageProgress>;
+
+export const CoverageComplete = z.strictObject({
+  type: z.literal('complete'),
+  elapsed: z.number(),
+  data: CoverageResult,
+}).describe('The coverage check, finished; the stream ends after it.');
+export type CoverageComplete = z.infer<typeof CoverageComplete>;
+
+export const CoverageFailed = z.strictObject({
+  type: z.literal('error'),
+  message: z.string(),
+  elapsed: z.number(),
+}).describe('The coverage check, stopped; the stream ends after it.');
+export type CoverageFailed = z.infer<typeof CoverageFailed>;
+
+export const CoverageEvent = z.union([CoverageProgress, CoverageComplete, CoverageFailed])
+  .describe('One event of the coverage stream (`/coverage-stream`), told apart by `type`.');
+export type CoverageEvent = z.infer<typeof CoverageEvent>;
+
+// ---------------------------------------------------------------------------
+// A gap's geographic suggestion
+// ---------------------------------------------------------------------------
+
+export const RegionContextNode = z.strictObject({
+  id: z.number().int(),
+  name: z.string(),
+  isSuggested: z.boolean(),
+  get children(): z.ZodArray<typeof RegionContextNode> {
+    return z.array(RegionContextNode);
+  },
+}).describe('A region on the way from the root to the suggested one; the suggested one carries its children.');
+export type RegionContextNode = z.infer<typeof RegionContextNode>;
+
+export const GeoSuggestResult = z.strictObject({
+  suggestion: CoverageSuggestion.extend({ action: z.literal('add_member') }).nullable()
+    .describe('The region holding the assigned division nearest the gap; null where there is none, and then nothing else is sent.'),
+  suggestionDivisionId: z.number().int().optional().describe('The assigned division nearest the gap.'),
+  suggestionDivisionName: z.string().optional(),
+  gapCenter: z.tuple([z.number(), z.number()]).optional().describe('Longitude and latitude.'),
+  suggestionCenter: z.tuple([z.number(), z.number()]).optional().describe('The nearest division\'s anchor, longitude and latitude.'),
+  distanceKm: z.number().int().optional().describe('From the gap\'s centre to the nearest division\'s boundary.'),
+  contextTree: RegionContextNode.optional().describe('The suggested region\'s ancestry from the root, for picking another level.'),
+}).describe('A gap\'s geographic suggestion: the region holding the assigned division nearest it.');
+export type GeoSuggestResult = z.infer<typeof GeoSuggestResult>;
+
+// ---------------------------------------------------------------------------
+// A reviewer's verdicts on gaps, and closing the review
+// ---------------------------------------------------------------------------
+
+export const GapDismissed = z.strictObject({
+  dismissed: z.literal(true),
+}).describe('A gap dismissed: coverage stops counting it until a re-match.');
+export type GapDismissed = z.infer<typeof GapDismissed>;
+
+export const GapUndismissed = z.strictObject({
+  undismissed: z.literal(true),
+}).describe('A dismissed gap counted again.');
+export type GapUndismissed = z.infer<typeof GapUndismissed>;
+
+export const CoverageApproved = z.strictObject({
+  approved: z.literal(true),
+  regionId: z.number().int().describe('The region the gap was added to: the target, or the region created for it.'),
+}).describe('A gap covered: added to a region, or to a new region created for it.');
+export type CoverageApproved = z.infer<typeof CoverageApproved>;
+
+export const ReviewFinalized = z.strictObject({
+  finalized: z.literal(true),
+  worldViewId: z.number().int(),
+}).describe('A world view\'s match review closed; it leaves the active review list.');
+export type ReviewFinalized = z.infer<typeof ReviewFinalized>;
