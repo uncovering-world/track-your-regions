@@ -15,12 +15,12 @@ import {
   type MatchTreeNode,
   type ChildrenReviewed,
   type CoverageGapDivision,
-  type SiblingRegionGeometry,
 } from '../../api/admin/worldViewImport';
 import { searchDivisions } from '../../api/divisions';
 import { runHierarchyReview } from '../../api/admin/ai';
 import { type StoredReport } from './AIReviewDrawer';
 import { findNodeById, findNodeName } from './importTreeUtils';
+import type { DrawnSiblingRegion } from './CvMatchMap';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ export interface GapAnalysisState {
   regionName: string;
   loading: boolean;
   gapDivisions: CoverageGapDivision[];
-  siblingRegions: SiblingRegionGeometry[];
+  siblingRegions: DrawnSiblingRegion[];
   regionMapUrl: string | null;
 }
 

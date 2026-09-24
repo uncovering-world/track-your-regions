@@ -32,12 +32,19 @@ export function mergeGeometries(geoms: GeoJSON.Geometry[]): GeoJSON.Geometry | n
   }
 }
 
+/**
+ * A sibling region as the dialog draws it: the server's outline, or one merged
+ * here with the gaps assigned to it, which falls back to a GeometryCollection
+ * where turf cannot union them.
+ */
+export type DrawnSiblingRegion = Omit<SiblingRegionGeometry, 'geometry'> & { geometry: GeoJSON.Geometry };
+
 /** Merge gap geometries into an existing sibling region, returning updated array */
 export function mergeGeomsIntoSibling(
-  siblings: SiblingRegionGeometry[],
+  siblings: DrawnSiblingRegion[],
   targetRegionId: number,
   gapGeoms: GeoJSON.Geometry[],
-): SiblingRegionGeometry[] {
+): DrawnSiblingRegion[] {
   if (gapGeoms.length === 0) return siblings;
   return siblings.map(s => {
     if (s.regionId !== targetRegionId) return s;

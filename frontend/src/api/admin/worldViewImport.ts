@@ -378,13 +378,17 @@ export type {
   RegionContextNode,
   ReviewFinalized,
   SiblingRegionGeometry,
-  ChildrenCoverageResult,
-  CoverageGeometryResult,
+  ChildRegionGeometries,
+  ChildrenCoverage,
+  CoverageGapAnalysis,
   CoverageGapDivision,
-  AnalyzeCoverageGapsResult,
-  UnionGeometryResult,
+  CoverageGeometry,
+  DivisionPreview,
+  DivisionShapeFeature,
+  MarkerPointFeature,
   SplitDeeperResult,
-  VisionMatchDivisionsResult,
+  UnionGeometryResult,
+  VisionMatchResult,
 } from './wvImportCoverage';
 
 export {

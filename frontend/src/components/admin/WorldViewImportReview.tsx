@@ -27,6 +27,7 @@ import {
   startWorldViewGeometryComputation,
   fetchWorldViewComputationStatus,
   cancelWorldViewGeometryComputation,
+  type ComputationStatus,
 } from '../../api/geometry';
 import { DivisionPreviewDialog } from '../WorldViewEditor/components/dialogs/DivisionPreviewDialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -60,15 +61,13 @@ interface WorldViewImportReviewProps {
   onFinalize?: () => void;
 }
 
-// Geometry computation progress Alert — extracted to reduce parent cognitive complexity
-interface GeomStatus {
-  percent: number;
-  computed: number;
-  total: number;
-  errors: number;
-  currentRegion?: string;
-  status?: string;
-}
+// Geometry computation progress Alert — extracted to reduce parent cognitive complexity.
+// What it shows is the computation's status as the server answers it, with the
+// counts it draws made definite; `computed` is the status's `progress`, the
+// regions processed so far.
+type GeomStatus = Required<Pick<ComputationStatus, 'percent' | 'total' | 'errors'>>
+  & Pick<ComputationStatus, 'currentRegion' | 'status'>
+  & { computed: number };
 
 type PreviewDivisionState = {
   divisionId?: number;
@@ -531,10 +530,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
 
   // ── Geometry computation (polling-based) ──────────────────────────────────
   const [geomComputing, setGeomComputing] = useState(false);
-  const [geomStatus, setGeomStatus] = useState<{
-    percent: number; computed: number; total: number; errors: number;
-    currentRegion?: string; status?: string;
-  } | null>(null);
+  const [geomStatus, setGeomStatus] = useState<GeomStatus | null>(null);
   const geomPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopGeomPolling = useCallback(() => {

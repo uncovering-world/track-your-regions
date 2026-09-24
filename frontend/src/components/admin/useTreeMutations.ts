@@ -44,7 +44,7 @@ import {
   simplifyChildren,
   checkDivisionOverlap,
   type MatchTreeNode,
-  type ChildrenCoverageResult,
+  type ChildrenCoverage,
 } from '../../api/admin/worldViewImport';
 // ─── Types shared between hook and component ─────────────────────────────────
 
@@ -101,8 +101,8 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   const coverageKey = ['admin', 'wvImport', 'childrenCoverage', worldViewId] as const;
 
   /** Merge partial coverage data into the cache */
-  const mergeCoverage = (partial: ChildrenCoverageResult) => {
-    queryClient.setQueryData<ChildrenCoverageResult>(coverageKey, (old) => {
+  const mergeCoverage = (partial: ChildrenCoverage) => {
+    queryClient.setQueryData<ChildrenCoverage>(coverageKey, (old) => {
       if (!old) return partial;
       return {
         coverage: { ...old.coverage, ...partial.coverage },
