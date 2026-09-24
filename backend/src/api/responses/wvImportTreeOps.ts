@@ -1,7 +1,10 @@
 /**
  * What the world-view import review's tree operations answer (ADR-0066): the
  * success bodies of the endpoints `frontend/src/api/admin/wvImportTreeOps.ts`
- * calls, declared once. The module's other calls are #992's to declare.
+ * calls, declared once: a reviewer's edits to the imported tree (removing,
+ * merging, pruning, renaming and moving regions, simplifying their divisions,
+ * resolving a container's leaves, undoing the last of these) and to a region's
+ * review state, and the batch verdicts on a region's suggestions.
  *
  * Each exported schema is the type of the same name in `@tyr/shared/api`, and
  * the handler sends its body through `respond()`, which holds it to the schema.
@@ -21,3 +24,140 @@ export const SelectionRejected = z.strictObject({
   rejected: z.number().int().describe('Suggestions of the selection marked rejected.'),
 }).describe('A selection of a region\'s suggestions rejected, and taken out of its members.');
 export type SelectionRejected = z.infer<typeof SelectionRejected>;
+
+// ---------------------------------------------------------------------------
+// Edits to the tree
+// ---------------------------------------------------------------------------
+
+export const UndoOperation = z.enum([
+  'dismiss-children', 'handle-as-grouping', 'smart-flatten', 'collapse-to-parent', 'auto-resolve-children', 'prune-to-leaves',
+]).describe('A tree edit that can be undone: the store keeps the last one per world view.');
+export type UndoOperation = z.infer<typeof UndoOperation>;
+
+export const ChildrenDismissed = z.strictObject({
+  dismissed: z.number().int().describe('Descendant regions deleted.'),
+  undoAvailable: z.literal(true),
+}).describe('A region\'s descendants deleted, making it a leaf.');
+export type ChildrenDismissed = z.infer<typeof ChildrenDismissed>;
+
+export const DescendantsPruned = z.strictObject({
+  pruned: z.number().int().describe('Regions below the direct children, deleted.'),
+  undoAvailable: z.literal(true),
+}).describe('A region\'s grandchildren and everything below deleted, making its children leaves.');
+export type DescendantsPruned = z.infer<typeof DescendantsPruned>;
+
+export const ChildMerged = z.strictObject({
+  merged: z.literal(true),
+  childId: z.number().int(),
+  childName: z.string(),
+}).describe('A region\'s only child merged into it: its members, children and import state moved up, the child deleted.');
+export type ChildMerged = z.infer<typeof ChildMerged>;
+
+export const RegionRemovedKeepingChildren = z.strictObject({
+  removed: z.literal(true),
+  regionName: z.string(),
+  childrenReparented: z.number().int().describe('Children moved up to the removed region\'s parent.'),
+  divisionsReparented: z.number().int().describe('Divisions moved up to the parent, where they were asked to be.'),
+}).describe('A region removed, its children moved up to its parent.');
+export type RegionRemovedKeepingChildren = z.infer<typeof RegionRemovedKeepingChildren>;
+
+export const RegionRemovedWithBranch = z.strictObject({
+  removed: z.literal(true),
+  regionName: z.string(),
+  descendantsRemoved: z.number().int(),
+}).describe('A region removed with everything below it.');
+export type RegionRemovedWithBranch = z.infer<typeof RegionRemovedWithBranch>;
+
+export const RegionRemoved = z.union([RegionRemovedKeepingChildren, RegionRemovedWithBranch])
+  .describe('A region removed from the import, told apart by whether its children were kept.');
+export type RegionRemoved = z.infer<typeof RegionRemoved>;
+
+export const SimplifyReplacement = z.strictObject({
+  parentName: z.string(),
+  parentPath: z.string(),
+  replacedCount: z.number().int().describe('The member divisions that together cover the parent, replaced by it.'),
+}).describe('A GADM parent that took the place of its children in a region\'s members.');
+export type SimplifyReplacement = z.infer<typeof SimplifyReplacement>;
+
+export const HierarchySimplified = z.strictObject({
+  replacements: z.array(SimplifyReplacement),
+  totalReduced: z.number().int().describe('How many fewer members the region has.'),
+}).describe('A region\'s members simplified: every GADM parent its members cover whole takes their place, upward until none does.');
+export type HierarchySimplified = z.infer<typeof HierarchySimplified>;
+
+export const ChildrenSimplified = z.strictObject({
+  results: z.array(z.strictObject({
+    regionId: z.number().int(),
+    regionName: z.string(),
+    replacements: z.array(SimplifyReplacement),
+    totalReduced: z.number().int(),
+  })).describe('One entry per child that changed.'),
+  totalSimplified: z.number().int(),
+}).describe('The members of each child of a region simplified, one child at a time.');
+export type ChildrenSimplified = z.infer<typeof ChildrenSimplified>;
+
+export const OperationUndone = z.strictObject({
+  undone: z.literal(true),
+  operation: UndoOperation,
+}).describe('The world view\'s last undoable tree edit, reverted.');
+export type OperationUndone = z.infer<typeof OperationUndone>;
+
+export const ChildrenAutoResolved = z.strictObject({
+  resolved: z.number().int().describe('Leaves whose name match overlaps their geoshape by half or more, assigned.'),
+  review: z.number().int().describe('Leaves whose match overlaps less, or has no geoshape to compare, left as suggestions.'),
+  total: z.number().int().describe('Unmatched leaves the container had.'),
+  failed: z.array(z.strictObject({
+    id: z.number().int(),
+    name: z.string(),
+  })).describe('Leaves with no name match, or whose match does not overlap their geoshape at all.'),
+  parentMembersKept: z.number().int().describe('The container\'s own divisions, which it keeps.'),
+  undoAvailable: z.literal(true),
+}).describe('A container\'s unmatched leaves matched by name, and checked against their geoshapes.');
+export type ChildrenAutoResolved = z.infer<typeof ChildrenAutoResolved>;
+
+export const ChildRegionAdded = z.strictObject({
+  created: z.literal(true),
+  regionId: z.number().int(),
+}).describe('A child region added to the imported tree.');
+export type ChildRegionAdded = z.infer<typeof ChildRegionAdded>;
+
+export const RegionRenamed = z.strictObject({
+  renamed: z.literal(true),
+  regionId: z.number().int(),
+  oldName: z.string(),
+  newName: z.string(),
+}).describe('A region renamed.');
+export type RegionRenamed = z.infer<typeof RegionRenamed>;
+
+export const RegionReparented = z.strictObject({
+  reparented: z.literal(true),
+  regionId: z.number().int(),
+  oldParentId: z.number().int().nullable().describe('Null for a root.'),
+  newParentId: z.number().int().nullable().describe('Null to make it a root.'),
+  noChange: z.literal(true).optional().describe('Sent when the region already had that parent.'),
+}).describe('A region moved under another parent.');
+export type RegionReparented = z.infer<typeof RegionReparented>;
+
+// ---------------------------------------------------------------------------
+// A region's review state
+// ---------------------------------------------------------------------------
+
+export const HierarchyWarningsDismissed = z.strictObject({
+  dismissed: z.literal(true),
+}).describe('A region\'s hierarchy warnings marked reviewed.');
+export type HierarchyWarningsDismissed = z.infer<typeof HierarchyWarningsDismissed>;
+
+export const MembersCleared = z.strictObject({
+  cleared: z.number().int().describe('Member divisions removed.'),
+}).describe('A region\'s member divisions removed; it goes back to review, or to no candidates where no suggestion is open.');
+export type MembersCleared = z.infer<typeof MembersCleared>;
+
+export const MapImageSelected = z.strictObject({
+  selected: z.literal(true),
+}).describe('One of a region\'s map image candidates chosen as its map, or the choice cleared.');
+export type MapImageSelected = z.infer<typeof MapImageSelected>;
+
+export const ManualFixMarked = z.strictObject({
+  updated: z.literal(true),
+}).describe('A region marked as needing a manual fix, or unmarked.');
+export type ManualFixMarked = z.infer<typeof ManualFixMarked>;

@@ -19,6 +19,8 @@ import {
   type SuggestionSnapshot,
   undoEntries,
 } from './wvImportUtils.js';
+import { respond } from '../../api/respond.js';
+import { ChildrenAutoResolved, OperationUndone } from '../../api/responses/wvImportTreeOps.js';
 
 // =============================================================================
 // Undo helpers
@@ -252,6 +254,7 @@ export async function undoLastOperation(req: AuthenticatedRequest, res: Response
     return;
   }
 
+  let body: OperationUndone;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -261,13 +264,14 @@ export async function undoLastOperation(req: AuthenticatedRequest, res: Response
     // Remove undo entry after successful undo
     undoEntries.delete(worldViewId);
     console.log(`[WV Import] Undo ${entry.operation} for region ${entry.regionId} successful`);
-    res.json({ undone: true, operation: entry.operation });
+    body = { undone: true, operation: entry.operation };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+  respond(res, OperationUndone, body);
 }
 
 // =============================================================================
@@ -656,6 +660,7 @@ export async function autoResolveChildren(req: AuthenticatedRequest, res: Respon
     return;
   }
 
+  let body: ChildrenAutoResolved;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -707,19 +712,19 @@ export async function autoResolveChildren(req: AuthenticatedRequest, res: Respon
 
     console.log(`[WV Import] Auto-resolved ${result.autoMatched.length} auto-matched, ${result.needsReview.length} needs-review, ${result.unmatched.length} unmatched under region ${regionId}`);
 
-    res.json({
+    body = {
       resolved: result.autoMatched.length,
       review: result.needsReview.length,
       total: result.total,
       failed: result.unmatched,
       parentMembersKept: result.parentMembers.kept.length + result.parentMembers.redundant.length,
-      parentMembersRemoved: 0,
       undoAvailable: true,
-    });
+    };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+  respond(res, ChildrenAutoResolved, body);
 }

@@ -20,6 +20,7 @@ import {
   SuggestionRejected,
   type MatchTreeNode,
 } from '../../api/responses/worldViewImport.js';
+import { ManualFixMarked, MapImageSelected, MembersCleared } from '../../api/responses/wvImportTreeOps.js';
 // Re-export review API for adminRoutes (keeps existing import path working)
 export {
   resolveWaterReview,
@@ -268,7 +269,7 @@ export async function clearMembers(req: AuthenticatedRequest, res: Response): Pr
     [newStatus, regionId],
   );
 
-  res.json({ cleared: deleted.rowCount });
+  respond(res, MembersCleared, { cleared: deleted.rowCount ?? 0 });
 }
 
 /**
@@ -484,7 +485,7 @@ export async function selectMapImage(req: AuthenticatedRequest, res: Response): 
     );
   }
 
-  res.json({ selected: true });
+  respond(res, MapImageSelected, { selected: true });
 }
 
 /**
@@ -509,7 +510,7 @@ export async function markManualFix(req: AuthenticatedRequest, res: Response): P
     [needsManualFix, needsManualFix ? (fixNote ?? null) : null, regionId],
   );
 
-  res.json({ updated: true });
+  respond(res, ManualFixMarked, { updated: true });
 }
 
 // The division-candidate geometry endpoints live in their own module;

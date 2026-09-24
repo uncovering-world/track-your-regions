@@ -441,10 +441,63 @@ export interface ChildDivisionsAdded {
   createdRegions: CreatedSubregion[];
 }
 
+/**
+ * A region's only child merged into it: its members, children and import state moved up, the child
+ * deleted.
+ */
+export interface ChildMerged {
+  merged: true;
+  childId: number;
+  childName: string;
+}
+
+/** A child region added to the imported tree. */
+export interface ChildRegionAdded {
+  created: true;
+  regionId: number;
+}
+
 /** A child region of the region being matched. */
 export interface ChildRegionRef {
   id: number;
   name: string;
+}
+
+/** A container's unmatched leaves matched by name, and checked against their geoshapes. */
+export interface ChildrenAutoResolved {
+  /** Leaves whose name match overlaps their geoshape by half or more, assigned. */
+  resolved: number;
+  /** Leaves whose match overlaps less, or has no geoshape to compare, left as suggestions. */
+  review: number;
+  /** Unmatched leaves the container had. */
+  total: number;
+  /** Leaves with no name match, or whose match does not overlap their geoshape at all. */
+  failed: {
+    id: number;
+    name: string;
+  }[];
+  /** The container's own divisions, which it keeps. */
+  parentMembersKept: number;
+  undoAvailable: true;
+}
+
+/** A region's descendants deleted, making it a leaf. */
+export interface ChildrenDismissed {
+  /** Descendant regions deleted. */
+  dismissed: number;
+  undoAvailable: true;
+}
+
+/** The members of each child of a region simplified, one child at a time. */
+export interface ChildrenSimplified {
+  /** One entry per child that changed. */
+  results: {
+    regionId: number;
+    regionName: string;
+    replacements: SimplifyReplacement[];
+    totalReduced: number;
+  }[];
+  totalSimplified: number;
 }
 
 /** One colour group on the preview map and the child region it stands for. */
@@ -984,6 +1037,13 @@ export interface DescendantMemberGeometry {
   };
   /** Simplified for context, at a tolerance of 0.005°. */
   geometry: AreaGeometry;
+}
+
+/** A region's grandchildren and everything below deleted, making its children leaves. */
+export interface DescendantsPruned {
+  /** Regions below the direct children, deleted. */
+  pruned: number;
+  undoAvailable: true;
 }
 
 /** How much of a world view has its geometry and the frame metadata that goes with it. */
@@ -1623,6 +1683,21 @@ export interface HierarchyReviewResult {
   };
 }
 
+/**
+ * A region's members simplified: every GADM parent its members cover whole takes their place,
+ * upward until none does.
+ */
+export interface HierarchySimplified {
+  replacements: SimplifyReplacement[];
+  /** How many fewer members the region has. */
+  totalReduced: number;
+}
+
+/** A region's hierarchy warnings marked reviewed. */
+export interface HierarchyWarningsDismissed {
+  dismissed: true;
+}
+
 /** The parameters a region's hull is built with. */
 export interface HullParams {
   /** Buffer around the islands, in km. */
@@ -1881,6 +1956,16 @@ export interface ManualExperienceCreated {
   externalId: string;
 }
 
+/** A region marked as needing a manual fix, or unmarked. */
+export interface ManualFixMarked {
+  updated: true;
+}
+
+/** One of a region's map image candidates chosen as its map, or the choice cleared. */
+export interface MapImageSelected {
+  selected: true;
+}
+
 /** A GADM division a shape covers. */
 export interface MapshapeDivision {
   id: number;
@@ -2094,6 +2179,15 @@ export interface MemberMoved {
 }
 
 /**
+ * A region's member divisions removed; it goes back to review, or to no candidates where no
+ * suggestion is open.
+ */
+export interface MembersCleared {
+  /** Member divisions removed. */
+  cleared: number;
+}
+
+/**
  * Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a
  * curator. `auto` and `verified` are shown to readers, `verified` because a person passed it.
  */
@@ -2135,6 +2229,12 @@ export interface NamedDivision {
 export interface NewBadgesSeen {
   /** The objects whose first impression this call recorded. Only the first is kept. */
   recorded: number[];
+}
+
+/** The world view's last undoable tree edit, reverted. */
+export interface OperationUndone {
+  undone: true;
+  operation: UndoOperation;
 }
 
 /**
@@ -2664,6 +2764,46 @@ export interface RegionPreview {
   childPageExists?: Record<string, boolean>;
 }
 
+/** A region removed from the import, told apart by whether its children were kept. */
+export type RegionRemoved = RegionRemovedKeepingChildren | RegionRemovedWithBranch;
+
+/** A region removed, its children moved up to its parent. */
+export interface RegionRemovedKeepingChildren {
+  removed: true;
+  regionName: string;
+  /** Children moved up to the removed region's parent. */
+  childrenReparented: number;
+  /** Divisions moved up to the parent, where they were asked to be. */
+  divisionsReparented: number;
+}
+
+/** A region removed with everything below it. */
+export interface RegionRemovedWithBranch {
+  removed: true;
+  regionName: string;
+  descendantsRemoved: number;
+}
+
+/** A region renamed. */
+export interface RegionRenamed {
+  renamed: true;
+  regionId: number;
+  oldName: string;
+  newName: string;
+}
+
+/** A region moved under another parent. */
+export interface RegionReparented {
+  reparented: true;
+  regionId: number;
+  /** Null for a root. */
+  oldParentId: number | null;
+  /** Null to make it a root. */
+  newParentId: number | null;
+  /** Sent when the region already had that parent. */
+  noChange?: true;
+}
+
 /** A region's hand-drawn boundary and hull dropped, and its outline rebuilt from its members. */
 export interface RegionReset {
   reset: true;
@@ -2970,6 +3110,14 @@ export interface SessionStarted {
    */
   accessToken: string;
   user: PublicUser;
+}
+
+/** A GADM parent that took the place of its children in a region's members. */
+export interface SimplifyReplacement {
+  parentName: string;
+  parentPath: string;
+  /** The member divisions that together cover the parent, replaced by it. */
+  replacedCount: number;
 }
 
 /** One find dug up at a site (#894). */
@@ -3321,6 +3469,9 @@ export interface TreasureViewUnmarked {
   success: true;
   treasureId: number;
 }
+
+/** A tree edit that can be undone: the store keeps the last one per world view. */
+export type UndoOperation = "dismiss-children" | "handle-as-grouping" | "smart-flatten" | "collapse-to-parent" | "auto-resolve-children" | "prune-to-leaves";
 
 /** What asking again about turned-down points and works did. */
 export interface UnrefuseContentsResult {
