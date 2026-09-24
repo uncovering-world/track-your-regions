@@ -3,7 +3,9 @@
  * endpoints `frontend/src/api/geometry.ts` calls, declared once. That is one
  * region's computation and its progress stream, a world view's computation and
  * its status, the frame metadata a run leaves, a region reset to its members,
- * and the hull editor's preview, save and saved parameters.
+ * and the hull editor's preview, save and saved parameters. One region's
+ * computation also answers without the stream (`SingleRegionComputed`), a
+ * route no screen calls.
  *
  * Each exported schema is the type of the same name in `@tyr/shared/api`. A
  * handler sends a body through `respond()` and a stream's events through
@@ -32,6 +34,37 @@ export const ComputeResult = z.strictObject({
   tileVersion: z.number().int().optional().describe('The world view\'s tile version after the run bumped it.'),
 }).describe('What a finished computation of one region left.');
 export type ComputeResult = z.infer<typeof ComputeResult>;
+
+export const CustomBoundaryPreserved = z.strictObject({
+  computed: z.literal(true),
+  regionId: z.number().int(),
+  name: z.string(),
+  usesHull: z.boolean(),
+  message: z.string(),
+}).describe('A region with a hand-drawn boundary, left as drawn.');
+export type CustomBoundaryPreserved = z.infer<typeof CustomBoundaryPreserved>;
+
+export const NothingToMerge = z.strictObject({
+  computed: z.literal(false),
+  message: z.string(),
+  childrenComputed: z.number().int().describe('Child regions computed on the way, before the region itself found nothing to merge.'),
+}).describe('A region whose members and children hold no geometry to merge.');
+export type NothingToMerge = z.infer<typeof NothingToMerge>;
+
+export const RegionComputed = z.strictObject({
+  computed: z.literal(true),
+  points: z.number().int().describe('Vertices in the computed outline.'),
+  childrenComputed: z.number().int(),
+  usesHull: z.boolean().optional(),
+  hullGenerated: z.boolean().optional(),
+  crossesDateline: z.boolean().optional(),
+  tileVersion: z.number().int().optional().describe('The world view\'s tile version after the run bumped it.'),
+}).describe('A region\'s outline computed, its children\'s first.');
+export type RegionComputed = z.infer<typeof RegionComputed>;
+
+export const SingleRegionComputed = z.union([RegionComputed, CustomBoundaryPreserved, NothingToMerge])
+  .describe('One region\'s computation, answered at its end rather than streamed. No screen calls it; the editor streams.');
+export type SingleRegionComputed = z.infer<typeof SingleRegionComputed>;
 
 export const ComputeProgress = z.strictObject({
   type: z.literal('progress'),

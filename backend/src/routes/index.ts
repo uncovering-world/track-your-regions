@@ -8,6 +8,8 @@ import adminRoutes from './adminRoutes.js';
 import experienceRoutes from './experienceRoutes.js';
 import geocodeRoutes from './geocodeRoutes.js';
 import { pool } from '../db/index.js';
+import { respond } from '../api/respond.js';
+import { HealthStatus } from '../api/responses/health.js';
 import { initOpenAI } from '../services/ai/openaiService.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -20,10 +22,11 @@ const router = Router();
 router.get('/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
-    res.json({ status: 'ok', database: 'connected', timestamp: new Date().toISOString() });
   } catch {
     res.status(503).json({ status: 'error', database: 'disconnected', timestamp: new Date().toISOString() });
+    return;
   }
+  respond(res, HealthStatus, { status: 'ok', database: 'connected', timestamp: new Date().toISOString() });
 });
 
 // Auth routes (public)

@@ -20,7 +20,7 @@ import {
   undoEntries,
 } from './wvImportUtils.js';
 import { respond } from '../../api/respond.js';
-import { ChildrenAutoResolved, OperationUndone } from '../../api/responses/wvImportTreeOps.js';
+import { AutoResolvePreview, ChildrenAutoResolved, OperationUndone } from '../../api/responses/wvImportTreeOps.js';
 
 // =============================================================================
 // Undo helpers
@@ -532,7 +532,7 @@ export async function autoResolveChildrenPreview(req: AuthenticatedRequest, res:
     action: m.action,
   });
 
-  res.json({
+  respond(res, AutoResolvePreview, {
     autoMatched: result.autoMatched.map(formatMatch),
     needsReview: result.needsReview.map(formatMatch),
     unmatched: result.unmatched,
