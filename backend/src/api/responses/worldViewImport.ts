@@ -2,8 +2,9 @@
  * What the world-view import's review answers (ADR-0066): the success bodies of
  * the endpoints `frontend/src/api/admin/worldViewImport.ts` calls, declared
  * once. That is an import started, followed and cancelled, the match review's
- * statistics and its tree, a reviewer's decisions on a region's suggestions,
- * and a division moved from the region that held it.
+ * statistics and its tree, the matchers that find candidates for one region,
+ * a reviewer's decisions on a region's suggestions, a division moved from the
+ * region that held it, a Wikidata item's shape, and a re-match.
  *
  * Each exported schema is the type of the same name in `@tyr/shared/api`, and
  * the handler sends its body through `respond()`, which holds it to the schema.
@@ -73,19 +74,22 @@ export const MatchStatus = z.enum(['auto_matched', 'children_matched', 'needs_re
   .describe('Where a region\'s match stands: matched by the matcher, through its children, or by hand; candidates to review; none found. `suggested` is an older matcher\'s word for a parent with candidates.');
 export type MatchStatus = z.infer<typeof MatchStatus>;
 
+export const SuggestionConflict = z.strictObject({
+  type: z.enum(['direct', 'split']).describe('`direct`: the donor holds the division itself. `split`: it holds one of the division\'s ancestors.'),
+  donorRegionId: z.number().int(),
+  donorRegionName: z.string(),
+  donorDivisionId: z.number().int(),
+  donorDivisionName: z.string(),
+}).describe('The sibling region already holding a suggested division, or its parent: accepting it moves the division from there (ADR-0012).');
+export type SuggestionConflict = z.infer<typeof SuggestionConflict>;
+
 export const MatchSuggestion = z.strictObject({
   divisionId: z.number().int(),
   name: z.string(),
   path: z.string().nullable().describe('The division\'s administrative path, country first.'),
   score: z.number().nullable(),
   geoSimilarity: z.number().nullable().describe('How much of the region\'s shape the division covers, where a shape was compared.'),
-  conflict: z.strictObject({
-    type: z.enum(['direct', 'split']),
-    donorRegionId: z.number().int(),
-    donorRegionName: z.string(),
-    donorDivisionId: z.number().int(),
-    donorDivisionName: z.string(),
-  }).nullable().describe('The sibling region already holding the division, or its parent: accepting it moves it from there (ADR-0012).'),
+  conflict: SuggestionConflict.nullable(),
 }).describe('A division offered as a region\'s match.');
 export type MatchSuggestion = z.infer<typeof MatchSuggestion>;
 
@@ -131,6 +135,100 @@ export type MatchTreeNode = z.infer<typeof MatchTreeNode>;
 
 export const MatchTree = z.array(MatchTreeNode).describe('The imported tree\'s roots, by name.');
 export type MatchTree = z.infer<typeof MatchTree>;
+
+// ---------------------------------------------------------------------------
+// The matchers: finding candidates for one region
+// ---------------------------------------------------------------------------
+
+export const FoundSuggestion = z.strictObject({
+  divisionId: z.number().int(),
+  name: z.string(),
+  path: z.string().describe('The division\'s administrative path, country first.'),
+  score: z.number(),
+  conflict: SuggestionConflict.optional().describe('Sent where a sibling already holds the division or its parent.'),
+}).describe('A division a matcher just offered as a region\'s match; the tree carries it from now on.');
+export type FoundSuggestion = z.infer<typeof FoundSuggestion>;
+
+export const DbSearchResult = z.strictObject({
+  found: z.number().int().describe('New suggestions written.'),
+  suggestions: z.array(FoundSuggestion),
+}).describe('Divisions whose names are like the region\'s, found by trigram similarity.');
+export type DbSearchResult = z.infer<typeof DbSearchResult>;
+
+export const GeocodeMatchResult = z.strictObject({
+  found: z.number().int(),
+  suggestions: z.array(FoundSuggestion),
+  geocodedName: z.string().optional().describe('The place Nominatim resolved the region\'s name to.'),
+  searchRadiusKm: z.number().optional().describe('How far from that place the divisions were looked for.'),
+}).describe('Divisions containing the place the region\'s name geocodes to.');
+export type GeocodeMatchResult = z.infer<typeof GeocodeMatchResult>;
+
+const nextScope = z.strictObject({
+  ancestorId: z.number().int(),
+  ancestorName: z.string(),
+}).optional().describe('Where a wider search would look, offered when this one found nothing.');
+
+export const CoveringMatchResult = z.strictObject({
+  found: z.number().int(),
+  suggestions: z.array(FoundSuggestion),
+  totalCoverage: z.number().optional().describe('How much of the region\'s shape the covering set covers, from 0 to 1.'),
+  scopeAncestorName: z.string().optional().describe('The ancestor whose divisions the search was held to.'),
+  nextScope,
+}).describe('Divisions matched from the region\'s Wikidata shape, or from the places its Wikivoyage article marks.');
+export type CoveringMatchResult = z.infer<typeof CoveringMatchResult>;
+
+export const AIMatchOneResult = z.strictObject({
+  improved: z.boolean().describe('The model found a better match than the region had.'),
+  suggestion: FoundSuggestion.optional(),
+  reasoning: z.string().optional(),
+  cost: z.number().describe('US dollars.'),
+}).describe('A model\'s match for one region.');
+export type AIMatchOneResult = z.infer<typeof AIMatchOneResult>;
+
+export const Geoshape = z.strictObject({
+  type: z.literal('FeatureCollection'),
+  features: z.array(z.strictObject({
+    type: z.literal('Feature'),
+    properties: z.strictObject({ id: z.string().describe('The Wikidata item.') }),
+    geometry: AreaGeometry,
+  })),
+}).describe('A Wikidata item\'s shape, from the local cache or from Wikimedia\'s map service; no feature where it has none.');
+export type Geoshape = z.infer<typeof Geoshape>;
+
+export const RematchStarted = z.strictObject({
+  started: z.literal(true),
+  matchingPolicy: z.enum(['country-based', 'hierarchical', 'none']).describe('The policy the world view\'s source implies, or the one the request named.'),
+}).describe('A re-match of the whole world view, started in the background.');
+export type RematchStarted = z.infer<typeof RematchStarted>;
+
+export const RematchStatus = z.strictObject({
+  status: z.enum(['importing', 'matching', 'complete', 'failed', 'cancelled', 'idle']).describe('`idle` while no re-match of this world view is known since the server started.'),
+  statusMessage: z.string().optional(),
+  countriesMatched: z.number().int().optional(),
+  totalCountries: z.number().int().optional(),
+  noCandidates: z.number().int().optional(),
+}).describe('A world view\'s re-match as it stands.');
+export type RematchStatus = z.infer<typeof RematchStatus>;
+
+export const AIMatchStatus = z.strictObject({
+  status: z.enum(['running', 'complete', 'failed', 'cancelled', 'idle']).describe('`idle` while no AI re-match of this world view is known since the server started.'),
+  statusMessage: z.string().optional(),
+  totalLeaves: z.number().int().optional(),
+  processedLeaves: z.number().int().optional(),
+  improved: z.number().int().optional(),
+  totalCost: z.number().optional().describe('What the model calls have cost so far, in US dollars.'),
+}).describe('A world view\'s AI re-match of its unresolved leaves as it stands.');
+export type AIMatchStatus = z.infer<typeof AIMatchStatus>;
+
+export const AIMatchStarted = AIMatchStatus.extend({
+  started: z.literal(true),
+}).describe('An AI re-match of the world view\'s unresolved leaves, started in the background.');
+export type AIMatchStarted = z.infer<typeof AIMatchStarted>;
+
+export const AIMatchCancelled = z.strictObject({
+  cancelled: z.boolean().describe('False when no AI re-match of this world view was running.'),
+}).describe('A stop asked of a world view\'s AI re-match.');
+export type AIMatchCancelled = z.infer<typeof AIMatchCancelled>;
 
 // ---------------------------------------------------------------------------
 // A reviewer's decisions

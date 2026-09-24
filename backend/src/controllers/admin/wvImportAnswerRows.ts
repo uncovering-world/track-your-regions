@@ -1,13 +1,17 @@
 /**
- * The import review's rows, from what the tree read selects to the answers
+ * The import review's rows, from what the tree read selects, what the matchers
+ * return and what Wikimedia's geoshape service answers, to the answers
  * `api/responses/worldViewImport.ts` declares (ADR-0066): key by key. The
  * suggestions and assigned divisions a row carries are built in SQL as JSON,
- * and the marker points are stored JSON, so each is read out one key at a
- * time rather than passed through.
+ * and the marker points are stored JSON, so each is read out one key at a time
+ * rather than passed through.
  */
 
+import type { AreaGeometry } from '../../api/responses/regions.js';
 import type {
   AssignedDivision,
+  FoundSuggestion,
+  Geoshape,
   MarkerPoint,
   MatchStatus,
   MatchSuggestion,
@@ -53,6 +57,41 @@ export function matchSuggestionOf(value: Record<string, unknown>): MatchSuggesti
     score: numberOrNull(value.score),
     geoSimilarity: numberOrNull(value.geoSimilarity),
     conflict: conflictOf(value.conflict),
+  };
+}
+
+/**
+ * A suggestion a matcher service just wrote, key by key: each service builds
+ * these as objects of its own, so a key one of them adds stays on the server.
+ */
+export function foundSuggestionOf(value: {
+  divisionId: number; name: string; path: string; score: number; conflict?: unknown;
+}): FoundSuggestion {
+  const conflict = conflictOf(value.conflict);
+  return {
+    divisionId: value.divisionId,
+    name: value.name,
+    path: value.path,
+    score: value.score,
+    ...(conflict ? { conflict } : {}),
+  };
+}
+
+/**
+ * An item's shape as one answer, whichever source it came from: each feature's
+ * polygon or multipolygon, tagged with the item. Wikimedia's own feature keys
+ * (its id, its properties) and any geometry of another kind stay here.
+ */
+export function geoshapeOf(wikidataId: string, features: unknown[]): Geoshape {
+  return {
+    type: 'FeatureCollection',
+    features: features.flatMap((feature) => {
+      const geometry = typeof feature === 'object' && feature !== null
+        ? (feature as { geometry?: { type?: unknown } }).geometry
+        : undefined;
+      if (!geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon')) return [];
+      return [{ type: 'Feature' as const, properties: { id: wikidataId }, geometry: geometry as AreaGeometry }];
+    }),
   };
 }
 
