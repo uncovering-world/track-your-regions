@@ -7,6 +7,7 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
+import { isVisitedRegionDelete } from '../../db/regionVisits.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { respond } from '../../api/respond.js';
 import { InstancesSynced } from '../../api/responses/worldViewImport.js';
@@ -485,6 +486,9 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
       ? { blocked: true, unmatched: stillUnmatched }
       : await absorbDescendants(worldViewId, regionId, descendantIds);
   } catch (err) {
+    // absorbDescendants has rolled back; a visited descendant is errorHandler's
+    // 409, not this handler's 500 with the driver's text (#764).
+    if (isVisitedRegionDelete(err)) throw err;
     console.error(`[WV Import] Smart flatten failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Smart flatten failed' });
     return;
