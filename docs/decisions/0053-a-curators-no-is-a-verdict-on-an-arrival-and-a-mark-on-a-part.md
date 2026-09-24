@@ -1,7 +1,7 @@
 # ADR-0053: A curator's no is a verdict on an arrival and a mark on a part
 
 **Date:** 2026-09-09
-**Status:** Accepted
+**Status:** Accepted — decision 3 narrowed by [ADR-0067](0067-accepting-a-refusal-keeps-it-and-a-batch-answer-pins-nothing.md)
 **Issue:** [#852](https://github.com/uncovering-world/track-your-regions/issues/852)
 
 ---
