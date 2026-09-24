@@ -12,6 +12,16 @@ import { pool } from '../../db/index.js';
 import { parseMapshapes } from '../../services/wikivoyageExtract/parser.js';
 import { getOrFetchGeoshape, getOrFetchCommonsMapGeoshape } from '../../services/worldViewImport/geoshapeCache.js';
 import { userAgent } from '../../config/userAgent.js';
+import { respond } from '../../api/respond.js';
+import type { AreaGeometry } from '../../api/responses/regions.js';
+import {
+  MapshapeMatchResult,
+  type ChildRegionRef,
+  type MapshapeGroup,
+  type MapshapePreviewFeature,
+  type MapshapesFound,
+  type WikivoyageShapeFeature,
+} from '../../api/responses/wvImportCvMatch.js';
 
 const WV_API_URL = 'https://en.wikivoyage.org/w/api.php';
 // This controller's own fetch of one page carries no bot marker. The import
@@ -116,17 +126,21 @@ function matchRegionByWordOverlap(
   return bestMatch;
 }
 
-/** Match a mapshape to a child region by name or Wikidata IDs */
+/**
+ * Match a mapshape to a child region by Wikidata ids or by name, answered as
+ * the region's id and name: its Wikidata id stays here.
+ */
 function matchRegion(
   title: string,
   wikidataIds: string[],
   childRegions: ChildRegion[],
-): { id: number; name: string } | null {
+): ChildRegionRef | null {
   const titleLower = title.toLowerCase();
-  return matchRegionByWikidata(wikidataIds, childRegions)
+  const child = matchRegionByWikidata(wikidataIds, childRegions)
     ?? matchRegionByExactName(titleLower, childRegions)
     ?? matchRegionBySubstring(titleLower, childRegions)
     ?? matchRegionByWordOverlap(titleLower, childRegions);
+  return child ? { id: child.id, name: child.name } : null;
 }
 
 // =============================================================================
@@ -380,17 +394,9 @@ async function runRecursiveSplitMatching(
   return finalAssignments;
 }
 
-type MapshapeResult = {
-  title: string;
-  color: string;
-  wikidataIds: string[];
-  matchedRegion: { id: number; name: string } | null;
-  divisions: Array<{ id: number; name: string; coverage: number }>;
-};
-
 function groupMapshapesByColor(
-  mapshapeResults: MapshapeResult[],
-): { grouped: MapshapeResult[]; msIndexToGroupIndex: Map<number, number> } {
+  mapshapeResults: MapshapeGroup[],
+): { grouped: MapshapeGroup[]; msIndexToGroupIndex: Map<number, number> } {
   const colorGroupMap = new Map<string, number[]>();
   for (let i = 0; i < mapshapeResults.length; i++) {
     const key = mapshapeResults[i].color.toLowerCase();
@@ -399,7 +405,7 @@ function groupMapshapesByColor(
   }
 
   const msIndexToGroupIndex = new Map<number, number>();
-  const grouped: MapshapeResult[] = [];
+  const grouped: MapshapeGroup[] = [];
   let groupIdx = 0;
   for (const [, indices] of colorGroupMap) {
     for (const msIdx of indices) {
@@ -421,9 +427,9 @@ function groupMapshapesByColor(
 
 async function buildDivisionPreview(
   divisionBestMap: Map<number, DivisionAssignment>,
-  groupedMapshapes: MapshapeResult[],
+  groupedMapshapes: MapshapeGroup[],
   msIndexToGroupIndex: Map<number, number>,
-): Promise<GeoJSON.FeatureCollection> {
+): Promise<MapshapesFound['geoPreview']['featureCollection']> {
   const allDivisionIds = [...divisionBestMap.keys()];
   if (allDivisionIds.length === 0) {
     return { type: 'FeatureCollection', features: [] };
@@ -441,7 +447,7 @@ async function buildDivisionPreview(
     geoJsonMap.set(row.id as number, row.geojson as string);
   }
 
-  const features: GeoJSON.Feature[] = [];
+  const features: MapshapePreviewFeature[] = [];
   for (const [divId, assignment] of divisionBestMap) {
     const geojson = geoJsonMap.get(divId);
     if (!geojson) continue;
@@ -451,7 +457,7 @@ async function buildDivisionPreview(
 
     features.push({
       type: 'Feature',
-      geometry: JSON.parse(geojson) as GeoJSON.Geometry,
+      geometry: JSON.parse(geojson) as AreaGeometry,
       properties: {
         divisionId: divId,
         name: assignment.name,
@@ -475,8 +481,8 @@ async function buildWikivoyagePreview(
   resolvedMapshapes: ResolvedMapshape[],
   availableIds: Set<string>,
   msIndexToGroupIndex: Map<number, number>,
-): Promise<GeoJSON.FeatureCollection> {
-  const features: GeoJSON.Feature[] = [];
+): Promise<MapshapesFound['wikivoyagePreview']> {
+  const features: WikivoyageShapeFeature[] = [];
   for (let i = 0; i < resolvedMapshapes.length; i++) {
     const ms = resolvedMapshapes[i];
     const validIds = ms.wikidataIds.filter(id => availableIds.has(id));
@@ -493,7 +499,7 @@ async function buildWikivoyagePreview(
     if (unionResult.rows.length > 0 && unionResult.rows[0].geojson) {
       features.push({
         type: 'Feature',
-        geometry: JSON.parse(unionResult.rows[0].geojson as string) as GeoJSON.Geometry,
+        geometry: JSON.parse(unionResult.rows[0].geojson as string) as AreaGeometry,
         properties: {
           mapshapeIndex: msIndexToGroupIndex.get(i) ?? i,
           title: ms.title,
@@ -531,27 +537,27 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
 
   const sourceUrl = regionResult.rows[0].source_url as string | null;
   if (!sourceUrl) {
-    res.json({ found: false, message: 'Region has no Wikivoyage source URL' });
+    respond(res, MapshapeMatchResult, { found: false, message: 'Region has no Wikivoyage source URL' });
     return;
   }
 
   // 2. Fetch wikitext
   const pageTitle = pageNameFromUrl(sourceUrl);
   if (!pageTitle) {
-    res.json({ found: false, message: 'Cannot extract page title from source URL' });
+    respond(res, MapshapeMatchResult, { found: false, message: 'Cannot extract page title from source URL' });
     return;
   }
 
   const wikitext = await fetchWikitext(pageTitle);
   if (!wikitext) {
-    res.json({ found: false, message: 'Could not fetch Wikivoyage page wikitext' });
+    respond(res, MapshapeMatchResult, { found: false, message: 'Could not fetch Wikivoyage page wikitext' });
     return;
   }
 
   // 3. Parse mapshape templates
   const mapshapes = parseMapshapes(wikitext);
   if (mapshapes.length === 0) {
-    res.json({ found: false, message: 'No {{mapshape}} templates found on this page' });
+    respond(res, MapshapeMatchResult, { found: false, message: 'No {{mapshape}} templates found on this page' });
     return;
   }
 
@@ -561,7 +567,7 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
   // Filter out entries that couldn't be resolved
   const resolvedMapshapes = mapshapes.filter(ms => ms.wikidataIds.length > 0 && ms.title);
   if (resolvedMapshapes.length === 0) {
-    res.json({ found: false, message: 'Mapshape templates found but no geoshapes could be resolved' });
+    respond(res, MapshapeMatchResult, { found: false, message: 'Mapshape templates found but no geoshapes could be resolved' });
     return;
   }
 
@@ -570,7 +576,7 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
   // 4. Get scope: parent region's GADM divisions, walking up if needed
   const scopeDivisionIds = await determineScopeDivisionIds(regionId);
   if (scopeDivisionIds.length === 0) {
-    res.json({ found: false, message: 'No GADM divisions in scope for this region' });
+    respond(res, MapshapeMatchResult, { found: false, message: 'No GADM divisions in scope for this region' });
     return;
   }
 
@@ -618,7 +624,7 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
     wikidataId: (r.wikidata_id as string) ?? null,
   }));
 
-  const mapshapeResults: MapshapeResult[] = resolvedMapshapes.map((ms, i) => ({
+  const mapshapeResults: MapshapeGroup[] = resolvedMapshapes.map((ms, i) => ({
     title: ms.title,
     color: ms.color,
     wikidataIds: ms.wikidataIds,
@@ -646,10 +652,10 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
 
   console.log(`[Mapshape Match] Result: ${resolvedMapshapes.length} mapshapes → ${groupedMapshapes.length} color groups, ${allDivisionIds.length} divisions matched`);
 
-  res.json({
+  respond(res, MapshapeMatchResult, {
     found: true,
     mapshapes: groupedMapshapes,
-    childRegions,
+    childRegions: childRegions.map(({ id, name }) => ({ id, name })),
     geoPreview: { featureCollection, clusterInfos },
     wikivoyagePreview,
     stats: {

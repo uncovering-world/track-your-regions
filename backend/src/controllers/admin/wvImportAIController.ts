@@ -22,6 +22,8 @@ import {
   MatchReset,
 } from '../../api/responses/worldViewImport.js';
 import { foundSuggestionOf } from './wvImportAnswerRows.js';
+import { ClusterRegionSuggestions } from '../../api/responses/wvImportCvMatch.js';
+import { clusterRegionMatchesOf } from './wvImportCvAnswerRows.js';
 import {
   startAIMatching,
   getAIMatchProgress,
@@ -901,6 +903,7 @@ ${clusterDescriptions}
 Return JSON: { "matches": [{ "clusterId": <number>, "regionName": <string|null> }] }
 Match each cluster to the best Wikivoyage region name, or null if no match.`;
 
+  let body: ClusterRegionSuggestions;
   try {
     const response = await chatCompletion(client, {
       model,
@@ -914,26 +917,7 @@ Match each cluster to the best Wikivoyage region name, or null if no match.`;
     });
 
     const content = response.choices[0]?.message?.content ?? '{}';
-    let matches: Array<{ clusterId: number; regionName: string | null }>;
-    try {
-      const parsed = JSON.parse(content);
-      matches = Array.isArray(parsed) ? parsed : parsed.matches ?? parsed.result ?? [];
-    } catch {
-      matches = [];
-    }
-
-    // Map region names back to IDs (case-insensitive) + dedup (keep first occurrence)
-    const regionMap = new Map(childRegions.map(r => [r.name.toLowerCase(), r.id]));
-    const usedRegionIds = new Set<number>();
-    const result = matches.map(m => {
-      const regionId = m.regionName ? (regionMap.get(m.regionName.toLowerCase()) ?? null) : null;
-      if (regionId && usedRegionIds.has(regionId)) {
-        console.log(`  [AI Suggest Clusters] Dedup: cluster ${m.clusterId} tried to use already-assigned region "${m.regionName}" → null`);
-        return { clusterId: m.clusterId, regionId: null, regionName: null };
-      }
-      if (regionId) usedRegionIds.add(regionId);
-      return { clusterId: m.clusterId, regionId, regionName: m.regionName };
-    });
+    const result = clusterRegionMatchesOf(content, new Set(clusters.map(c => c.clusterId)), childRegions);
 
     // Log usage stats
     const usage = response.usage;
@@ -955,12 +939,14 @@ Match each cluster to the best Wikivoyage region name, or null if no match.`;
 
     console.log(`  [AI Suggest Clusters] model=${model} ${promptTokens} in, ${completionTokens} out, cost=$${costResult.totalCost.toFixed(4)}, ${durationMs}ms, matched=${result.filter(r => r.regionId).length}/${clusters.length}`);
 
-    res.json({
+    body = {
       matches: result,
       stats: { model, promptTokens, completionTokens, cost: costResult.totalCost, durationMs },
-    });
+    };
   } catch (err) {
     console.error('[AI Suggest Clusters] Error:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'AI suggestion failed' });
+    return;
   }
+  respond(res, ClusterRegionSuggestions, body);
 }
