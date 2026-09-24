@@ -9,7 +9,7 @@ import { pool } from '../../db/index.js';
 import type { RegionsRow } from '../../db/schema.generated.js';
 import { visitedRegionRefusal, visitsUnder } from '../../db/regionVisits.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
-import { invalidateRegionGeometry } from './helpers.js';
+import { invalidateRegionGeometry, moveMembersToRegion } from './helpers.js';
 import { REGION_SELECT_SQL, regionOf, regionSearchResultOf, type RegionRow, type RegionSearchRow } from './regionAnswerRows.js';
 
 /**
@@ -473,22 +473,10 @@ export async function deleteRegion(req: Request, res: Response): Promise<void> {
       [parentRegionId, regionId]
     );
 
-    // Also move admin division members to parent (if parent exists)
+    // The region's members move to the parent (if there is one) row by row,
+    // a cut part with its geometry (#384).
     if (parentRegionId) {
-      // Get all admin division members of this region
-      const members = await pool.query(
-        'SELECT division_id FROM region_members WHERE region_id = $1',
-        [regionId]
-      );
-
-      // Add them to parent region
-      for (const row of members.rows) {
-        await pool.query(`
-          INSERT INTO region_members (region_id, division_id)
-          VALUES ($1, $2)
-          ON CONFLICT (region_id, division_id) WHERE custom_geom IS NULL DO NOTHING
-        `, [parentRegionId, row.division_id]);
-      }
+      await moveMembersToRegion(pool, regionId, parentRegionId);
     }
   } else {
     // Delete all descendants first (since ON DELETE SET NULL won't cascade)

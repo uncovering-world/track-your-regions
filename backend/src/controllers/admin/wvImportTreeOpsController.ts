@@ -19,7 +19,7 @@ import {
   type SuggestionSnapshot,
   undoEntries,
 } from './wvImportUtils.js';
-import { invalidateRegionGeometry, syncImportMatchStatus } from '../worldView/helpers.js';
+import { invalidateRegionGeometry, moveMembersToRegion, syncImportMatchStatus } from '../worldView/helpers.js';
 import { runSimplifyHierarchy } from './wvImportSimplifyShared.js';
 import { respond } from '../../api/respond.js';
 import {
@@ -79,17 +79,9 @@ async function moveChildDataToParent(client: TreeDbClient, parentId: number, chi
     [parentId, childId],
   );
 
-  // Move child's region_members (skip duplicates)
-  await client.query(`
-    DELETE FROM region_members
-    WHERE region_id = $1 AND division_id IN (
-      SELECT division_id FROM region_members WHERE region_id = $2
-    )
-  `, [parentId, childId]);
-  await client.query(
-    'UPDATE region_members SET region_id = $1 WHERE region_id = $2',
-    [parentId, childId],
-  );
+  // Move the child's members as rows, a cut part with its geometry, and
+  // keep every row the parent already holds (#1004).
+  await moveMembersToRegion(client, childId, parentId);
 
   // Move child's match suggestions (skip duplicates)
   await client.query(`
@@ -250,13 +242,8 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
     // Move divisions to parent if requested (before deleting the region)
     let divisionsReparented = 0;
     if (reparentDivisions && parentRegionId != null) {
-      const moved = await client.query(
-        `INSERT INTO region_members (region_id, division_id)
-         SELECT $1, division_id FROM region_members WHERE region_id = $2
-         ON CONFLICT DO NOTHING`,
-        [parentRegionId, regionId],
-      );
-      divisionsReparented = moved.rowCount ?? 0;
+      // Row by row, a cut part with its geometry (#384).
+      divisionsReparented = await moveMembersToRegion(client, regionId, parentRegionId);
     }
 
     if (reparentChildren) {
