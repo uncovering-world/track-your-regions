@@ -4,8 +4,6 @@
  *
  * Each exported schema is the type of the same name in `@tyr/shared/api`, and
  * the handler sends its body through `respond()`, which holds it to the schema.
- * An endpoint still missing here declares its answer on both sides, until its
- * slice of #527 moves it.
  *
  * Imports are held to the list in the header of `curation.ts` beside this
  * file, which also says why.

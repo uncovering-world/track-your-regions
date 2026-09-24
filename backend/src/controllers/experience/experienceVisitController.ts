@@ -90,6 +90,7 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
   }
   const countResult = await pool.query(countQuery, countParams);
 
+  // eslint-disable-next-line no-restricted-syntax -- no client calls this endpoint, and whether it stays is #1033
   res.json({
     visited: result.rows,
     total: parseInt(countResult.rows[0].count),
@@ -252,6 +253,7 @@ export async function updateVisit(req: AuthenticatedRequest, res: Response): Pro
     return;
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- no client calls this endpoint, and whether it stays is #1033
   res.json({
     success: true,
     experienceId,

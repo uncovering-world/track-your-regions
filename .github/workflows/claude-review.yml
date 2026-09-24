@@ -350,8 +350,6 @@ jobs:
                 `docs/security/asvs-checklist.yaml` [no slice yet]
               - architectural choices ⇄ accepted ADRs in `docs/decisions/`
                 [no slice: an ADR is a record]
-              - backend response shape ⇄ its frontend consumer
-                [retired by #527]
               - `.env.example` ⇄ `docker-compose.yml` ⇄ any doc naming
                 the variable [no slice yet]
 
