@@ -490,6 +490,50 @@ Three readings of that table:
   measurement and should be re-verified against the probe before any
   further work on it starts.
 
+### The database compiles nothing — 2026-09-24
+
+The database runs with `jit = off` (#994): `db/init/01-schema.sql` sets it
+on the database it builds, and migration 057 on one that already exists.
+The setting belongs to the database rather than to the backend's pool, so
+Martin, the sync and import scripts and psql read it too.
+
+PostgreSQL compiles a statement with LLVM once the planner's estimate
+passes `jit_above_cost` (100 000), and inlines and optimises it past
+500 000. The estimate is not the run: a `LATERAL` or a recursive CTE is
+priced as though every row ran the whole subquery. The region location
+feed for Europe gives each point its region path through such a
+`LATERAL`, and its plan was priced at about 6.3 million. `EXPLAIN
+ANALYZE` on the development database, 2026-09-24:
+
+| `jit` | JIT time | Execution time |
+|-------|----------|----------------|
+| on (the server default) | 1 079 ms (inlining 102, optimization 563, emission 406) | 1 341 ms |
+| off | — | 232 ms |
+
+A rewrite that computes each region path once per leaf rather than once
+per point was measured first and did not help: the recursive CTE's
+estimate stayed at 650 000, and it spent 1 449 ms in JIT. The review
+queue had met the same tax earlier and been kept under the threshold by
+hand. The setting ends that for every statement. JIT compiles expression
+evaluation and tuple deforming. This workload is short interactive reads,
+where a compile costs more than the run, and batch geometry work whose
+time goes into PostGIS functions that JIT does not compile.
+
+`npm run perf:api` before and after, same machine, same data. The tile
+rows did not move, and the probe's z5 root-regions tile answers 204 on
+the development data either way:
+
+| Endpoint | p50 before | p50 after |
+|----------|-----------|-----------|
+| `GET /api/experiences/by-region/6737/locations?includeChildren=true` | 1 304 ms | 311 ms |
+| `GET /api/experiences/by-region/6737?includeChildren=true&limit=5000` | 378 ms | 355 ms |
+
+The locations read stays above its 163 ms of 2026-08-25, and so does
+the whole-region read above its 110 ms. Neither gap is JIT. The
+catalogue has grown since that table was recorded. The whole-region
+answer now puts 268 kB on the wire against 142 kB then, and the locations
+answer 188 kB against 148 kB. What those reads carry is #657.
+
 ### What the world layer cost the map root — 2026-09-16
 
 The map root draws the catalogue itself before any region is chosen (#910,
