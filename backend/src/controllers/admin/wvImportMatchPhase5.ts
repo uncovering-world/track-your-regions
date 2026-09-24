@@ -15,6 +15,10 @@ import type { DivAssignment, FinalDivAssignment } from './wvImportMatchAssignmen
 import { getAdjacencyGraph, detectSpatialAnomalies } from '../../services/worldViewImport/spatialAnomalyDetector.js';
 import type { AdjacencyEdge, DivisionAssignment, SpatialAnomaly } from '../../services/worldViewImport/spatialAnomalyDetector.js';
 import type { GridDims } from './wvImportMatchClusterReview.js';
+import type { AreaGeometry } from '../../api/responses/regions.js';
+import type {
+  ColorMatchCluster, ColorMatchComplete, ColorMatchResult, CvPreviewFeature,
+} from '../../api/responses/wvImportCvMatch.js';
 
 // =============================================================================
 // Shared types
@@ -35,20 +39,6 @@ export interface MatchingResult {
   cvOutOfBounds: Array<{ id: number; name: string }>;
   splitDepth: number;
   alignmentSummary: string;
-}
-
-export interface ClusterSuggestion {
-  clusterId: number;
-  color: string;
-  pixelShare: number;
-  suggestedRegion: { id: number; name: string } | null;
-  divisions: Array<{ id: number; name: string; confidence: number; depth: number; parentDivisionId?: number }>;
-  unsplittable: Array<{ id: number; name: string; confidence: number; splitClusters: Array<{ clusterId: number; share: number }> }>;
-}
-
-export interface GeoPreviewData {
-  featureCollection: GeoJSON.FeatureCollection;
-  clusterInfos: Array<{ clusterId: number; color: string; regionId: number | null; regionName: string | null }>;
 }
 
 // =============================================================================
@@ -186,7 +176,7 @@ interface BuildClusterSuggestionsParams {
 }
 
 /** Build per-cluster suggestion rows with divisions + unsplittable children */
-function buildClusterSuggestions(p: BuildClusterSuggestionsParams): ClusterSuggestion[] {
+function buildClusterSuggestions(p: BuildClusterSuggestionsParams): ColorMatchCluster[] {
   const totalCountryPixels = [...p.postReviewClusters.values()].reduce((a, b) => a + b, 0);
   return [...p.postReviewClusters].map(([clusterId, pixelCount]) => {
     const c = p.colorCentroids[clusterId]!;
@@ -219,7 +209,7 @@ interface BuildGeoPreviewParams {
   unsplittableDivs: Array<FinalDivAssignment & { splitClusters: Array<{ clusterId: number; share: number }> }>;
   cvOutOfBounds: Array<{ id: number; name: string }>;
   gapUnsplittable: Array<FinalDivAssignment & { splitClusters: Array<{ clusterId: number; share: number }> }>;
-  clusterResult: ClusterSuggestion[];
+  clusterResult: ColorMatchCluster[];
   knownOrChildOfKnown: Set<number>;
   assignedMap: Map<number, { regionId: number; regionName: string }>;
   divNameMap: Map<number, string>;
@@ -267,7 +257,7 @@ interface DivisionFeatureContext {
 function buildDivisionFeature(
   r: { id: number; geojson: string },
   ctx: DivisionFeatureContext,
-): GeoJSON.Feature {
+): CvPreviewFeature {
   const divId = r.id;
   const assignment = ctx.divClusterMap.get(divId);
   const clusterId = assignment?.clusterId ?? -1;
@@ -292,12 +282,12 @@ function buildDivisionFeature(
       regionId: preAssignedWithData ? existingAssignment.regionId : suggestedRegionId,
       regionName: preAssignedWithData ? existingAssignment.regionName : suggestedRegionName,
     },
-    geometry: JSON.parse(r.geojson),
+    geometry: JSON.parse(r.geojson) as AreaGeometry,
   };
 }
 
 /** Build interactive geo preview data (FeatureCollection + per-cluster info) */
-async function buildGeoPreview(p: BuildGeoPreviewParams): Promise<GeoPreviewData> {
+async function buildGeoPreview(p: BuildGeoPreviewParams): Promise<ColorMatchResult['geoPreview']> {
   const divClusterMap = buildDivClusterMap(p.finalAssignments, p.unsplittableDivs);
   const unsplittableSet = new Set(p.gapUnsplittable.map(u => u.divisionId));
   const outOfBoundsIdSet = new Set(p.cvOutOfBounds.map(o => o.id));
@@ -321,7 +311,7 @@ async function buildGeoPreview(p: BuildGeoPreviewParams): Promise<GeoPreviewData
     divNameMap: p.divNameMap,
   };
 
-  const features: GeoJSON.Feature[] = geoRows.map(r => buildDivisionFeature(r, ctx));
+  const features: CvPreviewFeature[] = geoRows.map(r => buildDivisionFeature(r, ctx));
 
   const clusterInfos = p.clusterResult.map(c => ({
     clusterId: c.clusterId,
@@ -345,14 +335,14 @@ export interface RunSpatialAnomalyParams {
   regionId: number;
   worldViewId: number;
   cvChildRegions: Array<{ id: number; name: string }>;
-  cvClusterResult: ClusterSuggestion[];
+  cvClusterResult: ColorMatchCluster[];
 }
 
 /** Merge existing member assignments + CV suggestions into a flat DivisionAssignment list */
 function buildCombinedAssignments(
   existingRows: Array<{ member_row_id: number; region_id: number; division_id: number; division_name: string }>,
   cvChildRegions: Array<{ id: number; name: string }>,
-  cvClusterResult: ClusterSuggestion[],
+  cvClusterResult: ColorMatchCluster[],
 ): DivisionAssignment[] {
   const regionNameMap = new Map(cvChildRegions.map(r => [r.id, r.name]));
   const allAssignments: DivisionAssignment[] = existingRows.map(m => ({
@@ -412,11 +402,11 @@ export async function runSpatialAnomalyDetection(p: RunSpatialAnomalyParams): Pr
 }
 
 export interface BuildCompletePayloadParams {
-  cvClusterResult: ClusterSuggestion[];
+  cvClusterResult: ColorMatchCluster[];
   cvChildRegions: Array<{ id: number; name: string }>;
   cvOutOfBounds: Array<{ id: number; name: string }>;
   debugImages: Array<{ label: string; dataUrl: string }>;
-  geoPreview: GeoPreviewData;
+  geoPreview: ColorMatchResult['geoPreview'];
   spatialAnomalies: SpatialAnomaly[];
   adjacencyEdges: AdjacencyEdge[];
   centroids: CentroidInfo[];
@@ -426,7 +416,7 @@ export interface BuildCompletePayloadParams {
 }
 
 /** Build the final `complete` SSE payload for matchDivisionsFromClusters */
-export function buildCompletePayload(p: BuildCompletePayloadParams): Record<string, unknown> {
+export function buildCompletePayload(p: BuildCompletePayloadParams): ColorMatchComplete {
   return {
     type: 'complete',
     elapsed: (Date.now() - p.startTime) / 1000,
@@ -466,9 +456,9 @@ export interface BuildResultsParams {
 }
 
 export interface Phase5Results {
-  cvClusterResult: ClusterSuggestion[];
+  cvClusterResult: ColorMatchCluster[];
   cvChildRegions: Array<{ id: number; name: string }>;
-  geoPreview: GeoPreviewData;
+  geoPreview: ColorMatchResult['geoPreview'];
   gadmToPixel: (gx: number, gy: number) => [number, number];
 }
 

@@ -47,6 +47,7 @@ import {
   type CentroidInfo,
   type MatchingResult,
 } from './wvImportMatchPhase5.js';
+import type { SendEvent } from './wvImportMatchContext.js';
 
 // Re-export SVG helpers for backward compatibility (used by other modules)
 export { parseSvgPathPoints, parseSvgSubPaths, resamplePath } from './wvImportMatchSvgHelpers.js';
@@ -76,7 +77,7 @@ export interface MatchDivisionsParams {
   origW: number;
   origH: number;
   skipClusterReview: boolean;
-  sendEvent: (event: Record<string, unknown>) => void;
+  sendEvent: SendEvent;
   logStep: (msg: string) => Promise<void>;
   pushDebugImage: (label: string, dataUrl: string) => Promise<void>;
   debugImages: Array<{ label: string; dataUrl: string }>;
@@ -603,7 +604,7 @@ interface RunJsMatchingParams {
   pxS: (base: number) => number;
   pushDebugImage: (label: string, dataUrl: string) => Promise<void>;
   logStep: (msg: string) => Promise<void>;
-  sendEvent: (event: Record<string, unknown>) => void;
+  sendEvent: SendEvent;
   divNameMap: Map<number, string>;
   buf: Buffer;
   colorCentroids: Array<[number, number, number] | null>;
@@ -613,7 +614,7 @@ interface RunJsMatchingParams {
 /** Wait for an ICP-adjustment decision from the UI, with a 5-minute auto-continue timeout */
 async function awaitIcpAdjustmentDecision(
   reviewId: string,
-  sendEvent: (event: Record<string, unknown>) => void,
+  sendEvent: SendEvent,
   bestOverflow: number,
   bestError: number,
   bestLabel: string,
@@ -660,7 +661,7 @@ interface RunMatchingParams {
   pxS: (base: number) => number;
   logStep: (msg: string) => Promise<void>;
   pushDebugImage: (label: string, dataUrl: string) => Promise<void>;
-  sendEvent: (event: Record<string, unknown>) => void;
+  sendEvent: SendEvent;
 }
 
 /**

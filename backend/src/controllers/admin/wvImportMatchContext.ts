@@ -11,6 +11,8 @@
  * into files of their own (#933), for the same reason.
  */
 
+import type { ColorMatchEvent } from '../../api/responses/wvImportCvMatch.js';
+
 /** Mutable state threaded through every phase of the color-match pipeline. */
 export interface PipelineContext {
   // Inputs (set by orchestrator before first phase)
@@ -60,7 +62,7 @@ export interface PipelineContext {
   randomSeed: boolean;
 
   // SSE/debug helpers (set by orchestrator)
-  sendEvent: (event: Record<string, unknown>) => void;
+  sendEvent: SendEvent;
   logStep: (step: string) => Promise<void>;
   pushDebugImage: (label: string, dataUrl: string) => Promise<void>;
   debugImages: Array<{ label: string; dataUrl: string }>;
@@ -71,18 +73,8 @@ export interface PipelineContext {
   pxS: (base: number) => number;
 }
 
-export type SendEvent = (event: {
-  type: string;
-  step?: string;
-  elapsed?: number;
-  debugImage?: { label: string; dataUrl: string };
-  data?: unknown;
-  message?: string;
-  reviewId?: string;
-  waterMaskImage?: string;
-  waterPxPercent?: number;
-  waterComponents?: Array<{ id: number; pct: number; cropDataUrl: string; subClusters: Array<{ idx: number; pct: number; cropDataUrl: string }> }>;
-}) => void;
+/** Writes one event of the stream, held to the schema (ADR-0066). */
+export type SendEvent = (event: ColorMatchEvent) => void;
 
 export type LogStep = (step: string) => Promise<void>;
 export type PushDebugImage = (label: string, dataUrl: string) => Promise<void>;

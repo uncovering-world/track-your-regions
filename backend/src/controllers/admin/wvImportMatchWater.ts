@@ -17,7 +17,7 @@ import {
 } from './wvImportMatchWaterComponents.js';
 import sharp from 'sharp';
 import { registerWaterReview, storeWaterCrops, type WaterReviewDecision } from './wvImportMatchReview.js';
-import type { PipelineContext } from './wvImportMatchContext.js';
+import type { PipelineContext, SendEvent } from './wvImportMatchContext.js';
 
 /** Mark a pixel as border-connected and push it to the BFS queue if non-zero in erodedData. */
 function seedBorderPixel(
@@ -197,7 +197,7 @@ async function requestWaterReview(
   waterComponents: WaterComponent[],
   waterPxCount: number,
   tp: number,
-  sendEvent: (event: Record<string, unknown>) => void,
+  sendEvent: SendEvent,
 ): Promise<WaterReviewDecision> {
   const reviewId = `wr-${regionId}-${Date.now()}`;
   storeWaterCrops(reviewId, waterComponents);
