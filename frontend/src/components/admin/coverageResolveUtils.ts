@@ -5,7 +5,7 @@
  * the CoverageResolveDialog and its extracted sub-components.
  */
 
-import type { SubtreeNode, CoverageGap } from '../../api/admin/worldViewImport';
+import type { GapSubtreeNode, CoverageGap } from '../../api/admin/worldViewImport';
 
 /** Flattened node for the gap tree -- either a gap root or a subtree descendant */
 export interface TreeNodeInfo {
@@ -18,7 +18,7 @@ export interface TreeNodeInfo {
 }
 
 /** Find a node in a subtree by division ID */
-export function findSubtreeNode(nodes: SubtreeNode[], id: number): SubtreeNode | null {
+export function findSubtreeNode(nodes: GapSubtreeNode[], id: number): GapSubtreeNode | null {
   for (const node of nodes) {
     if (node.id === id) return node;
     const found = findSubtreeNode(node.children, id);
@@ -28,7 +28,7 @@ export function findSubtreeNode(nodes: SubtreeNode[], id: number): SubtreeNode |
 }
 
 /** Collect all descendant IDs from a subtree (recursive) */
-export function collectSubtreeIds(nodes: SubtreeNode[], out: Set<number>): void {
+export function collectSubtreeIds(nodes: GapSubtreeNode[], out: Set<number>): void {
   for (const node of nodes) {
     out.add(node.id);
     collectSubtreeIds(node.children, out);
@@ -36,7 +36,7 @@ export function collectSubtreeIds(nodes: SubtreeNode[], out: Set<number>): void 
 }
 
 /** Check if every branch in the subtree is covered (node itself applied, or all its leaves applied) */
-export function allLeavesApplied(nodes: SubtreeNode[], applied: Set<number>): boolean {
+export function allLeavesApplied(nodes: GapSubtreeNode[], applied: Set<number>): boolean {
   for (const node of nodes) {
     if (applied.has(node.id)) continue; // this node is applied -- covers all descendants
     if (node.children.length === 0) return false; // unapplied leaf

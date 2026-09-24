@@ -5,70 +5,26 @@
  * dismiss / approve / undismiss gaps, finalize review, children region geometry.
  */
 
+import type {
+  CoverageApproved, CoverageEvent, CoverageResult, GapDismissed, GapUndismissed, GeoSuggestResult, ReviewFinalized,
+} from '@tyr/shared/api';
 import { authFetchJson, ensureFreshToken } from '../fetchUtils';
+
+// What the migrated calls here answer, and every event of the coverage stream,
+// is declared once, as a backend schema (ADR-0066), and generated into
+// `@tyr/shared/api`. Passed on from here, so a component imports a call's answer
+// from the module of the call. The geometry tools are #992's next part.
+export type {
+  CoverageApproved, CoverageComplete, CoverageEvent, CoverageFailed, CoverageGap, CoverageProgress, CoverageResult,
+  CoverageSuggestion, DismissedGap, GapDismissed, GapSubtreeNode, GapUndismissed, GeoSuggestResult, RegionContextNode,
+  ReviewFinalized,
+} from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // =============================================================================
 // Coverage Types
 // =============================================================================
-
-export interface SubtreeNode {
-  id: number;
-  name: string;
-  children: SubtreeNode[];
-}
-
-export interface CoverageGap {
-  id: number;
-  name: string;
-  parentName: string | null;
-  suggestion: {
-    action: 'add_member' | 'create_region';
-    targetRegionId: number;
-    targetRegionName: string;
-  } | null;
-  /** GADM descendant tree for non-leaf gaps (helps admin understand what's underneath) */
-  subtree?: SubtreeNode[];
-}
-
-export interface CoverageResult {
-  gaps: CoverageGap[];
-  dismissedCount: number;
-  dismissedGaps: Array<{ id: number; name: string; parentName: string | null }>;
-}
-
-export interface CoverageProgressEvent {
-  type: 'progress' | 'complete' | 'error';
-  step?: string;
-  elapsed?: number;
-  message?: string;
-  data?: CoverageResult;
-}
-
-/** Nested tree node for geo-suggest hierarchy selection */
-export interface RegionContextNode {
-  id: number;
-  name: string;
-  children: RegionContextNode[];
-  isSuggested: boolean;
-}
-
-export interface GeoSuggestResult {
-  suggestion: {
-    action: 'add_member' | 'create_region';
-    targetRegionId: number;
-    targetRegionName: string;
-  } | null;
-  suggestionDivisionId?: number;
-  suggestionDivisionName?: string;
-  gapCenter?: [number, number];
-  suggestionCenter?: [number, number];
-  /** Distance from gap centroid to nearest boundary of neighbor polygon (km) */
-  distanceKm?: number;
-  /** Nested hierarchy tree: root → ... → suggested region (with children) */
-  contextTree?: RegionContextNode;
-}
 
 export interface SiblingRegionGeometry {
   regionId: number;
@@ -81,7 +37,7 @@ export interface SiblingRegionGeometry {
 // =============================================================================
 
 export async function getCoverage(worldViewId: number): Promise<CoverageResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/coverage`);
+  return authFetchJson<CoverageResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/coverage`);
 }
 
 /**
@@ -90,7 +46,7 @@ export async function getCoverage(worldViewId: number): Promise<CoverageResult> 
  */
 export function getCoverageWithProgress(
   worldViewId: number,
-  onProgress: (event: CoverageProgressEvent) => void,
+  onProgress: (event: CoverageEvent) => void,
 ): Promise<CoverageResult> {
   return new Promise((resolve, reject) => {
     ensureFreshToken().then(token => {
@@ -103,17 +59,15 @@ export function getCoverageWithProgress(
 
       eventSource.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data) as CoverageProgressEvent;
+          const data = JSON.parse(event.data) as CoverageEvent;
           onProgress(data);
 
           if (data.type === 'complete' || data.type === 'error') {
             eventSource.close();
             if (data.type === 'error') {
               reject(new Error(data.message || 'Coverage check failed'));
-            } else if (data.data) {
-              resolve(data.data);
             } else {
-              reject(new Error('Coverage check completed without a result payload'));
+              resolve(data.data);
             }
           }
         } catch (e) {
@@ -136,7 +90,7 @@ export async function geoSuggestGap(
   worldViewId: number,
   divisionId: number,
 ): Promise<GeoSuggestResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geo-suggest-gap`, {
+  return authFetchJson<GeoSuggestResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geo-suggest-gap`, {
     method: 'POST',
     body: JSON.stringify({ divisionId }),
   });
@@ -145,8 +99,8 @@ export async function geoSuggestGap(
 export async function dismissCoverageGap(
   worldViewId: number,
   divisionId: number,
-): Promise<{ dismissed: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/dismiss-gap`, {
+): Promise<GapDismissed> {
+  return authFetchJson<GapDismissed>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/dismiss-gap`, {
     method: 'POST',
     body: JSON.stringify({ divisionId }),
   });
@@ -158,8 +112,8 @@ export async function approveCoverageSuggestion(
   regionId: number,
   action: 'add_member' | 'create_region',
   gapName?: string,
-): Promise<{ approved: boolean; regionId: number }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/approve-coverage`, {
+): Promise<CoverageApproved> {
+  return authFetchJson<CoverageApproved>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/approve-coverage`, {
     method: 'POST',
     body: JSON.stringify({ divisionId, regionId, action, gapName }),
   });
@@ -168,8 +122,8 @@ export async function approveCoverageSuggestion(
 export async function undismissCoverageGap(
   worldViewId: number,
   divisionId: number,
-): Promise<{ undismissed: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/undismiss-gap`, {
+): Promise<GapUndismissed> {
+  return authFetchJson<GapUndismissed>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/undismiss-gap`, {
     method: 'POST',
     body: JSON.stringify({ divisionId }),
   });
@@ -177,8 +131,8 @@ export async function undismissCoverageGap(
 
 export async function finalizeReview(
   worldViewId: number,
-): Promise<{ finalized: boolean; worldViewId: number }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/finalize`, {
+): Promise<ReviewFinalized> {
+  return authFetchJson<ReviewFinalized>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/finalize`, {
     method: 'POST',
   });
 }
