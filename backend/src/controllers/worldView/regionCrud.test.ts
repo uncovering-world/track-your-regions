@@ -114,6 +114,7 @@ describe('deleteRegion invalidates the parent it left behind (#680)', () => {
       if (String(sql).includes('SELECT parent_region_id FROM regions')) {
         return { rows: [{ parent_region_id: PARENT }] };
       }
+      if (String(sql).includes('user_visited_regions')) return { rows: [{ visits: 0 }] };
       return { rows: [], rowCount: 0 };
     });
   });
@@ -132,6 +133,7 @@ describe('deleteRegion invalidates the parent it left behind (#680)', () => {
       if (String(sql).includes('SELECT parent_region_id FROM regions')) {
         return { rows: [{ parent_region_id: null }] };
       }
+      if (String(sql).includes('user_visited_regions')) return { rows: [{ visits: 0 }] };
       return { rows: [], rowCount: 0 };
     });
     const req = { params: { regionId: String(REGION) }, query: {} } as unknown as Request;
@@ -139,6 +141,26 @@ describe('deleteRegion invalidates the parent it left behind (#680)', () => {
 
     await deleteRegion(req, res);
 
+    expect(invalidatedIds()).toEqual([]);
+  });
+
+  it('refuses before its first write when a traveller has visited the branch (#764)', async () => {
+    poolQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('SELECT parent_region_id FROM regions')) {
+        return { rows: [{ parent_region_id: PARENT }] };
+      }
+      if (String(sql).includes('user_visited_regions')) return { rows: [{ visits: 2 }] };
+      return { rows: [], rowCount: 0 };
+    });
+    const req = { params: { regionId: String(REGION) }, query: {} } as unknown as Request;
+    const res = { status: vi.fn(() => ({ send: vi.fn(), json: vi.fn() })) } as unknown as Response;
+
+    await expect(deleteRegion(req, res)).rejects.toMatchObject({ statusCode: 409 });
+
+    const writes = poolQuery.mock.calls
+      .map(([sql]) => String(sql))
+      .filter((sql) => /\b(UPDATE|DELETE|INSERT)\b/.test(sql));
+    expect(writes).toEqual([]);
     expect(invalidatedIds()).toEqual([]);
   });
 });

@@ -7,7 +7,8 @@ import { respond } from '../../api/respond.js';
 import { Region, Regions, RegionSearchResults, RegionUpdated } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import type { RegionsRow } from '../../db/schema.generated.js';
-import { notFound } from '../../middleware/errorHandler.js';
+import { visitedRegionRefusal, visitsUnder } from '../../db/regionVisits.js';
+import { createError, notFound } from '../../middleware/errorHandler.js';
 import { invalidateRegionGeometry } from './helpers.js';
 import { REGION_SELECT_SQL, regionOf, regionSearchResultOf, type RegionRow, type RegionSearchRow } from './regionAnswerRows.js';
 
@@ -459,6 +460,11 @@ export async function deleteRegion(req: Request, res: Response): Promise<void> {
   }
 
   const parentRegionId = regionResult.rows[0].parent_region_id;
+
+  // Before the first write: the moves below are not in one transaction with
+  // the delete, so a refusal at the delete would leave them standing (#764).
+  const visits = await visitsUnder(regionId, !moveChildrenToParent);
+  if (visits > 0) throw createError(visitedRegionRefusal(visits), 409);
 
   if (moveChildrenToParent) {
     // Move all subregions to this region's parent (or to root if no parent)
