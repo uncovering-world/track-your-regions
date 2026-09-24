@@ -363,6 +363,43 @@ export interface AuthMessage {
   message: string;
 }
 
+/** A leaf's best name match, and what resolving would do with it. */
+export interface AutoResolveMatch {
+  regionId: number;
+  regionName: string;
+  divisionId: number;
+  divisionName: string;
+  /** The name match's trigram similarity, 0 to 1. */
+  similarity: number;
+  /** How far the division overlaps the leaf's geoshape, 0 to 1; null without a geoshape. */
+  geoSimilarity: number | null;
+  action: "auto_matched" | "needs_review";
+}
+
+/** What resolving a container's unmatched leaves would do, without doing it. No screen calls it. */
+export interface AutoResolvePreview {
+  autoMatched: AutoResolveMatch[];
+  needsReview: AutoResolveMatch[];
+  unmatched: {
+    id: number;
+    name: string;
+  }[];
+  /** The container's own divisions, and which of them its matched leaves would cover. */
+  parentMembers: {
+    kept: {
+      divisionId: number;
+      name: string;
+    }[];
+    redundant: {
+      divisionId: number;
+      name: string;
+      /** How much of it the matched leaves cover, 0 to 1. */
+      coverage: number;
+    }[];
+  };
+  total: number;
+}
+
 /** Which group one region of a batch belongs to, as the model suggests it. */
 export interface BatchGroupSuggestion {
   /**
@@ -1066,6 +1103,15 @@ export interface CuratorScope {
   sourceName: string | null;
   assignedAt: string | null;
   notes: string | null;
+}
+
+/** A region with a hand-drawn boundary, left as drawn. */
+export interface CustomBoundaryPreserved {
+  computed: true;
+  regionId: number;
+  name: string;
+  usesHull: boolean;
+  message: string;
 }
 
 /** A division drawn in the colour of the cluster it was matched to. */
@@ -1907,6 +1953,14 @@ export interface GroupSuggestion {
   needsEscalation: boolean;
 }
 
+/** The server up, and its database answering. */
+export interface HealthStatus {
+  status: "ok";
+  database: "connected";
+  /** When the check ran, as an ISO 8601 date. */
+  timestamp: string;
+}
+
 /**
  * One part of an object whose field a gated run held (ADR-0037), with what the stored row adds. The
  * row's fields are null where no offered row answers to the record.
@@ -2539,6 +2593,14 @@ export interface NewBadgesSeen {
   recorded: number[];
 }
 
+/** A region whose members and children hold no geometry to merge. */
+export interface NothingToMerge {
+  computed: false;
+  message: string;
+  /** Child regions computed on the way, before the region itself found nothing to merge. */
+  childrenComputed: number;
+}
+
 /** The world view's last undoable tree edit, reverted. */
 export interface OperationUndone {
   undone: true;
@@ -2984,6 +3046,19 @@ export interface Region {
   sourceUrl: string | null;
   /** The map image that import read, where it read one. */
   regionMapUrl: string | null;
+}
+
+/** A region's outline computed, its children's first. */
+export interface RegionComputed {
+  computed: true;
+  /** Vertices in the computed outline. */
+  points: number;
+  childrenComputed: number;
+  usesHull?: boolean;
+  hullGenerated?: boolean;
+  crossesDateline?: boolean;
+  /** The world view's tile version after the run bumped it. */
+  tileVersion?: number;
 }
 
 /**
@@ -3487,6 +3562,12 @@ export interface SimplifyReplacement {
   /** The member divisions that together cover the parent, replaced by it. */
   replacedCount: number;
 }
+
+/**
+ * One region's computation, answered at its end rather than streamed. No screen calls it; the
+ * editor streams.
+ */
+export type SingleRegionComputed = RegionComputed | CustomBoundaryPreserved | NothingToMerge;
 
 /** One find dug up at a site (#894). */
 export interface SiteFind {

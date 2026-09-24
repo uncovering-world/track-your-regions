@@ -106,6 +106,39 @@ export const OperationUndone = z.strictObject({
 }).describe('The world view\'s last undoable tree edit, reverted.');
 export type OperationUndone = z.infer<typeof OperationUndone>;
 
+export const AutoResolveMatch = z.strictObject({
+  regionId: z.number().int(),
+  regionName: z.string(),
+  divisionId: z.number().int(),
+  divisionName: z.string(),
+  similarity: z.number().describe('The name match\'s trigram similarity, 0 to 1.'),
+  geoSimilarity: z.number().nullable().describe('How far the division overlaps the leaf\'s geoshape, 0 to 1; null without a geoshape.'),
+  action: z.enum(['auto_matched', 'needs_review']),
+}).describe('A leaf\'s best name match, and what resolving would do with it.');
+export type AutoResolveMatch = z.infer<typeof AutoResolveMatch>;
+
+export const AutoResolvePreview = z.strictObject({
+  autoMatched: z.array(AutoResolveMatch),
+  needsReview: z.array(AutoResolveMatch),
+  unmatched: z.array(z.strictObject({
+    id: z.number().int(),
+    name: z.string(),
+  })),
+  parentMembers: z.strictObject({
+    kept: z.array(z.strictObject({
+      divisionId: z.number().int(),
+      name: z.string(),
+    })),
+    redundant: z.array(z.strictObject({
+      divisionId: z.number().int(),
+      name: z.string(),
+      coverage: z.number().describe('How much of it the matched leaves cover, 0 to 1.'),
+    })),
+  }).describe('The container\'s own divisions, and which of them its matched leaves would cover.'),
+  total: z.number().int(),
+}).describe('What resolving a container\'s unmatched leaves would do, without doing it. No screen calls it.');
+export type AutoResolvePreview = z.infer<typeof AutoResolvePreview>;
+
 export const ChildrenAutoResolved = z.strictObject({
   resolved: z.number().int().describe('Leaves whose name match overlaps their geoshape by half or more, assigned.'),
   review: z.number().int().describe('Leaves whose match overlaps less, or has no geoshape to compare, left as suggestions.'),

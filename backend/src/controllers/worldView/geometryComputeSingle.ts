@@ -9,6 +9,8 @@
 import { Request, Response } from 'express';
 import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
+import { respond } from '../../api/respond.js';
+import { RegionComputed, SingleRegionComputed } from '../../api/responses/geometry.js';
 import { generateSingleHull } from '../../services/hull/index.js';
 import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
 import { collectUnionInputs } from './collectUnionInputs.js';
@@ -280,13 +282,7 @@ async function computeBottomUp(
 }
 
 interface CustomBoundaryDecision {
-  earlyResponse?: {
-    computed: true;
-    regionId: number;
-    name: string;
-    usesHull: boolean;
-    message: string;
-  };
+  earlyResponse?: SingleRegionComputed;
 }
 
 async function handleCustomBoundary(
@@ -408,6 +404,53 @@ async function applyCoverageAndTileVersion(
 }
 
 /**
+ * What a computed region answers: its outline's vertices, whether it is drawn
+ * as a hull and the hull that was made, and the tile version the run bumped.
+ */
+async function describeComputedRegion(
+  regionId: number,
+  points: number,
+  childrenComputed: number,
+  force: boolean,
+): Promise<RegionComputed> {
+  console.log(`[ComputeSingle] Completed region ${regionId} with ${points} points`);
+
+  const checkResult = await pool.query(`
+    SELECT
+      id, name,
+      uses_hull as "usesHull",
+      geom IS NOT NULL as "hasGeom",
+      hull_geom IS NOT NULL as "hasHull",
+      ST_NPoints(geom) as "geomPoints",
+      ST_NPoints(hull_geom) as "hullPoints"
+    FROM regions WHERE id = $1
+  `, [regionId]);
+  const regionStatus = checkResult.rows[0];
+  // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
+  console.log(`[ComputeSingle] Region ${regionId} status after compute:`, {
+    name: regionStatus?.name,
+    usesHull: regionStatus?.usesHull,
+    hasGeom: regionStatus?.hasGeom,
+    hasHull: regionStatus?.hasHull,
+    geomPoints: regionStatus?.geomPoints,
+    hullPoints: regionStatus?.hullPoints,
+  });
+
+  const hullResult = await applyHullPostProcessing(regionId, regionStatus, force);
+  const tileVersion = await applyCoverageAndTileVersion(regionId, childrenComputed);
+
+  return {
+    computed: true,
+    points,
+    childrenComputed,
+    usesHull: regionStatus?.usesHull ?? undefined,
+    hullGenerated: hullResult?.generated,
+    crossesDateline: hullResult?.crossesDateline,
+    tileVersion,
+  };
+}
+
+/**
  * Compute geometry for a single region (merge members and child regions)
  * Recursively computes child regions first (bottom-up) if they don't have geometry
  * Skips regions with custom boundaries
@@ -431,13 +474,14 @@ export async function computeSingleRegionGeometry(req: Request, res: Response): 
 
   const customBoundary = await handleCustomBoundary(regionId, force, regionCheck.rows[0]);
   if (customBoundary.earlyResponse) {
-    res.json(customBoundary.earlyResponse);
+    respond(res, SingleRegionComputed, customBoundary.earlyResponse);
     return;
   }
 
   // Use a dedicated client so SET statement_timeout applies to our queries
   // (pool.query() checks out a random connection each time).
   const computeClient = await pool.connect();
+  let body: SingleRegionComputed;
   try {
     console.log(`[ComputeSingle] Starting bottom-up computation for region ${regionId}: ${regionCheck.rows[0].name}`);
     const childrenResult = await computeBottomUp(computeClient, regionId, skipSnapping);
@@ -445,54 +489,22 @@ export async function computeSingleRegionGeometry(req: Request, res: Response): 
 
     const result = await computeGroupGeom(computeClient, regionId, skipSnapping);
     if (!result.computed) {
-      res.status(200).json({
+      body = {
         computed: false,
         message: result.error || 'No geometries to merge',
         childrenComputed: childrenResult.groupsComputed,
-      });
-      return;
+      };
+    } else {
+      body = await describeComputedRegion(regionId, result.points ?? 0, childrenResult.groupsComputed, force);
     }
-    console.log(`[ComputeSingle] Completed region ${regionId} with ${result.points} points`);
-
-    const checkResult = await pool.query(`
-      SELECT
-        id, name,
-        uses_hull as "usesHull",
-        geom IS NOT NULL as "hasGeom",
-        hull_geom IS NOT NULL as "hasHull",
-        ST_NPoints(geom) as "geomPoints",
-        ST_NPoints(hull_geom) as "hullPoints"
-      FROM regions WHERE id = $1
-    `, [regionId]);
-    const regionStatus = checkResult.rows[0];
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
-    console.log(`[ComputeSingle] Region ${regionId} status after compute:`, {
-      name: regionStatus?.name,
-      usesHull: regionStatus?.usesHull,
-      hasGeom: regionStatus?.hasGeom,
-      hasHull: regionStatus?.hasHull,
-      geomPoints: regionStatus?.geomPoints,
-      hullPoints: regionStatus?.hullPoints,
-    });
-
-    const hullResult = await applyHullPostProcessing(regionId, regionStatus, force);
-    const tileVersion = await applyCoverageAndTileVersion(regionId, childrenResult.groupsComputed);
-
-    res.json({
-      computed: true,
-      points: result.points,
-      childrenComputed: childrenResult.groupsComputed,
-      usesHull: regionStatus?.usesHull,
-      hullGenerated: hullResult?.generated,
-      crossesDateline: hullResult?.crossesDateline,
-      tileVersion,
-    });
   } catch (e) {
     console.error('Error computing single group geometry:', e);
     res.status(500).json({ error: 'Failed to compute geometry' });
+    return;
   } finally {
     computeClient.release();
   }
+  respond(res, SingleRegionComputed, body);
 }
 
 /**
