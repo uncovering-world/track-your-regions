@@ -28,7 +28,8 @@ import SkipNextIcon from '@mui/icons-material/SkipNext';
 import { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import {
-  type DivisionOverlapResult,
+  type DivisionOverlap,
+  type DivisionOverlaps,
   getOverlapDivisionChildren,
   resolveOverlap,
   type OverlapGadmChild,
@@ -65,7 +66,7 @@ function chipColor(
 }
 
 interface SplitPreviewProps {
-  selectedRegions: DivisionOverlapResult['overlaps'][number]['regions'];
+  selectedRegions: DivisionOverlap['regions'];
   splitChildren: OverlapGadmChild[] | null;
   splitLoading: boolean;
   splitAssignments: Map<number, number>;
@@ -152,7 +153,7 @@ interface OverlapResolutionDialogProps {
   parentRegionId: number;
   parentRegionName: string;
   regionMapUrl: string | null;
-  overlapData: DivisionOverlapResult;
+  overlapData: DivisionOverlaps;
   onApplied: () => void;
 }
 

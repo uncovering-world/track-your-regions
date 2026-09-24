@@ -12,10 +12,10 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import type { ReviewChildAction } from '../../api/admin/worldViewImport';
+import type { ChildAction } from '../../api/admin/worldViewImport';
 import { AISuggestChildrenDialog } from './ImportTreeDialogs';
 
-function renderDialog(actions: ReviewChildAction[]) {
+function renderDialog(actions: ChildAction[]) {
   render(
     <AISuggestChildrenDialog
       state={{
@@ -32,7 +32,7 @@ function renderDialog(actions: ReviewChildAction[]) {
   );
 }
 
-const enrich = (name: string, sourceExternalId: string | null): ReviewChildAction => ({
+const enrich = (name: string, sourceExternalId: string | null): ChildAction => ({
   type: 'enrich', name, reason: 'matched on Wikidata', sourceUrl: null, sourceExternalId, verified: true,
 });
 

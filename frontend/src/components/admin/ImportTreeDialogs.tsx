@@ -10,7 +10,7 @@ import type {
   RenameDialogState, ReparentDialogState, SuggestChildrenState, DivisionSearchDialogState,
   FlatRegionItem,
 } from './useImportTreeDialogs';
-import { type ReviewChildAction } from '../../api/admin/worldViewImport';
+import { type ChildAction } from '../../api/admin/worldViewImport';
 import { safeHref } from '../../utils/safeHref';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
 
@@ -290,7 +290,7 @@ export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, is
   const renameActions = state.result.actions.filter(a => a.type === 'rename');
   const enrichActions = state.result.actions.filter(a => a.type === 'enrich');
 
-  const renderEnrichment = (action: ReviewChildAction) => {
+  const renderEnrichment = (action: ChildAction) => {
     if (action.type === 'remove' || !action.verified) return null;
     // Built on the server from a Wikivoyage title today, and held to what a
     // link may be all the same: a page the rule refuses is not offered (#703).
@@ -336,7 +336,7 @@ export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, is
 
   const renderSection = (
     title: string,
-    actions: ReviewChildAction[],
+    actions: ChildAction[],
     color: string,
   ) => {
     if (actions.length === 0) return null;
