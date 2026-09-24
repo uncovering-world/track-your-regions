@@ -43,12 +43,9 @@
  * a search, a region, a kind or a run on it: **115–130 ms**, against 590 ms
  * for the nine statements the endpoint sends today.
  *
- * That number had a story: counting the region facet by walking the region
- * tree cost 330 ms and, worse, took the statement's estimate to 112 711, past
- * this server's `jit_above_cost` of 100 000 — so PostgreSQL compiled 454
- * functions (~300 ms) for a query that ran in 120. Counting through the root
- * row placement already writes (see `facet_region`) removes the walk: the
- * estimate is 79 688, no JIT, and the facets are identical row for row.
+ * Counting the region facet by walking the region tree cost 330 ms on its
+ * own. Counting through the root row placement already writes (see
+ * `facet_region`) removes the walk, and the facets are identical row for row.
  */
 
 import { pool } from '../../db/index.js';
@@ -483,8 +480,8 @@ function facetsSql(f: Bound): string {
     -- its root and the count is a join. That is a dependency on the placement
     -- writer, and it is confined to this count: the region *filter* walks
     -- region_subtree itself, so what a curator filters by does not rest on
-    -- the propagation having run. Walking here instead cost 330 ms and tipped
-    -- the statement past the server's JIT threshold — see the note at the top.
+    -- the propagation having run. Walking here instead cost 330 ms — see the
+    -- note at the top.
     SELECT rr.id, rr.name, rr.world_view, COALESCE(counted.n, 0) AS count
     FROM region_roots rr
     LEFT JOIN (

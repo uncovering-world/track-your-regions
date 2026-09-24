@@ -20,6 +20,18 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS unaccent;
 
+-- No JIT compilation (#994). A plan estimate past jit_above_cost is the
+-- planner's guess, and a LATERAL or recursive CTE is priced as though every
+-- row ran the whole subquery: the region location feed for Europe was priced
+-- at 6.3 million, compiled for about a second and ran in a fifth of one. The
+-- setting is the database's, so every client reads it. Migration 057 carries
+-- it to a database that already exists.
+DO $$
+BEGIN
+  EXECUTE format('ALTER DATABASE %I SET jit = off', current_database());
+END
+$$;
+
 -- =============================================================================
 -- Helper: Immutable unaccent wrapper (needed for generated columns / indexes)
 -- =============================================================================
