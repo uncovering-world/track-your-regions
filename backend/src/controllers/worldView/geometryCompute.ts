@@ -219,8 +219,22 @@ export async function resetRegionToGADM(req: Request, res: Response): Promise<vo
     SET geom = validate_multipolygon(m.merged_geom)
     FROM merged m
     WHERE r.id = $1 AND m.merged_geom IS NOT NULL
+      AND r.is_custom_boundary IS NOT TRUE
     RETURNING ST_NPoints(r.geom) as points
   `, [regionId]);
+
+  // The flag again at the write: a boundary drawn by hand while the union ran
+  // is kept, and said to be, rather than written over (#439).
+  if (result.rows.length === 0) {
+    const drawn = await pool.query<{ drawn: boolean }>(
+      'SELECT is_custom_boundary IS TRUE AS drawn FROM regions WHERE id = $1',
+      [regionId],
+    );
+    if (drawn.rows[0]?.drawn) {
+      res.status(409).json({ error: 'The boundary was drawn by hand while it was being reset; the drawing is kept' });
+      return;
+    }
+  }
 
   const points = result.rows[0]?.points || 0;
 

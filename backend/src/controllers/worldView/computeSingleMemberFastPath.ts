@@ -5,8 +5,8 @@
 import { PoolClient } from 'pg';
 
 /**
- * Fast path for a region that is exactly one division: with no children and no
- * hand-drawn boundary, the region's member geometry already *is* the region's
+ * Fast path for a region that is exactly one division: with no children, the
+ * region's member geometry already *is* the region's
  * answer, so this path stores it as-is, deliberately — it is not a cheaper
  * reproduction of what the normal union path would produce.
  *
@@ -27,20 +27,21 @@ import { PoolClient } from 'pg';
  * the geometry-bearing count here would let the fast path fire for a region
  * that structurally has children, silently dropping them from the result.
  *
- * Returns null when the region isn't eligible (has children, has several
- * members, or has a hand-drawn boundary) or when there is nothing to copy
- * (member geometry is NULL), so the caller falls through to the normal union
- * path.
+ * A hand-drawn boundary never reaches this function: every caller turns one
+ * away before computing anything, and the write refuses one drawn since (#439).
+ *
+ * Returns null when the region isn't eligible (has children or has several
+ * members) or when there is nothing to copy (member geometry is NULL), so the
+ * caller falls through to the normal union path.
  */
 export async function computeSingleMemberFastPath(
   client: PoolClient,
   regionId: number,
   memberCount: number,
   childRowCount: number,
-  isCustomBoundary: boolean,
   log: (msg: string) => void,
 ): Promise<{ computed: true; points: number } | null> {
-  if (memberCount !== 1 || childRowCount !== 0 || isCustomBoundary === true) {
+  if (memberCount !== 1 || childRowCount !== 0) {
     return null;
   }
 
@@ -57,12 +58,15 @@ export async function computeSingleMemberFastPath(
     JOIN administrative_divisions ad ON ad.id = rm.division_id
     WHERE rm.region_id = r.id
       AND r.id = $1
+      AND r.is_custom_boundary IS NOT TRUE
       AND COALESCE(rm.custom_geom, ad.geom) IS NOT NULL
     RETURNING ST_NPoints(r.geom) AS points
   `, [regionId]);
 
   if (!copied.rowCount) {
-    // Nothing copied (member geometry is NULL) — fall through to the normal path.
+    // Nothing copied — the member geometry is NULL, or the region was drawn by
+    // hand since its caller checked — so fall through to the normal path, whose
+    // own write refuses the drawn one again.
     return null;
   }
 
