@@ -509,6 +509,21 @@ All require admin auth.
 
 **What the import and the review answer.** The import's start, status and cancel, the match statistics, the match tree, the verdicts on suggestions, instance sync and the transfer answer through schemas in `backend/src/api/responses/worldViewImport.ts` (ADR-0066). The statistics are whole numbers: `COUNT` answers a `bigint`, which the driver sends as a string, so each is cast to `int` in the statement. The tree is one recursive schema, `MatchTreeNode`, and each row is mapped by `matchTreeNodeOf` (`controllers/admin/wvImportAnswerRows.ts`). A row's suggestions and assigned divisions are built as JSON in SQL, and its marker points are stored JSON, so they are read key by key. A suggestion's `path` and `score` are nullable, as their columns are, and its `conflict` is `null` where no sibling holds the division. The import status names each progress key rather than spreading the progress record, and always carries the list of imported world views, empty where there is none. The matchers answer through the same module: the database search, geocode, geoshape and point matches, the single-region AI match, the whole-world-view AI re-match and the re-match. Each suggestion a matcher returns is mapped by `foundSuggestionOf`, and each run's progress names its keys, so the run's internal `cancel` flag stays on the server. The geoshape proxy answers one `FeatureCollection` whether the shape came from the `wikidata_geoshapes` cache or from `maps.wikimedia.org`: `geoshapeOf` keeps each polygon or multipolygon, tagged with the item's id, and drops Wikimedia's own feature keys and any geometry that is not an area. No screen calls the whole-world-view AI re-match (`/ai-match`, its status and its cancel); the routes remain for a direct call.
 
+**What the map matching answers.** The calls `frontend/src/api/admin/wvImportCvMatch.ts` makes answer through schemas in `backend/src/api/responses/wvImportCvMatch.ts` (ADR-0066), apart from the colour-match stream, which does not yet:
+- a reviewer's answer to a paused colour-match run (cluster review, water review, alignment) is `ReviewAnswered`;
+- the mapshape match is `MapshapeMatchResult`, one of two shapes told apart by `found`. Where nothing was found it is only the reason, and otherwise it is:
+  - the page's shapes grouped by colour;
+  - the child regions;
+  - the division preview and the page's own shapes, both as area features.
+
+  A shape's matched region is sent as its id and name, so the child region's Wikidata id stays on the server;
+- the model's reading of the colour clusters is `ClusterRegionSuggestions`, read key by key by `clusterRegionMatchesOf` (`controllers/admin/wvImportCvAnswerRows.ts`):
+  - an answer to a cluster nobody asked about, or a second answer to one, is left out;
+  - a region name that is not a child region is answered with no region;
+  - a child region already given to one cluster is given to no other.
+
+  The call's statistics are its `model`, `promptTokens`, `completionTokens`, `cost` and `durationMs`.
+
 A verdict on suggestions has one writer per rule, whether it is given for one division or for a selection: `acceptDivisionsRejectRest` and `rejectDivisions` (`controllers/admin/wvImportMatchDecisions.ts`), each in one transaction. The single routes (`accept-and-reject`, `reject`) pass one division, and the batch routes pass the selection. After a rejection the region's status follows what is left: open suggestions make it `needs_review`, members `manual_matched`, and nothing `no_candidates`.
 
 **Every path the admin client calls is a route `adminRoutes.ts` registers.** `backend/src/routes/adminClientPaths.test.ts` reads each `/api/admin/…` path the modules in `frontend/src/api/admin/` spell, with its method, and fails on one the router does not register. A drifted path answers a 404 only when somebody presses its button, so nothing else notices it. The route declarations of #793 will give the paths one owner and retire the spec.
