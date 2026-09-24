@@ -465,13 +465,11 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     mutationFn: (regionId: number) => dismissChildren(worldViewId, regionId),
     onSuccess: (data) => {
       invalidateTree();
-      if (data.undoAvailable) {
-        setUndoSnackbar({
-          open: true,
-          message: `Dismissed ${data.dismissed} descendant(s)`,
-          worldViewId,
-        });
-      }
+      setUndoSnackbar({
+        open: true,
+        message: `Dismissed ${data.dismissed} descendant(s)`,
+        worldViewId,
+      });
     },
   });
 
@@ -479,13 +477,11 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     mutationFn: (regionId: number) => pruneToLeaves(worldViewId, regionId),
     onSuccess: (data) => {
       invalidateTree();
-      if (data.undoAvailable) {
-        setUndoSnackbar({
-          open: true,
-          message: `Pruned ${data.pruned} grandchildren+ (kept direct children as leaves)`,
-          worldViewId,
-        });
-      }
+      setUndoSnackbar({
+        open: true,
+        message: `Pruned ${data.pruned} grandchildren+ (kept direct children as leaves)`,
+        worldViewId,
+      });
     },
   });
 
@@ -498,13 +494,11 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     mutationFn: (regionId: number) => handleAsGrouping(worldViewId, regionId),
     onSuccess: (data, regionId) => {
       invalidateTree(regionId);
-      if (data.undoAvailable) {
-        setUndoSnackbar({
-          open: true,
-          message: `Matched ${data.matched}/${data.total} children`,
-          worldViewId,
-        });
-      }
+      setUndoSnackbar({
+        open: true,
+        message: `Matched ${data.matched}/${data.total} children`,
+        worldViewId,
+      });
     },
   });
 
@@ -527,13 +521,11 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
         return;
       }
       invalidateTree();
-      if (data.undoAvailable) {
-        setUndoSnackbar({
-          open: true,
-          message: `Absorbed ${data.absorbed} children (${data.divisions} divisions)`,
-          worldViewId,
-        });
-      }
+      setUndoSnackbar({
+        open: true,
+        message: `Absorbed ${data.absorbed} children (${data.divisions} divisions)`,
+        worldViewId,
+      });
     },
   });
 
@@ -550,13 +542,11 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     mutationFn: (regionId: number) => collapseToParent(worldViewId, regionId),
     onSuccess: (data) => {
       invalidateTree();
-      if (data.undoAvailable) {
-        setUndoSnackbar({
-          open: true,
-          message: `Cleared ${data.collapsed} descendant(s), found ${data.parentSuggestions} suggestion(s) for parent`,
-          worldViewId,
-        });
-      }
+      setUndoSnackbar({
+        open: true,
+        message: `Cleared ${data.collapsed} descendant(s), found ${data.parentSuggestions} suggestion(s) for parent`,
+        worldViewId,
+      });
     },
   });
 
@@ -564,17 +554,15 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     mutationFn: (regionId: number) => autoResolveChildren(worldViewId, regionId),
     onSuccess: (data) => {
       invalidateTree();
-      if (data.undoAvailable) {
-        const parts: string[] = [];
-        if (data.resolved > 0) parts.push(`${data.resolved} auto-matched`);
-        if (data.review > 0) parts.push(`${data.review} to review`);
-        if (data.failed.length > 0) parts.push(`${data.failed.length} unmatched`);
-        setUndoSnackbar({
-          open: true,
-          message: `Auto-resolve: ${parts.join(', ')} (${data.total} total)`,
-          worldViewId,
-        });
-      }
+      const parts: string[] = [];
+      if (data.resolved > 0) parts.push(`${data.resolved} auto-matched`);
+      if (data.review > 0) parts.push(`${data.review} to review`);
+      if (data.failed.length > 0) parts.push(`${data.failed.length} unmatched`);
+      setUndoSnackbar({
+        open: true,
+        message: `Auto-resolve: ${parts.join(', ')} (${data.total} total)`,
+        worldViewId,
+      });
     },
   });
 

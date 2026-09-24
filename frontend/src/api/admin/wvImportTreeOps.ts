@@ -7,9 +7,10 @@
  */
 
 import type {
-  ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenDismissed, ChildrenSimplified, DescendantsPruned,
-  HierarchySimplified, HierarchyWarningsDismissed, ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone,
-  RegionRemoved, RegionRenamed, RegionReparented, SelectionAccepted, SelectionRejected, SpatialAnomaly,
+  ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenCollapsed, ChildrenDismissed, ChildrenGrouped,
+  ChildrenSimplified, DescendantsPruned, FlattenPreviewResult, HierarchySimplified, HierarchyWarningsDismissed,
+  ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone, RegionRemoved, RegionRenamed, RegionReparented,
+  SelectionAccepted, SelectionRejected, SmartFlattenResult, SpatialAnomaly,
 } from '@tyr/shared/api';
 import { authFetchJson } from '../fetchUtils';
 
@@ -17,10 +18,12 @@ import { authFetchJson } from '../fetchUtils';
 // generated into `@tyr/shared/api`; the rest of the module is #992's. A spatial
 // anomaly is declared with the colour-match stream, which sends it too.
 export type {
-  ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenDismissed, ChildrenSimplified, DescendantsPruned,
+  ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenCollapsed, ChildrenDismissed, ChildrenGrouped,
+  ChildrenSimplified, DescendantsPruned, FlattenBlocked, FlattenDone, FlattenPreview, FlattenPreviewResult,
   HierarchySimplified, HierarchyWarningsDismissed, ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone,
   RegionRemoved, RegionRemovedKeepingChildren, RegionRemovedWithBranch, RegionRenamed, RegionReparented,
-  SelectionAccepted, SelectionRejected, SimplifyReplacement, SpatialAnomaly, SpatialAnomalyDivision, UndoOperation,
+  SelectionAccepted, SelectionRejected, SimplifyReplacement, SmartFlattenResult, SpatialAnomaly, SpatialAnomalyDivision,
+  UndoOperation,
 } from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -32,8 +35,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 export async function handleAsGrouping(
   worldViewId: number,
   regionId: number,
-): Promise<{ matched: number; total: number; undoAvailable?: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/handle-as-grouping`, {
+): Promise<ChildrenGrouped> {
+  return authFetchJson<ChildrenGrouped>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/handle-as-grouping`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -264,36 +267,21 @@ export async function pruneToLeaves(
   });
 }
 
-export interface SmartFlattenResult {
-  absorbed: number;
-  divisions: number;
-  unmatched?: Array<{ id: number; name: string }>;
-  undoAvailable?: boolean;
-}
-
 export async function smartFlatten(
   worldViewId: number,
   regionId: number,
 ): Promise<SmartFlattenResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-flatten`, {
+  return authFetchJson<SmartFlattenResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-flatten`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
 }
 
-export interface SmartFlattenPreviewResult {
-  geometry?: GeoJSON.Geometry | null;
-  regionMapUrl?: string | null;
-  descendants?: number;
-  divisions?: number;
-  unmatched?: Array<{ id: number; name: string }>;
-}
-
 export async function smartFlattenPreview(
   worldViewId: number,
   regionId: number,
-): Promise<SmartFlattenPreviewResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-flatten/preview`, {
+): Promise<FlattenPreviewResult> {
+  return authFetchJson<FlattenPreviewResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-flatten/preview`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -309,17 +297,11 @@ export async function mergeChildIntoParent(
   });
 }
 
-export interface CollapseToParentResult {
-  collapsed: number;
-  parentSuggestions: number;
-  undoAvailable?: boolean;
-}
-
 export async function collapseToParent(
   worldViewId: number,
   regionId: number,
-): Promise<CollapseToParentResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/collapse-to-parent`, {
+): Promise<ChildrenCollapsed> {
+  return authFetchJson<ChildrenCollapsed>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/collapse-to-parent`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
