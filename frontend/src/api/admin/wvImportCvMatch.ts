@@ -7,85 +7,28 @@
  */
 
 import type {
-  ClusterGeoInfo, ClusterRegionSuggestions, MapshapeMatchResult, ReviewAnswered,
+  ClusterRegionSuggestions, ColorMatchEvent, ColorMatchResult, MapshapeMatchResult, ReviewAnswered,
 } from '@tyr/shared/api';
-import type { SpatialAnomaly } from './wvImportTreeOps';
 import { authFetchJson, ensureFreshToken, getAccessToken } from '../fetchUtils';
 
-// What the migrated calls here answer is declared once, as a backend schema
-// (ADR-0066), and generated into `@tyr/shared/api`. Passed on from here, so a
-// component imports a call's answer from the module of the call.
+// What the calls here answer, and every event of the colour-match stream, is
+// declared once, as a backend schema (ADR-0066), and generated into
+// `@tyr/shared/api`. Passed on from here, so a component imports a call's
+// answer from the module of the call.
 export type {
-  ChildRegionRef, ClusterGeoInfo, ClusterRegionMatch, ClusterRegionSuggestions, MapshapeDivision, MapshapeGroup,
-  MapshapeMatchResult, MapshapePreviewFeature, MapshapesFound, MapshapesNotFound, ReviewAnswered,
+  AdjacencyEdge, BorderPath, ChildRegionRef, ClusterGeoInfo, ClusterRegionMatch, ClusterRegionSuggestions,
+  ClusterReviewCluster, ClusterReviewRequested, ColorMatchCluster, ColorMatchComplete, ColorMatchDebugImage,
+  ColorMatchEvent, ColorMatchFailed, ColorMatchProgress, ColorMatchResult, CvPreviewFeature, DebugImage,
+  IcpAdjustmentOffered, MapshapeDivision, MapshapeGroup, MapshapeMatchResult, MapshapePreviewFeature,
+  MapshapesFound, MapshapesNotFound, NamedDivision, ReviewAnswered, WaterComponent, WaterReviewRequested,
   WikivoyageShapeFeature,
 } from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // =============================================================================
-// Color Match Types
-// =============================================================================
-
-export interface ColorMatchCluster {
-  clusterId: number;
-  color: string;
-  pixelShare: number;
-  suggestedRegion: { id: number; name: string } | null;
-  divisions: Array<{ id: number; name: string; confidence: number; depth: number; parentDivisionId?: number }>;
-  unsplittable: Array<{ id: number; name: string; confidence: number; splitClusters: Array<{ clusterId: number; share: number }> }>;
-}
-
-export interface AdjacencyEdge {
-  divA: number;
-  divB: number;
-}
-
-export interface DebugImage {
-  label: string;
-  dataUrl: string;
-}
-
-export interface ColorMatchResult {
-  clusters: ColorMatchCluster[];
-  childRegions?: Array<{ id: number; name: string }>;
-  /** Divisions whose centroids fall outside the source map coverage */
-  outOfBounds?: Array<{ id: number; name: string }>;
-  debugImages?: DebugImage[];
-  /** Interactive map preview -- GeoJSON FeatureCollection with cluster assignment properties */
-  geoPreview?: {
-    featureCollection: GeoJSON.FeatureCollection;
-    clusterInfos: ClusterGeoInfo[];
-  };
-  stats?: {
-    totalDivisions: number;
-    assignedDivisions: number;
-    cvClusters?: number;
-    cvAssignedDivisions?: number;
-    cvUnsplittable?: number;
-    cvOutOfBounds?: number;
-    countryName?: string;
-  };
-  spatialAnomalies?: SpatialAnomaly[];
-  adjacencyEdges?: AdjacencyEdge[];
-}
-
-// =============================================================================
 // Water Review Types
 // =============================================================================
-
-export interface WaterSubCluster {
-  idx: number;
-  pct: number;
-  cropDataUrl: string;
-}
-
-export interface WaterComponent {
-  id: number;
-  pct: number;
-  cropDataUrl: string;
-  subClusters: WaterSubCluster[];
-}
 
 export interface WaterReviewDecision {
   approvedIds: number[];
@@ -95,27 +38,6 @@ export interface WaterReviewDecision {
 // =============================================================================
 // Cluster Review Types
 // =============================================================================
-
-/**
- * A single vector border path extracted from the cluster label map via
- * OpenCV findContours. Transferred to the frontend as part of the cluster
- * review SSE event so the paint editor can render an SVG overlay.
- */
-export interface BorderPath {
-  id: string;
-  points: Array<[number, number]>;
-  type: 'internal' | 'external';
-  clusters: [number, number];
-}
-
-/** Cluster info for interactive cluster review (used by CvClusterReviewSection) */
-export interface ClusterReviewCluster {
-  label: number;
-  color: string;
-  pct: number;
-  isSmall: boolean;
-  componentCount: number;
-}
 
 /** Normal cluster review decision — merges, excludes, recluster, or split */
 export interface ClusterReviewDecision {
@@ -250,24 +172,6 @@ export async function respondToIcpAdjustment(
 // Color Match SSE Streaming
 // =============================================================================
 
-export interface ColorMatchSSEEvent {
-  type: 'progress' | 'debug_image' | 'complete' | 'error' | 'water_review' | 'cluster_review' | 'icp_adjustment_available';
-  step?: string;
-  elapsed?: number;
-  debugImage?: DebugImage;
-  data?: ColorMatchResult & {
-    clusters?: ClusterReviewCluster[];
-    borderPaths?: BorderPath[];
-    pipelineSize?: { w: number; h: number };
-  };
-  message?: string;
-  reviewId?: string;
-  waterMaskImage?: string;
-  waterPxPercent?: number;
-  waterComponents?: WaterComponent[];
-  metrics?: { overflow: number; error: number; icpOption: string };
-}
-
 /**
  * Stream CV color match progress via SSE.
  * Calls onEvent for each event; resolves when complete, rejects on error.
@@ -275,7 +179,7 @@ export interface ColorMatchSSEEvent {
 export function colorMatchWithProgress(
   worldViewId: number,
   regionId: number,
-  onEvent: (event: ColorMatchSSEEvent) => void,
+  onEvent: (event: ColorMatchEvent) => void,
   signal?: AbortSignal,
 ): Promise<ColorMatchResult> {
   return new Promise((resolve, reject) => {
@@ -299,7 +203,7 @@ export function colorMatchWithProgress(
 
       eventSource.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data) as ColorMatchSSEEvent;
+          const data = JSON.parse(event.data) as ColorMatchEvent;
           onEvent(data);
 
           if (data.type === 'complete' || data.type === 'error') {
@@ -307,10 +211,8 @@ export function colorMatchWithProgress(
             eventSource.close();
             if (data.type === 'error') {
               reject(new Error(data.message || 'CV match failed'));
-            } else if (data.data) {
-              resolve(data.data);
             } else {
-              reject(new Error('CV match completed without a result payload'));
+              resolve(data.data);
             }
           }
         } catch (e) {
