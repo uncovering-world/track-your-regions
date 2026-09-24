@@ -550,6 +550,12 @@ The edits that propose or reshape more at once answer through the same module:
   - an action of an unknown type, one naming no child, or a rename to nothing is left out;
   - a Wikidata id that is not a `Q` number is read as none.
 
+**What the coverage check answers.** The coverage calls `frontend/src/api/admin/wvImportCoverage.ts` makes answer through schemas in `backend/src/api/responses/wvImportCoverage.ts` (ADR-0066). The geometry tools of that module do not yet.
+- **The check.** `CoverageResult` carries the gaps, each with its suggestion and, for a gap with GADM divisions under it, its whole subtree (`GapSubtreeNode`, recursive), plus the dismissed gaps.
+- **The stream.** The streamed check (`/coverage-stream`) writes each event through `writeEvent()` against `CoverageEvent`: `progress`, then `complete` with the same `CoverageResult`, or `error`.
+- **A gap's geographic suggestion.** `GeoSuggestResult` has a `suggestion` of `null` where no assigned division is near. Otherwise it also carries the nearest division, both centres, the distance and the suggested region's ancestry (`RegionContextNode`, recursive).
+- **The verdicts and the review's close.** `GapDismissed`, `GapUndismissed`, `CoverageApproved` and `ReviewFinalized`.
+
 A verdict on suggestions has one writer per rule, whether it is given for one division or for a selection: `acceptDivisionsRejectRest` and `rejectDivisions` (`controllers/admin/wvImportMatchDecisions.ts`), each in one transaction. The single routes (`accept-and-reject`, `reject`) pass one division, and the batch routes pass the selection. After a rejection the region's status follows what is left: open suggestions make it `needs_review`, members `manual_matched`, and nothing `no_candidates`.
 
 **Every path the admin client calls is a route `adminRoutes.ts` registers.** `backend/src/routes/adminClientPaths.test.ts` reads each `/api/admin/…` path the modules in `frontend/src/api/admin/` spell, with its method, and fails on one the router does not register. A drifted path answers a 404 only when somebody presses its button, so nothing else notices it. The route declarations of #793 will give the paths one owner and retire the spec.
