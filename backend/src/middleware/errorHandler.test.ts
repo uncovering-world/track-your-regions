@@ -124,6 +124,29 @@ describe('errorHandler', () => {
     expect(sent.body?.error).toBe('A submitted value is longer than this field allows.');
   });
 
+  it('answers a delete that would take a traveller\'s visit with 409 and no driver text', () => {
+    // As the driver raises it: code, the constraint's name, and a message that
+    // names the tables — which the answer must not repeat (#764).
+    const err = Object.assign(
+      new Error('update or delete on table "regions" violates foreign key constraint "user_visited_regions_region_id_fkey" on table "user_visited_regions"'),
+      { code: '23503', constraint: 'user_visited_regions_region_id_fkey' },
+    );
+
+    const sent = handle(err);
+
+    expect(sent.status).toBe(409);
+    expect(sent.body?.error).toContain('does not delete a visit');
+    expect(sent.body?.error).not.toContain('user_visited_regions');
+  });
+
+  it('leaves another foreign key on the ordinary path', () => {
+    const err = Object.assign(new Error('violates foreign key constraint "region_members_region_id_fkey"'), {
+      code: '23503', constraint: 'region_members_region_id_fkey',
+    });
+
+    expect(handle(err).status).toBe(500);
+  });
+
   it('leaves an ordinary error on 500', () => {
     // The branch above must answer for 22001 only — a genuine fault that
     // happens to reach the handler is still a server error.

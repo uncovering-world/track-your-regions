@@ -130,7 +130,17 @@ export async function deleteWorldView(req: Request, res: Response): Promise<void
     return;
   }
 
-  await pool.query('DELETE FROM world_views WHERE id = $1', [worldViewId]);
+  // The one delete that takes visits with it: getDeleteImpact counted them
+  // and the admin confirmed. Every other region delete is refused by the
+  // visits' foreign key, which is checked at the end of the statement, so the
+  // visits go in the same statement as the regions they stand on (#764).
+  await pool.query(`
+    WITH visits_gone AS (
+      DELETE FROM user_visited_regions uvr USING regions r
+      WHERE r.id = uvr.region_id AND r.world_view_id = $1
+    )
+    DELETE FROM world_views WHERE id = $1
+  `, [worldViewId]);
 
   res.status(204).send();
 }

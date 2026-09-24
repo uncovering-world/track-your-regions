@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError, ZodSchema } from 'zod';
+import { isVisitedRegionDelete, VISITED_REGION_REFUSAL } from '../db/regionVisits.js';
 
 export interface ApiError extends Error {
   statusCode: number;
@@ -64,6 +65,14 @@ export function errorHandler(
         ? `A submitted value is longer than the ${width} characters this field allows.`
         : 'A submitted value is longer than this field allows.',
     });
+    return;
+  }
+
+  // A delete that would take a traveller's visit with it (#764). The foreign
+  // key refuses it for every region writer; a writer that ran in one
+  // transaction has rolled back, so the answer can say the edit was not made.
+  if (isVisitedRegionDelete(err)) {
+    res.status(409).json({ error: VISITED_REGION_REFUSAL });
     return;
   }
 

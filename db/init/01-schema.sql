@@ -483,11 +483,18 @@ COMMENT ON FUNCTION cleanup_verification_tokens IS 'Call periodically to remove 
 -- User Visited Regions
 -- =============================================================================
 -- Tracks which regions users have visited.
+--
+-- A visit is the traveller's record, and a hierarchy edit is a curator's
+-- (#764): deleting a region that carries a visit is refused, whichever of the
+-- region writers asks. NO ACTION rather than RESTRICT, because NO ACTION is
+-- checked at the end of the statement: deleting a world view, whose visits
+-- the admin has seen counted and confirmed, removes them in the same
+-- statement as the regions they stand on.
 
 CREATE TABLE IF NOT EXISTS user_visited_regions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    region_id INTEGER NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    region_id INTEGER NOT NULL REFERENCES regions(id) ON DELETE NO ACTION,
     visited_at TIMESTAMPTZ DEFAULT NOW(),
     notes TEXT,
     UNIQUE(user_id, region_id)

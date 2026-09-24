@@ -323,6 +323,29 @@ describe('smartFlatten', () => {
     expect(res._body).toEqual({ blocked: true, unmatched: [{ id: 201, name: 'A' }] });
     expect(invalidated()).toEqual([]);
   });
+
+  it('hands a visited descendant to the error handler rather than answering 500 (#764)', async () => {
+    mockPoolQuery.mockImplementation(answering([
+      [/SELECT id, name FROM regions WHERE id = \$1 AND world_view_id/, [{ id: 100, name: 'Parent' }]],
+      [/WITH RECURSIVE/, [{ id: 201, name: 'A' }]],
+      [/SELECT DISTINCT region_id FROM region_members/, [{ region_id: 201 }]],
+    ]));
+    const refusal = Object.assign(new Error('violates foreign key constraint "user_visited_regions_region_id_fkey"'), {
+      code: '23503', constraint: 'user_visited_regions_region_id_fkey',
+    });
+    const answer = answering([]);
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/DELETE FROM regions/.test(sql)) throw refusal;
+      return answer(sql);
+    });
+
+    const res = makeRes();
+    await expect(smartFlatten(makeReq({ regionId: 100 }), res)).rejects.toBe(refusal);
+
+    expect(res._status).toBeUndefined();
+    expect(mockClientQuery.mock.calls.map(([sql]) => String(sql))).toContain('ROLLBACK');
+    expect(invalidated()).toEqual([]);
+  });
 });
 
 describe('undo restores regions with no geometry, which is what makes it self-healing', () => {
