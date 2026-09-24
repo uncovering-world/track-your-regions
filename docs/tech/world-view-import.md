@@ -550,11 +550,20 @@ The edits that propose or reshape more at once answer through the same module:
   - an action of an unknown type, one naming no child, or a rename to nothing is left out;
   - a Wikidata id that is not a `Q` number is read as none.
 
-**What the coverage check answers.** The coverage calls `frontend/src/api/admin/wvImportCoverage.ts` makes answer through schemas in `backend/src/api/responses/wvImportCoverage.ts` (ADR-0066). The geometry tools of that module do not yet.
+**What the coverage check answers.** Every call `frontend/src/api/admin/wvImportCoverage.ts` makes answers through a schema in `backend/src/api/responses/wvImportCoverage.ts` (ADR-0066).
 - **The check.** `CoverageResult` carries the gaps, each with its suggestion and, for a gap with GADM divisions under it, its whole subtree (`GapSubtreeNode`, recursive), plus the dismissed gaps.
 - **The stream.** The streamed check (`/coverage-stream`) writes each event through `writeEvent()` against `CoverageEvent`: `progress`, then `complete` with the same `CoverageResult`, or `error`.
 - **A gap's geographic suggestion.** `GeoSuggestResult` has a `suggestion` of `null` where no assigned division is near. Otherwise it also carries the nearest division, both centres, the distance and the suggested region's ancestry (`RegionContextNode`, recursive).
 - **The verdicts and the review's close.** `GapDismissed`, `GapUndismissed`, `CoverageApproved` and `ReviewFinalized`.
+- **The geometry the review draws.**
+  - Containers' coverage is `ChildrenCoverage`.
+  - A region's own, its descendants' and its geoshape's outlines are `CoverageGeometry`, each an `AreaGeometry` or `null`.
+  - The divisions between a region and its children are `CoverageGapAnalysis`, with the children's outlines as `SiblingRegionGeometry`.
+  - The children's outlines on their own are `ChildRegionGeometries`.
+  - Divisions previewed together, or split into their GADM children, are `UnionGeometryResult` and `SplitDeeperResult`, whose `DivisionPreview` holds division shapes and the article's markers.
+  - The model's reading of the region's map is `VisionMatchResult`: `openaiVisionMatch.ts` keeps only the whole numbers the numbered map shows, and a `reasoning` that is text.
+
+  The dialogs merge gap outlines into a sibling's on the client, and turf can answer a GeometryCollection there. So the dialogs keep their siblings as `DrawnSiblingRegion` (`CvMatchMap.tsx`), whose geometry is any GeoJSON geometry.
 
 A verdict on suggestions has one writer per rule, whether it is given for one division or for a selection: `acceptDivisionsRejectRest` and `rejectDivisions` (`controllers/admin/wvImportMatchDecisions.ts`), each in one transaction. The single routes (`accept-and-reject`, `reject`) pass one division, and the batch routes pass the selection. After a rejection the region's status follows what is left: open suggestions make it `needs_review`, members `manual_matched`, and nothing `no_candidates`.
 
