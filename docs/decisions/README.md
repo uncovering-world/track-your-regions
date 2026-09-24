@@ -72,7 +72,7 @@ and accepted by it.
 | [0050](0050-a-renamed-component-is-found-by-its-claim.md) | A renamed component is found by its claim, and a tie the name does not decide is nobody | Accepted | 2026-09-07 |
 | [0051](0051-the-review-queue-is-one-list-of-dated-questions.md) | The review queue is one list of dated questions, filtered and set aside per curator | Accepted | 2026-09-07 |
 | [0052](0052-a-place-of-worship-is-admitted-for-itself-or-for-what-it-holds.md) | A place of worship is admitted for itself or for what it holds | Accepted | 2026-09-08 |
-| [0053](0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md) | A curator's no is a verdict on an arrival and a mark on a part | Accepted | 2026-09-09 |
+| [0053](0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md) | A curator's no is a verdict on an arrival and a mark on a part | Accepted — decision 3 narrowed by ADR-0067 | 2026-09-09 |
 | [0054](0054-placement-reads-leaves-through-their-pieces.md) | Placement reads the leaves through their pieces, and asks a non-leaf only about what no leaf holds | Accepted | 2026-09-10 |
 | [0055](0055-readership-is-read-from-monthly-dumps-and-an-unseen-country-is-unobserved.md) | Readership is read from Wikimedia's monthly dumps, and a country the data does not show is unobserved, not unread | Draft | 2026-09-11 |
 | [0056](0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A work the world reads opens a second door to the world tier | Draft | 2026-09-11 |
@@ -86,6 +86,7 @@ and accepted by it.
 | [0064](0064-row-types-are-generated-from-the-schema-and-queries-stay-sql.md) | Row types are generated from the schema, and queries stay SQL | Accepted | 2026-09-21 |
 | [0065](0065-a-rule-both-sides-apply-lives-in-one-package-both-import.md) | A rule both sides apply lives in one package both import | Accepted | 2026-09-21 |
 | [0066](0066-an-endpoints-answer-is-a-backend-schema-and-the-clients-type-is-generated-from-it.md) | An endpoint's answer is a backend schema, and the client's type is generated from it | Accepted | 2026-09-22 |
+| [0067](0067-accepting-a-refusal-keeps-it-and-a-batch-answer-pins-nothing.md) | Accepting a refusal keeps it, and a batch answer pins nothing | Accepted | 2026-09-24 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
