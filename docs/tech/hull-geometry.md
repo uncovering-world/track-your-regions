@@ -36,7 +36,7 @@ In the World View editor geometry panel:
 - `GET /api/world-views/regions/:regionId/hull/params`
 - `GET /api/world-views/regions/:regionId/geometry?detail=high|hull`
 
-Their answers are `HullPreview`, `HullSaved` and `SavedHullParams` in `backend/src/api/responses/geometry.ts`. The default parameters, a 50 km buffer, 0.9 concavity and 0.02° simplification, are `DEFAULT_HULL_PARAMS` in `@tyr/shared/geometry`: the server builds an untuned hull with them, and the hull editor opens on them and resets to them.
+Their answers are `HullPreview`, `HullSaved` and `SavedHullParams` in `backend/src/api/responses/geometry.ts`. The default parameters, a 50 km buffer, 0.9 concavity and 0.02° simplification, are `DEFAULT_HULL_PARAMS` in `@tyr/shared/geometry`: the server builds an untuned hull with them, and the hull editor opens on them and resets to them. The editor opens on them only for a hull nobody has tuned: a failed read of the saved parameters rejects (`fetchSavedHullParams`), and `HullEditorDialog` says so, offers Retry and keeps Preview and Save off until the read succeeds. Otherwise the defaults would pass for the region's own and could be saved over a tuned hull (#1013).
 
 ## Where It Is Used
 
