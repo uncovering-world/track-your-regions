@@ -30,7 +30,7 @@ mid-review.
 | `dismiss-children` | every descendant is deleted and nothing moves up | the region they were under |
 | `prune-to-leaves` | every grandchild and deeper is deleted | each direct child that lost descendants |
 | `smart-flatten` | the descendants are deleted and their divisions absorbed | the region that absorbed them |
-| `simplify-hierarchy`, `simplify-children`, `smart-simplify/apply-move` | members are folded up to their GADM parent | the region simplified — these three always did |
+| `simplify-hierarchy`, `simplify-children`, `smart-simplify/apply-move` | members are folded up to their GADM parent | nothing: they write only members, and the member triggers clear the regions (ADR-0068) |
 
 Two shapes are worth reading twice. `reparent-region` names two rows where the
 World View Editor's `updateRegion` names three, because the editor's reparent
@@ -44,15 +44,12 @@ news reaches the region above through the trigger. The walk stops at a
 hand-drawn child, correctly, since deleting what was under a drawn outline does
 not move it (#283).
 
-The call is made **last**: after the `COMMIT` for the handlers that open a
-transaction — `merge-child`, `remove-region`, `dismiss-children`,
-`prune-to-leaves` and `smart-flatten` — and after the statement itself for
-`reparent-region`, which runs on the pool and opens none. Where the handler stores an undo entry — as
-`dismiss-children`, `prune-to-leaves` and `smart-flatten` do, while
-`reparent-region`, `merge-child` and `remove-region` offer no undo at all — the
-call comes after that too, so a failure here cannot cost the operator their
-undo. Matching `regionCrud`, it is a second statement that can fail on its own,
-which is the trade ADR-0035 recorded for the structural case.
+The call is made **inside the transaction**, on its client, before the `COMMIT`
+— `reparent-region`, `merge-child`, `remove-region`, `dismiss-children`,
+`prune-to-leaves` and `smart-flatten` (#1026, ADR-0068). A failed clearing then
+rolls the whole operation back, so the handler answers an error for an operation
+that did not happen, never 500 for one that did; the undo entry, stored after
+the `COMMIT`, is not written for an operation that rolled back.
 
 **Undo names nothing, deliberately.** Every region an undo recreates arrives
 with `geom NULL`, which is exactly what seeds the run's closure, so the restored
@@ -61,16 +58,14 @@ this true — the restoring `INSERT` names no geometry column — is pinned by
 `backend/src/controllers/admin/wvImportStructuralInvalidation.test.ts`, together
 with the rows each handler above nulls.
 
-The **member** half of the same rule is still open (#718): a dozen import-review
-routes rewrite `region_members` *without* moving or deleting a region — accepting
-a match, clearing members, resolving an overlap, collapsing a parent — and not
-one of those invalidates, so a region can go on drawing divisions it no longer
-holds. The three handlers above that move members as part of a structural change
-(`merge-child`, `remove-region` with `reparentDivisions`, `smart-flatten`) are
-covered by the call they already make. The three undo arms
-that restore members without recreating a region — `handle-as-grouping`,
-`auto-resolve-children`, `collapse-to-parent` — belong to that half, which is why
-undo is self-healing only for the operations listed above.
+The **member** half of the same rule is the database's (ADR-0068, #718): a write
+to `region_members` clears the region whose union it changed, in the same
+statement. So the dozen import-review routes that rewrite members *without*
+moving or deleting a region — accepting a match, clearing members, resolving an
+overlap, collapsing a parent — need no call, and neither do the three undo arms
+that restore members without recreating a region (`handle-as-grouping`,
+`auto-resolve-children`, `collapse-to-parent`): the restore is a member write and
+clears its region like any other.
 
 ## Simplify Hierarchy
 
@@ -139,7 +134,7 @@ Steps:
 3. Verify all `memberRowIds` belong to direct children of `parentRegionId` (IDOR guard).
 4. Deduplicate: if a division already exists in the owner region, delete the duplicate rather than moving.
 5. Move remaining rows to the owner region.
-6. Invalidate geometry and sync match status for all affected regions.
+6. Sync match status for all affected regions. The deletes and the move in steps 4 and 5 clear those regions' geometry through the member triggers (ADR-0068), so the handler clears nothing itself.
 
 The Simplify Hierarchy step (folding fully-covered subtrees up to their GADM
 parent) is **not** applied automatically after a Smart Simplify move — it

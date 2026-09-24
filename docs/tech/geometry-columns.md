@@ -445,6 +445,7 @@ Coverage-aware simplification for **sibling regions** (same parent). Uses `ST_Co
 | `update_region_focus_data` | `regions` | `geom` or `hull_geom` change | Stores `anchor_point` and `focus_bbox` from `geometry_focus()`, taking a near-global parent's box from its children instead. See [How a crossing region is told from a global one](#how-a-crossing-region-is-told-from-a-global-one). |
 | `update_division_focus_data` | `administrative_divisions` | `geom` change | Stores `anchor_point` and `focus_bbox` from `geometry_focus()`. No children aggregation. Disabled during the bulk GADM load, which computes the columns in one pass (step 1b). |
 | `trg_regions_geom_3857` | `regions` | `geom`, `hull_geom`, `uses_hull`, or `geom_simplified_low` change | Transforms to 3857, computes all simplified columns (hull-based and real-geom-based), including both cheap rungs. `uses_hull` is there because it *chooses* the input the rungs are made of (rule 19) and is manually editable (rule 17): `updateRegion` writes the flag on its own, and without this arm a region toggled to hull display kept rungs traced from its real outline while the island tile source switched to the hull at once. `geom_simplified_low` is there for `simplify_coverage_regions()`, which writes that column directly — without it `geom_overview` and `geom_simplified_coarse` would keep the pre-coverage shape and serve it at zoom 0-4. |
+| `trg_region_members_insert_invalidates_region` / `…_delete_…` / `…_update_…` | `region_members` | `INSERT`, `DELETE`, or an `UPDATE` of `region_id`, `division_id` or `custom_geom` (statement-level, transition tables) | Clears the stored geometry of each region whose union the statement changed, the hand-drawn ones excepted; that clearing is a `geom` write, so `invalidate_parent_region_geometry` takes it to the ancestors (ADR-0068, #718). A renamed part clears nothing. |
 | `trg_regions_geom_pieces` / `trg_regions_geom_insert_pieces` | `regions` | `geom` change, or `INSERT` with a geometry | Replaces the region's rows in `region_geom_pieces` with the cut of its current geometry when it is a leaf (`cut_region_geom_pieces()`); a cut that fails leaves none and warns. Not on `is_leaf`, deliberately — see [the table](#region_geom_pieces-table). |
 
 ### How a crossing region is told from a global one
@@ -487,8 +488,8 @@ Where the answer lives (#674):
   geometry sent in the request, and the hull generator, which measures the very
   `region_members` points it is about to hull. The generator cannot read the
   stored box: `focus_bbox` describes `COALESCE(hull_geom, geom)`, the hull is
-  built from members, and `invalidateRegionGeometry()` clears `geom` but not
-  `hull_geom` after a member change — so until the next recompute, which
+  built from members, and a member change clears `geom` but not `hull_geom`
+  (the member trigger, ADR-0068) — so until the next recompute, which
   neither hull endpoint runs first, that box describes the *previous* hull.
   Two detections were retired for reading Antarctica as crossing: an envelope
   test in the region geometry read, and a ±150° threshold over a hull's point
@@ -654,13 +655,16 @@ continent for every visitor as well. Both reads had no caller and are gone
 (#1006); `regionAncestorInvalidation.test.ts` keeps `geometryRead.ts` free of a
 geometry write.
 
-What still lives in TypeScript is the *other* half: `invalidateRegionGeometry`,
-which a member or structure edit calls when nothing wrote a geometry but what the
-region's outline is derived from changed. It nulls that one region by primary key
-— and since that is itself a write to `regions.geom`, the trigger takes it
-upward from there. A lock or deadlock on it is swallowed, a tolerance carried
-over from #283 rather than a guarantee, with `parent-short-of-its-children`
-watching.
+A region's *own* clearing is the database's too for a member change: a write to
+`region_members` clears the region whose union it changed, in the same statement
+(ADR-0068). What still lives in TypeScript is the structural half:
+`invalidateRegionGeometry`, which a writer calls when a region changes parents
+or a branch is deleted — nothing wrote a geometry or a member, but a parent's
+union changed. It nulls that one region by primary key, and since that is itself
+a write to `regions.geom`, the trigger takes it upward from there. A writer with
+a transaction passes its client, so the clearing commits or rolls back with the
+edit (#1026); on the pool a lock or deadlock is swallowed, a tolerance carried
+over from #283, with `parent-short-of-its-children` watching.
 
 **A structural change names its rows itself, because the trigger cannot see
 one.** No geometry is written, and the unions change all the same:
@@ -678,9 +682,15 @@ one.** No geometry is written, and the unions change all the same:
   `NULL` beneath it: outside every later run's closure, exactly the state this
   whole mechanism exists to prevent. `deleteRegion`'s move-children-to-parent
   branch is covered by the same call, since the parent it nulls is the parent
-  those children move to.
+  those children move to;
+- `flattenSubregion` nulls the parent that absorbed the subregion, which is
+  deleted;
+- `addChildDivisionsAsSubregions` nulls the region when it places a division's
+  GADM children in subregions. A new subregion has no outline, so the member
+  trigger that clears it carries nothing upward, while the region's union now
+  holds what was placed there.
 
-Those two are the World View Editor's, and they were **not the whole set**. The
+Those are the World View Editor's, and they were **not the whole set**. The
 import-review tree operations move and delete regions too, and invalidated
 nothing until **#496**. Six of them do now, each naming the rows whose own union
 changed and leaving the ancestors to the trigger:
@@ -712,18 +722,13 @@ snapshot of `geom` there and that stops being true;
 `wvImportStructuralInvalidation.test.ts` fails if the restoring `INSERT` ever
 names a geometry column.
 
-What is still open in that path is the **member** half, **#718**: a dozen
+The **member** half of that path is the member trigger's (ADR-0068). A dozen
 import-review routes rewrite `region_members` *without* moving or deleting a
 region — accepting a match, clearing members, resolving an overlap, collapsing a
 parent, and the three undo arms that restore members without recreating one
-(`handle-as-grouping`, `collapse-to-parent`, `auto-resolve-children`) —
-and not one of them calls `invalidateRegionGeometry`, leaving a region drawing
-divisions it no longer holds. The three handlers in the table above that move
-members as part of a structural change (`mergeChildIntoParent`,
-`removeRegionFromImport`, `smartFlatten`) are covered by the call they already
-make. A trigger on `regions.geom` closes neither half, because neither
-writes any geometry; a trigger on `region_members` could close the member one,
-which is the question #718 carries and an ADR's to answer.
+(`handle-as-grouping`, `collapse-to-parent`, `auto-resolve-children`) — and each
+clears the regions it touched by the write itself, with no call to remember
+(#718).
 
 A failed *pipeline* is still answered softly, and is now the only kind of failure
 `computeRegionGeometryCore` has to answer: it wrote nothing, so the region stays
