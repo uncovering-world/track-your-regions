@@ -92,6 +92,14 @@ The contents of a region, which can be:
 - **Administrative Divisions** - standard GADM boundaries
 - **Subregions** - child regions in the hierarchy
 
+### A hierarchy edit keeps every visit
+A traveller's visit is recorded on a region (`user_visited_regions`), and it is the traveller's, not the curator's (#764). Deleting a region that carries a visit is refused, whichever writer sends the delete:
+- **The rule is the database's.** `user_visited_regions.region_id` references `regions` with `ON DELETE NO ACTION`, so a delete that would take a visit fails. That holds for region CRUD, flatten, and the import review's merge, remove, dismiss, prune and smart flatten alike.
+- **The answer is 409.** `errorHandler` recognises the violation (`isVisitedRegionDelete` in `backend/src/db/regionVisits.ts`) and answers 409 with a sentence for the curator. A writer that runs in one transaction has rolled back by then, and hands the error on: the import tree's operations rethrow it, and `smartFlatten`, which answers its other failures itself, rethrows this one.
+- **A writer that is not one transaction asks first.** `deleteRegion` moves children and members before it deletes, and `flattenSubregion` does the same. `smartFlatten` auto-matches descendants before the transaction that deletes them opens. Each counts the visits it would take (`visitsUnder` for a branch, `visitsOn` for listed regions) and refuses before its first write, with the count. Refusing at the delete itself would leave the earlier writes standing. The count and the writes are still separate statements; putting them in one transaction is #689.
+- **The screen says why.** `EditRefusedSnackbar` (`components/shared/`) shows the server's sentence when a refusal comes back. The World View Editor shows it for a delete or a flatten. Flatten-all stops at the first refused subregion, and the editor says first how many were flattened before it; the server's sentence speaks for the one refused edit ("this edit was not made"). The import review shows it for a merge, remove, dismiss, prune or smart flatten, through `useTreeMutations`' `treeEditError`, and for a remove chosen in AI Review Children, whose failed actions are summed up with the server's sentences by `failedActionsError` (`suggestChildrenOutcome.ts`).
+- **The world view delete is the one exception.** Its preview counts the visits (`GET …/delete-impact`) and the admin confirms. `deleteWorldView` then removes them in the same statement as the regions. `NO ACTION` is checked at the end of that statement, which is why the constraint is not `RESTRICT`.
+
 ---
 
 ## Visibility
@@ -502,7 +510,7 @@ Every call `frontend/src/api/worldViews.ts`, `frontend/src/api/regions.ts` and `
 - `GET /api/world-views/regions/:regionId/ancestors` - The region and its ancestors, root first
 - `POST /api/world-views/:worldViewId/regions` - Create region
 - `PUT /api/world-views/regions/:regionId` - Update region
-- `DELETE /api/world-views/regions/:regionId` - Delete region
+- `DELETE /api/world-views/regions/:regionId` - Delete region; 409 when a traveller has recorded a visit on it, or on a descendant the delete would take (§ A hierarchy edit keeps every visit)
 
 ### Region Members
 - `GET /api/world-views/regions/:regionId/members` - List region members
@@ -512,7 +520,7 @@ Every call `frontend/src/api/worldViews.ts`, `frontend/src/api/regions.ts` and `
 - `POST /api/world-views/regions/:regionId/members/:divisionId/add-children` - Add children
 
 ### Operations
-- `POST /api/world-views/regions/:parentRegionId/flatten/:subregionId` - Flatten subregion
+- `POST /api/world-views/regions/:parentRegionId/flatten/:subregionId` - Flatten subregion; 409 when a traveller has recorded a visit on the subregion or a region under it (§ A hierarchy edit keeps every visit)
 - `POST /api/world-views/regions/:regionId/expand` - Expand to subregions
 
 ### Geometry
