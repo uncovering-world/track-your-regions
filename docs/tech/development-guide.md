@@ -431,7 +431,7 @@ All API calls live in `frontend/src/api/`. Use `authFetchJson()` from `fetchUtil
 
 The one deliberate exception is `changePassword` (`api/auth.ts`): its endpoint answers a wrong *current password* with 401, and `authFetchJson` reads every 401 as an expired token — so the shared path would rotate the refresh family on each wrong attempt and eventually sign the user out under the sentence saying the session is fine. It builds its request by hand and takes its token from `requireFreshToken()`. The reasoning is in [authentication.md](authentication.md) § Password Security; do not "clean it up" back onto the shared path. Other hand-built authenticated calls (`getCurrentUser`, the `image-proxy` fetches in `useImageColorPicker` and `ImageOverlayDialog`) record no reason and are debt, not precedent.
 
-**An endpoint's answer is declared once, on the backend** (ADR-0066). Its success body is a Zod 4 schema in `backend/src/api/responses/<module>.ts`, where `<module>` is named like the client module below whose function calls the endpoint. The web's types are generated from those schemas into `@tyr/shared/api`. The client function names the generated type, and its module re-exports it, so a component imports a call's answer from the call's module. A migrated call's answer is never declared in `frontend/src/api/`.
+**An endpoint's answer is declared once, on the backend** (ADR-0066). Its success body is a Zod 4 schema in `backend/src/api/responses/<module>.ts`, where `<module>` is named like the client module below whose function calls the endpoint. The web's types are generated from those schemas into `@tyr/shared/api`. The client function names the generated type, and its module re-exports it, so a component imports a call's answer from the call's module. A call's answer is never declared in `frontend/src/api/`.
 
 The schema describes the wire, meaning what `JSON.parse` yields on the client:
 - Every object is a `z.strictObject`. The generator refuses a plain `z.object`, whose parse would strip an undeclared key and pass while the key still went out.
@@ -455,9 +455,9 @@ TypeScript checks only the keys a literal writes itself, so build the body to wr
 
 The runtime parse catches what the compiler cannot, on every path a lane exercises. Error bodies stay `{ error }`, and #793's route declarations are where they will be declared.
 
-After changing a schema, run `npm --prefix backend run api:types` and commit `packages/shared/src/api.generated.ts`. `backend/src/api/apiTypes.test.ts` fails while the file is not what the schemas render to.
+A success body sent around `respond()` fails `lint`: a `no-restricted-syntax` entry in `backend/eslint.config.mjs` (`RESPONSE_SHAPE_RULES`) reports a bare `res.json(…)`, or a `.json(…)` after a literal 2xx status, and the same with `send` when its argument is an object or array literal, which Express sends as JSON. It reads every source file but the specs and `respond.ts` itself. An error answer passes, including one whose status is a variable, and so does a `send` of a Buffer, a string or a name, whose type the rule cannot read. The rule exempts an endpoint only line by line, with an `eslint-disable-next-line` that names the issue deciding whether it stays: the endpoints the web does not call, #1006 and #1033.
 
-Until #527's sub-issues have moved every client module, a module not yet migrated still declares its answers in its own file.
+After changing a schema, run `npm --prefix backend run api:types` and commit `packages/shared/src/api.generated.ts`. `backend/src/api/apiTypes.test.ts` fails while the file is not what the schemas render to.
 
 When adding a new endpoint:
 1. Add the function in the appropriate `api/*.ts` file — the module of the caller it serves, which a URL's prefix does not decide. Everything under `/api/experiences` is three modules: `experiences.ts` for what a reader's screens ask of the catalogue, `reviewQueue.ts` for the review queue's calls (`/api/experiences/review/…`) and `curation.ts` for a curator's writes on one object (#933).
@@ -698,7 +698,7 @@ What such a change supersedes is one of five kinds:
 | **Duplicated constant or type** | `frontend/src/utils/labelFold.ts`, the frontend's copy of the label fold | the shared package (#789) — file deleted |
 | **Handwritten adapter or type** | `backend/src/db/schema.ts` (Drizzle's hand-kept table types) and `columnBounds.test.ts`, which held Zod bounds to the column widths | generated row types (#792) — both deleted |
 | **Lint rule** | the two Cache-Control `no-restricted-syntax` rules in `backend/eslint.config.mjs` | the route declaration (#793), once no route bypasses it |
-| **Reviewer cross-check** | a pair in the review bot's "places this repo states the same thing twice" list (`.github/workflows/claude-review.yml`, Phase 4) | the slice that gives the pair a home, which deletes the line when it lands — the backend-response ⇄ frontend-consumer pair carries `[retired by #527]`, which names the owning slice while #527 is open; the mark is not the retirement, the deletion is |
+| **Reviewer cross-check** | a pair in the review bot's "places this repo states the same thing twice" list (`.github/workflows/claude-review.yml`, Phase 4) | the slice that gives the pair a home, which deletes the line when it lands, as #993 deleted the backend-response ⇄ frontend-consumer pair; a `[retired by #N]` mark names the owning slice while it is open, and the mark is not the retirement, the deletion is |
 
 **The rule.** What the new owner makes deletable is deleted **in the same slice**, and the pull request's description lists the deletion as part of the result, beside what was added. A plan for such a change names the guard it deletes before any code is written; `/refactor-check` walks the five kinds on the branch and drafts that paragraph.
 

@@ -117,7 +117,7 @@ everything or the base was simply unknown.
 
 | Input | Paths | Why this is what it is |
 | --- | --- | --- |
-| `app` | `backend/`, `frontend/`, `packages/`, `db/`, `martin/`, `scripts/`, `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | The product is one contract surface, not two stacks. Both sides import packages/shared (ADR-0065), whose generated api module types the frontend by the backend's response schemas (ADR-0066). Backend specs read db/, frontend/src, martin/, packages/ and scripts/ through repoFile(). And for an endpoint still declared per side, the smoke lane is the only gate that sees the backend↔frontend contract. So a change to any of them asks for all of it. |
+| `app` | `backend/`, `frontend/`, `packages/`, `db/`, `martin/`, `scripts/`, `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | The product is one contract surface, not two stacks. Both sides import packages/shared (ADR-0065), whose generated api module types the frontend by the backend's response schemas (ADR-0066). Backend specs read db/, frontend/src, martin/, packages/ and scripts/ through repoFile(). So a change to any of them asks for all of it. |
 | `python` | `cv-python/` | The computer-vision service is its own interpreter, its own dependency set and its own image; no Node gate reads it except the Semgrep scan pointed at the whole checkout. |
 | `db-python` | `/^db\/.*\.py$/`, `db/pyproject.toml`, `db/requirements.txt` | The GADM loaders live in db/ but are run by pytest, so they are an input to the Python test lane without being an input to cv-python’s lint. |
 | `schema` | `/^db\/init\//`, `docker-compose.yml`, `backend/src/db/schema.generated.ts`, `backend/src/db/generateSchemaTypes.ts`, `backend/src/db/schemaTypesRender.ts`, `backend/src/db/testDbName.ts`, `scripts/db-types.sh` | The generated row types are a function of what a fresh database is built from: the db/init directory the image applies on first start, the compose file that pins that image, the file the generator produces, the generator, the renderer, the guard it imports and its runner. The migrations are not — a fresh database never reads them, and the schema-to-migration parity test answers for those. |
@@ -181,11 +181,10 @@ endpoint whose answer a schema declares:
 - `backend/src/api/apiTypes.test.ts`, in the backend unit lane, fails while the
   generated file lags the schemas.
 
-An endpoint still declared per side is the work of #527's sub-issues. For one of
-those the frontend imports nothing from the backend, and its unit tests mock the
-API, so neither its typecheck nor its unit lane can see a backend contract
-change. The only gate that sees the two sides agree on one is the smoke lane,
-and that is an `app` gate.
+A success body sent around `respond()`, and so declared by no schema, fails
+`lint`: `RESPONSE_SHAPE_RULES` in `backend/eslint.config.mjs`. The endpoints it
+exempts line by line have no caller on the web (#1006, #1033), so no web gate
+reads their answers at all.
 
 In the other direction the backend
 suite reads the rest of the repository directly, through `repoFile()` in
