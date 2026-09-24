@@ -328,7 +328,7 @@ export function useImportTreeDialogs(
     setFlattenPreviewLoading(regionId);
     try {
       const data = await smartFlattenPreview(worldViewId, regionId);
-      if (data.unmatched) {
+      if (data.blocked) {
         const names = data.unmatched.map(u => u.name).join(', ');
         setUndoSnackbar({
           open: true,
@@ -341,10 +341,10 @@ export function useImportTreeDialogs(
       setFlattenPreview({
         regionId,
         regionName,
-        geometry: data.geometry ?? null,
-        regionMapUrl: data.regionMapUrl ?? null,
-        descendants: data.descendants ?? 0,
-        divisions: data.divisions ?? 0,
+        geometry: data.geometry,
+        regionMapUrl: data.regionMapUrl,
+        descendants: data.descendants,
+        divisions: data.divisions,
       });
     } catch (err) {
       console.error('Smart flatten preview failed:', err);
