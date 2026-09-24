@@ -11,6 +11,8 @@ import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { invalidateRegionGeometry, syncImportMatchStatus } from '../worldView/helpers.js';
 import { detectAnomaliesForRegion } from '../../services/worldViewImport/spatialAnomalyDetector.js';
+import { respond } from '../../api/respond.js';
+import { SmartSimplifyApplied, SmartSimplifyMoves, type SmartSimplifyMove } from '../../api/responses/wvImportTreeOps.js';
 
 // =============================================================================
 // Types
@@ -18,15 +20,6 @@ import { detectAnomaliesForRegion } from '../../services/worldViewImport/spatial
 
 type GadmMember = { memberRowId: number; regionId: number; divisionId: number; divisionName: string };
 
-type SmartSimplifyMove = {
-  gadmParentId: number;
-  gadmParentName: string;
-  gadmParentPath: string;
-  totalChildren: number;
-  ownerRegionId: number;
-  ownerRegionName: string;
-  divisions: Array<{ divisionId: number; name: string; fromRegionId: number; fromRegionName: string; memberRowId: number }>;
-};
 
 // =============================================================================
 // Smart-simplify detection helpers
@@ -171,6 +164,34 @@ async function runAnomalyDetectionSafely(
   }
 }
 
+/** The moves that would let the siblings simplify, most divisions to move first. */
+async function findSmartSimplifyMoves(children: Array<{ id: number; name: string }>): Promise<SmartSimplifyMove[]> {
+  const childMap = new Map<number, string>();
+  const childIds: number[] = [];
+  for (const row of children) {
+    childIds.push(row.id);
+    childMap.set(row.id, row.name);
+  }
+
+  const byGadmParent = await loadGroupedSiblingMembers(childIds);
+  if (byGadmParent.size === 0) return [];
+
+  const gadmChildCounts = await loadGadmChildCounts([...byGadmParent.keys()]);
+  const candidateParentIds = findCandidateGadmParents(byGadmParent, gadmChildCounts);
+  if (candidateParentIds.length === 0) return [];
+
+  const gadmPaths = await loadGadmPaths(candidateParentIds);
+  const moves: SmartSimplifyMove[] = [];
+  for (const gadmParentId of candidateParentIds) {
+    const members = byGadmParent.get(gadmParentId)!;
+    const totalChildren = gadmChildCounts.get(gadmParentId)!;
+    const move = buildSmartSimplifyMove(gadmParentId, members, totalChildren, gadmPaths.get(gadmParentId), childMap);
+    if (move) moves.push(move);
+  }
+
+  return moves.sort((a, b) => b.divisions.length - a.divisions.length);
+}
+
 /**
  * Detect cross-sibling division moves that would allow simplification.
  * READ-ONLY — no mutations. Finds GADM parents whose children are fully present
@@ -182,6 +203,7 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
   const { parentRegionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/smart-simplify — parentRegionId=${parentRegionId}`);
 
+  let body: SmartSimplifyMoves;
   try {
     const parentRegion = await pool.query(
       'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
@@ -192,55 +214,22 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
       return;
     }
 
-    const childrenResult = await pool.query(
+    const childrenResult = await pool.query<{ id: number; name: string }>(
       'SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2',
       [parentRegionId, worldViewId],
     );
-    if (childrenResult.rows.length === 0) {
-      res.json({ moves: [], spatialAnomalies: [] });
-      return;
-    }
-
-    const childMap = new Map<number, string>();
-    const childIds: number[] = [];
-    for (const row of childrenResult.rows) {
-      childIds.push(row.id as number);
-      childMap.set(row.id as number, row.name as string);
-    }
-
-    const byGadmParent = await loadGroupedSiblingMembers(childIds);
-    if (byGadmParent.size === 0) {
-      const spatialAnomalies = await runAnomalyDetectionSafely(worldViewId, parentRegionId);
-      res.json({ moves: [], spatialAnomalies });
-      return;
-    }
-
-    const gadmChildCounts = await loadGadmChildCounts([...byGadmParent.keys()]);
-    const candidateParentIds = findCandidateGadmParents(byGadmParent, gadmChildCounts);
-
-    if (candidateParentIds.length === 0) {
-      const spatialAnomalies = await runAnomalyDetectionSafely(worldViewId, parentRegionId);
-      res.json({ moves: [], spatialAnomalies });
-      return;
-    }
-
-    const gadmPaths = await loadGadmPaths(candidateParentIds);
-    const moves: SmartSimplifyMove[] = [];
-    for (const gadmParentId of candidateParentIds) {
-      const members = byGadmParent.get(gadmParentId)!;
-      const totalChildren = gadmChildCounts.get(gadmParentId)!;
-      const move = buildSmartSimplifyMove(gadmParentId, members, totalChildren, gadmPaths.get(gadmParentId), childMap);
-      if (move) moves.push(move);
-    }
-
-    moves.sort((a, b) => b.divisions.length - a.divisions.length);
-
-    const spatialAnomalies = await runAnomalyDetectionSafely(worldViewId, parentRegionId);
-    res.json({ moves, spatialAnomalies });
+    body = childrenResult.rows.length === 0
+      ? { moves: [], spatialAnomalies: [] }
+      : {
+        moves: await findSmartSimplifyMoves(childrenResult.rows),
+        spatialAnomalies: await runAnomalyDetectionSafely(worldViewId, parentRegionId),
+      };
   } catch (err) {
     console.error('[WV Import] Smart simplify detect failed:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Smart simplify detect failed' });
+    return;
   }
+  respond(res, SmartSimplifyMoves, body);
 }
 
 /**
@@ -252,6 +241,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
   const { parentRegionId, ownerRegionId, memberRowIds } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/smart-simplify/apply-move — parent=${parentRegionId} owner=${ownerRegionId} rows=${memberRowIds.length}`);
 
+  let body: SmartSimplifyApplied;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -353,11 +343,12 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
     }
 
     console.log(`[WV Import] Smart-simplify applied: moved ${moveCount} members to region ${ownerRegionId}`);
-    res.json({ moved: moveCount });
+    body = { moved: moveCount };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+  respond(res, SmartSimplifyApplied, body);
 }

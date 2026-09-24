@@ -4,8 +4,9 @@
  * calls, declared once: a reviewer's edits to the imported tree (removing,
  * merging, pruning, flattening, collapsing, renaming and moving regions,
  * simplifying their divisions, resolving a container's leaves, undoing the last
- * of these) and to a region's review state, and the batch verdicts on a
- * region's suggestions.
+ * of these), the checks that propose such edits (smart simplify, overlaps
+ * between siblings, a model's review of a region's children), a region's review
+ * state, and the batch verdicts on a region's suggestions.
  *
  * Each exported schema is the type of the same name in `@tyr/shared/api`, and
  * the handler sends its body through `respond()`, which holds it to the schema.
@@ -15,6 +16,7 @@
 
 import { z } from 'zod/v4';
 import { AreaGeometry } from './regions.js';
+import { SpatialAnomaly } from './wvImportCvMatch.js';
 
 export const SelectionAccepted = z.strictObject({
   accepted: z.number().int().describe('Divisions of the selection that are the region\'s members now.'),
@@ -215,3 +217,116 @@ export const ChildrenGrouped = z.strictObject({
   undoAvailable: z.literal(true),
 }).describe('A region\'s children matched as countries, within the divisions the region holds.');
 export type ChildrenGrouped = z.infer<typeof ChildrenGrouped>;
+
+// ---------------------------------------------------------------------------
+// Smart simplify
+// ---------------------------------------------------------------------------
+
+export const SmartSimplifyMove = z.strictObject({
+  gadmParentId: z.number().int(),
+  gadmParentName: z.string(),
+  gadmParentPath: z.string(),
+  totalChildren: z.number().int().describe('The GADM parent\'s children, all held among the siblings.'),
+  ownerRegionId: z.number().int().describe('The sibling holding most of them, which would take the rest.'),
+  ownerRegionName: z.string(),
+  divisions: z.array(z.strictObject({
+    divisionId: z.number().int(),
+    name: z.string(),
+    fromRegionId: z.number().int(),
+    fromRegionName: z.string(),
+    memberRowId: z.number().int(),
+  })).describe('The members other siblings hold, which would move to the owner.'),
+}).describe('A GADM parent whose children are split among siblings, gathered into one of them so it can be simplified.');
+export type SmartSimplifyMove = z.infer<typeof SmartSimplifyMove>;
+
+export const SmartSimplifyMoves = z.strictObject({
+  moves: z.array(SmartSimplifyMove).describe('Most divisions to move first.'),
+  spatialAnomalies: z.array(SpatialAnomaly),
+}).describe('The moves that would let a region\'s children simplify, and the pieces of them cut off from the rest.');
+export type SmartSimplifyMoves = z.infer<typeof SmartSimplifyMoves>;
+
+export const SmartSimplifyApplied = z.strictObject({
+  moved: z.number().int().describe('Member rows moved to the owner, duplicates it already held counted as moved.'),
+}).describe('One smart simplify move applied.');
+export type SmartSimplifyApplied = z.infer<typeof SmartSimplifyApplied>;
+
+// ---------------------------------------------------------------------------
+// Overlaps between siblings
+// ---------------------------------------------------------------------------
+
+export const DivisionOverlap = z.strictObject({
+  divisionId: z.number().int(),
+  divisionPath: z.string().describe('The division\'s GADM path, root first.'),
+  regions: z.array(z.strictObject({
+    regionId: z.number().int(),
+    regionName: z.string(),
+    viaDivisionId: z.number().int(),
+    viaDivisionName: z.string(),
+    isDirect: z.boolean().describe('False where the sibling holds it through a coarser ancestor.'),
+  })),
+}).describe('A division two or more siblings cover.');
+export type DivisionOverlap = z.infer<typeof DivisionOverlap>;
+
+export const DivisionOverlaps = z.strictObject({
+  overlaps: z.array(DivisionOverlap).describe('By path.'),
+}).describe('The divisions a region\'s children cover more than once.');
+export type DivisionOverlaps = z.infer<typeof DivisionOverlaps>;
+
+export const OverlapGadmChild = z.strictObject({
+  divisionId: z.number().int(),
+  name: z.string(),
+  hasChildren: z.boolean(),
+  areaKm2: z.number().int().nullable(),
+  assignedToRegionId: z.number().int().nullable().describe('The sibling already holding it, if one does.'),
+}).describe('A GADM child of an overlapping division, which a split would hand to one sibling.');
+export type OverlapGadmChild = z.infer<typeof OverlapGadmChild>;
+
+export const OverlapChildren = z.strictObject({
+  children: z.array(OverlapGadmChild).describe('By name.'),
+  canSplit: z.boolean().describe('False where the division has no drawn GADM children.'),
+}).describe('What splitting an overlapping division would hand out.');
+export type OverlapChildren = z.infer<typeof OverlapChildren>;
+
+export const OverlapKept = z.strictObject({
+  success: z.literal(true),
+  action: z.literal('keep'),
+  removed: z.number().int().describe('Siblings the division was taken from.'),
+}).describe('An overlap resolved by keeping the division in one sibling.');
+export type OverlapKept = z.infer<typeof OverlapKept>;
+
+export const OverlapSplit = z.strictObject({
+  success: z.literal(true),
+  action: z.literal('split'),
+  assigned: z.number().int().describe('GADM children handed to siblings.'),
+}).describe('An overlap resolved by splitting the coarse division into its GADM children.');
+export type OverlapSplit = z.infer<typeof OverlapSplit>;
+
+export const OverlapResolved = z.union([OverlapKept, OverlapSplit])
+  .describe('An overlap between siblings resolved.');
+export type OverlapResolved = z.infer<typeof OverlapResolved>;
+
+// ---------------------------------------------------------------------------
+// A model's review of a region's children
+// ---------------------------------------------------------------------------
+
+export const ChildAction = z.strictObject({
+  type: z.enum(['add', 'remove', 'rename', 'enrich']),
+  name: z.string().describe('The child to add, or the existing child the action is on.'),
+  newName: z.string().optional().describe('Sent with a rename.'),
+  reason: z.string(),
+  sourceUrl: z.string().nullable().describe('The child\'s Wikivoyage page, where one was found and verified.'),
+  sourceExternalId: z.string().nullable().describe('The page\'s Wikidata item.'),
+  verified: z.boolean().describe('Whether the Wikivoyage page was found to exist.'),
+}).describe('One change a model proposes to a region\'s children.');
+export type ChildAction = z.infer<typeof ChildAction>;
+
+export const ChildrenReviewed = z.strictObject({
+  actions: z.array(ChildAction),
+  analysis: z.string().describe('The model\'s own account, or its unparsed reply.'),
+  stats: z.strictObject({
+    inputTokens: z.number().int(),
+    outputTokens: z.number().int(),
+    cost: z.number().describe('In US dollars.'),
+  }).nullable().describe('Null where no model was called.'),
+}).describe('A model\'s review of a region\'s children against its Wikivoyage page\'s region list.');
+export type ChildrenReviewed = z.infer<typeof ChildrenReviewed>;

@@ -425,6 +425,22 @@ export interface ChangedField {
   held?: boolean;
 }
 
+/** One change a model proposes to a region's children. */
+export interface ChildAction {
+  type: "add" | "remove" | "rename" | "enrich";
+  /** The child to add, or the existing child the action is on. */
+  name: string;
+  /** Sent with a rename. */
+  newName?: string;
+  reason: string;
+  /** The child's Wikivoyage page, where one was found and verified. */
+  sourceUrl: string | null;
+  /** The page's Wikidata item. */
+  sourceExternalId: string | null;
+  /** Whether the Wikivoyage page was found to exist. */
+  verified: boolean;
+}
+
 /** A division member's children added to the region, as subregions or as members. */
 export interface ChildDivisionsAdded {
   /**
@@ -504,6 +520,20 @@ export interface ChildrenGrouped {
   matched: number;
   total: number;
   undoAvailable: true;
+}
+
+/** A model's review of a region's children against its Wikivoyage page's region list. */
+export interface ChildrenReviewed {
+  actions: ChildAction[];
+  /** The model's own account, or its unparsed reply. */
+  analysis: string;
+  /** Null where no model was called. */
+  stats: {
+    inputTokens: number;
+    outputTokens: number;
+    /** In US dollars. */
+    cost: number;
+  } | null;
 }
 
 /** The members of each child of a region simplified, one child at a time. */
@@ -1086,6 +1116,27 @@ export interface DivisionGeometry {
   };
   /** At full resolution, whatever detail the call asked for (#1010). */
   geometry: MultiPolygon;
+}
+
+/** A division two or more siblings cover. */
+export interface DivisionOverlap {
+  divisionId: number;
+  /** The division's GADM path, root first. */
+  divisionPath: string;
+  regions: {
+    regionId: number;
+    regionName: string;
+    viaDivisionId: number;
+    viaDivisionName: string;
+    /** False where the sibling holds it through a coarser ancestor. */
+    isDirect: boolean;
+  }[];
+}
+
+/** The divisions a region's children cover more than once. */
+export interface DivisionOverlaps {
+  /** By path. */
+  overlaps: DivisionOverlap[];
 }
 
 /** Divisions added to a region, directly or as subregions of it. */
@@ -2293,6 +2344,43 @@ export interface OperationUndone {
   operation: UndoOperation;
 }
 
+/** What splitting an overlapping division would hand out. */
+export interface OverlapChildren {
+  /** By name. */
+  children: OverlapGadmChild[];
+  /** False where the division has no drawn GADM children. */
+  canSplit: boolean;
+}
+
+/** A GADM child of an overlapping division, which a split would hand to one sibling. */
+export interface OverlapGadmChild {
+  divisionId: number;
+  name: string;
+  hasChildren: boolean;
+  areaKm2: number | null;
+  /** The sibling already holding it, if one does. */
+  assignedToRegionId: number | null;
+}
+
+/** An overlap resolved by keeping the division in one sibling. */
+export interface OverlapKept {
+  success: true;
+  action: "keep";
+  /** Siblings the division was taken from. */
+  removed: number;
+}
+
+/** An overlap between siblings resolved. */
+export type OverlapResolved = OverlapKept | OverlapSplit;
+
+/** An overlap resolved by splitting the coarse division into its GADM children. */
+export interface OverlapSplit {
+  success: true;
+  action: "split";
+  /** GADM children handed to siblings. */
+  assigned: number;
+}
+
 /**
  * A part the held proposal names that publishing could not write to. Nothing readers see changed.
  */
@@ -3200,6 +3288,45 @@ export interface SiteFindsResponse {
 
 /** A flatten done, or why it could not run. */
 export type SmartFlattenResult = FlattenDone | FlattenBlocked;
+
+/** One smart simplify move applied. */
+export interface SmartSimplifyApplied {
+  /** Member rows moved to the owner, duplicates it already held counted as moved. */
+  moved: number;
+}
+
+/**
+ * A GADM parent whose children are split among siblings, gathered into one of them so it can be
+ * simplified.
+ */
+export interface SmartSimplifyMove {
+  gadmParentId: number;
+  gadmParentName: string;
+  gadmParentPath: string;
+  /** The GADM parent's children, all held among the siblings. */
+  totalChildren: number;
+  /** The sibling holding most of them, which would take the rest. */
+  ownerRegionId: number;
+  ownerRegionName: string;
+  /** The members other siblings hold, which would move to the owner. */
+  divisions: {
+    divisionId: number;
+    name: string;
+    fromRegionId: number;
+    fromRegionName: string;
+    memberRowId: number;
+  }[];
+}
+
+/**
+ * The moves that would let a region's children simplify, and the pieces of them cut off from the
+ * rest.
+ */
+export interface SmartSimplifyMoves {
+  /** Most divisions to move first. */
+  moves: SmartSimplifyMove[];
+  spatialAnomalies: SpatialAnomaly[];
+}
 
 /** The fame line a source's next run reads, written: the keys the request wrote. */
 export interface SourceLineSet {
