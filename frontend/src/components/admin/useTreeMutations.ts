@@ -95,6 +95,10 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     message: string;
     worldViewId: number;
   } | null>(null);
+  // A tree edit the server refused, such as one that would delete a region a
+  // traveller has visited (#764). Kept apart from undoSnackbar, whose Undo
+  // would reverse the previous edit rather than this one.
+  const [treeEditError, setTreeEditError] = useState<Error | null>(null);
 
   // ── Shared invalidation helpers ──────────────────────────────────────────
   const treeKey = ['admin', 'wvImport', 'matchTree', worldViewId] as const;
@@ -462,6 +466,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   // ── Hierarchy mutations ──────────────────────────────────────────────────
 
   const dismissMutation = useMutation({
+    onError: (err: Error) => setTreeEditError(err),
     mutationFn: (regionId: number) => dismissChildren(worldViewId, regionId),
     onSuccess: (data) => {
       invalidateTree();
@@ -474,6 +479,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   });
 
   const pruneMutation = useMutation({
+    onError: (err: Error) => setTreeEditError(err),
     mutationFn: (regionId: number) => pruneToLeaves(worldViewId, regionId),
     onSuccess: (data) => {
       invalidateTree();
@@ -503,11 +509,13 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   });
 
   const mergeMutation = useMutation({
+    onError: (err: Error) => setTreeEditError(err),
     mutationFn: (regionId: number) => mergeChildIntoParent(worldViewId, regionId),
     onSuccess: () => invalidateTree(),
   });
 
   const smartFlattenMutation = useMutation({
+    onError: (err: Error) => setTreeEditError(err),
     mutationFn: (regionId: number) => smartFlatten(worldViewId, regionId),
     onSuccess: (data) => {
       if (data.blocked) {
@@ -530,6 +538,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   });
 
   const removeMutation = useMutation({
+    onError: (err: Error) => setTreeEditError(err),
     mutationFn: ({ regionId, reparentChildren, reparentDivisions }: { regionId: number; reparentChildren: boolean; reparentDivisions?: boolean }) =>
       removeRegionFromImport(worldViewId, regionId, reparentChildren, reparentDivisions),
     onSuccess: () => {
@@ -729,6 +738,8 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     // State
     geocodeProgress,
     undoSnackbar,
+    treeEditError,
+    setTreeEditError,
     setUndoSnackbar,
     isMutating,
     invalidateTree,

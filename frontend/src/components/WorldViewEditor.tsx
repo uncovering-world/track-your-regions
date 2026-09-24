@@ -35,6 +35,7 @@ import {
 } from './WorldViewEditor/components/dialogs';
 import { useRegionMutations, useRegionQueries } from './WorldViewEditor/hooks';
 import { WorldViewHeader, RegionTreePanel, DivisionSearchPanel, GeometryMapPanel, ActionStrip } from './WorldViewEditor/components';
+import { EditRefusedSnackbar } from './shared/EditRefusedSnackbar';
 import { useAppTheme } from '../theme';
 
 interface WorldViewEditorProps {
@@ -54,6 +55,7 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
   const [createAsSubregions, setCreateAsSubregions] = useState(true);
   const [includeChildren, setIncludeChildren] = useState(false);
   const [deleteConfirmRegion, setDeleteConfirmRegion] = useState<Region | null>(null);
+  const [flattenAllLead, setFlattenAllLead] = useState<string | null>(null);
 
   // Single division custom boundary dialog state
   const [singleDivisionForCustomBoundary, setSingleDivisionForCustomBoundary] = useState<AdministrativeDivision | null>(null);
@@ -360,11 +362,19 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
     if (!window.confirm(
       `Flatten all ${subregions.length} subregions?\n\nThis will move all divisions from subregions directly into "${selectedRegion.name}" and delete the subregions.`
     )) return;
-    for (const subregion of subregions) {
-      await flattenSubregionMutation.mutateAsync({
-        parentRegionId: selectedRegion.id,
-        subregionId: subregion.id,
-      });
+    let flattened = 0;
+    try {
+      for (const subregion of subregions) {
+        await flattenSubregionMutation.mutateAsync({
+          parentRegionId: selectedRegion.id,
+          subregionId: subregion.id,
+        });
+        flattened += 1;
+      }
+    } catch {
+      // Stop at the first refusal; the mutation holds its error. The flattens
+      // before it stand, so the message says how many went through first.
+      setFlattenAllLead(flattened > 0 ? `${flattened} of ${subregions.length} subregions were flattened before this one.` : null);
     }
     // After all flattens complete, do a comprehensive invalidation
     invalidateWorldViewQueries({
@@ -679,6 +689,12 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
             updateRegionMutation.mutate({ regionId: editingRegion.id, data });
           }
         }}
+      />
+
+      <EditRefusedSnackbar
+        error={deleteRegionMutation.error ?? flattenSubregionMutation.error}
+        lead={deleteRegionMutation.error ? null : flattenAllLead}
+        onClose={() => { deleteRegionMutation.reset(); flattenSubregionMutation.reset(); setFlattenAllLead(null); }}
       />
 
       <DeleteConfirmDialog
