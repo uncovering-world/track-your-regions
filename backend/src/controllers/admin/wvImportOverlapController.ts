@@ -10,6 +10,8 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { respond } from '../../api/respond.js';
+import { DivisionOverlaps, OverlapChildren, OverlapResolved } from '../../api/responses/wvImportTreeOps.js';
 
 // =============================================================================
 // Division overlap detection helpers
@@ -154,7 +156,7 @@ export async function checkDivisionOverlap(req: AuthenticatedRequest, res: Respo
     [parentRegionId, worldViewId],
   );
   if (childrenResult.rows.length === 0) {
-    res.json({ overlaps: [] });
+    respond(res, DivisionOverlaps, { overlaps: [] });
     return;
   }
 
@@ -170,7 +172,7 @@ export async function checkDivisionOverlap(req: AuthenticatedRequest, res: Respo
     for (const d of divs) allDivIds.add(d);
   }
   if (allDivIds.size === 0) {
-    res.json({ overlaps: [] });
+    respond(res, DivisionOverlaps, { overlaps: [] });
     return;
   }
 
@@ -186,7 +188,7 @@ export async function checkDivisionOverlap(req: AuthenticatedRequest, res: Respo
   }
 
   if (overlapDivIds.length === 0) {
-    res.json({ overlaps: [] });
+    respond(res, DivisionOverlaps, { overlaps: [] });
     return;
   }
 
@@ -223,7 +225,7 @@ export async function checkDivisionOverlap(req: AuthenticatedRequest, res: Respo
   }).sort((a, b) => a.divisionPath.localeCompare(b.divisionPath));
 
   console.log(`[WV Import] Overlap check: ${overlaps.length} top-level overlapping divisions found`);
-  res.json({ overlaps });
+  respond(res, DivisionOverlaps, { overlaps });
 }
 
 /**
@@ -239,7 +241,7 @@ export async function getOverlapDivisionChildren(req: AuthenticatedRequest, res:
   // Get GADM children of this division
   const childrenResult = await pool.query(`
     SELECT ad.id, ad.name, ad.has_children,
-           safe_geo_area(ad.geom_simplified_medium) AS area_km2
+           safe_geo_area(ad.geom_simplified_medium) / 1e6 AS area_km2
     FROM administrative_divisions ad
     WHERE ad.parent_id = $1
       AND ad.geom_simplified_medium IS NOT NULL
@@ -247,7 +249,7 @@ export async function getOverlapDivisionChildren(req: AuthenticatedRequest, res:
   `, [divisionId]);
 
   if (childrenResult.rows.length === 0) {
-    res.json({ children: [], canSplit: false });
+    respond(res, OverlapChildren, { children: [], canSplit: false });
     return;
   }
 
@@ -272,7 +274,7 @@ export async function getOverlapDivisionChildren(req: AuthenticatedRequest, res:
     assignedToRegionId: assignedTo.get(r.id as number) ?? null,
   }));
 
-  res.json({ children, canSplit: true });
+  respond(res, OverlapChildren, { children, canSplit: true });
 }
 
 /**
@@ -285,6 +287,7 @@ export async function getOverlapDivisionChildren(req: AuthenticatedRequest, res:
 export async function resolveOverlap(req: AuthenticatedRequest, res: Response): Promise<void> {
   const { action } = req.body;
 
+  let body: OverlapResolved;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -300,7 +303,7 @@ export async function resolveOverlap(req: AuthenticatedRequest, res: Response): 
       }
       await client.query('COMMIT');
       console.log(`[WV Import] Overlap resolved (keep): division ${divisionId} removed from regions ${removeFromRegionIds.join(', ')}`);
-      res.json({ success: true, action: 'keep', removed: removeFromRegionIds.length });
+      body = { success: true, action: 'keep', removed: removeFromRegionIds.length };
 
     } else if (action === 'split') {
       const { divisionId, splitRegionId, assignments } = req.body as {
@@ -328,13 +331,14 @@ export async function resolveOverlap(req: AuthenticatedRequest, res: Response): 
 
       await client.query('COMMIT');
       console.log(`[WV Import] Overlap resolved (split): division ${divisionId} in region ${splitRegionId} → ${assignments.length} GADM children redistributed`);
-      res.json({ success: true, action: 'split', assigned: assignments.length });
+      body = { success: true, action: 'split', assigned: assignments.length };
 
     } else {
       // Unreachable in practice (Zod validates `action`), but ROLLBACK
       // keeps the connection clean if validation is ever relaxed.
       await client.query('ROLLBACK');
       res.status(400).json({ error: `Unknown action: ${action}` });
+      return;
     }
   } catch (err) {
     await client.query('ROLLBACK');
@@ -342,4 +346,5 @@ export async function resolveOverlap(req: AuthenticatedRequest, res: Response): 
   } finally {
     client.release();
   }
+  respond(res, OverlapResolved, body);
 }

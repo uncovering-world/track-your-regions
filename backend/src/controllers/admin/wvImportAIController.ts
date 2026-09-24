@@ -23,6 +23,8 @@ import {
 } from '../../api/responses/worldViewImport.js';
 import { foundSuggestionOf } from './wvImportAnswerRows.js';
 import { ClusterRegionSuggestions } from '../../api/responses/wvImportCvMatch.js';
+import { ChildrenReviewed } from '../../api/responses/wvImportTreeOps.js';
+import { auditOf, enrichmentsOf, type Enrichment, type NormalizedAction } from './wvImportChildReviewRows.js';
 import { clusterRegionMatchesOf } from './wvImportCvAnswerRows.js';
 import {
   startAIMatching,
@@ -355,32 +357,6 @@ interface ExistingChild {
   sourceExternalId: string | null;
 }
 
-interface AuditAction {
-  type: 'add' | 'remove' | 'rename';
-  name?: string;
-  childName?: string;
-  newName?: string;
-  reason: string;
-}
-
-interface AuditResult {
-  actions: AuditAction[];
-  analysis: string;
-}
-
-interface NormalizedAction {
-  type: 'add' | 'remove' | 'rename';
-  name: string;
-  newName?: string;
-  reason: string;
-}
-
-interface Enrichment {
-  name: string;
-  wikivoyageTitle: string | null;
-  wikidataQID: string | null;
-}
-
 interface PageVerification {
   exists: boolean;
   wikidataQID: string | null;
@@ -566,16 +542,6 @@ Rules:
 - If unsure about a QID, set it to null rather than guessing wrong.`;
 }
 
-/** Normalize AI audit actions into a uniform shape. */
-function normalizeAuditActions(actions: AuditAction[]): NormalizedAction[] {
-  return actions.map((a) => ({
-    type: a.type,
-    name: a.type === 'add' ? (a.name ?? '') : (a.childName ?? ''),
-    newName: a.type === 'rename' ? (a.newName ?? '') : undefined,
-    reason: a.reason ?? '',
-  }));
-}
-
 /** Identify existing children missing Wikivoyage metadata that weren't renamed/removed. */
 function findChildrenNeedingEnrichment(
   existingChildren: ExistingChild[],
@@ -605,8 +571,7 @@ function collectEnrichTargets(
 /** Parse the AI enrichment response. Returns [] on malformed JSON. */
 function parseEnrichmentResponse(raw: string): Enrichment[] {
   try {
-    const parsed = parseFencedJson<{ enrichments?: Enrichment[] }>(raw);
-    return parsed.enrichments ?? [];
+    return enrichmentsOf(parseFencedJson<unknown>(raw));
   } catch {
     console.warn('[AI Review Children] Failed to parse enrichment response');
     return [];
@@ -681,6 +646,139 @@ function buildEnrichedActions(
   });
 }
 
+/**
+ * A model's review of a region's children against its Wikivoyage page's
+ * region list, or undefined where the answer was already an error: the region
+ * or its page not found, or no model configured.
+ */
+async function reviewRegionChildren(worldViewId: number, regionId: number, res: Response): Promise<ChildrenReviewed | undefined> {
+  const context = await fetchRegionContext(worldViewId, regionId, res);
+  if (!context) return undefined;
+  const { regionName, pageTitle, existingChildren } = context;
+
+  const fetcher = new WikivoyageFetcher('data/cache/wikivoyage-cache.json', buildFetcherProgress());
+
+  const wikitext = await fetchRegionsSectionWikitext(fetcher, pageTitle);
+  if (wikitext == null) {
+    return { actions: [], analysis: 'No "Regions" section found on the Wikivoyage page.', stats: null };
+  }
+
+  if (!isOpenAIAvailable()) {
+    res.status(503).json({ error: 'OpenAI API is not configured' });
+    return undefined;
+  }
+
+  // 4. AI Call 1 — Audit
+  const model = await getModelForFeature('review_children');
+  const client = getClient();
+  const startTime = Date.now();
+
+  const auditPrompt = buildAuditPrompt(regionName, existingChildren, wikitext);
+
+  const auditResponse = await chatCompletion(client, {
+    model,
+    temperature: 0.3,
+    max_completion_tokens: 4000,
+    messages: [
+      { role: 'system', content: auditPrompt },
+      { role: 'user', content: `Audit the children of "${regionName}": compare wikitext against the ${existingChildren.length} existing children.` },
+    ],
+  });
+
+  const auditTokensIn = auditResponse.usage?.prompt_tokens ?? 0;
+  const auditTokensOut = auditResponse.usage?.completion_tokens ?? 0;
+
+  // Parse audit response
+  const auditContent = auditResponse.choices[0]?.message?.content ?? '';
+  let audit: ReturnType<typeof auditOf>;
+  try {
+    audit = auditOf(parseFencedJson<unknown>(auditContent));
+  } catch {
+    const auditCost = calculateCost(auditTokensIn, auditTokensOut, model);
+    logAIUsage({
+      feature: 'review_children',
+      model, apiCalls: 1,
+      promptTokens: auditTokensIn, completionTokens: auditTokensOut,
+      totalCost: auditCost.totalCost, durationMs: Date.now() - startTime,
+      description: `Review children for "${regionName}" (region ${regionId}) — parse error`,
+    }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
+    return {
+      actions: [],
+      analysis: auditContent || 'AI response could not be parsed.',
+      stats: { inputTokens: auditTokensIn, outputTokens: auditTokensOut, cost: auditCost.totalCost },
+    };
+  }
+
+  const { actions } = audit;
+  const childrenNeedingEnrichment = findChildrenNeedingEnrichment(existingChildren, actions);
+  const enrichTargets = collectEnrichTargets(actions, childrenNeedingEnrichment);
+
+  if (enrichTargets.length === 0) {
+    const auditCost = calculateCost(auditTokensIn, auditTokensOut, model);
+    logAIUsage({
+      feature: 'review_children',
+      model, apiCalls: 1,
+      promptTokens: auditTokensIn, completionTokens: auditTokensOut,
+      totalCost: auditCost.totalCost, durationMs: Date.now() - startTime,
+      description: `Review children for "${regionName}" (region ${regionId}) — no enrichable actions`,
+    }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
+    return {
+      actions: actions.map(a => ({ ...a, sourceUrl: null, sourceExternalId: null, verified: false })),
+      analysis: audit.analysis,
+      stats: { inputTokens: auditTokensIn, outputTokens: auditTokensOut, cost: auditCost.totalCost },
+    };
+  }
+
+  // 5. AI Call 2 — Enrichment
+  const enrichPrompt = buildEnrichPrompt(enrichTargets, wikitext);
+
+  const enrichResponse = await chatCompletion(client, {
+    model,
+    temperature: 0.1,
+    max_completion_tokens: 2000,
+    messages: [
+      { role: 'system', content: enrichPrompt },
+      { role: 'user', content: `Enrich these ${enrichTargets.length} regions with Wikivoyage titles and Wikidata QIDs.` },
+    ],
+  });
+
+  const enrichTokensIn = enrichResponse.usage?.prompt_tokens ?? 0;
+  const enrichTokensOut = enrichResponse.usage?.completion_tokens ?? 0;
+
+  const enrichments = parseEnrichmentResponse(enrichResponse.choices[0]?.message?.content ?? '');
+  const enrichMap = new Map(enrichments.map(e => [e.name.toLowerCase(), e]));
+
+  // 6. Programmatic verification via Wikivoyage API
+  const titlesToVerify = enrichments
+    .map(e => e.wikivoyageTitle)
+    .filter((t): t is string => t != null && t.length > 0);
+
+  const verifiedPages = await verifyWikivoyagePages(titlesToVerify, fetcher);
+
+  // 7. Merge enrichment + verification into actions
+  const totalTokensIn = auditTokensIn + enrichTokensIn;
+  const totalTokensOut = auditTokensOut + enrichTokensOut;
+  const totalCost = calculateCost(totalTokensIn, totalTokensOut, model);
+  const durationMs = Date.now() - startTime;
+
+  logAIUsage({
+    feature: 'review_children',
+    model, apiCalls: 2,
+    promptTokens: totalTokensIn, completionTokens: totalTokensOut,
+    totalCost: totalCost.totalCost, durationMs,
+    description: `Review children for "${regionName}" (region ${regionId}) in wv ${worldViewId} — ${actions.length} actions`,
+  }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
+
+  const enrichedActions = buildEnrichedActions(actions, enrichMap, verifiedPages);
+  const extraEnrichActions = buildExtraEnrichActions(childrenNeedingEnrichment, enrichMap, verifiedPages);
+
+  return {
+    actions: [...enrichedActions, ...extraEnrichActions],
+    analysis: audit.analysis,
+    stats: { inputTokens: totalTokensIn, outputTokens: totalTokensOut, cost: totalCost.totalCost },
+  };
+}
+
 /** Build additional "enrich" actions for existing children that gained metadata. */
 function buildExtraEnrichActions(
   childrenNeedingEnrichment: ExistingChild[],
@@ -719,139 +817,15 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/ai-review-children — regionId=${regionId}`);
 
+  let body: ChildrenReviewed | undefined;
   try {
-    const context = await fetchRegionContext(worldViewId, regionId, res);
-    if (!context) return;
-    const { regionName, pageTitle, existingChildren } = context;
-
-    const fetcher = new WikivoyageFetcher('data/cache/wikivoyage-cache.json', buildFetcherProgress());
-
-    const wikitext = await fetchRegionsSectionWikitext(fetcher, pageTitle);
-    if (wikitext == null) {
-      res.json({ actions: [], analysis: 'No "Regions" section found on the Wikivoyage page.', stats: null });
-      return;
-    }
-
-    if (!isOpenAIAvailable()) {
-      res.status(503).json({ error: 'OpenAI API is not configured' });
-      return;
-    }
-
-    // 4. AI Call 1 — Audit
-    const model = await getModelForFeature('review_children');
-    const client = getClient();
-    const startTime = Date.now();
-
-    const auditPrompt = buildAuditPrompt(regionName, existingChildren, wikitext);
-
-    const auditResponse = await chatCompletion(client, {
-      model,
-      temperature: 0.3,
-      max_completion_tokens: 4000,
-      messages: [
-        { role: 'system', content: auditPrompt },
-        { role: 'user', content: `Audit the children of "${regionName}": compare wikitext against the ${existingChildren.length} existing children.` },
-      ],
-    });
-
-    const auditTokensIn = auditResponse.usage?.prompt_tokens ?? 0;
-    const auditTokensOut = auditResponse.usage?.completion_tokens ?? 0;
-
-    // Parse audit response
-    const auditContent = auditResponse.choices[0]?.message?.content ?? '';
-    let auditResult: AuditResult;
-    try {
-      auditResult = parseFencedJson<AuditResult>(auditContent);
-    } catch {
-      const auditCost = calculateCost(auditTokensIn, auditTokensOut, model);
-      logAIUsage({
-        feature: 'review_children',
-        model, apiCalls: 1,
-        promptTokens: auditTokensIn, completionTokens: auditTokensOut,
-        totalCost: auditCost.totalCost, durationMs: Date.now() - startTime,
-        description: `Review children for "${regionName}" (region ${regionId}) — parse error`,
-      }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
-      res.json({
-        actions: [],
-        analysis: auditContent || 'AI response could not be parsed.',
-        stats: { inputTokens: auditTokensIn, outputTokens: auditTokensOut, cost: auditCost.totalCost },
-      });
-      return;
-    }
-
-    const actions = normalizeAuditActions(auditResult.actions ?? []);
-    const childrenNeedingEnrichment = findChildrenNeedingEnrichment(existingChildren, actions);
-    const enrichTargets = collectEnrichTargets(actions, childrenNeedingEnrichment);
-
-    if (enrichTargets.length === 0) {
-      const auditCost = calculateCost(auditTokensIn, auditTokensOut, model);
-      logAIUsage({
-        feature: 'review_children',
-        model, apiCalls: 1,
-        promptTokens: auditTokensIn, completionTokens: auditTokensOut,
-        totalCost: auditCost.totalCost, durationMs: Date.now() - startTime,
-        description: `Review children for "${regionName}" (region ${regionId}) — no enrichable actions`,
-      }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
-      res.json({
-        actions: actions.map(a => ({ ...a, sourceUrl: null, sourceExternalId: null, verified: false })),
-        analysis: auditResult.analysis ?? '',
-        stats: { inputTokens: auditTokensIn, outputTokens: auditTokensOut, cost: auditCost.totalCost },
-      });
-      return;
-    }
-
-    // 5. AI Call 2 — Enrichment
-    const enrichPrompt = buildEnrichPrompt(enrichTargets, wikitext);
-
-    const enrichResponse = await chatCompletion(client, {
-      model,
-      temperature: 0.1,
-      max_completion_tokens: 2000,
-      messages: [
-        { role: 'system', content: enrichPrompt },
-        { role: 'user', content: `Enrich these ${enrichTargets.length} regions with Wikivoyage titles and Wikidata QIDs.` },
-      ],
-    });
-
-    const enrichTokensIn = enrichResponse.usage?.prompt_tokens ?? 0;
-    const enrichTokensOut = enrichResponse.usage?.completion_tokens ?? 0;
-
-    const enrichments = parseEnrichmentResponse(enrichResponse.choices[0]?.message?.content ?? '');
-    const enrichMap = new Map(enrichments.map(e => [e.name.toLowerCase(), e]));
-
-    // 6. Programmatic verification via Wikivoyage API
-    const titlesToVerify = enrichments
-      .map(e => e.wikivoyageTitle)
-      .filter((t): t is string => t != null && t.length > 0);
-
-    const verifiedPages = await verifyWikivoyagePages(titlesToVerify, fetcher);
-
-    // 7. Merge enrichment + verification into actions
-    const totalTokensIn = auditTokensIn + enrichTokensIn;
-    const totalTokensOut = auditTokensOut + enrichTokensOut;
-    const totalCost = calculateCost(totalTokensIn, totalTokensOut, model);
-    const durationMs = Date.now() - startTime;
-
-    logAIUsage({
-      feature: 'review_children',
-      model, apiCalls: 2,
-      promptTokens: totalTokensIn, completionTokens: totalTokensOut,
-      totalCost: totalCost.totalCost, durationMs,
-      description: `Review children for "${regionName}" (region ${regionId}) in wv ${worldViewId} — ${actions.length} actions`,
-    }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
-
-    const enrichedActions = buildEnrichedActions(actions, enrichMap, verifiedPages);
-    const extraEnrichActions = buildExtraEnrichActions(childrenNeedingEnrichment, enrichMap, verifiedPages);
-
-    res.json({
-      actions: [...enrichedActions, ...extraEnrichActions],
-      analysis: auditResult.analysis ?? '',
-      stats: { inputTokens: totalTokensIn, outputTokens: totalTokensOut, cost: totalCost.totalCost },
-    });
+    body = await reviewRegionChildren(worldViewId, regionId, res);
   } catch (err) {
     console.error(`[WV Import] AI review children failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'AI review children failed' });
+    return;
   }
+  if (body) respond(res, ChildrenReviewed, body);
 }
 
 /**
