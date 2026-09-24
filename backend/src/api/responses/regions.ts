@@ -144,7 +144,7 @@ export const ChildDivisionsAdded = z.strictObject({
 export type ChildDivisionsAdded = z.infer<typeof ChildDivisionsAdded>;
 
 export const SubregionFlattened = z.strictObject({
-  movedDivisions: z.number().int().describe('Divisions the parent gained; one it already held is not counted.'),
+  movedDivisions: z.number().int().describe('Member rows moved to the parent, a cut part counted as its own row; a whole division the parent already held whole is dropped, not counted.'),
   deletedRegion: z.literal(true),
 }).describe('A subregion folded into its parent: its divisions, and its descendants\', moved up, and the subregion deleted.');
 export type SubregionFlattened = z.infer<typeof SubregionFlattened>;

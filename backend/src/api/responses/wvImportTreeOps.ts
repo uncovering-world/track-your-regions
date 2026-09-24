@@ -61,7 +61,7 @@ export const RegionRemovedKeepingChildren = z.strictObject({
   removed: z.literal(true),
   regionName: z.string(),
   childrenReparented: z.number().int().describe('Children moved up to the removed region\'s parent.'),
-  divisionsReparented: z.number().int().describe('Divisions moved up to the parent, where they were asked to be.'),
+  divisionsReparented: z.number().int().describe('Member rows moved up to the parent, where they were asked to be, a cut part counted as its own row; a whole division the parent already held whole is dropped, not counted.'),
 }).describe('A region removed, its children moved up to its parent.');
 export type RegionRemovedKeepingChildren = z.infer<typeof RegionRemovedKeepingChildren>;
 

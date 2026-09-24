@@ -3203,7 +3203,10 @@ export interface RegionRemovedKeepingChildren {
   regionName: string;
   /** Children moved up to the removed region's parent. */
   childrenReparented: number;
-  /** Divisions moved up to the parent, where they were asked to be. */
+  /**
+   * Member rows moved up to the parent, where they were asked to be, a cut part counted as its own
+   * row; a whole division the parent already held whole is dropped, not counted.
+   */
   divisionsReparented: number;
 }
 
@@ -3702,7 +3705,10 @@ export interface SplitDeeperResult {
  * subregion deleted.
  */
 export interface SubregionFlattened {
-  /** Divisions the parent gained; one it already held is not counted. */
+  /**
+   * Member rows moved to the parent, a cut part counted as its own row; a whole division the parent
+   * already held whole is dropped, not counted.
+   */
   movedDivisions: number;
   deletedRegion: true;
 }

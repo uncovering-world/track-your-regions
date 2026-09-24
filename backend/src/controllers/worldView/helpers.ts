@@ -3,6 +3,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import type { PoolClient } from 'pg';
 
 /**
  * Insert into region_members for the (region_id, division_id) pair without a
@@ -21,6 +22,41 @@ export async function ensureRegionMember(regionId: number, divisionId: number): 
      ON CONFLICT (region_id, division_id) WHERE custom_geom IS NULL DO NOTHING`,
     [regionId, divisionId],
   );
+}
+
+/**
+ * Move every member row of one region to another, each row as it is (#384).
+ *
+ * A row is what a curator made it: a whole division, or a cut part with its
+ * `custom_geom` and `custom_name` — the west of Russia, the Keys of Monroe
+ * County. Moving the row itself keeps that part, and keeps two parts of one
+ * division as two rows; every row the target already holds stays. The one
+ * row that cannot move is a whole division the target already holds whole,
+ * which `idx_region_members_unique_no_custom` refuses a second time; it adds
+ * nothing to the target's coverage, so it is dropped.
+ *
+ * `db` is the pool or the caller's transaction client. Answers how many rows
+ * moved.
+ */
+export async function moveMembersToRegion(
+  db: Pick<PoolClient, 'query'>,
+  fromRegionId: number,
+  toRegionId: number,
+): Promise<number> {
+  await db.query(
+    `DELETE FROM region_members m
+     WHERE m.region_id = $1 AND m.custom_geom IS NULL
+       AND EXISTS (
+         SELECT 1 FROM region_members t
+         WHERE t.region_id = $2 AND t.division_id = m.division_id AND t.custom_geom IS NULL
+       )`,
+    [fromRegionId, toRegionId],
+  );
+  const moved = await db.query(
+    'UPDATE region_members SET region_id = $2 WHERE region_id = $1',
+    [fromRegionId, toRegionId],
+  );
+  return moved.rowCount ?? 0;
 }
 
 /**

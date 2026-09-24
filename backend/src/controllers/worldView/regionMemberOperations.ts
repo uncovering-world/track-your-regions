@@ -12,7 +12,7 @@ import {
 import { pool } from '../../db/index.js';
 import { visitedRegionRefusal, visitsUnder } from '../../db/regionVisits.js';
 import { createError } from '../../middleware/errorHandler.js';
-import { ensureRegionMember, invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
+import { ensureRegionMember, invalidateRegionGeometry, moveMembersToRegion, syncImportMatchStatus } from './helpers.js';
 
 interface ChildRow { id: number; name: string }
 
@@ -254,47 +254,21 @@ export async function flattenSubregion(req: Request, res: Response): Promise<voi
   const visits = await visitsUnder(subregionId, true);
   if (visits > 0) throw createError(visitedRegionRefusal(visits), 409);
 
-  // Recursively collect all GADM division IDs from the subregion and its descendants
-  const collectDivisionIds = async (regionId: number): Promise<number[]> => {
-    // Get direct member divisions
-    const directMembers = await pool.query(
-      'SELECT division_id FROM region_members WHERE region_id = $1',
-      [regionId]
-    );
-    const divisionIds = directMembers.rows.map((r: { division_id: number }) => r.division_id);
-
-    // Get child regions and recursively collect their divisions
-    const childRegions = await pool.query(
-      'SELECT id FROM regions WHERE parent_region_id = $1',
-      [regionId]
-    );
-
-    for (const child of childRegions.rows) {
-      const childDivisions = await collectDivisionIds(child.id);
-      divisionIds.push(...childDivisions);
-    }
-
-    return divisionIds;
-  };
-
-  const allDivisionIds = await collectDivisionIds(subregionId);
-  console.log(`[Flatten] Collected ${allDivisionIds.length} GADM divisions from subregion ${subregionId}`);
-
-  // Add all collected divisions to the parent region
+  // Every member row of the subregion and of each region under it moves to
+  // the parent as the row it is, a cut part with its geometry (#1004).
+  const subtree = await pool.query<{ id: number }>(`
+    WITH RECURSIVE subtree AS (
+      SELECT id FROM regions WHERE id = $1
+      UNION ALL
+      SELECT r.id FROM regions r JOIN subtree s ON r.parent_region_id = s.id
+    )
+    SELECT id FROM subtree
+  `, [subregionId]);
   let movedCount = 0;
-  for (const divisionId of allDivisionIds) {
-    const existing = await pool.query(
-      'SELECT id FROM region_members WHERE region_id = $1 AND division_id = $2 AND custom_geom IS NULL',
-      [parentRegionId, divisionId]
-    );
-    if (existing.rows.length === 0) {
-      await pool.query(
-        `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)`,
-        [parentRegionId, divisionId]
-      );
-      movedCount++;
-    }
+  for (const { id } of subtree.rows) {
+    movedCount += await moveMembersToRegion(pool, id, parentRegionId);
   }
+  console.log(`[Flatten] Moved ${movedCount} member rows from subregion ${subregionId} and its descendants`);
 
   // Recursively delete the subregion and all its descendants
   const deleteRegionRecursive = async (regionId: number): Promise<void> => {
@@ -307,9 +281,6 @@ export async function flattenSubregion(req: Request, res: Response): Promise<voi
     for (const child of childRegions.rows) {
       await deleteRegionRecursive(child.id);
     }
-
-    // Delete member mappings
-    await pool.query('DELETE FROM region_members WHERE region_id = $1', [regionId]);
 
     // Delete the region itself
     await pool.query('DELETE FROM regions WHERE id = $1', [regionId]);
