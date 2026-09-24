@@ -85,3 +85,14 @@ describe('answer words', () => {
     expect(answerVerb('lost')).toBe('Record as lost');
   });
 });
+
+describe('the words a batch answer to a refusal carries (#906)', () => {
+  it('reads accepting a refusal as keeping the row out, since the card proposes the refusal', () => {
+    expect(ANSWER_WORDS.refused.proposes).toBe('keep this object out, as our rule decided');
+    expect(ANSWER_WORDS.refused.accept).toBe('The rule was right — keep it out');
+  });
+
+  it('says a put-back lasts until the next run, since a batch pins nothing', () => {
+    expect(ANSWER_WORDS.refused.reject).toBe('The rule was wrong — put it back until the next run');
+  });
+});

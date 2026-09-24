@@ -7,7 +7,9 @@
  * cards keep the verbs they had, because each names the *consequence* ("The
  * rule was wrong — put it back"), and a batch offering two bare words over
  * seven kinds would be asking a curator to translate. So the bar and the
- * summary quote these, per kind, and the single-row cards say the same.
+ * summary quote these, per kind, and the single-row cards say the same — but
+ * for a refusal's put-back, which adds "until the next run": the card's answer
+ * is kept by every later run, a batch's is not (ADR-0067).
  *
  * The keys are the row's own kind, with `waiting` split by the sub-kind the
  * row carries, since an arrival, a held change and unread contents are three
@@ -59,10 +61,13 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
     accept: 'Take the source’s',
     reject: 'Keep ours',
   },
+  // A refusal card proposes the refusal, so accepting it keeps the row out
+  // (ADR-0067). A batch pins neither answer: a row put back is back for now,
+  // and the next run applies the rule to it again.
   refused: {
-    proposes: 'add this object, which our rule turned down',
-    accept: 'The rule was wrong — put it back',
-    reject: 'The rule was right — keep it out',
+    proposes: 'keep this object out, as our rule decided',
+    accept: 'The rule was right — keep it out',
+    reject: 'The rule was wrong — put it back until the next run',
   },
   missing: {
     proposes: 'delist this object',
