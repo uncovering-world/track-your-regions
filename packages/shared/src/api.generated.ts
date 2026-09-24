@@ -108,6 +108,47 @@ export interface AIGeocodeResult {
   confidence: Confidence;
 }
 
+/** A stop asked of a world view's AI re-match. */
+export interface AIMatchCancelled {
+  /** False when no AI re-match of this world view was running. */
+  cancelled: boolean;
+}
+
+/** A model's match for one region. */
+export interface AIMatchOneResult {
+  /** The model found a better match than the region had. */
+  improved: boolean;
+  suggestion?: FoundSuggestion;
+  reasoning?: string;
+  /** US dollars. */
+  cost: number;
+}
+
+/** An AI re-match of the world view's unresolved leaves, started in the background. */
+export interface AIMatchStarted {
+  /** `idle` while no AI re-match of this world view is known since the server started. */
+  status: "running" | "complete" | "failed" | "cancelled" | "idle";
+  statusMessage?: string;
+  totalLeaves?: number;
+  processedLeaves?: number;
+  improved?: number;
+  /** What the model calls have cost so far, in US dollars. */
+  totalCost?: number;
+  started: true;
+}
+
+/** A world view's AI re-match of its unresolved leaves as it stands. */
+export interface AIMatchStatus {
+  /** `idle` while no AI re-match of this world view is known since the server started. */
+  status: "running" | "complete" | "failed" | "cancelled" | "idle";
+  statusMessage?: string;
+  totalLeaves?: number;
+  processedLeaves?: number;
+  improved?: number;
+  /** What the model calls have cost so far, in US dollars. */
+  totalCost?: number;
+}
+
 /** A chat model the configured API key can use. */
 export interface AIModel {
   /** The provider's model id, which is what a model is chosen by. */
@@ -497,6 +538,24 @@ export interface CountedWork {
   externalId: string;
 }
 
+/**
+ * Divisions matched from the region's Wikidata shape, or from the places its Wikivoyage article
+ * marks.
+ */
+export interface CoveringMatchResult {
+  found: number;
+  suggestions: FoundSuggestion[];
+  /** How much of the region's shape the covering set covers, from 0 to 1. */
+  totalCoverage?: number;
+  /** The ancestor whose divisions the search was held to. */
+  scopeAncestorName?: string;
+  /** Where a wider search would look, offered when this one found nothing. */
+  nextScope?: {
+    ancestorId: number;
+    ancestorName: string;
+  };
+}
+
 /** A subregion an edit created for a division. */
 export interface CreatedSubregion {
   id: number;
@@ -635,6 +694,13 @@ export interface DataAssertionReport {
    * failure.
    */
   acceptancesUnavailable: string | null;
+}
+
+/** Divisions whose names are like the region's, found by trigram similarity. */
+export interface DbSearchResult {
+  /** New suggestions written. */
+  found: number;
+  suggestions: FoundSuggestion[];
 }
 
 /** One part a refusal of held rows reached. */
@@ -1200,6 +1266,43 @@ export interface FieldClaim {
  */
 export type FocusBbox = [number, number, number, number];
 
+/** A division a matcher just offered as a region's match; the tree carries it from now on. */
+export interface FoundSuggestion {
+  divisionId: number;
+  name: string;
+  /** The division's administrative path, country first. */
+  path: string;
+  score: number;
+  /** Sent where a sibling already holds the division or its parent. */
+  conflict?: SuggestionConflict;
+}
+
+/** Divisions containing the place the region's name geocodes to. */
+export interface GeocodeMatchResult {
+  found: number;
+  suggestions: FoundSuggestion[];
+  /** The place Nominatim resolved the region's name to. */
+  geocodedName?: string;
+  /** How far from that place the divisions were looked for. */
+  searchRadiusKm?: number;
+}
+
+/**
+ * A Wikidata item's shape, from the local cache or from Wikimedia's map service; no feature where
+ * it has none.
+ */
+export interface Geoshape {
+  type: "FeatureCollection";
+  features: {
+    type: "Feature";
+    properties: {
+      /** The Wikidata item. */
+      id: string;
+    };
+    geometry: AreaGeometry;
+  }[];
+}
+
 /** Short descriptions of the groups, and what writing them cost. */
 export interface GroupDescriptions {
   /** A short description per group name, to offer the model beside the names. */
@@ -1614,17 +1717,7 @@ export interface MatchSuggestion {
   score: number | null;
   /** How much of the region's shape the division covers, where a shape was compared. */
   geoSimilarity: number | null;
-  /**
-   * The sibling region already holding the division, or its parent: accepting it moves it from
-   * there (ADR-0012).
-   */
-  conflict: {
-    type: "direct" | "split";
-    donorRegionId: number;
-    donorRegionName: string;
-    donorDivisionId: number;
-    donorDivisionName: string;
-  } | null;
+  conflict: SuggestionConflict | null;
 }
 
 /** The imported tree's roots, by name. */
@@ -2317,6 +2410,23 @@ export interface RemainingRejected {
   rejected: number;
 }
 
+/** A re-match of the whole world view, started in the background. */
+export interface RematchStarted {
+  started: true;
+  /** The policy the world view's source implies, or the one the request named. */
+  matchingPolicy: "country-based" | "hierarchical" | "none";
+}
+
+/** A world view's re-match as it stands. */
+export interface RematchStatus {
+  /** `idle` while no re-match of this world view is known since the server started. */
+  status: "importing" | "matching" | "complete" | "failed" | "cancelled" | "idle";
+  statusMessage?: string;
+  countriesMatched?: number;
+  totalCountries?: number;
+  noCandidates?: number;
+}
+
 /** The two answers every review row has, and the third two kinds have (#852). */
 export type ReviewAnswer = "accept" | "reject" | "lost";
 
@@ -2592,6 +2702,22 @@ export interface SubregionFlattened {
 export interface SubregionsExpanded {
   createdRegions: CreatedSubregion[];
   expandedCount: number;
+}
+
+/**
+ * The sibling region already holding a suggested division, or its parent: accepting it moves the
+ * division from there (ADR-0012).
+ */
+export interface SuggestionConflict {
+  /**
+   * `direct`: the donor holds the division itself. `split`: it holds one of the division's
+   * ancestors.
+   */
+  type: "direct" | "split";
+  donorRegionId: number;
+  donorRegionName: string;
+  donorDivisionId: number;
+  donorDivisionName: string;
 }
 
 /** One suggestion rejected, and taken out of the region's members. */

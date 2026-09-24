@@ -11,7 +11,17 @@ import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { respond } from '../../api/respond.js';
-import { MatchReset } from '../../api/responses/worldViewImport.js';
+import {
+  AIMatchCancelled,
+  AIMatchOneResult,
+  AIMatchStarted,
+  AIMatchStatus,
+  CoveringMatchResult,
+  DbSearchResult,
+  GeocodeMatchResult,
+  MatchReset,
+} from '../../api/responses/worldViewImport.js';
+import { foundSuggestionOf } from './wvImportAnswerRows.js';
 import {
   startAIMatching,
   getAIMatchProgress,
@@ -20,6 +30,7 @@ import {
   dbSearchSingleRegion,
   geocodeMatchRegion,
 } from '../../services/worldViewImport/aiMatcher.js';
+import type { AIMatchProgress } from '../../services/worldViewImport/aiMatcher.js';
 import { isOpenAIAvailable } from '../../services/ai/openaiService.js';
 import { getModelForFeature } from '../../services/ai/aiSettingsService.js';
 import { calculateCost } from '../../services/ai/pricingService.js';
@@ -31,6 +42,23 @@ import type { WikiSection } from '../../services/wikivoyageExtract/types.js';
 import { geoshapeMatchRegion } from '../../services/worldViewImport/geoshapeCoverage.js';
 import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
 import { computeGeoSimilarityIfNeeded } from './wvImportUtils.js';
+
+/** What the shape and marker matchers found, key by key. */
+function coveringMatchOf(result: {
+  found: number;
+  suggestions: Array<{ divisionId: number; name: string; path: string; score: number; conflict?: unknown }>;
+  totalCoverage?: number;
+  scopeAncestorName?: string;
+  nextScope?: { ancestorId: number; ancestorName: string };
+}): CoveringMatchResult {
+  return {
+    found: result.found,
+    suggestions: result.suggestions.map(foundSuggestionOf),
+    ...(result.totalCoverage !== undefined ? { totalCoverage: result.totalCoverage } : {}),
+    ...(result.scopeAncestorName !== undefined ? { scopeAncestorName: result.scopeAncestorName } : {}),
+    ...(result.nextScope ? { nextScope: { ancestorId: result.nextScope.ancestorId, ancestorName: result.nextScope.ancestorName } } : {}),
+  };
+}
 
 // Lazy OpenAI singleton (same pattern as aiHierarchyReviewController.ts)
 let openaiClient: OpenAI | null = null;
@@ -61,6 +89,18 @@ function formatModelOverrideSuffix(modelOverride: string | undefined): string {
 // AI-assisted matching endpoints
 // =============================================================================
 
+/** The run's progress, each key named: its internal `cancel` flag stays here. */
+function aiMatchStatusOf(progress: AIMatchProgress): AIMatchStatus {
+  return {
+    status: progress.status,
+    statusMessage: progress.statusMessage,
+    totalLeaves: progress.totalLeaves,
+    processedLeaves: progress.processedLeaves,
+    improved: progress.improved,
+    totalCost: progress.totalCost,
+  };
+}
+
 /**
  * Start AI-assisted re-matching for unresolved leaves.
  * POST /api/admin/wv-import/matches/:worldViewId/ai-match
@@ -82,7 +122,7 @@ export async function startAIMatch(req: AuthenticatedRequest, res: Response): Pr
   }
 
   const progress = startAIMatching(worldViewId);
-  res.json({ started: true, ...progress });
+  respond(res, AIMatchStarted, { started: true, ...aiMatchStatusOf(progress) });
 }
 
 /**
@@ -92,11 +132,7 @@ export async function startAIMatch(req: AuthenticatedRequest, res: Response): Pr
 export function getAIMatchStatus(req: AuthenticatedRequest, res: Response): void {
   const worldViewId = parseInt(String(req.params.worldViewId));
   const progress = getAIMatchProgress(worldViewId);
-  if (progress) {
-    res.json(progress);
-  } else {
-    res.json({ status: 'idle' });
-  }
+  respond(res, AIMatchStatus, progress ? aiMatchStatusOf(progress) : { status: 'idle' });
 }
 
 /**
@@ -106,7 +142,7 @@ export function getAIMatchStatus(req: AuthenticatedRequest, res: Response): void
 export function cancelAIMatchEndpoint(req: AuthenticatedRequest, res: Response): void {
   const worldViewId = parseInt(String(req.params.worldViewId));
   const cancelled = cancelAIMatch(worldViewId);
-  res.json({ cancelled });
+  respond(res, AIMatchCancelled, { cancelled });
 }
 
 /**
@@ -118,17 +154,20 @@ export async function dbSearchOneRegion(req: AuthenticatedRequest, res: Response
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/db-search-one — regionId=${regionId}`);
 
+  let body: DbSearchResult;
   try {
     const result = await dbSearchSingleRegion(worldViewId, regionId);
     // Compute geo similarity if region now has multiple suggestions
     if (result.found > 0) {
       await computeGeoSimilarityIfNeeded(regionId);
     }
-    res.json(result);
+    body = { found: result.found, suggestions: result.suggestions.map(foundSuggestionOf) };
   } catch (err) {
     console.error(`[WV Import] DB search one failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'DB search failed' });
+    return;
   }
+  respond(res, DbSearchResult, body);
 }
 
 /**
@@ -140,17 +179,25 @@ export async function geocodeMatch(req: AuthenticatedRequest, res: Response): Pr
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/geocode-match — regionId=${regionId}`);
 
+  let body: GeocodeMatchResult;
   try {
     const result = await geocodeMatchRegion(worldViewId, regionId);
     // Compute geo similarity if region now has multiple suggestions
     if (result.found > 0) {
       await computeGeoSimilarityIfNeeded(regionId);
     }
-    res.json(result);
+    body = {
+      found: result.found,
+      suggestions: result.suggestions.map(foundSuggestionOf),
+      ...(result.geocodedName !== undefined ? { geocodedName: result.geocodedName } : {}),
+      ...(result.searchRadiusKm !== undefined ? { searchRadiusKm: result.searchRadiusKm } : {}),
+    };
   } catch (err) {
     console.error(`[WV Import] Geocode match failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Geocode match failed' });
+    return;
   }
+  respond(res, GeocodeMatchResult, body);
 }
 
 /**
@@ -163,17 +210,20 @@ export async function geoshapeMatch(req: AuthenticatedRequest, res: Response): P
   const { regionId, scopeAncestorId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/geoshape-match — regionId=${regionId}${formatScopeSuffix(scopeAncestorId)}`);
 
+  let body: CoveringMatchResult;
   try {
     const result = await geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId);
     // Compute geo similarity if region now has multiple suggestions
     if (result.found > 0) {
       await computeGeoSimilarityIfNeeded(regionId);
     }
-    res.json(result);
+    body = coveringMatchOf(result);
   } catch (err) {
     console.error(`[WV Import] Geoshape match failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Geoshape match failed' });
+    return;
   }
+  respond(res, CoveringMatchResult, body);
 }
 
 /**
@@ -185,16 +235,19 @@ export async function pointMatch(req: AuthenticatedRequest, res: Response): Prom
   const { regionId, scopeAncestorId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/point-match — regionId=${regionId}${formatScopeSuffix(scopeAncestorId)}`);
 
+  let body: CoveringMatchResult;
   try {
     const result = await pointMatchRegion(worldViewId, regionId, scopeAncestorId);
     if (result.found > 0) {
       await computeGeoSimilarityIfNeeded(regionId);
     }
-    res.json(result);
+    body = coveringMatchOf(result);
   } catch (err) {
     console.error(`[WV Import] Point match failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Point match failed' });
+    return;
   }
+  respond(res, CoveringMatchResult, body);
 }
 
 /**
@@ -264,15 +317,23 @@ export async function aiMatchOneRegion(req: AuthenticatedRequest, res: Response)
     return;
   }
 
+  let body: AIMatchOneResult;
   try {
     const result = await aiMatchSingleRegion(worldViewId, regionId);
     // Compute geo similarity if region now has multiple suggestions
     await computeGeoSimilarityIfNeeded(regionId);
-    res.json(result);
+    body = {
+      improved: result.improved,
+      ...(result.suggestion ? { suggestion: foundSuggestionOf(result.suggestion) } : {}),
+      ...(typeof result.reasoning === 'string' ? { reasoning: result.reasoning } : {}),
+      cost: result.cost,
+    };
   } catch (err) {
     console.error(`[WV Import] AI match one failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'AI matching failed' });
+    return;
   }
+  respond(res, AIMatchOneResult, body);
 }
 
 /**

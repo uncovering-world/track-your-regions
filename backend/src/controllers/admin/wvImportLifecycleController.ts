@@ -9,8 +9,9 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { respond } from '../../api/respond.js';
-import { ImportCancelled, ImportStarted, ImportStatus } from '../../api/responses/worldViewImport.js';
+import { Geoshape, ImportCancelled, ImportStarted, ImportStatus } from '../../api/responses/worldViewImport.js';
 import { markPublicReferenceBody } from '../../middleware/cacheHeaders.js';
+import { geoshapeOf } from './wvImportAnswerRows.js';
 import {
   startImport,
   getLatestImportStatus,
@@ -36,44 +37,46 @@ export async function getGeoshape(req: AuthenticatedRequest, res: Response): Pro
   // `middleware/cacheHeaders.ts`). The dialog re-requests it on every open.
   markPublicReferenceBody(res);
 
-  const { wikidataId } = req.params;
+  const wikidataId = String(req.params.wikidataId);
 
+  let body: Geoshape;
   try {
     // Check local cache first (includes composite geoshapes built from children)
-    const cached = await pool.query(
+    const cached = await pool.query<{ geometry: unknown }>(
       `SELECT ST_AsGeoJSON(geom)::json AS geometry
        FROM wikidata_geoshapes
        WHERE wikidata_id = $1 AND not_available = FALSE AND geom IS NOT NULL`,
       [wikidataId],
     );
     if (cached.rows.length > 0 && cached.rows[0].geometry) {
-      res.json({
-        type: 'FeatureCollection',
-        features: [{ type: 'Feature', properties: { id: wikidataId }, geometry: cached.rows[0].geometry }],
+      body = geoshapeOf(wikidataId, [{ geometry: cached.rows[0].geometry }]);
+    } else {
+      // Fall back to Wikimedia
+      const url = `https://maps.wikimedia.org/geoshape?getgeojson=1&ids=${wikidataId}`;
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': userAgent(),
+          'Referer': 'https://en.wikivoyage.org/',
+        },
       });
-      return;
+
+      if (!response.ok) {
+        res.status(response.status).json({ error: `Geoshape fetch failed: ${response.statusText}` });
+        return;
+      }
+
+      const geojson: unknown = await response.json();
+      const features = typeof geojson === 'object' && geojson !== null && Array.isArray((geojson as { features?: unknown }).features)
+        ? (geojson as { features: unknown[] }).features
+        : [];
+      body = geoshapeOf(wikidataId, features);
     }
-
-    // Fall back to Wikimedia
-    const url = `https://maps.wikimedia.org/geoshape?getgeojson=1&ids=${wikidataId}`;
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': userAgent(),
-        'Referer': 'https://en.wikivoyage.org/',
-      },
-    });
-
-    if (!response.ok) {
-      res.status(response.status).json({ error: `Geoshape fetch failed: ${response.statusText}` });
-      return;
-    }
-
-    const geojson = await response.json();
-    res.json(geojson);
   } catch (err) {
     console.error('[WV Import] Geoshape fetch error for %s:', wikidataId, err);
     res.status(502).json({ error: 'Failed to fetch geoshape from Wikimedia' });
+    return;
   }
+  respond(res, Geoshape, body);
 }
 
 // =============================================================================

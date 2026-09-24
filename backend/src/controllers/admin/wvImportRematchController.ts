@@ -11,6 +11,8 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { respond } from '../../api/respond.js';
+import { RematchStarted, RematchStatus } from '../../api/responses/worldViewImport.js';
 import { runMatchingPolicy } from '../../services/worldViewImport/index.js';
 import { createInitialProgress, type ImportProgress, type MatchingPolicy } from '../../services/worldViewImport/types.js';
 import { IMPORT_SOURCE_TYPES_ALL, defaultMatchingPolicy } from '../../services/worldViewImport/sourceTypes.js';
@@ -80,7 +82,7 @@ export async function rematchWorldView(req: AuthenticatedRequest, res: Response)
     }, 300_000);
   });
 
-  res.json({ started: true, matchingPolicy: policy });
+  respond(res, RematchStarted, { started: true, matchingPolicy: policy });
 }
 
 async function runRematch(
@@ -161,7 +163,7 @@ export function getRematchStatus(req: AuthenticatedRequest, res: Response): void
   const worldViewId = parseInt(String(req.params.worldViewId));
   const entry = runningRematches.get(worldViewId);
   if (entry) {
-    res.json({
+    respond(res, RematchStatus, {
       status: entry.progress.status,
       statusMessage: entry.progress.statusMessage,
       countriesMatched: entry.progress.countriesMatched,
@@ -169,6 +171,6 @@ export function getRematchStatus(req: AuthenticatedRequest, res: Response): void
       noCandidates: entry.progress.noCandidates,
     });
   } else {
-    res.json({ status: 'idle' });
+    respond(res, RematchStatus, { status: 'idle' });
   }
 }
