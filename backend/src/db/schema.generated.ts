@@ -150,6 +150,7 @@ export interface ExperienceKindMembershipsRow {
   source_id: number;
   admission: string;
   admission_reason: string | null;
+  admission_answered_at: Date | null;
   admitted_for: unknown | null;
   is_iconic: boolean;
   curated_fields: unknown;

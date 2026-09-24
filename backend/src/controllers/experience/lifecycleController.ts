@@ -353,7 +353,11 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     return;
   }
 
-  const outcome = await answerAdmissionUnderLock(experienceId, userId, logRegionId, body);
+  // Named field by field: `pin` is the batch's to set, never a request's, and a
+  // card's answer always claims `admission` (ADR-0067).
+  const outcome = await answerAdmissionUnderLock(experienceId, userId, logRegionId, {
+    decision: body.decision, note: body.note,
+  });
   if (outcome.refusal) {
     const { status, ...payload } = outcome.refusal;
     res.status(status).json(payload);
@@ -366,6 +370,25 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
 export interface AdmissionAnswer {
   decision: 'confirm' | 'override';
   note?: string;
+  /**
+   * Whether the answer claims `admission`, so every later run keeps it. A
+   * card's answer does: a person read one row and said why. A batch's does
+   * not (ADR-0067): its confirmation closes the question with
+   * `admission_answered_at`, its put-back admits the row for now, and the next
+   * run applies the rule again. Not on the HTTP body — only the batch sets it.
+   */
+  pin?: boolean;
+}
+
+/** Answered by a card (the admission pin) or by a batch (the mark, ADR-0067). */
+function admissionAnsweredBefore(row: { curated_fields: string[] | null; batch_answered: boolean }): boolean {
+  return (row.curated_fields ?? []).includes('admission') || row.batch_answered === true;
+}
+
+/** The claims after an answer: a card's claims `admission`, a batch's claims nothing. */
+function curatedAfterAnswer(curatedFields: string[] | null, pin: boolean): string[] {
+  const before = curatedFields ?? [];
+  return pin ? [...new Set([...before, 'admission'])] : before;
 }
 
 /**
@@ -377,7 +400,7 @@ export async function answerAdmissionUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { decision, note }: AdmissionAnswer,
+  { decision, note, pin = true }: AdmissionAnswer,
 ): Promise<{ result?: AdmissionResult; refusal?: AnswerRefusal }> {
   const admitted = decision === 'override';
   const client = await pool.connect();
@@ -419,7 +442,7 @@ export async function answerAdmissionUnderLock(
     // refused one, the place's only one until #755.
     const read = await client.query(
       `SELECT m.id AS membership_id, m.admission, m.admission_reason, m.curated_fields,
-              m.curation_state
+              m.curation_state, m.admission_answered_at IS NOT NULL AS batch_answered
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'refused')}
         WHERE e.id = $1`,
@@ -428,7 +451,7 @@ export async function answerAdmissionUnderLock(
     // Present: a DELETE of the row waits on the lock this transaction holds.
     const before = read.rows[0];
     const membershipId = (before.membership_id as number | null) ?? null;
-    const alreadyAnswered = ((before.curated_fields as string[]) ?? []).includes('admission');
+    const alreadyAnswered = admissionAnsweredBefore(before);
 
     // Putting a row back is allowed whatever the pin says, and confirming is
     // not. The asymmetry is the point: `override` is the way back, and a way
@@ -436,12 +459,18 @@ export async function answerAdmissionUnderLock(
     // direction — it reveals rather than hides, and two curators both clicking
     // it reach the same state, so nothing is lost to a race.
     //
-    // `confirm` keeps the pin as its concurrency check, because it hides: a
-    // second curator arriving at a stale card must not silently re-hide a row
-    // the first one just put back. That row is no longer `refused` anyway, so
-    // it is caught by the same condition.
-    const confirmBlocked = !admitted && alreadyAnswered;
-    if (membershipId === null || before.admission !== 'refused' || confirmBlocked) {
+    // `confirm` keeps "already answered" (the pin, or a batch's mark) as its
+    // concurrency check, because it hides: a second curator arriving at a
+    // stale card must not silently re-hide a row the first one just put back.
+    // That row is no longer `refused` anyway, so it is caught by the same
+    // condition.
+    //
+    // A batch answers only open questions, in both directions (ADR-0067). Its
+    // open-question read runs before this lock, so a card's answer can land
+    // in between; a batch put-back over it would keep the card's pin and make
+    // a batch's reversal of a person's answer permanent.
+    const answerBlocked = alreadyAnswered && (!admitted || !pin);
+    if (membershipId === null || before.admission !== 'refused' || answerBlocked) {
       return await refuse({
         status: 409,
         error: alreadyAnswered
@@ -451,7 +480,7 @@ export async function answerAdmissionUnderLock(
       });
     }
 
-    const curated = [...new Set([...((before.curated_fields as string[]) ?? []), 'admission'])];
+    const curated = curatedAfterAnswer(before.curated_fields as string[] | null, pin);
     // The reason is resolved here rather than in a CASE over $2. Postgres has to
     // deduce one type per placeholder, and a parameter used both as the value of
     // a varchar column and as the left side of a text comparison gives it two —
@@ -502,6 +531,7 @@ export async function answerAdmissionUnderLock(
       SET admission = $2,
           admission_reason = $3,
           curated_fields = $4,
+          admission_answered_at = ${!admitted && !pin ? 'NOW()' : 'NULL'},
           updated_at = NOW()${publishSet}${iconicAfterVerdictSql(admitted)}
       WHERE m.id = $1
     `, [
@@ -544,7 +574,7 @@ export async function answerAdmissionUnderLock(
       VALUES ($1, $2, $3, $4, $5)
     `, [experienceId, userId, admitted ? 'admission_overridden' : 'admission_confirmed', logRegionId,
       JSON.stringify({
-        reason: before.admission_reason, note: note ?? null, published: publishes,
+        reason: before.admission_reason, note: note ?? null, published: publishes, pinned: pin,
         locations: locationsPublished, treasureLinks: treasureLinksPublished,
         treasures: treasuresPublished, withdrawalsReleased,
       })]);

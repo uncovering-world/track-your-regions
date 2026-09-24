@@ -130,6 +130,17 @@ export function admissionPinnedSql(alias = 'm'): string {
   return `${alias}.curated_fields ? 'admission'`;
 }
 
+/**
+ * A refusal a person has answered (ADR-0067): pinned by a card's answer, or
+ * confirmed by a batch answer, which pins nothing and leaves
+ * `admission_answered_at` instead. The review queue's open refusal is its
+ * negation; the kept-out list is the answered ones. `alias` is the
+ * membership alias.
+ */
+export function admissionAnsweredSql(alias = 'm'): string {
+  return `(${admissionPinnedSql(alias)} OR ${alias}.admission_answered_at IS NOT NULL)`;
+}
+
 /** A curator's pin on the must-see badge. `alias` is the membership alias. */
 export function iconicPinnedSql(alias = 'm'): string {
   return `${alias}.curated_fields ? 'is_iconic'`;

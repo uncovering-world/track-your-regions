@@ -22,7 +22,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { getReviewQueue } from './reviewQueueController.js';
-import { admissionPinnedSql, membershipAdmittedSql } from '../../db/membership.js';
+import { admissionAnsweredSql, membershipAdmittedSql } from '../../db/membership.js';
 import {
   hidePendingSql, hideRefusedSql, offeredLinkSql, offeredLocationSql,
 } from './experienceLifecycle.js';
@@ -101,13 +101,13 @@ describe('getReviewQueue', () => {
   it('asks separately for the rows its kind refused', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
-    // An answered refusal is pinned, and the pin is what takes it out of the
-    // open list — in both directions, so a confirmed row does not reappear
-    // here either. It reappears in the kept-out list below, which is a
-    // different thing: not a question, just the only way back.
-    // The verdict and the pin are the membership's (#822), through the one
-    // spelling of the pin the writers honour.
-    const [refusedSql] = callMatching(`NOT ${admissionPinnedSql('m')}`);
+    // An answered refusal — pinned by a card, or marked by a batch that pins
+    // nothing (ADR-0067) — is what takes it out of the open list, in both
+    // directions, so a confirmed row does not reappear here either. It
+    // reappears in the kept-out list below, which is a different thing: not a
+    // question, just the only way back. The verdict and the answer are the
+    // membership's (#822), through the one spelling the writers honour.
+    const [refusedSql] = callMatching(`NOT ${admissionAnsweredSql('m')}`);
     expect(refusedSql).toContain("m.admission = 'refused'");
     expect(refusedSql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.source_id');
     expect(refusedSql).toContain('m.admission_reason');
@@ -121,8 +121,9 @@ describe('getReviewQueue', () => {
     // "put it back" button has nowhere to live and one click is permanent.
     const [keptOutSql] = callMatching("'kept-out' AS kind");
     expect(keptOutSql).toContain("m.admission = 'refused'");
-    expect(keptOutSql).toContain(admissionPinnedSql('m'));
-    expect(keptOutSql).not.toContain(`NOT ${admissionPinnedSql('m')}`);
+    // A batch-confirmed refusal is kept out too, though it carries no pin.
+    expect(keptOutSql).toContain(admissionAnsweredSql('m'));
+    expect(keptOutSql).not.toContain(`NOT ${admissionAnsweredSql('m')}`);
     // The membership the row's own source brought, not any membership of the
     // place: the day a place has two (#755), another source's refusal must
     // not surface under this source's heading.
