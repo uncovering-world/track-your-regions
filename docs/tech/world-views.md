@@ -366,6 +366,16 @@ Nordic Countries
 └── Finland (subregion)
 ```
 
+Each member *row* becomes a subregion, and the row itself moves into it (`expandToSubregions`, #1004). A cut part keeps its geometry and takes its own name (`custom_name`, falling back to the division's). A division held as two parts — Russia west of the Urals and the Urals strip, say — becomes two subregions, each holding its part, never two copies of the whole of Russia.
+
+**Members move as rows wherever a region's members go elsewhere** (`moveMembersToRegion` in `backend/src/controllers/worldView/helpers.ts`, #384). The writers that send a region's members elsewhere all call it:
+- deleting a region with its children moved to the parent (`deleteRegion`);
+- flattening a subregion into its parent, row by row for the subregion and every region under it (`flattenSubregion`);
+- the import review's remove with its divisions moved to the parent (`removeRegionFromImport`);
+- the import review's merge of a region's only child into it (`mergeChildIntoParent`, through `moveChildDataToParent`).
+
+A cut part arrives as the part it is rather than widened to the whole division, and a cut the parent already holds stays beside it. The only row that does not move is a whole division the parent already holds whole: it adds nothing to the parent's coverage, and the unique index refuses a second copy.
+
 ### 8. Color Management
 
 Each region has a color for map visualization.
