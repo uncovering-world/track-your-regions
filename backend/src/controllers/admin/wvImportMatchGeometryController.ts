@@ -22,6 +22,11 @@ import {
   generateDivisionsSvg,
   fetchMarkersForDivisions,
 } from './wvImportMatchHelpers.js';
+import { respond } from '../../api/respond.js';
+import type { AreaGeometry } from '../../api/responses/regions.js';
+import {
+  SplitDeeperResult, UnionGeometryResult, VisionMatchResult, type DivisionPreview, type DivisionShapeFeature,
+} from '../../api/responses/wvImportCoverage.js';
 
 /**
  * Return per-division geometries as a FeatureCollection with assignment info.
@@ -58,7 +63,7 @@ export async function getUnionGeometry(req: AuthenticatedRequest, res: Response)
     ? await fetchMarkersForDivisions(regionId, divisionIds)
     : { points: [] as PointInfo[], divisionsWithPoints: new Set<number>() };
 
-  const features: Array<{ type: 'Feature'; properties: Record<string, unknown>; geometry: unknown }> = [];
+  const features: DivisionPreview['features'] = [];
   for (const row of result.rows) {
     if (row.geojson) {
       const divId = row.id as number;
@@ -71,7 +76,7 @@ export async function getUnionGeometry(req: AuthenticatedRequest, res: Response)
           hasPoints: divisionsWithPoints.has(divId),
           ...(assignedTo ? { assignedTo } : {}),
         },
-        geometry: JSON.parse(row.geojson as string),
+        geometry: JSON.parse(row.geojson as string) as AreaGeometry,
       });
     }
   }
@@ -89,7 +94,7 @@ export async function getUnionGeometry(req: AuthenticatedRequest, res: Response)
     res.status(404).json({ error: 'No geometry found for given divisions' });
     return;
   }
-  res.json({ geometry: { type: 'FeatureCollection', features } });
+  respond(res, UnionGeometryResult, { geometry: { type: 'FeatureCollection', features } });
 }
 
 /**
@@ -196,8 +201,6 @@ async function queryDeeperDivisions(
   `, [divisionIds]);
 }
 
-type DeeperFeature = { type: 'Feature'; properties: Record<string, unknown>; geometry: unknown };
-
 /**
  * Fetch per-division geometry features and populate the assigned-to map.
  */
@@ -205,8 +208,8 @@ async function loadDivisionGeometries(
   resultIds: number[],
   worldViewId: number,
   assignedMap: Map<number, string>,
-): Promise<DeeperFeature[]> {
-  const features: DeeperFeature[] = [];
+): Promise<DivisionShapeFeature[]> {
+  const features: DivisionShapeFeature[] = [];
   if (resultIds.length === 0) return features;
 
   const assignedResult = await pool.query(`
@@ -240,7 +243,7 @@ async function loadDivisionGeometries(
         hasPoints: false,
         ...(assignedTo ? { assignedTo } : {}),
       },
-      geometry: JSON.parse(row.geojson as string),
+      geometry: JSON.parse(row.geojson as string) as AreaGeometry,
     });
   }
   return features;
@@ -254,7 +257,7 @@ async function appendExternalPointMatches(
   points: PointInfo[],
   resultIds: number[],
   rows: Array<Record<string, unknown>>,
-  features: DeeperFeature[],
+  features: DivisionShapeFeature[],
   assignedMap: Map<number, string>,
   divisionsWithPoints: Set<number>,
   worldViewId: number,
@@ -314,7 +317,7 @@ async function appendExternalPointMatches(
           hasPoints: true,
           ...(assignedTo ? { assignedTo } : {}),
         },
-        geometry: JSON.parse(geoRow.rows[0].geojson as string),
+        geometry: JSON.parse(geoRow.rows[0].geojson as string) as AreaGeometry,
       });
     }
   }
@@ -364,27 +367,28 @@ export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Respo
   const filteredRows = usePointFilter
     ? result.rows.filter(r => divisionsWithPoints.has(r.id as number))
     : result.rows;
-  const filteredFeatures = usePointFilter
-    ? features.filter(f => divisionsWithPoints.has(f.properties.divisionId as number))
+  const divisionFeatures = usePointFilter
+    ? features.filter(f => divisionsWithPoints.has(f.properties.divisionId))
     : features;
 
   // Mark features that contain points
-  for (const f of filteredFeatures) {
-    if (divisionsWithPoints.has(f.properties.divisionId as number)) {
+  for (const f of divisionFeatures) {
+    if (divisionsWithPoints.has(f.properties.divisionId)) {
       f.properties.hasPoints = true;
     }
   }
 
   // Add point markers as features
-  for (const p of points) {
-    filteredFeatures.push({
-      type: 'Feature',
-      properties: { name: p.name, isMarker: true },
-      geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-    });
-  }
+  const filteredFeatures: DivisionPreview['features'] = [
+    ...divisionFeatures,
+    ...points.map(p => ({
+      type: 'Feature' as const,
+      properties: { name: p.name, isMarker: true as const },
+      geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] as [number, number] },
+    })),
+  ];
 
-  res.json({
+  respond(res, SplitDeeperResult, {
     divisions: filteredRows.map(r => ({
       divisionId: r.id as number,
       name: r.name as string,
@@ -397,7 +401,7 @@ export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Respo
     geometry: filteredFeatures.length > 0
       ? { type: 'FeatureCollection', features: filteredFeatures }
       : null,
-    points: points.length > 0 ? points : undefined,
+    ...(points.length > 0 ? { points: points.map(p => ({ name: p.name, lat: p.lat, lon: p.lon })) } : {}),
   });
 }
 
@@ -461,7 +465,7 @@ export async function visionMatchDivisions(req: AuthenticatedRequest, res: Respo
 
   const result = await matchDivisionsByVision(regionName, hiresImageUrl, pngBase64, divisions);
 
-  res.json({
+  respond(res, VisionMatchResult, {
     suggestedIds: result.suggestedIds,
     rejectedIds: result.rejectedIds,
     unclearIds: result.unclearIds,

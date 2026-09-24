@@ -2,7 +2,10 @@
  * What the world-view import's coverage check answers (ADR-0066): the success
  * bodies of the endpoints `frontend/src/api/admin/wvImportCoverage.ts` calls,
  * declared once. That is the check itself and its stream, a gap's geographic
- * suggestion, a reviewer's verdicts on gaps, and closing the review.
+ * suggestion, a reviewer's verdicts on gaps, closing the review, and the
+ * geometry the review draws: containers' coverage, a region's own and its
+ * descendants' outlines, the gaps between them, and divisions previewed,
+ * split deeper or read off a map by a model.
  *
  * The stream's events are one union, `CoverageEvent`, each written with
  * `writeEvent()`, which holds it to the schema as `respond()` holds a body.
@@ -14,6 +17,7 @@
  */
 
 import { z } from 'zod/v4';
+import { AreaGeometry } from './regions.js';
 
 // ---------------------------------------------------------------------------
 // The coverage check
@@ -134,3 +138,123 @@ export const ReviewFinalized = z.strictObject({
   worldViewId: z.number().int(),
 }).describe('A world view\'s match review closed; it leaves the active review list.');
 export type ReviewFinalized = z.infer<typeof ReviewFinalized>;
+
+// ---------------------------------------------------------------------------
+// The geometry the review draws
+// ---------------------------------------------------------------------------
+
+export const ChildrenCoverage = z.strictObject({
+  coverage: z.record(z.string(), z.number()).describe('By region id: the share, 0 to 1, of the region\'s own divisions its descendants\' divisions cover, or of its geoshape where it holds none.'),
+  geoshapeCoverage: z.record(z.string(), z.number()).describe('By region id: the share of the region\'s geoshape its assigned divisions cover.'),
+}).describe('How much of each container its children cover.');
+export type ChildrenCoverage = z.infer<typeof ChildrenCoverage>;
+
+export const CoverageGeometry = z.strictObject({
+  parentGeometry: AreaGeometry.nullable().describe('The divisions the region holds itself, unified; null where it holds none.'),
+  childrenGeometry: AreaGeometry.nullable().describe('Its descendants\' divisions, unified.'),
+  geoshapeGeometry: AreaGeometry.nullable().describe('Its Wikidata geoshape, where one is cached.'),
+}).describe('A region\'s own outline beside its descendants\' and its geoshape, to compare.');
+export type CoverageGeometry = z.infer<typeof CoverageGeometry>;
+
+export const SiblingRegionGeometry = z.strictObject({
+  regionId: z.number().int(),
+  name: z.string(),
+  geometry: AreaGeometry,
+}).describe('A child region\'s divisions, unified.');
+export type SiblingRegionGeometry = z.infer<typeof SiblingRegionGeometry>;
+
+export const ChildRegionGeometries = z.strictObject({
+  childRegions: z.array(SiblingRegionGeometry),
+}).describe('A region\'s children\'s outlines, for drilling into the gap map.');
+export type ChildRegionGeometries = z.infer<typeof ChildRegionGeometries>;
+
+export const CoverageGapDivision = z.strictObject({
+  divisionId: z.number().int(),
+  gadmParentId: z.number().int().nullable(),
+  name: z.string(),
+  path: z.string(),
+  level: z.number().int().describe('Its depth in GADM.'),
+  areaKm2: z.number().int(),
+  overlapWithGap: z.number().describe('The share of the division inside the gap, rounded to two places.'),
+  geometry: AreaGeometry.nullable(),
+  suggestedTarget: z.strictObject({
+    regionId: z.number().int(),
+    regionName: z.string(),
+  }).nullable().describe('The child region nearest the division.'),
+}).describe('A GADM division inside the area a region holds but its children do not.');
+export type CoverageGapDivision = z.infer<typeof CoverageGapDivision>;
+
+export const CoverageGapAnalysis = z.strictObject({
+  gapDivisions: z.array(CoverageGapDivision),
+  siblingRegions: z.array(SiblingRegionGeometry).describe('The region\'s children\'s outlines, to draw the gaps among.'),
+  message: z.string().optional().describe('Sent when there was nothing to compare: the region holds no divisions and none matched its name.'),
+}).describe('The divisions between a region\'s outline and its children\'s, and where each could go.');
+export type CoverageGapAnalysis = z.infer<typeof CoverageGapAnalysis>;
+
+export const DivisionShapeFeature = z.strictObject({
+  type: z.literal('Feature'),
+  geometry: AreaGeometry,
+  properties: z.strictObject({
+    name: z.string(),
+    divisionId: z.number().int(),
+    hasPoints: z.boolean().describe('Whether one of the region\'s Wikivoyage markers lies in it.'),
+    assignedTo: z.string().optional().describe('The region already holding it, by name.'),
+  }),
+}).describe('A GADM division drawn for preview.');
+export type DivisionShapeFeature = z.infer<typeof DivisionShapeFeature>;
+
+export const MarkerPointFeature = z.strictObject({
+  type: z.literal('Feature'),
+  geometry: z.strictObject({
+    type: z.literal('Point'),
+    coordinates: z.tuple([z.number(), z.number()]).describe('Longitude and latitude.'),
+  }),
+  properties: z.strictObject({
+    name: z.string(),
+    isMarker: z.literal(true),
+  }),
+}).describe('A marker from the region\'s Wikivoyage article.');
+export type MarkerPointFeature = z.infer<typeof MarkerPointFeature>;
+
+export const DivisionPreview = z.strictObject({
+  type: z.literal('FeatureCollection'),
+  features: z.array(z.union([DivisionShapeFeature, MarkerPointFeature])),
+}).describe('Divisions drawn for preview, with the region\'s markers.');
+export type DivisionPreview = z.infer<typeof DivisionPreview>;
+
+export const UnionGeometryResult = z.strictObject({
+  geometry: DivisionPreview,
+}).describe('Divisions previewed together, each drawn on its own.');
+export type UnionGeometryResult = z.infer<typeof UnionGeometryResult>;
+
+export const SplitDeeperResult = z.strictObject({
+  divisions: z.array(z.strictObject({
+    divisionId: z.number().int(),
+    name: z.string(),
+    path: z.string(),
+    parentId: z.number().int().nullable(),
+    coverage: z.number().nullable().describe('The share of the region\'s geoshape that falls inside the division; null without a geoshape.'),
+    hasPoints: z.boolean(),
+    assignedTo: z.string().nullable(),
+  })).describe('The GADM children that replace the divisions split.'),
+  geometry: DivisionPreview.nullable(),
+  points: z.array(z.strictObject({
+    name: z.string(),
+    lat: z.number(),
+    lon: z.number(),
+  })).optional().describe('Sent where the region\'s article has markers.'),
+}).describe('Divisions replaced by their GADM children that fall in the region.');
+export type SplitDeeperResult = z.infer<typeof SplitDeeperResult>;
+
+export const VisionMatchResult = z.strictObject({
+  suggestedIds: z.array(z.number().int()).describe('Divisions the model read as inside the region on its map.'),
+  rejectedIds: z.array(z.number().int()),
+  unclearIds: z.array(z.number().int()).describe('Divisions the model read as on the border.'),
+  reasoning: z.string(),
+  cost: z.number().describe('In US dollars.'),
+  debugImages: z.strictObject({
+    regionMap: z.string().describe('The region\'s map, as sent to the model.'),
+    divisionsMap: z.string().describe('The numbered divisions, as a PNG data URL.'),
+  }),
+}).describe('A model\'s reading of which candidate divisions a region\'s map covers.');
+export type VisionMatchResult = z.infer<typeof VisionMatchResult>;

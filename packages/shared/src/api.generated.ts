@@ -473,6 +473,11 @@ export interface ChildRegionAdded {
   regionId: number;
 }
 
+/** A region's children's outlines, for drilling into the gap map. */
+export interface ChildRegionGeometries {
+  childRegions: SiblingRegionGeometry[];
+}
+
 /** A child region of the region being matched. */
 export interface ChildRegionRef {
   id: number;
@@ -506,6 +511,17 @@ export interface ChildrenCollapsed {
   /** Suggestions a database search then found for the region itself. */
   parentSuggestions: number;
   undoAvailable: true;
+}
+
+/** How much of each container its children cover. */
+export interface ChildrenCoverage {
+  /**
+   * By region id: the share, 0 to 1, of the region's own divisions its descendants' divisions
+   * cover, or of its geoshape where it holds none.
+   */
+  coverage: Record<string, number>;
+  /** By region id: the share of the region's geoshape its assigned divisions cover. */
+  geoshapeCoverage: Record<string, number>;
 }
 
 /** A region's descendants deleted, making it a leaf. */
@@ -867,6 +883,47 @@ export interface CoverageGap {
   subtree?: GapSubtreeNode[];
 }
 
+/** The divisions between a region's outline and its children's, and where each could go. */
+export interface CoverageGapAnalysis {
+  gapDivisions: CoverageGapDivision[];
+  /** The region's children's outlines, to draw the gaps among. */
+  siblingRegions: SiblingRegionGeometry[];
+  /**
+   * Sent when there was nothing to compare: the region holds no divisions and none matched its
+   * name.
+   */
+  message?: string;
+}
+
+/** A GADM division inside the area a region holds but its children do not. */
+export interface CoverageGapDivision {
+  divisionId: number;
+  gadmParentId: number | null;
+  name: string;
+  path: string;
+  /** Its depth in GADM. */
+  level: number;
+  areaKm2: number;
+  /** The share of the division inside the gap, rounded to two places. */
+  overlapWithGap: number;
+  geometry: AreaGeometry | null;
+  /** The child region nearest the division. */
+  suggestedTarget: {
+    regionId: number;
+    regionName: string;
+  } | null;
+}
+
+/** A region's own outline beside its descendants' and its geoshape, to compare. */
+export interface CoverageGeometry {
+  /** The divisions the region holds itself, unified; null where it holds none. */
+  parentGeometry: AreaGeometry | null;
+  /** Its descendants' divisions, unified. */
+  childrenGeometry: AreaGeometry | null;
+  /** Its Wikidata geoshape, where one is cached. */
+  geoshapeGeometry: AreaGeometry | null;
+}
+
 /** A step of the coverage check, begun. */
 export interface CoverageProgress {
   type: "progress";
@@ -1208,6 +1265,12 @@ export interface DivisionOverlaps {
   overlaps: DivisionOverlap[];
 }
 
+/** Divisions drawn for preview, with the region's markers. */
+export interface DivisionPreview {
+  type: "FeatureCollection";
+  features: (DivisionShapeFeature | MarkerPointFeature)[];
+}
+
 /** Divisions added to a region, directly or as subregions of it. */
 export interface DivisionsAdded {
   /** How many divisions the call named. */
@@ -1242,6 +1305,20 @@ export interface DivisionSearchResult {
 
 /** The best matches, at most as many as asked for. */
 export type DivisionSearchResults = DivisionSearchResult[];
+
+/** A GADM division drawn for preview. */
+export interface DivisionShapeFeature {
+  type: "Feature";
+  geometry: AreaGeometry;
+  properties: {
+    name: string;
+    divisionId: number;
+    /** Whether one of the region's Wikivoyage markers lies in it. */
+    hasPoints: boolean;
+    /** The region already holding it, by name. */
+    assignedTo?: string;
+  };
+}
 
 /** Division members removed from a region. */
 export interface DivisionsRemoved {
@@ -2269,6 +2346,20 @@ export interface MarkerPoint {
   name: string;
   lat: number;
   lon: number;
+}
+
+/** A marker from the region's Wikivoyage article. */
+export interface MarkerPointFeature {
+  type: "Feature";
+  geometry: {
+    type: "Point";
+    /** Longitude and latitude. */
+    coordinates: [number, number];
+  };
+  properties: {
+    name: string;
+    isMarker: true;
+  };
 }
 
 /** One suggestion accepted; the region's other suggestions stay open. */
@@ -3382,6 +3473,13 @@ export interface SessionStarted {
   user: PublicUser;
 }
 
+/** A child region's divisions, unified. */
+export interface SiblingRegionGeometry {
+  regionId: number;
+  name: string;
+  geometry: AreaGeometry;
+}
+
 /** A GADM parent that took the place of its children in a region's members. */
 export interface SimplifyReplacement {
   parentName: string;
@@ -3492,6 +3590,30 @@ export interface SpatialAnomalyDivision {
   memberRowId: number | null;
   sourceRegionId: number;
   sourceRegionName: string;
+}
+
+/** Divisions replaced by their GADM children that fall in the region. */
+export interface SplitDeeperResult {
+  /** The GADM children that replace the divisions split. */
+  divisions: {
+    divisionId: number;
+    name: string;
+    path: string;
+    parentId: number | null;
+    /**
+     * The share of the region's geoshape that falls inside the division; null without a geoshape.
+     */
+    coverage: number | null;
+    hasPoints: boolean;
+    assignedTo: string | null;
+  }[];
+  geometry: DivisionPreview | null;
+  /** Sent where the region's article has markers. */
+  points?: {
+    name: string;
+    lat: number;
+    lon: number;
+  }[];
 }
 
 /**
@@ -3785,6 +3907,11 @@ export interface TreasureViewUnmarked {
 /** A tree edit that can be undone: the store keeps the last one per world view. */
 export type UndoOperation = "dismiss-children" | "handle-as-grouping" | "smart-flatten" | "collapse-to-parent" | "auto-resolve-children" | "prune-to-leaves";
 
+/** Divisions previewed together, each drawn on its own. */
+export interface UnionGeometryResult {
+  geometry: DivisionPreview;
+}
+
 /** What asking again about turned-down points and works did. */
 export interface UnrefuseContentsResult {
   /** Set when the publication landed and re-placing the object into its regions did not. */
@@ -3819,6 +3946,24 @@ export type UserSearchResults = UserSearchResult[];
 /** The works the reader has marked seen. */
 export interface ViewedTreasureIds {
   viewedTreasureIds: number[];
+}
+
+/** A model's reading of which candidate divisions a region's map covers. */
+export interface VisionMatchResult {
+  /** Divisions the model read as inside the region on its map. */
+  suggestedIds: number[];
+  rejectedIds: number[];
+  /** Divisions the model read as on the border. */
+  unclearIds: number[];
+  reasoning: string;
+  /** In US dollars. */
+  cost: number;
+  debugImages: {
+    /** The region's map, as sent to the model. */
+    regionMap: string;
+    /** The numbered divisions, as a PNG data URL. */
+    divisionsMap: string;
+  };
 }
 
 /** The objects the reader has marked visited. */

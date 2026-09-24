@@ -9,6 +9,12 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { computeMultiDivisionCoverage } from '../../services/worldViewImport/geoshapeCoverage.js';
+import { respond } from '../../api/respond.js';
+import type { AreaGeometry } from '../../api/responses/regions.js';
+import {
+  ChildRegionGeometries, ChildrenCoverage, CoverageGapAnalysis, CoverageGeometry,
+  type SiblingRegionGeometry, type CoverageGapDivision,
+} from '../../api/responses/wvImportCoverage.js';
 
 const CONCURRENCY = 10;
 
@@ -384,6 +390,7 @@ export async function getChildrenCoverage(req: AuthenticatedRequest, res: Respon
   const targetRegionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
   const onlyId = req.query.onlyId ? parseInt(String(req.query.onlyId)) : null;
 
+  let body: ChildrenCoverage;
   try {
     const topology = await loadRegionTopology(worldViewId);
     const targetAncestorIds = computeTargetAncestors(onlyId, targetRegionId, topology.parentOf);
@@ -408,11 +415,13 @@ export async function getChildrenCoverage(req: AuthenticatedRequest, res: Respon
       (onlyId ? ` (onlyId=${onlyId})` : ''));
     logLowCoverage(coverage, topology, descendantDivsByContainer);
 
-    res.json({ coverage, geoshapeCoverage });
+    body = { coverage, geoshapeCoverage };
   } catch (err) {
     console.error('[WV Import] Children coverage failed:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Children coverage failed' });
+    return;
   }
+  respond(res, ChildrenCoverage, body);
 }
 
 /**
@@ -457,6 +466,7 @@ export async function getCoverageGeometry(req: AuthenticatedRequest, res: Respon
   const worldViewId = parseInt(String(req.params.worldViewId));
   const regionId = parseInt(String(req.params.regionId));
 
+  let body: CoverageGeometry;
   try {
     const parentDivIds = await loadParentDivIdsWithFallback(worldViewId, regionId);
 
@@ -505,20 +515,22 @@ export async function getCoverageGeometry(req: AuthenticatedRequest, res: Respon
     ]);
 
     const parentGeometry = parentGeo?.rows[0]?.geojson
-      ? JSON.parse(parentGeo.rows[0].geojson as string) as GeoJSON.Geometry
+      ? JSON.parse(parentGeo.rows[0].geojson as string) as AreaGeometry
       : null;
     const childrenGeometry = childrenGeo?.rows[0]?.geojson
-      ? JSON.parse(childrenGeo.rows[0].geojson as string) as GeoJSON.Geometry
+      ? JSON.parse(childrenGeo.rows[0].geojson as string) as AreaGeometry
       : null;
     const geoshapeGeometry = geoshapeGeo?.rows[0]?.geojson
-      ? JSON.parse(geoshapeGeo.rows[0].geojson as string) as GeoJSON.Geometry
+      ? JSON.parse(geoshapeGeo.rows[0].geojson as string) as AreaGeometry
       : null;
 
-    res.json({ parentGeometry, childrenGeometry, geoshapeGeometry });
+    body = { parentGeometry, childrenGeometry, geoshapeGeometry };
   } catch (err) {
     console.error('[WV Import] Coverage geometry failed:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Coverage geometry failed' });
+    return;
   }
+  respond(res, CoverageGeometry, body);
 }
 
 /** Aggregate all descendant division IDs for a region. */
@@ -635,8 +647,8 @@ async function loadChildRegionDivIds(
 async function buildChildRegionGeometries(
   childRegionDivIds: Map<number, number[]>,
   childNames: Map<number, string>,
-): Promise<Array<{ regionId: number; name: string; geometry: GeoJSON.Geometry }>> {
-  const results: Array<{ regionId: number; name: string; geometry: GeoJSON.Geometry }> = [];
+): Promise<SiblingRegionGeometry[]> {
+  const results: SiblingRegionGeometry[] = [];
   if (childRegionDivIds.size === 0) return results;
 
   const allDivIdsFlat: number[] = [];
@@ -670,7 +682,7 @@ async function buildChildRegionGeometries(
       results.push({
         regionId: rId,
         name: childNames.get(rId) ?? `Region ${rId}`,
-        geometry: JSON.parse(row.geojson as string),
+        geometry: JSON.parse(row.geojson as string) as AreaGeometry,
       });
     }
   }
@@ -725,16 +737,110 @@ async function findNearestChildPerGapDivision(
   return suggestedTargets;
 }
 
-interface GapDivision {
-  divisionId: number;
-  gadmParentId: number | null;
-  name: string;
-  path: string;
-  level: number;
-  areaKm2: number;
-  overlapWithGap: number;
-  geometry: GeoJSON.Geometry | null;
-  suggestedTarget: { regionId: number; regionName: string } | null;
+/** The divisions between a region's outline and its children's, and the child nearest each. */
+async function coverageGapAnalysisOf(worldViewId: number, regionId: number): Promise<CoverageGapAnalysis> {
+  const t0 = Date.now();
+  const logTiming = (label: string) => console.log(`  [CoverageGap] ${label} — ${Date.now() - t0}ms`);
+
+  const parentDivIds = await loadParentDivIdsWithFallback(worldViewId, regionId);
+  if (parentDivIds.length === 0) {
+    return { gapDivisions: [], siblingRegions: [], message: 'Region has no assigned divisions and no GADM name match found' };
+  }
+  logTiming(`Step 1: parent divs (${parentDivIds.length} divisions)`);
+
+  const { rows: descendantRows, allDivIds: allDescendantDivIds } =
+    await loadAllDescendantDivIds(worldViewId, regionId);
+  logTiming(`Step 2: descendants (${descendantRows.length} regions, ${allDescendantDivIds.length} divs)`);
+
+  const directChildrenResult = await pool.query(
+    `SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2 ORDER BY name`,
+    [regionId, worldViewId],
+  );
+  const directChildren = directChildrenResult.rows as Array<{ id: number; name: string }>;
+  logTiming(`Step 3: direct children (${directChildren.length} children)`);
+
+  // 4. Find GADM divisions in the gap using PostGIS difference
+  const gapResult = await pool.query(`
+    WITH parent_union AS (
+      SELECT ST_ForcePolygonCCW(ST_CollectionExtract(
+        ST_MakeValid(ST_Union(ad.geom_simplified_medium)), 3
+      )) AS geom
+      FROM administrative_divisions ad
+      WHERE ad.id = ANY($1) AND ad.geom_simplified_medium IS NOT NULL
+    ),
+    descendant_union AS (
+      SELECT ST_ForcePolygonCCW(ST_CollectionExtract(
+        ST_MakeValid(ST_Union(ad.geom_simplified_medium)), 3
+      )) AS geom
+      FROM administrative_divisions ad
+      WHERE ad.id = ANY($2) AND ad.geom_simplified_medium IS NOT NULL
+    ),
+    gap AS (
+      SELECT ST_MakeValid(ST_Difference(
+        p.geom,
+        COALESCE(du.geom, ST_GeomFromText('GEOMETRYCOLLECTION EMPTY', 4326))
+      )) AS geom
+      FROM parent_union p
+      CROSS JOIN (SELECT geom FROM descendant_union UNION ALL SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM descendant_union)) du
+      LIMIT 1
+    )
+    SELECT
+      d.id, d.name, d.parent_id,
+      safe_geo_area(d.geom_simplified_medium) / 1e6 AS area_km2,
+      safe_geo_area(ST_Intersection(d.geom_simplified_medium, g.geom)) /
+        NULLIF(safe_geo_area(d.geom_simplified_medium), 0) AS overlap_pct,
+      ST_AsGeoJSON(ST_SimplifyPreserveTopology(d.geom_simplified_medium, 0.01)) AS geojson
+    FROM administrative_divisions d
+    CROSS JOIN gap g
+    WHERE NOT ST_IsEmpty(g.geom)
+      AND ST_Intersects(d.geom_simplified_medium, g.geom)
+      AND d.id != ALL($3)
+      AND safe_geo_area(ST_Intersection(d.geom_simplified_medium, g.geom)) /
+          NULLIF(safe_geo_area(d.geom_simplified_medium), 0) > 0.3
+    ORDER BY area_km2 DESC
+    LIMIT 30
+  `, [parentDivIds, allDescendantDivIds.length > 0 ? allDescendantDivIds : [0], allDescendantDivIds.length > 0 ? allDescendantDivIds : [0]]);
+
+  logTiming(`Step 4: gap query (${gapResult.rows.length} gap divisions, parent=${parentDivIds.length} divs, desc=${allDescendantDivIds.length} divs)`);
+
+  const gapRows = gapResult.rows as Array<{
+    id: number;
+    name: string;
+    parent_id: number | null;
+    area_km2: number;
+    overlap_pct: number;
+    geojson: string | null;
+  }>;
+
+  const pathMap = await buildGapNamePaths(gapRows);
+  logTiming(`Step 5: name paths (${gapRows.length} divisions)`);
+
+  const childRegionDivIds = await loadChildRegionDivIds(worldViewId, regionId);
+  const childNames = new Map(directChildren.map(c => [c.id, c.name]));
+  const siblingRegions = await buildChildRegionGeometries(childRegionDivIds, childNames);
+  logTiming(`Step 5b: sibling geometries (${siblingRegions.length} siblings)`);
+
+  const gapDivIds = gapRows.map(r => r.id);
+  const suggestedTargets = await findNearestChildPerGapDivision(gapDivIds, regionId, directChildren.length);
+
+  const gapDivisions: CoverageGapDivision[] = gapRows.map((row) => {
+    const pathInfo = pathMap.get(row.id);
+    return {
+      divisionId: row.id,
+      gadmParentId: row.parent_id,
+      name: row.name,
+      path: pathInfo?.path ?? row.name,
+      level: pathInfo?.level ?? 0,
+      areaKm2: Math.round(row.area_km2),
+      overlapWithGap: Math.round(row.overlap_pct * 100) / 100,
+      geometry: row.geojson ? JSON.parse(row.geojson) as AreaGeometry : null,
+      suggestedTarget: suggestedTargets.get(row.id) ?? null,
+    };
+  });
+
+  logTiming(`Step 6: nearest-child KNN (${gapDivIds.length} gaps × ${directChildren.length} children)`);
+
+  return { gapDivisions, siblingRegions };
 }
 
 /**
@@ -748,114 +854,15 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
   const regionId = parseInt(String(req.params.regionId));
   console.log(`[WV Import] POST /matches/${worldViewId}/coverage-gap-analysis/${regionId}`);
 
+  let body: CoverageGapAnalysis;
   try {
-    const t0 = Date.now();
-    const logTiming = (label: string) => console.log(`  [CoverageGap] ${label} — ${Date.now() - t0}ms`);
-
-    const parentDivIds = await loadParentDivIdsWithFallback(worldViewId, regionId);
-    if (parentDivIds.length === 0) {
-      res.json({ gapDivisions: [], siblingRegions: [], message: 'Region has no assigned divisions and no GADM name match found' });
-      return;
-    }
-    logTiming(`Step 1: parent divs (${parentDivIds.length} divisions)`);
-
-    const { rows: descendantRows, allDivIds: allDescendantDivIds } =
-      await loadAllDescendantDivIds(worldViewId, regionId);
-    logTiming(`Step 2: descendants (${descendantRows.length} regions, ${allDescendantDivIds.length} divs)`);
-
-    const directChildrenResult = await pool.query(
-      `SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2 ORDER BY name`,
-      [regionId, worldViewId],
-    );
-    const directChildren = directChildrenResult.rows as Array<{ id: number; name: string }>;
-    logTiming(`Step 3: direct children (${directChildren.length} children)`);
-
-    // 4. Find GADM divisions in the gap using PostGIS difference
-    const gapResult = await pool.query(`
-      WITH parent_union AS (
-        SELECT ST_ForcePolygonCCW(ST_CollectionExtract(
-          ST_MakeValid(ST_Union(ad.geom_simplified_medium)), 3
-        )) AS geom
-        FROM administrative_divisions ad
-        WHERE ad.id = ANY($1) AND ad.geom_simplified_medium IS NOT NULL
-      ),
-      descendant_union AS (
-        SELECT ST_ForcePolygonCCW(ST_CollectionExtract(
-          ST_MakeValid(ST_Union(ad.geom_simplified_medium)), 3
-        )) AS geom
-        FROM administrative_divisions ad
-        WHERE ad.id = ANY($2) AND ad.geom_simplified_medium IS NOT NULL
-      ),
-      gap AS (
-        SELECT ST_MakeValid(ST_Difference(
-          p.geom,
-          COALESCE(du.geom, ST_GeomFromText('GEOMETRYCOLLECTION EMPTY', 4326))
-        )) AS geom
-        FROM parent_union p
-        CROSS JOIN (SELECT geom FROM descendant_union UNION ALL SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM descendant_union)) du
-        LIMIT 1
-      )
-      SELECT
-        d.id, d.name, d.parent_id,
-        safe_geo_area(d.geom_simplified_medium) / 1e6 AS area_km2,
-        safe_geo_area(ST_Intersection(d.geom_simplified_medium, g.geom)) /
-          NULLIF(safe_geo_area(d.geom_simplified_medium), 0) AS overlap_pct,
-        ST_AsGeoJSON(ST_SimplifyPreserveTopology(d.geom_simplified_medium, 0.01)) AS geojson
-      FROM administrative_divisions d
-      CROSS JOIN gap g
-      WHERE NOT ST_IsEmpty(g.geom)
-        AND ST_Intersects(d.geom_simplified_medium, g.geom)
-        AND d.id != ALL($3)
-        AND safe_geo_area(ST_Intersection(d.geom_simplified_medium, g.geom)) /
-            NULLIF(safe_geo_area(d.geom_simplified_medium), 0) > 0.3
-      ORDER BY area_km2 DESC
-      LIMIT 30
-    `, [parentDivIds, allDescendantDivIds.length > 0 ? allDescendantDivIds : [0], allDescendantDivIds.length > 0 ? allDescendantDivIds : [0]]);
-
-    logTiming(`Step 4: gap query (${gapResult.rows.length} gap divisions, parent=${parentDivIds.length} divs, desc=${allDescendantDivIds.length} divs)`);
-
-    const gapRows = gapResult.rows as Array<{
-      id: number;
-      name: string;
-      parent_id: number | null;
-      area_km2: number;
-      overlap_pct: number;
-      geojson: string | null;
-    }>;
-
-    const pathMap = await buildGapNamePaths(gapRows);
-    logTiming(`Step 5: name paths (${gapRows.length} divisions)`);
-
-    const childRegionDivIds = await loadChildRegionDivIds(worldViewId, regionId);
-    const childNames = new Map(directChildren.map(c => [c.id, c.name]));
-    const siblingRegions = await buildChildRegionGeometries(childRegionDivIds, childNames);
-    logTiming(`Step 5b: sibling geometries (${siblingRegions.length} siblings)`);
-
-    const gapDivIds = gapRows.map(r => r.id);
-    const suggestedTargets = await findNearestChildPerGapDivision(gapDivIds, regionId, directChildren.length);
-
-    const gapDivisions: GapDivision[] = gapRows.map((row) => {
-      const pathInfo = pathMap.get(row.id);
-      return {
-        divisionId: row.id,
-        gadmParentId: row.parent_id,
-        name: row.name,
-        path: pathInfo?.path ?? row.name,
-        level: pathInfo?.level ?? 0,
-        areaKm2: Math.round(row.area_km2),
-        overlapWithGap: Math.round(row.overlap_pct * 100) / 100,
-        geometry: row.geojson ? JSON.parse(row.geojson) as GeoJSON.Geometry : null,
-        suggestedTarget: suggestedTargets.get(row.id) ?? null,
-      };
-    });
-
-    logTiming(`Step 6: nearest-child KNN (${gapDivIds.length} gaps × ${directChildren.length} children)`);
-
-    res.json({ gapDivisions, siblingRegions });
+    body = await coverageGapAnalysisOf(worldViewId, regionId);
   } catch (err) {
     console.error('[WV Import] Coverage gap analysis failed:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Coverage gap analysis failed' });
+    return;
   }
+  respond(res, CoverageGapAnalysis, body);
 }
 
 /**
@@ -867,25 +874,25 @@ export async function getChildrenRegionGeometry(req: AuthenticatedRequest, res: 
   const worldViewId = parseInt(String(req.params.worldViewId));
   const regionId = parseInt(String(req.params.regionId));
 
+  let body: ChildRegionGeometries;
   try {
     const childrenResult = await pool.query(
       'SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2 ORDER BY name',
       [regionId, worldViewId],
     );
     if (childrenResult.rows.length === 0) {
-      res.json({ childRegions: [] });
-      return;
+      body = { childRegions: [] };
+    } else {
+      const childRegionDivIds = await loadChildRegionDivIds(worldViewId, regionId);
+      const childNames = new Map(
+        childrenResult.rows.map(r => [r.id as number, r.name as string]),
+      );
+      body = { childRegions: await buildChildRegionGeometries(childRegionDivIds, childNames) };
     }
-
-    const childRegionDivIds = await loadChildRegionDivIds(worldViewId, regionId);
-    const childNames = new Map(
-      childrenResult.rows.map(r => [r.id as number, r.name as string]),
-    );
-    const childRegions = await buildChildRegionGeometries(childRegionDivIds, childNames);
-
-    res.json({ childRegions });
   } catch (err) {
     console.error('[WV Import] Children region geometry failed:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Children region geometry failed' });
+    return;
   }
+  respond(res, ChildRegionGeometries, body);
 }
