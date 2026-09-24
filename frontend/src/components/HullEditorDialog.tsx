@@ -10,6 +10,7 @@ import {
   Slider,
   CircularProgress,
   Chip,
+  Alert,
 } from '@mui/material';
 import { Source, Layer, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from './shared/GuardedMap';
@@ -65,6 +66,17 @@ export function HullEditorDialog({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  // Whether the saved parameters are known. Until they are, Preview and Save
+  // stay off: the sliders would show the defaults as if they were the
+  // region's own, and saving would write them over a tuned hull (#1013).
+  const [paramsState, setParamsState] = useState<'loading' | 'loaded' | 'failed'>('loading');
+  const [paramsAttempt, setParamsAttempt] = useState(0);
+  // The region the loaded parameters belong to. The dialog stays mounted
+  // while the editor moves between regions, and the reset below runs after
+  // the first render for a new one; until then the old region's settings are
+  // still in state, and must not be previewed or saved for this one.
+  const [paramsLoadedFor, setParamsLoadedFor] = useState<number | null>(null);
+  const paramsReady = paramsState === 'loaded' && paramsLoadedFor === regionId;
 
   // Fetch geometries + saved params on open
   useEffect(() => {
@@ -86,12 +98,10 @@ export function HullEditorDialog({
     Promise.all([
       fetchRegionGeometry(regionId),
       fetchRegionGeometry(regionId, 'hull'),
-      fetchSavedHullParams(regionId),
-    ]).then(([realGeom, hullGeom, savedParams]) => {
+    ]).then(([realGeom, hullGeom]) => {
       if (cancelled) return;
       setRealGeometry(realGeom?.geometry ?? null);
       setSavedHullGeometry(savedHullOf(hullGeom));
-      if (savedParams) setHullParams(savedParams);
     }).catch((e) => {
       console.error('Failed to load hull editor data:', e);
     }).finally(() => {
@@ -100,6 +110,25 @@ export function HullEditorDialog({
 
     return () => { cancelled = true; };
   }, [open, regionId]);
+
+  // The saved parameters, read apart from the geometries so a failed read can
+  // be retried on its own without redrawing the map.
+  useEffect(() => {
+    if (!open) return;
+    setParamsState('loading');
+    let cancelled = false;
+    fetchSavedHullParams(regionId).then((savedParams) => {
+      if (cancelled) return;
+      setHullParams(savedParams ?? DEFAULT_HULL_PARAMS);
+      setParamsLoadedFor(regionId);
+      setParamsState('loaded');
+    }).catch((e) => {
+      if (cancelled) return;
+      console.error('Failed to load saved hull parameters:', e);
+      setParamsState('failed');
+    });
+    return () => { cancelled = true; };
+  }, [open, regionId, paramsAttempt]);
 
   // Fit map to geometry when loaded
   useEffect(() => {
@@ -240,6 +269,17 @@ export function HullEditorDialog({
             {saveSuccess && <Chip size="small" label="Saved" color="info" />}
           </Box>
 
+          {paramsState === 'failed' && (
+            <Alert
+              severity="warning"
+              sx={{ mb: 1.5 }}
+              action={<Button color="inherit" size="small" onClick={() => setParamsAttempt(n => n + 1)}>Retry</Button>}
+            >
+              This region's saved hull settings could not be loaded. Preview and Save stay off until they are,
+              so the defaults shown here cannot replace settings nobody has seen.
+            </Alert>
+          )}
+
           <Box sx={{ mb: 1 }}>
             <Typography variant="caption" color="text.secondary">
               Buffer: {hullParams.bufferKm} km
@@ -307,7 +347,7 @@ export function HullEditorDialog({
               size="small"
               variant="outlined"
               onClick={handlePreview}
-              disabled={isPreviewing || isSaving}
+              disabled={isPreviewing || isSaving || !paramsReady}
               startIcon={isPreviewing ? <CircularProgress size={14} /> : null}
             >
               {isPreviewing ? 'Previewing...' : 'Preview'}
@@ -317,7 +357,10 @@ export function HullEditorDialog({
               variant="contained"
               color="primary"
               onClick={handleSave}
-              disabled={isPreviewing || isSaving || !previewGeometry}
+              // No preview can exist before the parameters load, so the last
+              // term only matters if a preview ever outlives a failed read;
+              // it keeps "never save settings nobody loaded" true then too.
+              disabled={isPreviewing || isSaving || !previewGeometry || !paramsReady}
               startIcon={isSaving ? <CircularProgress size={14} /> : null}
             >
               {isSaving ? 'Saving...' : 'Save Hull'}

@@ -153,12 +153,13 @@ export async function saveHull(regionId: number, params: HullParams): Promise<Hu
   });
 }
 
-/** The parameters a region's hull was saved with, or null where it was never tuned or the read failed. */
+/**
+ * The parameters a region's hull was saved with, or null where it was never
+ * tuned. A failed read rejects rather than answering null: the hull editor
+ * would otherwise take it for "never tuned" and offer the defaults for saving
+ * over a tuned hull (#1013).
+ */
 export async function fetchSavedHullParams(regionId: number): Promise<HullParams | null> {
-  try {
-    const result = await authFetchJson<SavedHullParams>(`${API_URL}/api/world-views/regions/${regionId}/hull/params`);
-    return result.params;
-  } catch {
-    return null;
-  }
+  const result = await authFetchJson<SavedHullParams>(`${API_URL}/api/world-views/regions/${regionId}/hull/params`);
+  return result.params;
 }
