@@ -828,6 +828,68 @@ export interface CountedWork {
   externalId: string;
 }
 
+/** A gap covered: added to a region, or to a new region created for it. */
+export interface CoverageApproved {
+  approved: true;
+  /** The region the gap was added to: the target, or the region created for it. */
+  regionId: number;
+}
+
+/** The coverage check, finished; the stream ends after it. */
+export interface CoverageComplete {
+  type: "complete";
+  elapsed: number;
+  data: CoverageResult;
+}
+
+/** One event of the coverage stream (`/coverage-stream`), told apart by `type`. */
+export type CoverageEvent = CoverageProgress | CoverageComplete | CoverageFailed;
+
+/** The coverage check, stopped; the stream ends after it. */
+export interface CoverageFailed {
+  type: "error";
+  message: string;
+  elapsed: number;
+}
+
+/** A GADM division no region covers, whose parent is covered or is a root. */
+export interface CoverageGap {
+  /** The uncovered GADM division. */
+  id: number;
+  name: string;
+  parentName: string | null;
+  /**
+   * From a sibling division a region holds, else from the nearest covered cousin; null where
+   * neither exists.
+   */
+  suggestion: CoverageSuggestion | null;
+  /** Sent for a gap with GADM divisions under it, by name. */
+  subtree?: GapSubtreeNode[];
+}
+
+/** A step of the coverage check, begun. */
+export interface CoverageProgress {
+  type: "progress";
+  step: string;
+  /** Seconds since the check started. */
+  elapsed: number;
+}
+
+/** The GADM divisions a world view does not cover yet. */
+export interface CoverageResult {
+  gaps: CoverageGap[];
+  dismissedCount: number;
+  dismissedGaps: DismissedGap[];
+}
+
+/** Where a coverage gap could go. */
+export interface CoverageSuggestion {
+  /** Add the gap to the region, or create a region for it under this one. */
+  action: "add_member" | "create_region";
+  targetRegionId: number;
+  targetRegionName: string;
+}
+
 /**
  * Divisions matched from the region's Wikidata shape, or from the places its Wikivoyage article
  * marks.
@@ -1092,6 +1154,13 @@ export interface DescendantsPruned {
   /** Regions below the direct children, deleted. */
   pruned: number;
   undoAvailable: true;
+}
+
+/** A gap the reviewer dismissed, which coverage no longer counts. */
+export interface DismissedGap {
+  id: number;
+  name: string;
+  parentName: string | null;
 }
 
 /** How much of a world view has its geometry and the frame metadata that goes with it. */
@@ -1662,6 +1731,23 @@ export interface FoundSuggestion {
   conflict?: SuggestionConflict;
 }
 
+/** A gap dismissed: coverage stops counting it until a re-match. */
+export interface GapDismissed {
+  dismissed: true;
+}
+
+/** A GADM division under a gap, with its own. */
+export interface GapSubtreeNode {
+  id: number;
+  name: string;
+  children: GapSubtreeNode[];
+}
+
+/** A dismissed gap counted again. */
+export interface GapUndismissed {
+  undismissed: true;
+}
+
 /** Divisions containing the place the region's name geocodes to. */
 export interface GeocodeMatchResult {
   found: number;
@@ -1686,6 +1772,30 @@ export interface Geoshape {
     };
     geometry: AreaGeometry;
   }[];
+}
+
+/** A gap's geographic suggestion: the region holding the assigned division nearest it. */
+export interface GeoSuggestResult {
+  /**
+   * The region holding the assigned division nearest the gap; null where there is none, and then
+   * nothing else is sent.
+   */
+  suggestion: {
+    action: "add_member";
+    targetRegionId: number;
+    targetRegionName: string;
+  } | null;
+  /** The assigned division nearest the gap. */
+  suggestionDivisionId?: number;
+  suggestionDivisionName?: string;
+  /** Longitude and latitude. */
+  gapCenter?: [number, number];
+  /** The nearest division's anchor, longitude and latitude. */
+  suggestionCenter?: [number, number];
+  /** From the gap's centre to the nearest division's boundary. */
+  distanceKm?: number;
+  /** The suggested region's ancestry from the root, for picking another level. */
+  contextTree?: RegionContextNode;
 }
 
 /** Short descriptions of the groups, and what writing them cost. */
@@ -2785,6 +2895,16 @@ export interface Region {
   regionMapUrl: string | null;
 }
 
+/**
+ * A region on the way from the root to the suggested one; the suggested one carries its children.
+ */
+export interface RegionContextNode {
+  id: number;
+  name: string;
+  isSuggested: boolean;
+  children: RegionContextNode[];
+}
+
 /** A region's counts per kind, for Discover's tree. */
 export interface RegionExperienceCount {
   region_id: number;
@@ -3082,6 +3202,12 @@ export interface ReviewAnswerResult {
     name: string;
     worldViews: PlacementFailure[];
   }[];
+}
+
+/** A world view's match review closed; it leaves the active review list. */
+export interface ReviewFinalized {
+  finalized: true;
+  worldViewId: number;
 }
 
 /** A page of the curator's review queue (ADR-0051). */

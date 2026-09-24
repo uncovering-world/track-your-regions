@@ -11,24 +11,23 @@ import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { syncImportMatchStatus } from '../worldView/helpers.js';
 import { markStreamBody } from '../../middleware/cacheHeaders.js';
+import { respond, writeEvent } from '../../api/respond.js';
+import {
+  CoverageApproved, CoverageEvent, CoverageResult, GapDismissed, GapUndismissed, GeoSuggestResult,
+  type CoverageSuggestion, type DismissedGap, type GapSubtreeNode, type RegionContextNode,
+} from '../../api/responses/wvImportCoverage.js';
 
 // =============================================================================
 // Coverage gap subtree helper
 // =============================================================================
-
-interface SubtreeNode {
-  id: number;
-  name: string;
-  children: SubtreeNode[];
-}
 
 /**
  * For non-leaf coverage gaps, fetch the full GADM descendant subtree.
  * Returns a map from gap division ID to its children tree.
  * Single batch recursive CTE — no per-gap queries.
  */
-async function fetchGapSubtrees(nonLeafGapIds: number[]): Promise<Map<number, SubtreeNode[]>> {
-  const result = new Map<number, SubtreeNode[]>();
+async function fetchGapSubtrees(nonLeafGapIds: number[]): Promise<Map<number, GapSubtreeNode[]>> {
+  const result = new Map<number, GapSubtreeNode[]>();
   if (nonLeafGapIds.length === 0) return result;
 
   // Recursive CTE: walk down from each non-leaf gap, collecting descendants
@@ -56,7 +55,7 @@ async function fetchGapSubtrees(nonLeafGapIds: number[]): Promise<Map<number, Su
   }
 
   // Recursively build tree structure
-  function buildTree(parentId: number): SubtreeNode[] {
+  function buildTree(parentId: number): GapSubtreeNode[] {
     const children = childrenOf.get(parentId);
     if (!children) return [];
     return children.map(c => ({
@@ -88,22 +87,10 @@ interface ActiveGap {
   parentName: string | null;
 }
 
-interface DismissedGap {
-  id: number;
-  name: string;
-  parentName: string | null;
-}
-
-interface CoverageSuggestion {
-  action: 'add_member' | 'create_region';
-  targetRegionId: number;
-  targetRegionName: string;
-}
-
 interface CoverageData {
   activeGaps: ActiveGap[];
   dismissedGaps: DismissedGap[];
-  subtreeByGapId: Map<number, SubtreeNode[]>;
+  subtreeByGapId: Map<number, GapSubtreeNode[]>;
 }
 
 const COVERAGE_GAPS_SQL = `
@@ -267,7 +254,7 @@ async function buildSuggestionsForGaps(
 function composeCoverageResponse(
   data: CoverageData,
   suggestionByGapId: Map<number, CoverageSuggestion>,
-) {
+): CoverageResult {
   return {
     gaps: data.activeGaps.map(g => ({
       id: g.id,
@@ -300,15 +287,7 @@ export async function getCoverage(req: AuthenticatedRequest, res: Response): Pro
 
   const data = await loadCoverageData(worldViewId);
   const suggestionByGapId = await buildSuggestionsForGaps(data.activeGaps, worldViewId);
-  res.json(composeCoverageResponse(data, suggestionByGapId));
-}
-
-interface CoverageSSEEvent {
-  type: 'progress' | 'complete' | 'error';
-  step?: string;
-  elapsed?: number;
-  message?: string;
-  data?: unknown;
+  respond(res, CoverageResult, composeCoverageResponse(data, suggestionByGapId));
 }
 
 function startCoverageSSE(res: Response, worldViewId: number) {
@@ -322,9 +301,8 @@ function startCoverageSSE(res: Response, worldViewId: number) {
   res.flushHeaders();
 
   const startTime = Date.now();
-  const sendEvent = (event: CoverageSSEEvent) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
-  };
+  // ADR-0066: every event is held to the stream's schema, as respond() holds a body.
+  const sendEvent = (event: CoverageEvent) => writeEvent(res, CoverageEvent, event);
   const logStep = (step: string) => {
     const elapsed = (Date.now() - startTime) / 1000;
     console.log(`[Coverage SSE] WorldView ${worldViewId}: ${step} (${elapsed.toFixed(1)}s)`);
@@ -439,7 +417,7 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
   `, [divisionId, worldViewId]);
 
   if (result.rows.length === 0) {
-    res.json({ suggestion: null });
+    respond(res, GeoSuggestResult, { suggestion: null });
     return;
   }
 
@@ -469,15 +447,8 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
 
   // Build nested contextTree: root → ... → suggested (with children attached)
   // ancestorResult is ordered root-first (depth DESC), suggested region is last
-  interface ContextNode {
-    id: number;
-    name: string;
-    children: ContextNode[];
-    isSuggested: boolean;
-  }
-
   const ancestors = ancestorResult.rows as Array<{ id: number; name: string; depth: number }>;
-  const suggestedChildren: ContextNode[] = childrenResult.rows.map(c => ({
+  const suggestedChildren: RegionContextNode[] = childrenResult.rows.map(c => ({
     id: c.id as number,
     name: c.name as string,
     children: [],
@@ -485,12 +456,12 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
   }));
 
   // Build from root (first) down to suggested (last)
-  let contextTree: ContextNode | null = null;
-  let currentParent: ContextNode | null = null;
+  let contextTree: RegionContextNode | null = null;
+  let currentParent: RegionContextNode | null = null;
 
   for (const ancestor of ancestors) {
     const isSuggested = ancestor.id === regionId;
-    const node: ContextNode = {
+    const node: RegionContextNode = {
       id: ancestor.id,
       name: ancestor.name,
       children: isSuggested ? suggestedChildren : [],
@@ -505,18 +476,18 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
     currentParent = node;
   }
 
-  res.json({
+  respond(res, GeoSuggestResult, {
     suggestion: {
-      action: 'add_member' as const,
+      action: 'add_member',
       targetRegionId: regionId,
       targetRegionName: row.region_name as string,
     },
     suggestionDivisionId: row.suggestion_division_id as number,
     suggestionDivisionName: row.suggestion_division_name as string,
-    gapCenter: [row.gap_lng as number, row.gap_lat as number],
-    suggestionCenter: [row.sugg_lng as number, row.sugg_lat as number],
+    gapCenter: [row.gap_lng as number, row.gap_lat as number] as [number, number],
+    suggestionCenter: [row.sugg_lng as number, row.sugg_lat as number] as [number, number],
     distanceKm: Math.round(row.distance_km as number),
-    contextTree: contextTree ?? undefined,
+    ...(contextTree ? { contextTree } : {}),
   });
 }
 
@@ -540,7 +511,7 @@ export async function dismissCoverageGap(req: AuthenticatedRequest, res: Respons
     [worldViewId, divisionId],
   );
 
-  res.json({ dismissed: true });
+  respond(res, GapDismissed, { dismissed: true });
 }
 
 /**
@@ -557,7 +528,7 @@ export async function undismissCoverageGap(req: AuthenticatedRequest, res: Respo
     [worldViewId, divisionId],
   );
 
-  res.json({ undismissed: true });
+  respond(res, GapUndismissed, { undismissed: true });
 }
 
 // =============================================================================
@@ -758,5 +729,5 @@ export async function approveCoverageSuggestion(req: AuthenticatedRequest, res: 
     [worldViewId, divisionId],
   );
 
-  res.json({ approved: true, regionId: targetRegionId });
+  respond(res, CoverageApproved, { approved: true, regionId: targetRegionId });
 }
