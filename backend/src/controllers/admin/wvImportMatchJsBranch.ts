@@ -107,7 +107,7 @@ function buildJsPipelineContext(input: JsPipelineContextInput): PipelineContext 
     pixelLabels: new Uint8Array(0),
     colorCentroids: [], clusterCounts: [],
     ckOverride: null, chromaBoost: 1.0, randomSeed: false,
-    sendEvent: sendEvent as PipelineContext['sendEvent'],
+    sendEvent,
     logStep, pushDebugImage, debugImages, startTime,
     oddK: dims.oddK, pxS: dims.pxS,
   };
@@ -426,7 +426,7 @@ export async function runJavaScriptPipeline(p: JsPipelineParams): Promise<void> 
       pixelLabels: ctx.pixelLabels, colorCentroids: ctx.colorCentroids,
       TW, TH, origW, origH,
       skipClusterReview: false,
-      sendEvent: p.sendEvent as (event: Record<string, unknown>) => void,
+      sendEvent: p.sendEvent,
       logStep: p.logStep, pushDebugImage: p.pushDebugImage,
       debugImages: p.debugImages, startTime: p.startTime,
     });

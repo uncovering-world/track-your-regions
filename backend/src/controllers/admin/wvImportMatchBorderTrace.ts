@@ -6,6 +6,8 @@
  * smooth borders that match the "Detected clusters" preview exactly.
  */
 
+import type { BorderPath } from '../../api/responses/wvImportCvMatch.js';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (__cv global) has no TypeScript types
 const G = globalThis as unknown as { __cv?: any };
 
@@ -13,12 +15,9 @@ const G = globalThis as unknown as { __cv?: any };
 // Types
 // =============================================================================
 
-export interface BorderPath {
-  id: string;                       // unique: "bp-0", "bp-1", etc.
-  points: Array<[number, number]>;  // [x, y] at TW x TH resolution
-  type: 'internal' | 'external';
-  clusters: [number, number];       // sorted: [min, max] of the two adjacent labels
-}
+// A traced border goes to the reviewer as traced, so its shape is the
+// response schema's (ADR-0066).
+export type { BorderPath };
 
 // =============================================================================
 // Douglas-Peucker simplification

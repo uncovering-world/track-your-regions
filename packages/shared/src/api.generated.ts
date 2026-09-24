@@ -40,6 +40,12 @@ export interface AcceptSourceResult {
   fromSyncLogId: number;
 }
 
+/** Two divisions that share a border. */
+export interface AdjacencyEdge {
+  divA: number;
+  divB: number;
+}
+
 /** An official boundary from GADM: a continent, a country, a province, down to a municipality. */
 export interface AdministrativeDivision {
   id: number;
@@ -393,6 +399,16 @@ export interface BatchSuggestions {
   apiRequestsCount: number;
 }
 
+/** A border between two clusters, traced on the working image. */
+export interface BorderPath {
+  id: string;
+  /** Pixel positions at the run's working size. */
+  points: [number, number][];
+  type: "internal" | "external";
+  /** The two clusters on either side, lower label first. */
+  clusters: [number, number];
+}
+
 /** One field a run proposed to change. */
 export interface ChangedField {
   field: string;
@@ -466,6 +482,34 @@ export interface ClusterRegionSuggestions {
   };
 }
 
+/** One colour cluster, as the reviewer sees it before matching. */
+export interface ClusterReviewCluster {
+  label: number;
+  /** As `rgb(r,g,b)`. */
+  color: string;
+  /** The cluster's share of the country, in percent. */
+  pct: number;
+  /** Under 3% of the country. */
+  isSmall: boolean;
+  /** How many separate pieces the cluster is in. */
+  componentCount: number;
+}
+
+/** The run, paused until the reviewer merges, drops, splits or repaints the clusters. */
+export interface ClusterReviewRequested {
+  type: "cluster_review";
+  reviewId: string;
+  data: {
+    clusters: ClusterReviewCluster[];
+    borderPaths: BorderPath[];
+    /** The working image's size, which the border paths are drawn at. */
+    pipelineSize: {
+      w: number;
+      h: number;
+    };
+  };
+}
+
 /** An OAuth sign-in's one-time code exchanged for a session. The account is read afterwards. */
 export interface CodeExchanged {
   /**
@@ -473,6 +517,110 @@ export interface CodeExchanged {
    * not in the body: it is set as an httpOnly cookie.
    */
   accessToken: string;
+}
+
+/** One colour cluster of the source map, and the divisions it covers. */
+export interface ColorMatchCluster {
+  clusterId: number;
+  /** The cluster's colour on the source map, as `#rrggbb`. */
+  color: string;
+  /** The cluster's share of the country's pixels, rounded to two places. */
+  pixelShare: number;
+  /**
+   * The child region most of its already-assigned divisions belong to, else the first whose centre
+   * falls on it.
+   */
+  suggestedRegion: ChildRegionRef | null;
+  /** The unassigned divisions the cluster covers. */
+  divisions: {
+    id: number;
+    name: string;
+    confidence: number;
+    /**
+     * How many splits of a straddling parent it took to reach the division; 0 for one matched
+     * whole.
+     */
+    depth: number;
+    /** Sent for a division reached by splitting its parent. */
+    parentDivisionId?: number;
+  }[];
+  /**
+   * Divisions that straddle clusters and could not be split: no smaller GADM divisions, or four
+   * splits deep already.
+   */
+  unsplittable: {
+    id: number;
+    name: string;
+    confidence: number;
+    /** The clusters the division straddles and each one's share of it. */
+    splitClusters: {
+      clusterId: number;
+      share: number;
+    }[];
+  }[];
+}
+
+/** The run, finished; the stream ends after it. */
+export interface ColorMatchComplete {
+  type: "complete";
+  elapsed: number;
+  data: ColorMatchResult;
+}
+
+/** A picture of a step of the run. */
+export interface ColorMatchDebugImage {
+  type: "debug_image";
+  debugImage: DebugImage;
+}
+
+/** One event of the colour-match stream (`/color-match-stream`), told apart by `type`. */
+export type ColorMatchEvent = ColorMatchProgress | ColorMatchDebugImage | WaterReviewRequested | ClusterReviewRequested | IcpAdjustmentOffered | ColorMatchComplete | ColorMatchFailed;
+
+/** The run, stopped; the stream ends after it. */
+export interface ColorMatchFailed {
+  type: "error";
+  message: string;
+}
+
+/** A step of the run, begun. */
+export interface ColorMatchProgress {
+  type: "progress";
+  step: string;
+  /** Seconds since the run started. */
+  elapsed: number;
+}
+
+/** What a colour-match run matched: each cluster's divisions and region, and the map of it. */
+export interface ColorMatchResult {
+  clusters: ColorMatchCluster[];
+  childRegions: ChildRegionRef[];
+  /** Sent where some divisions lie outside what the source map shows. */
+  outOfBounds?: NamedDivision[];
+  /** Every picture the run streamed, again. */
+  debugImages: DebugImage[];
+  geoPreview: {
+    featureCollection: {
+      type: "FeatureCollection";
+      features: CvPreviewFeature[];
+    };
+    clusterInfos: ClusterGeoInfo[];
+  };
+  /** Sent where the suggested assignment leaves a region in pieces. */
+  spatialAnomalies?: SpatialAnomaly[];
+  /**
+   * The border graph over the run's divisions, sent whenever it has an edge: the screen finds
+   * anomalies again from it after a reviewer moves a division.
+   */
+  adjacencyEdges?: AdjacencyEdge[];
+  stats: {
+    totalDivisions: number;
+    assignedDivisions: number;
+    cvClusters: number;
+    cvAssignedDivisions: number;
+    cvUnsplittable: number;
+    cvOutOfBounds: number;
+    countryName: string;
+  };
 }
 
 /** A stop asked of a world view's computation; a run in flight ends at its next region. */
@@ -700,6 +848,28 @@ export interface CuratorScope {
   notes: string | null;
 }
 
+/** A division drawn in the colour of the cluster it was matched to. */
+export interface CvPreviewFeature {
+  type: "Feature";
+  geometry: AreaGeometry;
+  properties: {
+    divisionId: number;
+    name: string;
+    /** -1 for a division matched to no cluster or outside the map. */
+    clusterId: number;
+    confidence: number;
+    isUnsplittable: boolean;
+    /** Whether the division lies outside what the source map shows. */
+    isOutOfBounds: boolean;
+    /** Whether the division, or its parent, already belongs to a child region. */
+    preAssigned: boolean;
+    color: string;
+    /** The child region the division already belongs to, else the one its cluster is matched to. */
+    regionId: number | null;
+    regionName: string | null;
+  };
+}
+
 /** One assertion over the catalogue: what it found, and what was accepted. */
 export interface DataAssertion {
   /** Stable across runs and across a rename of the title. */
@@ -742,6 +912,13 @@ export interface DbSearchResult {
   /** New suggestions written. */
   found: number;
   suggestions: FoundSuggestion[];
+}
+
+/** One picture of a step of the run, for the reviewer to follow it. */
+export interface DebugImage {
+  label: string;
+  /** A PNG as a `data:` URL. */
+  dataUrl: string;
 }
 
 /** One part a refusal of held rows reached. */
@@ -1473,6 +1650,20 @@ export interface HullSaved {
   params: HullParams;
 }
 
+/** The run, paused for up to five minutes on whether to retry a poorly fitting alignment. */
+export interface IcpAdjustmentOffered {
+  type: "icp_adjustment_available";
+  reviewId: string;
+  message: string;
+  metrics: {
+    overflow: number;
+    /** Rounded to one place. */
+    error: number;
+    /** The alignment option that fit best. */
+    icpOption: string;
+  };
+}
+
 /** Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043). */
 export interface ImageCredit {
   /** The photographer or uploader, as plain text. */
@@ -1932,6 +2123,12 @@ export interface MyAccount {
   avatarUrl: string | null;
   /** Sent to a curator or an admin: what their curation reaches. */
   curatorScopes?: CuratorScope[];
+}
+
+/** A GADM division by id and name. */
+export interface NamedDivision {
+  id: number;
+  name: string;
 }
 
 /** Which New chips were recorded as shown. */
@@ -2815,6 +3012,28 @@ export interface SourcesReordered {
   order: number[];
 }
 
+/** A piece of a region that touches none of the rest of it. */
+export interface SpatialAnomaly {
+  divisions: SpatialAnomalyDivision[];
+  /** The neighbouring region the fragment borders most. */
+  suggestedTargetRegionId: number;
+  suggestedTargetRegionName: string;
+  fragmentSize: number;
+  totalRegionSize: number;
+  /** The fragment's share of its region; the lower, the more suspicious. */
+  score: number;
+}
+
+/** A division in a fragment cut off from the rest of its region. */
+export interface SpatialAnomalyDivision {
+  divisionId: number;
+  name: string;
+  /** The region member row, where the division is already a member. */
+  memberRowId: number | null;
+  sourceRegionId: number;
+  sourceRegionName: string;
+}
+
 /**
  * A subregion folded into its parent: its divisions, and its descendants', moved up, and the
  * subregion deleted.
@@ -3178,6 +3397,34 @@ export interface WaitingCounts {
 
 /** A gated sub-kind a `waiting` question groups (ADR-0025). */
 export type WaitingSub = "arrival" | "held" | "contents";
+
+/** One patch of the map the run reads as water. */
+export interface WaterComponent {
+  id: number;
+  /** The component's share of the map, in percent. */
+  pct: number;
+  /**
+   * A crop of the map around it as a `data:` URL, or empty where the crop is fetched from
+   * `water-crop`.
+   */
+  cropDataUrl: string;
+  subClusters: {
+    idx: number;
+    pct: number;
+    cropDataUrl: string;
+  }[];
+}
+
+/** The run, paused until the reviewer says which patches are water. */
+export interface WaterReviewRequested {
+  type: "water_review";
+  reviewId: string;
+  /** The share of the map read as water, in percent. */
+  waterPxPercent: number;
+  /** The water mask as a `data:` URL, sent by the Python pipeline. */
+  waterMaskImage?: string;
+  waterComponents: WaterComponent[];
+}
 
 /** The model a request with web search uses, chosen. */
 export interface WebSearchModelSet {

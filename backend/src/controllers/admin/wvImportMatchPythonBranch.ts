@@ -67,7 +67,7 @@ async function runPythonPhase1AndPrepareBuffers(
           id: c.id,
           pct: c.pct,
           cropDataUrl: c.cropDataUrl,
-          subClusters: c.subClusters ?? [],
+          subClusters: (c.subClusters ?? []).map(sc => ({ idx: sc.idx, pct: sc.pct, cropDataUrl: sc.cropDataUrl })),
         })),
       });
       const decision = await new Promise<unknown>((resolve) => {
@@ -176,7 +176,7 @@ export async function runPythonPipeline(p: PythonPipelineParams, res: Response):
       countryMask, pixelLabels, colorCentroids,
       TW, TH, origW, origH,
       skipClusterReview: false,
-      sendEvent: p.sendEvent as (event: Record<string, unknown>) => void,
+      sendEvent: p.sendEvent,
       logStep: p.logStep, pushDebugImage: p.pushDebugImage,
       debugImages: p.debugImages, startTime: p.startTime,
     });
@@ -188,7 +188,6 @@ export async function runPythonPipeline(p: PythonPipelineParams, res: Response):
     }
   } while (pyRecluster?.recluster);
 
-  p.sendEvent({ type: 'complete', data: { message: 'Python CV pipeline completed' } });
   res.end();
   return true;
 }

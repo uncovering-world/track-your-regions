@@ -11,6 +11,13 @@
  */
 
 import { pool } from '../../db/index.js';
+import type {
+  AdjacencyEdge, SpatialAnomaly, SpatialAnomalyDivision,
+} from '../../api/responses/wvImportCvMatch.js';
+
+// A fragment and the border graph are answered as found, so their shapes are
+// the response schemas' (ADR-0066).
+export type { AdjacencyEdge, SpatialAnomaly, SpatialAnomalyDivision };
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -20,28 +27,6 @@ export interface DivisionAssignment {
   regionId: number;
   regionName: string;
   divisionName?: string;
-}
-
-export interface AdjacencyEdge {
-  divA: number;
-  divB: number;
-}
-
-export interface SpatialAnomalyDivision {
-  divisionId: number;
-  name: string;
-  memberRowId: number | null;
-  sourceRegionId: number;
-  sourceRegionName: string;
-}
-
-export interface SpatialAnomaly {
-  divisions: SpatialAnomalyDivision[];
-  suggestedTargetRegionId: number;
-  suggestedTargetRegionName: string;
-  fragmentSize: number;
-  totalRegionSize: number;
-  score: number; // fragmentSize / totalRegionSize — lower = more suspicious
 }
 
 // ─── Pure algorithm ─────────────────────────────────────────────────────────────

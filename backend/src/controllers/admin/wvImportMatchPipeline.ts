@@ -27,6 +27,8 @@ import type {
   SendEvent, LogStep, PushDebugImage, ImageDims,
 } from './wvImportMatchContext.js';
 import { markStreamBody } from '../../middleware/cacheHeaders.js';
+import { ResponseShapeError, writeEvent } from '../../api/respond.js';
+import { ColorMatchEvent } from '../../api/responses/wvImportCvMatch.js';
 import { fetchPicture } from '../../services/pictureFetch.js';
 
 // =============================================================================
@@ -47,9 +49,15 @@ function createSseHelpers(res: Response, startTime: number): { sendEvent: SendEv
   res.flushHeaders();
   res.socket?.setNoDelay(true);
 
+  // A write to a stream the reviewer closed fails and is dropped; an event
+  // that breaks its schema throws, outside production, like `respond()`.
   const sendEvent: SendEvent = (event) => {
     if (res.destroyed) return;
-    try { res.write(`data: ${JSON.stringify(event)}\n\n`); } catch { /* client disconnected */ }
+    try {
+      writeEvent(res, ColorMatchEvent, event);
+    } catch (err) {
+      if (err instanceof ResponseShapeError) throw err;
+    }
   };
   const logStep: LogStep = async (step) => {
     const elapsed = (Date.now() - startTime) / 1000;
@@ -263,7 +271,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
   } catch (mapErr) {
     const errMsg = mapErr instanceof Error ? mapErr.message : String(mapErr);
     console.error('  Source map border detection failed:', mapErr);
-    await logStep(`CV processing error: ${errMsg}`);
+    sendEvent({ type: 'error', message: `CV processing error: ${errMsg}` });
   }
 
   if (!res.destroyed) res.end();

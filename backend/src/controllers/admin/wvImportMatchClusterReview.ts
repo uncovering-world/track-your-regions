@@ -14,6 +14,8 @@ import {
   storeClusterHighlights,
   type ClusterReviewDecision,
 } from './wvImportMatchReview.js';
+import type { SendEvent } from './wvImportMatchContext.js';
+import type { BorderPath } from './wvImportMatchBorderTrace.js';
 
 // =============================================================================
 // Shared types
@@ -366,12 +368,12 @@ export interface ClusterReviewIterationParams {
   pixelLabels: Uint8Array;
   colorCentroids: Array<[number, number, number] | null>;
   countrySize: number;
-  borderPaths: unknown; // passed through to SSE payload
+  borderPaths: BorderPath[];
   dims: GridDims;
   origW: number;
   origH: number;
   pxS: (base: number) => number;
-  sendEvent: (event: Record<string, unknown>) => void;
+  sendEvent: SendEvent;
   logStep: (msg: string) => Promise<void>;
 }
 
