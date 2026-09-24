@@ -29,6 +29,8 @@ import {
 import { suggestGroupForRegion, suggestGroupsForMultipleRegions } from './openaiGroupSuggestion.js';
 import { generateGroupDescriptions } from './openaiGroupDescriptions.js';
 import { geocodeDescription } from './openaiService.js';
+import { visionReadingOf } from './openaiVisionMatch.js';
+import { VisionMatchResult } from '../../api/responses/wvImportCoverage.js';
 
 // Wikivoyage's split of Russia, which the AI assist sorts oblasts into.
 const GROUPS = ['Central Russia', 'Volga Region', 'Siberia', 'Russian Far East'];
@@ -168,5 +170,28 @@ describe('a place from a description', () => {
     await expect(geocodeDescription('the white kremlin in Kazan')).rejects.toThrow('did not locate the place');
     modelWrites('{"lat": 155, "lng": 49.1221, "name": "Kazan Kremlin", "confidence": "high"}');
     await expect(geocodeDescription('the white kremlin in Kazan')).rejects.toThrow('did not locate the place');
+  });
+});
+
+describe('a reading of a region\'s map', () => {
+  // Cabinda's four municipalities (GADM: Belize, Buco Zau, Cabinda, Landana),
+  // numbered 1 to 4 on the map the model reads.
+  const divisions = [{ id: 2608 }, { id: 2612 }, { id: 2616 }, { id: 2620 }];
+
+  it('keeps the whole numbers the numbered map shows', () => {
+    const reading = visionReadingOf({ inside: [1, 3], outside: [2], unclear: [4], reasoning: 'The coast is inside.' }, divisions);
+    expect(VisionMatchResult.pick({ suggestedIds: true, rejectedIds: true, unclearIds: true, reasoning: true }).parse(reading)).toEqual({
+      suggestedIds: [2608, 2616], rejectedIds: [2612], unclearIds: [2620], reasoning: 'The coast is inside.',
+    });
+  });
+
+  it('reads a list that is not one, a number that names no division and a reasoning that is not text as none', () => {
+    expect(visionReadingOf({ inside: '3', outside: [1.5, 0, 99, 2], reasoning: 7 }, divisions)).toEqual({
+      suggestedIds: [], rejectedIds: [2612], unclearIds: [], reasoning: '',
+    });
+  });
+
+  it('reads a reply that is not an object as no reading', () => {
+    expect(visionReadingOf(['1', '2'], divisions)).toEqual({ suggestedIds: [], rejectedIds: [], unclearIds: [], reasoning: '' });
   });
 });

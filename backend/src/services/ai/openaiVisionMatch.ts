@@ -144,21 +144,27 @@ export async function matchDivisionsByVision(
     model: visionModel,
   };
 
-  const parsed = parseJsonResponse<{
-    inside: number[];
-    outside: number[];
-    unclear: number[];
-    reasoning: string;
-  }>(content);
+  return { ...visionReadingOf(parseJsonResponse<unknown>(content), divisions), usage };
+}
 
-  const toIds = (nums: number[]) =>
-    (nums || []).filter(n => n >= 1 && n <= divCount).map(n => divisions[n - 1].id);
-
+/**
+ * The model's reply, read key by key: which of the numbered divisions it put
+ * inside the region, outside it and on its border, and why. A list that is not
+ * one, or a number that names no division on the numbered map, stays here.
+ */
+export function visionReadingOf(
+  reply: unknown,
+  divisions: ReadonlyArray<{ id: number }>,
+): { suggestedIds: number[]; rejectedIds: number[]; unclearIds: number[]; reasoning: string } {
+  const parsed = typeof reply === 'object' && reply !== null ? reply as Record<string, unknown> : {};
+  const toIds = (nums: unknown) =>
+    (Array.isArray(nums) ? nums : [])
+      .filter((n): n is number => Number.isInteger(n) && n >= 1 && n <= divisions.length)
+      .map(n => divisions[n - 1].id);
   return {
     suggestedIds: toIds(parsed.inside),
     rejectedIds: toIds(parsed.outside),
     unclearIds: toIds(parsed.unclear),
-    reasoning: parsed.reasoning,
-    usage,
+    reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
   };
 }
