@@ -96,9 +96,12 @@ function sourceFiles(): string[] {
     .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && !name.endsWith('.d.ts'));
 }
 
-function parse(name: string): ts.SourceFile {
+function read(name: string): string {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
-  const text = readFileSync(join(SRC, name), 'utf8');
+  return readFileSync(join(SRC, name), 'utf8');
+}
+
+function parse(name: string, text = read(name)): ts.SourceFile {
   return ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true);
 }
 
@@ -256,8 +259,17 @@ describe('the overrides that answer with something other than no-store', () => {
     const unmarked: string[] = [];
     let payloads = 0;
 
+    // A token payload is recognised by the key `accessToken` or by the name
+    // of a schema that declares one, so a file holding neither has none to
+    // find and is not parsed: parsing and walking every file costs most of
+    // vitest's per-test budget (#1007). A key can also be spelled with an
+    // escape (`'access\u0054oken'`) that the text does not show, so a file
+    // with any `\u` or `\x` is parsed too.
+    const markers = ['accessToken', '\\u', '\\x', ...TOKEN_SCHEMAS];
     for (const name of sourceFiles()) {
-      const source = parse(name);
+      const text = read(name);
+      if (!markers.some((marker) => text.includes(marker))) continue;
+      const source = parse(name, text);
       const marks = helperCalls(source, 'markTokenResponse');
 
       eachNode(source, (node) => {
