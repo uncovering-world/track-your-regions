@@ -497,10 +497,10 @@ export function useCvMatchPipeline(
     try {
       const result = await mapshapeMatch(worldViewId, regionId);
 
-      if (!result.found || !result.mapshapes || result.mapshapes.length === 0) {
+      if (!result.found) {
         setCVMatchDialog(prev => prev ? {
           ...prev,
-          progressText: result.message ?? 'No mapshape templates found on this page',
+          progressText: result.message,
           progressColor: '#ed6c02',
           done: true,
         } : prev);
@@ -511,7 +511,7 @@ export function useCvMatchPipeline(
       const clusters: ColorMatchCluster[] = result.mapshapes.map((ms, i) => ({
         clusterId: i,
         color: ms.color,
-        pixelShare: 1 / result.mapshapes!.length,
+        pixelShare: 1 / result.mapshapes.length,
         suggestedRegion: ms.matchedRegion,
         divisions: ms.divisions.map(d => ({
           id: d.id,
@@ -522,12 +522,12 @@ export function useCvMatchPipeline(
         unsplittable: [],
       }));
 
-      const stats = result.stats!;
+      const { stats } = result;
       setCVMatchDialog(prev => prev ? {
         ...prev,
         title: `Mapshape Match — ${stats.totalDivisions} divisions → ${stats.totalMapshapes} regions (${stats.matchedMapshapes} matched)`,
         clusters,
-        childRegions: result.childRegions ?? [],
+        childRegions: result.childRegions,
         geoPreview: result.geoPreview,
         wikivoyagePreview: result.wikivoyagePreview,
         progressText: `Found ${stats.totalMapshapes} mapshape regions with ${stats.totalDivisions} GADM divisions`,

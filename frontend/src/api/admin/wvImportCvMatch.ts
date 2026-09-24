@@ -6,22 +6,26 @@
  * cluster preview / highlight / overlay / water-crop.
  */
 
+import type {
+  ClusterGeoInfo, ClusterRegionSuggestions, MapshapeMatchResult, ReviewAnswered,
+} from '@tyr/shared/api';
 import type { SpatialAnomaly } from './wvImportTreeOps';
 import { authFetchJson, ensureFreshToken, getAccessToken } from '../fetchUtils';
+
+// What the migrated calls here answer is declared once, as a backend schema
+// (ADR-0066), and generated into `@tyr/shared/api`. Passed on from here, so a
+// component imports a call's answer from the module of the call.
+export type {
+  ChildRegionRef, ClusterGeoInfo, ClusterRegionMatch, ClusterRegionSuggestions, MapshapeDivision, MapshapeGroup,
+  MapshapeMatchResult, MapshapePreviewFeature, MapshapesFound, MapshapesNotFound, ReviewAnswered,
+  WikivoyageShapeFeature,
+} from '@tyr/shared/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // =============================================================================
 // Color Match Types
 // =============================================================================
-
-/** Cluster info for interactive map preview */
-export interface ClusterGeoInfo {
-  clusterId: number;
-  color: string;
-  regionId: number | null;
-  regionName: string | null;
-}
 
 export interface ColorMatchCluster {
   clusterId: number;
@@ -131,35 +135,11 @@ export interface ManualClusterResponse {
 // Mapshape Match
 // =============================================================================
 
-export interface MapshapeMatchResult {
-  found: boolean;
-  message?: string;
-  mapshapes?: Array<{
-    title: string;
-    color: string;
-    wikidataIds: string[];
-    matchedRegion: { id: number; name: string } | null;
-    divisions: Array<{ id: number; name: string; coverage: number }>;
-  }>;
-  childRegions?: Array<{ id: number; name: string }>;
-  geoPreview?: {
-    featureCollection: GeoJSON.FeatureCollection;
-    clusterInfos: ClusterGeoInfo[];
-  };
-  /** Wikivoyage mapshape geoshape boundaries for side-by-side comparison */
-  wikivoyagePreview?: GeoJSON.FeatureCollection;
-  stats?: {
-    totalMapshapes: number;
-    matchedMapshapes: number;
-    totalDivisions: number;
-  };
-}
-
 export async function mapshapeMatch(
   worldViewId: number,
   regionId: number,
 ): Promise<MapshapeMatchResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/mapshape-match`, {
+  return authFetchJson<MapshapeMatchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/mapshape-match`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });
@@ -178,11 +158,6 @@ export interface AISuggestClusterRegionsCluster {
   divisionNames: string[];
 }
 
-export interface AISuggestClusterRegionsResult {
-  matches: Array<{ clusterId: number; regionId: number | null }>;
-  stats: { inputTokens: number; outputTokens: number; cost: number };
-}
-
 /**
  * Ask the AI to assign each CV cluster to one of the given child regions
  * (or to none). Used by the geo-preview section after a CV color match.
@@ -192,8 +167,8 @@ export async function aiSuggestClusterRegions(
   clusters: AISuggestClusterRegionsCluster[],
   childRegions: Array<{ id: number; name: string }>,
   modelOverride?: string,
-): Promise<AISuggestClusterRegionsResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-suggest-clusters`, {
+): Promise<ClusterRegionSuggestions> {
+  return authFetchJson<ClusterRegionSuggestions>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-suggest-clusters`, {
     method: 'POST',
     body: JSON.stringify({ clusters, childRegions, model: modelOverride }),
   });
@@ -226,7 +201,7 @@ export async function respondToClusterReview(
   reviewId: string,
   decision: ClusterReviewDecision,
 ): Promise<void> {
-  await authFetchJson(`${API_URL}/api/admin/wv-import/cluster-review/${reviewId}`, {
+  await authFetchJson<ReviewAnswered>(`${API_URL}/api/admin/wv-import/cluster-review/${reviewId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(decision),
@@ -240,7 +215,7 @@ export function waterCropUrl(reviewId: string, componentId: number, subCluster: 
 
 /** Respond to a per-component water review during CV match */
 export async function respondToWaterReview(reviewId: string, decision: WaterReviewDecision): Promise<void> {
-  await authFetchJson(`${API_URL}/api/admin/wv-import/water-review/${reviewId}`, {
+  await authFetchJson<ReviewAnswered>(`${API_URL}/api/admin/wv-import/water-review/${reviewId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(decision),
@@ -264,7 +239,7 @@ export async function respondToIcpAdjustment(
   reviewId: string,
   decision: IcpAdjustmentDecision,
 ): Promise<void> {
-  await authFetchJson(`${API_URL}/api/admin/wv-import/icp-adjustment/${reviewId}`, {
+  await authFetchJson<ReviewAnswered>(`${API_URL}/api/admin/wv-import/icp-adjustment/${reviewId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(decision),
