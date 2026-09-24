@@ -10,6 +10,8 @@ import {
   ChildDivisionsAdded, DivisionUsageCounts, SubregionFlattened, SubregionsExpanded, type CreatedSubregion,
 } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
+import { visitedRegionRefusal, visitsUnder } from '../../db/regionVisits.js';
+import { createError } from '../../middleware/errorHandler.js';
 import { ensureRegionMember, invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
 
 interface ChildRow { id: number; name: string }
@@ -246,6 +248,11 @@ export async function flattenSubregion(req: Request, res: Response): Promise<voi
     res.status(400).json({ error: 'Subregion does not belong to the specified parent region' });
     return;
   }
+
+  // Before the first write: the members move to the parent before the
+  // subregion's branch is deleted, and not in one transaction (#764).
+  const visits = await visitsUnder(subregionId, true);
+  if (visits > 0) throw createError(visitedRegionRefusal(visits), 409);
 
   // Recursively collect all GADM division IDs from the subregion and its descendants
   const collectDivisionIds = async (regionId: number): Promise<number[]> => {

@@ -7,7 +7,7 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
-import { isVisitedRegionDelete } from '../../db/regionVisits.js';
+import { isVisitedRegionDelete, visitedRegionRefusal, visitsOn } from '../../db/regionVisits.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { respond } from '../../api/respond.js';
 import { InstancesSynced } from '../../api/responses/worldViewImport.js';
@@ -480,6 +480,15 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
     }
 
     const descendantIds = descendants.rows.map(r => r.id);
+
+    // Before the first write: auto-matching writes outside the transaction
+    // absorbDescendants opens, so a refusal at its delete would leave the
+    // matches standing (#764).
+    const visits = await visitsOn(descendantIds);
+    if (visits > 0) {
+      res.status(409).json({ error: visitedRegionRefusal(visits) });
+      return;
+    }
 
     const stillUnmatched = await autoMatchDescendants(descendants.rows);
     body = stillUnmatched.length > 0

@@ -296,6 +296,7 @@ describe('pruneToLeaves', () => {
 describe('smartFlatten', () => {
   it('clears the region that absorbed the divisions of the descendants it deleted', async () => {
     mockPoolQuery.mockImplementation(answering([
+      [/FROM user_visited_regions/, [{ visits: 0 }]],
       [/SELECT id, name FROM regions WHERE id = \$1 AND world_view_id/, [{ id: 100, name: 'Parent' }]],
       [/WITH RECURSIVE/, [{ id: 201, name: 'A' }, { id: 202, name: 'B' }]],
       [/SELECT DISTINCT region_id FROM region_members/, [{ region_id: 201 }, { region_id: 202 }]],
@@ -310,6 +311,7 @@ describe('smartFlatten', () => {
 
   it('clears nothing when the flatten is refused for an unmatched child', async () => {
     mockPoolQuery.mockImplementation(answering([
+      [/FROM user_visited_regions/, [{ visits: 0 }]],
       [/SELECT id, name FROM regions WHERE id = \$1 AND world_view_id/, [{ id: 100, name: 'Parent' }]],
       [/WITH RECURSIVE/, [{ id: 201, name: 'A' }]],
       [/SELECT DISTINCT region_id FROM region_members/, []],
@@ -326,6 +328,7 @@ describe('smartFlatten', () => {
 
   it('hands a visited descendant to the error handler rather than answering 500 (#764)', async () => {
     mockPoolQuery.mockImplementation(answering([
+      [/FROM user_visited_regions/, [{ visits: 0 }]],
       [/SELECT id, name FROM regions WHERE id = \$1 AND world_view_id/, [{ id: 100, name: 'Parent' }]],
       [/WITH RECURSIVE/, [{ id: 201, name: 'A' }]],
       [/SELECT DISTINCT region_id FROM region_members/, [{ region_id: 201 }]],
@@ -345,6 +348,23 @@ describe('smartFlatten', () => {
     expect(res._status).toBeUndefined();
     expect(mockClientQuery.mock.calls.map(([sql]) => String(sql))).toContain('ROLLBACK');
     expect(invalidated()).toEqual([]);
+  });
+
+  it('refuses a visited descendant before auto-matching writes anything (#764)', async () => {
+    mockPoolQuery.mockImplementation(answering([
+      [/FROM user_visited_regions/, [{ visits: 3 }]],
+      [/SELECT id, name FROM regions WHERE id = \$1 AND world_view_id/, [{ id: 100, name: 'Parent' }]],
+      [/WITH RECURSIVE/, [{ id: 201, name: 'A' }]],
+    ]));
+
+    const res = makeRes();
+    await smartFlatten(makeReq({ regionId: 100 }), res);
+
+    expect(res._status).toBe(409);
+    expect(res._body).toMatchObject({ error: expect.stringContaining('3 visits') });
+    const writes = mockPoolQuery.mock.calls.map(([sql]) => String(sql)).filter((sql) => /\b(INSERT|UPDATE|DELETE)\b/.test(sql));
+    expect(writes).toEqual([]);
+    expect(mockPoolConnect).not.toHaveBeenCalled();
   });
 });
 
