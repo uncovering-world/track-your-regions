@@ -176,6 +176,7 @@ export async function listExperiences(req: Request, res: Response): Promise<void
   const countQuery = `SELECT COUNT(*) FROM experiences e ${rowKindJoinSql('e')}${whereClause}`;
   const countResult = await pool.query(countQuery, params);
 
+  // eslint-disable-next-line no-restricted-syntax -- no client calls this endpoint, and whether it stays is #1033
   res.json({
     experiences: result.rows.map(withDangerFields),
     total: parseInt(countResult.rows[0].count),

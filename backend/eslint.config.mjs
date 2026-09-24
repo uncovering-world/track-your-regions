@@ -31,6 +31,115 @@ const PRIVATE_CACHE_CONTROL = [
   'header carries it whatever the hole evaluates to.',
 ].join(' ');
 
+/**
+ * The Cache-Control and pinned-transaction entries of `no-restricted-syntax`,
+ * named so the block that adds the response-shape entries can repeat them: a
+ * later block's options replace an earlier one's, never merge with them.
+ */
+const QUERY_AND_HEADER_RULES = [
+  {
+    // Every Cache-Control a handler writes says `private`. requireAuth
+    // marks its responses `private, no-store` and optionalAuth
+    // `private, no-cache` (#597, #710); a handler that needs another
+    // value replaces the whole header, and that is how `private` gets
+    // lost — the three SSE streams said a bare `no-cache` until #710,
+    // the value every SSE snippet on the web carries. It matters most
+    // where RFC 9111 § 3.5 does not help: EventSource and the admin
+    // `<img src>` endpoints take the token as `?token=`, so their
+    // requests carry no Authorization and `private` is the whole of the
+    // guarantee. A value this rule cannot find `private` in is reported
+    // too, since it cannot be checked here; a template whose literal
+    // part already says it passes, because the header carries it
+    // whatever the hole evaluates to.
+    // `:matches` on both sides because `[x.value=…]` reads a property
+    // only a Literal carries: written in backticks the header name is a
+    // TemplateLiteral, whose text sits in `quasis.0.value.cooked`, and
+    // the rule would pass over it entirely. The value is read the same
+    // way, so a template that does say `private` is not a false report;
+    // one with a hole in it has no `cooked` and is reported, which is
+    // the runtime case this cannot check.
+    selector: "CallExpression[callee.property.name=/^(setHeader|set|header|append)$/]"
+      + ":matches([arguments.0.value=/^cache-control$/i], [arguments.0.quasis.0.value.cooked=/^cache-control$/i])"
+      + ":not([arguments.1.value=/private/i]):not([arguments.1.quasis.0.value.cooked=/private/i])",
+    message: PRIVATE_CACHE_CONTROL,
+  },
+  {
+    // The same value written as an object entry — the shape `writeHead`
+    // and `res.set({…})` take. Keyed on the method, like its sibling
+    // above, rather than on a receiver named `res`: that covers a chain
+    // (`res.status(200).set({…})`) and a response parameter named
+    // anything else, both of which a receiver-keyed selector walks past.
+    // It still excludes an outbound `fetch(url, { headers })`, whose
+    // callee is a bare identifier with no property to match — a
+    // `Cache-Control` there is a request header this rule has nothing to
+    // say about.
+    selector: "CallExpression[callee.property.name=/^(writeHead|set|header|append)$/] > ObjectExpression > Property"
+      + ":matches([key.value=/^cache-control$/i], [key.quasis.0.value.cooked=/^cache-control$/i])"
+      + ":not([value.value=/private/i]):not([value.quasis.0.value.cooked=/private/i])",
+    message: PRIVATE_CACHE_CONTROL,
+  },
+  {
+    // A transaction has to be pinned to one client. `pool.query('BEGIN')`
+    // checks out an arbitrary idle client, runs BEGIN on it and releases
+    // it with the transaction still open: the statements that follow may
+    // land on other connections, and another request that checks out that
+    // client runs its own writes inside the stray transaction — to be
+    // rolled back with it. The rule exists because the prose form of it,
+    // written in curationController, outlived four call sites (#532).
+    selector: `CallExpression[callee.object.name='pool'][callee.property.name='query'] > Literal[value=/^\\s*${TX_VERBS}\\b/i]`,
+    message: PINNED_TRANSACTION,
+  },
+  {
+    // `:first-child` because only the opening quasi can be the start of
+    // the statement. Without it every quasi is read, and an interpolated
+    // `… ${x} ROLLBACK …` deep inside one string would be reported as a
+    // transaction it never opened.
+    selector: `CallExpression[callee.object.name='pool'][callee.property.name='query'] > TemplateLiteral > TemplateElement:first-child[value.raw=/^\\s*${TX_VERBS}\\b/i]`,
+    message: PINNED_TRANSACTION,
+  },
+];
+
+/** What the response-shape rule says. */
+const RESPONSE_SHAPE = [
+  'A success body is sent through respond(res, Schema, body) from src/api/respond.ts, with its schema in src/api/responses/,',
+  'and a stream\'s event through writeEvent(res, Schema, event) (ADR-0066): the web\'s types are generated from those schemas,',
+  'so a body sent around them is a shape nothing declares. An endpoint no client calls yet is exempted line by line with the',
+  'issue that decides it.',
+].join(' ');
+
+/**
+ * The response-shape entries: a bare `res.json(…)`, and a `.json(…)` after a
+ * literal 2xx status; and the same two with `send` when its argument is an
+ * object or array literal, which Express sends as JSON. An error answer
+ * (`res.status(404).json(…)`, or a status held in a variable, as the curator
+ * writers' refusals are) is not a success body and passes, and so is a `send`
+ * of a name, a string or a Buffer — the admin images' PNG — whose type a
+ * selector cannot read. Keyed on a receiver named `res`, as every handler in
+ * this codebase names it, so an outbound `fetch` answer's `response.json()` is
+ * not read as one.
+ */
+const JSON_LITERAL = '[arguments.0.type=/^(ObjectExpression|ArrayExpression)$/]';
+const AFTER_2XX = "[callee.object.callee.property.name='status']"
+  + '[callee.object.arguments.0.value>=200][callee.object.arguments.0.value<300]';
+const RESPONSE_SHAPE_RULES = [
+  {
+    selector: "CallExpression[callee.object.name='res'][callee.property.name='json']",
+    message: RESPONSE_SHAPE,
+  },
+  {
+    selector: `CallExpression[callee.property.name='json']${AFTER_2XX}`,
+    message: RESPONSE_SHAPE,
+  },
+  {
+    selector: `CallExpression[callee.object.name='res'][callee.property.name='send']${JSON_LITERAL}`,
+    message: RESPONSE_SHAPE,
+  },
+  {
+    selector: `CallExpression[callee.property.name='send']${AFTER_2XX}${JSON_LITERAL}`,
+    message: RESPONSE_SHAPE,
+  },
+];
+
 export default [
   {
     ignores: ['dist/', 'node_modules/'],
@@ -77,72 +186,23 @@ export default [
       // is a file to split first. The one relaxation is the generated schema
       // below, whose length is the schema's.
       'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
-      // Two rules, each documented at its own entries below.
-      'no-restricted-syntax': ['error',
-        {
-          // Every Cache-Control a handler writes says `private`. requireAuth
-          // marks its responses `private, no-store` and optionalAuth
-          // `private, no-cache` (#597, #710); a handler that needs another
-          // value replaces the whole header, and that is how `private` gets
-          // lost — the three SSE streams said a bare `no-cache` until #710,
-          // the value every SSE snippet on the web carries. It matters most
-          // where RFC 9111 § 3.5 does not help: EventSource and the admin
-          // `<img src>` endpoints take the token as `?token=`, so their
-          // requests carry no Authorization and `private` is the whole of the
-          // guarantee. A value this rule cannot find `private` in is reported
-          // too, since it cannot be checked here; a template whose literal
-          // part already says it passes, because the header carries it
-          // whatever the hole evaluates to.
-          // `:matches` on both sides because `[x.value=…]` reads a property
-          // only a Literal carries: written in backticks the header name is a
-          // TemplateLiteral, whose text sits in `quasis.0.value.cooked`, and
-          // the rule would pass over it entirely. The value is read the same
-          // way, so a template that does say `private` is not a false report;
-          // one with a hole in it has no `cooked` and is reported, which is
-          // the runtime case this cannot check.
-          selector: "CallExpression[callee.property.name=/^(setHeader|set|header|append)$/]"
-            + ":matches([arguments.0.value=/^cache-control$/i], [arguments.0.quasis.0.value.cooked=/^cache-control$/i])"
-            + ":not([arguments.1.value=/private/i]):not([arguments.1.quasis.0.value.cooked=/private/i])",
-          message: PRIVATE_CACHE_CONTROL,
-        },
-        {
-          // The same value written as an object entry — the shape `writeHead`
-          // and `res.set({…})` take. Keyed on the method, like its sibling
-          // above, rather than on a receiver named `res`: that covers a chain
-          // (`res.status(200).set({…})`) and a response parameter named
-          // anything else, both of which a receiver-keyed selector walks past.
-          // It still excludes an outbound `fetch(url, { headers })`, whose
-          // callee is a bare identifier with no property to match — a
-          // `Cache-Control` there is a request header this rule has nothing to
-          // say about.
-          selector: "CallExpression[callee.property.name=/^(writeHead|set|header|append)$/] > ObjectExpression > Property"
-            + ":matches([key.value=/^cache-control$/i], [key.quasis.0.value.cooked=/^cache-control$/i])"
-            + ":not([value.value=/private/i]):not([value.quasis.0.value.cooked=/private/i])",
-          message: PRIVATE_CACHE_CONTROL,
-        },
-        {
-          // A transaction has to be pinned to one client. `pool.query('BEGIN')`
-          // checks out an arbitrary idle client, runs BEGIN on it and releases
-          // it with the transaction still open: the statements that follow may
-          // land on other connections, and another request that checks out that
-          // client runs its own writes inside the stray transaction — to be
-          // rolled back with it. The rule exists because the prose form of it,
-          // written in curationController, outlived four call sites (#532).
-          selector: `CallExpression[callee.object.name='pool'][callee.property.name='query'] > Literal[value=/^\\s*${TX_VERBS}\\b/i]`,
-          message: PINNED_TRANSACTION,
-        },
-        {
-          // `:first-child` because only the opening quasi can be the start of
-          // the statement. Without it every quasi is read, and an interpolated
-          // `… ${x} ROLLBACK …` deep inside one string would be reported as a
-          // transaction it never opened.
-          selector: `CallExpression[callee.object.name='pool'][callee.property.name='query'] > TemplateLiteral > TemplateElement:first-child[value.raw=/^\\s*${TX_VERBS}\\b/i]`,
-          message: PINNED_TRANSACTION,
-        },
-      ],
+      // Two rules, each documented at its own entries in
+      // QUERY_AND_HEADER_RULES above; a third joins them for everything but
+      // the specs, in the block below.
+      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES],
       // SonarJS: disable genuine false positives only
       'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses (e.g., jitter)
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
+    },
+  },
+  // Every answer a handler sends is one a schema declares (ADR-0066, #993).
+  // The specs are left out, since a fixture app's handler is not an endpoint,
+  // and so is respond.ts, which is where the body is finally written.
+  {
+    files: ['src/**/*.ts'],
+    ignores: ['src/**/*.test.ts', 'src/api/respond.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES],
     },
   },
   // The one file nobody writes: `schema.generated.ts` is the schema's

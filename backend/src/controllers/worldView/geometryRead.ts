@@ -209,6 +209,7 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
     return;
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- no client calls this read, and whether it stays is #1006
   res.json({
     type: 'FeatureCollection',
     features: validFeatures,
@@ -377,6 +378,7 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
     return;
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- no client calls this read, and whether it stays is #1006
   res.json({
     type: 'FeatureCollection',
     features: validFeatures,

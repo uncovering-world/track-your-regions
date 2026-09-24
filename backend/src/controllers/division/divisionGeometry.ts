@@ -77,6 +77,7 @@ export async function getSubdivisionGeometries(req: Request, res: Response): Pro
     geometry: d.geometry,
   }));
 
+  // eslint-disable-next-line no-restricted-syntax -- no client calls this endpoint, and whether it stays is #1033
   res.json({
     type: 'FeatureCollection',
     features,
@@ -117,6 +118,7 @@ export async function getRootGeometries(req: Request, res: Response): Promise<vo
     geometry: d.geometry,
   }));
 
+  // eslint-disable-next-line no-restricted-syntax -- no client calls this endpoint, and whether it stays is #1033
   res.json({
     type: 'FeatureCollection',
     features,
