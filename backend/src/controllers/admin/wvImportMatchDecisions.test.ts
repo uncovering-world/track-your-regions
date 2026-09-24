@@ -13,6 +13,12 @@ vi.mock('../../db/index.js', () => ({
   pool: { connect: async () => ({ query: clientQuery, release }) },
   rollbackQuietly: async (c: { query: (s: string) => unknown }) => { await c.query('ROLLBACK'); return undefined; },
 }));
+// The match controller re-exports the colour-match stream, whose JavaScript
+// branch starts loading OpenCV when it is imported. Under vitest,
+// `import('@techstark/opencv-js')` resolves through the WASM module's own
+// `then`, which calls itself forever once the runtime is up. That leaves the
+// worker spinning, and the whole lane never exits.
+vi.mock('./wvImportMatchPipeline.js', () => ({ colorMatchDivisionsSSE: vi.fn() }));
 
 import { acceptBatchAndRejectRest, rejectBatchSuggestions } from './wvImportMatchDecisions.js';
 import { acceptAndRejectRest, rejectMatch } from './wvImportMatchController.js';
