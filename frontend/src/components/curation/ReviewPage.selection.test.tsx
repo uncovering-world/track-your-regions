@@ -194,7 +194,8 @@ describe('answering a selection', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog.textContent).toContain('Reject all 1,078 matching these filters?');
     expect(dialog.textContent).toContain('1,070 arrivals: Keep it out');
-    expect(dialog.textContent).toContain('5 refusals: The rule was right — keep it out');
+    // Rejecting a refusal is the take-back: the card proposes the refusal (#906).
+    expect(dialog.textContent).toContain('5 refusals: The rule was wrong — put it back until the next run');
     expect(dialog.textContent).toContain('3 disagreements: Keep ours');
     expect(dialog.textContent).not.toContain('gone from the source');
     expect(mockedAnswer).not.toHaveBeenCalled();
