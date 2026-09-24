@@ -509,7 +509,7 @@ All require admin auth.
 
 **What the import and the review answer.** The import's start, status and cancel, the match statistics, the match tree, the verdicts on suggestions, instance sync and the transfer answer through schemas in `backend/src/api/responses/worldViewImport.ts` (ADR-0066). The statistics are whole numbers: `COUNT` answers a `bigint`, which the driver sends as a string, so each is cast to `int` in the statement. The tree is one recursive schema, `MatchTreeNode`, and each row is mapped by `matchTreeNodeOf` (`controllers/admin/wvImportAnswerRows.ts`). A row's suggestions and assigned divisions are built as JSON in SQL, and its marker points are stored JSON, so they are read key by key. A suggestion's `path` and `score` are nullable, as their columns are, and its `conflict` is `null` where no sibling holds the division. The import status names each progress key rather than spreading the progress record, and always carries the list of imported world views, empty where there is none. The matchers answer through the same module: the database search, geocode, geoshape and point matches, the single-region AI match, the whole-world-view AI re-match and the re-match. Each suggestion a matcher returns is mapped by `foundSuggestionOf`, and each run's progress names its keys, so the run's internal `cancel` flag stays on the server. The geoshape proxy answers one `FeatureCollection` whether the shape came from the `wikidata_geoshapes` cache or from `maps.wikimedia.org`: `geoshapeOf` keeps each polygon or multipolygon, tagged with the item's id, and drops Wikimedia's own feature keys and any geometry that is not an area. No screen calls the whole-world-view AI re-match (`/ai-match`, its status and its cancel); the routes remain for a direct call.
 
-**What the map matching answers.** The calls `frontend/src/api/admin/wvImportCvMatch.ts` makes answer through schemas in `backend/src/api/responses/wvImportCvMatch.ts` (ADR-0066), apart from the colour-match stream, which does not yet:
+**What the map matching answers.** The calls `frontend/src/api/admin/wvImportCvMatch.ts` makes answer through schemas in `backend/src/api/responses/wvImportCvMatch.ts` (ADR-0066):
 - a reviewer's answer to a paused colour-match run (cluster review, water review, alignment) is `ReviewAnswered`;
 - the mapshape match is `MapshapeMatchResult`, one of two shapes told apart by `found`. Where nothing was found it is only the reason, and otherwise it is:
   - the page's shapes grouped by colour;
@@ -523,6 +523,13 @@ All require admin auth.
   - a child region already given to one cluster is given to no other.
 
   The call's statistics are its `model`, `promptTokens`, `completionTokens`, `cost` and `durationMs`.
+
+The colour-match stream (`/color-match-stream`) writes each event through `writeEvent()` against one union, `ColorMatchEvent`, told apart by `type`:
+- `progress` and `debug_image` follow the run;
+- `water_review`, `cluster_review` and `icp_adjustment_available` pause it until the reviewer answers;
+- the run ends with `complete`, which carries a `ColorMatchResult`, or with `error`, including when the source-map pipeline throws, so the screen shows the reason rather than a lost connection.
+
+The pipeline's parts take its `SendEvent`, typed with that union. A traced border (`BorderPath`), a cluster's result (`ColorMatchCluster`), a spatial anomaly (`SpatialAnomaly`, also sent by smart simplify) and an adjacency edge are the schemas' types on the server as well. A water review from the Python pipeline is read key by key before it is sent.
 
 A verdict on suggestions has one writer per rule, whether it is given for one division or for a selection: `acceptDivisionsRejectRest` and `rejectDivisions` (`controllers/admin/wvImportMatchDecisions.ts`), each in one transaction. The single routes (`accept-and-reject`, `reject`) pass one division, and the batch routes pass the selection. After a rejection the region's status follows what is left: open suggestions make it `needs_review`, members `manual_matched`, and nothing `no_candidates`.
 
