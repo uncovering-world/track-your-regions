@@ -495,8 +495,8 @@ describe('getReviewQueue', () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
     // The SQL is `claimKeyFor` in another runtime, and the two are pinned by
-    // shape rather than by structure — nothing can import one into the other
-    // (#527). Map first, then the family off the name before the dot, then the
+    // shape rather than by structure — nothing can import one into the other.
+    // Map first, then the family off the name before the dot, then the
     // field itself: any other order sends `metadata.inDanger` somewhere else.
     const [conflictSql] = callMatching("'conflict' AS kind");
     const claimKey = /COALESCE\(\$\d+::jsonb->>\(f->>'field'\), \$\d+::jsonb->>split_part\(f->>'field', '\.', 1\), f->>'field'\)/;

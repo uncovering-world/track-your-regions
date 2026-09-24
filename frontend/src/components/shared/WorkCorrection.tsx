@@ -209,7 +209,7 @@ export function refusals(name: string, picture: string, year: number | null, mak
   const decoded = picture.startsWith('{') ? (extractImageUrl(picture) ?? picture) : picture;
   // A **remote** address is asked of `toThumbnailUrl`, the same question the
   // preview answers by drawing nothing, so the host list stays in one place
-  // (#527) and the form cannot refuse a picture the preview would draw. A
+  // (`@tyr/shared/pictures`, ADR-0065) and the form cannot refuse a picture the preview would draw. A
   // **local** one is asked whether it is `/images/`, the one shape the drawing
   // side maps onto our API.
   const remote = /^https?:\/\//i.test(decoded);
