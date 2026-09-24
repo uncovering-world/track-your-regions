@@ -61,74 +61,39 @@ export async function moveMembersToRegion(
 
 /**
  * Clear a region's own cached geometry, so the next world-view run recomputes
- * it from its members.
+ * it — for a *structural* change, the one kind the database cannot see.
  *
- * What a member or structure edit calls: nothing wrote a geometry, but what
- * this region's outline is derived from changed, so its own is stale. Anything
- * that has just *written* a geometry calls nothing at all -- the region it
- * wrote is the one that must keep what it was given.
+ * A member edit needs no call: a write to region_members clears the regions
+ * whose union it changed, in the same statement (ADR-0068). A region changing
+ * parents, or a branch deleted, writes neither a member nor a geometry while
+ * changing what a parent's union holds — one loses a child, another gains it —
+ * so the writer names those parents itself: updateRegion and deleteRegion here,
+ * and the import review's reparent, merge, remove, dismiss, prune and smart
+ * flatten. A parent's union holds a hand-drawn child too, since it collects
+ * every child that has geometry, so relying on the moved region's own row to
+ * reach its parent would fail for a drawn one.
  *
  * The walk upward is not here. Nulling geom is itself a write to regions.geom,
- * so trg_regions_geom_invalidates_parent fires and marks the derived ancestors
- * stale, one level per firing, up to the root -- inside this statement, where
- * no writer can forget it and where it cannot fail on its own (ADR-0035).
- * Until #680 this function walked a recursive CTE and every writer of geom
- * called a second one by hand; the review of #679 found seven writers that had
- * been missed, one round at a time, and each miss was permanent -- the parent
- * kept a stale outline with nothing NULL beneath it and fell outside every
- * later run's closure, while the run reported Complete (#667).
+ * so trg_regions_geom_invalidates_parent carries it to the derived ancestors,
+ * inside this statement (ADR-0035).
  *
- * Skips rows with is_custom_boundary = true: those geometries are user-drawn,
- * not derived from members, so member or structural changes must not silently
- * wipe them. The explicit way to drop a custom boundary is resetRegionToGADM
- * in geometryCompute.ts. (See #283: without this guard, calling addMembers
- * right after createRegion(customGeometry) clobbered the just-created custom
- * shape.) For a *member* edit nothing above one moves either, since no row is
- * written and the trigger therefore never fires -- the same stop
- * loadGroupsToCompute makes on both arms of its closure, and the truth on the
- * ground: editing what a drawn region contains does not move the line somebody
- * drew, so the union above it is unchanged.
+ * Skips a hand-drawn boundary (is_custom_boundary): its shape is drawn, not
+ * derived, and resetRegionToGADM is the explicit way to drop it (#283).
  *
- * **A structural move is the exception, and has to name its rows itself.** A
- * region changing parents writes no geometry while changing two unions -- one
- * parent loses a child, the other gains it -- and a parent's union does hold a
- * hand-drawn child, since it collects every child that has geometry and filters
- * none out. So updateRegion calls this for the moved region *and* both parents,
- * and deleteRegion calls it for the departed region's parent, a DELETE firing
- * no trigger on geom either. Relying on the moved region's own call to reach
- * the new parent works only while that call writes a row, which for a drawn
- * region it does not.
- *
- * The World View Editor's two are not the whole set. The import-review tree
- * operations move and delete regions too (#496):
- * reparentRegion, mergeChildIntoParent, removeRegionFromImport, dismissChildren,
- * pruneToLeaves and smartFlatten. Each names the rows whose union it changed and no others -- the
- * ancestors above them are the trigger's. Their undo paths name nothing, and
- * are right not to: every region they recreate arrives with geom NULL, which is
- * what seeds the run's closure, so the tree above it is recomputed without
- * anybody asking.
- *
- * What is still open there is the *member* half, #718: a dozen import-review
- * routes rewrite region_members *without* moving or deleting a region --
- * accepting a match, clearing members, resolving an overlap, collapsing a
- * parent -- and not one of them calls this, leaving a region drawing divisions
- * it no longer holds. The three handlers above that move members as part of a
- * structural change are covered by the call they already make. Same permanence,
- * and the same "harmless until Compute Geometries runs" that made #496 easy to
- * miss.
- *
- * A lock or deadlock is swallowed, on the reasoning that what races a member
- * edit is another edit nulling the same rows. That is a tolerance carried over
- * from #283 rather than a guarantee: if it is wrong the region keeps a stale
- * outline and Catalogue Checks is what reports it
- * (`parent-short-of-its-children`). The statement addresses one row by primary
- * key, but it is not one row's worth of locking: the trigger cascade takes each
- * derived ancestor in turn inside the same statement, so a lock swallowed here
- * may be one of theirs.
+ * `db` is the caller's transaction client where it has one, so the clearing
+ * commits or rolls back with the change it answers for (#1026). There a lock
+ * or deadlock is not swallowed: it has aborted the transaction, and the
+ * operation fails whole. On the pool — a writer with no transaction — it is
+ * swallowed, the tolerance carried from #283: what races an edit is usually
+ * another edit clearing the same rows, and if not, Catalogue Checks reports
+ * the stale outline (`parent-short-of-its-children`).
  */
-export async function invalidateRegionGeometry(regionId: number): Promise<void> {
+export async function invalidateRegionGeometry(
+  regionId: number,
+  db: Pick<PoolClient, 'query'> = pool,
+): Promise<void> {
   try {
-    await pool.query(`
+    await db.query(`
       UPDATE regions
       SET geom = NULL,
           geom_3857 = NULL,
@@ -140,7 +105,7 @@ export async function invalidateRegionGeometry(regionId: number): Promise<void> 
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     const isLockError = errorMessage.includes('could not obtain lock') || errorMessage.includes('deadlock');
-    if (isLockError) {
+    if (isLockError && db === pool) {
       console.log(`[invalidateRegionGeometry] Skipping region ${regionId} - already being updated by another operation`);
       return;
     }

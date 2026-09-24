@@ -13,7 +13,6 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { respond } from '../../api/respond.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import { TransferAccepted, TransferPreview } from '../../api/responses/worldViewImport.js';
-import { invalidateRegionGeometry } from '../worldView/helpers.js';
 
 interface TransferRequestBody {
   regionId: number;
@@ -186,17 +185,8 @@ export async function acceptWithTransfer(req: AuthenticatedRequest, res: Respons
     client.release();
   }
 
-  // Post-commit: log geometry-invalidation failures but don't surface a 500.
-  // The transfer itself succeeded — a 500 would tempt the admin to retry and
-  // double-process. Geometry invalidation can always be re-run safely.
-  try {
-    await Promise.all([
-      invalidateRegionGeometry(regionId),
-      invalidateRegionGeometry(donorRegionId),
-    ]);
-  } catch (geomErr) {
-    console.error('[acceptWithTransfer] post-commit geometry invalidation failed:', geomErr);
-  }
+  // Both regions' geometry was cleared inside the transaction, by the member
+  // trigger on the rows that moved (ADR-0068), so nothing can fail after it.
 
   respond(res, TransferAccepted, { transferred: divisionIds.length, transferType });
 }

@@ -26,7 +26,7 @@ async function fetchRegionPoints(regionId: number): Promise<RegionData | null> {
   // Whether the hull has to be split at the dateline is measured over the very
   // points it is built from, by geometry_focus() in the same query -- not read
   // off regions.focus_bbox, which describes COALESCE(hull_geom, geom): after a
-  // member change invalidateRegionGeometry() clears geom but not hull_geom, so
+  // member change the member trigger (ADR-0068) clears geom but not hull_geom, so
   // that box would describe the previous hull until the geometry is recomputed,
   // and the two hull endpoints run with no recompute in front of them (#674).
   const result = await pool.query(`

@@ -9,7 +9,7 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { invalidateRegionGeometry, syncImportMatchStatus } from '../worldView/helpers.js';
+import { syncImportMatchStatus } from '../worldView/helpers.js';
 import { detectAnomaliesForRegion } from '../../services/worldViewImport/spatialAnomalyDetector.js';
 import { respond } from '../../api/respond.js';
 import { SmartSimplifyApplied, SmartSimplifyMoves, type SmartSimplifyMove } from '../../api/responses/wvImportTreeOps.js';
@@ -332,13 +332,13 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
 
     await client.query('COMMIT');
 
-    // 6. Invalidate geometry + sync match status for all affected regions.
+    // 6. Sync match status for all affected regions; their geometry was
+    //    cleared by the member trigger on the rows that moved (ADR-0068).
     //    No "simplify hierarchy" pass runs here: it is an explicit operator
     //    action via the dedicated simplify icon on the tree row, because
     //    "move divisions" and "fold identical members into a single
     //    parent-division row" are separate decisions.
     for (const regionId of affectedRegionIds) {
-      await invalidateRegionGeometry(regionId);
       await syncImportMatchStatus(regionId);
     }
 

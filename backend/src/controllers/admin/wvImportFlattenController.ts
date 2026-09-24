@@ -353,6 +353,14 @@ async function absorbDescendants(worldViewId: number, regionId: number, descenda
       [regionId],
     );
 
+    // The region absorbed the divisions of the descendants it deleted, so
+    // its union is neither what it was nor what the descendants drew. The
+    // divisions it gained cleared it through the member trigger (ADR-0068);
+    // named here as well because deleting the branch is structural, and
+    // inside the transaction, so a failure rolls the flatten back rather than
+    // answering an error for one that committed (#1026).
+    await invalidateRegionGeometry(regionId, client);
+
     await client.query('COMMIT');
 
     // Store undo entry (same structure as dismiss-children)
@@ -368,15 +376,6 @@ async function absorbDescendants(worldViewId: number, regionId: number, descenda
       descendantMembers: descMembersResult.rows as Array<{ region_id: number; division_id: number }>,
       childSnapshots: [],
     });
-
-    // The region absorbed the divisions of the descendants it deleted, so
-    // its union is neither what it was nor what the descendants drew. Named
-    // here for the reason the tree operations name theirs: a structural
-    // change writes no geometry, so trg_regions_geom_invalidates_parent never
-    // sees it, and a parent left holding a stale outline with nothing NULL
-    // beneath it falls outside every later run's closure (ADR-0035, #496).
-    // Ancestors are the trigger's, reached because this is a geometry write.
-    await invalidateRegionGeometry(regionId);
 
     console.log(`[WV Import] Smart flatten: absorbed ${descendantIds.length} descendants (${uniqueDivisionIds.length} divisions) into region ${regionId}`);
     return {

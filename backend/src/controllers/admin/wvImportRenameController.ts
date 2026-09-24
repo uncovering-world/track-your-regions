@@ -141,22 +141,35 @@ export async function reparentRegion(
     }
   }
 
-  await pool.query(
-    'UPDATE regions SET parent_region_id = $1 WHERE id = $2',
-    [newParentId, regionId],
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      'UPDATE regions SET parent_region_id = $1 WHERE id = $2',
+      [newParentId, regionId],
+    );
 
-  // Both parents are named, because a structural move writes no geometry for
-  // trg_regions_geom_invalidates_parent to see while changing what two unions
-  // hold: one parent loses a child, the other gains it (ADR-0035, #496).
-  //
-  // The moved region is not named, and that is where this differs from
-  // regionCrud.updateRegion. There the move carries a division membership
-  // between the two parents, so the region's own union changes too; here the
-  // statement above writes parent_region_id and nothing else, leaving every
-  // member and child the region's outline is made of exactly as they were.
-  if (oldParentId != null) await invalidateRegionGeometry(oldParentId);
-  if (newParentId != null) await invalidateRegionGeometry(newParentId);
+    // Both parents are named, because a structural move writes no geometry for
+    // trg_regions_geom_invalidates_parent to see while changing what two unions
+    // hold: one parent loses a child, the other gains it (ADR-0035, #496).
+    //
+    // The moved region is not named, and that is where this differs from
+    // regionCrud.updateRegion. There the move carries a division membership
+    // between the two parents, so the region's own union changes too; here the
+    // statement above writes parent_region_id and nothing else, leaving every
+    // member and child the region's outline is made of exactly as they were.
+    //
+    // Inside the transaction, so a failed clearing rolls the move back rather
+    // than answering an error for one that happened (#1026, ADR-0068).
+    if (oldParentId != null) await invalidateRegionGeometry(oldParentId, client);
+    if (newParentId != null) await invalidateRegionGeometry(newParentId, client);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 
   respond(res, RegionReparented, { reparented: true, regionId, oldParentId, newParentId });
 }
