@@ -516,7 +516,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   const smartFlattenMutation = useMutation({
     mutationFn: (regionId: number) => smartFlatten(worldViewId, regionId),
     onSuccess: (data) => {
-      if (data.unmatched) {
+      if (data.blocked) {
         const names = data.unmatched.map(u => u.name).join(', ');
         setUndoSnackbar({
           open: true,

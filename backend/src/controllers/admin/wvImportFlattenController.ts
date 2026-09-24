@@ -25,6 +25,11 @@ import {
   computeGeoSimilarityIfNeeded,
 } from './wvImportUtils.js';
 import { invalidateRegionGeometry } from '../worldView/helpers.js';
+import type { AreaGeometry } from '../../api/responses/regions.js';
+import {
+  ChildrenCollapsed, ChildrenGrouped, FlattenPreviewResult, SmartFlattenResult,
+  type FlattenDone, type FlattenPreview,
+} from '../../api/responses/wvImportTreeOps.js';
 
 // =============================================================================
 // Flatten and grouping endpoints
@@ -40,6 +45,7 @@ export async function collapseToParent(req: AuthenticatedRequest, res: Response)
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/collapse-to-parent — regionId=${regionId}`);
 
+  let body: ChildrenCollapsed;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -156,19 +162,228 @@ export async function collapseToParent(req: AuthenticatedRequest, res: Response)
         await computeGeoSimilarityIfNeeded(regionId);
       }
       console.log(`[WV Import] Collapsed ${descendantIds.length} descendants of region ${regionId}, found ${searchResult.found} suggestion(s) for parent`);
-      res.json({
+      body = {
         collapsed: descendantIds.length,
         parentSuggestions: searchResult.found,
         undoAvailable: true,
-      });
+      };
     } catch (searchErr) {
       console.warn(`[WV Import] Collapse succeeded but parent search failed:`, searchErr instanceof Error ? searchErr.message : searchErr);
-      res.json({
+      body = {
         collapsed: descendantIds.length,
         parentSuggestions: 0,
         undoAvailable: true,
-      });
+      };
     }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+  respond(res, ChildrenCollapsed, body);
+}
+
+/** A descendant region by id and name. */
+type DescendantRow = { id: number; name: string };
+
+/**
+ * Match each descendant that has no members to its one clear GADM candidate by
+ * name, and answer the ones still unmatched. The preview and the flatten both
+ * run it, so the matches a preview makes are already there when the flatten runs.
+ */
+async function autoMatchDescendants(descendants: DescendantRow[]): Promise<DescendantRow[]> {
+  const descendantIds = descendants.map(d => d.id);
+  const membersCheck = await pool.query(
+    `SELECT DISTINCT region_id FROM region_members WHERE region_id = ANY($1)`,
+    [descendantIds],
+  );
+  const matchedIds = new Set(membersCheck.rows.map(r => r.region_id as number));
+  const unmatchedDescendants = descendants.filter(d => !matchedIds.has(d.id));
+
+  const stillUnmatched: DescendantRow[] = [];
+  for (const desc of unmatchedDescendants) {
+    const descId = desc.id;
+    const descName = desc.name;
+    const candidates = await trigramSearch(descName, 3);
+
+    // Auto-match if a single candidate is strong enough, OR the top candidate
+    // clearly beats the runner-up. Both paths take the same action, so they
+    // collapse into one boolean expression (avoids sonarjs/no-duplicated-branches).
+    const autoMatched = (candidates.length === 1 && candidates[0].similarity >= 0.5)
+      || (candidates.length > 1 && candidates[0].similarity >= 0.7
+          && candidates[0].similarity - candidates[1].similarity >= 0.15);
+
+    if (autoMatched) {
+      await pool.query(
+        `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [descId, candidates[0].divisionId],
+      );
+      await pool.query(
+        `INSERT INTO region_import_state (region_id, match_status)
+         VALUES ($1, 'auto_matched')
+         ON CONFLICT (region_id) DO UPDATE SET match_status = 'auto_matched'`,
+        [descId],
+      );
+    } else {
+      stillUnmatched.push({ id: descId, name: descName });
+    }
+  }
+
+  return stillUnmatched;
+}
+
+/** What a flatten would leave the region: its descendants' divisions unified, beside its source map. */
+async function flattenPreviewOf(regionId: number, descendantIds: number[]): Promise<FlattenPreview> {
+  // Compute unified geometry of all descendant divisions (simplified for preview)
+  const geomResult = await pool.query(`
+    SELECT ST_AsGeoJSON(ST_Union(ad.geom_simplified_medium)) AS geojson
+    FROM region_members rm
+    JOIN administrative_divisions ad ON ad.id = rm.division_id
+    WHERE rm.region_id = ANY($1)
+  `, [descendantIds]);
+
+  const geojsonStr = geomResult.rows[0]?.geojson as string | null;
+  const geometry = geojsonStr ? JSON.parse(geojsonStr) as AreaGeometry : null;
+
+  // Get parent's region map URL
+  const mapUrlResult = await pool.query(
+    'SELECT region_map_url FROM region_import_state WHERE region_id = $1',
+    [regionId],
+  );
+  const regionMapUrl = (mapUrlResult.rows[0]?.region_map_url as string | null) ?? null;
+
+  // Count unique divisions
+  const divCountResult = await pool.query(
+    'SELECT COUNT(DISTINCT division_id) AS cnt FROM region_members WHERE region_id = ANY($1)',
+    [descendantIds],
+  );
+  const divisionCount = parseInt(divCountResult.rows[0]?.cnt as string) || 0;
+
+  console.log(`[WV Import] Smart flatten preview: ${descendantIds.length} descendants, ${divisionCount} divisions`);
+  return {
+    blocked: false,
+    geometry,
+    regionMapUrl,
+    descendants: descendantIds.length,
+    divisions: divisionCount,
+  };
+}
+
+/**
+ * Absorb every descendant's divisions into the region and delete the
+ * descendants, in one transaction, keeping an undo entry.
+ */
+async function absorbDescendants(worldViewId: number, regionId: number, descendantIds: number[]): Promise<FlattenDone> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Snapshot parent import state + members
+    const parentImportStateResult = await client.query(
+      `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
+              region_map_url, map_image_reviewed, import_run_id
+       FROM region_import_state WHERE region_id = $1`,
+      [regionId],
+    );
+    const parentImportState = parentImportStateResult.rows.length > 0
+      ? parentImportStateResult.rows[0] as ImportStateSnapshot
+      : null;
+    const parentMembersResult = await client.query(
+      'SELECT region_id, division_id FROM region_members WHERE region_id = $1',
+      [regionId],
+    );
+
+    // Snapshot all descendants
+    const descRegionsResult = await client.query(
+      `SELECT id, name, parent_region_id, is_leaf, world_view_id
+       FROM regions WHERE id = ANY($1) ORDER BY id`,
+      [descendantIds],
+    );
+    const descImportStatesResult = await client.query(
+      `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
+              region_map_url, map_image_reviewed, import_run_id
+       FROM region_import_state WHERE region_id = ANY($1)`,
+      [descendantIds],
+    );
+    const descSuggestionsResult = await client.query(
+      `SELECT region_id, division_id, name, path, score, rejected
+       FROM region_match_suggestions WHERE region_id = ANY($1)`,
+      [descendantIds],
+    );
+    const descMembersResult = await client.query(
+      'SELECT region_id, division_id FROM region_members WHERE region_id = ANY($1)',
+      [descendantIds],
+    );
+
+    // Absorb: collect all descendant division IDs -> assign to parent
+    const allDescDivisionIds = descMembersResult.rows.map(r => r.division_id as number);
+    const uniqueDivisionIds = [...new Set(allDescDivisionIds)];
+    for (const divId of uniqueDivisionIds) {
+      await client.query(
+        `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [regionId, divId],
+      );
+    }
+
+    // Delete descendant members first
+    await client.query(
+      'DELETE FROM region_members WHERE region_id = ANY($1)',
+      [descendantIds],
+    );
+
+    // Delete descendants (deepest-first via CTE)
+    await client.query(`
+      WITH RECURSIVE desc_regions AS (
+        SELECT id, 1 AS depth FROM regions WHERE parent_region_id = $1
+        UNION ALL
+        SELECT r.id, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
+      )
+      DELETE FROM regions WHERE id IN (SELECT id FROM desc_regions ORDER BY depth DESC)
+    `, [regionId]);
+
+    // Update parent status
+    await client.query(
+      `UPDATE region_import_state SET match_status = 'manual_matched' WHERE region_id = $1`,
+      [regionId],
+    );
+    await client.query(
+      `DELETE FROM region_match_suggestions WHERE region_id = $1`,
+      [regionId],
+    );
+
+    await client.query('COMMIT');
+
+    // Store undo entry (same structure as dismiss-children)
+    undoEntries.set(worldViewId, {
+      operation: 'smart-flatten',
+      regionId,
+      timestamp: Date.now(),
+      parentImportState,
+      parentMembers: parentMembersResult.rows as Array<{ region_id: number; division_id: number }>,
+      descendantRegions: descRegionsResult.rows as UndoEntry['descendantRegions'],
+      descendantImportStates: descImportStatesResult.rows as ImportStateSnapshot[],
+      descendantSuggestions: descSuggestionsResult.rows as SuggestionSnapshot[],
+      descendantMembers: descMembersResult.rows as Array<{ region_id: number; division_id: number }>,
+      childSnapshots: [],
+    });
+
+    // The region absorbed the divisions of the descendants it deleted, so
+    // its union is neither what it was nor what the descendants drew. Named
+    // here for the reason the tree operations name theirs: a structural
+    // change writes no geometry, so trg_regions_geom_invalidates_parent never
+    // sees it, and a parent left holding a stale outline with nothing NULL
+    // beneath it falls outside every later run's closure (ADR-0035, #496).
+    // Ancestors are the trigger's, reached because this is a geometry write.
+    await invalidateRegionGeometry(regionId);
+
+    console.log(`[WV Import] Smart flatten: absorbed ${descendantIds.length} descendants (${uniqueDivisionIds.length} divisions) into region ${regionId}`);
+    return {
+      blocked: false,
+      absorbed: descendantIds.length,
+      divisions: uniqueDivisionIds.length,
+      undoAvailable: true,
+    };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -186,6 +401,7 @@ export async function smartFlattenPreview(req: AuthenticatedRequest, res: Respon
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/smart-flatten/preview — regionId=${regionId}`);
 
+  let body: FlattenPreviewResult;
   try {
     // Verify region belongs to this world view and has children
     const region = await pool.query(
@@ -198,7 +414,7 @@ export async function smartFlattenPreview(req: AuthenticatedRequest, res: Respon
     }
 
     // Get all descendant region IDs (recursive)
-    const descendants = await pool.query(`
+    const descendants = await pool.query<DescendantRow>(`
       WITH RECURSIVE desc_regions AS (
         SELECT id, name FROM regions WHERE parent_region_id = $1
         UNION ALL
@@ -212,90 +428,18 @@ export async function smartFlattenPreview(req: AuthenticatedRequest, res: Respon
       return;
     }
 
-    const descendantIds = descendants.rows.map(r => r.id as number);
+    const descendantIds = descendants.rows.map(r => r.id);
 
-    // Phase 1: Auto-match unmatched descendants (same logic as smartFlatten)
-    const membersCheck = await pool.query(
-      `SELECT DISTINCT region_id FROM region_members WHERE region_id = ANY($1)`,
-      [descendantIds],
-    );
-    const matchedIds = new Set(membersCheck.rows.map(r => r.region_id as number));
-    const unmatchedDescendants = descendants.rows.filter(r => !matchedIds.has(r.id as number));
-
-    const stillUnmatched: Array<{ id: number; name: string }> = [];
-    for (const desc of unmatchedDescendants) {
-      const descId = desc.id as number;
-      const descName = desc.name as string;
-      const candidates = await trigramSearch(descName, 3);
-
-      // Auto-match if a single candidate is strong enough, OR the top candidate
-      // clearly beats the runner-up. Both paths take the same action, so they
-      // collapse into one boolean expression (avoids sonarjs/no-duplicated-branches).
-      const autoMatched = (candidates.length === 1 && candidates[0].similarity >= 0.5)
-        || (candidates.length > 1 && candidates[0].similarity >= 0.7
-            && candidates[0].similarity - candidates[1].similarity >= 0.15);
-
-      if (autoMatched) {
-        await pool.query(
-          `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-          [descId, candidates[0].divisionId],
-        );
-        await pool.query(
-          `INSERT INTO region_import_state (region_id, match_status)
-           VALUES ($1, 'auto_matched')
-           ON CONFLICT (region_id) DO UPDATE SET match_status = 'auto_matched'`,
-          [descId],
-        );
-      } else {
-        stillUnmatched.push({ id: descId, name: descName });
-      }
-    }
-
-    // Phase 2: Block if any remain unmatched
-    if (stillUnmatched.length > 0) {
-      res.status(400).json({
-        error: 'Cannot flatten: some children have no GADM match',
-        unmatched: stillUnmatched,
-      });
-      return;
-    }
-
-    // Compute unified geometry of all descendant divisions (simplified for preview)
-    const geomResult = await pool.query(`
-      SELECT ST_AsGeoJSON(ST_Union(ad.geom_simplified_medium)) AS geojson
-      FROM region_members rm
-      JOIN administrative_divisions ad ON ad.id = rm.division_id
-      WHERE rm.region_id = ANY($1)
-    `, [descendantIds]);
-
-    const geojsonStr = geomResult.rows[0]?.geojson as string | null;
-    const geometry = geojsonStr ? JSON.parse(geojsonStr) : null;
-
-    // Get parent's region map URL
-    const mapUrlResult = await pool.query(
-      'SELECT region_map_url FROM region_import_state WHERE region_id = $1',
-      [regionId],
-    );
-    const regionMapUrl = (mapUrlResult.rows[0]?.region_map_url as string | null) ?? null;
-
-    // Count unique divisions
-    const divCountResult = await pool.query(
-      'SELECT COUNT(DISTINCT division_id) AS cnt FROM region_members WHERE region_id = ANY($1)',
-      [descendantIds],
-    );
-    const divisionCount = parseInt(divCountResult.rows[0]?.cnt as string) || 0;
-
-    console.log(`[WV Import] Smart flatten preview: ${descendantIds.length} descendants, ${divisionCount} divisions`);
-    res.json({
-      geometry,
-      regionMapUrl,
-      descendants: descendantIds.length,
-      divisions: divisionCount,
-    });
+    const stillUnmatched = await autoMatchDescendants(descendants.rows);
+    body = stillUnmatched.length > 0
+      ? { blocked: true, unmatched: stillUnmatched }
+      : await flattenPreviewOf(regionId, descendantIds);
   } catch (err) {
     console.error(`[WV Import] Smart flatten preview failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Smart flatten preview failed' });
+    return;
   }
+  respond(res, FlattenPreviewResult, body);
 }
 
 /**
@@ -307,6 +451,7 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/smart-flatten — regionId=${regionId}`);
 
+  let body: SmartFlattenResult;
   try {
     // Verify region belongs to this world view and has children
     const region = await pool.query(
@@ -319,7 +464,7 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
     }
 
     // Get all descendant region IDs (recursive)
-    const descendants = await pool.query(`
+    const descendants = await pool.query<DescendantRow>(`
       WITH RECURSIVE desc_regions AS (
         SELECT id, name FROM regions WHERE parent_region_id = $1
         UNION ALL
@@ -333,173 +478,18 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
       return;
     }
 
-    const descendantIds = descendants.rows.map(r => r.id as number);
+    const descendantIds = descendants.rows.map(r => r.id);
 
-    // Phase 1: Auto-match unmatched descendants (uses pool, not transaction)
-    const membersCheck = await pool.query(
-      `SELECT DISTINCT region_id FROM region_members WHERE region_id = ANY($1)`,
-      [descendantIds],
-    );
-    const matchedIds = new Set(membersCheck.rows.map(r => r.region_id as number));
-    const unmatchedDescendants = descendants.rows.filter(r => !matchedIds.has(r.id as number));
-
-    const stillUnmatched: Array<{ id: number; name: string }> = [];
-    for (const desc of unmatchedDescendants) {
-      const descId = desc.id as number;
-      const descName = desc.name as string;
-      const candidates = await trigramSearch(descName, 3);
-
-      // Auto-match if a single candidate is strong enough, OR the top candidate
-      // clearly beats the runner-up. Both paths take the same action, so they
-      // collapse into one boolean expression (avoids sonarjs/no-duplicated-branches).
-      const autoMatched = (candidates.length === 1 && candidates[0].similarity >= 0.5)
-        || (candidates.length > 1 && candidates[0].similarity >= 0.7
-            && candidates[0].similarity - candidates[1].similarity >= 0.15);
-
-      if (autoMatched) {
-        await pool.query(
-          `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-          [descId, candidates[0].divisionId],
-        );
-        await pool.query(
-          `INSERT INTO region_import_state (region_id, match_status)
-           VALUES ($1, 'auto_matched')
-           ON CONFLICT (region_id) DO UPDATE SET match_status = 'auto_matched'`,
-          [descId],
-        );
-      } else {
-        stillUnmatched.push({ id: descId, name: descName });
-      }
-    }
-
-    // Phase 2: Block if any remain unmatched
-    if (stillUnmatched.length > 0) {
-      res.status(400).json({
-        error: 'Cannot flatten: some children have no GADM match',
-        unmatched: stillUnmatched,
-      });
-      return;
-    }
-
-    // Phase 3: Snapshot + flatten in transaction
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      // Snapshot parent import state + members
-      const parentImportStateResult = await client.query(
-        `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-                region_map_url, map_image_reviewed, import_run_id
-         FROM region_import_state WHERE region_id = $1`,
-        [regionId],
-      );
-      const parentImportState = parentImportStateResult.rows.length > 0
-        ? parentImportStateResult.rows[0] as ImportStateSnapshot
-        : null;
-      const parentMembersResult = await client.query(
-        'SELECT region_id, division_id FROM region_members WHERE region_id = $1',
-        [regionId],
-      );
-
-      // Snapshot all descendants
-      const descRegionsResult = await client.query(
-        `SELECT id, name, parent_region_id, is_leaf, world_view_id
-         FROM regions WHERE id = ANY($1) ORDER BY id`,
-        [descendantIds],
-      );
-      const descImportStatesResult = await client.query(
-        `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-                region_map_url, map_image_reviewed, import_run_id
-         FROM region_import_state WHERE region_id = ANY($1)`,
-        [descendantIds],
-      );
-      const descSuggestionsResult = await client.query(
-        `SELECT region_id, division_id, name, path, score, rejected
-         FROM region_match_suggestions WHERE region_id = ANY($1)`,
-        [descendantIds],
-      );
-      const descMembersResult = await client.query(
-        'SELECT region_id, division_id FROM region_members WHERE region_id = ANY($1)',
-        [descendantIds],
-      );
-
-      // Absorb: collect all descendant division IDs -> assign to parent
-      const allDescDivisionIds = descMembersResult.rows.map(r => r.division_id as number);
-      const uniqueDivisionIds = [...new Set(allDescDivisionIds)];
-      for (const divId of uniqueDivisionIds) {
-        await client.query(
-          `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-          [regionId, divId],
-        );
-      }
-
-      // Delete descendant members first
-      await client.query(
-        'DELETE FROM region_members WHERE region_id = ANY($1)',
-        [descendantIds],
-      );
-
-      // Delete descendants (deepest-first via CTE)
-      await client.query(`
-        WITH RECURSIVE desc_regions AS (
-          SELECT id, 1 AS depth FROM regions WHERE parent_region_id = $1
-          UNION ALL
-          SELECT r.id, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
-        )
-        DELETE FROM regions WHERE id IN (SELECT id FROM desc_regions ORDER BY depth DESC)
-      `, [regionId]);
-
-      // Update parent status
-      await client.query(
-        `UPDATE region_import_state SET match_status = 'manual_matched' WHERE region_id = $1`,
-        [regionId],
-      );
-      await client.query(
-        `DELETE FROM region_match_suggestions WHERE region_id = $1`,
-        [regionId],
-      );
-
-      await client.query('COMMIT');
-
-      // Store undo entry (same structure as dismiss-children)
-      undoEntries.set(worldViewId, {
-        operation: 'smart-flatten',
-        regionId,
-        timestamp: Date.now(),
-        parentImportState,
-        parentMembers: parentMembersResult.rows as Array<{ region_id: number; division_id: number }>,
-        descendantRegions: descRegionsResult.rows as UndoEntry['descendantRegions'],
-        descendantImportStates: descImportStatesResult.rows as ImportStateSnapshot[],
-        descendantSuggestions: descSuggestionsResult.rows as SuggestionSnapshot[],
-        descendantMembers: descMembersResult.rows as Array<{ region_id: number; division_id: number }>,
-        childSnapshots: [],
-      });
-
-      // The region absorbed the divisions of the descendants it deleted, so
-      // its union is neither what it was nor what the descendants drew. Named
-      // here for the reason the tree operations name theirs: a structural
-      // change writes no geometry, so trg_regions_geom_invalidates_parent never
-      // sees it, and a parent left holding a stale outline with nothing NULL
-      // beneath it falls outside every later run's closure (ADR-0035, #496).
-      // Ancestors are the trigger's, reached because this is a geometry write.
-      await invalidateRegionGeometry(regionId);
-
-      console.log(`[WV Import] Smart flatten: absorbed ${descendantIds.length} descendants (${uniqueDivisionIds.length} divisions) into region ${regionId}`);
-      res.json({
-        absorbed: descendantIds.length,
-        divisions: uniqueDivisionIds.length,
-        undoAvailable: true,
-      });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    const stillUnmatched = await autoMatchDescendants(descendants.rows);
+    body = stillUnmatched.length > 0
+      ? { blocked: true, unmatched: stillUnmatched }
+      : await absorbDescendants(worldViewId, regionId, descendantIds);
   } catch (err) {
     console.error(`[WV Import] Smart flatten failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Smart flatten failed' });
+    return;
   }
+  respond(res, SmartFlattenResult, body);
 }
 
 /**
@@ -649,6 +639,7 @@ export async function handleAsGrouping(req: AuthenticatedRequest, res: Response)
     return;
   }
 
+  let body: ChildrenGrouped;
   try {
     // Snapshot for undo: parent import state + members, children import state + suggestions + members
     const parentImportStateResult = await pool.query(
@@ -720,9 +711,11 @@ export async function handleAsGrouping(req: AuthenticatedRequest, res: Response)
     });
 
     console.log(`[WV Import] handle-as-grouping result: ${result.matched}/${result.total} children matched`);
-    res.json({ ...result, undoAvailable: true });
+    body = { matched: result.matched, total: result.total, undoAvailable: true };
   } catch (err) {
     console.error(`[WV Import] handle-as-grouping failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Matching failed' });
+    return;
   }
+  respond(res, ChildrenGrouped, body);
 }
