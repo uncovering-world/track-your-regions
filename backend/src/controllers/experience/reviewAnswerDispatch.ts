@@ -16,7 +16,7 @@
  * | waiting, held | publish every open held field and part, and the unread contents | refuse every open held row, and the unread contents | — |
  * | waiting, contents only | release the unread points and works | refuse them | — |
  * | conflict | take the source's value for every open field | keep ours for every open field | — |
- * | refused | put it back (override, which publishes an arrival) | keep it out (confirm) | — |
+ * | refused | keep it out (confirm, unpinned) | put it back for now (override, unpinned; publishes an arrival) | — |
  * | missing | former: delisted, still there | the object stays: false alarm | no longer exists |
  * | withdrawn | every open point: former | every open point: stays | every open point: lost |
  *
@@ -215,9 +215,10 @@ async function answerConflict(who: Answerer, answer: Answer): Promise<Outcome> {
 }
 
 /**
- * The refusal card's two buttons. The admission writer carries its own
- * "already answered" — the pin — so the open-question read here is only what
- * keeps a batch from confirming a refusal on a row that is not refused at all.
+ * A refusal row's two answers. The admission writer carries its own
+ * "already answered" — the pin or a batch's mark — and, for a batch, turns
+ * away any answered row under the lock, so the open-question read here is
+ * only what keeps a batch from answering a row that is not refused at all.
  */
 async function answerRefused(who: Answerer, answer: Answer): Promise<Outcome> {
   const { experienceId, userId, logRegionId } = who;
@@ -229,8 +230,12 @@ async function answerRefused(who: Answerer, answer: Answer): Promise<Outcome> {
   if (open.rows.length === 0) {
     return refused(409, 'Already answered: this row is not waiting on a refusal decision');
   }
+  // A refusal card proposes the refusal, so accepting it keeps the row out
+  // (ADR-0067). Neither answer pins: a batch closes the question or puts the
+  // row back for now, and the next run applies the rule again.
   const outcome = await answerAdmissionUnderLock(experienceId, userId, logRegionId, {
-    decision: answer === 'accept' ? 'override' : 'confirm',
+    decision: answer === 'accept' ? 'confirm' : 'override',
+    pin: false,
   });
   if (outcome.refusal) return refusedBy(outcome.refusal);
   const r = outcome.result!;

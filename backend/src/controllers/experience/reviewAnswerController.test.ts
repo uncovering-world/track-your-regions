@@ -182,12 +182,14 @@ describe('the dispatch table', () => {
     expect(writer).toHaveBeenCalledWith(5, 7, 12, 'all', 98);
   });
 
+  // A refusal card proposes the refusal: accepting it keeps the row out, and
+  // neither batch answer pins (ADR-0067, #906).
   it.each([
-    ['accept', 'override'],
-    ['reject', 'confirm'],
-  ])('%ss a refusal as the admission card would (%s)', async (answer, decision) => {
+    ['accept', 'confirm'],
+    ['reject', 'override'],
+  ])('%ss a refusal as its proposal says, without pinning (%s)', async (answer, decision) => {
     await answerReviewRows(req([{ kind: 'refused', id: 5 }], answer), makeRes() as never);
-    expect(mockedAdmission).toHaveBeenCalledWith(5, 7, 12, { decision });
+    expect(mockedAdmission).toHaveBeenCalledWith(5, 7, 12, { decision, pin: false });
   });
 
   it('refuses an admission answer on a row that is not an open refusal', async () => {
