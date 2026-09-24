@@ -259,7 +259,7 @@ When a suggestion carries a conflict chip, accepting it is a two-stage flow:
    - `transferType = "direct"`: removes the division from the donor's `region_members`
    - `transferType = "split"`: leaves the GADM parent in the donor; only the listed child divisions move
    - Adds the divisions to the target's `region_members` and sets `match_status = 'manual_matched'`
-   - Triggers geometry recomputation for both donor and target via `invalidateRegionGeometry`
+   - Clears both donor's and target's geometry in the same transaction, through the member trigger on the rows that moved (ADR-0068)
 
 If multiple suggestions all have conflicts (e.g. after a wide-scope geoshape match), the **"Accept all N"** button becomes **"Preview transfer (N)"** — opening the same preview dialog for the batch.
 
@@ -289,7 +289,7 @@ After any of them succeeds, a **Snackbar** appears at the bottom with an "Undo" 
 A restored region arrives with **no geometry**, which is what puts it and every
 ancestor of it back into the next run's closure — see
 `import-review-tree-ops.md` § *What a tree operation leaves stale* for why that
-makes undo self-healing on the first three and not on the last three (#718).
+makes undo self-healing on the first three. The last three restore members, and the member trigger clears their regions as they do (ADR-0068).
 
 Implementation: **in-memory** undo store (`Map<worldViewId, UndoEntry>`), one entry per world view (last operation only). The snapshot captures all affected table rows before the destructive transaction. After a successful undo or a new destructive operation on the same world view, the previous undo entry is discarded.
 
