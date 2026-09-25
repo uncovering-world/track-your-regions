@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PICTURE_HOSTS, isPictureHost, namesAPictureFile, isCommonsPath, isUploadHost, isDescriptionPage,
+  HELD_CREDIT_FIELD, pictureCreditPartner,
 } from './pictures.js';
 
 describe('the picture hosts', () => {
@@ -42,5 +43,21 @@ describe('what names a picture file', () => {
     expect(isDescriptionPage('/wiki/Special:FilePath/Louvre.jpg')).toBe(false);
     expect(isDescriptionPage('/wikipedia/commons/a/ab/Louvre.jpg')).toBe(false);
     expect(isDescriptionPage('/wiki/%E0%A4%A')).toBe(true);
+  });
+});
+
+describe('a held picture and its credit are one answer', () => {
+  it.each([
+    ['object', 'imageUrl'],
+    ['part', 'image_url'],
+  ] as const)('pairs the %s picture with the credit, both ways', (level, picture) => {
+    expect(pictureCreditPartner(picture, level)).toBe(HELD_CREDIT_FIELD);
+    expect(pictureCreditPartner(HELD_CREDIT_FIELD, level)).toBe(picture);
+  });
+
+  it('does not pair the other level\'s spelling, or any other field', () => {
+    expect(pictureCreditPartner('image_url', 'object')).toBeUndefined();
+    expect(pictureCreditPartner('imageUrl', 'part')).toBeUndefined();
+    expect(pictureCreditPartner('name', 'object')).toBeUndefined();
   });
 });
