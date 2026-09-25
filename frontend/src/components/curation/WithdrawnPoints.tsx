@@ -58,6 +58,7 @@ import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import type { PlaceToCorrect } from '../shared/PointCorrection';
 import { HelpHint } from './HelpHint';
 import { displayNameOf } from '../../utils/displayName';
+import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 
 type WithdrawnPoint = NonNullable<ReviewQueueItem['withdrawn_points']>[number];
 
@@ -116,18 +117,6 @@ function distanceLabel(metres: number): string {
 }
 
 /**
- * The distance inside which a rewrite is the same place, not a move (ADR-0027 decision 2).
- *
- * The backend's `LOCATION_UNCHANGED_METERS`, repeated rather than imported because the
- * frontend cannot reach `backend/src`. It has to track that number: this card's whole job
- * is to tell a corrected coordinate from a real move, and a card splitting at a different
- * distance from the writer would call a rewrite the writer forgave a move.
- *
- * Inclusive, matching the `ST_DWithin` the writer and migration 026 both use.
- */
-const SAME_POINT_METRES = 10;
-
-/**
  * What happened, in the words a curator can act on.
  *
  * Three cases, and the first two are the reason this is a distance rather than a flag.
@@ -139,7 +128,11 @@ const SAME_POINT_METRES = 10;
  */
 export function withdrawalStory(point: WithdrawnPoint, offeredLocations: number): string {
   const metres = point.replacedMetres;
-  if (metres !== null && metres <= SAME_POINT_METRES) {
+  // The distance inside which a rewrite is the same place, not a move
+  // (ADR-0027 decision 2). Inclusive, matching the `ST_DWithin` the writer and
+  // migration 026 both use: the writer's own tolerance (`@tyr/shared/moves`),
+  // so a rewrite it forgave is never called a move here.
+  if (metres !== null && metres <= LOCATION_UNCHANGED_METERS) {
     return `The source still lists this part, ${distanceLabel(metres)} from here — that is the `
       + 'same place written more precisely, not a move. Readers never lost it.';
   }
@@ -346,8 +339,8 @@ type AnsweredPoint = NonNullable<ReviewQueueItem['answered_points']>[number];
  * The endpoint's own two rules read forward: a reader sees a point where the withdrawal
  * flag is clear and nothing has declared it gone (`offeredLocationSql`), and the flag is
  * cleared by exactly one thing — an answer that leaves both axes clean. Repeated here
- * rather than imported for the reason `SAME_POINT_METRES` is: the frontend cannot reach
- * `backend/src`.
+ * rather than shared: on the server the rule is SQL (`offeredLocationSql`), which
+ * `@tyr/shared` cannot hold.
  *
  * It has to be computed rather than assumed, because the two verdicts do not behave alike
  * and neither does one taken back. Taking `lost` off a point whose `former` still stands
