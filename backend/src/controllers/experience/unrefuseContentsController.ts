@@ -199,8 +199,8 @@ export async function unrefuseContentsUnderLock(
  *
  * The mark alone, with no offered term beside it, and that is a decision rather
  * than an omission. A refused point is always `pending` — the refusal only marks
- * rows `unreadPointSql` reaches — and `withdrawnPointOpenSql` asks for
- * `curation_state <> 'pending'`, so a refused point the source then stops
+ * rows `unreadPointSql` reaches — and `withdrawnPointOpenSql` asks for a
+ * published point (`publishedContentSql`), so a refused point the source then stops
  * offering raises no `withdrawn` card either. Filtering on offered here would
  * leave it on no screen at all, with the answer that put it there permanently
  * unanswerable — which is the whole thing this module exists to prevent.

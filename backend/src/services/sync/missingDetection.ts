@@ -18,6 +18,7 @@
 import { pool } from '../../db/index.js';
 import { placeAdmittedSql } from '../../db/membership.js';
 import type { ChangeRecord } from './changeRecorder.js';
+import { hideLostSql } from '../../db/readerPredicates.js';
 
 export type SourceCompleteness = 'authoritative' | 'ranked';
 
@@ -76,7 +77,7 @@ export async function countActiveExperiences(sourceId: number): Promise<number> 
        AND source_membership = 'present'
        AND missing_since IS NULL
        AND is_manual = FALSE
-       AND existence <> 'lost'
+       AND ${hideLostSql('experiences')}
        AND ${placeAdmittedSql('experiences')}`,
     [sourceId]
   );
@@ -104,7 +105,7 @@ export async function countSeenAmongActive(
        AND source_membership = 'present'
        AND missing_since IS NULL
        AND is_manual = FALSE
-       AND existence <> 'lost'
+       AND ${hideLostSql('experiences')}
        AND ${placeAdmittedSql('experiences')}
        AND external_id = ANY($2::text[])`,
     [sourceId, seenExternalIds]
@@ -144,7 +145,7 @@ export async function flagMissingExperiences(
       AND source_membership = 'present'
       AND missing_since IS NULL
       AND is_manual = FALSE
-      AND existence <> 'lost'
+      AND ${hideLostSql('experiences')}
       AND ${placeAdmittedSql('experiences')}
       AND external_id <> ALL($2::text[])`;
 

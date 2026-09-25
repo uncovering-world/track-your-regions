@@ -14,9 +14,14 @@ import {
 import { pool } from '../../db/index.js';
 import type { ExperienceKindsRow } from '../../db/schema.generated.js';
 import {
-  hideLostSql, hideRefusedSql, hidePendingSql, lifecycleSelectSql, includeLost,
-  readerPositionSql, readerRegionMembershipSql,
-} from './experienceLifecycle.js';
+  hideLostSql,
+  hideRefusedSql,
+  hidePendingSql,
+  lifecycleSelectSql,
+  readerPositionSql,
+  readerRegionMembershipSql,
+} from '../../db/readerPredicates.js';
+import { includeLost } from './includeLost.js';
 import { KINDS, MEMBERSHIPS, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';

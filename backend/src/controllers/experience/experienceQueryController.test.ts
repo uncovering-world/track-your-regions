@@ -13,7 +13,7 @@ import {
   listKinds,
 } from './experienceQueryController.js';
 import { membershipAdmittedSql, membershipVisibleSql } from '../../db/membership.js';
-import { hidePendingSql, hideRefusedSql } from './experienceLifecycle.js';
+import { hidePendingSql, hideRefusedSql } from '../../db/readerPredicates.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 

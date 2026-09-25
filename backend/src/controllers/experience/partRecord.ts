@@ -60,7 +60,7 @@
  * skip a marked one.
  */
 
-import { venueCountSql } from './experienceLifecycle.js';
+import { venueCountSql } from '../../db/readerPredicates.js';
 import { tidyLabelSql } from '../../services/sync/labelFold.js';
 
 /**

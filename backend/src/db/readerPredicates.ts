@@ -16,7 +16,13 @@
  *
  * Two of the four live on the place's membership in a kind since #822
  * (ADR-0045 decision 4), and the fragments below ask them of the place
- * through `db/membership.ts` — one spelling, shared with the sync services.
+ * through `db/membership.ts`.
+ *
+ * **Every reader predicate is spelled here or in `membership.ts`, and composed
+ * everywhere else** (#791). They live in `db/` rather than beside a controller
+ * so the sync writers, which gate what they overwrite on the same questions,
+ * import them too; a literal `curation_state <> 'pending'` or
+ * `existence <> 'lost'` anywhere else fails the backend lint.
  *
  * `existence` and the verdicts on it are set by curators (ADR-0020, narrowed
  * by ADR-0021) and read here. They are not symmetric, because the reasons
@@ -42,7 +48,7 @@
  * than reusing one of the first three.
  */
 
-import { placeAdmittedSql, placeOfferedSql, placeVisibleSql } from '../../db/membership.js';
+import { placeAdmittedSql, placeOfferedSql, placeVisibleSql } from './membership.js';
 
 /**
  * Hides `lost` objects. `alias` is the `experiences` alias in the query.
@@ -131,12 +137,6 @@ export function hideRefusedSql(alias = 'e'): string {
  * moved is a withdrawal plus an insert — a coordinate merely rewritten inside ten
  * metres is not, since ADR-0027 — so leaving withdrawn rows in would put the same
  * place on screen twice and disagree with every other count of it.
- *
- * Region placement applies the same predicate as a literal
- * (`regionAssignmentService.ts`) rather than calling this. It is in the service
- * layer, and importing a controller module there would be the first such import
- * in the codebase — a worse trade than one repeated predicate, which is why the
- * duplication is deliberate and noted at both sites.
  *
  * **`existence` joins it with the verdicts (ADR-0026).** A point a curator has
  * declared gone from the world must stay off the map even when the source starts
@@ -256,18 +256,6 @@ export function readerPositionSql(alias = 'e', maySeeUnreadParam?: string): stri
  */
 export function lifecycleSelectSql(alias = 'e'): string {
   return `${alias}.source_membership, ${alias}.existence, ${alias}.missing_since`;
-}
-
-/**
- * Should this request see objects that no longer exist?
- *
- * Only when it asks — `?includeLost=true` — and the ask is meaningful in
- * exactly two places: a visit history, and a list a user has deliberately
- * unfiltered. Everywhere else the parameter is simply absent, which is the
- * safe default rather than a policy each caller has to remember.
- */
-export function includeLost(query: Record<string, unknown>): boolean {
-  return query.includeLost === 'true' || query.includeLost === true;
 }
 
 /**

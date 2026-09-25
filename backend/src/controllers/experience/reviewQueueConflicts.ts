@@ -16,7 +16,7 @@ import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import { ACCEPTABLE_FIELDS } from './acceptableFields.js';
-import { lifecycleSelectSql } from './experienceLifecycle.js';
+import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { claimKeySql, conflictChangeOpenSql } from './reviewQueuePredicates.js';
 import type { QueueQueryContext } from './reviewQueueContents.js';

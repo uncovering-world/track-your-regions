@@ -44,11 +44,10 @@
  * the product's own question — is this a row a reader may be shown, is this a
  * point placement should have placed, is this a proposal the queue is holding —
  * and the only correct way to ask it is to compose the fragments those reads
- * compose (`experienceLifecycle.ts`, `waitingCounts.ts`). Those are controller
- * modules, and the service layer may not import one: `regionAssignmentService`
- * spells the same predicate as a literal rather than reach across that line. So
- * these live beside them instead, where they can read the real predicates
- * rather than copies — and a copy is exactly what would rot. An assertion that
+ * compose (`db/readerPredicates.ts`, `waitingCounts.ts`). The second is a
+ * controller module, which the service layer may not import, so these live in
+ * the controller layer where they can read both real predicates rather than
+ * copies — and a copy is exactly what would rot. An assertion that
  * asks a *slightly* different question than the read it guards is worse than no
  * assertion: it reports clear while the screens disagree.
  */
@@ -59,7 +58,7 @@ import {
   offeredLocationSql,
   offeredToReaderSql,
   publishedContentSql,
-} from '../../experience/experienceLifecycle.js';
+} from '../../../db/readerPredicates.js';
 import { MEMBERSHIPS } from '../../../db/membership.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import { heldFieldRefusedSql, heldPartRefusedSql } from '../../experience/heldDecisions.js';

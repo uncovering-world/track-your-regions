@@ -34,7 +34,7 @@
  * that shape arrives with #755, whose design it is.
  */
 
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipVisibleSql } from '../../db/membership.js';
 import type { QueryRunner } from './curationDecay.js';
 
 /**
@@ -73,7 +73,7 @@ export async function pointHeldProposalAt(
        FROM experience_sync_logs run
       WHERE m.experience_id = $1
         AND run.id = $2 AND m.source_id = run.source_id
-        AND m.curation_state <> 'pending'
+        AND ${membershipVisibleSql('m')}
         AND EXISTS (
           SELECT 1 FROM experience_sources c
            WHERE c.id = m.source_id AND c.requires_curation

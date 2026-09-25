@@ -61,7 +61,7 @@
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
-import { MEMBERSHIPS, placeVisibleSql } from '../../db/membership.js';
+import { MEMBERSHIPS, placeVisibleSql, membershipVisibleSql } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
   computeChangeSet, METADATA_CLAIM_PREFIX, METADATA_SET_KEYS, SYNC_OWNED_METADATA_KEYS,
@@ -733,7 +733,7 @@ async function writeUnderLock(
     await client.query(
       `UPDATE ${MEMBERSHIPS} m SET pending_change_sync_log_id = NULL, updated_at = NOW()
         WHERE m.experience_id = $1 AND m.source_id = $2
-          AND m.curation_state <> 'pending'
+          AND ${membershipVisibleSql('m')}
           AND EXISTS (
             SELECT 1 FROM experience_sources
              WHERE id = $2 AND requires_curation

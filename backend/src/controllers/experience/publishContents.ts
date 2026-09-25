@@ -16,7 +16,7 @@ import { pool } from '../../db/index.js';
 import {
   assignRegionsForExperiences, worldViewsWithGeometry,
 } from '../../services/sync/regionAssignmentService.js';
-import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
+import { offeredLinkSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { linkNotRefusedSql, unreadPointSql } from './waitingCounts.js';
 
 /**
@@ -123,7 +123,7 @@ export async function publishContents(
        WHERE arrived.experience_id = $1
          AND old.experience_id = $1
          AND arrived.withdrawal_deferred_for_location_id = old.id
-         AND arrived.curation_state <> 'pending'
+         AND ${publishedContentSql('arrived')}
          AND old.missing_since IS NULL`,
       [experienceId],
     );
@@ -142,7 +142,7 @@ export async function publishContents(
         SET withdrawal_deferred_for_location_id = NULL
        WHERE experience_id = $1
          AND withdrawal_deferred_for_location_id IS NOT NULL
-         AND curation_state <> 'pending'`,
+         AND ${publishedContentSql('experience_locations')}`,
       [experienceId],
     );
   }
@@ -200,8 +200,8 @@ export async function publishContents(
  *
  * The one publish that genuinely moves geometry — see the note after the COMMIT
  * for why every other one does not. Placement's insert carries the
- * `offeredLocationSql` pair — `el.missing_since IS NULL AND el.existence <> 'lost'`
- * — and, since ADR-0053, a third term, `el.refused_at IS NULL`, while its clear
+ * `offeredLocationSql` pair — the point is still offered and not gone from the
+ * world — and, since ADR-0053, a third term, `el.refused_at IS NULL`, while its clear
  * is unfiltered: so a point that stopped being offered, and a point a curator
  * turned down, each leave `experience_location_regions` rows behind that only a
  * re-place can drop, and only a re-place can recompute the experience-level

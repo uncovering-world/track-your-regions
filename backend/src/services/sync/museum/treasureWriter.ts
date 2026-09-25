@@ -26,6 +26,7 @@ import { ICONIC_SITELINKS, ICONIC_RELEASE } from './tier1.js';
 import type { LinePair } from '../sourceLine.js';
 import { isCommonsPictureUrl } from '../../../types/urlSafety.js';
 import { reconcileLinks } from './linkWithdrawal.js';
+import { publishedContentSql } from '../../../db/readerPredicates.js';
 
 /**
  * The hold, as one SQL expression over the stored row: a gated source may not
@@ -49,7 +50,7 @@ import { reconcileLinks } from './linkWithdrawal.js';
  * `true AND false` for every row.
  */
 const HELD_WORK = `((SELECT requires_curation FROM experience_sources WHERE id = $12)
-                    AND treasures.curation_state <> 'pending')`;
+                    AND ${publishedContentSql('treasures')})`;
 
 /**
  * One object with the find spot's three states applied to it — the run's own

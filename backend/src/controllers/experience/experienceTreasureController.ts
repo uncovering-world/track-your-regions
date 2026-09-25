@@ -12,9 +12,16 @@ import { pool } from '../../db/index.js';
 import type { TreasuresRow, UserViewedTreasuresRow } from '../../db/schema.generated.js';
 import { rowKindJoinSql } from '../../db/membership.js';
 import {
-  experienceOfferedToReaderSql, hideLostSql, hideRefusedSql, hidePendingSql, linkedForReaderSql,
-  offeredLinkSql, offeredLocationSql, publishedContentSql, venueCountSql,
-} from './experienceLifecycle.js';
+  experienceOfferedToReaderSql,
+  hideLostSql,
+  hideRefusedSql,
+  hidePendingSql,
+  linkedForReaderSql,
+  offeredLinkSql,
+  offeredLocationSql,
+  publishedContentSql,
+  venueCountSql,
+} from '../../db/readerPredicates.js';
 import { treasureOf, type TreasureRow } from './experienceAnswerRows.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { readerRegionsJsonSql } from './readerRegions.js';

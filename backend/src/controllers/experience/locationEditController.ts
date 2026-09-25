@@ -20,7 +20,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { offeredLocationSql, publishedContentSql } from './experienceLifecycle.js';
+import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 

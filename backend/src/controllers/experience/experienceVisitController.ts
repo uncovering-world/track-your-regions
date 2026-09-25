@@ -9,7 +9,7 @@ import { respond } from '../../api/respond.js';
 import { ExperienceVisitMarked, ExperienceVisitUnmarked, VisitedExperienceIds } from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
 import type { ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.generated.js';
-import { experienceOfferedToReaderSql } from './experienceLifecycle.js';
+import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
 import { rowKindJoinSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 

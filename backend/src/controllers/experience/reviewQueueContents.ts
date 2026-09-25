@@ -26,9 +26,7 @@ import { pool } from '../../db/index.js';
 import { rowKindJoinSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
-import {
-  lifecycleSelectSql, offeredLinkSql, offeredLocationSql, venueCountSql,
-} from './experienceLifecycle.js';
+import { lifecycleSelectSql, offeredLinkSql, offeredLocationSql, venueCountSql } from '../../db/readerPredicates.js';
 import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
@@ -396,9 +394,8 @@ export async function queryWithdrawn(
                SELECT round(MIN(ST_Distance(el.location::geography, moved.location::geography))::numeric, 2)
                FROM experience_locations moved
                WHERE moved.experience_id = e.id
-                 -- The same fragment, and worth stating what it does *not* carry: it is
-                 -- missing_since IS NULL AND existence <> 'lost', with no curation_state
-                 -- term, so a pending arrival counts as a replacement
+                 -- The same fragment, and worth stating what it does *not* carry: it has
+                 -- no term on curation_state, so a pending arrival counts as a replacement
                  -- here. That is right for the question the distance answers -- whether
                  -- the source still lists this part, and where -- and it is why the card's
                  -- sentences about what readers see are true of every pair reachable

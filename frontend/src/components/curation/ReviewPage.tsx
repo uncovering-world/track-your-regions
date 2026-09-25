@@ -58,8 +58,8 @@ import { answerVerb, lostOfferedFor } from './selection/answerWords';
  * stopped being the moment the run marked it, since the queue asks only about points whose
  * `missing_since` is set and whose row a reader could reach. The other kinds are genuinely
  * exempt: an object flagged `missing` still reads as ordinary everywhere (ADR-0022, and
- * `experienceLifecycle.ts`'s note on why a *location* is filtered on the same flag where
- * an experience is not).
+ * `offeredLocationSql`'s note in `backend/src/db/readerPredicates.ts` on why a *location* is
+ * filtered on the same flag where an experience is not).
  *
  * A clause per kind rather than one covering both, because they are different facts and a
  * curator with only one of them on screen should not be told about the other.

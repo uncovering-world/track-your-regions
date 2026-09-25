@@ -148,7 +148,7 @@ export async function answerStateUnderLock(
     // unlocked read, a verdict on one axis silently reverts a verdict on the
     // other, and the log would then assert `former` beside a column saying
     // `present`. Reverting `lost` costs more still: it puts the row back inside
-    // missing detection's `existence <> 'lost'` predicate, so the next clean
+    // missing detection's `hideLostSql` predicate, so the next clean
     // run re-flags it and the item returns to the queue for good.
     const locked = await client.query(
       `SELECT source_membership, existence, missing_since FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
@@ -551,8 +551,8 @@ export async function answerAdmissionUnderLock(
       await publishArrivalContents(client, experienceId, publishes));
 
     // No placement for the admission columns themselves. Placement's insert
-    // predicate is the `offeredLocationSql` pair — `el.missing_since IS NULL AND
-    // el.existence <> 'lost'` (ADR-0026) — and nothing else: it filters
+    // predicate is the `offeredLocationSql` pair — still offered, and not gone
+    // from the world (ADR-0026) — and nothing else: it filters
     // neither `curation_state` nor `admission`, so a refused row was placed
     // exactly like any other one the moment its location landed, and
     // un-refusing it moves no geometry, no point and no membership by itself.

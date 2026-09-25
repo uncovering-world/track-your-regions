@@ -18,7 +18,7 @@ import {
   offeredLocationSql,
   offeredToReaderSql,
   publishedContentSql,
-} from '../../experience/experienceLifecycle.js';
+} from '../../../db/readerPredicates.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import {
   heldFieldAnsweredSql, heldFieldRefusedSql, heldPartRefusedSql,

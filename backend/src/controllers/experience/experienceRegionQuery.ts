@@ -19,7 +19,7 @@ import {
   publishedContentSql,
   readerPositionSql,
   readerRegionMembershipSql,
-} from './experienceLifecycle.js';
+} from '../../db/readerPredicates.js';
 // A region's count is of places (ADR-0046 decision 8, #822): the cards it
 // offers, each once, whatever kinds they belong to.
 import { countedPlacesSql } from './experienceCounts.js';

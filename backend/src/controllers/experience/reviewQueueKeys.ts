@@ -55,7 +55,7 @@ import { EMPTY_FACETS, FACETS_JSON_SQL, facetsSql, regionRootsCte } from './revi
 import { QUEUE_KINDS, WAITING_SUBS, type QueueKind, type WaitingSub } from './reviewQueueVocabulary.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
-import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
+import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
