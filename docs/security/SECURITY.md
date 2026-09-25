@@ -290,7 +290,8 @@ The Python service has a smaller surface than the Node backend but introduces ne
   auto-discovers and publishes every compatible **function** in the database on its own public
   port (`ports:` in `docker-compose.yml`) with no authentication, so a hidden world view's
   geometry stays fetchable by tile id regardless of `is_public`. Five of the six published sources
-  now take an id and answer a request that names none with an empty tile; the sixth,
+  now take an id and answer a request that names none with an empty tile, and one that names a
+  value that is not an id the same way, never a 500 with the database's error text (#664); the sixth,
   `tile_gadm_root_divisions`, takes none by design and draws the root GADM divisions for every
   caller alike. But the five do not all take the *world view's* id, so what a caller has to know
   differs by source. The three that answer for one world view take its id: `tile_region_islands`

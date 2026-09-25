@@ -143,6 +143,18 @@ definition. Until #662 the two world-view sources were the exception: they
 filtered on `p_world_view_id IS NULL OR …`, so a request naming no world view
 answered with all of them at once.
 
+**A parameter that is not an id is no scope.** Every source reads its
+parameters through `query_param_int(query_params, name)`. It answers NULL for a
+word, a fraction, a sign, an empty value or a number past integer's range, so a
+required parameter sent that way gets the same empty tile (HTTP 204) as one
+left out. An optional one, the island source's `parent_id`, narrows to nothing
+when it is sent malformed rather than widening to the whole world view; sent
+empty, it reads as absent (`query_param_sent`). A bare `(query_params->>'x')::integer` raised
+instead, and Martin answered HTTP 500 with the database's error text on its
+public port (#664, #918). `tileScopeGuards.test.ts` refuses any direct read
+of `query_params` in a source, in whatever spelling, and `tileParamGuard.db.test.ts` runs the helper and all five sources on
+malformed values.
+
 ### Example Usage
 
 ```bash
