@@ -140,6 +140,39 @@ const RESPONSE_SHAPE_RULES = [
   },
 ];
 
+/** What the error-text rule says. */
+const ERROR_TEXT = [
+  'An error\'s own text does not reach a caller: a driver, an HTTP client or a model SDK puts table and column names, URLs',
+  'and internals there, and a client that shows it teaches the product to show whatever a library threw (#1021, Security',
+  'Rule 5). Answer a sentence written for the reader and log the error with console.error; a cause the reader can act on is',
+  'named by a code of its own, the way the AI routes name quota_exceeded.',
+].join(' ');
+
+/**
+ * Where an answer leaves a handler: a response body (`json`, `send`,
+ * `respond`), a redirect's address, a stream's event (`sendEvent`,
+ * `writeEvent`, bare or as a method), and the status a progress poll reads
+ * (`status`, `statusMessage`). In each of them an error's `.message`, or the
+ * error turned into a string (`String(err)`, `err.toString()`, or `${err}` in
+ * a template), is the internal text this rule keeps out. The string cases read
+ * the error by its name (`e`, `err`, `error`, `mapErr`, `recordError`), since
+ * `String(id)` in a body is an ordinary value. A value read into a variable
+ * first is out of a selector's reach; the handlers write the sentence in place,
+ * and review holds the rest.
+ */
+const ANSWER_CONTEXTS = [
+  "CallExpression[callee.property.name=/^(json|send|redirect)$/]",
+  "CallExpression[callee.name=/^(respond|sendEvent|writeEvent)$/]",
+  "CallExpression[callee.property.name=/^(sendEvent|writeEvent)$/]",
+  "AssignmentExpression[left.property.name=/^(status|statusMessage)$/]",
+];
+const ERROR_TEXT_RULES = ANSWER_CONTEXTS.flatMap(context => [
+  { selector: `${context} MemberExpression[property.name='message']`, message: ERROR_TEXT },
+  { selector: `${context} CallExpression[callee.name='String'][arguments.0.name=/^(e|err|error|\\w+(Err|Error))$/]`, message: ERROR_TEXT },
+  { selector: `${context} TemplateLiteral > Identifier[name=/^(e|err|error|\\w+(Err|Error))$/]`, message: ERROR_TEXT },
+  { selector: `${context} CallExpression[callee.property.name='toString'][callee.object.name=/^(e|err|error|\\w+(Err|Error))$/]`, message: ERROR_TEXT },
+]);
+
 export default [
   {
     ignores: ['dist/', 'node_modules/'],
@@ -195,14 +228,15 @@ export default [
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
     },
   },
-  // Every answer a handler sends is one a schema declares (ADR-0066, #993).
+  // Every answer a handler sends is one a schema declares (ADR-0066, #993),
+  // and none carries an error's own text (#1021).
   // The specs are left out, since a fixture app's handler is not an endpoint,
   // and so is respond.ts, which is where the body is finally written.
   {
     files: ['src/**/*.ts'],
     ignores: ['src/**/*.test.ts', 'src/api/respond.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES],
+      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES],
     },
   },
   // The one file nobody writes: `schema.generated.ts` is the schema's
