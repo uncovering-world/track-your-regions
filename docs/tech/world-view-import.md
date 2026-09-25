@@ -246,6 +246,8 @@ Each unmatched region (`no_candidates` or `needs_review`) has up to five action 
 
 Geocode Match, DB Search, AI Match, and Point Match never auto-assign — results become suggestions that the admin must accept or reject. Geoshape Match can auto-assign suggestions when the IoU score is high enough (configurable thresholds in `geoshapeCache.ts`). Previously rejected suggestions (`region_match_suggestions` with `rejected = true`) are excluded from results.
 
+**A container's descendants are matched by name inside the container.** Auto-resolving a container's leaves and a smart flatten's match of its unmatched descendants both search by trigram. They search only among the members of the region's nearest matched ancestor and everything GADM holds under them (`descendantSearchScopes`, `services/worldViewImport/dbSearchMatcher.ts`). The walk up skips ancestors with no members. A worldwide search proposed namesakes: "Northern Benin" found Sudan's Northern state, and "Southern Benin" a province of Zambia (#1035). A generic name with no match inside the container is left unmatched. A region with no matched ancestor still searches the world, since there is nothing to scope it by. The scope follows GADM's tree, and the loader files a territory under its sovereign (Åland under Finland, Svalbard and Jan Mayen under Norway, Christmas Island under Australia), so a hierarchy that lists it under that country still finds it. A territory GADM files under the wrong sovereign is searched for there too: the Faroe Islands under Norway (#1048). Each ancestor's subtree is walked once and shared by the regions under it.
+
 ### Accept-With-Transfer (ADR-0012)
 
 When a suggestion carries a conflict chip, accepting it is a two-stage flow:
