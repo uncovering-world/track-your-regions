@@ -59,7 +59,7 @@ import { pool } from '../../db/index.js';
 import type { UserNewBadgeViewsRow } from '../../db/schema.generated.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { experienceOfferedToReaderSql } from './experienceLifecycle.js';
+import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
 
 /**
  * Where the reader's id comes from: a bind placeholder, or `NULL` for an

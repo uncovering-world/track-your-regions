@@ -23,7 +23,7 @@
  * drives that row.
  *
  * A `pending` membership never carries a proposal pointer — `heldProposalPointer.ts`
- * writes the pointer only `WHERE curation_state <> 'pending'` — so `held` needs no
+ * writes the pointer only where `membershipVisibleSql` holds — so `held` needs no
  * "not pending" clause, and adding one would spell a conjunction the database
  * already guarantees.
  *
@@ -36,7 +36,7 @@
 
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
-import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
+import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 
 /** A membership nobody has read yet, of a place the source still offers. */

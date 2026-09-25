@@ -41,7 +41,7 @@ import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
-import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
+import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';

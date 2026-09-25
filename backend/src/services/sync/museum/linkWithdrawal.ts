@@ -23,6 +23,7 @@ import { pool, rollbackQuietly } from '../../../db/index.js';
 import { OBJECT_LOCK } from '../../../db/locks.js';
 import { placeOfferedSql } from '../../../db/membership.js';
 import type { ContentItem } from '../types.js';
+import { publishedContentSql } from '../../../db/readerPredicates.js';
 
 /** What the two arms compare the museum's links against. */
 export interface LinkReconciliation {
@@ -136,8 +137,8 @@ async function mark(
         AND NOT (
           -- A link a reader can see: the museum, the link and the work, all
           -- past the gate (linkedForReaderSql, plus the work's own state)...
-          et.curation_state <> 'pending'
-          AND t.curation_state <> 'pending'
+          ${publishedContentSql('et')}
+          AND ${publishedContentSql('t')}
           AND EXISTS (
             SELECT 1 FROM experiences e
              WHERE e.id = et.experience_id
@@ -152,7 +153,7 @@ async function mark(
              WHERE twin.treasure_id = et.treasure_id
                AND twin.id <> et.id
                AND twin.missing_since IS NULL
-               AND twin.curation_state <> 'pending'
+               AND ${publishedContentSql('twin')}
                AND ${placeOfferedSql('te')}
           )
         )

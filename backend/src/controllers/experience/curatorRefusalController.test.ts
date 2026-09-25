@@ -32,7 +32,7 @@ import { resolveExperienceScope } from './experienceScope.js';
 import {
   CURATOR_REFUSAL_REASON, refuseArrival, refuseContents,
 } from './curatorRefusalController.js';
-import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
+import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { contentsAnswerableSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;

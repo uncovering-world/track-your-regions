@@ -23,9 +23,7 @@ vi.mock('../../db/index.js', () => ({
 import { pool } from '../../db/index.js';
 import { getReviewQueue } from './reviewQueueController.js';
 import { admissionAnsweredSql, membershipAdmittedSql } from '../../db/membership.js';
-import {
-  hidePendingSql, hideRefusedSql, offeredLinkSql, offeredLocationSql,
-} from './experienceLifecycle.js';
+import { hidePendingSql, hideRefusedSql, offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';

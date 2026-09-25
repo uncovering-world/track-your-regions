@@ -9,7 +9,7 @@
  * controller, or copy it.
  */
 
-import { offeredLinkSql, offeredLocationSql } from './experienceLifecycle.js';
+import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { dangerSelectSql } from './experienceDanger.js';
 
 /**

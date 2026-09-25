@@ -23,8 +23,12 @@ vi.mock('../../db/index.js', () => ({
 import { pool } from '../../db/index.js';
 import { getExperienceTreasures, markTreasureViewed } from './experienceTreasureController.js';
 import {
-  experienceOfferedToReaderSql, hideLostSql, hidePendingSql, hideRefusedSql, linkedForReaderSql,
-} from './experienceLifecycle.js';
+  experienceOfferedToReaderSql,
+  hideLostSql,
+  hidePendingSql,
+  hideRefusedSql,
+  linkedForReaderSql,
+} from '../../db/readerPredicates.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 

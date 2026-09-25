@@ -17,7 +17,7 @@
  * own query.
  */
 
-import { readerRegionMembershipSql } from './experienceLifecycle.js';
+import { readerRegionMembershipSql } from '../../db/readerPredicates.js';
 
 /**
  * The regions that name the object `experienceIdExpr` to a reader, as a JSON

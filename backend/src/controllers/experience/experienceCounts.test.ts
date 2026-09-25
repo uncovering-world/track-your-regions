@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { membershipOfferedSql } from '../../db/membership.js';
-import { hideLostSql } from './experienceLifecycle.js';
+import { hideLostSql } from '../../db/readerPredicates.js';
 import {
   countedMembershipSql, countedMembershipsSql, countedPlacesSql, kindCountSql,
 } from './experienceCounts.js';

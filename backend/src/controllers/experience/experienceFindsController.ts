@@ -20,9 +20,7 @@ import { respond } from '../../api/respond.js';
 import { SiteFindsResponse } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import { rowKindJoinSql } from '../../db/membership.js';
-import {
-  experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql,
-} from './experienceLifecycle.js';
+import { experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { siteFindOf, type SiteFindRow } from './experienceAnswerRows.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
 

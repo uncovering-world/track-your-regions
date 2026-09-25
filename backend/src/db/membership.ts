@@ -26,11 +26,10 @@
  * (`experienceOfferedToReaderSql`). #819 then switches each reader to the
  * membership row it means.
  *
- * In `db/` rather than beside the lifecycle fragments for the reason
- * `db/locks.ts` gives: the sync services ask the same questions of the same
- * rows, and a service importing a controller module would be the first such
- * import in the codebase. `experienceLifecycle.ts` composes these; the
- * services import them directly.
+ * In `db/` for the reason `db/locks.ts` gives: the sync services ask the same
+ * questions of the same rows, and a service may not import a controller
+ * module. `readerPredicates.ts` beside it composes these into the reader
+ * predicates, and a service imports either.
  *
  * `km` is the alias the `EXISTS` forms give the membership. Its own name, so
  * that a query which already joins the table as `m` — the review queue, the

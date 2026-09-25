@@ -29,7 +29,7 @@
  */
 
 import { MEMBERSHIPS, membershipOfferedSql } from '../../db/membership.js';
-import { hideLostSql } from './experienceLifecycle.js';
+import { hideLostSql } from '../../db/readerPredicates.js';
 
 /**
  * The memberships a kind's count counts, over a membership alias and its

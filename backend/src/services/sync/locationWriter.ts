@@ -108,6 +108,7 @@ import {
 import {
   claimed, claimedPointSql, keptChanges, named, samePointSql, NO_CHANGE,
 } from './locationPairing.js';
+import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 
 
 /** Which rows the write touched, so assignment can be limited to them. */
@@ -184,7 +185,7 @@ export async function writeExperienceLocations(
   const heldPoint = `((SELECT c.requires_curation
                         FROM experiences e JOIN experience_sources c ON c.id = e.source_id
                        WHERE e.id = $1)
-                     AND el.curation_state <> 'pending')`;
+                     AND ${publishedContentSql('el')})`;
 
   /**
    * One stored row per incoming point, and one incoming point per stored row.
@@ -588,10 +589,7 @@ export async function writeExperienceLocations(
                   -- Rows a reader can *see*, which is what a deferral slot is scarce for:
                   -- one per arrival, and spending one on a row nobody is looking at leaves
                   -- a visible pin unheld. So all three terms of that, not one:
-                  -- offeredLocationSql (experienceLifecycle.ts) is
-                  -- missing_since IS NULL AND existence <> 'lost', and the gate adds
-                  -- pending on top -- repeated rather than imported, no service here
-                  -- depending on a controller, and it has to track that definition.
+                  -- offeredLocationSql, and the gate on unread rows on top of it.
                   --
                   -- The existence term is not decoration. A curator answers "no longer
                   -- exists" on a withdrawn point; the source offers it again, so the
@@ -599,9 +597,8 @@ export async function writeExperienceLocations(
                   -- existence alone; a later run drops it again. That row is invisible,
                   -- unpaired and not pending -- and without this it would take the slot
                   -- from a point a reader really can see.
-                  AND el.missing_since IS NULL
-                  AND el.existence <> 'lost'
-                  AND el.curation_state <> 'pending'
+                  AND ${offeredLocationSql('el')}
+                  AND ${publishedContentSql('el')}
                   AND NOT EXISTS (
                     SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
                   )

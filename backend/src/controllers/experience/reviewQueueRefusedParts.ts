@@ -31,7 +31,7 @@
 import { pool } from '../../db/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
-import { lifecycleSelectSql } from './experienceLifecycle.js';
+import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
 import { MEMBERSHIPS, membershipToAnswerSql, rowKindJoinSql } from '../../db/membership.js';
@@ -158,7 +158,7 @@ export async function queryRefusedParts(
                row_number() OVER (ORDER BY el.refused_at DESC NULLS LAST, el.id) AS rn
         -- The mark alone. A refused point is always pending -- the refusal
         -- reaches only what unreadPointSql reaches -- and the withdrawn card
-        -- asks for curation_state <> 'pending', so a refused point the source
+        -- asks for a published point (publishedContentSql), so a refused point the source
         -- then stops offering raises no card of its own. An offered term here
         -- would leave it on no screen at all, with the answer that put it there
         -- permanently unanswerable. Its row says the source dropped it instead.

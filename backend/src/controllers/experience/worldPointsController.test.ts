@@ -31,7 +31,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { getWorldPoints } from './worldPointsController.js';
-import { hideLostSql, offeredLocationSql, publishedContentSql } from './experienceLifecycle.js';
+import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { placeOfferedSql } from '../../db/membership.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;

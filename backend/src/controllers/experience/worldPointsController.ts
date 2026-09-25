@@ -42,7 +42,7 @@
  * the one place that shape is needed.
  *
  * **What a stranger may read here.** The four reader-facing questions of
- * `experienceLifecycle.ts`, composed from the same fragments every other
+ * `db/readerPredicates.ts`, composed from the same fragments every other
  * reader-facing read composes them from — which is the second reason this is an
  * endpoint: the tile function had to spell all four in SQL, a second runtime
  * for a rule that already had one.
@@ -55,7 +55,7 @@ import type { PointsDetail } from './worldPointsVocabulary.js';
 import { pool } from '../../db/index.js';
 import { placeOfferedSql, rowKindJoinSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
-import { hideLostSql, offeredLocationSql, publishedContentSql } from './experienceLifecycle.js';
+import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 
 /**
  * Decimals a coordinate is rounded to, per tier.
@@ -145,7 +145,7 @@ function selectSql(detail: PointsDetail, folded: boolean, location: string, loca
 /**
  * Everything that must be true of a place before this endpoint draws it.
  *
- * The four questions of `experienceLifecycle.ts`, in the order that file asks
+ * The four questions of `db/readerPredicates.ts`, in the order that file asks
  * them: does the source still offer this point and does it still stand, has
  * anyone looked at it — which is also what hides a point a curator turned down,
  * since a refusal leaves curation_state pending (ADR-0053) — does the object

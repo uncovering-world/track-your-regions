@@ -43,9 +43,7 @@ import {
   unmarkAllLocationsVisited,
   unmarkLocationVisited,
 } from './experienceLocationController.js';
-import {
-  experienceOfferedToReaderSql, hidePendingSql, hideRefusedSql, offeredToReaderSql,
-} from './experienceLifecycle.js';
+import { experienceOfferedToReaderSql, hidePendingSql, hideRefusedSql, offeredToReaderSql } from '../../db/readerPredicates.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;

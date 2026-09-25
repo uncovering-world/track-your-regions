@@ -25,12 +25,12 @@ import {
   hideLostSql,
   hideRefusedSql,
   hidePendingSql,
-  includeLost,
   offeredLocationSql,
   offeredToReaderSql,
   publishedContentSql,
   readerRegionMembershipSql,
-} from './experienceLifecycle.js';
+} from '../../db/readerPredicates.js';
+import { includeLost } from './includeLost.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 

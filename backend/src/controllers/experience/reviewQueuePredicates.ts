@@ -14,14 +14,18 @@
  * Every function takes the aliases its two callers already use and returns
  * bare SQL text with no leading `AND`: some callers open a `WHERE`, some
  * append to one already open, and a fragment that suited one read wrong in
- * the other (`experienceLifecycle.ts` sets the same rule).
+ * the other (`db/readerPredicates.ts` sets the same rule).
  */
 
 import { admissionAnsweredSql, membershipAdmittedSql } from '../../db/membership.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
-  hidePendingSql, hideRefusedSql, offeredLinkSql, offeredLocationSql,
-} from './experienceLifecycle.js';
+  hidePendingSql,
+  hideRefusedSql,
+  offeredLinkSql,
+  offeredLocationSql,
+  publishedContentSql,
+} from '../../db/readerPredicates.js';
 import {
   heldFieldExistsSql, heldPartExistsSql, unreadLinkSql, unreadPointSql,
 } from './waitingCounts.js';
@@ -106,7 +110,7 @@ export function contentsOpenSql(e = 'e'): string {
  * deliberately leaves the flag standing, so without these an answered point
  * would come back for ever carrying its own answer — then the deferral
  * guard, which is here for the *other* row of a paired withdrawal, still on
- * the map while an arrival names it. `curation_state <> 'pending'` is the
+ * the map while an arrival names it. `publishedContentSql` is the
  * gate: a point nobody ever saw raises no question about its departure, the
  * same reasoning ADR-0025 § 3.6 applies to an unread object. `el` is the
  * `experience_locations` alias.
@@ -116,7 +120,7 @@ export function withdrawnPointOpenSql(el = 'el'): string {
     AND ${el}.source_membership = 'present'
     AND ${el}.existence = 'extant'
     AND ${el}.withdrawal_deferred_for_location_id IS NULL
-    AND ${el}.curation_state <> 'pending'`;
+    AND ${publishedContentSql(el)}`;
 }
 
 /**

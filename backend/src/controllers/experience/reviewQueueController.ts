@@ -18,7 +18,7 @@ import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, admissionAnsweredSql, rowKindJoinSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
-import { lifecycleSelectSql } from './experienceLifecycle.js';
+import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import {
   objectContextSelectSql, countedWorksSelectSql, QUEUE_PAGE_SIZE,
 } from './reviewQueueContext.js';

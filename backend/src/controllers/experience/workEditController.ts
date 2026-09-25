@@ -25,7 +25,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { offeredLinkSql } from './experienceLifecycle.js';
+import { offeredLinkSql } from '../../db/readerPredicates.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
 import { userAgent } from '../../config/userAgent.js';
 

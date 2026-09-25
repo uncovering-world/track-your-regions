@@ -22,6 +22,7 @@ import { tidyLabelSql } from '../../../services/sync/labelFold.js';
 
 import { count, text } from './assertion.js';
 import type { CatalogueAssertion } from './assertion.js';
+import { publishedContentSql } from '../../../db/readerPredicates.js';
 
 /**
  * One fact, stored twice, asked whether the two copies still agree.
@@ -256,7 +257,7 @@ const workMakersUnconfirmed: CatalogueAssertion = {
            -- the hold protects a visible row, and an arrival has nothing to
            -- protect — so without this the count would include works no screen
            -- has ever drawn.
-           AND t.curation_state <> 'pending'
+           AND ${publishedContentSql('t')}
          ORDER BY array_length(t.artists, 1) DESC, t.name`,
   describe: row => {
     const makers = count(row, 'maker_count');

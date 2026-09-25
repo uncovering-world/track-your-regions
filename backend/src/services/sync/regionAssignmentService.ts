@@ -12,6 +12,7 @@
 
 import type { AssignmentStatus, PlacementCounts } from '../../api/responses/admin.js';
 import { pool } from '../../db/index.js';
+import { offeredLocationSql } from '../../db/readerPredicates.js';
 
 export interface AssignmentProgress {
   cancel: boolean;
@@ -124,7 +125,7 @@ function directPlacementSql(pointFilter: string): string {
       SELECT el.id, el.location
       FROM experience_locations el
       JOIN experiences e ON e.id = el.experience_id
-      WHERE el.missing_since IS NULL AND el.existence <> 'lost'
+      WHERE ${offeredLocationSql('el')}
         AND el.refused_at IS NULL
         ${pointFilter}
     ),
