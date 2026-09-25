@@ -11,11 +11,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro,z
+    # Over TCP, not the socket: a fresh volume runs db/init on a temporary
+    # server that listens on the socket alone and then restarts, so a probe
+    # through the socket calls it healthy and a backend started on that word
+    # connects into the restart and is refused (#775). The start period
+    # covers the init scripts, whose failures do not count against retries.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-track_regions}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${DB_USER:-postgres} -d ${DB_NAME:-track_regions}"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 120s
 
   backend:
     build:
