@@ -140,7 +140,8 @@ describe('a held card about a part', () => {
     // four buttons that each answer both rows, with nothing saying so, is the
     // screen misleading a curator about the one act it cannot take back. The
     // object spells the picture `imageUrl`, not the column name a part uses,
-    // which is why the note mirrors `partnerOf` rather than keying on one name.
+    // which is why the note reads the server's own pairing, level by level
+    // (`pictureCreditPartner`), rather than keying on one name.
     const withObjectPicture = held();
     withObjectPicture.proposed = [
       { field: 'imageUrl', old: 'https://old', new: 'https://new', held: true },

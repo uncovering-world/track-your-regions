@@ -33,6 +33,7 @@
 import { Button, Stack, Typography } from '@mui/material';
 import type { HeldSelectionPart } from '../../api/curation';
 import type { FactSubject } from './factRows';
+import { HELD_CREDIT_FIELD, pictureCreditPartner } from '@tyr/shared/pictures';
 
 /** What a curator answered: rows of the object's own, rows of its parts, or both. */
 export interface HeldSelection {
@@ -58,33 +59,28 @@ export function heldSelectionFor(subject: FactSubject, field: string): HeldSelec
 /**
  * A picture and the credit that belongs to it, as the card has to say it.
  *
- * The server answers the two together — `heldSelection.ts`'s `partnerOf` widens
- * the match at both endpoints — but they are two changeset fields, and
+ * The server answers the two together — `heldSelection.ts` widens the match
+ * at both endpoints — but they are two changeset fields, and
  * `FactTable` draws one answer cell per field. So a subject whose run held both
  * gets two cells and four buttons, any of which answers both rows. The card
  * says so under them rather than pretending they are independent: two buttons
  * under a promise they will not keep is the screen misleading a curator about
  * an act that has no undo, since a refusal settles that value for good.
  *
- * **Level-aware, because the server's rule is.** It was a work's rule only while
- * the object's credit had no name of its own; since ADR-0039 the object has
- * `metadata.imageCredit` as a fact and the pairing reaches it. The two levels
- * spell the picture differently — `imageUrl` on the object, the column
- * `image_url` on a part — so this mirrors `partnerOf` rather than keying on one
- * name. The pairing is written once per side until #1034 moves it to
- * `@tyr/shared`, so the two are pinned by the same cases on both sides.
+ * The pair is the server's own, `pictureCreditPartner` (`@tyr/shared/pictures`):
+ * level-aware, since the object spells its picture `imageUrl` and a part its
+ * column `image_url`, while the credit is `metadata.imageCredit` on both.
  *
- * Merging the two into one cell would be the other fix, and it would put a copy
- * of the server's pairing into the table's layout rule. This says it instead.
+ * Merging the two into one cell would be the other fix, and it would put the
+ * pairing into the table's layout rule. This says it instead.
  */
-const CREDIT = 'metadata.imageCredit';
-const PICTURE_OF = { object: 'imageUrl', part: 'image_url' } as const;
-
 function pairingFor(field: string, isPart: boolean): { partner: string; note: string } | undefined {
-  const picture = PICTURE_OF[isPart ? 'part' : 'object'];
-  if (field === picture) return { partner: CREDIT, note: 'Answered with its credit.' };
-  if (field === CREDIT) return { partner: picture, note: 'Answered with its picture.' };
-  return undefined;
+  const partner = pictureCreditPartner(field, isPart ? 'part' : 'object');
+  if (partner === undefined) return undefined;
+  return {
+    partner,
+    note: partner === HELD_CREDIT_FIELD ? 'Answered with its credit.' : 'Answered with its picture.',
+  };
 }
 
 /**
