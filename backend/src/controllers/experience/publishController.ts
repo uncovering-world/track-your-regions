@@ -49,7 +49,7 @@ import {
 } from './publishHeldParts.js';
 import { recordHeldAnswers } from './heldDecisions.js';
 import type { HeldSelection, SelectedPart } from './heldSelection.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
 
 /**
  * What the curator asked to be published.
@@ -540,12 +540,8 @@ export async function publishUnderLock(
 
       // The content on the place, the publication on its membership (#822):
       // two statements in the one transaction, under the one lock.
-      await client.query(
-        `UPDATE experiences
-         SET ${[...write.assignments, 'updated_at = NOW()'].join(',\n             ')}
-         WHERE id = $1`,
-        write.params,
-      );
+      // `write.params` binds the id as `$1`; the writer binds it itself.
+      await updateExperienceColumns(client, locked.lock, write.assignments, write.params.slice(1));
       await client.query(
         `UPDATE ${MEMBERSHIPS}
          SET ${[...publicationAssignments(before, heldLeftOpen), 'updated_at = NOW()'].join(',\n             ')}

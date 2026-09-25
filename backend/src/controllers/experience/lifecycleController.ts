@@ -28,7 +28,7 @@ import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { lockExperience, setLifecycleVerdict, recordDecisionOnExperience } from '../../db/experienceWriter.js';
 
 /** The object's two axes, as the columns' CHECK lists spell them. */
 type Membership = CheckValue<'experiences', 'source_membership'>;
@@ -207,17 +207,9 @@ export async function answerStateUnderLock(
       actions.push('missing_dismissed');
     }
 
-    await client.query(`
-      UPDATE experiences
-      SET source_membership = $2,
-          existence = $3,
-          missing_since = NULL,
-          state_decided_by = $4,
-          state_decided_at = NOW(),
-          state_note = $5,
-          updated_at = NOW()
-      WHERE id = $1
-    `, [experienceId, nextMembership, nextExistence, userId, note ?? null]);
+    await setLifecycleVerdict(client, locked.lock, {
+      sourceMembership: nextMembership, existence: nextExistence, decidedBy: userId, note: note ?? null,
+    });
 
     for (const action of actions) {
       await client.query(`
@@ -535,14 +527,7 @@ export async function answerAdmissionUnderLock(
       membershipId, admitted ? 'admitted' : 'refused', nextReason,
       JSON.stringify(curated),
     ]);
-    await client.query(`
-      UPDATE experiences
-      SET state_decided_by = $2,
-          state_decided_at = NOW(),
-          state_note = $3,
-          updated_at = NOW()
-      WHERE id = $1
-    `, [experienceId, userId, note ?? null]);
+    await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
 
     ({ locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =
       await publishArrivalContents(client, experienceId, publishes));
