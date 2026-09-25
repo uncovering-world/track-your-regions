@@ -6,6 +6,27 @@ import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import security from 'eslint-plugin-security';
 import sonarjs from 'eslint-plugin-sonarjs';
 
+// Where a query key stands (#790): the `queryKey` option, the first argument
+// of a query client's cache calls, and a local named `…Key`. A literal array
+// there is refused whether it is bare or wrapped in `as const`, `satisfies` or
+// both; the call's first argument is pinned, because its second is data and
+// may well be an array.
+const QUERY_CLIENT_CACHE_CALLS = '/^(getQueryData|setQueryData|getQueryState|getQueriesData|setQueriesData|cancelQueries|removeQueries|refetchQueries|invalidateQueries|resetQueries|fetchQuery|prefetchQuery|ensureQueryData)$/';
+const KEY_WRAPPERS = [
+  [], ['TSAsExpression'], ['TSSatisfiesExpression'],
+  ['TSAsExpression', 'TSSatisfiesExpression'], ['TSSatisfiesExpression', 'TSAsExpression'],
+];
+const QUERY_KEY_SELECTORS = KEY_WRAPPERS.flatMap(wrappers => {
+  const chain = [...wrappers, 'ArrayExpression'];
+  const path = chain.join(' > ');
+  const firstArgument = [`${chain[0]}:first-child`, ...chain.slice(1)].join(' > ');
+  return [
+    `Property[key.name='queryKey'] > ${path}`,
+    `CallExpression[callee.property.name=${QUERY_CLIENT_CACHE_CALLS}] > ${firstArgument}`,
+    `VariableDeclarator[id.name=/[kK]ey$/] > ${path}`,
+  ];
+});
+
 export default [
   {
     ignores: ['dist/', 'node_modules/'],
@@ -73,6 +94,19 @@ export default [
       // raw-line cap would tax exactly those. The guide states this number
       // and names this entry, so a change here is a change there too (#530).
       'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
+      // A TanStack Query key is built by the factory in src/api/queryKeys.ts
+      // (#790): a literal array beside it is a second spelling of the
+      // vocabulary, and a key and its invalidation spelled apart drift apart
+      // silently. Refused wherever a key stands (QUERY_KEY_SELECTORS above).
+      // A local counts by its name, `…Key`, because the rule cannot follow a
+      // local to its use. The specs are exempt below, since they pin the
+      // shapes the factory must keep producing.
+      'no-restricted-syntax': ['error',
+        ...QUERY_KEY_SELECTORS.map(selector => ({
+          selector,
+          message: 'Build query keys with queryKeys (src/api/queryKeys.ts, #790), not a literal array.',
+        })),
+      ],
       // SonarJS: disable genuine false positives only
       'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses (e.g., jitter)
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
@@ -81,6 +115,13 @@ export default [
       react: {
         version: 'detect',
       },
+    },
+  },
+  // The factory itself, and the specs that pin the arrays it has to produce.
+  {
+    files: ['src/api/queryKeys.ts', 'src/**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': 'off',
     },
   },
   // The performance lane's runner and budget evaluator: plain ESM run by
