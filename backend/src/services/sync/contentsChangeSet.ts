@@ -14,7 +14,7 @@
  * a question a curator must answer is how a queue teaches people to stop reading it.
  */
 
-import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from './changeSet.js';
+import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 import type { FieldChange } from './changeSet.js';
 import { sameLabel } from '@tyr/shared/labels';
 import { sameLabelSet } from './labelFold.js';

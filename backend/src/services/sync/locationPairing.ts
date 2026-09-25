@@ -41,7 +41,7 @@
  * unmoved point moved, which would throw away a good assignment for nothing.
  */
 
-import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
+import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 import type { ContentItem, ContentItemChange, ContentsDelta } from './types.js';
 import { pointChanges } from './contentsChangeSet.js';
 

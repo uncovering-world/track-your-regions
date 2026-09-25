@@ -9,7 +9,7 @@
  * the whole of the writer's own subject.
  */
 
-import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
+import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 import { signedLongitudeDelta } from './longitude.js';
 
 /** One point as the source offers it, before anything is known about the store. */

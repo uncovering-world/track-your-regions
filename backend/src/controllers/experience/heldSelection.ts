@@ -24,6 +24,7 @@
 
 import type { ContentKind, ContentsByKind } from '../../services/sync/types.js';
 import { heldRowKey, type HeldAnswer, type HeldRowRef } from './heldDecisions.js';
+import { pictureCreditPartner } from '@tyr/shared/pictures';
 
 /**
  * One entry of a stored change set, as jsonb holds it rather than as the writer
@@ -116,20 +117,12 @@ export function heldPartRows(
  * `nextMetadata` and why refusing the catch-all and then publishing the picture
  * could put a photograph on the site under nobody's name.
  *
- * The two levels spell the picture differently — the object's changeset field is
- * `imageUrl`, a part's is its column `image_url` — so the partner cannot be one
- * lookup table: `metadata.imageCredit` pairs with a different name depending on
- * which it belongs to.
+ * The pair is `pictureCreditPartner` (`@tyr/shared/pictures`), which the review
+ * card lays its answers out by too: the two levels spell the picture
+ * differently, so the partner depends on which level a row is at.
  */
-const OBJECT_PICTURE = 'imageUrl';
-const PART_PICTURE = 'image_url';
-const CREDIT = 'metadata.imageCredit';
-
 function partnerOf(field: string, kind: ContentKind | null): string | undefined {
-  const picture = kind === null ? OBJECT_PICTURE : PART_PICTURE;
-  if (field === picture) return CREDIT;
-  if (field === CREDIT) return picture;
-  return undefined;
+  return pictureCreditPartner(field, kind === null ? 'object' : 'part');
 }
 
 /**
