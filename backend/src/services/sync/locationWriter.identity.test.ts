@@ -12,7 +12,7 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn(), connect: vi.fn() },
 }));
 
-import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
+import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 import {
   mockedQuery, mockedConnect, writeExperienceLocations, A, B, fakeClient,
   RESURRECT, KEEP, MARK, INSERT, PAIR, HOLD, only,

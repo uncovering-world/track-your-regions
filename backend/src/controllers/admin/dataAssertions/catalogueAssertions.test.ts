@@ -23,7 +23,7 @@ import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import {
   heldFieldAnsweredSql, heldFieldRefusedSql, heldPartRefusedSql,
 } from '../../experience/heldDecisions.js';
-import { LOCATION_UNCHANGED_METERS } from '../../../services/sync/changeSet.js';
+import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 import { catalogueAssertions } from './catalogueAssertions.js';
 import { PICTURE_HOSTS, PICTURE_EXTENSIONS } from '@tyr/shared/pictures';
 

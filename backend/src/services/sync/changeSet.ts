@@ -12,6 +12,7 @@
 
 import { jsonEquals } from '@tyr/shared/equality';
 import { sameLabelSet } from './labelFold.js';
+import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 
 /**
  * The outline a row holds, as the diff compares it: a hash of the geometry the
@@ -81,10 +82,6 @@ export interface ChangeSetResult {
   heldFields: FieldChange[];
 }
 
-/** Below this, a coordinate difference is source jitter, not a move. */
-export const LOCATION_UNCHANGED_METERS = 10;
-/** Above this, the object has moved far enough to matter to a traveller. */
-export const LOCATION_MAJOR_METERS = 1000;
 
 /** Metadata keys whose change is a product event, not bookkeeping. */
 const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
@@ -364,24 +361,6 @@ function setEquals(a: string[] | null, b: string[] | null): boolean {
   if (left.length !== right.length) return false;
   const seen = new Set(left);
   return right.every(item => seen.has(item));
-}
-
-/**
- * Great-circle distance in metres.
- *
- * Exported for `contentsChangeSet.ts`, which asks the same question one level
- * down — did this point move, and far enough to matter — and must ask it with
- * the same arithmetic, or a component and its object would disagree about what
- * ten metres means.
- */
-export function distanceMeters(lon1: number, lat1: number, lon2: number, lat2: number): number {
-  const earthRadiusMeters = 6371000;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * earthRadiusMeters * Math.asin(Math.sqrt(a));
 }
 
 function fieldSignificance(field: string): FieldSignificance {
