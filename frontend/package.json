@@ -26,13 +26,40 @@
       "name": "entry chunk (gzip)",
       "path": "dist/assets/index-*.js",
       "gzip": true,
-      "limit": "920 kB"
+      "limit": "190 kB"
+    },
+    {
+      "name": "map library chunk (gzip)",
+      "path": [
+        "dist/assets/maplibre-gl-*.js",
+        "!dist/assets/maplibre-gl-worker-*.js"
+      ],
+      "gzip": true,
+      "limit": "285 kB"
     },
     {
       "name": "map worker chunk (gzip)",
       "path": "dist/assets/maplibre-gl-worker-*.js",
       "gzip": true,
       "limit": "142 kB"
+    },
+    {
+      "name": "admin panel chunk (gzip)",
+      "path": "dist/assets/AdminDashboard-*.js",
+      "gzip": true,
+      "limit": "148 kB"
+    },
+    {
+      "name": "world-view editor chunk (gzip)",
+      "path": "dist/assets/WorldViewEditor-*.js",
+      "gzip": true,
+      "limit": "139 kB"
+    },
+    {
+      "name": "review queue chunk (gzip)",
+      "path": "dist/assets/ReviewPage-*.js",
+      "gzip": true,
+      "limit": "32 kB"
     },
     {
       "name": "stylesheet (gzip)",
