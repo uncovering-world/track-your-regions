@@ -3675,7 +3675,8 @@ pool with no `BEGIN`, so it holds nothing across them and can wait for a lock wi
 half of a cycle, and the one transaction inside it — `reconcileLinks`, which restores and marks
 the venue's links (ADR-0044) — is under the rule for exactly that reason and takes the object
 first; `createManualExperience` creates the object in the same transaction, so the INSERT's
-own row lock is the "object first" the rule asks for; the region and rejection writers
+own row lock is the "object first" the rule asks for, and its point insert spends the token that
+insert hands back (`insertCuratedExperience`); the region and rejection writers
 touch rows no lock-holder waits for, reaching `experiences` only through the audit row's key
 share, which the mode below is chosen never to conflict with; and **placement**
 (`assignRegionsForExperiences`) does key-share the point rows through
@@ -3686,8 +3687,9 @@ where a writer that joins the set will look.
 
 **The lock is taken through `lockExperience`, and a write under it takes its token**
 (ADR-0069). `db/experienceWriter.ts` runs the `OBJECT_LOCK` statement on the caller's
-connection and returns the row with a `LockedExperience`. That type is produced nowhere else,
-and every curator write to `experiences` requires it:
+connection and returns the row with a `LockedExperience`. That type is produced only in that
+module — by the two lock functions and the manual create's insert — and every curator write to
+`experiences` requires it:
 
 - `updateExperienceColumns` (the edit, accept-source, a published proposal);
 - `recordDecisionOnExperience`;
@@ -3700,6 +3702,24 @@ So a write issued before the lock, or on a path that never took it, does not com
 The table's writers are a closed list the backend lint names (`EXPERIENCE_WRITE_RULES`):
 that module; the run's upsert, missing detection and picture repair; and the seed. An
 `INSERT INTO` or `UPDATE` of `experiences` anywhere else is refused.
+
+**A point is written under its object's token too.** Every curator write to
+`experience_locations` requires the object's `LockedExperience`, and each names the object
+beside the point, so one object's token cannot be spent on another's point. They are in
+`controllers/experience/experienceLocationWriter.ts`, beside the handlers whose unread gate
+they compose:
+
+- `publishUnreadPoints`, `markUnreadPointsRefused`, `restoreRefusedPoints`;
+- `releaseDeferredWithdrawals`, one release for both answers to a moved point's arrival —
+  published or refused;
+- `setPointVerdict`, `correctPoint`, `releaseAnchorPointClaim`, `movePointTo`,
+  `renamePoint`, `insertCuratedPoint`.
+
+The manual create's `insertCuratedExperience` hands back the token, since its insert's own row
+lock is the object lock. So *the object first, then its points* (`db/locks.ts`) is a type error
+to break. The table's writers are a closed list the backend lint names
+(`EXPERIENCE_LOCATION_WRITE_RULES`): that module; the run's `locationWriter.ts`, which takes the
+same lock; and the seed.
 
 The **order**, because the audit row's foreign key reaches `experiences` even in a handler that
 never names it, so a writer that took the point first and logged afterwards was holding one row
