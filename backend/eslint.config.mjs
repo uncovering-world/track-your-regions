@@ -99,6 +99,24 @@ const QUERY_AND_HEADER_RULES = [
   },
 ];
 
+/**
+ * A reader predicate spelled out rather than composed (#791). Whether a row is
+ * one a reader may see is asked by a named fragment — `hidePendingSql`,
+ * `publishedContentSql` and `hideLostSql` in `src/db/readerPredicates.ts`,
+ * `membershipVisibleSql` in `src/db/membership.ts` — and those two files are
+ * the only ones that may spell the SQL. A copy elsewhere is the one that
+ * misses the next term the question gains. Read in a string's text or a
+ * template's literal parts, so a TypeScript comment naming the predicate is
+ * not a copy, while a SQL comment inside the statement is, and says so.
+ */
+const READER_PREDICATE = 'A reader predicate is composed, not spelled: use publishedContentSql / hidePendingSql / hideLostSql / '
+  + 'offeredLocationSql (src/db/readerPredicates.ts) or membershipVisibleSql (src/db/membership.ts) (#791).';
+const READER_PREDICATE_TEXT = "/curation_state\\s*<>\\s*'pending'|existence\\s*<>\\s*'lost'/";
+const READER_PREDICATE_RULES = [
+  { selector: `TemplateElement[value.raw=${READER_PREDICATE_TEXT}]`, message: READER_PREDICATE },
+  { selector: `Literal[value=${READER_PREDICATE_TEXT}]`, message: READER_PREDICATE },
+];
+
 /** What the response-shape rule says. */
 const RESPONSE_SHAPE = [
   'A success body is sent through respond(res, Schema, body) from src/api/respond.ts, with its schema in src/api/responses/,',
@@ -235,6 +253,15 @@ export default [
   {
     files: ['src/**/*.ts'],
     ignores: ['src/**/*.test.ts', 'src/api/respond.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...READER_PREDICATE_RULES],
+    },
+  },
+  // The two modules the reader predicates are spelled in (#791): every entry
+  // above but that one, since a later block's options replace an earlier one's.
+  {
+    files: ['src/db/readerPredicates.ts', 'src/db/membership.ts'],
     rules: {
       'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES],
     },
