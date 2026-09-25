@@ -23,6 +23,7 @@ import {
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
   Schedule as ScheduleIcon,
+  Cancel as CancelIcon,
   DragIndicator as DragIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -312,19 +313,26 @@ function SourceCard({ source }: SourceCardProps) {
         />
       );
     }
-    if (source.last_sync_status === 'success') {
-      return <Chip icon={<CheckIcon />} label="Success" color="success" size="small" />;
+    // Every way a run can end (`ClosedSyncStatus`): the switch is exhaustive,
+    // so a status the vocabulary gains without a chip here is a type error.
+    switch (source.last_sync_status) {
+      case 'success':
+        return <Chip icon={<CheckIcon />} label="Success" color="success" size="small" />;
+      case 'partial':
+        return <Chip icon={<ErrorIcon />} label="Partial" color="warning" size="small" />;
+      case 'failed':
+        return <Chip icon={<ErrorIcon />} label="Failed" color="error" size="small" />;
+      case 'cancelled':
+        return <Chip icon={<CancelIcon />} label="Cancelled" color="default" size="small" />;
+      case null:
+        return source.last_sync_at
+          ? <Chip icon={<ScheduleIcon />} label="Completed" color="default" size="small" />
+          : <Chip label="Never synced" color="default" size="small" />;
+      default: {
+        const unhandled: never = source.last_sync_status;
+        return <Chip label={String(unhandled)} size="small" />;
+      }
     }
-    if (source.last_sync_status === 'partial') {
-      return <Chip icon={<ErrorIcon />} label="Partial" color="warning" size="small" />;
-    }
-    if (source.last_sync_status === 'failed') {
-      return <Chip icon={<ErrorIcon />} label="Failed" color="error" size="small" />;
-    }
-    if (source.last_sync_at) {
-      return <Chip icon={<ScheduleIcon />} label="Completed" color="default" size="small" />;
-    }
-    return <Chip label="Never synced" color="default" size="small" />;
   };
 
 

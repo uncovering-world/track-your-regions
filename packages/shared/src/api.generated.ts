@@ -1619,7 +1619,7 @@ export interface ExperienceSource {
   /** Whether a run holds its new and changed content for review (ADR-0025). */
   requires_curation: boolean;
   last_sync_at: string | null;
-  last_sync_status: string | null;
+  last_sync_status: "success" | "partial" | "failed" | "cancelled" | null;
   display_priority: number;
   created_at: string | null;
   /** Wikipedia languages an item needs to enter this kind; null for a source with no line. */
@@ -2457,7 +2457,7 @@ export interface MatchStats {
  * candidates to review; none found. `suggested` is an older matcher's word for a parent with
  * candidates.
  */
-export type MatchStatus = "auto_matched" | "children_matched" | "needs_review" | "no_candidates" | "manual_matched" | "suggested";
+export type MatchStatus = "no_candidates" | "needs_review" | "auto_matched" | "manual_matched" | "children_matched" | "suggested";
 
 /** A division offered as a region's match. */
 export interface MatchSuggestion {
@@ -3772,7 +3772,7 @@ export interface SyncLog {
   source_name: string;
   started_at: string | null;
   completed_at: string | null;
-  status: string | null;
+  status: "running" | "success" | "partial" | "failed" | "cancelled" | null;
   total_fetched: number;
   total_created: number;
   /**
@@ -3811,7 +3811,7 @@ export interface SyncLogDetail {
   source_name: string;
   started_at: string | null;
   completed_at: string | null;
-  status: string | null;
+  status: "running" | "success" | "partial" | "failed" | "cancelled" | null;
   total_fetched: number;
   total_created: number;
   /**
@@ -3898,7 +3898,7 @@ export interface SyncStatus {
    * last run as the database holds it.
    */
   lastSyncAt?: string | null;
-  lastSyncStatus?: string | null;
+  lastSyncStatus?: "success" | "partial" | "failed" | "cancelled" | null;
 }
 
 /** The tokens a request spent and what they cost. */

@@ -24,7 +24,7 @@ import {
   WikidataCacheCleared,
   WikidataCacheTtlSet,
 } from '../../api/responses/admin.js';
-import type { ExperienceSourcesRow, WorldViewsRow } from '../../db/schema.generated.js';
+import type { CheckValue, ExperienceSourcesRow, WorldViewsRow } from '../../db/schema.generated.js';
 import {
   experienceSourceOf,
   syncChangeOf,
@@ -279,7 +279,8 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
   respond(res, SyncStatus, {
     running: false,
     lastSyncAt: source.rows[0].last_sync_at === null ? null : source.rows[0].last_sync_at.toISOString(),
-    lastSyncStatus: source.rows[0].last_sync_status,
+    // The CHECK is what makes the stored text one of the closing statuses.
+    lastSyncStatus: source.rows[0].last_sync_status as CheckValue<'experience_sources', 'last_sync_status'> | null,
   });
 }
 

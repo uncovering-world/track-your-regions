@@ -8,6 +8,7 @@
  */
 
 // ADR-0064: raw parameterized SQL on the pool, typed by the generated rows.
+import type { ClosedSyncStatus } from '@tyr/shared/runStatuses';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { ExperienceSyncLogsRow } from '../../db/schema.generated.js';
 import {
@@ -94,7 +95,7 @@ export interface SyncLogStats {
 export async function updateSyncLog(
   sourceId: number,
   logId: number,
-  status: string,
+  status: ClosedSyncStatus,
   stats: SyncLogStats,
   errorDetails?: unknown[],
 ): Promise<void> {
@@ -155,7 +156,7 @@ export async function updateSyncLog(
 export async function annotateClosedSyncLog(
   sourceId: number,
   logId: number,
-  status: string,
+  status: ClosedSyncStatus,
   errorDetails: unknown[],
 ): Promise<void> {
   // One transaction, because the two rows are one statement of fact: the log

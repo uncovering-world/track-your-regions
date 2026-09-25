@@ -12,6 +12,7 @@
  * which also says why.
  */
 
+import { MATCH_STATUSES } from '@tyr/shared/runStatuses';
 import { z } from 'zod/v4';
 import { AreaGeometry } from './regions.js';
 import { ImportedWorldView } from './wikivoyageExtract.js';
@@ -70,7 +71,7 @@ export const MatchStats = z.strictObject({
 }).describe('How far a world view\'s match review has come.');
 export type MatchStats = z.infer<typeof MatchStats>;
 
-export const MatchStatus = z.enum(['auto_matched', 'children_matched', 'needs_review', 'no_candidates', 'manual_matched', 'suggested'])
+export const MatchStatus = z.enum(MATCH_STATUSES)
   .describe('Where a region\'s match stands: matched by the matcher, through its children, or by hand; candidates to review; none found. `suggested` is an older matcher\'s word for a parent with candidates.');
 export type MatchStatus = z.infer<typeof MatchStatus>;
 
