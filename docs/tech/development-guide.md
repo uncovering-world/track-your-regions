@@ -998,7 +998,11 @@ one of them is about the branch:
   the run exits before the cleanup step, so the stack is still up whichever
   of the three it was: `docker compose -p tyr-test logs <service>` gives the
   whole log rather than the printed 200 lines, and `npm run test:stack:down`
-  puts it away afterwards.
+  puts it away afterwards. A database still finishing its first boot is not
+  one of the three: the `db` healthcheck asks over TCP, which the temporary
+  server that runs `db/init` does not listen on, and the backend waits for
+  `SELECT 1` before its first statement (`waitForDatabase`), retrying a
+  refusal or `57P03` for about thirty seconds (#775).
 
 The per-spec budget is 120 s against 14–47 s measured on an idle machine
 (`frontend/playwright.config.ts` carries the numbers). Nearly all of that is
