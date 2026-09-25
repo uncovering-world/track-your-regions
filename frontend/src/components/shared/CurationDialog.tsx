@@ -63,6 +63,7 @@ import { CurationPlaces } from './CurationPlaces';
 import { verdictOf } from './LifecycleChip';
 import { actionLabel, formatLogDetails } from './curationLog';
 import { typeOptionsFor } from '../../utils/experienceTypes';
+import { displayNameOf } from '../../utils/displayName';
 import { tidyLabel } from '@tyr/shared/labels';
 
 interface CurationDialogProps {
@@ -605,7 +606,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="caption" sx={{ fontWeight: 500 }}>
                       {/* A curator who set no display name, or a blank one, is still somebody. */}
-                      {entry.curator_name?.trim() || 'A curator'}
+                      {displayNameOf(entry.curator_name) ?? 'A curator'}
                     </Typography>
                     {entry.region_name && (
                       <Typography variant="caption" color="text.secondary">

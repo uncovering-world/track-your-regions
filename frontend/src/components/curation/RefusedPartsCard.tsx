@@ -35,6 +35,7 @@ import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import type { UnseenReason } from '../shared/PointCorrection';
 import { GatedRow, ItemHeader, messageFor } from './queueCard';
 import { HelpHint } from './HelpHint';
+import { displayNameOf } from '../../utils/displayName';
 
 /**
  * What decides whether the take-back is offered, and which question to name where
@@ -68,7 +69,7 @@ export function partTitle(part: { name: string | null; externalRef?: string | nu
  */
 export function refusedLine(part: { refusedAt: string | null; refusedBy: string | null; note: string | null }): string {
   const when = part.refusedAt ? ` on ${formatDateTime(part.refusedAt)}` : '';
-  const who = ` by ${part.refusedBy ?? 'a curator'}`;
+  const who = ` by ${displayNameOf(part.refusedBy) ?? 'a curator'}`;
   const note = part.note ? ` — “${part.note}”` : '';
   return `Turned down${when}${who}${note}.`;
 }

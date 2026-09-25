@@ -61,6 +61,7 @@ import type { CuratorInfo, CuratorScope, CuratorActivityEntry } from '../../api/
 import { formatDateTime } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { actionLabel } from '../shared/curationLog';
+import { displayNameOf } from '../../utils/displayName';
 
 // =============================================================================
 // Main Panel
@@ -160,13 +161,13 @@ function CuratorCard({
             src={curator.avatar_url ?? undefined}
             sx={{ width: 48, height: 48 }}
           >
-            {(curator.display_name || curator.email || '?')[0].toUpperCase()}
+            {(displayNameOf(curator.display_name) || curator.email || '?')[0].toUpperCase()}
           </Avatar>
 
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
               <Typography variant="subtitle1" fontWeight={600}>
-                {curator.display_name || curator.email || `User #${curator.user_id}`}
+                {displayNameOf(curator.display_name) || curator.email || `User #${curator.user_id}`}
               </Typography>
               <Chip
                 label={curator.role}
@@ -363,7 +364,7 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
           {/* User Search */}
           <Autocomplete
             options={userResults ?? []}
-            getOptionLabel={(opt) => opt.display_name || opt.email || `User #${opt.id}`}
+            getOptionLabel={(opt) => displayNameOf(opt.display_name) || opt.email || `User #${opt.id}`}
             value={selectedUser}
             onChange={(_, value) => setSelectedUser(value)}
             onInputChange={(_, value) => setUserQuery(value)}
@@ -371,7 +372,7 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
             renderOption={(props, opt) => (
               <li {...props} key={opt.id}>
                 <Box>
-                  <Typography variant="body2">{opt.display_name || 'No name'}</Typography>
+                  <Typography variant="body2">{displayNameOf(opt.display_name) ?? 'No name'}</Typography>
                   <Typography variant="caption" color="text.secondary">
                     {opt.email} — {opt.role}
                   </Typography>

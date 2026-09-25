@@ -57,6 +57,7 @@ import { ItemHeader, messageFor } from './queueCard';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import type { PlaceToCorrect } from '../shared/PointCorrection';
 import { HelpHint } from './HelpHint';
+import { displayNameOf } from '../../utils/displayName';
 
 type WithdrawnPoint = NonNullable<ReviewQueueItem['withdrawn_points']>[number];
 
@@ -403,7 +404,7 @@ const TAKE_BACK = [
  */
 export function answeredLine(point: AnsweredPoint): string {
   const when = point.decidedAt ? ` on ${formatDateTime(point.decidedAt)}` : '';
-  const who = ` by ${point.decidedBy ?? 'a curator'}`;
+  const who = ` by ${displayNameOf(point.decidedBy) ?? 'a curator'}`;
   const note = point.note ? ` — “${point.note}”` : '';
   return `Answered${when}${who}${note}.`;
 }

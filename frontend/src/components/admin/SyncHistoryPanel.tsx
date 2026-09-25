@@ -39,6 +39,7 @@ import { getSyncLogs, getSyncLogDetails, type SyncLog } from '../../api/admin';
 import { formatDateTime, formatDuration } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { SyncChangeList } from './SyncChangeList';
+import { displayNameOf } from '../../utils/displayName';
 
 export function SyncHistoryPanel() {
   const [page, setPage] = useState(0);
@@ -190,7 +191,7 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
           '0'
         )}
       </TableCell>
-      <TableCell>{log.triggered_by_name || 'System'}</TableCell>
+      <TableCell>{displayNameOf(log.triggered_by_name) ?? 'System'}</TableCell>
       <TableCell>
         <IconButton size="small" onClick={onViewDetails}>
           <InfoIcon />
