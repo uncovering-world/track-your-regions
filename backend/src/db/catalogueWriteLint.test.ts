@@ -1,8 +1,8 @@
 /**
- * The two lint rules that hold the catalogue's reads and writes to their one
+ * The lint rules that hold the catalogue's reads and writes to their one
  * spelling (#791, ADR-0069): a reader predicate is composed from
- * `db/readerPredicates.ts` or `db/membership.ts`, and `experiences` is written
- * only by its writer modules.
+ * `db/readerPredicates.ts` or `db/membership.ts`, and `experiences` and
+ * `experience_locations` are written only by their writer modules.
  *
  * Asserted against the repo's own `eslint.config.mjs`, as
  * `cacheControlLint.test.ts` asserts its rule, and in both directions: the code
@@ -26,7 +26,8 @@ async function reported(code: string, filePath: string): Promise<string[]> {
 }
 
 const PREDICATE = /reader predicate is composed/;
-const WRITE = /experiences is written by its writer modules only/;
+const WRITE = /^experiences is written by its writer modules only/;
+const POINT_WRITE = /^experience_locations is written by its writer modules only/;
 
 describe('the catalogue lint rules', () => {
   // The first lint in a worker loads the whole config and its plugins; pay it
@@ -66,5 +67,21 @@ describe('the catalogue lint rules', () => {
     ['the picture repair', 'export const q = `UPDATE experiences SET image_url = NULL`;\n', 'src/services/sync/pictureRepair.ts'],
   ])('lets a write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => WRITE.test(m))).toBe(false);
+  });
+
+  it.each([
+    ['an update in a controller', 'export const q = `UPDATE experience_locations SET name = $2 WHERE id = $1`;\n', 'src/controllers/experience/lint-fixture.ts'],
+    ['a lower-case insert in a service', 'export const q = "insert into experience_locations (name) values ($1)";\n', 'src/services/lint-fixture.ts'],
+  ])('refuses a write to experience_locations outside its writers: %s', async (_, code, file) => {
+    expect((await reported(code, file)).some(m => POINT_WRITE.test(m))).toBe(true);
+  });
+
+  it.each([
+    ['another table whose name starts the same', 'export const q = `UPDATE experience_location_regions SET region_id = $2`;\n', 'src/controllers/lint-fixture.ts'],
+    ['the curator writer', 'export const q = `UPDATE experience_locations SET name = $2 WHERE id = $1`;\n', 'src/controllers/experience/experienceLocationWriter.ts'],
+    ['the run\'s location writer', 'export const q = `INSERT INTO experience_locations (name) VALUES ($1)`;\n', 'src/services/sync/locationWriter.ts'],
+    ['the seed', 'export const q = `INSERT INTO experience_locations (name) VALUES ($1)`;\n', 'src/db/seed/lint-fixture.ts'],
+  ])('lets a point write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
+    expect((await reported(code, file)).some(m => POINT_WRITE.test(m))).toBe(false);
   });
 });
