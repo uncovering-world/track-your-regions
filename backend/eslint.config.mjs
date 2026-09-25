@@ -117,6 +117,23 @@ const READER_PREDICATE_RULES = [
   { selector: `Literal[value=${READER_PREDICATE_TEXT}]`, message: READER_PREDICATE },
 ];
 
+/**
+ * A write to `experiences` outside the modules that write it (ADR-0069, #791).
+ * The table's writers are a closed list: the curator's writes in
+ * `src/db/experienceWriter.ts`, under the object lock's token; the run's upsert
+ * (`src/services/sync/experienceUpsert.ts`), whose one statement writes the
+ * place and its membership together; missing detection's mark and the picture
+ * repair, each a single-purpose module of its own; and the seed. Read in a
+ * string's text or a template's literal parts, as the reader-predicate rule is.
+ */
+const EXPERIENCE_WRITE = 'experiences is written by its writer modules only (ADR-0069): add a named write to '
+  + 'src/db/experienceWriter.ts, taking the LockedExperience token where the write assumes the object lock.';
+const EXPERIENCE_WRITE_TEXT = '/\\b(INSERT\\s+INTO|UPDATE)\\s+experiences(?!\\w)/i';
+const EXPERIENCE_WRITE_RULES = [
+  { selector: `TemplateElement[value.raw=${EXPERIENCE_WRITE_TEXT}]`, message: EXPERIENCE_WRITE },
+  { selector: `Literal[value=${EXPERIENCE_WRITE_TEXT}]`, message: EXPERIENCE_WRITE },
+];
+
 /** What the response-shape rule says. */
 const RESPONSE_SHAPE = [
   'A success body is sent through respond(res, Schema, body) from src/api/respond.ts, with its schema in src/api/responses/,',
@@ -255,7 +272,7 @@ export default [
     ignores: ['src/**/*.test.ts', 'src/api/respond.ts'],
     rules: {
       'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES],
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES],
     },
   },
   // The two modules the reader predicates are spelled in (#791): every entry
@@ -263,7 +280,23 @@ export default [
   {
     files: ['src/db/readerPredicates.ts', 'src/db/membership.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES],
+      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...EXPERIENCE_WRITE_RULES],
+    },
+  },
+  // The modules that write `experiences` (ADR-0069): every entry above but
+  // the write rule, for the same reason.
+  {
+    files: [
+      'src/db/experienceWriter.ts',
+      'src/services/sync/experienceUpsert.ts',
+      'src/services/sync/missingDetection.ts',
+      'src/services/sync/pictureRepair.ts',
+      'src/db/seed/**/*.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...READER_PREDICATE_RULES],
     },
   },
   // The one file nobody writes: `schema.generated.ts` is the schema's
