@@ -405,7 +405,7 @@ Shared utilities live in `frontend/src/utils/`, one module per concern:
 | `experienceTypes.ts` | The closed vocabulary of types per kind (`typeOptionsFor`), and which vocabulary a value is from (`typeVocabularyOf`) |
 | `dateFormat.ts` | Date/time formatting helpers |
 | `imageUrl.ts` | Thumbnail URL generation |
-| `queryInvalidation.ts` | TanStack Query cache invalidation helpers |
+| `queryInvalidation.ts` | TanStack Query cache invalidation helpers, over the key factory in `api/queryKeys.ts` — the one place a query key is built (#790) |
 | `scrollUtils.ts` | Programmatic scroll-to-element |
 | `coordinateParser.ts` | Coordinate string parsing |
 | `mapUtils.ts` | Map helper functions |
