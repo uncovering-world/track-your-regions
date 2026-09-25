@@ -153,7 +153,8 @@ Services live in `backend/src/services/`, organized by feature, each file named 
 services/
 ├── sync/
 │   ├── index.ts               ← barrel with orchestrator + status
-│   ├── syncOrchestrator.ts    ← generic orchestration framework
+│   ├── syncOrchestrator.ts    ← generic orchestration framework: the run's phases, in order
+│   ├── syncContract.ts        ← what a sync service implements (SyncServiceConfig)
 │   ├── experienceUpsert.ts    ← shared: the object upsert, lock-first, place + membership
 │   ├── syncUtils.ts           ← shared: single-location write, sync log
 │   ├── wikidataUtils.ts       ← shared: SPARQL queries, QID parsing
@@ -172,7 +173,7 @@ services/
 **Rules:**
 
 1. **Shared utilities go in shared files.** `experienceUpsert.ts`, `syncUtils.ts` and `wikidataUtils.ts` are reused across all sync services. Don't duplicate their logic.
-2. **New source?** Create a new `*SyncService.ts` file that implements `SyncServiceConfig<T>` from `syncOrchestrator.ts`. Reuse shared utilities.
+2. **New source?** Create a new `*SyncService.ts` file that implements `SyncServiceConfig<T>` from `syncContract.ts` and runs through `orchestrateSync` in `syncOrchestrator.ts`. Reuse shared utilities.
 3. **Co-locate tests.** Test files sit next to source: `syncOrchestrator.test.ts` alongside `syncOrchestrator.ts`.
 
 ### Database Queries
