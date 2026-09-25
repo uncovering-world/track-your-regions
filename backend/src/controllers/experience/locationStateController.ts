@@ -16,12 +16,12 @@ import { Response } from 'express';
 import { respond } from '../../api/respond.js';
 import { LocationStateResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /** The point's two axes, as the columns' CHECK lists spell them. */
 type Membership = CheckValue<'experience_locations', 'source_membership'>;
@@ -219,7 +219,7 @@ export async function answerLocationStateUnderLock(
     // the order true of every writer, which is the property that makes the mode
     // argument hold at all. A handler whose only route to the parent is a lock it
     // never states is one statement away from reopening the cycle.
-    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);
+    await lockExperience(client, experienceId);
 
     // Both axes are written whatever the curator sent, the unsent one defaulting to
     // what is stored — so the axis nobody decided has to be read under the lock that

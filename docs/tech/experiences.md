@@ -478,7 +478,7 @@ Common sync logic lives in shared utility files:
 - **`admissionStep.ts`** — The admission step after the items, for a source that recomputes its membership (ADR-0024): restore, then the guarded sweep (`applyAdmissionSweep()`), then the must-see badge (`badgeAdmitted()`, ADR-0045 decision 5), whose clear runs only where the sweep ran. The writes are `admission.ts`'s
 - **`runLog.ts`** — The run's log row: the changeset recorded or marked lost (`recordChangesetOrMark()`), the status it is closed with (`computeFinalStatus()`, where the three things called `partial` are told apart), its counters (`runCounters()`), the panel's completion line (`completionMessage()`), and the close of a failed or cancelled run (`recordSyncFailure()`)
 - **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
-- **`experienceUpsert.ts`** — The object upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`): one transaction per object that locks the place first (`OBJECT_LOCK`, in a statement of its own), decides the hold and the `before` snapshot in the statement after it — a statement's snapshot predates the lock it waits for, `db/locks.ts` — writes the place and — in the same statement — its membership in the kind the run's source fills (#822), then the decay and the pointer on the same connection. Its preview (`dryRun`) asks the hold rule of the same memberships with one unlocked `SELECT`. Also the run's picture rule (`withShowablePicture`, ADR-0043). Re-exported from `syncUtils.ts`, so every sync service keeps one import.
+- **`experienceUpsert.ts`** — The object upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`): one transaction per object that locks the place first (`lockSourcedExperience`, in a statement of its own), decides the hold and the `before` snapshot in the statement after it — a statement's snapshot predates the lock it waits for, `db/locks.ts` — writes the place and — in the same statement — its membership in the kind the run's source fills (#822), then the decay and the pointer on the same connection. Its preview (`dryRun`) asks the hold rule of the same memberships with one unlocked `SELECT`. Also the run's picture rule (`withShowablePicture`, ADR-0043). Re-exported from `syncUtils.ts`, so every sync service keeps one import.
 - **`syncUtils.ts`** — Single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), and sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs). Used by every sync service — `unescoSyncService`, `museumSyncService`, `landmarkSyncService`, `worshipSyncService` and Archaeology's `writer.ts`. It deletes nothing: the FK-ordered per-source cleanup that force sync used lived here and is gone with it.
 - **`locationWriter.ts`** — Writes an experience's locations so a point that has not moved keeps its row, and therefore its region assignments (`writeExperienceLocations()`). Identity is `(point, external_ref)`: the reference alone repeats across a transboundary component's per-country entries, and the point alone repeats across the sub-units of one named locality. A point the source stops offering is marked (`missing_since`, `ordinal` NULL) rather than deleted, and one offered again is found by the same identity and given its place back. Returns the rows inserted, moved or offered again — what the run then assigns — and how many it was the first to find missing. Two modules hold what its statements are built from, split out when the per-point diff took it past the guide's length limit: `locationPairing.ts` — identity (`samePointSql`, `claimedPointSql`), the guard that keeps a claimed column, and what a kept row's own columns say happened to it (`keptChanges`) — and `locationIncoming.ts`, the source's list before anything is known about the store (its CTE, its parameters, and the duplicates the source itself ships)
 - **`placement.ts`** — Placing what a run moved, and reporting when that fails (`finishPlacement()`, `placeMovedExperiences()`, `recordPlacementFailure()`, `enterAssigningPhase()`, `terminalStatus()`). Split from the orchestrator because it is a separate responsibility: the loop runs a source's items, this decides where the objects that moved now belong, and it reaches for `regionAssignmentService`, `syncLogMarkers` and `annotateClosedSyncLog` — none of which the loop touches
@@ -3683,6 +3683,23 @@ share, which the mode below is chosen never to conflict with; and **placement**
 writer's ordinal parking — can wait for it, but it never waits in turn, since its own reach
 into `experiences` is another key share. `db/locks.ts` says the same in the same order, and is
 where a writer that joins the set will look.
+
+**The lock is taken through `lockExperience`, and a write under it takes its token**
+(ADR-0069). `db/experienceWriter.ts` runs the `OBJECT_LOCK` statement on the caller's
+connection and returns the row with a `LockedExperience`. That type is produced nowhere else,
+and every curator write to `experiences` requires it:
+
+- `updateExperienceColumns` (the edit, accept-source, a published proposal);
+- `recordDecisionOnExperience`;
+- `setLifecycleVerdict`;
+- `anchorToItsPoint`.
+
+So a write issued before the lock, or on a path that never took it, does not compile.
+`lockSourcedExperience` is the run's form, found by source and external id.
+
+The table's writers are a closed list the backend lint names (`EXPERIENCE_WRITE_RULES`):
+that module; the run's upsert, missing detection and picture repair; and the seed. An
+`INSERT INTO` or `UPDATE` of `experiences` anywhere else is refused.
 
 The **order**, because the audit row's foreign key reaches `experiences` even in a handler that
 never names it, so a writer that took the point first and logged afterwards was holding one row

@@ -10,7 +10,6 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../../db/index.js';
-import { OBJECT_LOCK } from '../../../db/locks.js';
 import { creditToWrite, type ImageCredit, type StoredCredit } from '../imageCredit.js';
 import { retirePassAfterNewContent } from '../curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from '../heldProposalPointer.js';
@@ -27,6 +26,7 @@ import type { LinePair } from '../sourceLine.js';
 import { isCommonsPictureUrl } from '../../../types/urlSafety.js';
 import { reconcileLinks } from './linkWithdrawal.js';
 import { publishedContentSql } from '../../../db/readerPredicates.js';
+import { lockExperience } from '../../../db/experienceWriter.js';
 
 /**
  * The hold, as one SQL expression over the stored row: a gated source may not
@@ -718,7 +718,7 @@ async function underMuseumLock(
   let unusable: Error | undefined;
   try {
     await client.query('BEGIN');
-    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);
+    await lockExperience(client, experienceId);
     await write(client);
     await client.query('COMMIT');
   } catch (error) {

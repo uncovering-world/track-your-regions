@@ -16,12 +16,12 @@ import { Response } from 'express';
 import { respond } from '../../api/respond.js';
 import { DeclineSourceResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor } from '../../services/sync/changeSet.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import { tidyNameValue } from './heldDecisions.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /**
  * Refuse the value a sync proposed for a field the curator had claimed.
@@ -127,11 +127,10 @@ async function recordRefusals(
   let unusable: Error | undefined;
   try {
     await client.query('BEGIN');
-    const locked = await client.query(
-      `SELECT curated_fields FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
-      [experienceId],
+    const locked = await lockExperience<{ curated_fields: string[] | null }>(
+      client, experienceId, 'curated_fields',
     );
-    const claimed: string[] = locked.rows[0]?.curated_fields ?? [];
+    const claimed: string[] = locked?.row.curated_fields ?? [];
 
     // The same proposal the queue would show, withdrawal check included — a conflict a
     // later run stopped proposing is not one a curator can answer here either.

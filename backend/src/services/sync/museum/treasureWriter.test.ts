@@ -60,6 +60,17 @@ const lastClient = async () => await mockedConnect.mock.results.at(-1)?.value;
 /** Every statement the writer sent, on the pool or on its transaction's client, in order. */
 const sentSql = () => mockedQuery.mock.calls.map(c => String(c[0]));
 
+/**
+ * A fresh statement stream: the scripted answers first, then an empty answer
+ * to anything unscripted. The lock a transaction opens with reads its rows
+ * (`lockExperience`), so an unscripted statement has to answer as a real one
+ * would — with no rows — rather than with nothing at all.
+ */
+const resetQueries = () => {
+  mockedQuery.mockReset();
+  mockedQuery.mockResolvedValue({ rows: [] });
+};
+
 beforeEach(() => {
   // Calls, not the implementation: a test that expects no transaction must not
   // see the one the previous test opened.
@@ -147,7 +158,7 @@ const linkCall = () => mockedQuery.mock.calls[2];
 
 describe('a work arrives marked as unread', () => {
   beforeEach(() => {
-    mockedQuery.mockReset();
+    resetQueries();
     mockedRetire.mockReset();
   });
 
@@ -343,7 +354,7 @@ describe('a work arrives marked as unread', () => {
 
 describe('new works retire the pass that covered the museum', () => {
   beforeEach(() => {
-    mockedQuery.mockReset();
+    resetQueries();
     mockedRetire.mockReset();
   });
 
@@ -410,7 +421,7 @@ describe('new works retire the pass that covered the museum', () => {
  */
 describe('the works delta a museum run reports', () => {
   beforeEach(() => {
-    mockedQuery.mockReset();
+    resetQueries();
     mockedRetire.mockReset();
   });
 
@@ -522,7 +533,7 @@ describe('the works delta a museum run reports', () => {
  */
 describe('what a run stores about a work photograph', () => {
   beforeEach(() => {
-    mockedQuery.mockReset();
+    resetQueries();
     mockedRetire.mockReset();
   });
 
@@ -671,7 +682,7 @@ describe('what a run stores about a work photograph', () => {
 
 describe('the line a work is badged at', () => {
   beforeEach(() => {
-    mockedQuery.mockReset();
+    resetQueries();
     mockedRetire.mockReset();
   });
 
@@ -751,7 +762,7 @@ describe('the line a work is badged at', () => {
  */
 describe('what a run stores about where a find was dug up', () => {
   beforeEach(() => {
-    mockedQuery.mockReset();
+    resetQueries();
     mockedRetire.mockReset();
   });
 
@@ -1014,7 +1025,7 @@ describe('a visible work under a gated source', () => {
   }
 
   beforeEach(() => {
-    mockedQuery.mockReset();
+    resetQueries();
     mockedRetire.mockReset();
   });
 
@@ -1171,7 +1182,7 @@ describe('the links of works a run no longer places here', () => {
   const mockedReconcile = reconcileLinks as unknown as ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    mockedQuery.mockReset();
+    resetQueries();
     mockedRetire.mockReset();
     mockedReconcile.mockReset();
     mockedReconcile.mockResolvedValue({ returned: [], withdrawn: [] });

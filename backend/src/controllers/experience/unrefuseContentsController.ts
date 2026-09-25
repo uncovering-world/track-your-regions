@@ -44,7 +44,6 @@ import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { UnrefuseContentsResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { answerThroughScope } from './curatorRefusalController.js';
@@ -52,6 +51,7 @@ import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /**
  * Ask again about points and works this object's curator had turned down — the
@@ -104,10 +104,8 @@ export async function unrefuseContentsUnderLock(
     // COMMITTED a folded sub-select is evaluated against the snapshot the
     // statement started with, so the row it locks and the row it reads can be
     // two versions (`db/locks.ts`).
-    const locked = await client.query(
-      `SELECT missing_since FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
-    );
-    if (locked.rows.length === 0) return await refuse({ status: 404, error: 'Experience not found' });
+    const locked = await lockExperience<{ missing_since: Date | null }>(client, experienceId, 'missing_since');
+    if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
     // The rule itself is evaluated by the database rather than restated in
     // JavaScript, so the list that draws the button and this cannot drift; the
     // columns beside it are for the sentence, not the verdict.

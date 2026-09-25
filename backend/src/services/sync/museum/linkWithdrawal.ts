@@ -20,10 +20,10 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../../db/index.js';
-import { OBJECT_LOCK } from '../../../db/locks.js';
 import { placeOfferedSql } from '../../../db/membership.js';
 import type { ContentItem } from '../types.js';
 import { publishedContentSql } from '../../../db/readerPredicates.js';
+import { lockExperience } from '../../../db/experienceWriter.js';
 
 /** What the two arms compare the museum's links against. */
 export interface LinkReconciliation {
@@ -194,7 +194,7 @@ export async function reconcileLinks(
     // the far side of a cycle. The rest of `upsertVenueTreasures` stays
     // outside the rule for the reason `locks.ts` gives — each of its
     // statements is its own transaction.
-    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);
+    await lockExperience(client, experienceId);
     const returned = await restore(client, experienceId, offered);
     const withdrawn = withdraw ? await mark(client, experienceId, offered, placedElsewhere) : [];
     await client.query('COMMIT');

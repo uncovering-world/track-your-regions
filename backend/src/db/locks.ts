@@ -70,7 +70,7 @@
  * passed?" after that publish had committed; the next statement on the same
  * connection answered `true`. So a writer that decides anything on a
  * membership under the object's lock takes the lock in a statement of its own
- * (`SELECT id FROM experiences WHERE id = $1 FOR NO KEY UPDATE`) and reads in
+ * (`lockExperience`, `db/experienceWriter.ts`) and reads in
  * the next, whose snapshot postdates whatever the lock holder committed: the
  * object upsert's hold and `before` snapshot, and the curator's publish,
  * decline and admission verdict. On `main` the same reads were of the locked
@@ -84,9 +84,9 @@
  * first, then the same UPDATE, updated 1. So the treasure writer's pointer and
  * decay run in a transaction of their own that takes the museum first.
  *
- * In `db/` rather than beside the lifecycle fragments because the sync services
- * need it too, and a service importing a controller module would be the first
- * such import in the codebase — the same boundary `regionAssignmentService`
- * respects by repeating a predicate rather than reaching upwards.
+ * In `db/` because the sync services take it too, and a service may not import
+ * a controller module. The statements that take it are `lockExperience` and
+ * `lockSourcedExperience` (`db/experienceWriter.ts`, ADR-0069), whose token a
+ * write under the lock requires.
  */
 export const OBJECT_LOCK = 'FOR NO KEY UPDATE';

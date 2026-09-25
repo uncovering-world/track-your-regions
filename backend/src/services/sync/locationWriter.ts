@@ -91,7 +91,6 @@
  */
 
 import { pool } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from './heldProposalPointer.js';
 import { tidyLabel } from '@tyr/shared/labels';
@@ -109,6 +108,7 @@ import {
   claimed, claimedPointSql, keptChanges, named, samePointSql, NO_CHANGE,
 } from './locationPairing.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 
 /** Which rows the write touched, so assignment can be limited to them. */
@@ -322,7 +322,7 @@ export async function writeExperienceLocations(
     // Taken in the same mode for the same reason: it self-conflicts, so a run and a
     // curator on one object serialise, and it does not conflict with the key share
     // this transaction's own insert needs.
-    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);
+    await lockExperience(client, experienceId);
 
     // `ordinal` is unique per experience, so renumbering in place would collide
     // with a row that has not been renumbered yet. Park every positive ordinal on
