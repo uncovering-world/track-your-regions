@@ -44,6 +44,7 @@ import type { PendingQuestion, RegionPreview } from '../../api/admin/wikivoyageE
 import { WorldViewImportReview } from './WorldViewImportReview';
 import { ImportSourcePanel } from './ImportSourcePanel';
 import { safeHref } from '../../utils/safeHref';
+import { deleteWorldView } from '../../api/worldViews';
 
 type AnswerAction = { questionId: number; action: 'accept' | 'skip' | 'answer' | 'delete_rule'; answer?: string; ruleId?: number };
 
@@ -506,7 +507,6 @@ export function WorldViewImportPanel() {
                       color="error"
                       onClick={async () => {
                         if (window.confirm(`Delete world view "${wv.name}"? This will remove all its regions and assignments.`)) {
-                          const { deleteWorldView } = await import('../../api/worldViews');
                           await deleteWorldView(wv.id);
                           queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
                           queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'importStatus'] });

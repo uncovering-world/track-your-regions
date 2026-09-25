@@ -20,7 +20,7 @@ vi.mock('./components/NavigationPane', () => ({
 vi.mock('./components/discover/DiscoverPage', () => ({
   DiscoverPage: () => <div data-testid="discover-page" />,
 }));
-vi.mock('./components/admin', () => ({
+vi.mock('./components/admin/AdminDashboard', () => ({
   AdminDashboard: () => <div data-testid="admin-dashboard" />,
 }));
 

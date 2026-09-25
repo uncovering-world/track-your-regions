@@ -11,8 +11,7 @@ import { useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Experience } from '../../api/experiences';
 import { fetchMyAccount } from '../../api/auth';
-import { CurationDialog } from '../shared/CurationDialog';
-import { AddExperienceDialog } from '../shared/AddExperienceDialog';
+import { LazyAddExperienceDialog, LazyCurationDialog } from '../shared/lazyCurationDialogs';
 import {
   Box,
   Select,
@@ -311,7 +310,7 @@ export function DiscoverPage() {
       </Box>
 
       {/* Curation Dialog (from detail panel) */}
-      <CurationDialog
+      <LazyCurationDialog
         experience={detailCurationTarget}
         regionId={activeView?.regionId ?? null}
         onClose={() => setDetailCurationTarget(null)}
@@ -319,7 +318,7 @@ export function DiscoverPage() {
 
       {/* Add Experience Dialog (from tree-level "+" button) */}
       {addTarget && (
-        <AddExperienceDialog
+        <LazyAddExperienceDialog
           open={!!addTarget}
           onClose={() => setAddTarget(null)}
           regionId={addTarget.regionId}

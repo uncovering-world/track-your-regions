@@ -8,11 +8,19 @@ import { NavigationPane } from './components/NavigationPane';
 import { MainDisplay, setExplorationModeListener } from './components/MainDisplay';
 import { DiscoverPage } from './components/discover/DiscoverPage';
 import { AccountPage, AuthCallbackHandler, VerifyEmailPage } from './components/auth';
-import { AdminDashboard } from './components/admin';
-import { ReviewPage } from './components/curation/ReviewPage';
+import { LoadingSpinner } from './components/shared/LoadingSpinner';
+import { ChunkBoundary } from './components/shared/ChunkBoundary';
+import { lazyChunk } from './utils/lazyChunk';
 import { NavigationProvider } from './hooks/useNavigation';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { AppThemeProvider, useAppTheme, createAppTheme } from './theme';
+
+// The admin panel and the review queue are a signed-in admin's and curator's
+// screens: route-level chunks, so the visitor who opens the map or Discover
+// downloads none of them (#643). A new admin or curator screen goes under one
+// of these routes, or is lazy where it mounts, and lands in a chunk of its own.
+const AdminDashboard = lazyChunk(() => import('./components/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const ReviewPage = lazyChunk(() => import('./components/curation/ReviewPage').then(m => ({ default: m.ReviewPage })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -132,7 +140,9 @@ function CurationReview() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'auto' }}>
       <Header />
-      <ReviewPage />
+      <ChunkBoundary fallback={<LoadingSpinner />}>
+        <ReviewPage />
+      </ChunkBoundary>
     </Box>
   );
 }
@@ -167,7 +177,7 @@ function ThemedApp() {
             <Route path="/auth/callback" element={<AuthCallbackHandler />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/account" element={<AccountContent />} />
-            <Route path="/admin/*" element={<AdminDashboard />} />
+            <Route path="/admin/*" element={<ChunkBoundary fallback={<LoadingSpinner />}><AdminDashboard /></ChunkBoundary>} />
             <Route path="/discover/*" element={<DiscoverContent />} />
             <Route path="/review" element={<CurationReview />} />
             <Route path="/*" element={<MainContent />} />
