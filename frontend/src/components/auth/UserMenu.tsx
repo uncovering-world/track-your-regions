@@ -20,6 +20,7 @@ import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import { useAuth } from '../../hooks/useAuth';
 import { LoginDialog } from './LoginDialog';
 import { RegisterDialog } from './RegisterDialog';
+import { displayNameOf } from '../../utils/displayName';
 
 export function UserMenu() {
   const { user, isAuthenticated, isAdmin, isLoading, logout } = useAuth();
@@ -86,7 +87,7 @@ export function UserMenu() {
   }
 
   // Authenticated - show user menu
-  const displayName = user?.displayName || user?.email?.split('@')[0] || 'User';
+  const displayName = displayNameOf(user?.displayName) || user?.email?.split('@')[0] || 'User';
   const avatarUrl = user?.avatarUrl;
   const initials = displayName
     .split(' ')

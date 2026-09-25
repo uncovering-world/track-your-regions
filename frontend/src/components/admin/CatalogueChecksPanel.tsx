@@ -54,6 +54,7 @@ import {
 import { EmptyState } from '../shared/EmptyState';
 import { formatDateTime } from '../../utils/dateFormat';
 import { plural } from '../../utils/plural';
+import { displayNameOf } from '../../utils/displayName';
 
 /**
  * How each status looks, and what it is called on screen.
@@ -144,7 +145,7 @@ function AssertionCard({ assertion, onAccept, accepting }: {
         {assertion.accepted !== null && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
             {assertion.accepted} accepted
-            {assertion.acceptedBy ? ` by ${assertion.acceptedBy}` : ''}
+            {displayNameOf(assertion.acceptedBy) ? ` by ${displayNameOf(assertion.acceptedBy)}` : ''}
             {assertion.acceptedAt ? ` on ${formatDateTime(assertion.acceptedAt)}` : ''}
           </Typography>
         )}

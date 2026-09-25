@@ -3,6 +3,7 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { useAuth } from '../../hooks/useAuth';
 import type { AuthProvider } from '../../types/auth';
 import { ChangePasswordForm } from './ChangePasswordForm';
+import { displayNameOf } from '../../utils/displayName';
 
 /** How an account signs in, in the words a person would use. */
 const PROVIDER_LABEL: Record<AuthProvider, string> = {
@@ -44,7 +45,7 @@ export function AccountPage() {
     );
   }
 
-  const displayName = user.displayName || user.email?.split('@')[0] || 'User';
+  const displayName = displayNameOf(user.displayName) || user.email?.split('@')[0] || 'User';
   // Left unsaid where the profile names no provider: "Signs in with: Unknown"
   // tells a person nothing they can act on.
   const providerLabel = user.authProvider ? PROVIDER_LABEL[user.authProvider] : null;
