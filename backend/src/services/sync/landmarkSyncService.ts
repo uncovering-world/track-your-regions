@@ -11,7 +11,7 @@
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import type { SyncProgress, WikidataLandmark, ContentsByKind } from './types.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
-import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
+import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncContract.js';
 import { admittedExternalIds } from './admission.js';
 import { collectPublicArt } from './publicArt/pipeline.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';

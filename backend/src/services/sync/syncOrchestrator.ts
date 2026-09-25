@@ -1,176 +1,42 @@
 /**
  * Sync Orchestrator
  *
- * Generic orchestration for experience sync services. Handles progress tracking,
- * cancellation, sync log lifecycle, error handling, and runningSyncs cleanup.
- * Each sync service provides domain-specific callbacks via SyncServiceConfig.
+ * Generic orchestration for experience sync services: progress tracking,
+ * cancellation, the order of a run's phases, error handling, and runningSyncs
+ * cleanup. Each phase's writes live beside it — the item outcome
+ * (`itemOutcome.ts`), missing detection (`missingDetection.ts`), the admission
+ * step (`admissionStep.ts`), the run log (`runLog.ts`) and placement
+ * (`placement.ts`) — and each sync service provides domain-specific callbacks
+ * via `SyncServiceConfig` (`syncContract.ts`).
  */
 
 import { createSyncLog, updateSyncLog } from './syncUtils.js';
-import { sentenceFor } from '../../api/readerFacingError.js';
-import { recordSyncChanges, type ChangeRecord } from './changeRecorder.js';
-import { CHANGESET_LOST_MARKER } from './syncLogMarkers.js';
+import type { ChangeRecord } from './changeRecorder.js';
 import { finishPlacement, enterAssigningPhase, terminalStatus } from './placement.js';
-import {
-  admissionSweepSkipReason,
-  countAdmitted,
-  markIconic,
-  markNotAdmitted,
-  markRefused,
-  restoreAdmission,
-  unmarkIconic,
-  type AdmissionRow,
-} from './admission.js';
+import { countAdmitted, markRefused } from './admission.js';
 import {
   missingDetectionSkipReason,
   flagMissingExperiences,
   countActiveExperiences,
   countSeenAmongActive,
-  type SourceCompleteness,
 } from './missingDetection.js';
-import type { ChangeSetResult } from './changeSet.js';
-import type { SyncProgress } from './types.js';
+import { recordItemOutcome, recordItemFailure, recordFilteredEntities } from './itemOutcome.js';
+import { applyAdmissionSweep, badgeAdmitted } from './admissionStep.js';
+import {
+  completionMessage,
+  computeFinalStatus,
+  recordChangesetOrMark,
+  recordSyncFailure,
+  runCounters,
+} from './runLog.js';
+import type { SyncRunContext, SyncServiceConfig } from './syncContract.js';
+import type { SyncProgress, RunVerdict, ErrorDetail } from './types.js';
 import { runningSyncs, isTerminalSyncStatus } from './types.js';
-import type { RunVerdict, ErrorDetail, ContentsByKind } from './types.js';
-import { contentsHeld, recordedContents } from './types.js';
-
-// =============================================================================
-// Types
-// =============================================================================
-
-
-/**
- * An entity the source offered that is not of the kind this source holds —
- * a Wikidata collection answering a museum query, say. Nothing failed, so it is
- * counted apart from errors and leaves the run's status alone.
- */
-export interface FilteredEntity {
-  externalId: string;
-  name: string;
-  reason: string;
-}
-
-export interface FetchResult<T> {
-  items: T[];
-  fetchedCount: number;
-  filtered?: FilteredEntity[];
-  /**
-   * Objects an admitted row holds that the kind's rule turned down — what the
-   * venue-side read refused (#890, `museum/venueSide.ts`): the film in an art
-   * museum's collection, the conclave a cathedral's `P276` names. Reported on
-   * the run's changeset as `filtered` rows, so a person reads which classes
-   * the pool never asked for, and **never marked**: `filtered` is matched
-   * against the source's own rows by external id, and an object is not a row
-   * of the source — a relic that is also a chapel of the same kind would have
-   * its place refused for a verdict taken on the object.
-   */
-  refusedContents?: FilteredEntity[];
-  /**
-   * Why this run may not withdraw the contents it stopped seeing, or absent
-   * when it may.
-   *
-   * A collector that measures what it fetched against a floor answers here —
-   * the museum run does, over its works (ADR-0044) — and the answer goes three
-   * places: onto the log row, so a run that marked nothing because it saw too
-   * little is not read as one that found nothing to mark; into every
-   * `processItem` call through the context, so the writer marks nothing behind
-   * it; and into the run's status, which cannot be `success` while the source's
-   * departures are unrecorded. A source whose contents need no floor — points
-   * are paired per object — leaves it out.
-   */
-  withdrawalSkippedReason?: string | null;
-}
-
-
-/** What a run is doing, handed to every processItem call. */
-export interface SyncRunContext {
-  dryRun: boolean;
-  syncLogId: number | null;
-  /**
-   * Register that an experience's locations were just written, so the run can
-   * place it before it ends.
-   *
-   * Called at the write, not carried back on the result. A service can throw
-   * *after* moving a point — the museum one does, since treasures are upserted
-   * afterwards — and a returned field is lost when it does. The point has
-   * already moved on disk by then, so the object would keep a stale assignment
-   * naming the region it left, with nothing to signal it.
-   */
-  onLocationsChanged: (experienceId: number) => void;
-  /**
-   * The collector's own verdict on withdrawing contents, carried back to the
-   * writer: `FetchResult.withdrawalSkippedReason`, or null where the run may
-   * withdraw. Threaded rather than remembered in module state so the order —
-   * floor first, withdrawal second, never the reverse — is visible in one place.
-   */
-  withdrawalSkippedReason: string | null;
-}
-
-export interface ProcessItemResult {
-  outcome: 'created' | 'updated' | 'unchanged';
-  experienceId: number | null;
-  nameSnapshot: string;
-  changeSet: ChangeSetResult;
-  /** The row had been flagged missing and the source has produced it again. */
-  returnedFromMissing: boolean;
-  /**
-   * What the run did to the object's contents, by kind (ADR-0026).
-   *
-   * Optional because a source with nothing to hold has nothing to report, and
-   * absent is not the same as an empty delta: one says the question does not
-   * apply, the other that it was asked and the answer was nothing.
-   */
-  contents?: ContentsByKind;
-}
-
-export interface SyncServiceConfig<T> {
-  sourceId: number;
-  logPrefix: string;
-  /**
-   * Whether the source hands over its whole collection. Only `authoritative`
-   * sources can have absence read as a delisting — a top-N Wikidata query drops
-   * objects for reasons that have nothing to do with them existing.
-   */
-  sourceCompleteness: SourceCompleteness;
-  /**
-   * Whether every run recomputes the whole membership from the whole pool,
-   * rather than fetching a published list. Only such a source may sweep: for it
-   * "absent from the admitted set" is a decision, and for the others it is the
-   * ambiguous silence ADR-0020 was written about (ADR-0024).
-   */
-  recomputesMembership?: boolean;
-  /**
-   * Whether belonging to the source *is* the must-see badge: the source's
-   * admission rule is a fame threshold, so every row it admits holds a work
-   * above the line and carries `is_iconic` for that (works-first museums,
-   * ADR-0023). A listing, or a source whose rule is not fame, badges nothing
-   * however its membership is computed — the badge is a property of the rule,
-   * not of recomputing (ADR-0045 decision 5). Read after the admission step,
-   * once every row of the run has the admission it will keep (#760).
-   *
-   * A predicate where the world tier has a door that is not a masterpiece:
-   * the kind admits a place for what it *is* as well as for what it holds, and
-   * only the second is the badge. Archaeology is that shape — a museum enters
-   * on its own fame or on a find above the finds' line (ADR-0058 decision 2) —
-   * so it badges the museum holding the find and leaves the other in the kind
-   * in full standing without one (ADR-0045 decision 5). The question is asked
-   * of the item the collector judged, because the row on disk does not carry
-   * the answer: `true` is the same rule with every admitted item passing.
-   */
-  badgesAdmitted?: boolean | ((item: T) => boolean);
-  /** Fetch and prepare items for processing. Can append to errorDetails for pre-processing errors. */
-  fetchItems: (progress: SyncProgress, errorDetails: ErrorDetail[]) => Promise<FetchResult<T>>;
-  /** Process a single item and describe what happened to it. Throw to count as error. */
-  processItem: (item: T, progress: SyncProgress, context: SyncRunContext) => Promise<ProcessItemResult>;
-  /** Display name for progress messages. */
-  getItemName: (item: T) => string;
-  /** External ID for error reporting. */
-  getItemId: (item: T) => string;
-}
 
 // =============================================================================
 // Orchestrator
 // =============================================================================
+
 
 function isSyncStillRunning(progress: SyncProgress | undefined): boolean {
   return !!progress
@@ -197,402 +63,6 @@ function initSyncProgress(dryRun: boolean): SyncProgress {
     logId: null,
     dryRun,
   };
-}
-
-/**
- * The source's gate kept every proposed write out of a row a reader can
- * already see: nothing moved, and a verdict is waiting (#519).
- *
- * The one predicate behind two readers — the changeset row's word and the run's
- * `held` counter — so the two can never disagree, which migration 038 relies on
- * to fill the counter for runs that predate it from the rows they recorded.
- * Not `heldFields` alone: a created row under a gate is written pending rather
- * than refused, and `created` already carries that news.
- *
- * Either level. A field of a part readers can see is held like the object's own
- * since ADR-0037, and the row is then held whichever level the proposal sits at
- * — every field of the museum's own came through, and what a curator is being
- * asked about is one work's attribution. Read off the *recorded* contents rather
- * than the raw delta, so the same shape the changeset row carries is the one the
- * counter answers for.
- */
-function wasHeld(result: ProcessItemResult, contents: ContentsByKind | null): boolean {
-  return result.outcome === 'unchanged'
-    && (result.changeSet.heldFields.length > 0 || contentsHeld(contents));
-}
-
-/**
- * Name what happened to a row.
- *
- * Only reached for rows worth storing, so an `unchanged` outcome means the run
- * refused something — a return from missing is the other reason an untouched row
- * is recorded, and it is answered above.
- *
- * The two refusals are two different events and get two different words (#519).
- * `conflict` is a value a curator had claimed: the stored value won on purpose
- * and nothing is waiting. `held` is a value the source's gate kept out of a row
- * a reader can already see: nobody has looked, and a verdict *is* waiting. A row
- * carrying both is `held`, because the held half is the part still unanswered —
- * `conflict` would be false of it, while `held` stays true of the whole row.
- *
- * The same principle holds against `returned`: a row can come back from missing
- * while still sitting on a hold from this very run, and the hold is again the
- * half nobody has answered. So the `held` check runs first, ahead of
- * `returnedFromMissing` — checked second, as this function once had it, a
- * combined row read as `returned` and never turned up under the admin report's
- * `?type=held` filter, the one place a curator would go looking for it.
- *
- * `contents` is the fourth word: a row whose own fields all came through while
- * what it holds moved (ADR-0026). It has to be named because a fall-through that
- * reads every other stored row as a curated divergence would claim a
- * disagreement that never happened, which the admin report's `?type=conflict`
- * filter would then hand back as one. So the claim is asserted rather than
- * inferred: `conflict` requires a `curatedConflicts` entry, and `contents` is what
- * is left. Ordered after `conflict`, because a row carrying both has an unanswered
- * question on it and the delta is news that raises none.
- */
-function resolveChangeType(
-  result: ProcessItemResult,
-  contents: ContentsByKind | null,
-): ChangeRecord['changeType'] {
-  if (wasHeld(result, contents)) return 'held';
-  if (result.returnedFromMissing && result.outcome !== 'created') return 'returned';
-  if (result.outcome === 'unchanged' && result.changeSet.curatedConflicts.length > 0) return 'conflict';
-  if (result.outcome === 'unchanged' && contents !== null) return 'contents';
-  // Unreachable, and kept as the historical value rather than a new invention:
-  // `worthRecording` stores an `unchanged` row for exactly the four reasons named
-  // above, so nothing reaches this with that outcome today. It is where a *fifth*
-  // exception would land silently, which is what happened to the fourth — so a fifth
-  // belongs in a branch of its own here, decided before the exception ships rather
-  // than discovered in the admin report afterwards.
-  if (result.outcome === 'unchanged') return 'conflict';
-  return result.outcome;
-}
-
-/**
- * Fold one processed item into the run's counters and changeset.
- *
- * Unchanged rows are counted but not stored — a UNESCO run would otherwise
- * write 1247 rows of noise around the few dozen that say anything — unless they
- * carry news of their own, which the body spells out.
- */
-function recordItemOutcome<T>(
-  config: SyncServiceConfig<T>,
-  item: T,
-  result: ProcessItemResult,
-  progress: SyncProgress,
-  changes: ChangeRecord[],
-): void {
-  const { changedFields, curatedConflicts, heldFields, significance } = result.changeSet;
-  // What the row will carry about the object's contents, decided before the
-  // counters: a held field of a part makes the row held (ADR-0037), and the
-  // counter has to answer for the same shape the row does.
-  const contents = recordedContents(result.contents ?? {});
-  // Claimed fields only. A held field is not one a person claimed — the whole
-  // difference the two words carry — and `total_curated_conflicts` would stop
-  // meaning what its column comment says if it absorbed them.
-  progress.curatedConflicts += curatedConflicts.length;
-
-  // A held row is `unchanged`: the gate kept the write out, so nothing about the
-  // row moved and `total_updated` — which counts rows that actually changed —
-  // must not move either (#519).
-  if (result.outcome === 'created') progress.created++;
-  else if (result.outcome === 'updated') progress.updated++;
-  else progress.unchanged++;
-
-  // Counted again, inside `unchanged` rather than beside it (#523): that
-  // counter's meaning is already fixed by its column comment. `curatedConflicts`
-  // above is the precedent for counting a refusal on top of the outcome
-  // buckets, not for the arithmetic — it counts claimed fields, on updated rows
-  // too, where this counts rows, and only inside `unchanged`. Without this a
-  // gated run reads as a run that touched nothing — run 68 held all 1272
-  // UNESCO sites and reported "unchanged 1272".
-  if (wasHeld(result, contents)) progress.held++;
-
-  if (progress.logId === null) return;
-
-  // Unchanged rows are normally not stored, but four of them carry news anyway:
-  // one whose source diverged from a curator's edit (recorded nowhere else), one
-  // whose change the gate held — the proposal a curator will be shown, which
-  // lives nowhere else either — one the source has started listing again after we
-  // flagged it missing, and one whose own fields all came through while what it
-  // holds moved (ADR-0026). The fourth is the case that produced no row at all
-  // until this column existed: a serial site gaining a component was recorded
-  // nowhere, not merely rendered nowhere.
-  const worthRecording = result.outcome !== 'unchanged'
-    || curatedConflicts.length > 0
-    || heldFields.length > 0
-    || result.returnedFromMissing
-    || contents !== null;
-  if (!worthRecording) return;
-
-  const changeType = resolveChangeType(result, contents);
-
-  changes.push({
-    syncLogId: progress.logId,
-    experienceId: result.experienceId,
-    externalId: config.getItemId(item),
-    nameSnapshot: result.nameSnapshot,
-    changeType,
-    // Both refusals travel with the applied changes, each field carrying the
-    // reason it was not written: the value the source proposed is stored even
-    // though the upsert refused it, or "accept source" and publishing would each
-    // later have nothing to apply.
-    changedFields: [...changedFields, ...curatedConflicts, ...heldFields],
-    contents,
-    significance,
-    error: null,
-  });
-}
-
-/**
- * Fold a failed item into the run's counters, error list and changeset.
- *
- * error_details already carried the message; the changeset row is what ties it
- * to a named object rather than a bare external id.
- */
-function recordItemFailure<T>(
-  config: SyncServiceConfig<T>,
-  item: T,
-  err: unknown,
-  progress: SyncProgress,
-  errorDetails: ErrorDetail[],
-  changes: ChangeRecord[],
-): void {
-  progress.errors++;
-  const errorMsg = err instanceof Error ? err.message : String(err);
-  errorDetails.push({ externalId: config.getItemId(item), error: errorMsg });
-
-  if (progress.logId !== null) {
-    changes.push({
-      syncLogId: progress.logId,
-      experienceId: null,
-      externalId: config.getItemId(item),
-      nameSnapshot: config.getItemName(item),
-      changeType: 'failed',
-      changedFields: null,
-      contents: null,
-      significance: null,
-      error: errorMsg,
-    });
-  }
-
-  console.error('%s Error processing %s:', config.logPrefix, config.getItemId(item), errorMsg);
-}
-
-/**
- * Fold entities the fetch rejected into the run — as their own count, not as
- * errors. A collection answering a museum query did not fail; it was never a
- * museum.
- *
- * `refused` are the rows the source already held under one of those ids, now
- * marked (ADR-0024). Keying the changeset entry to the row is what lets a
- * curator get from "the run turned this down" to the thing it turned down.
- */
-function recordFilteredEntities(
-  filtered: FilteredEntity[],
-  progress: SyncProgress,
-  changes: ChangeRecord[],
-  refused: AdmissionRow[] = [],
-): void {
-  const rowByExternalId = new Map(refused.map((row) => [row.externalId, row.id]));
-  for (const entity of filtered) {
-    progress.filtered++;
-    if (progress.logId === null) continue;
-    changes.push({
-      syncLogId: progress.logId,
-      experienceId: rowByExternalId.get(entity.externalId) ?? null,
-      externalId: entity.externalId,
-      nameSnapshot: entity.name,
-      changeType: 'filtered',
-      changedFields: null,
-      contents: null,
-      significance: null,
-      error: entity.reason,
-    });
-  }
-}
-
-/**
- * The reason recorded against a row the run simply did not admit, as opposed to
- * one it named and turned down. There is no rule to quote, because no rule ran
- * on it: nothing this run selected placed anything here.
- */
-export const NOT_ADMITTED_REASON =
-  'this run selected nothing that belongs to it';
-
-/**
- * The must-see badge on the rows this run admits, for a source whose admission
- * rule is the badge (`badgesAdmitted`).
- *
- * After the admission step, on purpose: that is when `admission` is a settled
- * answer for every row of the run — a refusal this run lifted is admitted by
- * now, one a curator confirmed is not — and a run that never gets this far (a
- * cancel exits before the admission step, as does any throw) badges nothing
- * rather than a row it did not re-admit (#760). The sweep touches only rows
- * absent from this set and the guard says nothing about the rows the run did
- * admit, so the *add* is neither ordered against the sweep nor gated with it.
- * The *clear* is gated with it, and the reason is below.
- *
- * The items come with the ids because a kind whose world tier has a door that
- * is not a masterpiece badges the masterpiece only, and what the run knows
- * about that is on the item it judged rather than on the row (`badgesAdmitted`).
- * The two lists are one list today — the ids are `items.map(getItemId)` — so an
- * id with no item behind it cannot arise; the filter answers `false` for one
- * anyway, so that a caller who ever hands a narrower set of ids does not have
- * the unaskable question answered `true` by default.
- *
- * Adds and takes back, but the taking back is the predicate's alone
- * (`unmarkIconic`). Where the badge *is* the admission rule every admitted row
- * is in `toBadge`, so there is nothing left over and no statement is sent.
- * Where it is a predicate the two sets come apart, and an archaeology museum
- * whose last famous find fell below the finds' line would otherwise go on
- * wearing a must-see badge for a find it is no longer credited with: the three
- * writers of `CLEAR_ICONIC` all fire when a row leaves the kind, and this row
- * stays. A curator's pin on the badge is honoured by the clear; a pin on
- * `admission` is a different answer and does not pin the badge.
- *
- * **And the clear runs only where the sweep ran** (`sweptMembership`). It is a
- * statement about every admitted row this run did *not* name, which is the
- * sweep's own set, and the sweep declines to touch that set on exactly the runs
- * where it cannot be trusted — an empty answer, errors, a collapse to under half
- * the previous membership (`admissionSweepSkipReason`). Ungated, one broken
- * SPARQL day would take the must-see badge off every archaeology museum the run
- * failed to reach, which is the catalogue-emptying the sweep's own guard exists
- * to prevent, in the one column the guard does not cover. The add is safe on any
- * run because it only ever speaks about rows the run did admit.
- *
- * The changeset does not record the flip, in either direction — that is #603's.
- */
-async function badgeAdmitted<T>(
-  config: SyncServiceConfig<T>,
-  progress: SyncProgress,
-  admittedExternalIds: string[],
-  items: T[],
-  sweptMembership: boolean,
-): Promise<void> {
-  if (!config.badgesAdmitted) return;
-
-  const badges = config.badgesAdmitted;
-  const predicate = typeof badges === 'function' ? badges : null;
-  let toBadge = admittedExternalIds;
-  if (predicate) {
-    const byId = new Map(items.map((item) => [config.getItemId(item), item]));
-    toBadge = admittedExternalIds.filter((externalId) => {
-      const item = byId.get(externalId);
-      return item !== undefined && predicate(item);
-    });
-  }
-
-  const badged = await markIconic(config.sourceId, toBadge, progress.dryRun);
-  if (badged.length > 0) {
-    console.log(`${config.logPrefix} Badged ${badged.length} admitted row(s) as must-see`);
-  }
-
-  if (!predicate || !sweptMembership) return;
-  const cleared = await unmarkIconic(config.sourceId, toBadge, progress.dryRun);
-  if (cleared.length > 0) {
-    console.log(`${config.logPrefix} Took the must-see badge back off ${cleared.length} row(s)`);
-  }
-}
-
-/**
- * What the sweep step did, for the writes that come after it.
- *
- * Two facts and not one, because "no skip reason" is not "the sweep ran": a
- * source that does not recompute its membership skips nothing and sweeps
- * nothing, and a caller told only the reason would read that silence as a run
- * that decided every row it did not name. `swept` is the one any such caller
- * has to ask; `skipReason` is for the line in the log.
- */
-interface SweepOutcome {
-  /** Whether `markNotAdmitted` really decided the rows this run did not name. */
-  swept: boolean;
-  /** Why it did not, where a guard refused it. Null both when it ran and when it does not apply. */
-  skipReason: string | null;
-}
-
-/** The sweep does not apply to this source at all: nothing skipped, nothing decided. */
-const NO_SWEEP: SweepOutcome = { swept: false, skipReason: null };
-
-/**
- * Restore, then sweep — the second half of admission, for a source that
- * recomputes its whole membership rather than publishing a list (ADR-0024).
- *
- * The two are order-independent: restore only touches rows that are refused and
- * present in the admitted set, the sweep only rows that are admitted and absent
- * from it. What matters is that both run after `markRefused`, so a row this run
- * named as filtered *and* admitted ends the run admitted rather than hidden.
- * The must-see badge is not written here but after this step returns
- * (`badgeAdmitted`), so that it reads admission settled — and the badge's
- * *clear* is handed this step's answer, because it is a statement about rows
- * the run did not name and only the sweep decides those.
- */
-async function applyAdmissionSweep<T>(
-  config: SyncServiceConfig<T>,
-  progress: SyncProgress,
-  admittedExternalIds: string[],
-  previousAdmittedCount: number,
-  changes: ChangeRecord[],
-): Promise<SweepOutcome> {
-  if (!config.recomputesMembership || progress.logId === null) return NO_SWEEP;
-
-  const restored = await restoreAdmission(config.sourceId, admittedExternalIds, progress.dryRun);
-  for (const row of restored) {
-    console.log(`${config.logPrefix} Re-admitted ${row.name} (${row.externalId})`);
-  }
-
-  const skipReason = admissionSweepSkipReason({
-    errors: progress.errors,
-    cancelled: progress.cancel,
-    admittedCount: admittedExternalIds.length,
-    previousAdmittedCount,
-  });
-  if (skipReason !== null) return { swept: false, skipReason };
-
-  const swept = await markNotAdmitted(
-    config.sourceId, admittedExternalIds, NOT_ADMITTED_REASON, progress.dryRun,
-  );
-  for (const row of swept) {
-    progress.filtered++;
-    changes.push({
-      syncLogId: progress.logId,
-      experienceId: row.id,
-      externalId: row.externalId,
-      nameSnapshot: row.name,
-      changeType: 'filtered',
-      changedFields: null,
-      contents: null,
-      significance: null,
-      error: NOT_ADMITTED_REASON,
-    });
-  }
-  return { swept: true, skipReason: null };
-}
-
-/**
- * Persist the per-object changeset, or leave a marker saying it was lost.
- *
- * Recorded before the log is closed, but never at the cost of closing it: a
- * failed insert here must not leave the run at 'running', which nothing but
- * the next backend start would then clear.
- */
-async function recordChangesetOrMark(
-  changes: ChangeRecord[],
-  errorDetails: ErrorDetail[],
-  progress: SyncProgress,
-  logPrefix: string,
-): Promise<boolean> {
-  try {
-    await recordSyncChanges(changes);
-    return true;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    errorDetails.push({ ...CHANGESET_LOST_MARKER, error: `Failed to record changeset: ${msg}` });
-    progress.errors++;
-    console.error('%s Failed to record changeset:', logPrefix, msg);
-    return false;
-  }
 }
 
 async function processItemsLoop<T>(
@@ -639,21 +109,6 @@ async function processItemsLoop<T>(
   }
 }
 
-function computeFinalStatus(
-  progress: SyncProgress,
-  withdrawalSkippedReason: string | null,
-): 'success' | 'partial' | 'failed' {
-  // A run that saw too little to say what left is not a success, whatever its
-  // items did: the catalogue is correct, and the source's departures are
-  // unrecorded (ADR-0044). Run 42 is the case — 291 works where the run before
-  // had 1906, every item unchanged, `success`.
-  if (progress.errors === 0) return withdrawalSkippedReason === null ? 'success' : 'partial';
-  // A run that touched nothing at all failed; one that found everything already
-  // current did not, even if a straggler errored.
-  const seen = progress.created + progress.updated + progress.unchanged;
-  return seen === 0 ? 'failed' : 'partial';
-}
-
 /**
  * Flag what the source stopped listing, unless a guard says the run cannot be
  * trusted to know. Returns the reason detection was skipped, if it was.
@@ -682,73 +137,6 @@ async function detectMissing<T>(
   progress.missing = missing.length;
   changes.push(...missing);
   return null;
-}
-
-async function recordSyncFailure<T>(
-  config: SyncServiceConfig<T>,
-  progress: SyncProgress,
-  err: unknown,
-  errorDetails: ErrorDetail[],
-  changes: ChangeRecord[],
-  alreadyRecorded: boolean,
-  // Decided by the caller, before this is called: everything below awaits, and
-  // the database outage that lands a run here would reject `updateSyncLog`, so
-  // a verdict produced in here could never be relied on to come back.
-  verdict: Exclude<RunVerdict, 'complete'>,
-  // The two guards' verdicts, kept on the row a failed run leaves too: a run
-  // that skipped detection or withdrawal and then died is both, and a card
-  // reading only `failed` over a NULL would not say why nothing was delisted
-  // or withdrawn before the failure. Null where the step that produces each
-  // never ran — the fetch for the withdrawal reason, detection for its own.
-  detectionSkippedReason: string | null,
-  withdrawalSkippedReason: string | null,
-): Promise<void> {
-  const errorMsg = err instanceof Error ? err.message : String(err);
-  // Logged first: every write below awaits, and the outage that brought the
-  // run here can reject them before a later line runs.
-  if (verdict === 'cancelled') {
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- logPrefix is a module constant supplied by the sync services
-    console.log(`${config.logPrefix} Cancelled:`, errorMsg);
-  } else {
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- logPrefix is a module constant supplied by the sync services
-    console.error(`${config.logPrefix} Failed:`, errorMsg);
-  }
-
-  // The card polls this, so it carries a sentence; the error's own text goes
-  // to the server log above and to the run's log row, which the sync history
-  // shows (#1021). The card puts "The sync failed: " before it. It points at
-  // the history only once the row holding the cause has been written: a run
-  // whose row was never created, or whose update the outage rejects, has no
-  // entry there that says why.
-  const failed = verdict !== 'cancelled';
-  progress.statusMessage = failed ? sentenceFor(err, 'the server log has the cause.') : 'Sync cancelled.';
-
-  if (progress.logId) {
-    errorDetails.push({ externalId: 'system', error: errorMsg });
-    try {
-      if (!alreadyRecorded) await recordSyncChanges(changes);
-    } catch (recordErr) {
-      // Same marker the success path leaves: the run card reads it to tell a
-      // lost record apart from a run that predates the changeset entirely.
-      const msg = recordErr instanceof Error ? recordErr.message : String(recordErr);
-      errorDetails.push({ ...CHANGESET_LOST_MARKER, error: `Failed to record changeset: ${msg}` });
-      console.error('%s Failed to record changeset:', config.logPrefix, msg);
-    }
-    await updateSyncLog(config.sourceId, progress.logId, verdict, {
-      fetched: progress.total,
-      created: progress.created,
-      updated: progress.updated,
-      unchanged: progress.unchanged,
-      missing: progress.missing,
-      curatedConflicts: progress.curatedConflicts,
-      held: progress.held,
-      filtered: progress.filtered,
-      errors: progress.errors,
-      detectionSkippedReason,
-      withdrawalSkippedReason,
-    }, errorDetails);
-    if (failed) progress.statusMessage = sentenceFor(err, 'its entry in the sync history has the cause.');
-  }
 }
 
 /**
@@ -869,52 +257,20 @@ export async function orchestrateSync<T>(
     // not a clean run, whatever the items themselves did, and an operator
     // reading `success` over a missing changeset would be misled.
     const finalStatus = computeFinalStatus(progress, withdrawalSkippedReason);
-    // Three different things are called `partial`, and only one of them is a
-    // progress state:
-    //
-    // - `computeFinalStatus`'s, some items errored. It goes to the log row and
-    //   stops there; the run itself still reached `complete`, which is why this
-    //   line maps everything that is not `failed` onto it.
-    // - `computeFinalStatus`'s again, the source's departures are unrecorded:
-    //   the collector saw too little of the contents it holds to say what left
-    //   (`withdrawalSkippedReason`, ADR-0044), with no item having errored at
-    //   all. The "Withdrawals skipped" line on the run card is what tells this
-    //   one from the other two at the chip.
-    // - placement's — the run finished but placing what it moved did not. That
-    //   one *is* a progress state, assigned later by `terminalStatus`.
-    //
-    // All three surface as `last_sync_status = 'partial'` and the same chip, so
-    // the distinction lives only here. Worth keeping straight: a reader who
-    // assumes one meaning finds the others' code inexplicable.
+    // Everything that is not `failed` is a run that reached `complete`: the
+    // log row's `partial` is not a progress state (`computeFinalStatus` names
+    // the three things called `partial`).
     //
     // Not 'complete' yet either way: placement runs in the `finally` below and
     // is part of finishing the run, so declaring the run over here would let a
     // poller see `running: false` while it is still going — and read a status
     // the placement may be about to downgrade.
     finishedStatus = finalStatus === 'failed' ? 'failed' : 'complete';
-    const verdict = finalStatus === 'success' ? 'Complete' : `Complete (${finalStatus})`;
-    // The reason rides the sentence too: on a run with no errors it is the whole
-    // of why the verdict says partial, and the panel shows this line before it
-    // shows the log row.
-    const skipped = withdrawalSkippedReason === null
-      ? '' : `; withdrew nothing — ${withdrawalSkippedReason}`;
-    progress.statusMessage = `${verdict}: ${progress.created} created, ${progress.updated} updated, `
-      + `${progress.unchanged} unchanged (${progress.held} held), ${progress.missing} missing, `
-      + `${progress.errors} errors${skipped}`;
+    progress.statusMessage = completionMessage(progress, finalStatus, withdrawalSkippedReason);
 
-    await updateSyncLog(sourceId, progress.logId, finalStatus, {
-      fetched: fetchedCount,
-      created: progress.created,
-      updated: progress.updated,
-      unchanged: progress.unchanged,
-      missing: progress.missing,
-      curatedConflicts: progress.curatedConflicts,
-      held: progress.held,
-      filtered: progress.filtered,
-      errors: progress.errors,
-      detectionSkippedReason,
-      withdrawalSkippedReason,
-    }, errorDetails.length > 0 ? errorDetails : undefined);
+    await updateSyncLog(sourceId, progress.logId, finalStatus, runCounters(
+      progress, fetchedCount, detectionSkippedReason, withdrawalSkippedReason,
+    ), errorDetails.length > 0 ? errorDetails : undefined);
 
     console.log(`${logPrefix} Complete: created=${progress.created}, updated=${progress.updated}, unchanged=${progress.unchanged}, held=${progress.held}, missing=${progress.missing}, errors=${progress.errors}`);
 

@@ -13,7 +13,7 @@ import {
 import type { IncomingLocation } from './locationIncoming.js';
 import { upsertExperienceRecord } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
-import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
+import type { ProcessItemResult, SyncRunContext } from './syncContract.js';
 import { readFixtureRecords } from './fixtureSource.js';
 import { fetchUnescoRecords } from './unescoApi.js';
 import {

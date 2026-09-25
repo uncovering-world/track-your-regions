@@ -19,7 +19,7 @@
  */
 
 import { upsertExperienceRecord, upsertSingleLocation } from '../syncUtils.js';
-import type { ProcessItemResult, SyncRunContext } from '../syncOrchestrator.js';
+import type { ProcessItemResult, SyncRunContext } from '../syncContract.js';
 import type { SyncProgress, ContentsDelta } from '../types.js';
 import type { LinePair } from '../sourceLine.js';
 import { upsertVenueTreasures } from '../museum/treasureWriter.js';

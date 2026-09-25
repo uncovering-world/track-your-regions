@@ -40,7 +40,7 @@ import { OSM_KEEP_WKT, SITE_ROOT, type ArchaeologyTrees } from './classes.js';
 import type { KeepWkt, OsmObject } from '../osm/types.js';
 import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
-import type { FilteredEntity } from '../syncOrchestrator.js';
+import type { FilteredEntity } from '../syncContract.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;

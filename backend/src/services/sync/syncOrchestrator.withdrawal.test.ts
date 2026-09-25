@@ -13,9 +13,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  orchestrateSync, getSyncStatus, type SyncServiceConfig, type ProcessItemResult,
-} from './syncOrchestrator.js';
+import { orchestrateSync, getSyncStatus } from './syncOrchestrator.js';
+import type { SyncServiceConfig, ProcessItemResult } from './syncContract.js';
 import { runningSyncs } from './types.js';
 
 vi.mock('./syncUtils.js', () => ({

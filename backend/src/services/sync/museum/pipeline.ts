@@ -36,7 +36,7 @@ import { holdingReason, keptElsewhere, readVenueSide, refusedHoldingReason } fro
 import { fetchMuseumClasses, type PoolWork, type RawStatement } from './queries.js';
 import type { ClosureOptions } from '../classClosure.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
-import type { FilteredEntity } from '../syncOrchestrator.js';
+import type { FilteredEntity } from '../syncContract.js';
 import type { CollectedMuseum } from '../types.js';
 
 const LOG_PREFIX = '[Museum Sync]';

@@ -17,7 +17,7 @@
 
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
-import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
+import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncContract.js';
 import type { SyncProgress, ContentsDelta } from './types.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { admittedExternalIds } from './admission.js';

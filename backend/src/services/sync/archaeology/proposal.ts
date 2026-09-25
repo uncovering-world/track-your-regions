@@ -11,7 +11,7 @@
 
 import type { SiteCandidate, SiteRefusal } from './sites.js';
 import type { SiteRefusalGroup } from './siteTest.js';
-import type { FilteredEntity } from '../syncOrchestrator.js';
+import type { FilteredEntity } from '../syncContract.js';
 
 const LOG_PREFIX = '[Archaeology Sync]';
 

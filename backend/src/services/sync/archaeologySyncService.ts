@@ -36,7 +36,7 @@
  */
 
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
-import type { FetchResult } from './syncOrchestrator.js';
+import type { FetchResult } from './syncContract.js';
 import type { SyncProgress } from './types.js';
 import { clearCache, withCache, type CacheDescriptor } from './wikidataCache.js';
 import { admittedExternalIds } from './admission.js';

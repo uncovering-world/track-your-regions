@@ -105,7 +105,7 @@ import { collectSitesByFame, type OsmReader, type SiteEntrance } from './sites.j
 import { reportProposal, uniteDoors, type CollectedArchaeologySite } from './proposal.js';
 import { contentsLine, type SourceLine } from '../sourceLine.js';
 import type { ClosureOptions } from '../classClosure.js';
-import type { FilteredEntity } from '../syncOrchestrator.js';
+import type { FilteredEntity } from '../syncContract.js';
 
 const LOG_PREFIX = '[Archaeology Sync]';
 const FACT_BATCH = 50;
