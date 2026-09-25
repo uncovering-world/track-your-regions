@@ -482,7 +482,7 @@ Common sync logic lives in shared utility files:
 - **`syncUtils.ts`** — Single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), and sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs). Used by every sync service — `unescoSyncService`, `museumSyncService`, `landmarkSyncService`, `worshipSyncService` and Archaeology's `writer.ts`. It deletes nothing: the FK-ordered per-source cleanup that force sync used lived here and is gone with it.
 - **`locationWriter.ts`** — Writes an experience's locations so a point that has not moved keeps its row, and therefore its region assignments (`writeExperienceLocations()`). Identity is `(point, external_ref)`: the reference alone repeats across a transboundary component's per-country entries, and the point alone repeats across the sub-units of one named locality. A point the source stops offering is marked (`missing_since`, `ordinal` NULL) rather than deleted, and one offered again is found by the same identity and given its place back. Returns the rows inserted, moved or offered again — what the run then assigns — and how many it was the first to find missing. Two modules hold what its statements are built from, split out when the per-point diff took it past the guide's length limit: `locationPairing.ts` — identity (`samePointSql`, `claimedPointSql`), the guard that keeps a claimed column, and what a kept row's own columns say happened to it (`keptChanges`) — and `locationIncoming.ts`, the source's list before anything is known about the store (its CTE, its parameters, and the duplicates the source itself ships)
 - **`placement.ts`** — Placing what a run moved, and reporting when that fails (`finishPlacement()`, `placeMovedExperiences()`, `recordPlacementFailure()`, `enterAssigningPhase()`, `terminalStatus()`). Split from the orchestrator because it is a separate responsibility: the loop runs a source's items, this decides where the objects that moved now belong, and it reaches for `regionAssignmentService`, `syncLogMarkers` and `annotateClosedSyncLog` — none of which the loop touches
-- **`changeSet.ts`** — Pure diff between the stored row and the incoming record (`computeChangeSet()`). No database, no network. Normalises before comparing: JSONB by value rather than key order, country and tag arrays as sets, coordinates by distance (below 10 m is jitter, above 1 km is `major`), and `null`/`''`/absent as one absence. Two jsonb columns are reported **per part** rather than whole, because an answer is addressed to an entry: `metadata.<key>` for every metadata key that differs (ADR-0039), `nameLocal.<lang>` for every language of the local names that differs (#728). Also home to `claimKeyFor`, the one lookup its readers share — the queue (`reviewQueueController`, in its SQL spelling), `accept-source`, `decline-source` and publishing (`publishHeldFields.ts`) — for "which `curated_fields` entry protects this"
+- **`changeSet.ts`** — Pure diff between the stored row and the incoming record (`computeChangeSet()`). No database, no network. Normalises before comparing: JSONB by value rather than key order, country and tag arrays as sets, coordinates by distance (below 10 m is jitter, above 1 km is `major`), and `null`/`''`/absent as one absence. Two jsonb columns are reported **per part** rather than whole, because an answer is addressed to an entry: `metadata.<key>` for every metadata key that differs (ADR-0039), `nameLocal.<lang>` for every language of the local names that differs (#728). Also home to `claimKeyFor`, the one lookup its readers share — the queue (`reviewQueueConflicts.ts`, in its SQL spelling), `accept-source`, `decline-source` and publishing (`publishHeldFields.ts`) — for "which `curated_fields` entry protects this"
 - **`changeRecorder.ts`** — Batched persistence of the per-object changeset (`recordSyncChanges()`, 500 rows per statement)
 - **`missingDetection.ts`** — Whether absence may be acted on (`missingDetectionSkipReason()`) and the flagging itself (`flagMissingExperiences()`)
 - **`syncLogMarkers.ts`** — The entries a run leaves in `error_details` that other code reads as facts (`CHANGESET_LOST_MARKER`, `ORPHANED_RUN_MARKER`, `PLACEMENT_FAILED_MARKER`) and the predicate that reads them (`CHANGESET_LANDED_SQL`). Written by the orchestrator and the startup sweep, read by the review queue and `accept-source` — one definition, because a run's status cannot answer whether its changeset landed
@@ -3371,7 +3371,8 @@ kinds were seven statements, each with its own `LIMIT`/`OFFSET` and its own `ORD
 one list now, read in two phases. `reviewQueueKeys.ts` is the first: a `UNION ALL` of every
 kind's open predicate selecting nothing but a question's key — its kind, the object it is about,
 the run that asked it, the source, and, for the three gated kinds, which of them the object holds
-— ordered and paged across all seven at once. The predicates are not restated there. Each is one
+— ordered and paged across all seven at once, with the counts each chip would leave spliced
+into the same statement from `reviewQueueFacets.ts`. The predicates are not restated there. Each is one
 function in `reviewQueuePredicates.ts` (`missingOpenSql`, `refusedOpenSql`, `arrivalOpenSql`,
 `heldOpenSql`, `contentsOpenSql`, `withdrawnPointOpenSql`/`withdrawnContainerOpenSql`,
 `conflictChangeOpenSql`), composed both by the union and by the statement that draws that kind's
@@ -3758,7 +3759,8 @@ would report the source's local name as applied while the upsert kept the curato
 publishing would write over the claimed column. `metadata` is deliberately **not** a family, since
 its claims are per key. All three arms are `claimKeyFor` in TypeScript and the same expression in
 SQL, off the same two objects, so the two runtimes cannot come to protect and ask about different
-things (`reviewQueueController.ts`). The shape the queue serves has one home, the backend schema
+things (`claimKeySql` in `reviewQueuePredicates.ts`, read by `reviewQueueConflicts.ts` and
+`reviewQueueKeys.ts`). The shape the queue serves has one home, the backend schema
 `ReviewQueue` whose type the web imports (ADR-0066).
 
 (Those two metadata keys used to be a pre-existing hole in metadata protection too —
@@ -4079,6 +4081,8 @@ question.
 This kind and `withdrawn` live in `reviewQueueContents.ts` rather than in the handler: both read
 `experience_locations` rather than `experiences`, both carry the only per-row lists the queue
 returns, and listing the rows took the controller past the length the development guide sets.
+The conflict card's statement is in `reviewQueueConflicts.ts` for the same reason: it is the
+largest the queue sends, and the only one that reads the curation log per field.
 What every card shows about its object — `objectContextSelectSql`, `countedWorksSelectSql` —
 moved to `reviewQueueContext.ts` with the page size, since a definition two files build rows
 from is the only arrangement in which the cards cannot drift apart.
