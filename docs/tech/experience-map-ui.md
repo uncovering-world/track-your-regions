@@ -176,8 +176,8 @@ every reader-visible place of one kind, or of all kinds, across the whole world.
 
 **It is a read of points, not of objects.** The catalogue's objects stand at more than twice as
 many places a traveller can be sent to (3 766 objects at 8 842 places on 2026-09-22), and a serial World Heritage site is one row and
-hundreds of them. `GET /api/experiences` caps a page at 1 000 rows and answers objects, so
-the layer reads `GET /api/experiences/points`, which answers places and nothing else.
+hundreds of them. A read of objects answers one row where a traveller has hundreds of places to
+go, so the layer reads `GET /api/experiences/points`, which answers places and nothing else.
 
 **It reads the endpoint rather than a tile source, and that was measured rather than
 assumed** (ADR-0061). The first build of this layer *was* a Martin function, and what decided

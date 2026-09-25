@@ -35,7 +35,7 @@ Every call `frontend/src/api/divisions.ts` makes answers through a schema in `ba
 - **A search match** (`DivisionSearchResult`) adds its `path` from the root and how the asked-for world view already uses it: `usageCount`, `usedAsSubdivisionCount`, `hasUsedSubdivisions`. All three are 0 or false when no world view was named.
 - **A division's boundary** (`DivisionGeometry`) is a GeoJSON feature of the stored `MultiPolygon`. It is always at full resolution: the read accepts a `detail` it does not act on, which is #1010.
 
-On the client, `AdministrativeDivision` in `frontend/src/types/index.ts` is derived from the answer, looser past the four keys every selection sets, as a region is. The two collection reads, `/api/divisions/root/geometries` and `/api/divisions/:divisionId/subdivisions/geometries`, have no caller on the web and declare no answer (#1033).
+On the client, `AdministrativeDivision` in `frontend/src/types/index.ts` is derived from the answer, looser past the four keys every selection sets, as a region is.
 
 ## Hierarchy Strategy
 
