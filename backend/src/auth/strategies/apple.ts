@@ -52,9 +52,12 @@ export function configureAppleStrategy(): void {
 
           const providerId = idToken.sub;
           const email = idToken.email || userInfo?.email;
-          const displayName = userInfo?.name
+          // A name object with both parts empty takes the same fallback as
+          // none, rather than storing an empty name (#998).
+          const fullName = userInfo?.name
             ? `${userInfo.name.firstName || ''} ${userInfo.name.lastName || ''}`.trim()
-            : email?.split('@')[0] || 'User';
+            : '';
+          const displayName = fullName || email?.split('@')[0] || 'User';
 
           // First, check if user exists by Apple provider ID
           let user = await findUserByProvider('apple', providerId);

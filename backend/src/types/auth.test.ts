@@ -19,6 +19,24 @@ describe('registerSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('refuses a display name of spaces, which would show as a blank curator (#998)', () => {
+    const result = registerSchema.safeParse({
+      email: 'user@example.com',
+      password: 'StrongPass123',
+      displayName: '   ',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('stores the display name trimmed', () => {
+    const result = registerSchema.safeParse({
+      email: 'user@example.com',
+      password: 'StrongPass123',
+      displayName: '  Ada Lovelace ',
+    });
+    expect(result.success && result.data.displayName).toBe('Ada Lovelace');
+  });
 });
 
 describe('loginSchema', () => {

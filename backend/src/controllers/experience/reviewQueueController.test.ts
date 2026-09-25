@@ -92,6 +92,9 @@ function cardRow(sql: string, row: Record<string, unknown>): Record<string, unkn
   };
 }
 
+/** How a curator's name reaches a card: trimmed of all whitespace, and "a curator" when nothing is left (#998). */
+const BLANK_NAME_FALLBACK = "COALESCE(NULLIF(regexp_replace(u.display_name, '^[[:space:]]+|[[:space:]]+$', '', 'g'), ''), 'a curator')";
+
 describe('getReviewQueue', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
@@ -111,6 +114,18 @@ describe('getReviewQueue', () => {
     expect(refusedSql).toContain("m.admission = 'refused'");
     expect(refusedSql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.source_id');
     expect(refusedSql).toContain('m.admission_reason');
+  });
+
+  it('names a curator with a blank display name as "a curator", in the claim and in the decisions before (#998)', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // A name of blanks is not missing to COALESCE, and would reach the card as
+    // "Claimed by    on …"; trimmed of every whitespace character -- tabs and
+    // line breaks too, as the web's trim is -- and emptied, it takes the
+    // fallback. btrim alone removes spaces only.
+    const all = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
+    expect(all.split(`'by', ${BLANK_NAME_FALLBACK}`)).toHaveLength(3);
+    expect(all).not.toContain("COALESCE(u.display_name, 'a curator')");
   });
 
   it('asks for the confirmed refusals too, since nothing else can show them', async () => {
@@ -533,7 +548,7 @@ describe('getReviewQueue', () => {
     expect(conflictSql).toContain('ORDER BY log.created_at DESC, log.id DESC');
     // A curator with no display name is still a person who decided: the card
     // says "a curator", never `null` and never an email address.
-    expect(conflictSql).toContain("COALESCE(u.display_name, 'a curator')");
+    expect(conflictSql).toContain(BLANK_NAME_FALLBACK);
   });
 
   it('reads the log through the log’s own per-row scope, not the object’s', async () => {
