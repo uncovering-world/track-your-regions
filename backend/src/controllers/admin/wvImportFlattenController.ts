@@ -439,7 +439,7 @@ export async function smartFlattenPreview(req: AuthenticatedRequest, res: Respon
       : await flattenPreviewOf(regionId, descendantIds);
   } catch (err) {
     console.error(`[WV Import] Smart flatten preview failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Smart flatten preview failed' });
+    res.status(500).json({ error: 'Smart flatten preview failed' });
     return;
   }
   respond(res, FlattenPreviewResult, body);
@@ -501,7 +501,7 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
     // 409, not this handler's 500 with the driver's text (#764).
     if (isVisitedRegionDelete(err)) throw err;
     console.error(`[WV Import] Smart flatten failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Smart flatten failed' });
+    res.status(500).json({ error: 'Smart flatten failed' });
     return;
   }
   respond(res, SmartFlattenResult, body);
@@ -729,7 +729,7 @@ export async function handleAsGrouping(req: AuthenticatedRequest, res: Response)
     body = { matched: result.matched, total: result.total, undoAvailable: true };
   } catch (err) {
     console.error(`[WV Import] handle-as-grouping failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Matching failed' });
+    res.status(500).json({ error: 'Matching failed' });
     return;
   }
   respond(res, ChildrenGrouped, body);

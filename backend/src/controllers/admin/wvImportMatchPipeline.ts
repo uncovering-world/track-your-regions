@@ -269,9 +269,8 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       debugImages, startTime,
     }, res);
   } catch (mapErr) {
-    const errMsg = mapErr instanceof Error ? mapErr.message : String(mapErr);
     console.error('  Source map border detection failed:', mapErr);
-    sendEvent({ type: 'error', message: `CV processing error: ${errMsg}` });
+    sendEvent({ type: 'error', message: 'Reading the region map failed; the server log has the cause.' });
   }
 
   if (!res.destroyed) res.end();

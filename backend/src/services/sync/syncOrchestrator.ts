@@ -7,6 +7,7 @@
  */
 
 import { createSyncLog, updateSyncLog } from './syncUtils.js';
+import { sentenceFor } from '../../api/readerFacingError.js';
 import { recordSyncChanges, type ChangeRecord } from './changeRecorder.js';
 import { CHANGESET_LOST_MARKER } from './syncLogMarkers.js';
 import { finishPlacement, enterAssigningPhase, terminalStatus } from './placement.js';
@@ -703,7 +704,24 @@ async function recordSyncFailure<T>(
   withdrawalSkippedReason: string | null,
 ): Promise<void> {
   const errorMsg = err instanceof Error ? err.message : String(err);
-  progress.statusMessage = errorMsg;
+  // Logged first: every write below awaits, and the outage that brought the
+  // run here can reject them before a later line runs.
+  if (verdict === 'cancelled') {
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- logPrefix is a module constant supplied by the sync services
+    console.log(`${config.logPrefix} Cancelled:`, errorMsg);
+  } else {
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- logPrefix is a module constant supplied by the sync services
+    console.error(`${config.logPrefix} Failed:`, errorMsg);
+  }
+
+  // The card polls this, so it carries a sentence; the error's own text goes
+  // to the server log above and to the run's log row, which the sync history
+  // shows (#1021). The card puts "The sync failed: " before it. It points at
+  // the history only once the row holding the cause has been written: a run
+  // whose row was never created, or whose update the outage rejects, has no
+  // entry there that says why.
+  const failed = verdict !== 'cancelled';
+  progress.statusMessage = failed ? sentenceFor(err, 'the server log has the cause.') : 'Sync cancelled.';
 
   if (progress.logId) {
     errorDetails.push({ externalId: 'system', error: errorMsg });
@@ -729,14 +747,7 @@ async function recordSyncFailure<T>(
       detectionSkippedReason,
       withdrawalSkippedReason,
     }, errorDetails);
-  }
-
-  if (verdict === 'cancelled') {
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- logPrefix is a module constant supplied by the sync services
-    console.log(`${config.logPrefix} Cancelled:`, errorMsg);
-  } else {
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- logPrefix is a module constant supplied by the sync services
-    console.error(`${config.logPrefix} Failed:`, errorMsg);
+    if (failed) progress.statusMessage = sentenceFor(err, 'its entry in the sync history has the cause.');
   }
 }
 

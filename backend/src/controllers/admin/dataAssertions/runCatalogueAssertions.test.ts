@@ -193,10 +193,16 @@ describe('the report the panel receives', () => {
     expect(entry.acceptedAt).toBeNull();
   });
 
-  it('names why a query did not run', () => {
+  it('says a query did not run, never with the driver\'s own text (#1021)', () => {
     const [entry] = toReport(assess(
-      [{ assertion: assertion('rule'), rows: [], error: new Error('boom') }], {}));
-    expect(entry.error).toBe('boom');
+      [{ assertion: assertion('rule'), rows: [], error: new Error('relation "regions_old" does not exist') }], {}));
+    expect(entry.error).toBe('The check could not run: its query failed, and the server log has the cause.');
     expect(entry.needsAttention).toBe(true);
+  });
+
+  it('says so when the query ran out of time', () => {
+    const timeout = Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
+    const [entry] = toReport(assess([{ assertion: assertion('rule'), rows: [], error: timeout }], {}));
+    expect(entry.error).toBe('The check could not run: its query timed out.');
   });
 });

@@ -262,7 +262,7 @@ async function runImport(
     }
   } catch (err) {
     progress.status = 'failed';
-    progress.statusMessage = `Import failed: ${err instanceof Error ? err.message : String(err)}`;
+    progress.statusMessage = 'Import failed; the server log has the cause.';
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- opId is generated here as wv-import-<counter> and the elapsed time is a number
     console.error(`[WV Import] Import ${opId} failed after ${((Date.now() - startTime) / 1000).toFixed(1)}s:`, err);
   } finally {

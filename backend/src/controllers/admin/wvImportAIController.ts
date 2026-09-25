@@ -168,7 +168,7 @@ export async function dbSearchOneRegion(req: AuthenticatedRequest, res: Response
     body = { found: result.found, suggestions: result.suggestions.map(foundSuggestionOf) };
   } catch (err) {
     console.error(`[WV Import] DB search one failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'DB search failed' });
+    res.status(500).json({ error: 'DB search failed' });
     return;
   }
   respond(res, DbSearchResult, body);
@@ -198,7 +198,7 @@ export async function geocodeMatch(req: AuthenticatedRequest, res: Response): Pr
     };
   } catch (err) {
     console.error(`[WV Import] Geocode match failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Geocode match failed' });
+    res.status(500).json({ error: 'Geocode match failed' });
     return;
   }
   respond(res, GeocodeMatchResult, body);
@@ -224,7 +224,7 @@ export async function geoshapeMatch(req: AuthenticatedRequest, res: Response): P
     body = coveringMatchOf(result);
   } catch (err) {
     console.error(`[WV Import] Geoshape match failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Geoshape match failed' });
+    res.status(500).json({ error: 'Geoshape match failed' });
     return;
   }
   respond(res, CoveringMatchResult, body);
@@ -248,7 +248,7 @@ export async function pointMatch(req: AuthenticatedRequest, res: Response): Prom
     body = coveringMatchOf(result);
   } catch (err) {
     console.error(`[WV Import] Point match failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Point match failed' });
+    res.status(500).json({ error: 'Point match failed' });
     return;
   }
   respond(res, CoveringMatchResult, body);
@@ -299,7 +299,7 @@ export async function resetMatch(req: AuthenticatedRequest, res: Response): Prom
       try { await client.query('ROLLBACK'); } catch { /* connection dead; PG auto-rolls back */ }
     }
     console.error(`[WV Import] Reset match failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Reset match failed' });
+    res.status(500).json({ error: 'Reset match failed' });
     return;
   } finally {
     client?.release();
@@ -334,7 +334,7 @@ export async function aiMatchOneRegion(req: AuthenticatedRequest, res: Response)
     };
   } catch (err) {
     console.error(`[WV Import] AI match one failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'AI matching failed' });
+    res.status(500).json({ error: 'AI matching failed' });
     return;
   }
   respond(res, AIMatchOneResult, body);
@@ -822,7 +822,7 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
     body = await reviewRegionChildren(worldViewId, regionId, res);
   } catch (err) {
     console.error(`[WV Import] AI review children failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'AI review children failed' });
+    res.status(500).json({ error: 'AI review children failed' });
     return;
   }
   if (body) respond(res, ChildrenReviewed, body);
@@ -919,7 +919,7 @@ Match each cluster to the best Wikivoyage region name, or null if no match.`;
     };
   } catch (err) {
     console.error('[AI Suggest Clusters] Error:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'AI suggestion failed' });
+    res.status(500).json({ error: 'AI suggestion failed' });
     return;
   }
   respond(res, ClusterRegionSuggestions, body);

@@ -156,7 +156,6 @@ export async function suggestGroup(req: Request, res: Response) {
 
     res.status(500).json({
       error: 'Failed to get AI suggestion',
-      message: error instanceof Error ? error.message : 'Unknown error',
     });
     return;
   }
@@ -224,7 +223,6 @@ export async function suggestGroupsBatch(req: Request, res: Response) {
 
     res.status(500).json({
       error: 'Failed to get AI suggestions',
-      message: error instanceof Error ? error.message : 'Unknown error',
     });
     return;
   }
@@ -283,7 +281,6 @@ export async function generateDescriptions(req: Request, res: Response) {
 
     res.status(500).json({
       error: 'Failed to generate group descriptions',
-      message: error instanceof Error ? error.message : 'Unknown error',
     });
     return;
   }
@@ -327,7 +324,6 @@ export async function geocodeWithAI(req: Request, res: Response) {
 
     res.status(500).json({
       error: 'Failed to geocode description',
-      message: error instanceof Error ? error.message : 'Unknown error',
     });
     return;
   }

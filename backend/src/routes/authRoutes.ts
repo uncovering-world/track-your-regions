@@ -40,6 +40,7 @@ import {
   AuthMessage, CodeExchanged, LoggedOut, PasswordChanged, PublicUser, SessionStarted,
 } from '../api/responses/auth.js';
 import { registerSchema, loginSchema, changePasswordSchema, verifyEmailSchema, resendVerificationSchema } from '../types/auth.js';
+import { oauthRefusal } from '../auth/strategies/oauthRefusals.js';
 
 const router = Router();
 
@@ -190,13 +191,15 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req: 
 router.post('/login', loginLimiter, validate(loginSchema), (req: Request, res: Response, next: NextFunction): void => {
   // Passport discards what its callback returns, so a rejection there would not
   // reach the error handler on its own: the callback's promise is handed to next.
-  const answer = async (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
+  const answer = async (err: Error | null, user: Express.User | false) => {
     if (err) {
       return res.status(500).json({ error: 'Authentication failed' });
     }
 
     if (!user) {
-      return res.status(401).json({ error: info?.message || 'Invalid credentials' });
+      // The strategy says the same of every refusal, so as not to tell which
+      // part was wrong; a fixed sentence keeps it that way whatever it passes.
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     let body: SessionStarted;
@@ -229,8 +232,8 @@ router.post('/login', loginLimiter, validate(loginSchema), (req: Request, res: R
     respond(res, SessionStarted, body);
   };
   passport.authenticate('local', { session: false }, (
-    err: Error | null, user: Express.User | false, info: { message: string } | undefined,
-  ) => { answer(err, user, info).catch(next); })(req, res, next);
+    err: Error | null, user: Express.User | false,
+  ) => { answer(err, user).catch(next); })(req, res, next);
 });
 
 // =============================================================================
@@ -532,8 +535,13 @@ router.get('/google', (req: Request, res: Response, next: NextFunction): void =>
 router.get('/google/callback', (req: Request, res: Response, next: NextFunction): void => {
   passport.authenticate('google', { session: false }, async (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
     if (err || !user) {
-      const errorMessage = encodeURIComponent(info?.message || err?.message || 'Authentication failed');
-      return res.redirect(`${FRONTEND_URL}/auth/callback?error=${errorMessage}`);
+      if (err) console.error('[OAuth] Google sign-in failed:', err);
+      // Only the strategy's own refusals reach the address bar: a thrown
+      // error's text, or a provider's error_description that passport hands
+      // over as info.message, would sit in it, the history and the referer
+      // (#1021).
+      const refusal = oauthRefusal(info);
+      return res.redirect(`${FRONTEND_URL}/auth/callback?error=${encodeURIComponent(refusal)}`);
     }
 
     try {
@@ -578,8 +586,13 @@ router.get('/apple', passport.authenticate('apple', { session: false }));
 router.post('/apple/callback', (req: Request, res: Response, next: NextFunction): void => {
   passport.authenticate('apple', { session: false }, async (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
     if (err || !user) {
-      const errorMessage = encodeURIComponent(info?.message || err?.message || 'Authentication failed');
-      return res.redirect(`${FRONTEND_URL}/auth/callback?error=${errorMessage}`);
+      if (err) console.error('[OAuth] Apple sign-in failed:', err);
+      // Only the strategy's own refusals reach the address bar: a thrown
+      // error's text, or a provider's error_description that passport hands
+      // over as info.message, would sit in it, the history and the referer
+      // (#1021).
+      const refusal = oauthRefusal(info);
+      return res.redirect(`${FRONTEND_URL}/auth/callback?error=${encodeURIComponent(refusal)}`);
     }
 
     try {

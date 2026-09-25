@@ -146,6 +146,7 @@ export async function runCatalogueAssertions(
       const result = await pool.query(assertion.sql);
       outcomes.push({ assertion, rows: result.rows as AssertionRow[] });
     } catch (error) {
+      console.error('[Catalogue Checks] %s could not run:', assertion.id, error);
       outcomes.push({
         assertion,
         rows: [],
@@ -154,6 +155,18 @@ export async function runCatalogueAssertions(
     }
   }
   return outcomes;
+}
+
+/**
+ * What an admin is told about a check whose query failed: that it did not run,
+ * and whether it ran out of time. The driver's own text names tables and
+ * columns, so it goes to the server log instead (#1021).
+ */
+export function couldNotRun(error: Error): string {
+  // 57014, query_canceled: the statement timeout.
+  return (error as { code?: string }).code === '57014'
+    ? 'The check could not run: its query timed out.'
+    : 'The check could not run: its query failed, and the server log has the cause.';
 }
 
 function statusOf(outcome: AssertionOutcome, accepted: AcceptedNumber | undefined): AssertionStatus {
@@ -215,7 +228,7 @@ export function toReport(results: AssertionResult[]): DataAssertion[] {
     acceptedAt: result.accepted?.acceptedAt.toISOString() ?? null,
     acceptedBy: result.accepted?.acceptedBy ?? null,
     sample: result.rows.slice(0, SAMPLE_ROWS).map(row => result.assertion.describe(row)),
-    error: result.error?.message ?? null,
+    error: result.error ? couldNotRun(result.error) : null,
     needsAttention: needsAttention(result.status),
   }));
 }

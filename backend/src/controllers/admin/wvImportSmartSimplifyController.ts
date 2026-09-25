@@ -226,7 +226,7 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
       };
   } catch (err) {
     console.error('[WV Import] Smart simplify detect failed:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Smart simplify detect failed' });
+    res.status(500).json({ error: 'Smart simplify detect failed' });
     return;
   }
   respond(res, SmartSimplifyMoves, body);
