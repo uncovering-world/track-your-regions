@@ -317,10 +317,9 @@ export function publishedContentSql(alias: string): string {
  * a point or a work — `markVisited` and `markNewBadgesSeen`. It is one fragment
  * because a hand-spelled subset of it is a hole: a writer carrying
  * `hidePendingSql` alone answers 200 to a guessed id for a refused row, echoes
- * the row's name, and writes a visit that `getVisitedExperiences` then serves
- * in full for ever, since that read exempts `admission` on purpose (ADR-0022)
- * and nothing else clears the row. A conjunction spelled in one place cannot be
- * spelled partly.
+ * the row's name, and writes a visit that outlives the catalogue's verdict on
+ * purpose (ADR-0022), so nothing else clears the row. A conjunction spelled in
+ * one place cannot be spelled partly.
  *
  * One `EXISTS` over the memberships rather than the two fragments above joined
  * with `AND`, and the difference is the day a place has two memberships

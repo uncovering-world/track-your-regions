@@ -347,9 +347,9 @@ export async function getVisitedLocationIds(req: AuthenticatedRequest, res: Resp
   // is not somewhere anyone can be sent, which is a different claim resting on a
   // different person's judgement. The consequence worth stating because nothing else
   // here does: a tick on a component declared `lost` leaves this map. The
-  // traveller's history is not lost by any of this — `visited-experiences`
-  // carries no lifecycle predicate at all, deliberately, and that is where a
-  // record of somewhere that has since left the catalogue belongs.
+  // traveller's history is not lost by any of this — `getVisitedIds` carries
+  // no lifecycle predicate at all, deliberately, and that is where a record of
+  // somewhere that has since left the catalogue belongs.
   //
   // Unconditional, like the writers that create these rows: this is the
   // caller's own record, not one of the three by-id reads ADR-0025 widens for a
@@ -767,10 +767,10 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
       -- same line from the other side. The rule: the catalogue's reads refuse a
       -- kept-out row; a record of what a person did is theirs and stays. This
       -- read is the catalogue describing an experience — a denominator and a
-      -- list of its points — so it closes. getVisitedExperiences, the person's
-      -- own list of what they visited, does not, and neither does the write
-      -- path: if a traveller stood in the British Museum, that is true whether
-      -- or not this kind calls it an art museum.
+      -- list of its points — so it closes. A person's own record of what they
+      -- visited does not, and neither does the write path: if a traveller stood
+      -- in the British Museum, that is true whether or not this kind calls it
+      -- an art museum.
       AND ${offeredLocationSql()}
       AND ${publishedContentSql('el')}
     ORDER BY el.ordinal

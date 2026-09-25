@@ -8,8 +8,8 @@
  * This draws the catalogue itself — every reader-visible point,
  * thousands of them, of which a serial World Heritage site contributes hundreds — as the
  * same density heatmap below zoom 5 and the same kind-coloured markers above
- * it, from `GET /api/experiences/points` rather than from a page of
- * `GET /api/experiences`, which caps at 1 000 rows and answers objects.
+ * it, from `GET /api/experiences/points`, which answers places: a read of
+ * objects answers a serial site as one row where it has hundreds of places.
  *
  * **Through the API, and that is the decision of this file** (ADR-0061). The
  * first build read a Martin tile source, which was faster to draw and could

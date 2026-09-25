@@ -9,95 +9,9 @@ import { respond } from '../../api/respond.js';
 import { ExperienceVisitMarked, ExperienceVisitUnmarked, VisitedExperienceIds } from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
 import type { ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.generated.js';
-import { experienceOfferedToReaderSql, hidePendingSql, lifecycleSelectSql, readerPositionSql } from './experienceLifecycle.js';
-import { rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
+import { experienceOfferedToReaderSql } from './experienceLifecycle.js';
+import { rowKindJoinSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
-
-/**
- * Get current user's visited experiences
- * GET /api/users/me/visited-experiences
- */
-export async function getVisitedExperiences(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const kindId = req.query.kindId ? parseInt(String(req.query.kindId)) : null;
-  const limit = Math.min(parseInt(String(req.query.limit)) || 100, 500);
-  const offset = parseInt(String(req.query.offset)) || 0;
-
-  let query = `
-    SELECT
-      uve.id as visit_id,
-      uve.visited_at,
-      uve.notes,
-      uve.rating,
-      e.id,
-      e.name,
-      e.short_description,
-      e.type,
-      -- The kind, off the row's membership: what a colour is decided by (#814, #819).
-      ${rowKindSelectSql()},
-      e.country_names,
-      e.image_url,
-      ${readerPositionSql('e')},
-      ${lifecycleSelectSql()}
-    FROM user_visited_experiences uve
-    JOIN experiences e ON uve.experience_id = e.id
-    ${rowKindJoinSql('e')}
-    WHERE uve.user_id = $1
-      AND ${hidePendingSql()}
-  `;
-  // `existence`, `admission` and `missing_since` are deliberately absent, all
-  // three, and for one reason repeated three times: someone who saw Palmyra
-  // before 2015 saw it, a museum this catalogue later refused was still the
-  // museum they stood in, and a point the source has since withdrawn is still
-  // the point they visited — a record of any of that cannot depend on what the
-  // row says today. This is the one read where all three must survive, which
-  // is why the counts elsewhere can safely shrink without erasing anything.
-  //
-  // `curation_state` is not that kind of question, and gets no such exemption.
-  // A `pending` row was never shown to this reader by any read, so a visit to
-  // one could only be `markVisited` writing what nobody clicked — which it no
-  // longer can (see that handler) — or a manufactured id from before this fix.
-  // Filtering it here does not erase a real visit the way filtering the other
-  // three would; it can only hide a visit that was never genuine.
-
-  const params: (number | string)[] = [userId];
-  let paramIndex = 2;
-
-  if (kindId) {
-    query += ` AND m.kind_id = $${paramIndex++}`;
-    params.push(kindId);
-  }
-
-  query += ` ORDER BY uve.visited_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
-  params.push(limit, offset);
-
-  const result = await pool.query(query, params);
-
-  // Get total count. Same gate as the list above, for the same reason every
-  // count carries whatever its list carries: a total that
-  // counted a manufactured visit the list above already hides would disagree
-  // with what a caller can even see rows for.
-  let countQuery = `SELECT COUNT(*) FROM user_visited_experiences uve JOIN experiences e ON uve.experience_id = e.id ${rowKindJoinSql('e')} WHERE uve.user_id = $1 AND ${hidePendingSql()}`;
-  const countParams: number[] = [userId];
-  if (kindId) {
-    countQuery += ' AND m.kind_id = $2';
-    countParams.push(kindId);
-  }
-  const countResult = await pool.query(countQuery, countParams);
-
-  // eslint-disable-next-line no-restricted-syntax -- no client calls this endpoint, and whether it stays is #1033
-  res.json({
-    visited: result.rows,
-    total: parseInt(countResult.rows[0].count),
-    limit,
-    offset,
-  });
-}
 
 /**
  * Mark experience as visited
@@ -127,15 +41,12 @@ export async function markVisited(req: AuthenticatedRequest, res: Response): Pro
   // matter and for the same reason (#520): a row that is unread, or that this
   // catalogue turned down, is on no list this caller could have seen, so a POST
   // naming its id is a guess rather than an action on something they were
-  // shown. Without the pair this handler echoes the row's name back below and
-  // leaves `getVisitedExperiences` handing back the rest of it — name,
-  // description, kind, coordinates — for ever, because that read exempts
-  // `admission` deliberately (ADR-0022: a visit outlives the catalogue's
-  // verdict) and nothing here ever clears the row the POST just wrote.
+  // shown. Without the pair this handler echoes the row's name back below, and
+  // the visit it writes outlives the catalogue's verdict by design (ADR-0022),
+  // so nothing would ever clear it.
   //
   // Gating the write does not touch that exemption: a visit already recorded
-  // stays visible after a refusal, and the note on it is edited through
-  // `updateVisit`, which only ever updates a row this reader already has.
+  // stays a visit after a refusal.
   const expResult = await pool.query<Pick<ExperiencesRow, 'name'>>(
     `SELECT e.id, e.name FROM experiences e WHERE e.id = $1 AND ${experienceOfferedToReaderSql()}`,
     [experienceId],
@@ -192,73 +103,6 @@ export async function unmarkVisited(req: AuthenticatedRequest, res: Response): P
   }
 
   respond(res, ExperienceVisitUnmarked, { success: true, experienceId });
-}
-
-/**
- * Update visit notes/rating
- * PATCH /api/users/me/visited-experiences/:experienceId
- */
-export async function updateVisit(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const experienceId = parseInt(String(req.params.experienceId));
-  const rawNotes = req.body.notes;
-  const rawRating = req.body.rating;
-  let notes: string | null | undefined;
-  if (rawNotes !== undefined) notes = rawNotes ? String(rawNotes) : null;
-  let rating: number | null | undefined;
-  if (rawRating !== undefined) {
-    rating = rawRating === null || rawRating === '' ? null : parseInt(String(rawRating), 10);
-  }
-
-  // Validate rating if provided. Treat NaN (e.g. parseInt('abc')) and out-of-range as bad input
-  // — falling through would silently store a non-numeric value or skip the bounds check.
-  if (rating !== undefined && rating !== null && (Number.isNaN(rating) || rating < 1 || rating > 5)) {
-    res.status(400).json({ error: 'Rating must be between 1 and 5' });
-    return;
-  }
-
-  // Build update query
-  const updates: string[] = [];
-  const params: (number | string | null)[] = [userId, experienceId];
-  let paramIndex = 3;
-
-  if (notes !== undefined) {
-    updates.push(`notes = $${paramIndex++}`);
-    params.push(notes);
-  }
-  if (rating !== undefined) {
-    updates.push(`rating = $${paramIndex++}`);
-    params.push(rating);
-  }
-
-  if (updates.length === 0) {
-    res.status(400).json({ error: 'No updates provided' });
-    return;
-  }
-
-  const result = await pool.query(`
-    UPDATE user_visited_experiences
-    SET ${updates.join(', ')}
-    WHERE user_id = $1 AND experience_id = $2
-    RETURNING id, visited_at, notes, rating
-  `, params);
-
-  if (result.rowCount === 0) {
-    res.status(404).json({ error: 'Visit record not found' });
-    return;
-  }
-
-  // eslint-disable-next-line no-restricted-syntax -- no client calls this endpoint, and whether it stays is #1033
-  res.json({
-    success: true,
-    experienceId,
-    ...result.rows[0],
-  });
 }
 
 /**

@@ -7,7 +7,6 @@
 
 import { Router } from 'express';
 import {
-  listExperiences,
   getExperience,
   getExperiencesByRegion,
   getExperienceRegionCounts,
@@ -51,7 +50,6 @@ import { publicReadLimiter, searchLimiter, authenticatedLimiter } from '../middl
 import { validate } from '../middleware/errorHandler.js';
 import {
   experienceSearchQuerySchema,
-  experienceListQuerySchema,
   experiencesByRegionQuerySchema,
   experienceRegionCountsQuerySchema,
   experienceLocationsQuerySchema,
@@ -115,10 +113,6 @@ router.get('/by-region/:regionId', publicReadLimiter, validate(regionIdParamSche
 
 // Get all locations for all experiences in a region (batch, eliminates N+1)
 router.get('/by-region/:regionId/locations', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(regionLocationsQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdParam'), getRegionExperienceLocations);
-
-// List experiences with filtering (optionalAuth: admins may filter by regionId
-// on a hidden world view; everyone else 404s on that regionId per requireVisibleWorldView)
-router.get('/', publicReadLimiter, validate(experienceListQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdQuery'), listExperiences);
 
 // =============================================================================
 // Curation Routes (require curator auth)

@@ -1,9 +1,8 @@
 /**
  * `markVisited` is the write path Major 1 closes: before this, any
  * authenticated caller could POST a guessed id for a `pending` experience,
- * get its name echoed back, and have `getVisitedExperiences` hand back the
- * rest of the row — name, description, kind, coordinates — for ever,
- * since nothing else here ever clears the row the POST just wrote.
+ * get its name echoed back, and keep a visit to it for ever, since nothing
+ * else here ever clears the row the POST just wrote.
  *
  * The same sentence held for a *refused* row one round longer than it should
  * have: the first fix carried `curation_state` alone while its four siblings
@@ -23,8 +22,8 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { getVisitedExperiences, markVisited } from './experienceVisitController.js';
-import { experienceOfferedToReaderSql, hidePendingSql } from './experienceLifecycle.js';
+import { markVisited } from './experienceVisitController.js';
+import { experienceOfferedToReaderSql } from './experienceLifecycle.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -91,45 +90,5 @@ describe('markVisited — #520', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: true, experienceId: 281, experienceName: 'Published Site',
     }));
-  });
-});
-
-describe('getVisitedExperiences', () => {
-  beforeEach(() => {
-    mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [{ count: '0' }] });
-  });
-
-  it('gates the list and the count on curation_state, and only that axis', async () => {
-    await getVisitedExperiences(
-      { query: {}, user: { id: 5 } } as never, makeRes() as never);
-
-    const [listSql, countSql] = mockedQuery.mock.calls.map(c => String(c[0]));
-    expect(listSql, 'the list').toContain(hidePendingSql('e'));
-    expect(countSql, 'the count').toContain(hidePendingSql('e'));
-    // Deliberately unfiltered on the other three, on both statements: a
-    // traveller's own history must keep showing a place that has since left
-    // the catalogue for any of those three reasons. Checked as the filter
-    // fragments themselves, not as bare column names — the list's SELECT
-    // carries `existence`/`missing_since` as columns to label the row with
-    // (`lifecycleSelectSql`), which is not the same as filtering on them.
-    for (const sql of [listSql, countSql]) {
-      // Aliased, because the reader's position subquery (`readerPositionSql`)
-      // legitimately filters *locations* on the same three columns: an object is
-      // never positioned at a place the reader cannot be shown. What must not
-      // appear is the filter on the experience itself.
-      expect(sql).not.toContain("e.existence <> 'lost'");
-      expect(sql).not.toContain("admission <> 'refused'");
-      expect(sql).not.toContain('e.missing_since IS NULL');
-    }
-  });
-
-  it('carries the kind filter and the gate together on the count', async () => {
-    await getVisitedExperiences(
-      { query: { kindId: '2' }, user: { id: 5 } } as never, makeRes() as never);
-
-    const [, countSql] = mockedQuery.mock.calls.map(c => String(c[0]));
-    expect(countSql).toContain('m.kind_id = $2');
-    expect(countSql).toContain(hidePendingSql('e'));
   });
 });

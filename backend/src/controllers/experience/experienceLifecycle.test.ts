@@ -339,11 +339,10 @@ describe('readerRegionMembershipSql', () => {
   });
 
   it('takes the expression and alias it is given, since not every caller has an `e`', () => {
-    // The membership subquery in `listExperiences` and the batch feed's
-    // `IN (SELECT …)` have no experiences alias in scope at all — they
-    // correlate on `er.experience_id` — and a fragment that hard-coded `e.id`
-    // would fail there rather than being quietly wrong, which is the better
-    // half of this argument existing.
+    // The batch feed's `IN (SELECT …)` has no experiences alias in scope at
+    // all — it correlates on `er.experience_id` — and a fragment that
+    // hard-coded `e.id` would fail there rather than being quietly wrong, which
+    // is the better half of this argument existing.
     const sql = readerRegionMembershipSql('er.experience_id', 'er');
     expect(sql).toContain('mem_el.experience_id = er.experience_id');
 
