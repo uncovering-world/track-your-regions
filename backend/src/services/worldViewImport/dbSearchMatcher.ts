@@ -29,10 +29,16 @@ function stripTrailingParenthetical(name: string): string {
 /**
  * Search GADM divisions by trigram similarity.
  * Returns multiple candidates sorted by similarity.
+ *
+ * `within` is the only divisions it may answer (`descendantSearchScopes`). A
+ * region inside a matched container is a part of that place, so a candidate
+ * from elsewhere is a namesake, not a match: "Northern Benin" searched
+ * worldwide finds Sudan's Northern state (#1035).
  */
 export async function trigramSearch(
   regionName: string,
   limit = 5,
+  within?: number[],
 ): Promise<Array<{ divisionId: number; name: string; path: string; similarity: number }>> {
   const normalized = stripTrailingParenthetical(regionName)
     .normalize('NFD')
@@ -40,6 +46,10 @@ export async function trigramSearch(
     .toLowerCase()
     .trim();
 
+  // The scope filters what the trigram index found, so a search inside a
+  // country costs about what a worldwide one does.
+  const scoped = within !== undefined;
+  const params: unknown[] = scoped ? [normalized, limit, within] : [normalized, limit];
   const result = await pool.query(`
     SELECT ad.id, ad.name,
            similarity(ad.name_normalized, $1) AS sim,
@@ -55,9 +65,10 @@ export async function trigramSearch(
     FROM administrative_divisions ad
     WHERE ad.name_normalized % $1
       AND similarity(ad.name_normalized, $1) > 0.3
+      ${scoped ? 'AND ad.id = ANY($3::int[])' : ''}
     ORDER BY sim DESC
     LIMIT $2
-  `, [normalized, limit]);
+  `, params);
 
   return result.rows.map(row => ({
     divisionId: row.id as number,
@@ -65,6 +76,54 @@ export async function trigramSearch(
     path: row.path as string,
     similarity: row.sim as number,
   }));
+}
+
+/**
+ * For each region, the divisions its name is searched among: the members of
+ * its nearest ancestor that has any, and everything GADM holds under them
+ * (#1035). The walk goes up past ancestors with no members, so a leaf under an
+ * unmatched intermediate is still scoped by the matched container above it. A
+ * region with no matched ancestor is left out of the map, since there is
+ * nothing to scope it by.
+ *
+ * Each ancestor's subtree is walked once and shared by the regions under it:
+ * France's is some forty thousand divisions, too many to walk per leaf.
+ */
+export async function descendantSearchScopes(regionIds: number[]): Promise<Map<number, number[]>> {
+  if (regionIds.length === 0) return new Map();
+  const nearest = await pool.query<{ region_id: number; ancestor_id: number }>(`
+    WITH RECURSIVE up AS (
+      SELECT r.id AS region_id, r.parent_region_id AS ancestor_id
+      FROM regions r WHERE r.id = ANY($1::int[])
+      UNION ALL
+      SELECT up.region_id, a.parent_region_id
+      FROM up JOIN regions a ON a.id = up.ancestor_id
+      WHERE NOT EXISTS (SELECT 1 FROM region_members m WHERE m.region_id = a.id)
+    )
+    SELECT up.region_id, up.ancestor_id FROM up
+    WHERE EXISTS (SELECT 1 FROM region_members m WHERE m.region_id = up.ancestor_id)
+  `, [regionIds]);
+  const ancestorIds = [...new Set(nearest.rows.map(r => r.ancestor_id))];
+  if (ancestorIds.length === 0) return new Map();
+
+  const subtrees = await pool.query<{ ancestor_id: number; division_ids: number[] }>(`
+    WITH RECURSIVE scope AS (
+      SELECT m.region_id AS ancestor_id, m.division_id AS id
+      FROM region_members m WHERE m.region_id = ANY($1::int[])
+      UNION
+      SELECT s.ancestor_id, d.id
+      FROM administrative_divisions d JOIN scope s ON d.parent_id = s.id
+    )
+    SELECT ancestor_id, array_agg(id) AS division_ids FROM scope GROUP BY ancestor_id
+  `, [ancestorIds]);
+  const byAncestor = new Map(subtrees.rows.map(r => [r.ancestor_id, r.division_ids]));
+
+  const scopes = new Map<number, number[]>();
+  for (const { region_id, ancestor_id } of nearest.rows) {
+    const divisions = byAncestor.get(ancestor_id);
+    if (divisions) scopes.set(region_id, divisions);
+  }
+  return scopes;
 }
 
 /**

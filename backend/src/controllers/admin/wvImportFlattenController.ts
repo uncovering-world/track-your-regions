@@ -18,6 +18,7 @@ import {
   dbSearchSingleRegion,
   trigramSearch,
 } from '../../services/worldViewImport/aiMatcher.js';
+import { descendantSearchScopes } from '../../services/worldViewImport/dbSearchMatcher.js';
 import {
   type UndoEntry,
   type ImportStateSnapshot,
@@ -202,11 +203,13 @@ async function autoMatchDescendants(descendants: DescendantRow[]): Promise<Desce
   const matchedIds = new Set(membersCheck.rows.map(r => r.region_id as number));
   const unmatchedDescendants = descendants.filter(d => !matchedIds.has(d.id));
 
+  // Searched inside the matched region above, never worldwide (#1035).
+  const scopes = await descendantSearchScopes(unmatchedDescendants.map(d => d.id));
   const stillUnmatched: DescendantRow[] = [];
   for (const desc of unmatchedDescendants) {
     const descId = desc.id;
     const descName = desc.name;
-    const candidates = await trigramSearch(descName, 3);
+    const candidates = await trigramSearch(descName, 3, scopes.get(descId));
 
     // Auto-match if a single candidate is strong enough, OR the top candidate
     // clearly beats the runner-up. Both paths take the same action, so they
