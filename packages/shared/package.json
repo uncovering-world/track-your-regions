@@ -14,7 +14,8 @@
     "./geometry": "./src/geometry.ts",
     "./labels": "./src/labels.ts",
     "./moves": "./src/moves.ts",
-    "./pictures": "./src/pictures.ts"
+    "./pictures": "./src/pictures.ts",
+    "./runStatuses": "./src/runStatuses.ts"
   },
   "scripts": {
     "lint": "eslint src",
