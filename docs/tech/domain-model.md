@@ -146,7 +146,7 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `APIConfig`: Configuration for sync process (JSONB)
   - `IsActive`: Whether the source is enabled
   - `LastSyncAt`: Timestamp of last sync
-  - `LastSyncStatus`: 'success', 'partial', or 'failed'
+  - `LastSyncStatus`: how the last run ended — 'success', 'partial', 'failed' or 'cancelled' (`CLOSED_SYNC_STATUSES`, `@tyr/shared/runStatuses`)
 
 ### ExperienceRegion
 
