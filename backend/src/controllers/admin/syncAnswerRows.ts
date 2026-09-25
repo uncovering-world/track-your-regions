@@ -17,6 +17,7 @@ import type {
   WaitingCounts,
 } from '../../api/responses/admin.js';
 import type {
+  CheckValue,
   ExperienceSourcesRow,
   ExperienceSyncChangesRow,
   ExperienceSyncLogsRow,
@@ -57,7 +58,7 @@ export function experienceSourceOf(
     is_active: row.is_active === true,
     requires_curation: row.requires_curation,
     last_sync_at: isoOf(row.last_sync_at),
-    last_sync_status: row.last_sync_status,
+    last_sync_status: row.last_sync_status as CheckValue<'experience_sources', 'last_sync_status'> | null,
     display_priority: row.display_priority,
     created_at: isoOf(row.created_at),
     enter_sitelinks: row.enter_sitelinks,
@@ -101,7 +102,8 @@ export function syncLogOf(row: SyncLogRow): SyncLog {
     source_name: row.source_name,
     started_at: isoOf(row.started_at),
     completed_at: isoOf(row.completed_at),
-    status: row.status,
+    // The CHECK is what makes the stored text one of the declared statuses.
+    status: row.status as CheckValue<'experience_sync_logs', 'status'> | null,
     total_fetched: row.total_fetched,
     total_created: row.total_created,
     total_updated: row.total_updated,

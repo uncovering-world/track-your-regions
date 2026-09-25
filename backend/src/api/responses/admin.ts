@@ -14,6 +14,7 @@
  * which also says why.
  */
 
+import { CLOSED_SYNC_STATUSES, SYNC_LOG_STATUSES } from '@tyr/shared/runStatuses';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
@@ -45,7 +46,7 @@ export const ExperienceSource = z.strictObject({
   is_active: z.boolean(),
   requires_curation: z.boolean().describe('Whether a run holds its new and changed content for review (ADR-0025).'),
   last_sync_at: timestamp.nullable(),
-  last_sync_status: z.string().nullable(),
+  last_sync_status: z.enum(CLOSED_SYNC_STATUSES).nullable(),
   display_priority: z.number().int(),
   created_at: timestamp.nullable(),
   enter_sitelinks: sitelinks.describe('Wikipedia languages an item needs to enter this kind; null for a source with no line.'),
@@ -102,7 +103,7 @@ export const SyncStatus = z.strictObject({
   dryRun: z.boolean().optional(),
   lastSyncAt: timestamp.nullable().optional()
     .describe('Sent instead of the run\'s figures when no run is known since the server started: the source\'s last run as the database holds it.'),
-  lastSyncStatus: z.string().nullable().optional(),
+  lastSyncStatus: z.enum(CLOSED_SYNC_STATUSES).nullable().optional(),
 }).describe('A source\'s run as it stands: the figures of the run the server knows of, or the last run the database recorded.');
 export type SyncStatus = z.infer<typeof SyncStatus>;
 
@@ -218,7 +219,7 @@ export const SyncLog = z.strictObject({
   source_name: z.string(),
   started_at: timestamp.nullable(),
   completed_at: timestamp.nullable(),
-  status: z.string().nullable(),
+  status: z.enum(SYNC_LOG_STATUSES).nullable(),
   total_fetched: count,
   total_created: count,
   total_updated: count.describe('Rows whose fields changed. Runs before change provenance counted every row the upsert touched.'),
