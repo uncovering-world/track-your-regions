@@ -65,7 +65,6 @@ export function useGeometryLoading({
     if (divisions.length === 0) return [];
 
     // Avoid long sequential fetches when splitting large countries (e.g. England)
-    const worldViewId = selectedRegion?.worldViewId ?? 1;
     const batchSize = 12;
     const features: GeoJSON.Feature[] = [];
 
@@ -73,7 +72,7 @@ export function useGeometryLoading({
       const batch = divisions.slice(i, i + batchSize);
       const batchResults = await Promise.all(batch.map(async div => {
         try {
-          const geom = await fetchDivisionGeometry(div.id, worldViewId);
+          const geom = await fetchDivisionGeometry(div.id);
           if (!geom?.geometry) return null;
           return buildDivisionFeature(div, geom.geometry);
         } catch (e) {

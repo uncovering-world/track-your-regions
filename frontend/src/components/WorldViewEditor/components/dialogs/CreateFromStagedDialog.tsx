@@ -99,7 +99,7 @@ export function CreateFromStagedDialog({
     const features: GeoJSON.Feature[] = [];
     for (const division of stagedDivisions) {
       try {
-        const geom = await fetchDivisionGeometry(division.id, 1);
+        const geom = await fetchDivisionGeometry(division.id);
         if (geom) {
           features.push(geom as unknown as GeoJSON.Feature);
         }

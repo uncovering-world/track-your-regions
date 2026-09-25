@@ -178,12 +178,12 @@ export function CoverageResolveDialog({
     setMapLoading(true);
 
     try {
-      const feature = await fetchDivisionGeometry(divisionId, 1, { detail: 'low' });
+      const feature = await fetchDivisionGeometry(divisionId, { detail: 'low' });
       setGapGeom(feature?.geometry ?? null);
 
       const geoResult = nodeSuggestions.get(divisionId);
       if (geoResult?.suggestionDivisionId) {
-        const suggFeature = await fetchDivisionGeometry(geoResult.suggestionDivisionId, 1, { detail: 'low' });
+        const suggFeature = await fetchDivisionGeometry(geoResult.suggestionDivisionId, { detail: 'low' });
         setSuggGeom(suggFeature?.geometry ?? null);
       }
     } finally {
@@ -245,9 +245,9 @@ export function CoverageResolveDialog({
       setSuggGeom(null);
 
       Promise.all([
-        fetchDivisionGeometry(divisionId, 1, { detail: 'low' }),
+        fetchDivisionGeometry(divisionId, { detail: 'low' }),
         data.suggestionDivisionId
-          ? fetchDivisionGeometry(data.suggestionDivisionId, 1, { detail: 'low' })
+          ? fetchDivisionGeometry(data.suggestionDivisionId, { detail: 'low' })
           : Promise.resolve(null),
       ]).then(([gapFeature, suggFeature]) => {
         setGapGeom(gapFeature?.geometry ?? null);

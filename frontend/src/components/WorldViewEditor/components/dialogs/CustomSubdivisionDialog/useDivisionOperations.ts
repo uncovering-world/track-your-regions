@@ -320,9 +320,9 @@ export function useDivisionOperations({
       );
       if (feature?.geometry) return feature.geometry;
     }
-    const geom = await fetchDivisionGeometry(div.id, selectedRegion?.worldViewId ?? 1);
+    const geom = await fetchDivisionGeometry(div.id);
     return geom?.geometry ?? null;
-  }, [mapGeometries, selectedRegion]);
+  }, [mapGeometries]);
 
   const openCutDialogForDivision = useCallback(async (
     div: ReturnType<typeof getAllDivisions>[number],

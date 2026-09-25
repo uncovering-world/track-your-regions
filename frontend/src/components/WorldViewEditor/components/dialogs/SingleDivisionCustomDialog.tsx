@@ -62,7 +62,7 @@ export function SingleDivisionCustomDialog({
 
     (async () => {
       try {
-        const geom = await fetchDivisionGeometry(division.id, 1);
+        const geom = await fetchDivisionGeometry(division.id);
         if (cancelled) return;
         if (geom) {
           setSourceGeometry({

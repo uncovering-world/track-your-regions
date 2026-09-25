@@ -251,7 +251,7 @@ export function OverlapResolutionDialog({
 
     setDivGeoLoading(true);
     Promise.all(
-      missing.map(id => fetchDivisionGeometry(id, worldViewId, { detail: 'medium' }).then(feat => ({ id, feat }))),
+      missing.map(id => fetchDivisionGeometry(id, { detail: 'medium' }).then(feat => ({ id, feat }))),
     )
       .then((results) => {
         setDivisionGeometries(prev => {
@@ -263,7 +263,7 @@ export function OverlapResolutionDialog({
         });
       })
       .finally(() => setDivGeoLoading(false));
-  }, [selected, worldViewId, divisionGeometries]);
+  }, [selected, divisionGeometries]);
 
   // Reset split state when selection changes
   useEffect(() => {

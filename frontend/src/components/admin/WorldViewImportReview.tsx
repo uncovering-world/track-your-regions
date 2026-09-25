@@ -279,7 +279,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     setPreviewGeometry(null);
     setPreviewLoading(true);
     try {
-      const feature = await fetchDivisionGeometry(divisionId, 1, { detail: 'medium' });
+      const feature = await fetchDivisionGeometry(divisionId, { detail: 'medium' });
       setPreviewGeometry(feature?.geometry ?? null);
     } finally {
       setPreviewLoading(false);
