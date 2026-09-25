@@ -22,7 +22,7 @@ import type { ContentItemChange } from '../../services/sync/types.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
 
 /**
  * Apply the value a sync proposed for a field the curator had claimed.
@@ -212,7 +212,9 @@ async function applyProposedFields(
       };
     };
 
-    if (proposal.rows.length === 0) {
+    // A row deleted since the handler's existence read has nothing to lock and
+    // no proposal on record either, and is answered as the second.
+    if (!locked || proposal.rows.length === 0) {
       return await refuse('No source proposal on record for this experience');
     }
     const fromSyncLogId = proposal.rows[0].sync_log_id as number;
@@ -264,20 +266,17 @@ async function applyProposedFields(
     // would otherwise tell a curator that something was dropped when nothing
     // they could see ever existed.
     const releasedCredit = acceptedImage && hadCredit;
-    let creditDrop = '';
+    const creditDrop: string[] = [];
     if (acceptedImage) {
       remaining = remaining.filter(k => k !== `${METADATA_CLAIM_PREFIX}imageCredit`);
-      creditDrop = "\n           metadata = COALESCE(metadata, '{}'::jsonb) - 'imageCredit',";
+      creditDrop.push("metadata = COALESCE(metadata, '{}'::jsonb) - 'imageCredit'");
     }
 
-    await client.query(
-      `UPDATE experiences
-       SET ${assignments.map(a => `${a},`).join('\n           ')}${creditDrop}
-           curated_fields = $${writable.length + 2}::jsonb,
-           updated_at = NOW()
-       WHERE id = $1`,
-      [experienceId, ...values, JSON.stringify(remaining)],
-    );
+    await updateExperienceColumns(client, locked.lock, [
+      ...assignments,
+      ...creditDrop,
+      `curated_fields = $${writable.length + 2}::jsonb`,
+    ], [...values, JSON.stringify(remaining)]);
     // **A point's claim on the coordinate goes with the object's.**
     //
     // The object's coordinate and its points' are one fact seen at two levels:

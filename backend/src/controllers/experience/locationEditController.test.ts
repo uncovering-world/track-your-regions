@@ -54,6 +54,9 @@ function makeClient(stored: Record<string, unknown> = {}) {
     client: {
       query: vi.fn(async (sql: string, params?: unknown[]) => {
         queries.push({ sql, params: params ?? [] });
+        // The object's lock answers with the object, as the table would: the
+        // anchor is written under it, so a lock that found nothing writes none.
+        if (sql.includes('FOR NO KEY UPDATE')) return { rows: [{ id: POINT.experience_id }] };
         if (sql.includes('FOR UPDATE')) {
           return {
             rows: [{

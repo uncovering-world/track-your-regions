@@ -19,10 +19,9 @@ import { LocationEditResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { lockExperience, anchorToItsPoint } from '../../db/experienceWriter.js';
 
 /** What a curator may claim on a point — see `db/migrations/027`. */
 type Claim = 'name' | 'location';
@@ -78,7 +77,7 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     // object close a cycle, and Postgres resolves a cycle by failing one of them
     // with a 500. Held for every edit rather than only the ones that reach the
     // anchor, so the order is a property of the file instead of one branch's.
-    await lockExperience(client, experienceId);
+    const object = await lockExperience(client, experienceId);
 
     // Everything this transaction depends on, re-read under the lock: the claim
     // set it is about to add to, and the values the trail reports as `old`.
@@ -151,40 +150,8 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     // and a reader is positioned over nothing here yet — and the publication is
     // where the two can be brought together if it ever needs to be.
     if (movesPoint) {
-      const anchored = await client.query(
-        `UPDATE experiences e
-            SET location = ST_SetSRID(ST_MakePoint($2, $3), 4326),
-                curated_fields = CASE WHEN e.curated_fields ? 'location'
-                                      THEN e.curated_fields
-                                      ELSE COALESCE(e.curated_fields, '[]'::jsonb) || '["location"]'::jsonb END,
-                -- Stamped by hand like every other writer of this table: there is
-                -- no trigger, and both columns above are ones a reader is served
-                -- from, so a row left reporting the time of whatever last touched
-                -- it would answer "last changed" with a moment before its
-                -- coordinate moved.
-                updated_at = NOW()
-          WHERE e.id = $1
-            AND (SELECT COUNT(*) FROM experience_locations el
-                  WHERE el.experience_id = e.id
-                    AND ${offeredLocationSql('el')}
-                    AND ${publishedContentSql('el')}) = 1
-            -- ...and it is *this* point. The count alone says the object has one
-            -- place a reader is positioned over; it does not say the curator was
-            -- editing that one. Editing a withdrawn, lost or unread sibling beside
-            -- one visible point satisfies the count and would move the object onto
-            -- a coordinate readerPositionSql never sends anyone to -- #550's
-            -- disagreement, made by the endpoint written to close it. Two of those
-            -- three shapes are reachable only since the count learned the
-            -- fragments: under missing_since IS NULL alone a lost or unread
-            -- sibling made the count 2 and nothing moved.
-            AND EXISTS (SELECT 1 FROM experience_locations el
-                         WHERE el.id = $4 AND el.experience_id = e.id
-                           AND ${offeredLocationSql('el')}
-                           AND ${publishedContentSql('el')})
-          RETURNING e.id`,
-        [experienceId, longitude, latitude, locationId],
-      );
-      anchorMoved = anchored.rows.length > 0;
+      anchorMoved = object !== null
+        && await anchorToItsPoint(client, object.lock, longitude, latitude, locationId);
     }
 
     await client.query(

@@ -489,3 +489,19 @@ describe('editExperience and the column the type rename removed', () => {
     for (const sql of sent) expect(sql).not.toMatch(/\bcategory\b/);
   });
 });
+
+describe('editExperience when the row goes before the lock', () => {
+  it('answers 404 and writes nothing, rather than an audit row for a row that is gone', async () => {
+    queueQueries({ scope: { unrestricted: false, scoped_region_id: IN_SCOPE_REGION } });
+    // The unlocked read found the row; by the time the transaction locks it, it
+    // has been deleted, so the lock finds nothing.
+    mockClientQuery.mockImplementation(async () => ({ rows: [] }));
+    const { res, done } = callEditExperience(REGION_CURATOR);
+    await done;
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    const sent = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(sent.some(sql => sql.includes('UPDATE experiences'))).toBe(false);
+    expect(sent.some(sql => sql.includes('experience_curation_log'))).toBe(false);
+  });
+});

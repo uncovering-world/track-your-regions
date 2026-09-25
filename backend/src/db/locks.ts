@@ -39,6 +39,11 @@
  *   transaction. The INSERT's own row lock *is* the "object first" the rule asks
  *   for, and no other transaction can hold a row of an object that did not exist
  *   when it began.
+ * - Missing detection's mark (`flagMissingExperiences`) and the picture repair
+ *   (`writeFoundPicture`, `clearUnshowablePicture`) each write `experiences` in
+ *   one statement on the pool, with no `BEGIN`. The statement's own row locks
+ *   last only as long as it does, so it can wait for an object's lock and never
+ *   be half of a cycle — which is why neither takes `lockExperience`'s token.
  * - `assignExperienceToRegion` and the rejection writers touch
  *   `experience_regions` and `experience_rejections`, which no lock-holder waits
  *   for; their only reach into `experiences` is the audit row's key share, and

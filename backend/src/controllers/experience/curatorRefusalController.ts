@@ -46,7 +46,7 @@ import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { lockExperience, recordDecisionOnExperience } from '../../db/experienceWriter.js';
 
 /** The reason a curator's refusal carries, in the words the kept-out list shows. */
 export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
@@ -185,14 +185,7 @@ export async function refuseArrivalUnderLock(
           ${CLEAR_ICONIC}
       WHERE m.id = $1
     `, [membershipId, CURATOR_REFUSAL_REASON, JSON.stringify(curated)]);
-    await client.query(`
-      UPDATE experiences
-      SET state_decided_by = $2,
-          state_decided_at = NOW(),
-          state_note = $3,
-          updated_at = NOW()
-      WHERE id = $1
-    `, [experienceId, userId, note ?? null]);
+    await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
 
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)

@@ -32,7 +32,7 @@ import {
   STORABLE_HTTP_URL_MESSAGE,
   DISPLAYABLE_PICTURE_URL_MESSAGE,
 } from '../../types/urlSafety.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { lockExperience, updateExperienceColumns, insertCuratedExperience } from '../../db/experienceWriter.js';
 
 /**
  * The same rule the request schema applied, asked again where the value is
@@ -417,15 +417,19 @@ function clearedToNull(value: unknown): unknown {
   return value === '' ? null : value ?? null;
 }
 
+/**
+ * The columns an edit sets, and the claim set it leaves, for
+ * `updateExperienceColumns`: the writer binds the id as `$1`, so these bind
+ * from `$2`.
+ */
 function buildUpdateQuery(
   payload: EditPayload,
   existingCurated: string[],
-  experienceId: number,
-): { sql: string; values: unknown[]; newCurated: string[] } {
+): { assignments: string[]; values: unknown[]; newCurated: string[] } {
   const { updates } = payload;
   const setClauses: string[] = [];
   const values: unknown[] = [];
-  let paramIdx = 1;
+  let paramIdx = 2;
 
   for (const upd of updates) {
     setClauses.push(`${upd.column} = $${paramIdx}`);
@@ -460,15 +464,8 @@ function buildUpdateQuery(
   const newCurated = [...new Set([...existingCurated, ...curatedFieldNames])];
   setClauses.push(`curated_fields = $${paramIdx}`);
   values.push(JSON.stringify(newCurated));
-  paramIdx++;
 
-  setClauses.push(`updated_at = NOW()`);
-  values.push(experienceId);
-  return {
-    sql: `UPDATE experiences SET ${setClauses.join(', ')} WHERE id = $${paramIdx}`,
-    values,
-    newCurated,
-  };
+  return { assignments: setClauses, values, newCurated };
 }
 
 /**
@@ -577,14 +574,17 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     const locked = await lockExperience<typeof existing>(
       client, experienceId, 'curated_fields, name, short_description, description, type, image_url, tags, metadata',
     );
-    const before = locked?.row ?? existing;
-    const built = buildUpdateQuery(
-      payload,
-      (before.curated_fields as string[]) || [],
-      experienceId,
-    );
+    // A row deleted since the read above has nothing to lock and nothing to
+    // edit: 404, as the read would have answered a moment later.
+    if (!locked) {
+      unusable = await rollbackQuietly(client);
+      res.status(404).json({ error: 'Experience not found' });
+      return;
+    }
+    const before = locked.row;
+    const built = buildUpdateQuery(payload, (before.curated_fields as string[]) || []);
     newCurated = built.newCurated;
-    await client.query(built.sql, built.values);
+    await updateExperienceColumns(client, locked.lock, built.assignments, built.values);
     const details = buildEditAuditDetails(payload, before);
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
@@ -787,32 +787,21 @@ async function insertManualExperience(
   if (imageCredit) metadataObj.imageCredit = imageCredit;
   const metadata = Object.keys(metadataObj).length > 0 ? JSON.stringify(metadataObj) : null;
 
-  const expResult = await client.query(`
-    INSERT INTO experiences (
-      source_id, external_id, name, short_description, type,
-      location, image_url, tags, country_codes, country_names,
-      metadata, is_manual, created_by, status
-    ) VALUES (
-      $1, $2, $3, $4, $5,
-      ST_SetSRID(ST_MakePoint($6, $7), 4326), $8, $9, $10, $11,
-      $12, true, $13, 'active'
-    ) RETURNING id
-  `, [
+  const experienceId = await insertCuratedExperience(client, {
     sourceId,
     externalId,
-    body.name,
-    body.shortDescription || null,
-    body.type || null,
-    body.longitude,
-    body.latitude,
-    body.imageUrl || null,
-    body.tags ? JSON.stringify(body.tags) : null,
-    body.countryCode ? [body.countryCode] : null,
-    body.countryName ? [body.countryName] : null,
+    name: body.name,
+    shortDescription: body.shortDescription || null,
+    type: body.type || null,
+    longitude: body.longitude,
+    latitude: body.latitude,
+    imageUrl: body.imageUrl || null,
+    tags: body.tags ? JSON.stringify(body.tags) : null,
+    countryCodes: body.countryCode ? [body.countryCode] : null,
+    countryNames: body.countryName ? [body.countryName] : null,
     metadata,
-    userId,
-  ]);
-  const experienceId = expResult.rows[0].id as number;
+    createdBy: userId,
+  });
 
   // The place's membership in the kind the curator chose, brought by that
   // kind's own source (ADR-0045 decision 4, #822; #819). Verified from the
