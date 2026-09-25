@@ -12,7 +12,7 @@ This document covers the map tab internals for the Create Subregions dialog:
 `loadGeometries()` builds map features from current region members in two stages:
 
 1. Fetch `fetchRegionMemberGeometries(regionId)` to get all member geometries, including `custom_geom` parts.
-2. Fallback fetch for missing members via `fetchDivisionGeometry(divisionId, worldViewId)`.
+2. Fallback fetch for missing members via `fetchDivisionGeometry(divisionId)`, which answers the full shape by default.
 
 Fallback fetches run in batches (`batchSize = 12`) to avoid long sequential waits when many divisions are present.
 
