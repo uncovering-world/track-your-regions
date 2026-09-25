@@ -179,7 +179,7 @@ export function SmartSimplifyDialog({
 
     setDivGeoLoading(true);
     Promise.all(
-      missing.map(id => fetchDivisionGeometry(id, worldViewId, { detail: 'medium' }).then(feat => ({ id, feat }))),
+      missing.map(id => fetchDivisionGeometry(id, { detail: 'medium' }).then(feat => ({ id, feat }))),
     )
       .then(results => {
         setDivisionGeometries(prev => {
@@ -192,7 +192,7 @@ export function SmartSimplifyDialog({
       })
       .finally(() => setDivGeoLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps -- re-fetch when selection key changes
-  }, [selectedMove?.gadmParentId, selectedAnomalyIndex, worldViewId]);
+  }, [selectedMove?.gadmParentId, selectedAnomalyIndex]);
 
   // Fly to selected move's divisions when geometries are ready
   useEffect(() => {

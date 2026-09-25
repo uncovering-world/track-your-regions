@@ -124,7 +124,7 @@ export function DivisionSearchPanel({
     setPreviewGeometry(null);
 
     try {
-      const feature = await fetchDivisionGeometry(division.id, 1);
+      const feature = await fetchDivisionGeometry(division.id, { detail: 'medium' });
       if (feature?.geometry) {
         setPreviewGeometry(feature.geometry);
       }

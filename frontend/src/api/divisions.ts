@@ -47,16 +47,16 @@ export async function fetchDivisionSiblings(divisionId: number, worldViewId: num
   return authFetchJson<AdministrativeDivisions>(`${API_URL}/api/divisions/${divisionId}/siblings?worldViewId=${worldViewId}`);
 }
 
+/**
+ * A division's boundary. `detail` asks for a stored simplification — `low` or
+ * `medium` for a preview — and is the full shape when left out, which the
+ * cutting tools need, since they store what they cut (#1010).
+ */
 export async function fetchDivisionGeometry(
   divisionId: number,
-  worldViewId: number = 1,
-  options: { detail?: 'low' | 'medium' | 'high'; resolveEmpty?: boolean } = {}
+  options: { detail?: 'low' | 'medium' | 'high' } = {}
 ): Promise<DivisionGeometry | null> {
-  const params = new URLSearchParams({
-    worldViewId: String(worldViewId),
-    detail: options.detail ?? 'medium',
-    resolveEmpty: String(options.resolveEmpty ?? true),
-  });
+  const params = new URLSearchParams({ detail: options.detail ?? 'high' });
   try {
     return await authFetchOptionalJson<DivisionGeometry>(`${API_URL}/api/divisions/${divisionId}/geometry?${params}`);
   } catch {

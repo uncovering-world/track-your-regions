@@ -456,7 +456,7 @@ export function CustomSubdivisionDialog({
     setPreviewLoading(true);
     setPreviewGeometry(null);
     try {
-      const geom = await fetchDivisionGeometry(div.id, 1);
+      const geom = await fetchDivisionGeometry(div.id, { detail: 'medium' });
       setPreviewGeometry(geom?.geometry ?? null);
     } catch {
       setPreviewGeometry(null);

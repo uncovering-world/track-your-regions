@@ -55,7 +55,7 @@ async function loadDivisionGeometryForSplit(
     );
     if (memberFeature?.geometry) return memberFeature.geometry;
   }
-  const geom = await fetchDivisionGeometry(member.id, 1);
+  const geom = await fetchDivisionGeometry(member.id);
   return geom?.geometry ?? null;
 }
 
