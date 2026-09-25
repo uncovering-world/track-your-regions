@@ -363,7 +363,7 @@ export async function getCoverageSSE(req: AuthenticatedRequest, res: Response): 
 
 /**
  * Geographic suggestion for a single coverage gap.
- * KNN-compares the gap's centroid against the assigned divisions' boundaries
+ * KNN-compares the gap's anchor point against the assigned divisions' boundaries
  * (~84ms total).
  * POST /api/admin/wv-import/matches/:worldViewId/geo-suggest-gap
  */
@@ -373,36 +373,60 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
   console.log(`[WV Import] POST /matches/${worldViewId}/geo-suggest-gap — divisionId=${divisionId}`);
 
   // A division's anchor_point is the focus trigger's (#674): every row with
-  // geometry has one, written from geometry_focus(). No filler writes
-  // ST_Centroid(ST_Envelope(geom)) into the NULLs here -- that is a different,
-  // worse answer for a division over the dateline -- and the KNN below already
-  // COALESCEs to a centroid for a row without one.
+  // geometry has one, written from geometry_focus(). The gap is placed there
+  // too, as the neighbours are: the centre of its envelope lies on the other
+  // side of the world for a division over the dateline, Chukot's at longitude
+  // 0 rather than 174 (#1029). A row without one falls back to its centroid.
 
   // Boundary-based KNN: finds the nearest assigned region by polygon boundary distance.
   // Uses `geom <->` (GiST bbox-based KNN) to catch large regions whose boundary is
   // close even if their centroid is far (e.g., Antarctica for Heard Island).
   // Then computes exact boundary distance with ST_Distance on geography.
+  //
+  // `<->` measures planar degrees and does not wrap, so a neighbour just across
+  // the dateline -- Tonga from Fiji, Alaska from Chukotka -- is some 350
+  // degrees away in it and can miss the candidates. A second pass from the
+  // point shifted by 360 degrees collects that side; the geography distance
+  // then ranks both.
   const result = await pool.query(`
     WITH gap_center AS (
-      SELECT ST_Centroid(ST_Envelope(geom)) AS pt
-      FROM administrative_divisions WHERE id = $1
+      SELECT pt, ST_Translate(pt, CASE WHEN ST_X(pt) >= 0 THEN -360 ELSE 360 END, 0) AS pt_across
+      FROM (
+        SELECT COALESCE(anchor_point, ST_Centroid(geom)) AS pt
+        FROM administrative_divisions WHERE id = $1
+      ) gap
+    ),
+    candidates AS (
+      (SELECT rm.region_id, rm.division_id
+       FROM administrative_divisions ad
+       JOIN region_members rm ON rm.division_id = ad.id
+       JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
+       CROSS JOIN gap_center gc
+       ORDER BY ad.geom <-> gc.pt
+       LIMIT 15)
+      UNION
+      (SELECT rm.region_id, rm.division_id
+       FROM administrative_divisions ad
+       JOIN region_members rm ON rm.division_id = ad.id
+       JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
+       CROSS JOIN gap_center gc
+       ORDER BY ad.geom <-> gc.pt_across
+       LIMIT 15)
     ),
     knn_raw AS (
       SELECT
-        rm.region_id, r.name AS region_name,
-        rm.division_id AS suggestion_division_id,
+        c.region_id, r.name AS region_name,
+        c.division_id AS suggestion_division_id,
         ad_neighbor.name AS suggestion_division_name,
         ST_X(COALESCE(ad_neighbor.anchor_point, ST_Centroid(ad_neighbor.geom))) AS sugg_lng,
         ST_Y(COALESCE(ad_neighbor.anchor_point, ST_Centroid(ad_neighbor.geom))) AS sugg_lat,
         ST_X(gc.pt) AS gap_lng, ST_Y(gc.pt) AS gap_lat,
         COALESCE(ad_neighbor.geom_simplified_low, ad_neighbor.geom) AS neighbor_geom,
         gc.pt AS gap_pt
-      FROM administrative_divisions ad_neighbor
-      JOIN region_members rm ON rm.division_id = ad_neighbor.id
-      JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
+      FROM candidates c
+      JOIN administrative_divisions ad_neighbor ON ad_neighbor.id = c.division_id
+      JOIN regions r ON r.id = c.region_id
       CROSS JOIN gap_center gc
-      ORDER BY ad_neighbor.geom <-> gc.pt
-      LIMIT 15
     ),
     per_region AS (
       SELECT DISTINCT ON (region_id)
