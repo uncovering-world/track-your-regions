@@ -34,6 +34,7 @@ import {
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 import { ClusterCard } from './CvClusterCard';
 import { safeHref } from '../../utils/safeHref';
+import { getAISettings, updateAISetting } from '../../api/admin/ai';
 
 // ─── Cluster Suggestions ────────────────────────────────────────────────────
 
@@ -137,7 +138,6 @@ export function CvClusterSuggestionsSection({
 
   const handleOpenModelPicker = useCallback(async () => {
     try {
-      const { getAISettings } = await import('../../api/admin/ai');
       const { settings, models } = await getAISettings();
       const current = settings['model.cv_cluster_match'] || 'o4-mini';
       setModelPickerModels(models);
@@ -151,7 +151,6 @@ export function CvClusterSuggestionsSection({
 
   const handleSaveGlobalModel = useCallback(async () => {
     try {
-      const { updateAISetting } = await import('../../api/admin/ai');
       await updateAISetting('model.cv_cluster_match', modelPickerSelected);
       setAiModelOverride(null);
       setModelPickerOpen(false);

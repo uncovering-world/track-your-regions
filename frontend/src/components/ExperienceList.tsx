@@ -42,12 +42,11 @@ import { fetchExperienceKinds, type Experience, type ExperienceTreasure } from '
 import { unrejectExperience, removeExperienceFromRegion } from '../api/curation';
 import { useNavigation } from '../hooks/useNavigation';
 import { locationLabel } from '../utils/locationLabel';
-import { CurationDialog } from './shared/CurationDialog';
+import { LazyAddExperienceDialog, LazyCurationDialog } from './shared/lazyCurationDialogs';
 import { PointPreviewDialog } from './shared/PointPreviewDialog';
 import { WorkPreviewDialog } from './shared/WorkPreviewDialog';
 import { workToCorrect, type WorkToCorrect } from './shared/WorkCorrection';
 import type { LocationRowData } from './ExperienceList/LocationRow';
-import { AddExperienceDialog } from './shared/AddExperienceDialog';
 import { invalidateExperiences } from '../utils/queryInvalidation';
 import { LoadingSpinner } from './shared/LoadingSpinner';
 import { ExperienceListItem } from './ExperienceList/ExperienceListItem';
@@ -631,7 +630,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       )}
 
       {/* Curation Dialog (shared: edit, reject/unreject, take a verdict back) */}
-      <CurationDialog
+      <LazyCurationDialog
         experience={curationTarget}
         regionId={regionId}
         onClose={closeCuration}
@@ -684,7 +683,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
       {/* Add Experience to Region Dialog */}
       {regionId && (
-        <AddExperienceDialog
+        <LazyAddExperienceDialog
           open={addDialogState.open}
           onClose={closeAddDialog}
           regionId={regionId}

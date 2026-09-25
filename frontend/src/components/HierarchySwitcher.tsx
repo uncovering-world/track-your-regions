@@ -29,10 +29,15 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '../hooks/useNavigation';
 import { useAuth } from '../hooks/useAuth';
-import { WorldViewEditor } from './WorldViewEditor';
 import { createWorldView, updateWorldView, deleteWorldView } from '../api';
 import { getDeleteImpact, WORLD_VIEW_DESCRIPTION_MAX_LENGTH } from '../api/worldViews';
 import type { DeleteImpact } from '../api/worldViews';
+import { lazyChunk } from '../utils/lazyChunk';
+import { ChunkBoundary } from './shared/ChunkBoundary';
+
+// The editor is an admin's tool: loaded the first time it is opened, so a
+// visitor's bundle carries none of it (#643).
+const WorldViewEditor = lazyChunk(() => import('./WorldViewEditor').then(m => ({ default: m.WorldViewEditor })));
 
 export function HierarchySwitcher() {
   // The server already filters by visibility (requireVisibleWorldView /
@@ -41,6 +46,9 @@ export function HierarchySwitcher() {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [editorOpen, setEditorOpen] = useState(false);
+  // Mounted from its first opening on, as it always was mounted, so closing it
+  // keeps its state; before that nothing of it is loaded.
+  const [editorLoaded, setEditorLoaded] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -175,7 +183,7 @@ export function HierarchySwitcher() {
                 <ListItemText>Create world view</ListItemText>
               </MenuItem>
               {isCustomWorldView && (
-                <MenuItem onClick={() => { setAdminMenuEl(null); setEditorOpen(true); }}>
+                <MenuItem onClick={() => { setAdminMenuEl(null); setEditorLoaded(true); setEditorOpen(true); }}>
                   <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
                   <ListItemText>Edit regions</ListItemText>
                 </MenuItem>
@@ -192,15 +200,17 @@ export function HierarchySwitcher() {
       </Box>
 
       {/* World View Editor Dialog */}
-      {isCustomWorldView && (
-        <WorldViewEditor
-          open={editorOpen}
-          onClose={() => {
-            setEditorOpen(false);
-            invalidateTileCache();
-          }}
-          worldView={selectedWorldView}
-        />
+      {isCustomWorldView && editorLoaded && (
+        <ChunkBoundary>
+          <WorldViewEditor
+            open={editorOpen}
+            onClose={() => {
+              setEditorOpen(false);
+              invalidateTileCache();
+            }}
+            worldView={selectedWorldView}
+          />
+        </ChunkBoundary>
       )}
 
       {/* Create New World View Dialog */}

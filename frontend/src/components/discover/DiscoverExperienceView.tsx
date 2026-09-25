@@ -28,8 +28,7 @@ import { DiscoverExperienceList } from './DiscoverExperienceList';
 import { DiscoverHoverCard } from './DiscoverHoverCard';
 import { useAuth } from '../../hooks/useAuth';
 import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
-import { CurationDialog } from '../shared/CurationDialog';
-import { AddExperienceDialog } from '../shared/AddExperienceDialog';
+import { LazyAddExperienceDialog, LazyCurationDialog } from '../shared/lazyCurationDialogs';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
 import { SOURCE_ID, HIGHLIGHT_SOURCE_ID } from './discoverMapLayers';
@@ -605,7 +604,7 @@ export function DiscoverExperienceView({
         />
       )}
       {/* Curation Dialog */}
-      <CurationDialog
+      <LazyCurationDialog
         experience={curationTarget}
         regionId={activeView?.regionId ?? null}
         onClose={() => setCurationTarget(null)}
@@ -613,7 +612,7 @@ export function DiscoverExperienceView({
 
       {/* Add Experience Dialog */}
       {activeView?.regionId && (
-        <AddExperienceDialog
+        <LazyAddExperienceDialog
           open={addDialogOpen}
           onClose={() => setAddDialogOpen(false)}
           regionId={activeView.regionId}
