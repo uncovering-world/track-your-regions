@@ -763,9 +763,15 @@ export const CHECK_VALUES = {
     existence: ["extant", "lost"],
     source_membership: ["present", "former"],
   },
+  experience_sources: {
+    last_sync_status: ["success", "partial", "failed", "cancelled"],
+  },
   experience_sync_changes: {
     change_type: ["created", "updated", "conflict", "held", "contents", "missing", "returned", "failed", "filtered"],
     significance: ["major", "minor"],
+  },
+  experience_sync_logs: {
+    status: ["running", "success", "partial", "failed", "cancelled"],
   },
   experience_treasures: {
     curation_state: ["pending", "auto", "verified"],
@@ -774,6 +780,12 @@ export const CHECK_VALUES = {
     existence: ["extant", "lost"],
     source_membership: ["present", "former"],
     status: ["active", "draft", "archived"],
+  },
+  import_runs: {
+    status: ["running", "matching", "reviewing", "failed"],
+  },
+  region_import_state: {
+    match_status: ["no_candidates", "needs_review", "auto_matched", "manual_matched", "children_matched", "suggested"],
   },
   treasures: {
     curation_state: ["pending", "auto", "verified"],

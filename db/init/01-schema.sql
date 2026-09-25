@@ -2483,7 +2483,7 @@ CREATE TABLE IF NOT EXISTS experience_sources (
     api_config JSONB,
     is_active BOOLEAN DEFAULT true,
     last_sync_at TIMESTAMPTZ,
-    last_sync_status VARCHAR(50),  -- 'success', 'partial', 'failed'
+    last_sync_status VARCHAR(50) CHECK (last_sync_status IN ('success', 'partial', 'failed', 'cancelled')),
     last_sync_error TEXT,
     display_priority INTEGER NOT NULL DEFAULT 100,
     kind_id INTEGER REFERENCES experience_kinds(id),
@@ -2496,7 +2496,7 @@ COMMENT ON TABLE experience_sources IS 'Sources: the lists a sync reads to fill 
 ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS kind_id INTEGER REFERENCES experience_kinds(id);
 COMMENT ON COLUMN experience_sources.kind_id IS 'The kind this source fills (ADR-0045 decision 3). One kind per source today; a membership records which source brought it, so a kind can have several sources.';
 COMMENT ON COLUMN experience_sources.api_config IS 'Source-specific API configuration (pagination, auth, etc.)';
-COMMENT ON COLUMN experience_sources.last_sync_status IS 'Status of last sync: success, partial, or failed';
+COMMENT ON COLUMN experience_sources.last_sync_status IS 'How the source''s last sync ended: success, partial, failed or cancelled (CHECK; @tyr/shared/runStatuses)';
 COMMENT ON COLUMN experience_sources.display_priority IS 'Display order in experience list (lower = shown first)';
 
 ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS new_badge_days INTEGER NOT NULL DEFAULT 30;
@@ -2657,7 +2657,7 @@ CREATE TABLE IF NOT EXISTS experience_sync_logs (
     source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
     started_at TIMESTAMPTZ DEFAULT NOW(),
     completed_at TIMESTAMPTZ,
-    status VARCHAR(50) DEFAULT 'running',  -- 'running', 'success', 'partial', 'failed', 'cancelled'
+    status VARCHAR(50) DEFAULT 'running' CHECK (status IN ('running', 'success', 'partial', 'failed', 'cancelled')),
     total_fetched INTEGER DEFAULT 0,
     total_created INTEGER DEFAULT 0,
     total_updated INTEGER DEFAULT 0,
@@ -2668,7 +2668,7 @@ CREATE TABLE IF NOT EXISTS experience_sync_logs (
 );
 
 COMMENT ON TABLE experience_sync_logs IS 'Audit log for experience sync operations';
-COMMENT ON COLUMN experience_sync_logs.status IS 'Sync status: running, success, partial, failed, cancelled';
+COMMENT ON COLUMN experience_sync_logs.status IS 'Sync status: running, then success, partial, failed or cancelled (CHECK; @tyr/shared/runStatuses)';
 COMMENT ON COLUMN experience_sync_logs.triggered_by IS 'Admin user who triggered the sync (NULL for scheduled syncs)';
 
 CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_source ON experience_sync_logs(source_id);
@@ -3527,12 +3527,13 @@ CREATE TABLE IF NOT EXISTS import_runs (
     id SERIAL PRIMARY KEY,
     world_view_id INTEGER REFERENCES world_views(id) ON DELETE CASCADE,
     source_type VARCHAR(50) NOT NULL,  -- 'wikivoyage', 'osm', etc.
-    status VARCHAR(20) DEFAULT 'running',  -- running, matching, reviewing, finalized, failed
+    status VARCHAR(20) DEFAULT 'running' CHECK (status IN ('running', 'matching', 'reviewing', 'failed')),
     data_path TEXT,  -- filesystem path to raw JSON (/data/imports/{id}.json)
     stats JSONB,
     started_at TIMESTAMPTZ DEFAULT NOW(),
     completed_at TIMESTAMPTZ
 );
+COMMENT ON COLUMN import_runs.status IS 'Import run status: running, matching, reviewing, failed (CHECK; @tyr/shared/runStatuses)';
 
 CREATE INDEX IF NOT EXISTS idx_import_runs_wv ON import_runs(world_view_id);
 
@@ -3546,7 +3547,8 @@ CREATE TABLE IF NOT EXISTS region_import_state (
     import_run_id INTEGER REFERENCES import_runs(id) ON DELETE SET NULL,
     source_url TEXT,
     source_external_id TEXT,  -- wikidata ID, etc.
-    match_status VARCHAR(30) NOT NULL DEFAULT 'no_candidates',
+    match_status VARCHAR(30) NOT NULL DEFAULT 'no_candidates'
+      CHECK (match_status IN ('no_candidates', 'needs_review', 'auto_matched', 'manual_matched', 'children_matched', 'suggested')),
     needs_manual_fix BOOLEAN DEFAULT FALSE,
     fix_note TEXT,
     region_map_url TEXT,
@@ -3561,7 +3563,7 @@ CREATE INDEX IF NOT EXISTS idx_ris_status ON region_import_state(match_status);
 CREATE INDEX IF NOT EXISTS idx_ris_run ON region_import_state(import_run_id);
 
 COMMENT ON TABLE region_import_state IS 'Import metadata for regions created via WorldView Import (1:1 with region)';
-COMMENT ON COLUMN region_import_state.match_status IS 'Match lifecycle: no_candidates, needs_review, auto_matched, manual_matched, children_matched, suggested';
+COMMENT ON COLUMN region_import_state.match_status IS 'Match lifecycle: no_candidates, needs_review, auto_matched, manual_matched, children_matched, suggested (CHECK; @tyr/shared/runStatuses)';
 COMMENT ON COLUMN region_import_state.source_external_id IS 'External identifier from import source (e.g. Wikidata QID)';
 COMMENT ON COLUMN region_import_state.geo_available IS 'Whether a Wikidata geoshape is available for this region (NULL until checked)';
 COMMENT ON COLUMN region_import_state.hierarchy_reviewed IS 'True once an admin has run AI Review Children on this region';
