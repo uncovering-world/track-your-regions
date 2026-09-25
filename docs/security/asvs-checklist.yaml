@@ -364,7 +364,7 @@ chapters:
       desc: "No sensitive data in error messages"
       level: 1
       status: pass
-      notes: "500 errors masked in production (generic message). Stack traces never sent. Fixed 2026-02-10"
+      notes: "500 errors masked in production (generic message). Stack traces never sent. Fixed 2026-02-10. Handler-caught failures (admin import review, AI routes, the progress statuses of imports, runs, syncs and picture repairs, SSE errors, Catalogue Checks, the OAuth callbacks' redirects) answer fixed sentences and log the error; a sync's own log row still records its error for the history; ERROR_TEXT_RULES in backend/eslint.config.mjs refuses an error's own text in an answer (#1021, 2026-09-25)"
     V13.4.2:
       desc: "Production secret validation"
       level: 2

@@ -103,6 +103,10 @@ APPLE_KEY_ID=XXXXXXXXXX
 APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----"
 ```
 
+### A refused OAuth sign-in
+
+A callback that does not sign the person in redirects to `/auth/callback?error=…` with one of the strategies' own refusals (`OAUTH_REFUSALS` in `backend/src/auth/strategies/oauthRefusals.ts`: an email already registered with a password, an email the provider did not give) or "Authentication failed". Nothing else reaches that address (#1021). A thrown error's text is logged instead. A provider's `error_description`, which passport-oauth2 hands over as `info.message`, arrives on the callback's query string, so whoever sends the request controls it, and `oauthRefusal()` lets only the listed sentences through.
+
 ## Email Verification
 
 Local accounts (email/password) must verify their email before logging in. OAuth accounts (Google, Apple) are automatically verified.
