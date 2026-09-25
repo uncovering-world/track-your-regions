@@ -28,7 +28,9 @@ import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
-import { lockExperience, setLifecycleVerdict, recordDecisionOnExperience } from '../../db/experienceWriter.js';
+import {
+  lockExperience, setLifecycleVerdict, recordDecisionOnExperience, type LockedExperience,
+} from '../../db/experienceWriter.js';
 
 /** The object's two axes, as the columns' CHECK lists spell them. */
 type Membership = CheckValue<'experiences', 'source_membership'>;
@@ -253,7 +255,7 @@ export async function answerStateUnderLock(
  * one of its pending rows.
  */
 async function publishArrivalContents(
-  client: PoolClient, experienceId: number, publishes: boolean,
+  client: PoolClient, lock: LockedExperience, publishes: boolean,
 ): Promise<{
   locationsPublished: number;
   treasureLinksPublished: number;
@@ -272,7 +274,7 @@ async function publishArrivalContents(
   // so the two can never answer that question differently again: a
   // hand-written twin here would not have gained the `missing_since IS NULL`
   // guard the shared one already carries.
-  return publishContents(client, experienceId);
+  return publishContents(client, lock);
 }
 
 /**
@@ -530,7 +532,7 @@ export async function answerAdmissionUnderLock(
     await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
 
     ({ locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =
-      await publishArrivalContents(client, experienceId, publishes));
+      await publishArrivalContents(client, locked.lock, publishes));
 
     // No placement for the admission columns themselves. Placement's insert
     // predicate is the `offeredLocationSql` pair — still offered, and not gone

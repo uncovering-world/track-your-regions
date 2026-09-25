@@ -40,13 +40,14 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
-import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
+import { offeredLinkSql } from '../../db/readerPredicates.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
-import { contentsAnswerableSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
-import { lockExperience, recordDecisionOnExperience } from '../../db/experienceWriter.js';
+import { contentsAnswerableSql, unreadLinkSql } from './waitingCounts.js';
+import { lockExperience, recordDecisionOnExperience, type LockedExperience } from '../../db/experienceWriter.js';
+import { markUnreadPointsRefused, releaseDeferredWithdrawals } from './experienceLocationWriter.js';
 
 /** The reason a curator's refusal carries, in the words the kept-out list shows. */
 export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
@@ -271,7 +272,7 @@ export async function refuseContentsUnderLock(
     // Named ids narrow each kind the way `publishContents` narrows its
     // statements: a caller naming works alone touches no point.
     if (locationIds !== undefined || !anyNamed) {
-      points = await markPointsRefused(client, experienceId, locationIds);
+      points = await markPointsRefused(client, locked.lock, locationIds);
     }
     const locationsRefused = points.refused;
     if (treasureIds !== undefined || !anyNamed) {
@@ -339,54 +340,18 @@ export async function refuseContentsUnderLock(
  * The mark on the unread offered points — the named ones, or all of them —
  * and the withdrawal a refused point may have been holding back.
  *
- * A gated source that *moves* a point writes the new one `pending` and defers
- * the old one's withdrawal onto it (`locationWriter`), so readers keep the old
- * pin until the arrival is published — and only the publish released that
- * pairing. Refusing the arrival must release it too, or the old pin stays on
- * the map for ever with no question anywhere: the refused point is out of the
- * contents card, and the old one carries no `missing_since` for the withdrawn
- * card to see. The source dropped that place, and a curator turned down its
- * replacement, so the old point becomes what it is — a withdrawn point,
- * asking its own question (ADR-0026) — through the same two statements the
- * publish uses, in this transaction.
+ * A gated source that *moves* a point defers the old one's withdrawal onto the
+ * new one, and only an answer to the arrival releases it; refusing the arrival
+ * is an answer, so the old point becomes a withdrawn point asking its own
+ * question (ADR-0026), through the same release the publish uses
+ * (`releaseDeferredWithdrawals`), in this transaction.
  */
 async function markPointsRefused(
-  client: PoolClient, experienceId: number, locationIds?: number[],
+  client: PoolClient, lock: LockedExperience, locationIds?: number[],
 ): Promise<{ refused: number; withdrawalsReleased: number }> {
-  const named = locationIds !== undefined;
-  const points = await client.query(
-    `UPDATE experience_locations SET refused_at = NOW()
-      WHERE experience_id = $1 AND ${unreadPointSql('experience_locations')}
-        AND ${offeredLocationSql('experience_locations')}
-      ${named ? 'AND id = ANY($2::int[])' : ''}`,
-    named ? [experienceId, locationIds] : [experienceId],
-  );
-  const refused = points.rowCount ?? 0;
+  const refused = await markUnreadPointsRefused(client, lock, locationIds);
   if (refused === 0) return { refused, withdrawalsReleased: 0 };
-
-  // Every pairing a refused point of this object holds, not only this call's:
-  // a pairing left standing by an earlier refusal is the same stranded pin.
-  const released = await client.query(
-    `UPDATE experience_locations old
-        SET missing_since = NOW(), ordinal = NULL,
-            withdrawal_deferred_for_location_id = NULL
-       FROM experience_locations refused
-      WHERE refused.experience_id = $1
-        AND old.experience_id = $1
-        AND refused.withdrawal_deferred_for_location_id = old.id
-        AND refused.refused_at IS NOT NULL
-        AND old.missing_since IS NULL`,
-    [experienceId],
-  );
-  await client.query(
-    `UPDATE experience_locations
-        SET withdrawal_deferred_for_location_id = NULL
-      WHERE experience_id = $1
-        AND withdrawal_deferred_for_location_id IS NOT NULL
-        AND refused_at IS NOT NULL`,
-    [experienceId],
-  );
-  return { refused, withdrawalsReleased: released.rowCount ?? 0 };
+  return { refused, withdrawalsReleased: await releaseDeferredWithdrawals(client, lock, 'refused') };
 }
 
 /**

@@ -203,9 +203,10 @@ describe('refuseContents', () => {
     expect(mark).toBeGreaterThanOrEqual(0);
     expect(release).toBeGreaterThan(mark);
     expect(clear).toBeGreaterThan(release);
-    // Through the refused rows of this object, both sides scoped to it.
-    expect(updates[release]).toContain('refused.withdrawal_deferred_for_location_id = old.id');
-    expect(updates[release]).toContain('refused.refused_at IS NOT NULL');
+    // Through the refused arrivals of this object, both sides scoped to it — the
+    // publish's release, answered by a refusal (`releaseDeferredWithdrawals`).
+    expect(updates[release]).toContain('arrived.withdrawal_deferred_for_location_id = old.id');
+    expect(updates[release]).toContain('arrived.refused_at IS NOT NULL');
     expect(updates[release]).toContain('old.missing_since IS NULL');
     expect(updates[clear]).toContain('refused_at IS NOT NULL');
   });

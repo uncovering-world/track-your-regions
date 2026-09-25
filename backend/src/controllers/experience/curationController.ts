@@ -33,6 +33,7 @@ import {
   DISPLAYABLE_PICTURE_URL_MESSAGE,
 } from '../../types/urlSafety.js';
 import { lockExperience, updateExperienceColumns, insertCuratedExperience } from '../../db/experienceWriter.js';
+import { insertCuratedPoint } from './experienceLocationWriter.js';
 
 /**
  * The same rule the request schema applied, asked again where the value is
@@ -787,7 +788,7 @@ async function insertManualExperience(
   if (imageCredit) metadataObj.imageCredit = imageCredit;
   const metadata = Object.keys(metadataObj).length > 0 ? JSON.stringify(metadataObj) : null;
 
-  const experienceId = await insertCuratedExperience(client, {
+  const created = await insertCuratedExperience(client, {
     sourceId,
     externalId,
     name: body.name,
@@ -802,6 +803,7 @@ async function insertManualExperience(
     metadata,
     createdBy: userId,
   });
+  const experienceId = created.id;
 
   // The place's membership in the kind the curator chose, brought by that
   // kind's own source (ADR-0045 decision 4, #822; #819). Verified from the
@@ -816,17 +818,7 @@ async function insertManualExperience(
     )
   `, [experienceId, sourceId]);
 
-  const locResult = await client.query(`
-    INSERT INTO experience_locations (experience_id, name, ordinal, location, curation_state)
-    VALUES (
-      $1, $2, 0, ST_SetSRID(ST_MakePoint($3, $4), 4326),
-      -- Same reasoning as the experience row above: the curator placed this
-      -- point by hand, so it carries the same verdict.
-      'verified'
-    )
-    RETURNING id
-  `, [experienceId, body.name, body.longitude, body.latitude]);
-  const locationId = locResult.rows[0].id as number;
+  const locationId = await insertCuratedPoint(client, created, body.name, body.longitude, body.latitude);
 
   await client.query(`
     INSERT INTO experience_regions (experience_id, region_id, assignment_type, assigned_by)

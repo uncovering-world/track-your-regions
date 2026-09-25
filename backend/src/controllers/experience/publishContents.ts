@@ -16,8 +16,10 @@ import { pool } from '../../db/index.js';
 import {
   assignRegionsForExperiences, worldViewsWithGeometry,
 } from '../../services/sync/regionAssignmentService.js';
-import { offeredLinkSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { linkNotRefusedSql, unreadPointSql } from './waitingCounts.js';
+import { offeredLinkSql } from '../../db/readerPredicates.js';
+import { linkNotRefusedSql } from './waitingCounts.js';
+import { publishUnreadPoints, releaseDeferredWithdrawals } from './experienceLocationWriter.js';
+import type { LockedExperience } from '../../db/experienceWriter.js';
 
 /**
  * Publish the unread points and works — the named ones, or all of them.
@@ -42,7 +44,7 @@ import { linkNotRefusedSql, unreadPointSql } from './waitingCounts.js';
  */
 export async function publishContents(
   client: PoolClient,
-  experienceId: number,
+  lock: LockedExperience,
   locationIds?: number[],
   treasureIds?: number[],
 ): Promise<{
@@ -55,103 +57,23 @@ export async function publishContents(
 
   let locationsPublished = 0;
   if (locationIds !== undefined || !anyNamed) {
-    const named = locationIds !== undefined;
-    // The predicate matches the `contents` card exactly — that query takes it from
-    // `offeredLocationSql` on the same table — and the two have to move together:
-    // the card is what asks the question this statement answers, so a row the card
-    // never showed must not be something this can publish, and a row it shows must
-    // be something this reaches. Both terms, therefore: since ADR-0026 the fragment
-    // also hides a point a curator declared gone from the world, and publishing one
-    // would record a curator as having passed a component another curator called
-    // demolished.
-    //
-    // Not merely cosmetic, and not "publishing it changes nothing on screen"
-    // either — that is true only for as long as the point stays withdrawn.
-    // `locationWriter`'s "offering it again" arm clears `missing_since` and
-    // deliberately leaves `curation_state` alone, so a point published while
-    // withdrawn reappears on the map already marked `verified`: a coordinate no
-    // card ever put in front of a curator, recorded as one a curator passed.
-    const result = await client.query(
-      `UPDATE experience_locations SET curation_state = 'verified'
-        WHERE experience_id = $1 AND ${unreadPointSql('experience_locations')}
-          AND ${offeredLocationSql('experience_locations')}
-        ${named ? 'AND id = ANY($2::int[])' : ''}`,
-      named ? [experienceId, locationIds] : [experienceId],
-    );
-    locationsPublished = result.rowCount ?? 0;
+    // Exactly the points the `contents` card shows (`publishUnreadPoints` says why).
+    locationsPublished = await publishUnreadPoints(client, lock, locationIds);
   }
 
-  // A point that moved is a withdrawal plus an insert, and `locationWriter` held
-  // the withdrawal back so a reader would not watch the old pin vanish while its
-  // replacement was invisible. This is the moment the two swap, and it is in this
-  // transaction because on either side of a COMMIT the place exists twice or not
-  // at all.
-  //
-  // Driven off the arrival's own column rather than off the ids just published:
-  // the pairing is on the new row and names the old one, so this reads it from the
-  // row it is publishing instead of searching for a partner. `<> 'pending'` is
-  // what makes it "now that a reader can see it" — the statement above is the only
-  // thing that can have made that true, since `locationWriter` writes a pairing
-  // only onto a `pending` row.
-  //
-  // `old.missing_since IS NULL` so nothing is withdrawn twice: a second publish
-  // of the same point must not restamp the date on which its predecessor stopped
-  // being offered.
-  //
-  // Both sides are scoped to this experience, not only the arrival. The writer
-  // never pairs across objects, and the foreign key does not say so — this is the
-  // one statement in the endpoint that could reach a row whose scope the caller
-  // was not checked against, so it says so itself.
-  //
-  // **The released point's own pairing goes with it**, mirroring the writer's
-  // withdraw statement, which clears the pairing of every row it marks and for the
-  // same reason: a withdrawn row can never be published, so a pairing left on it
-  // would hold the point *it* named visible with nothing able to release it. This
-  // is the floor rather than the fix — `locationWriter`'s `withdrawn` CTE takes
-  // visible rows only, so a chain of pairings cannot form in the first place — and
-  // both are here on purpose. Prevention costs a reader nothing; without the floor,
-  // a chain arriving by some route the writer does not cover leaves a duplicate pin
-  // for up to one source interval, and the failure it guards is permanent and
-  // needs hand-written SQL to undo.
+  // A point that moved is a withdrawal plus an insert, and the location writer
+  // held the withdrawal back until the arrival is answered: this is the moment the
+  // two swap, in this transaction (`releaseDeferredWithdrawals` says why).
   let withdrawalsReleased = 0;
   if (locationsPublished > 0) {
-    const released = await client.query(
-      `UPDATE experience_locations old
-        SET missing_since = NOW(), ordinal = NULL,
-            withdrawal_deferred_for_location_id = NULL
-        FROM experience_locations arrived
-       WHERE arrived.experience_id = $1
-         AND old.experience_id = $1
-         AND arrived.withdrawal_deferred_for_location_id = old.id
-         AND ${publishedContentSql('arrived')}
-         AND old.missing_since IS NULL`,
-      [experienceId],
-    );
-    withdrawalsReleased = released.rowCount ?? 0;
-
-    // The pairing has done its work and must not outlive it. Left standing, a run
-    // that offers the old point again clears its `missing_since`, and the next run
-    // to withdraw it finds the stale pointer and holds it for ever — there is no
-    // second arrival left for anyone to publish.
-    //
-    // Unconditional on which rows the release above matched: a pairing whose point
-    // some other path had already withdrawn matched nothing there, and is just as
-    // finished.
-    await client.query(
-      `UPDATE experience_locations
-        SET withdrawal_deferred_for_location_id = NULL
-       WHERE experience_id = $1
-         AND withdrawal_deferred_for_location_id IS NOT NULL
-         AND ${publishedContentSql('experience_locations')}`,
-      [experienceId],
-    );
+    withdrawalsReleased = await releaseDeferredWithdrawals(client, lock, 'published');
   }
 
   let treasureLinksPublished = 0;
   let treasuresPublished = 0;
   if (treasureIds !== undefined || !anyNamed) {
     const named = treasureIds !== undefined;
-    const args = named ? [experienceId, treasureIds] : [experienceId];
+    const args = named ? [lock.id, treasureIds] : [lock.id];
     // Two states from one id, because they are two facts: the link says this
     // work has been passed as being *here*, the work says it has been passed at
     // all — "checked once, globally" (ADR-0025 decision 2). A reader's treasure

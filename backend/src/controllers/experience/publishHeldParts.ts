@@ -31,10 +31,17 @@ import type { ContentKind, ContentsByKind, ContentItemChange } from '../../servi
 // The part a publish wrote to and the part it could not reach are the response's
 // own shapes, and the audit row records the same ones (ADR-0066).
 import type { AppliedPart, PartNotFound } from '../../api/responses/curation.js';
+import { renamePoint } from './experienceLocationWriter.js';
+import type { LockedExperience } from '../../db/experienceWriter.js';
 
-/** One statement the plan will run, with the part it is about. */
+/**
+ * One write the plan will make, with the part it is about: a point's held name,
+ * which goes through the point writer under the object's token, or a work's
+ * statement. Empty where every held field was claimed since.
+ */
 interface PlannedWrite {
   part: AppliedPart;
+  point?: { id: number; name: string | null };
   sql: string;
   params: unknown[];
 }
@@ -142,16 +149,14 @@ async function lockPart(
 }
 
 /**
- * The statement that writes the held fields of one part, or null where every
- * one of them was claimed since — nothing to write, and the part is reported
- * with its skipped fields so the curator sees why.
+ * The write of the held fields of one part, or null where every one of them was
+ * claimed since — nothing to write, and the part is reported with its skipped
+ * fields so the curator sees why.
  */
 function writeFor(
   kind: ContentKind, rowId: number, writable: ContentItemChange['fields'],
-): { sql: string; params: unknown[] } | null {
+): { point?: { id: number; name: string | null }; sql: string; params: unknown[] } | null {
   if (writable.length === 0) return null;
-  const params: unknown[] = [rowId];
-  const bind = (value: unknown) => `$${params.push(value)}`;
 
   if (kind === 'locations') {
     // `name` is the one writable column, so this is one assignment. Tidied at
@@ -159,11 +164,11 @@ function writeFor(
     // the run of spaces the run saw, and publishing it verbatim would put back
     // into the column what migration 047 took out.
     const name = writable[0].new;
-    return {
-      sql: `UPDATE experience_locations SET name = ${bind(typeof name === 'string' ? tidyLabel(name) : null)} WHERE id = $1`,
-      params,
-    };
+    return { point: { id: rowId, name: typeof name === 'string' ? tidyLabel(name) : null }, sql: '', params: [] };
   }
+
+  const params: unknown[] = [rowId];
+  const bind = (value: unknown) => `$${params.push(value)}`;
 
   const assignments: string[] = [];
   for (const field of writable) {
@@ -266,7 +271,7 @@ async function planOnePart(
   };
   const write = writeFor(kind, row.id, writable);
   return {
-    write: { part, sql: write?.sql ?? '', params: write?.params ?? [] },
+    write: { part, point: write?.point, sql: write?.sql ?? '', params: write?.params ?? [] },
     written: writable.map(field => ({ row: partRow(kind, entry, field.field), value: field.new })),
   };
 }
@@ -351,11 +356,17 @@ export async function planHeldPartWrites(
   return plan;
 }
 
-/** Run the plan's statements, and say which parts were written to. */
-export async function applyHeldPartWrites(client: PoolClient, plan: HeldPartPlan): Promise<AppliedPart[]> {
+/**
+ * Make the plan's writes, under the object's lock, and say which parts were
+ * written to.
+ */
+export async function applyHeldPartWrites(
+  client: PoolClient, lock: LockedExperience, plan: HeldPartPlan,
+): Promise<AppliedPart[]> {
   const applied: AppliedPart[] = [];
   for (const write of plan.writes) {
-    if (write.sql) await client.query(write.sql, write.params);
+    if (write.point) await renamePoint(client, lock, write.point.id, write.point.name);
+    else if (write.sql) await client.query(write.sql, write.params);
     applied.push(write.part);
   }
   return applied;

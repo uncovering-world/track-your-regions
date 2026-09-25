@@ -36,9 +36,12 @@
  *   one `BEGIN` — is under the rule for exactly that reason, and takes the object
  *   first.
  * - `createManualExperience` inserts the object and then its point in one
- *   transaction. The INSERT's own row lock *is* the "object first" the rule asks
- *   for, and no other transaction can hold a row of an object that did not exist
- *   when it began.
+ *   transaction, and takes no separate lock: its object is new, not existing,
+ *   and the INSERT's own row lock *is* the "object first" the order asks for,
+ *   since no other transaction can hold a row of an object that did not exist
+ *   when it began. Outside the order's statement, then, but not outside the
+ *   token: `insertCuratedExperience` hands back the token for that row lock,
+ *   and the point insert that follows spends it like every other point write.
  * - Missing detection's mark (`flagMissingExperiences`) and the picture repair
  *   (`writeFoundPicture`, `clearUnshowablePicture`) each write `experiences` in
  *   one statement on the pool, with no `BEGIN`. The statement's own row locks

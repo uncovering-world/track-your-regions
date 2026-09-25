@@ -23,6 +23,7 @@ import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
+import { releaseAnchorPointClaim, movePointTo } from './experienceLocationWriter.js';
 
 /**
  * Apply the value a sync proposed for a field the curator had claimed.
@@ -314,20 +315,9 @@ async function applyProposedFields(
     // about. Where the object holds one visible point this is that point, which
     // is the case the rule was written for.
     const pointRelease = open.some(p => claimKeyFor(p.field) === 'location')
-      ? await client.query(
-        `UPDATE experience_locations el
-            -- Qualified on the right-hand side: both tables carry the column, and
-            -- unqualified it is ambiguous rather than wrong-but-working.
-            SET curated_fields = el.curated_fields - 'location'
-           FROM experiences e
-          WHERE e.id = $1 AND el.experience_id = e.id
-            AND el.curated_fields ? 'location'
-            AND el.location = e.location
-          RETURNING el.id, el.external_ref, el.name`,
-        [experienceId],
-      )
-      : { rows: [] as Array<{ id: number; external_ref: string | null; name: string | null }> };
-    const releasedPoints = pointRelease.rows.map(r => r.id);
+      ? await releaseAnchorPointClaim(client, locked.lock)
+      : [];
+    const releasedPoints = pointRelease.map(r => r.id);
 
     // **And the coordinate goes onto the row, here, rather than at the next run.**
     //
@@ -358,7 +348,7 @@ async function applyProposedFields(
       proposal.rows[0].contents as { locations?: { changed?: ContentItemChange[] } } | null
     )?.locations?.changed ?? [];
     const movedPoints: number[] = [];
-    for (const row of pointRelease.rows) {
+    for (const row of pointRelease) {
       // Named, never identified by id — that is what the contents record stores
       // (see the column comment), so the row is found by the source's own handle
       // on it, and by name only where there is no handle.
@@ -392,12 +382,7 @@ async function applyProposedFields(
       const point = entry?.fields.find(f => f.field === 'location')?.new as
         { lon: number; lat: number } | undefined;
       if (!point) continue;
-      await client.query(
-        `UPDATE experience_locations
-            SET location = ST_SetSRID(ST_MakePoint($2, $3), 4326)
-          WHERE id = $1`,
-        [row.id, point.lon, point.lat],
-      );
+      await movePointTo(client, locked.lock, row.id, point.lon, point.lat);
       movedPoints.push(row.id);
     }
 

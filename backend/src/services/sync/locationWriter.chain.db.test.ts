@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { publishContents } from '../../controllers/experience/publishContents.js';
 import { writeExperienceLocations } from './locationWriter.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /**
  * The pairing chain, executed against PostgreSQL (#522).
@@ -73,7 +74,10 @@ async function publish(locationIds?: number[]) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const result = await publishContents(client, EXPERIENCE_ID, locationIds);
+    // The object first, as the publish handler takes it: the writer requires its token.
+    const locked = await lockExperience(client, EXPERIENCE_ID);
+    if (!locked) throw new Error('the fixture object is gone');
+    const result = await publishContents(client, locked.lock, locationIds);
     await client.query('COMMIT');
     return result;
   } catch (err) {
