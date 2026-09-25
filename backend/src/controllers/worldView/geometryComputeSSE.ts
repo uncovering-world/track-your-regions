@@ -562,7 +562,7 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
       type: 'error',
       message: isTimeout
         ? 'Query timeout - region is too large. Consider using a hull instead.'
-        : errorMessage,
+        : 'The geometry could not be computed; the server log has the cause.',
       elapsed: elapsed(),
     });
   }

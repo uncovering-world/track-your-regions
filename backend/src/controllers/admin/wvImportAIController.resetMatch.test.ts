@@ -87,7 +87,8 @@ describe('resetMatch (#335 — atomicity)', () => {
     expect(sqlCalls).toContain('ROLLBACK');
     expect(sqlCalls).not.toContain('COMMIT');
     expect(res._status).toBe(500);
-    expect(res._body).toMatchObject({ error: expect.stringMatching(/connection terminated/) });
+    // A sentence for the admin, never the driver's text (#1021).
+    expect(res._body).toEqual({ error: 'Reset match failed' });
   });
 
   it('always releases the client (try/finally)', async () => {
@@ -122,7 +123,8 @@ describe('resetMatch (#335 — atomicity)', () => {
     expect(mockClientQuery).not.toHaveBeenCalled();
     expect(mockClientRelease).not.toHaveBeenCalled();
     expect(res._status).toBe(500);
-    expect(res._body).toMatchObject({ error: expect.stringMatching(/pool exhausted/) });
+    // A sentence for the admin, never the driver's text (#1021).
+    expect(res._body).toEqual({ error: 'Reset match failed' });
   });
 
   it('still returns 500 when ROLLBACK itself throws (dead connection)', async () => {
@@ -139,7 +141,8 @@ describe('resetMatch (#335 — atomicity)', () => {
     await resetMatch(makeReq(), res);
 
     expect(res._status).toBe(500);
-    expect(res._body).toMatchObject({ error: expect.stringMatching(/connection terminated/) });
+    // A sentence for the admin, never the driver's text (#1021).
+    expect(res._body).toEqual({ error: 'Reset match failed' });
     expect(mockClientRelease).toHaveBeenCalledTimes(1);
   });
 });

@@ -54,6 +54,18 @@ describe('fixUnescoImages', () => {
 
     expect(writes()).toEqual([]);
     expect(runningSyncs.get(1)?.status).toBe('failed');
+    // The repair writes no sync log, so this sentence is the admin's only
+    // word that nothing changed and a retry will help: it is reader-facing,
+    // and passes through where a library's text would not (#1021).
+    expect(runningSyncs.get(1)?.statusMessage).toBe('Wikidata did not answer, so nothing was changed — try again later');
+  });
+
+  it('says only where the cause is when something else stops it', async () => {
+    mockedFacts.mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:443'));
+
+    await expect(fixUnescoImages(null)).rejects.toThrow('ECONNREFUSED');
+
+    expect(runningSyncs.get(1)?.statusMessage).toBe('the server log has the cause.');
   });
 
   it('takes a portal picture off a site Wikidata states none for', async () => {

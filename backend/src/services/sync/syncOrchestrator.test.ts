@@ -47,7 +47,7 @@ vi.mock('./missingDetection.js', () => ({
 
 import { orchestrateSync, getSyncStatus, cancelSync, isCancellable } from './syncOrchestrator.js';
 import { runningSyncs, type SyncProgress } from './types.js';
-import { annotateClosedSyncLog } from './syncUtils.js';
+import { annotateClosedSyncLog, createSyncLog, updateSyncLog } from './syncUtils.js';
 import { restoreAdmission, markIconic } from './admission.js';
 import { assignRegionsForExperiences } from './regionAssignmentService.js';
 import {
@@ -127,7 +127,29 @@ describe('orchestrateSync', () => {
 
     const status = runningSyncs.get(TEST_SOURCE_ID);
     expect(status?.status).toBe('failed');
-    expect(status?.statusMessage).toBe('API down');
+    // A sentence for the card; 'API down' is the run log's and the server's (#1021).
+    expect(status?.statusMessage).toBe('its entry in the sync history has the cause.');
+  });
+
+  it('points at the server log when the run never wrote a history entry', async () => {
+    // The database down as the run starts: createSyncLog fails inside the
+    // try, so there is no row in the sync history to point at.
+    vi.mocked(createSyncLog).mockRejectedValueOnce(new Error('connection terminated'));
+
+    await expect(orchestrateSync(makeConfig(), null)).rejects.toThrow('connection terminated');
+
+    expect(runningSyncs.get(TEST_SOURCE_ID)?.statusMessage).toBe('the server log has the cause.');
+  });
+
+  it('points at the server log when the history row could not be updated', async () => {
+    // The database lost mid-run: the row exists but never gets the cause, so
+    // the history would show a run with no reason.
+    vi.mocked(updateSyncLog).mockRejectedValueOnce(new Error('connection terminated'));
+    const config = makeConfig({ fetchItems: vi.fn().mockRejectedValue(new Error('API down')) });
+
+    await expect(orchestrateSync(config, null)).rejects.toThrow();
+
+    expect(runningSyncs.get(TEST_SOURCE_ID)?.statusMessage).toBe('the server log has the cause.');
   });
 
   it('should clean up runningSyncs after 30s delay', async () => {

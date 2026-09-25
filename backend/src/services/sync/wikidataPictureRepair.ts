@@ -9,6 +9,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { sentenceFor } from '../../api/readerFacingError.js';
 import { fetchCommonsCredits, type ImageCredit } from './imageCredit.js';
 import { writeFoundPicture } from './pictureRepair.js';
 import { fetchEntityDetails, isQid } from './museum/queries.js';
@@ -215,10 +216,12 @@ export function makeWikidataPictureRepair(
         '%s Fix images complete: %d updated, %d no image found%s', logPrefix, fixed, failed, curated,
       );
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
       progress.status = progress.cancel ? 'cancelled' : 'failed';
-      progress.statusMessage = errorMsg;
-      console.error('%s Fix images failed:', logPrefix, errorMsg);
+      // The card puts "The picture repair failed: " before it.
+      progress.statusMessage = progress.cancel
+        ? 'Cancelled.'
+        : sentenceFor(err, 'the server log has the cause.');
+      console.error('%s Fix images failed:', logPrefix, err);
       throw err;
     } finally {
       const thisProgress = progress;

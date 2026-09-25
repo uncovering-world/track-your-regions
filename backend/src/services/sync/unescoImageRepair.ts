@@ -21,6 +21,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { ReaderFacingError, sentenceFor } from '../../api/readerFacingError.js';
 import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
 import {
   fetchCommonsCredits, readStoredCredits, type ImageCredit, type StoredCredit,
@@ -223,7 +224,7 @@ export async function fixUnescoImages(_triggeredBy: number | null): Promise<void
     // report the work complete. So the repair stops here, with the rows as they
     // were, and says why.
     if (!facts) {
-      throw new Error('Wikidata did not answer, so nothing was changed — try again later');
+      throw new ReaderFacingError('Wikidata did not answer, so nothing was changed — try again later');
     }
 
     const credits = await creditsFor(
@@ -242,12 +243,15 @@ export async function fixUnescoImages(_triggeredBy: number | null): Promise<void
       + `, ${report.untouched} had none either way${curated}`;
     console.log(`${LOG_PREFIX} Fix images complete: ${progress.statusMessage}`);
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
     progress.status = progress.cancel ? 'cancelled' : 'failed';
-    progress.statusMessage = errorMsg;
+    // The card puts "The picture repair failed: " before it, and says a
+    // cancelled run was cancelled in its own words.
+    progress.statusMessage = progress.cancel
+      ? 'Cancelled.'
+      : sentenceFor(err, 'the server log has the cause.');
     // A literal first argument, as the museum repair logs it: the message is
     // the format string, and one built from a variable is what Semgrep flags.
-    console.error('[UNESCO Sync] Fix images failed:', errorMsg);
+    console.error('[UNESCO Sync] Fix images failed:', err);
     throw err;
   } finally {
     // The captured reference, so a later run's entry is never the one deleted.

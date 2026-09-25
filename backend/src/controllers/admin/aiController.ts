@@ -48,10 +48,8 @@ export async function updatePricing(_req: AuthenticatedRequest, res: Response): 
   try {
     result = await updatePricingFromRemote();
   } catch (err) {
-    res.status(502).json({
-      error: 'Failed to update pricing',
-      message: err instanceof Error ? err.message : String(err),
-    });
+    console.error('[AI] Pricing update failed:', err);
+    res.status(502).json({ error: 'Could not fetch model prices from the provider.' });
     return;
   }
   respond(res, PricingUpdated, result);

@@ -330,11 +330,10 @@ export async function assignExperiencesToRegions(
     return progress;
 
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
     progress.status = 'failed';
-    progress.statusMessage = errorMsg;
+    progress.statusMessage = 'Region assignment failed; the server log has the cause.';
     progress.errors++;
-    console.error(`[Region Assignment] Failed:`, errorMsg);
+    console.error('[Region Assignment] Failed:', err);
     throw err;
   } finally {
     // Clean up after delay, but only if this assignment's progress is still current

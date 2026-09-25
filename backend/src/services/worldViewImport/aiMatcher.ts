@@ -95,7 +95,7 @@ export function startAIMatching(worldViewId: number): AIMatchProgress {
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- worldViewId is a number
     console.error(`[AI Matcher] Error for worldView ${worldViewId}:`, err);
     progress.status = 'failed';
-    progress.statusMessage = `Failed: ${err instanceof Error ? err.message : String(err)}`;
+    progress.statusMessage = 'AI matching failed; the server log has the cause.';
   }).finally(() => {
     // Clean up after 5 minutes
     const thisProgress = progress;

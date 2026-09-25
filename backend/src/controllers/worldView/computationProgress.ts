@@ -325,7 +325,7 @@ export async function computeWorldViewGeometries(req: Request, res: Response): P
     // the cleanup timer fires.
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- worldViewId is a number
     console.error(`[Geometry] Pipeline error for hierarchy ${worldViewId}:`, err);
-    progressState.status = `Error: ${err instanceof Error ? err.message : String(err)}`;
+    progressState.status = 'Error: the computation stopped; the server log has the cause.';
   } finally {
     // Keep status available for ~30s for a final poll, then clean up.
     setTimeout(() => runningComputations.delete(worldViewId), 30000);

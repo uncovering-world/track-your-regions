@@ -513,7 +513,7 @@ async function runExtraction(
     );
   } catch (err) {
     progress.status = 'failed';
-    progress.statusMessage = `Extraction failed: ${err instanceof Error ? err.message : String(err)}`;
+    progress.statusMessage = 'Extraction failed; the server log has the cause.';
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- opId is generated here as wv-extract-<counter> and the elapsed time is a number
     console.error(`[WV Extract] ${opId} failed after ${((Date.now() - startTime) / 1000).toFixed(1)}s:`, err);
   } finally {

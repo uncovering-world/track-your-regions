@@ -666,12 +666,7 @@ export async function hierarchyReview(
     };
   } catch (err) {
     console.error('[AI Hierarchy Review] Error:', err);
-    res
-      .status(500)
-      .json({
-        error:
-          err instanceof Error ? err.message : 'AI hierarchy review failed',
-      });
+    res.status(500).json({ error: 'AI hierarchy review failed' });
     return;
   }
   respond(res, HierarchyReviewResult, body);

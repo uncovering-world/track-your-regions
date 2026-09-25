@@ -418,7 +418,7 @@ export async function getChildrenCoverage(req: AuthenticatedRequest, res: Respon
     body = { coverage, geoshapeCoverage };
   } catch (err) {
     console.error('[WV Import] Children coverage failed:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Children coverage failed' });
+    res.status(500).json({ error: 'Children coverage failed' });
     return;
   }
   respond(res, ChildrenCoverage, body);
@@ -527,7 +527,7 @@ export async function getCoverageGeometry(req: AuthenticatedRequest, res: Respon
     body = { parentGeometry, childrenGeometry, geoshapeGeometry };
   } catch (err) {
     console.error('[WV Import] Coverage geometry failed:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Coverage geometry failed' });
+    res.status(500).json({ error: 'Coverage geometry failed' });
     return;
   }
   respond(res, CoverageGeometry, body);
@@ -859,7 +859,7 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
     body = await coverageGapAnalysisOf(worldViewId, regionId);
   } catch (err) {
     console.error('[WV Import] Coverage gap analysis failed:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Coverage gap analysis failed' });
+    res.status(500).json({ error: 'Coverage gap analysis failed' });
     return;
   }
   respond(res, CoverageGapAnalysis, body);
@@ -891,7 +891,7 @@ export async function getChildrenRegionGeometry(req: AuthenticatedRequest, res: 
     }
   } catch (err) {
     console.error('[WV Import] Children region geometry failed:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Children region geometry failed' });
+    res.status(500).json({ error: 'Children region geometry failed' });
     return;
   }
   respond(res, ChildRegionGeometries, body);

@@ -26,6 +26,7 @@ import { catalogueAssertions } from './dataAssertions/catalogueAssertions.js';
 import {
   assess,
   readAcceptedNumbers,
+  couldNotRun,
   runCatalogueAssertions,
   toReport,
 } from './dataAssertions/runCatalogueAssertions.js';
@@ -163,7 +164,7 @@ export async function acceptDataAssertion(req: AuthenticatedRequest, res: Respon
     // Nothing is recorded for an assertion that could not run: a zero written
     // here would turn a broken query into a clean bill of health, and the next
     // report would read its silence as debt somebody answered for.
-    res.status(503).json({ error: `The assertion could not be run: ${outcome.error.message}` });
+    res.status(503).json({ error: couldNotRun(outcome.error) });
     return;
   }
 

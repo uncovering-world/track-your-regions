@@ -72,7 +72,7 @@ export async function rematchWorldView(req: AuthenticatedRequest, res: Response)
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- worldViewId is a number
     console.error(`[WV Import] Rematch error for worldView ${worldViewId}:`, err);
     progress.status = 'failed';
-    progress.statusMessage = `Re-match failed: ${err instanceof Error ? err.message : String(err)}`;
+    progress.statusMessage = 'Re-match failed; the server log has the cause.';
   }).finally(() => {
     const thisEntry = runningRematches.get(worldViewId);
     setTimeout(() => {

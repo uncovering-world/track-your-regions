@@ -3,6 +3,7 @@ import passport from 'passport';
 import AppleStrategy from 'passport-apple';
 import { findUserByEmail, findUserByProvider, createUser } from '../../services/authService.js';
 import { maybePromoteToAdmin } from '../../services/adminBootstrap.js';
+import { OAUTH_REFUSALS } from './oauthRefusals.js';
 
 /**
  * Apple Sign-In Strategy
@@ -86,13 +87,13 @@ export function configureAppleStrategy(): void {
                   emailVerified: user.emailVerified,
                 });
               }
-              return done(null, false, { message: 'An account with this email already exists. Please log in with your password.' });
+              return done(null, false, { message: OAUTH_REFUSALS.emailTaken });
             }
           }
 
           // Create new user
           if (!email) {
-            return done(null, false, { message: 'Email is required for registration' });
+            return done(null, false, { message: OAUTH_REFUSALS.emailRequired });
           }
 
           user = await createUser({
