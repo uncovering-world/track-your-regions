@@ -387,6 +387,8 @@ Registration is bounded by what the columns hold, alongside the password rules a
 
 The display name reads its width from `COLUMN_WIDTHS` in `backend/src/db/schema.generated.ts` (ADR-0064), and the email's tighter literal carries its reason; the reasoning behind bounding a request field by its column is in `world-views.md` § "Field limits".
 
+The display name is trimmed at registration (`registerSchema`), and one that is blank after the trim is refused: a name of spaces would otherwise be stored and later shown as a blank curator, "turned down by " with nothing after it (#998). The Google and Apple strategies trim the provider's name before their fallback to the email's local part, so a blank one takes the same fallback as none. The column stays nullable, so every screen that names a person reads the name through `displayNameOf` (`frontend/src/utils/displayName.ts`) and applies its own fallback, and a read that names a curator in SQL falls back the same way, trimming every whitespace character as the web's `trim` does (the review queue's claims and decisions).
+
 ## Frontend Integration
 
 The frontend automatically:
