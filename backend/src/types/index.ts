@@ -21,7 +21,10 @@ export * from './worldViewImportSchemas.js';
 export const worldViewIdSchema = z.coerce.number().int().positive().default(1);
 export const divisionIdSchema = z.coerce.number().int().positive();
 export const regionIdSchema = z.coerce.number().int().positive();
-export const detailLevelSchema = z.enum(['low', 'medium', 'high']).default('medium');
+// How much of a division's boundary to send: the stored simplifications for a
+// preview, the full shape by default, since the cutting tools store what they
+// cut from it (#1010).
+export const detailLevelSchema = z.enum(['low', 'medium', 'high']).default('high');
 export const booleanStringSchema = z.enum(['true', 'false']).default('false');
 export const limitSchema = z.coerce.number().int().min(1).max(1000).default(100);
 export const offsetSchema = z.coerce.number().int().min(0).default(0);
@@ -38,9 +41,7 @@ export const getSubdivisionsQuerySchema = z.object({
 });
 
 export const getGeometryQuerySchema = z.object({
-  worldViewId: worldViewIdSchema,
   detail: detailLevelSchema,
-  resolveEmpty: booleanStringSchema,
 });
 
 export const searchQuerySchema = z.object({
