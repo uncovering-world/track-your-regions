@@ -11,6 +11,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import {
   trigramSearch,
 } from '../../services/worldViewImport/aiMatcher.js';
+import { descendantSearchScopes } from '../../services/worldViewImport/dbSearchMatcher.js';
 import { getOrFetchGeoshape, computeIoU } from '../../services/worldViewImport/geoshapeCache.js';
 import { computeDivisionCoverage } from '../../services/worldViewImport/geoshapeCoverage.js';
 import {
@@ -354,9 +355,11 @@ async function findTrigramCandidatesForLeaves(
   const trigramMatches: TrigramMatch[] = [];
   const unmatched: Array<{ id: number; name: string }> = [];
   const usedDivisionIds = new Set<number>();
+  // A leaf is searched inside its matched container, never worldwide (#1035).
+  const scopes = await descendantSearchScopes(leaves.map(l => l.id));
 
   for (const leaf of leaves) {
-    const candidates = await trigramSearch(leaf.name, 5);
+    const candidates = await trigramSearch(leaf.name, 5, scopes.get(leaf.id));
     const best = candidates.find(c => c.similarity >= 0.5 && !usedDivisionIds.has(c.divisionId));
 
     if (!best) {
