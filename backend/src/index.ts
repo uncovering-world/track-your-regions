@@ -91,6 +91,10 @@ const startServer = async () => {
 
   // Mark any orphaned 'running' sync logs as failed (e.g., from a previous server crash)
   const { pool } = await import('./db/index.js');
+  // The first statement below is the first the database sees: wait for it to
+  // answer rather than die on a refusal while it finishes starting (#775).
+  const { waitForDatabase } = await import('./db/waitForDatabase.js');
+  await waitForDatabase(pool);
   // The review queue reads this marker to tell a run that recorded nothing
   // from one whose changeset landed, and matches it by containment — so the
   // whole object comes from the constant, not just its message.
