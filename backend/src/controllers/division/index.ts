@@ -14,11 +14,7 @@ export {
 } from './divisionCrud.js';
 
 // Geometry operations
-export {
-  getGeometry,
-  getSubdivisionGeometries,
-  getRootGeometries,
-} from './divisionGeometry.js';
+export { getGeometry } from './divisionGeometry.js';
 
 // Search operations
 export { searchDivisions } from './divisionSearch.js';

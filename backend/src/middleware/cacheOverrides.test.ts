@@ -70,18 +70,18 @@ const MUST_WRITE: Array<{ file: string; writes: number }> = [
 
 /**
  * The handlers that say something other than `no-store` through a helper, and
- * how many in each file must say it: the four public-reference reads under
- * `markPublicReferenceBody`, and the three streams under `markStreamBody`,
+ * how many in each file must say it: the public-reference reads under
+ * `markPublicReferenceBody`, and the streams under `markStreamBody`,
  * which are marked for the opposite reason — not because they need a different
  * value but because replacing the header is how `private` was lost.
  *
  * Counted per handler rather than per file, which is what the count buys where
- * a file holds several: one of the three geometry reads losing the call would
- * otherwise leave the other two to carry the file. The stream files hold one
+ * a file holds several: one handler losing the call would otherwise leave the
+ * others to carry the file. The stream files hold one
  * handler each, so for them the two counts agree.
  */
 const MUST_CALL_HELPER: Array<{ file: string; helper: string; handlers: number }> = [
-  { file: 'controllers/division/divisionGeometry.ts', helper: 'markPublicReferenceBody', handlers: 3 },
+  { file: 'controllers/division/divisionGeometry.ts', helper: 'markPublicReferenceBody', handlers: 1 },
   { file: 'controllers/admin/wvImportLifecycleController.ts', helper: 'markPublicReferenceBody', handlers: 1 },
   // The three streams, which say the same thing for the same reason and said
   // it in eight identical comment lines apiece until the helper took it.

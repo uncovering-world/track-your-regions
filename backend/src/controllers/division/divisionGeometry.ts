@@ -11,13 +11,13 @@ import { divisionGeometryOf } from './divisionAnswerRows.js';
 import { markPublicReferenceBody } from '../../middleware/cacheHeaders.js';
 
 /**
- * These three reads answer with GADM's own boundaries — the same shapes for
- * every caller, at full resolution: 2.8 MB of GeoJSON text for France alone,
- * and the whole world for `/root/geometries`. They sit behind `requireAuth` +
- * `requireAdmin` (`routes/index.ts`) because only the editor asks for them,
- * not because the answer is anyone's own, so each says what that makes it —
- * see `middleware/cacheHeaders.ts` for the rule and its reasons, including
- * why the `Vary: Authorization` the middleware appended is left alone.
+ * This read answers with GADM's own boundary — the same shape for every
+ * caller, at full resolution: 2.8 MB of GeoJSON text for France alone. It sits
+ * behind `requireAuth` + `requireAdmin` (`routes/index.ts`) because only the
+ * editor asks for it, not because the answer is anyone's own, so it says what
+ * that makes it — see `middleware/cacheHeaders.ts` for the rule and its
+ * reasons, including why the `Vary: Authorization` the middleware appended is
+ * left alone.
  */
 
 /**
@@ -39,88 +39,4 @@ export async function getGeometry(req: Request, res: Response): Promise<void> {
   }
 
   respond(res, DivisionGeometry, divisionGeometryOf(divisionId, result.rows[0].geometry));
-}
-
-/**
- * Get geometries for all direct subdivisions of a division
- */
-export async function getSubdivisionGeometries(req: Request, res: Response): Promise<void> {
-  markPublicReferenceBody(res);
-
-  const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
-
-  const query = `
-    SELECT
-      id,
-      name,
-      has_children,
-      ST_AsGeoJSON(geom)::json as geometry
-    FROM administrative_divisions
-    WHERE parent_id = $1
-      AND geom IS NOT NULL
-  `;
-
-  const result = await pool.query(query, [divisionId]);
-
-  if (result.rows.length === 0) {
-    res.status(204).send();
-    return;
-  }
-
-  const features = result.rows.map(d => ({
-    type: 'Feature' as const,
-    properties: {
-      id: d.id,
-      name: d.name,
-      hasChildren: d.has_children,
-    },
-    geometry: d.geometry,
-  }));
-
-  // eslint-disable-next-line no-restricted-syntax -- no client calls this endpoint, and whether it stays is #1033
-  res.json({
-    type: 'FeatureCollection',
-    features,
-  });
-}
-
-/**
- * Get geometries for root divisions (continents)
- */
-export async function getRootGeometries(req: Request, res: Response): Promise<void> {
-  markPublicReferenceBody(res);
-
-  const query = `
-    SELECT
-      id,
-      name,
-      has_children,
-      ST_AsGeoJSON(geom)::json as geometry
-    FROM administrative_divisions
-    WHERE parent_id IS NULL
-      AND geom IS NOT NULL
-  `;
-
-  const result = await pool.query(query);
-
-  if (result.rows.length === 0) {
-    res.status(204).send();
-    return;
-  }
-
-  const features = result.rows.map(d => ({
-    type: 'Feature' as const,
-    properties: {
-      id: d.id,
-      name: d.name,
-      hasChildren: d.has_children,
-    },
-    geometry: d.geometry,
-  }));
-
-  // eslint-disable-next-line no-restricted-syntax -- no client calls this endpoint, and whether it stays is #1033
-  res.json({
-    type: 'FeatureCollection',
-    features,
-  });
 }
