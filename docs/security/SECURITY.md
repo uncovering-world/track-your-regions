@@ -23,7 +23,7 @@ Level 3 requirements are tracked but optional for now.
     read itself — `bbox` is optional on both tiers, and a limiter bounds how often a stranger
     asks rather than what each ask costs — and the four reader-facing predicates every other
     reader-facing read composes (`db/membership.ts`,
-    `controllers/experience/experienceLifecycle.ts`), each negative-tested against live rows.
+    `db/readerPredicates.ts`), each negative-tested against live rows.
     A read that hits the cap says `truncated: true` rather than answering with part of the
     world in silence.
     It makes the published catalogue cheaper to enumerate than paging an object list would,

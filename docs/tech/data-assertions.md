@@ -569,7 +569,7 @@ the set as a whole (unique ids, an area each, which rules are watches).
 Two rules about the SQL:
 
 - **Compose the predicates the product already composes.** An assertion about
-  what a reader sees imports the fragments from `experienceLifecycle.ts`; one
+  what a reader sees imports the fragments from `db/readerPredicates.ts`; one
   about placement uses placement's own predicate; one about the curation queue
   composes `heldWaitingSql` — and, where it asks about one *field* rather than
   about the row, `heldDecisions.ts`'s own fragment, so a proposal a curator has
