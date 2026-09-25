@@ -259,33 +259,32 @@ Recorded when the budgets were first set. Re-measure and replace the tables
 when a budget is deliberately moved; do not append — a living document
 carries the current truth, and git carries the history.
 
-### Bundle — 2026-09-09
+### Bundle — 2026-09-25
 
-`vite build` (vite 8.0.16), measured by `size-limit`:
+`vite build` (vite 8.0.16), measured by `size-limit`, after the admin
+panel, the review queue, the world-view editor and the curation dialogs
+became chunks loaded on demand (#643):
 
-| File | Raw | gzip |
-|------|-----|------|
-| `dist/assets/index-*.js` (the entry chunk — the whole application) | 3 218.4 kB | **876.0 kB** |
-| `dist/assets/index-*.css` | 83.4 kB | **10.6 kB** |
+| File | Raw | gzip | Loaded |
+|------|-----|------|--------|
+| `dist/assets/index-*.js` (the entry chunk: the visitor's shell) | 594.0 kB | **181.0 kB** | at startup |
+| `dist/assets/maplibre-gl-*.js` (the map library) | 1 036.8 kB | **271.2 kB** | at startup |
+| `dist/assets/maplibre-gl-worker-*.js` | 486.8 kB | **135.2 kB** | by the map, as a worker |
+| `dist/assets/AdminDashboard-*.js` | 507.7 kB | **140.5 kB** | on `/admin` |
+| `dist/assets/WorldViewEditor-*.js` | 543.2 kB | **132.1 kB** | when an admin opens the editor |
+| `dist/assets/ReviewPage-*.js` | 99.6 kB | **30.1 kB** | on `/review` |
+| `dist/assets/index-*.css` | 83.4 kB | **10.7 kB** | at startup |
 
-Re-measured when maplibre-gl went from 4.7.1 to 6.8.0 (#849 — the 4.x line
-carries a critical XSS advisory and no patched release). The map library is
-64.3 kB gzip of the 96.4 kB the entry chunk gained since 2026-08-24: 4.7.1
-shipped one 803.1 kB file (211.5 kB gzip), 6.8.0 ships 1 096.4 kB across its
-main, shared and worker modules (292.1 kB gzip): main and shared go into the
-entry chunk, and the worker with its own copy of shared into a second chunk
-of 486.8 kB (135.2 kB gzip) with a `size-limit` line of its own — the map
-loads it as a worker, not the page as a script, so no Lighthouse total sees it (`maplibre-patterns.md` § The
-tile worker is a URL the bundler has to emit). The stylesheet moved for the same reason,
-65.5 kB → 83.2 kB of maplibre's own CSS. The remaining 32.2 kB is a fortnight
-of features that arrived without the budget being re-based.
+What the map view loads at startup is the entry chunk, the map library and
+the few small chunks both the shell and a lazy screen use: 557.7 kB gzip,
+where the single chunk of 2026-09-09 was 876.0 kB and, with a fortnight of
+features on top, 899 kB on the day it was split. Rolldown names a chunk
+after the module that leads it, so only the chunks with a stable name —
+the entry, the map library and the three screens — have a `size-limit`
+row; what the page loads at startup, whatever its chunks are called, is
+Lighthouse's `resource-summary:script:size`, below.
 
-One chunk. Every route — the admin panels, curation, the review queue, the
-world-view editor — ships to the anonymous visitor who opens the map. This
-is the largest single item in every number below, and it is filed as #643
-(see the breaches below).
-
-### Lighthouse — 2026-09-09
+### Lighthouse — 2026-09-09, re-measured 2026-09-25
 
 Against the test stack's fixture (world view 9001, one region, three
 experiences), so these describe the **shell** — the bundle, the map's first
@@ -301,26 +300,24 @@ Fedora):
 
 | Page | Score | FCP | LCP | TBT | CLS | TTI | script | total (requests) |
 |------|-------|-----|-----|-----|-----|-----|--------|-------|
-| `/wv/9001` (map view) | 63 | 1.04 s | 1.52 s | 924 ms | 0.001 | 2.95 s | 879.3 kB | 1 007.9 kB (38) |
-| `/discover/wv/9001` | 64 | 1.26 s | 1.52 s | 681 ms | 0.000 | 2.72 s | 879.3 kB | 1 082.5 kB (43) |
+| `/wv/9001` (map view) | 74 | 0.87 s | 1.13 s | 553 ms | 0.006 | 2.38 s | 562.1 kB | 692.5 kB (47) |
+| `/discover/wv/9001` | 80 | 0.95 s | 1.16 s | 362 ms | 0.000 | 2.24 s | 562.1 kB | 765.7 kB (48) |
 
-Re-measured on 2026-09-09 with maplibre-gl 6.8.0 (#849), minutes after the
-smoke lane's Docker build on the same two cores — which is where the TBT and
-TTI columns come from, not from the bundle: the day the lane was switched on
-this laptop read 229 ms and 1.90 s on the map view, and the runner's own
-figures in the table below are the ones the timing budgets are calibrated
-on. The bytes are the change: +96.6 kB of script on both pages, the
-library's own growth, and a stylesheet at 12.4 kB where it was 10.7 kB.
-The worker chunk the map now loads (135.2 kB gzip) is not in these totals —
-Lighthouse's resource summary does not see a worker's own fetch — and the
-request counts moved by one in each direction for unrelated reasons.
+Re-measured on 2026-09-25 after the split (#643), on a machine other
+sessions were loading, so the timings describe that afternoon rather than
+the bundle. The bytes are the change: 562.1 kB of script where the single
+chunk was 879.3 kB, and 692.5 / 765.7 kB in total where it was 1 007.9 /
+1 082.5 kB. The request count grew by nine: the chunks the page now loads,
+and the curation dialogs no longer among them.
 
 What the report says behind those numbers, on the day the lane was
 switched on:
 
-- **70–72 % of the entry chunk is unused** on either page (549–563 kB of
-  782 kB, "Reduce unused JavaScript") — the admin, editor, curation and
-  review code the visitor never runs; see the single-chunk issue below.
+- **The unused JavaScript is the map library's now, not the admin's.**
+  "Reduce unused JavaScript" found 70–72 % of the single chunk unused on
+  either page (549–563 kB of 782 kB), the admin, editor, curation and review
+  code the visitor never ran; split out (#643), it finds 305 kB of 562 kB on
+  the map view and 327 kB on Discover, most of it inside maplibre-gl.
 - The two fonts (Syne, Figtree; 54.8 kB) come from Google Fonts, the only
   origin outside the repository's control that the shell touches. Lighthouse's
   `third-party` resource row counts them together with the stack's own backend
@@ -344,9 +341,13 @@ calibrated against):
 | `/discover/wv/9001` | 93 | 1.17 s | 1.36 s | 0 ms | 0.000 | 1.36 s | 782.7 kB | 985.9 kB (42) |
 
 The runner's byte columns predate maplibre-gl 6 (#849): with 6.8.0 the
-script column reads 879.3 kB and the totals 1 007.9 kB / 1 082.5 kB on any
-machine, bytes being the build's rather than the runner's. Its timings are
-recorded from the pull request that changed them, not from a laptop.
+script column read 879.3 kB and the totals 1 007.9 kB / 1 082.5 kB on any
+machine, bytes being the build's rather than the runner's, and since the
+split (#643) they read 562.1 kB and 692.5 / 765.7 kB. Its timings are
+recorded from the pull request that changed them, not from a laptop: on the
+one that split the bundle the medians were score 97 / 97, LCP 1.16 / 1.10 s,
+TBT 79 / 0 ms and TTI 1.47 / 1.10 s (map view / Discover), with the map
+view's TBT at 58–288 ms across its three runs.
 
 Across the three runs per page the runner's spread was LCP 1.33–1.49 s,
 TBT 0–128 ms, TTI 1.33–1.64 s, and the request count did not move. The
@@ -394,13 +395,14 @@ both savings as the floor:
   the milliseconds are the direction, on this machine.
 
 Across six runs the map root's total sat between 1 122.3 and 1 123.7 kB
-(1 194.3 kB since the maplibre-gl 6 bump moved the entry chunk, and as
-steady), which is what makes this a byte budget rather than a timing one —
+(1 194.3 kB since the maplibre-gl 6 bump moved the entry chunk, 916.9 kB
+since the admin screens left it (#643), and as steady), which is what makes this a byte budget rather than a timing one —
 and why every timing in the local file is a `warn`, with the `error` lines
 calibrated on the CI runner instead.
 
-What the map root downloads now, largest first: the 879.4 kB entry chunk
-(#643), the 86.1 kB favicon (#648), then its own map tiles — 85.1 kB for
+What the map root downloads now, largest first: 562.4 kB of script — the
+entry chunk and the map library, since the admin screens became chunks of
+their own (#643) — the 86.1 kB favicon (#648), then its own map tiles — 85.1 kB for
 the z1 tile over Eurasia and two more near 36 kB. No API read is among
 them. The 135.2 kB worker chunk maplibre-gl 6 loads is downloaded too, and
 does not appear here: Lighthouse's resource summary does not see a worker's
@@ -704,13 +706,15 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 
 | Budget | Level | Value | Set from |
 |--------|-------|-------|----------|
-| entry chunk, gzip (`size-limit`) | error | 920 kB | 876.0 kB baseline + ~5 % |
+| entry chunk, gzip (`size-limit`) | error | 190 kB | 181.0 kB baseline + ~5 % (was 920 kB, the whole application in one chunk, until #643) |
+| map library chunk, gzip (`size-limit`) | error | 285 kB | 271.2 kB baseline + ~5 % |
+| admin panel, world-view editor and review queue chunks, gzip (`size-limit`) | error | 148 / 139 / 32 kB | 140.5 / 132.1 / 30.1 kB baseline + ~5 %: a screen growing, or its code moving back into the entry chunk, fails visibly |
 | map worker chunk, gzip (`size-limit`) | error | 142 kB | 135.2 kB baseline + ~5 % — the one payload Lighthouse's resource summary does not see |
 | stylesheet, gzip (`size-limit`) | error | 11.5 kB | 10.6 kB baseline + ~9 % |
-| `resource-summary:script:size` | error | 925 000 B | 879 292 B transferred — the same chunk, as Lighthouse sees it (+ ~5 %) |
+| `resource-summary:script:size` | error | 590 000 B | 562 066 B transferred — every script the page loads at startup, whatever its chunks are called (+ ~5 %; was 925 000 B until #643) |
 | `resource-summary:stylesheet:size` | error | 13 000 B | 12 377 B (the app's CSS plus the Google Fonts stylesheet) |
-| `resource-summary:total:size` | error | 1 140 000 B | 1 082 515 B on Discover, the heavier of the two |
-| `resource-summary:total:count` | error | 60 | 38 / 43 requests, preflights included — an N+1 shows up here as tens |
+| `resource-summary:total:size` | error | 805 000 B | 765 698 B on Discover, the heavier of the two (was 1 140 000 B until #643) |
+| `resource-summary:total:count` | error | 60 | 47 / 48 requests, preflights and the chunks the split made included (38 / 43 before #643) — an N+1 shows up here as tens |
 | `largest-contentful-paint` | error | 2 000 ms | 1.33–1.49 s on the CI runner (1.38 / 1.39 s locally); network-simulated, so the least noisy timing |
 | `total-blocking-time` | error | 300 ms | 0–128 ms on the CI runner (229 ms locally, quiet); the noisiest number the lane has, hence the widest headroom |
 | `cumulative-layout-shift` | error | 0.02 | 0.001–0.006 / 0.000 on the CI runner |
@@ -718,8 +722,8 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 | `categories:performance` | warn | 0.8 | informational — the composite score moves ±5 points on identical hardware and is not a gate |
 
 The local run has its own file, `frontend/perf/lighthouse-budgets.local.json`,
-with the same script and stylesheet lines, a total-size line at 1 255 000 B
-(the map root's 1 194.3 kB — 879 kB of entry chunk, then the favicon of
+with the same script and stylesheet lines, a total-size line at 965 000 B
+(the map root's 916.9 kB — 562 kB of script at startup, then the favicon of
 #648 and the map's own tiles — plus the usual 5 %) and a request count of
 60 as errors, and every timing at `warn` set wide for a laptop (LCP 2.5 s,
 TBT 1.2 s, CLS 0.02, TTI 3.5 s, score 0.5): the local run's bytes gate, its
@@ -739,7 +743,11 @@ since the maplibre-gl 6 bump). Its fixture is one region
 ("Testland", `backend/src/db/seed/e2eFixture.ts`) and its responses sit
 below the compression threshold, so the first change moved its total by
 200 bytes and the second removes a one-row read; a budget is lowered by a
-measurement, not by a change elsewhere that ought to have moved it.
+measurement, not by a change elsewhere that ought to have moved it. Both
+totals then came down together with the script lines, when the admin
+screens left the entry chunk (#643): the local one from 1 255 000 B to
+965 000 B, the CI lane's from 1 140 000 B to 805 000 B, each from a
+measured run.
 
 The rule:
 
@@ -771,8 +779,6 @@ long tasks behind the TBT and the request behind a byte budget.
 
 Filed, and linked here so the baseline is read with them in mind:
 
-- #643 — the whole application is one 2.87 MB chunk;
-  the visitor downloads the admin panels to see a map.
 - #651 — the basemap is OpenStreetMap's public tile server, and on a page
   whose map sits inside a region it is the largest thing on the wire.
   Measured on `/wv/9001/r/9001/e/9001` (the fixture's card, not in the lane
