@@ -460,7 +460,7 @@ Each source has a dedicated sync service in `backend/src/services/sync/`. All fo
 
 ### Sync orchestrator
 
-The generic sync lifecycle (progress init, already-running check, sync log creation, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`. Each service provides a `SyncServiceConfig<T>` with domain-specific callbacks:
+The generic sync lifecycle (progress init, already-running check, sync log creation, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`, which holds the order of a run's phases while each phase's writes live in a module beside it (§ Shared modules). Each service provides a `SyncServiceConfig<T>` (`syncContract.ts`, with the shapes it returns) with domain-specific callbacks:
 
 - **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, withdrawalSkippedReason? }`, where `filtered` names entities the source offered that this kind cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands.
 - **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview, and `onLocationsChanged(experienceId)`, which a service calls **at the location write** to have the run place that experience before it ends. Called there rather than returned on the result on purpose: a service can throw after moving a point — the museum one upserts treasures afterwards — and a returned field would be lost with the throw while the point had already moved on disk. Throw to count as error.
@@ -472,7 +472,11 @@ Generic `getSyncStatus(sourceId)` and `cancelSync(sourceId)` replace per-service
 
 Common sync logic lives in shared utility files:
 
-- **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by the source's id (`source_id`), and `isCancellable()` — the single rule for whether a cancel would be acted on, which `cancelSync` enforces, the status endpoint reports as `cancellable`, and the admin panel disables its button on rather than re-deriving.
+- **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`) — the order of a run's phases, and the one place that order is stated, since it is the contract: the changeset recorded before the log row is closed, the verdict set before anything that can reject, placement after both — plus `getSyncStatus()` and `cancelSync()` parameterized by the source's id (`source_id`), and `isCancellable()` — the single rule for whether a cancel would be acted on, which `cancelSync` enforces, the status endpoint reports as `cancellable`, and the admin panel disables its button on rather than re-deriving.
+- **`syncContract.ts`** — What a sync service hands the orchestrator and gets back: `SyncServiceConfig<T>`, `FetchResult<T>`, `ProcessItemResult`, `SyncRunContext` and `FilteredEntity`. Its own module so the orchestrator's parts read those shapes without importing the module that runs the loop, which would be a cycle
+- **`itemOutcome.ts`** — What one item leaves behind: its counters and its changeset row (`recordItemOutcome()`, `recordItemFailure()`, `recordFilteredEntities()`), with the word the row carries (`resolveChangeType`: `held`, `returned`, `conflict`, `contents`) and the one predicate behind the `held` word and counter (`wasHeld`). Writes nothing to the database
+- **`admissionStep.ts`** — The admission step after the items, for a source that recomputes its membership (ADR-0024): restore, then the guarded sweep (`applyAdmissionSweep()`), then the must-see badge (`badgeAdmitted()`, ADR-0045 decision 5), whose clear runs only where the sweep ran. The writes are `admission.ts`'s
+- **`runLog.ts`** — The run's log row: the changeset recorded or marked lost (`recordChangesetOrMark()`), the status it is closed with (`computeFinalStatus()`, where the three things called `partial` are told apart), its counters (`runCounters()`), the panel's completion line (`completionMessage()`), and the close of a failed or cancelled run (`recordSyncFailure()`)
 - **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
 - **`experienceUpsert.ts`** — The object upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`): one transaction per object that locks the place first (`OBJECT_LOCK`, in a statement of its own), decides the hold and the `before` snapshot in the statement after it — a statement's snapshot predates the lock it waits for, `db/locks.ts` — writes the place and — in the same statement — its membership in the kind the run's source fills (#822), then the decay and the pointer on the same connection. Its preview (`dryRun`) asks the hold rule of the same memberships with one unlocked `SELECT`. Also the run's picture rule (`withShowablePicture`, ADR-0043). Re-exported from `syncUtils.ts`, so every sync service keeps one import.
 - **`syncUtils.ts`** — Single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), and sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs). Used by every sync service — `unescoSyncService`, `museumSyncService`, `landmarkSyncService`, `worshipSyncService` and Archaeology's `writer.ts`. It deletes nothing: the FK-ordered per-source cleanup that force sync used lived here and is gone with it.
@@ -862,7 +866,7 @@ card, so the unit is on screen: Held 1,272 is 1,272 sites, Conflicts 3 is three 
 counter stays claims-only — nobody has claimed a held field — so the two never share a field, and
 a row carrying both a claim and a hold is counted in both. The
 increment and the changeset row's `held` word come from one predicate, `wasHeld` in
-`syncOrchestrator.ts`: the row came through `unchanged` with something in `heldFields`. Structural
+`itemOutcome.ts`: the row came through `unchanged` with something in `heldFields`. Structural
 rather than empirical — `computeChangeSet` files every unclaimed diff of a held row under
 `heldFields`, so its `changedFields` is empty and its `changeType` is `unchanged`; and an insert
 under a gate is written `pending` rather than refused, so a `created` row is never held, and the
@@ -3711,7 +3715,7 @@ of every proposed field — is the curator still claiming it? — and drops the 
 is left.
 
 The other is the source withdrawing the proposal. A run that finds the source agreeing again
-writes **no changeset row at all** (`worthRecording` in `syncOrchestrator.ts`), so a missing
+writes **no changeset row at all** (`worthRecording` in `itemOutcome.ts`), so a missing
 newer conflict is not evidence that the old one stands. What such a run does leave is
 `last_seen_sync_log_id`, and a value newer than the conflict's run means a later run saw the
 object and had nothing to propose — **once that run has finished**. `last_seen` is stamped
