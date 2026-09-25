@@ -13,6 +13,7 @@
     "./equality": "./src/equality.ts",
     "./geometry": "./src/geometry.ts",
     "./labels": "./src/labels.ts",
+    "./moves": "./src/moves.ts",
     "./pictures": "./src/pictures.ts"
   },
   "scripts": {

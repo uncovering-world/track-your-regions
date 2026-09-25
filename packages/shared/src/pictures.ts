@@ -92,3 +92,25 @@ export function isDescriptionPage(pathname: string): boolean {
     return true;
   }
 }
+
+/**
+ * The field a held picture is answered together with (ADR-0039, #1034).
+ *
+ * A picture and its credit are one answer: publishing or declining one reaches
+ * the other, or a photograph could go on the site under nobody's name. The
+ * server widens a selection across the pair (`heldSelection.ts`), and the
+ * review card lays the pair out as one answer (`HeldAnswer.tsx`). The two
+ * levels spell the picture differently — the object's changeset field is
+ * `imageUrl`, a part's is its column `image_url` — while the credit is
+ * `metadata.imageCredit` on both, so the partner depends on the level.
+ */
+export const HELD_CREDIT_FIELD = 'metadata.imageCredit';
+const HELD_PICTURE_FIELD = { object: 'imageUrl', part: 'image_url' } as const;
+
+/** The other half of a held picture's pair, or undefined for a field that has none. */
+export function pictureCreditPartner(field: string, level: 'object' | 'part'): string | undefined {
+  const picture = HELD_PICTURE_FIELD[level];
+  if (field === picture) return HELD_CREDIT_FIELD;
+  if (field === HELD_CREDIT_FIELD) return picture;
+  return undefined;
+}
