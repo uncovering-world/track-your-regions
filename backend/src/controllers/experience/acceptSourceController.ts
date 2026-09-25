@@ -12,7 +12,6 @@ import { Response } from 'express';
 import { respond } from '../../api/respond.js';
 import { AcceptSourceResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor, METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
@@ -23,6 +22,7 @@ import type { ContentItemChange } from '../../services/sync/types.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /**
  * Apply the value a sync proposed for a field the curator had claimed.
@@ -170,16 +170,14 @@ async function applyProposedFields(
   let unusable: Error | undefined;
   try {
     await client.query('BEGIN');
-    const locked = await client.query(
-      // The stored credit comes back with the claims, and under the same lock:
-      // whether one is *there* decides what the curator is told was removed, and
-      // reading it separately would be reading it at another moment.
-      `SELECT curated_fields, metadata->'imageCredit' AS image_credit
-         FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
-      [experienceId],
+    // The stored credit comes back with the claims, and under the same lock:
+    // whether one is *there* decides what the curator is told was removed, and
+    // reading it separately would be reading it at another moment.
+    const locked = await lockExperience<{ curated_fields: string[] | null; image_credit: unknown }>(
+      client, experienceId, "curated_fields, metadata->'imageCredit' AS image_credit",
     );
-    const claimed: string[] = locked.rows[0]?.curated_fields ?? [];
-    const hadCredit = locked.rows[0]?.image_credit != null;
+    const claimed: string[] = locked?.row.curated_fields ?? [];
+    const hadCredit = locked?.row.image_credit != null;
 
     // Same predicate as the queue, withdrawal check included: a conflict a
     // later run stopped proposing must not be writable here either, or the

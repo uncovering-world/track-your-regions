@@ -21,7 +21,6 @@ import type { PoolClient } from 'pg';
 import { respond } from '../../api/respond.js';
 import { AdmissionResult, ExperienceStateResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -29,6 +28,7 @@ import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /** The object's two axes, as the columns' CHECK lists spell them. */
 type Membership = CheckValue<'experiences', 'source_membership'>;
@@ -150,15 +150,14 @@ export async function answerStateUnderLock(
     // `present`. Reverting `lost` costs more still: it puts the row back inside
     // missing detection's `hideLostSql` predicate, so the next clean
     // run re-flags it and the item returns to the queue for good.
-    const locked = await client.query(
-      `SELECT source_membership, existence, missing_since FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
-      [experienceId],
+    const locked = await lockExperience<typeof before>(
+      client, experienceId, 'source_membership, existence, missing_since',
     );
     // The existence check ran on the pool, on another connection and earlier
     // in time. A row deleted in that window leaves nothing to lock, and the
     // true answer is 404 — `setExperienceAdmission` guards the same gap.
-    if (locked.rows.length === 0) return await refuse({ status: 404, error: 'Experience not found' });
-    before = locked.rows[0];
+    if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
+    before = locked.row;
     nextMembership = membership ?? (before.source_membership as Membership);
     nextExistence = existence ?? (before.existence as Existence);
 
@@ -430,10 +429,8 @@ export async function answerAdmissionUnderLock(
     // that window leaves nothing to lock, and reading the membership off it
     // would answer 500 to a question whose true answer is 404.
     // `setExperienceState` guards the same gap.
-    const locked = await client.query(
-      `SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
-    );
-    if (locked.rows.length === 0) return await refuse({ status: 404, error: 'Experience not found' });
+    const locked = await lockExperience(client, experienceId);
+    if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
     // The verdict, its reason, the pin and the gate state are the membership's
     // (#822), read in the statement after the place's lock — the one every
     // writer of the membership takes. Its own statement because a statement's

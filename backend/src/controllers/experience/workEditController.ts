@@ -22,12 +22,12 @@ import { Response } from 'express';
 import { respond } from '../../api/respond.js';
 import { WorkEditResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { offeredLinkSql } from '../../db/readerPredicates.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
 import { userAgent } from '../../config/userAgent.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /**
  * What a curator may claim on a work — the whole `treasures.curated_fields`
@@ -144,7 +144,7 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
     // transaction that took the work first would hold one row and wait for the
     // other; taken in two orders, two writers on one museum close a cycle and
     // Postgres resolves it by failing one of them with a 500.
-    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);
+    await lockExperience(client, experienceId);
 
     // Everything this transaction depends on, re-read under the lock: the claim
     // set it adds to, and the values the trail reports as `old`. The set is

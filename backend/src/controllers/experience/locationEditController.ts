@@ -17,12 +17,12 @@ import { Response } from 'express';
 import { respond } from '../../api/respond.js';
 import { LocationEditResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /** What a curator may claim on a point — see `db/migrations/027`. */
 type Claim = 'name' | 'location';
@@ -78,7 +78,7 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     // object close a cycle, and Postgres resolves a cycle by failing one of them
     // with a 500. Held for every edit rather than only the ones that reach the
     // anchor, so the order is a property of the file instead of one branch's.
-    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);
+    await lockExperience(client, experienceId);
 
     // Everything this transaction depends on, re-read under the lock: the claim
     // set it is about to add to, and the values the trail reports as `old`.

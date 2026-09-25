@@ -37,7 +37,6 @@ import type { PoolClient } from 'pg';
 import { respond } from '../../api/respond.js';
 import { PublishResult, type AppliedPart, type PartNotFound } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -50,6 +49,7 @@ import {
 } from './publishHeldParts.js';
 import { recordHeldAnswers } from './heldDecisions.js';
 import type { HeldSelection, SelectedPart } from './heldSelection.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /**
  * What the curator asked to be published.
@@ -440,10 +440,8 @@ export async function publishUnderLock(
     // run that pointed the membership at a newer proposal during the wait
     // would be invisible to the staleness check further down — its proposal
     // applied over and lost (`db/locks.ts`).
-    const locked = await client.query(
-      `SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
-    );
-    if (locked.rows.length === 0) return await refuse(404, 'Experience not found');
+    const locked = await lockExperience(client, experienceId);
+    if (!locked) return await refuse(404, 'Experience not found');
 
     const read = await client.query(
       // `image_url` joins the read for the credit rule (#722): the credit a run

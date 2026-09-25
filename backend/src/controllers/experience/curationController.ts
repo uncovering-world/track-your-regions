@@ -13,7 +13,6 @@ import {
   CurationLog, type CurationLogEntry, ExperienceEditResult, ManualExperienceCreated, RegionMembershipResult,
 } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import type { ExperienceCurationLogRow, RegionsRow, UsersRow } from '../../db/schema.generated.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -33,6 +32,7 @@ import {
   STORABLE_HTTP_URL_MESSAGE,
   DISPLAYABLE_PICTURE_URL_MESSAGE,
 } from '../../types/urlSafety.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /**
  * The same rule the request schema applied, asked again where the value is
@@ -574,12 +574,10 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     // two would be undone here, the union putting back a key it had just
     // removed; and the `old` values in the audit row would name a version that
     // was already gone when the edit was written.
-    const locked = await client.query(
-      `SELECT curated_fields, name, short_description, description, type, image_url, tags, metadata
-       FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
-      [experienceId],
+    const locked = await lockExperience<typeof existing>(
+      client, experienceId, 'curated_fields, name, short_description, description, type, image_url, tags, metadata',
     );
-    const before = locked.rows[0] ?? existing;
+    const before = locked?.row ?? existing;
     const built = buildUpdateQuery(
       payload,
       (before.curated_fields as string[]) || [],

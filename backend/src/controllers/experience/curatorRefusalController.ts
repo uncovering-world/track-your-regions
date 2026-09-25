@@ -37,7 +37,6 @@ import { respond } from '../../api/respond.js';
 import { RefuseArrivalResult, RefuseContentsResult } from '../../api/responses/curation.js';
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
@@ -47,6 +46,7 @@ import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 /** The reason a curator's refusal carries, in the words the kept-out list shows. */
 export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
@@ -149,10 +149,8 @@ export async function refuseArrivalUnderLock(
 
     // The lock first, in a statement of its own (`db/locks.ts`); the
     // membership in the next, so a run that moved it during the wait is seen.
-    const locked = await client.query(
-      `SELECT missing_since FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
-    );
-    if (locked.rows.length === 0) return await refuse({ status: 404, error: 'Experience not found' });
+    const locked = await lockExperience<{ missing_since: Date | null }>(client, experienceId, 'missing_since');
+    if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
     const read = await client.query(
       `SELECT m.id AS membership_id, m.admission, m.curation_state, m.curated_fields
          FROM experiences e
@@ -163,7 +161,7 @@ export async function refuseArrivalUnderLock(
     const before = read.rows[0] ?? {};
     const membershipId = (before.membership_id as number | null) ?? null;
     if (membershipId === null || before.admission !== 'admitted'
-      || before.curation_state !== 'pending' || locked.rows[0].missing_since != null) {
+      || before.curation_state !== 'pending' || locked.row.missing_since != null) {
       return await refuse({
         status: 409,
         error: 'Already answered: this object is not an arrival waiting on a decision',
@@ -249,10 +247,8 @@ export async function refuseContentsUnderLock(
       return { refusal };
     };
 
-    const locked = await client.query(
-      `SELECT missing_since FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
-    );
-    if (locked.rows.length === 0) return await refuse({ status: 404, error: 'Experience not found' });
+    const locked = await lockExperience<{ missing_since: Date | null }>(client, experienceId, 'missing_since');
+    if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
     // The rule itself is the database's, through the fragment every act on an
     // object's unread contents composes: this refusal, the take-back that undoes
     // it, the waiting count and the list that draws the take-back's button. Two

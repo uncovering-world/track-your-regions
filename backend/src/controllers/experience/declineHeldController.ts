@@ -26,7 +26,6 @@ import { Response } from 'express';
 import { respond } from '../../api/respond.js';
 import { DeclineHeldResult, type DeclinedPart } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
@@ -36,6 +35,7 @@ import {
   type HeldRow, type SelectedPart,
 } from './heldSelection.js';
 import type { ContentsByKind } from '../../services/sync/types.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 
 export interface DeclineRefusal {
   status: number;
@@ -149,10 +149,8 @@ export async function refuseUnderLock(
     // The lock first, in a statement of its own. The existence check in the
     // handler ran on the pool, on another connection and earlier in time; a
     // row deleted in that window leaves nothing to lock.
-    const locked = await client.query(
-      `SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId],
-    );
-    if (locked.rows.length === 0) return await refuse(404, 'Experience not found');
+    const locked = await lockExperience(client, experienceId);
+    if (!locked) return await refuse(404, 'Experience not found');
     // The pointer is the membership's (#822), read in the statement after the
     // place's lock — the one every writer of the membership takes. Its own
     // statement because a statement's snapshot is taken before it waits for

@@ -60,7 +60,6 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, placeVisibleSql, membershipVisibleSql } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
@@ -69,6 +68,7 @@ import {
 } from './changeSet.js';
 import { tidyLabel } from '@tyr/shared/labels';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
+import { lockSourcedExperience } from '../../db/experienceWriter.js';
 
 export interface ExperienceUpsertParams {
   sourceId: number;
@@ -420,10 +420,7 @@ async function writeUnderLock(
   // The lock first, in a statement of its own — the mode every curator write
   // takes on the same row. A place the run has not created yet locks nothing
   // and holds nothing: the insert writes every column.
-  const locked = await client.query(
-    `SELECT id FROM experiences WHERE source_id = $1 AND external_id = $2 ${OBJECT_LOCK}`,
-    [params.sourceId, params.externalId],
-  );
+  const locked = await lockSourcedExperience(client, params.sourceId, params.externalId);
   // The row as it stands under that lock, and the hold decided on the same
   // snapshot. A second statement rather than columns of the locking one: a
   // statement's snapshot is taken before it waits for the lock, and once the
@@ -431,7 +428,7 @@ async function writeUnderLock(
   // asks about would still read as they stood before a publish that committed
   // during the wait (`db/locks.ts`). This statement starts with the lock held,
   // so its snapshot has that publish in it.
-  const stored = locked.rows.length === 0 ? null : (await client.query(
+  const stored = locked === null ? null : (await client.query(
     `SELECT e.id, e.curated_fields, e.missing_since, e.source_membership,
             ${snapshotSelect('e.')},
             ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
