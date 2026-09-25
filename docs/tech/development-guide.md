@@ -1021,16 +1021,32 @@ available locally under the same names, plus a local run on the developer's
 own data:
 
 ```bash
-npm run perf:size      # build the frontend, check the entry chunk against its gzip budget (size-limit)
+npm run perf:size      # build the frontend, check the entry chunk and each named chunk against its gzip budget (size-limit)
 npm run perf           # Lighthouse against the production build on the isolated test stack (the fixture)
 npm run perf:api       # p50/p95 of the hot read endpoints against a running stack (a measurement, not a gate)
 npm run perf:local     # all of the above on the dev stack and its real catalogue - the pre-push run
 ```
 
+**A visitor downloads the shell, not the whole application** (#643). The
+admin panel and the review queue are route-level chunks (`React.lazy` at their
+`<Route>` in `App.tsx`), the world-view editor loads the first time it is
+opened (`HierarchySwitcher`), and the curation dialogs the first time a curator
+opens one (`components/shared/lazyCurationDialogs.tsx`). A new admin or curator
+screen goes under `/admin/*` or `/review`, or is `lazy` where it mounts: a
+static import of it from the shell puts it back in the entry chunk, and the
+entry chunk's `size-limit` row fails on it. The lazy chunks have rows of their
+own (`frontend/package.json`), keyed by the screen each one is named after.
+Such a screen is loaded with `lazyChunk()` and mounted in a `ChunkBoundary`,
+not with a bare `React.lazy` and `Suspense`: a chunk can fail to arrive — a
+deployment replaced the file names an open tab still asks for — and without
+the boundary that failure unmounts the whole application.
+
 **Performance is measured on the production build, never on the dev server.**
 The dev server serves unbundled modules with HMR and no compression: the map
 view through it is 370 script requests, 19.7 MB and a 17 s LCP, where the
-built page is one request, 783 kB and 1.4 s. Numbers taken from it describe
+built page is a few compressed chunks, about 560 kB of script and a
+second's LCP (`docs/tech/performance.md` § Baseline has the dated
+measurement). Numbers taken from the dev server describe
 the development tooling, not the product, and the Lighthouse runner refuses
 to measure it. The dev stack's frontend has both shapes; switch and check with
 
