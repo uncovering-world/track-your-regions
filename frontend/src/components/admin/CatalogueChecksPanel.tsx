@@ -55,6 +55,7 @@ import { EmptyState } from '../shared/EmptyState';
 import { formatDateTime } from '../../utils/dateFormat';
 import { plural } from '../../utils/plural';
 import { displayNameOf } from '../../utils/displayName';
+import { queryKeys } from '../../api/queryKeys';
 
 /**
  * How each status looks, and what it is called on screen.
@@ -211,7 +212,7 @@ export function CatalogueChecksPanel() {
   });
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
-    queryKey: ['admin', 'data-assertions'],
+    queryKey: queryKeys.admin.dataAssertions,
     queryFn: getDataAssertions,
     // A statement per assertion over the whole catalogue: read when somebody opens the
     // section, never polled.
@@ -232,7 +233,7 @@ export function CatalogueChecksPanel() {
       // re-run every statement per press — about eleven seconds of database
       // work, and a second request against the limiter, for an answer the
       // server has already given.
-      queryClient.setQueryData(['admin', 'data-assertions'], (previous?: DataAssertionReport) => {
+      queryClient.setQueryData(queryKeys.admin.dataAssertions, (previous?: DataAssertionReport) => {
         if (!previous) return previous;
         const assertions = previous.assertions.map(entry => entry.id === accepted.id ? accepted : entry);
         return {
@@ -275,7 +276,7 @@ export function CatalogueChecksPanel() {
           size="small"
           startIcon={<RefreshIcon />}
           disabled={isFetching}
-          onClick={() => queryClient.invalidateQueries({ queryKey: ['admin', 'data-assertions'] })}
+          onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.admin.dataAssertions })}
         >
           {isFetching ? 'Reading…' : 'Read again'}
         </Button>

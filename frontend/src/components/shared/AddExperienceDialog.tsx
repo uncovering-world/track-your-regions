@@ -54,6 +54,7 @@ import { EmptyState } from './EmptyState';
 import { ImageCreditLine } from './ImageCreditLine';
 import { PictureWithCredit } from './PictureWithCredit';
 import { typeOptionsFor } from '../../utils/experienceTypes';
+import { queryKeys } from '../../api/queryKeys';
 
 interface ApplySuggestionParams {
   setNewImageUrl: (url: string) => void;
@@ -163,7 +164,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
 
   // --- Search & Assign tab ---
   const { data: searchResults, isFetching } = useQuery({
-    queryKey: ['experiences', 'search', searchQuery],
+    queryKey: queryKeys.experiences.search(searchQuery),
     queryFn: () => searchExperiences(searchQuery, 20),
     enabled: searchQuery.length >= 2,
   });
@@ -177,7 +178,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
 
   // --- Kinds for Create New tab ---
   const { data: kinds } = useQuery({
-    queryKey: ['experience-kinds'],
+    queryKey: queryKeys.experiences.kinds,
     queryFn: fetchExperienceKinds,
   });
 

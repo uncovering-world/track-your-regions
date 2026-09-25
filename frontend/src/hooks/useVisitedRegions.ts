@@ -11,11 +11,12 @@ import {
   type VisitedRegion,
 } from '../api';
 import { useAuth } from './useAuth';
+import { queryKeys } from '../api/queryKeys';
 
 export function useVisitedRegions(worldViewId: number | undefined) {
   const queryClient = useQueryClient();
-  const { isAuthenticated } = useAuth();
-  const queryKey = ['visited-regions', worldViewId];
+  const { isAuthenticated, user } = useAuth();
+  const queryKey = queryKeys.visited.regions(user?.id, worldViewId);
 
   // Fetch visited regions for this world view (only if authenticated)
   const { data: visitedRegions = [], isLoading } = useQuery({

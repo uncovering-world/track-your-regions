@@ -37,6 +37,7 @@ import {
   updatePricing,
   type AIModelOption,
 } from '../../api/admin/ai';
+import { queryKeys } from '../../api/queryKeys';
 
 const FEATURE_LABELS: Record<string, { label: string; description: string }> = {
   'model.matching': { label: 'AI Matching', description: 'Matches imported regions to GADM administrative divisions. Used when clicking the AI match button on individual regions or running batch AI matching.' },
@@ -119,12 +120,12 @@ export function AISettingsPanel() {
     open: false, message: '', severity: 'success',
   });
   const { data: settingsData, isLoading: settingsLoading, isError: settingsError, error: settingsErrorObj } = useQuery({
-    queryKey: ['ai-settings'],
+    queryKey: queryKeys.ai.settings,
     queryFn: getAISettings,
   });
 
   const { data: usageData, isLoading: usageLoading, isError: usageError, error: usageErrorObj } = useQuery({
-    queryKey: ['ai-usage'],
+    queryKey: queryKeys.ai.usage,
     queryFn: getAIUsage,
     refetchInterval: 30_000,
   });
@@ -132,7 +133,7 @@ export function AISettingsPanel() {
   const updateMutation = useMutation({
     mutationFn: ({ key, value }: { key: string; value: string }) => updateAISetting(key, value),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ai.settings });
       setSnackbar({ open: true, message: 'Model updated', severity: 'success' });
     },
     onError: (err: Error) => {
@@ -143,7 +144,7 @@ export function AISettingsPanel() {
   const pricingMutation = useMutation({
     mutationFn: updatePricing,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ai.settings });
       setSnackbar({
         open: true,
         message: `Pricing updated: ${plural(data.modelsUpdated, 'price')} changed, ${plural(data.modelsAdded, 'model')} added, ${plural(data.totalModels, 'model')} priced`,

@@ -24,6 +24,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '../../hooks/useNavigation';
 import { useAppAddress } from '../../hooks/useAppAddress';
 import { fetchExperienceKinds, type ExperienceKind } from '../../api/experiences';
+import { queryKeys } from '../../api/queryKeys';
 
 export interface WorldLayerState {
   /** Whether the map draws the catalogue's points instead of a region's markers. */
@@ -57,7 +58,7 @@ export function useWorldLayer(): WorldLayerState {
   // drawn. These reads sit under `publicReadLimiter` beside the ones that draw
   // the list itself, so a request nobody needs is one the list may not make.
   const { data: kinds = [], isSuccess: kindsAnswered } = useQuery({
-    queryKey: ['experience-kinds'],
+    queryKey: queryKeys.experiences.kinds,
     queryFn: fetchExperienceKinds,
     staleTime: 300000,
     enabled: active,

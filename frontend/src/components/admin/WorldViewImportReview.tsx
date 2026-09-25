@@ -53,6 +53,7 @@ import type { CoverageResult } from '../../api/admin/worldViewImport';
 import { WorldViewImportTree } from './WorldViewImportTree';
 import { CoverageResolveDialog } from './CoverageResolveDialog';
 import { type ShadowInsertion } from './treeNodeShared';
+import { queryKeys } from '../../api/queryKeys';
 
 export type { ShadowInsertion };
 
@@ -432,7 +433,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
 
   // Coverage data persists in React Query cache across dialog open/close and match operations
   const { data: coverageDataRaw } = useQuery({
-    queryKey: ['admin', 'wvImport', 'coverage', worldViewId],
+    queryKey: queryKeys.admin.wvImport.coverage(worldViewId),
     queryFn: () => null as CoverageResult | null,
     enabled: false,
     gcTime: Infinity,
@@ -448,7 +449,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         setCoverageProgress({ running: true, step: event.step, elapsed: event.elapsed });
       }
     }).then((result) => {
-      queryClient.setQueryData(['admin', 'wvImport', 'coverage', worldViewId], result);
+      queryClient.setQueryData(queryKeys.admin.wvImport.coverage(worldViewId), result);
       setCoverageProgress({ running: false });
     }).catch((err) => {
       console.error('Coverage check failed:', err);
@@ -458,14 +459,14 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
 
   // Stats
   const { data: stats } = useQuery({
-    queryKey: ['admin', 'wvImport', 'matchStats', worldViewId],
+    queryKey: queryKeys.admin.wvImport.matchStats(worldViewId),
     queryFn: () => getMatchStats(worldViewId),
   });
 
   const invalidateAll = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] });
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchStats', worldViewId] });
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'rematchStatus', worldViewId] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.matchTree(worldViewId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.matchStats(worldViewId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.rematchStatus(worldViewId) });
     setCoverageStale(true);
   }, [queryClient, worldViewId]);
 
@@ -496,7 +497,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   const rematchMutation = useMutation({
     mutationFn: () => startRematch(worldViewId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'rematchStatus'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.rematchStatusAll });
     },
   });
 
@@ -507,7 +508,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   const rematchError = (rematchMutation.error as Error | null)?.message;
 
   const { data: rematchStatus } = useQuery({
-    queryKey: ['admin', 'wvImport', 'rematchStatus', worldViewId],
+    queryKey: queryKeys.admin.wvImport.rematchStatus(worldViewId),
     queryFn: () => getRematchStatus(worldViewId),
     refetchInterval: (query) => {
       const st = query.state.data;
@@ -517,9 +518,9 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         // itself — otherwise the invalidation triggers a refetch, which sees
         // 'complete' again, calls invalidateAll again → infinite loop that
         // freezes the page.
-        queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] });
-        queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchStats', worldViewId] });
-        queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'childrenCoverage', worldViewId] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.matchTree(worldViewId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.matchStats(worldViewId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.childrenCoverage(worldViewId) });
         setCoverageStale(true);
       }
       return false;
@@ -623,10 +624,10 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       setShadowInsertions(prev => prev.filter(s => s.gapDivisionId !== approvedInsertion.gapDivisionId));
 
       // Update coverage data — remove the approved gap (backend auto-dismisses it)
-      const currentCoverage = queryClient.getQueryData<CoverageResult>(['admin', 'wvImport', 'coverage', worldViewId]);
+      const currentCoverage = queryClient.getQueryData<CoverageResult>(queryKeys.admin.wvImport.coverage(worldViewId));
       if (currentCoverage) {
         const approvedGap = currentCoverage.gaps.find(g => g.id === approvedInsertion.gapDivisionId);
-        queryClient.setQueryData<CoverageResult>(['admin', 'wvImport', 'coverage', worldViewId], {
+        queryClient.setQueryData<CoverageResult>(queryKeys.admin.wvImport.coverage(worldViewId), {
           ...currentCoverage,
           gaps: currentCoverage.gaps.filter(g => g.id !== approvedInsertion.gapDivisionId),
           dismissedCount: currentCoverage.dismissedCount + (approvedGap ? 1 : 0),
@@ -873,7 +874,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         coverageData={coverageData}
         coverageProgress={coverageProgress}
         shadowInsertions={shadowInsertions}
-        onCoverageChange={(data) => queryClient.setQueryData(['admin', 'wvImport', 'coverage', worldViewId], data)}
+        onCoverageChange={(data) => queryClient.setQueryData(queryKeys.admin.wvImport.coverage(worldViewId), data)}
         onApplyToTree={handleApplyToTree}
         onRecheck={runCoverageCheck}
       />

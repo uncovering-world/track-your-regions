@@ -13,6 +13,7 @@ import {
   fetchRegionExperienceLocations,
   type RegionExperienceLocation,
 } from '../api/experiences';
+import { queryKeys } from '../api/queryKeys';
 
 /**
  * `locationsResolved` is what consumers must gate an in-region count on.
@@ -42,7 +43,7 @@ export function useRegionLocations(
     // `includeLost` and `includeChildren` are part of the key: each pair of
     // answers is a different set, and sharing a cache entry would leave a row
     // without its markers until the batch happened to be refetched.
-    queryKey: ['region-locations', regionId, includeLost, includeChildren],
+    queryKey: queryKeys.experiences.regionLocations(regionId, includeLost, includeChildren),
     queryFn: () => fetchRegionExperienceLocations(regionId!, { includeChildren, includeLost }),
     enabled: regionId != null,
     staleTime: 300_000, // 5 min — locations don't change often

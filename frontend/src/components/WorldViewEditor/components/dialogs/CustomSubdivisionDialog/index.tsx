@@ -35,6 +35,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { formatRelativeTime } from '../../../../../utils/dateFormat';
 import type { ImageOverlaySettings } from './ImageOverlayDialog';
+import { queryKeys } from '../../../../../api/queryKeys';
 
 export type { SubdivisionGroup } from './types';
 
@@ -474,8 +475,8 @@ export function CustomSubdivisionDialog({
     setIsQuickExpanding(true);
     try {
       await expandToSubregions(selectedRegion.id, { inheritColor: true });
-      queryClient.invalidateQueries({ queryKey: ['regions', worldViewId] });
-      queryClient.invalidateQueries({ queryKey: ['regionMembers', selectedRegion.id] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.regions.list(worldViewId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.regions.members(selectedRegion.id) });
       onComplete();
     } catch (e) {
       console.error('Failed to quick expand:', e);
@@ -541,8 +542,8 @@ export function CustomSubdivisionDialog({
         }
       }
 
-      queryClient.invalidateQueries({ queryKey: ['regions', worldViewId] });
-      queryClient.invalidateQueries({ queryKey: ['regionMembers', sourceRegionId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.regions.list(worldViewId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.regions.members(sourceRegionId) });
 
       clearSavedState();
       onComplete();

@@ -41,6 +41,7 @@ import {
 } from '../../api/admin';
 import { fetchWorldViews } from '../../api/worldViews';
 import { useAuth } from '../../hooks/useAuth';
+import { queryKeys } from '../../api/queryKeys';
 
 export function AssignmentPanel() {
   const { user } = useAuth();
@@ -54,19 +55,19 @@ export function AssignmentPanel() {
     // Same rule as useNavigation: this list is filtered by visibility, so it
     // is cached per identity. Sharing the key also shares the entry, which is
     // why this no longer refetches what navigation already has.
-    queryKey: ['worldViews', user?.id ?? 'anon'],
+    queryKey: queryKeys.worldViews.forCaller(user?.id),
     queryFn: fetchWorldViews,
   });
 
   // Fetch sources — they populate the optional source filter below.
   const { data: sources } = useQuery({
-    queryKey: ['admin', 'sources'],
+    queryKey: queryKeys.admin.sources,
     queryFn: getSources,
   });
 
   // Fetch experience counts when world view is selected
   const { data: counts, refetch: refetchCounts } = useQuery({
-    queryKey: ['admin', 'experienceCounts', selectedWorldView, selectedSource],
+    queryKey: queryKeys.admin.experienceCounts(selectedWorldView, selectedSource),
     queryFn: () => getExperienceCountsByRegion(selectedWorldView!, selectedSource || undefined),
     enabled: !!selectedWorldView,
   });

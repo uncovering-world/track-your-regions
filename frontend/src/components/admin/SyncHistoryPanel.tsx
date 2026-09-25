@@ -40,6 +40,7 @@ import { formatDateTime, formatDuration } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { SyncChangeList } from './SyncChangeList';
 import { displayNameOf } from '../../utils/displayName';
+import { queryKeys } from '../../api/queryKeys';
 
 export function SyncHistoryPanel() {
   const [page, setPage] = useState(0);
@@ -47,7 +48,7 @@ export function SyncHistoryPanel() {
   const [selectedLog, setSelectedLog] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'syncLogs', page, rowsPerPage],
+    queryKey: queryKeys.admin.syncLogs(page, rowsPerPage),
     queryFn: () => getSyncLogs(undefined, rowsPerPage, page * rowsPerPage),
   });
 
@@ -309,7 +310,7 @@ function Tile({ value, label, bg }: { value: number; label: string; bg: string }
 
 function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
   const { data: log, isLoading } = useQuery({
-    queryKey: ['admin', 'syncLog', logId],
+    queryKey: queryKeys.admin.syncLog(logId),
     queryFn: () => getSyncLogDetails(logId!),
     enabled: !!logId,
   });

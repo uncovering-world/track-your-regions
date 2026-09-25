@@ -65,6 +65,7 @@ import { actionLabel, formatLogDetails } from './curationLog';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { displayNameOf } from '../../utils/displayName';
 import { tidyLabel } from '@tyr/shared/labels';
+import { queryKeys } from '../../api/queryKeys';
 
 interface CurationDialogProps {
   /** The experience to curate — null means dialog is closed */
@@ -109,7 +110,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
 
   // Fetch full experience detail to get metadata.website
   const detailQuery = useQuery({
-    queryKey: ['experience', experience?.id],
+    queryKey: queryKeys.experience.one(experience?.id),
     queryFn: () => fetchExperience(experience!.id),
     enabled: !!experience,
     staleTime: 300_000,
@@ -142,7 +143,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
 
   // Fetch curation log when history is opened
   const logQuery = useQuery({
-    queryKey: ['curation-log', experience?.id],
+    queryKey: queryKeys.experience.curationLog(experience?.id),
     queryFn: () => fetchCurationLog(experience!.id),
     enabled: !!experience && historyOpen,
     staleTime: 30_000,
@@ -210,7 +211,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
       removeExperienceFromRegion(experienceId, rId),
     onSuccess: () => {
       invalidateCaches();
-      queryClient.invalidateQueries({ queryKey: ['discover-region-counts'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.discover.regionCountsAll });
       onClose();
     },
   });

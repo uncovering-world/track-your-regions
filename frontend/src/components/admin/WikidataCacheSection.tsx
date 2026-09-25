@@ -37,6 +37,7 @@ import {
   getWikidataCache, clearWikidataCache, setWikidataCacheTtl, type WikidataCacheKind,
 } from '../../api/admin';
 import { formatDateTime } from '../../utils/dateFormat';
+import { queryKeys } from '../../api/queryKeys';
 
 /**
  * What each kind is, and why its lifetime is what it is.
@@ -210,14 +211,14 @@ export function WikidataCacheSection({ sourceId }: { sourceId: number }) {
   // be spending a query to tell nobody anything.
   const [open, setOpen] = useState(false);
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'wikidata-cache', sourceId],
+    queryKey: queryKeys.admin.wikidataCache(sourceId),
     queryFn: () => getWikidataCache(sourceId),
     enabled: open,
   });
   const [note, setNote] = useState<string | null>(null);
 
   const refresh = () =>
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wikidata-cache', sourceId] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.admin.wikidataCache(sourceId) });
 
   /**
    * A refusal has to say so.

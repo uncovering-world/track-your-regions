@@ -29,6 +29,7 @@ import { isWebGLAvailable } from '../../utils/webgl';
 import { plural } from '../../utils/plural';
 import { frameGeoJson } from '../../utils/mapUtils';
 import type { DrawnSiblingRegion } from './CvMatchMap';
+import { queryKeys } from '../../api/queryKeys';
 
 /**
  * The basemap every map of the import screen's coverage draws on, shared with
@@ -203,7 +204,7 @@ function MoveToSearch({ worldViewId, isMutating, hasGapChildren, onSelect, onClo
   const [selected, setSelected] = useState<number | ''>('');
 
   const { data: results, isFetching } = useQuery({
-    queryKey: ['admin', 'gapMoveSearch', worldViewId, query],
+    queryKey: queryKeys.admin.gapMoveSearch(worldViewId, query),
     queryFn: () => searchRegions(worldViewId, query),
     enabled: query.length >= 2,
   });

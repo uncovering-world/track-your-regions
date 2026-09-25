@@ -49,6 +49,7 @@ import { ExtentLine } from '../shared/ExtentLine';
 import { ContentsSection } from './ContentsSection';
 import { locationLabel } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
+import { queryKeys } from '../../api/queryKeys';
 
 interface ExperienceDetailPanelProps {
   experience: Experience;
@@ -69,21 +70,21 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
 
   // Fetch full details
   const { data: details } = useQuery({
-    queryKey: ['experience', experience.id],
+    queryKey: queryKeys.experience.one(experience.id),
     queryFn: () => fetchExperience(experience.id),
     staleTime: 300000,
   });
 
   // Fetch locations
   const { data: locationsData } = useQuery({
-    queryKey: ['experience-locations', experience.id],
+    queryKey: queryKeys.experience.locations(experience.id),
     queryFn: () => fetchExperienceLocations(experience.id),
     staleTime: 300000,
   });
 
   // Fetch contents
   const { data: contentsData } = useQuery({
-    queryKey: ['experience-contents', experience.id],
+    queryKey: queryKeys.experience.contents(experience.id),
     queryFn: () => fetchExperienceTreasures(experience.id),
     staleTime: 300000,
   });

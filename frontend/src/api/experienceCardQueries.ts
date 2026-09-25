@@ -20,20 +20,21 @@
  */
 
 import { fetchExperience, fetchExperienceTreasures, fetchSiteFinds } from './experiences';
+import { queryKeys } from './queryKeys';
 
 /** Five minutes, matching the card's own reads. */
 const CARD_STALE_TIME_MS = 300000;
 
 /** The experience itself: description, metadata, links. */
 export const experienceDetailsQuery = (id: number) => ({
-  queryKey: ['experience', id] as const,
+  queryKey: queryKeys.experience.one(id),
   queryFn: () => fetchExperience(id),
   staleTime: CARD_STALE_TIME_MS,
 });
 
 /** What a container holds — the artworks list a museum card draws. */
 export const experienceContentsQuery = (id: number) => ({
-  queryKey: ['experience-contents', id] as const,
+  queryKey: queryKeys.experience.contents(id),
   queryFn: () => fetchExperienceTreasures(id),
   staleTime: CARD_STALE_TIME_MS,
 });
@@ -45,7 +46,7 @@ export const experienceContentsQuery = (id: number) => ({
  * foot of this file gives; a museum, a monument or a church never asks.
  */
 export const siteFindsQuery = (id: number) => ({
-  queryKey: ['site-finds', id] as const,
+  queryKey: queryKeys.experience.siteFinds(id),
   queryFn: () => fetchSiteFinds(id),
   staleTime: CARD_STALE_TIME_MS,
 });

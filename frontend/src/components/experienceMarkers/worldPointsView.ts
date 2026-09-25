@@ -121,16 +121,6 @@ export function queryForView(
 }
 
 /**
- * The key an answer is cached under: the whole question, nothing else.
- *
- * React Query hashes it structurally, so two views that ask the same question
- * are one cache entry — which is what snapping the box is for.
- */
-export function pointsKey(query: WorldPointsQuery) {
-  return ['world-points', query.kindId, query.detail, query.folded, query.box] as const;
-}
-
-/**
  * Whether two views ask the same question — structurally, over the box's four
  * numbers.
  *

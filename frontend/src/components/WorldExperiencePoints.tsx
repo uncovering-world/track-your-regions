@@ -42,7 +42,7 @@ import {
 } from './experienceMarkers/worldPointLayers';
 import { EMPTY_FC } from './experienceMarkers/layers';
 import {
-  pointsKey, queryForView, sameQuestion, type ViewportBounds,
+  queryForView, sameQuestion, type ViewportBounds,
 } from './experienceMarkers/worldPointsView';
 import {
   useWorldPointInteractions, type WorldPoint,
@@ -53,6 +53,7 @@ import { useAppAddress } from '../hooks/useAppAddress';
 import { useNavigation } from '../hooks/useNavigation';
 import { experienceDetailsQuery } from '../api/experienceCardQueries';
 import { openableRegion } from '../utils/openableRegion';
+import { queryKeys } from '../api/queryKeys';
 
 /**
  * How long an answer is served without asking again.
@@ -112,7 +113,7 @@ export function WorldExperiencePoints({ kindId, folded, kindNameOf }: WorldExper
   }, [mapRef, kindId, folded]);
 
   const { data: answer } = useQuery({
-    queryKey: pointsKey(view),
+    queryKey: queryKeys.experiences.worldPoints(view),
     queryFn: () => fetchWorldPoints(view),
     staleTime: POINTS_STALE_TIME,
     // The answer already on screen stays drawn while the next one is in

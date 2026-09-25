@@ -46,6 +46,7 @@ import {
   type MatchTreeNode,
   type ChildrenCoverage,
 } from '../../api/admin/worldViewImport';
+import { queryKeys } from '../../api/queryKeys';
 // ─── Types shared between hook and component ─────────────────────────────────
 
 export interface MapPickerState {
@@ -101,8 +102,8 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   const [treeEditError, setTreeEditError] = useState<Error | null>(null);
 
   // ── Shared invalidation helpers ──────────────────────────────────────────
-  const treeKey = ['admin', 'wvImport', 'matchTree', worldViewId] as const;
-  const coverageKey = ['admin', 'wvImport', 'childrenCoverage', worldViewId] as const;
+  const treeKey = queryKeys.admin.wvImport.matchTree(worldViewId);
+  const coverageKey = queryKeys.admin.wvImport.childrenCoverage(worldViewId);
 
   /** Merge partial coverage data into the cache */
   const mergeCoverage = (partial: ChildrenCoverage) => {
@@ -158,14 +159,14 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   };
 
   const invalidateTree = (regionId?: number) => {
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] });
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchStats', worldViewId] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.matchTree(worldViewId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.matchStats(worldViewId) });
     refreshCoverage(regionId);
     deps.onMatchChange?.();
   };
 
   const invalidateStatsOnly = (regionId?: number) => {
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchStats', worldViewId] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.matchStats(worldViewId) });
     refreshCoverage(regionId);
     deps.onMatchChange?.();
   };
@@ -648,7 +649,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   const dismissWarningsMutation = useMutation({
     mutationFn: (regionId: number) => dismissHierarchyWarnings(worldViewId, regionId),
     onMutate: (regionId) => {
-      const treeKey = ['admin', 'wvImport', 'matchTree', worldViewId] as const;
+      const treeKey = queryKeys.admin.wvImport.matchTree(worldViewId);
       const prev = queryClient.getQueryData<MatchTreeNode[]>(treeKey);
       if (prev) {
         function markReviewed(nodes: MatchTreeNode[]): MatchTreeNode[] {
@@ -663,11 +664,11 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
       return { prev };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchStats', worldViewId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.matchStats(worldViewId) });
     },
     onError: (_err, _regionId, context) => {
       if (context?.prev) {
-        queryClient.setQueryData(['admin', 'wvImport', 'matchTree', worldViewId], context.prev);
+        queryClient.setQueryData(queryKeys.admin.wvImport.matchTree(worldViewId), context.prev);
       }
     },
   });

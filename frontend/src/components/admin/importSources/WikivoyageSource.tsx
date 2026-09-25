@@ -31,6 +31,7 @@ import {
 } from '../../../api/admin/wikivoyageExtract';
 import type { WikivoyageCache } from '../../../api/admin/wikivoyageExtract';
 import type { ImportSourceFormProps } from './types';
+import { queryKeys } from '../../../api/queryKeys';
 
 export function WikivoyageForm({ worldViewName }: ImportSourceFormProps) {
   const queryClient = useQueryClient();
@@ -38,7 +39,7 @@ export function WikivoyageForm({ worldViewName }: ImportSourceFormProps) {
 
   // Poll extraction status (primary)
   const { data: extractStatus } = useQuery({
-    queryKey: ['admin', 'wvExtract', 'status'],
+    queryKey: queryKeys.admin.wvExtractStatus,
     queryFn: getExtractionStatus,
     refetchInterval: (query) => {
       const st = query.state.data;
@@ -52,14 +53,14 @@ export function WikivoyageForm({ worldViewName }: ImportSourceFormProps) {
   const extractMutation = useMutation({
     mutationFn: () => startWikivoyageExtraction(worldViewName, selectedCache),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvExtractStatus });
     },
   });
 
   const deleteCacheMutation = useMutation({
     mutationFn: deleteCacheFile,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvExtractStatus });
     },
   });
 

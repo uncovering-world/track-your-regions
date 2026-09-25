@@ -6,6 +6,7 @@ import {
 } from '../../../api';
 import type { Region } from '../../../types';
 import type { WorldView } from '../../../api/worldViews';
+import { queryKeys } from '../../../api/queryKeys';
 
 interface UseRegionQueriesOptions {
   worldView: WorldView;
@@ -22,14 +23,14 @@ export function useRegionQueries({
 }: UseRegionQueriesOptions) {
   // Fetch regions for this worldView
   const { data: regions = [], isLoading: regionsLoading } = useQuery({
-    queryKey: ['regions', worldView.id],
+    queryKey: queryKeys.regions.list(worldView.id),
     queryFn: () => fetchRegions(worldView.id),
     enabled: open,
   });
 
   // Fetch members of selected region
   const { data: regionMembers = [], isLoading: membersLoading } = useQuery({
-    queryKey: ['regionMembers', selectedRegion?.id],
+    queryKey: queryKeys.regions.members(selectedRegion?.id),
     queryFn: () => fetchRegionMembers(selectedRegion!.id),
     enabled: !!selectedRegion,
     staleTime: 0, // Always consider stale to ensure refetch on invalidation
@@ -37,7 +38,7 @@ export function useRegionQueries({
 
   // Search for divisions to add (pass worldView.id for usage counting)
   const { data: searchResults = [], isLoading: searchLoading } = useQuery({
-    queryKey: ['search', debouncedSearch, worldView.id],
+    queryKey: queryKeys.search.editor(debouncedSearch, worldView.id),
     queryFn: () => searchDivisions(debouncedSearch, worldView.id, 20),
     enabled: debouncedSearch.length >= 2,
   });

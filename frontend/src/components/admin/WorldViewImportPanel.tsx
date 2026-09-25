@@ -45,6 +45,7 @@ import { WorldViewImportReview } from './WorldViewImportReview';
 import { ImportSourcePanel } from './ImportSourcePanel';
 import { safeHref } from '../../utils/safeHref';
 import { deleteWorldView } from '../../api/worldViews';
+import { queryKeys } from '../../api/queryKeys';
 
 type AnswerAction = { questionId: number; action: 'accept' | 'skip' | 'answer' | 'delete_rule'; answer?: string; ruleId?: number };
 
@@ -350,7 +351,7 @@ export function WorldViewImportPanel() {
 
   // Poll extraction status (primary)
   const { data: extractStatus } = useQuery({
-    queryKey: ['admin', 'wvExtract', 'status'],
+    queryKey: queryKeys.admin.wvExtractStatus,
     queryFn: getExtractionStatus,
     refetchInterval: (query) => {
       const st = query.state.data;
@@ -361,12 +362,12 @@ export function WorldViewImportPanel() {
 
   // Poll import status (for file upload path)
   const { data: importStatus } = useQuery({
-    queryKey: ['admin', 'wvImport', 'importStatus'],
+    queryKey: queryKeys.admin.wvImport.importStatus,
     queryFn: async () => {
       const result = await getImportStatus();
       // When import finishes, refresh extraction status to update world views list
       if (!result.running && result.status === 'complete') {
-        queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvExtractStatus });
       }
       return result;
     },
@@ -387,7 +388,7 @@ export function WorldViewImportPanel() {
   const cancelExtractMutation = useMutation({
     mutationFn: cancelExtraction,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvExtractStatus });
     },
   });
 
@@ -398,12 +399,12 @@ export function WorldViewImportPanel() {
     onSuccess: (_data, variables) => {
       setCustomAnswers(prev => { const next = { ...prev }; delete next[variables.questionId]; return next; });
       setShowCustomInput(prev => { const next = { ...prev }; delete next[variables.questionId]; return next; });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvExtractStatus });
     },
     onError: (err: Error, variables) => {
       // If question was already resolved (race condition), just refresh silently
       if (err.message.includes('already resolved') || err.message.includes('not found')) {
-        queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvExtractStatus });
         return;
       }
       setAnswerError({ questionId: variables.questionId, message: err.message });
@@ -415,7 +416,7 @@ export function WorldViewImportPanel() {
   const cancelImportMutation = useMutation({
     mutationFn: cancelImport,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'importStatus'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.importStatus });
     },
   });
 
@@ -446,8 +447,8 @@ export function WorldViewImportPanel() {
           worldViewId={activeWorldViewId}
           onFinalize={() => {
             setShowReview(false);
-            queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'importStatus'] });
-            queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.importStatus });
+            queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvExtractStatus });
           }}
         />
       </Box>
@@ -508,9 +509,9 @@ export function WorldViewImportPanel() {
                       onClick={async () => {
                         if (window.confirm(`Delete world view "${wv.name}"? This will remove all its regions and assignments.`)) {
                           await deleteWorldView(wv.id);
-                          queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
-                          queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'importStatus'] });
-                          queryClient.invalidateQueries({ queryKey: ['worldViews'] });
+                          queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvExtractStatus });
+                          queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.importStatus });
+                          queryClient.invalidateQueries({ queryKey: queryKeys.worldViews.all });
                         }
                       }}
                     >
