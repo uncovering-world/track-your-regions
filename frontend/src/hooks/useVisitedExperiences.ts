@@ -11,17 +11,18 @@ import {
   markAllLocationsVisited, markExperienceVisited, markLocationVisited, markTreasureViewed, unmarkAllLocationsVisited,
   unmarkExperienceVisited, unmarkLocationVisited, unmarkTreasureViewed, type VisitedStatus,
 } from '../api/visited';
+import { queryKeys } from '../api/queryKeys';
 
 /**
  * Hook for managing experience-level visited status (backward compatible)
  */
 export function useVisitedExperiences(kindId?: number) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const queryClient = useQueryClient();
 
   // Fetch visited experience IDs
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['visited-experiences', 'ids', kindId],
+    queryKey: queryKeys.visited.experiences(user?.id, kindId),
     queryFn: () => fetchVisitedExperienceIds(kindId),
     enabled: isAuthenticated,
     staleTime: 60000, // 1 minute
@@ -64,12 +65,12 @@ export function useVisitedExperiences(kindId?: number) {
  * Hook for managing location-level visited status (multi-location experiences)
  */
 export function useVisitedLocations(experienceId?: number) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const queryClient = useQueryClient();
 
   // Fetch visited location IDs
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['visited-locations', 'ids', experienceId],
+    queryKey: queryKeys.visited.locations(user?.id, experienceId),
     queryFn: () => fetchVisitedLocationIds(experienceId),
     enabled: isAuthenticated,
     staleTime: 60000, // 1 minute
@@ -156,11 +157,11 @@ export function useVisitedLocations(experienceId?: number) {
  * Hook for managing viewed treasures (artwork "seen" tracking)
  */
 export function useViewedTreasures(experienceId?: number) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['viewed-treasures', experienceId],
+    queryKey: queryKeys.visited.treasures(user?.id, experienceId),
     queryFn: () => fetchViewedTreasureIds(experienceId),
     enabled: isAuthenticated,
     staleTime: 60000,
@@ -174,7 +175,7 @@ export function useViewedTreasures(experienceId?: number) {
     mutationFn: ({ treasureId, experienceId }: { treasureId: number; experienceId?: number }) =>
       markTreasureViewed(treasureId, experienceId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['viewed-treasures'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.visited.treasuresAll });
       invalidateVisitedStatus(queryClient);
     },
   });
@@ -182,7 +183,7 @@ export function useViewedTreasures(experienceId?: number) {
   const unmarkViewedMutation = useMutation({
     mutationFn: unmarkTreasureViewed,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['viewed-treasures'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.visited.treasuresAll });
     },
   });
 
@@ -201,10 +202,10 @@ export function useViewedTreasures(experienceId?: number) {
  * Hook for fetching detailed visited status for a specific experience
  */
 export function useExperienceVisitedStatus(experienceId: number | null) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['experience-visited-status', experienceId],
+    queryKey: queryKeys.visited.status(user?.id, experienceId),
     queryFn: () => fetchExperienceVisitedStatus(experienceId!),
     enabled: isAuthenticated && experienceId !== null,
     staleTime: 60000,

@@ -38,9 +38,7 @@ import {
 } from '../../api/reviewQueue';
 import type { ReviewAddress } from '../../utils/appUrl';
 import { queueRows, type QueueRow } from './queueRows';
-
-/** Every query the page's answers invalidate — the union's pages under whatever filter. */
-export const QUEUE_KEY = ['curation', 'reviewQueue'];
+import { queryKeys } from '../../api/queryKeys';
 
 /** How far an answered list has been paged, and whether anything waits behind it. */
 export interface AnsweredPage {
@@ -121,7 +119,7 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
     // `row` is out of the key deliberately: opening a question must not re-read the list
     // it was opened from. The object is hashed by value, so the address re-rendering with
     // an equal one refetches nothing.
-    queryKey: [...QUEUE_KEY, filters, keptOutOffset, answeredWithdrawalsOffset, refusedPartsOffset],
+    queryKey: queryKeys.curation.reviewQueue(filters, keptOutOffset, answeredWithdrawalsOffset, refusedPartsOffset),
     queryFn: ({ pageParam }) => fetchReviewQueue({
       ...filters, cursor: pageParam, keptOutOffset, answeredWithdrawalsOffset, refusedPartsOffset,
     }),

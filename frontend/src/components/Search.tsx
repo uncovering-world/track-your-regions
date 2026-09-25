@@ -20,6 +20,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ExperienceSearchResults } from './ExperienceSearchResults';
 import type { DivisionSearchResult } from '../api/divisions';
 import type { RegionSearchResult } from '../api';
+import { queryKeys } from '../api/queryKeys';
 
 /** Enough to be a name rather than a letter, and what the API itself requires. */
 const MIN_QUERY = 2;
@@ -34,7 +35,7 @@ export function Search() {
 
   // Search divisions (GADM worldview)
   const { data: divisionResults = [], isLoading: divisionsLoading } = useQuery({
-    queryKey: ['search', 'divisions', debouncedQuery, selectedWorldView?.id],
+    queryKey: queryKeys.search.divisions(debouncedQuery, selectedWorldView?.id),
     queryFn: () => searchDivisions(debouncedQuery, selectedWorldView!.id),
     enabled: debouncedQuery.length >= MIN_QUERY && !!selectedWorldView && !isCustomWorldView,
     staleTime: 60000,
@@ -42,7 +43,7 @@ export function Search() {
 
   // Search regions (custom worldview)
   const { data: regionResults = [], isLoading: regionsLoading } = useQuery({
-    queryKey: ['search', 'regions', debouncedQuery, selectedWorldView?.id],
+    queryKey: queryKeys.search.regions(debouncedQuery, selectedWorldView?.id),
     queryFn: () => searchRegions(selectedWorldView!.id, debouncedQuery),
     enabled: debouncedQuery.length >= MIN_QUERY && !!selectedWorldView && isCustomWorldView,
     staleTime: 60000,
@@ -52,7 +53,7 @@ export function Search() {
   // the same answer serves every world view, and which of its rows can be
   // opened is decided when they are drawn rather than when they are fetched.
   const { data: experienceSearch, isLoading: experiencesLoading } = useQuery({
-    queryKey: ['search', 'experiences', debouncedQuery],
+    queryKey: queryKeys.search.experiences(debouncedQuery),
     queryFn: () => searchExperiences(debouncedQuery, EXPERIENCE_LIMIT),
     enabled: debouncedQuery.length >= MIN_QUERY,
     staleTime: 60000,

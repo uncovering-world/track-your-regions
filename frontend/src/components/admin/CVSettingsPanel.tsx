@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAISettings, updateAISetting } from '../../api/admin/ai';
+import { queryKeys } from '../../api/queryKeys';
 
 export function CVSettingsPanel() {
   const queryClient = useQueryClient();
@@ -27,14 +28,14 @@ export function CVSettingsPanel() {
   });
 
   const { data: settingsData, isLoading, isError, error } = useQuery({
-    queryKey: ['ai-settings'],
+    queryKey: queryKeys.ai.settings,
     queryFn: getAISettings,
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ key, value }: { key: string; value: string }) => updateAISetting(key, value),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ai.settings });
       setSnackbar({ open: true, message: 'CV pipeline updated', severity: 'success' });
     },
     onError: (err: Error) => {

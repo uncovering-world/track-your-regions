@@ -9,6 +9,7 @@ import {
   type ComputeProgressEvent,
 } from '../../../api';
 import type { WorldView } from '../../../api/worldViews';
+import { queryKeys } from '../../../api/queryKeys';
 
 interface UseComputationStatusOptions {
   worldView: WorldView;
@@ -47,8 +48,8 @@ export function useComputationStatus({
           if (!status.running) {
             // Computation finished
             setIsComputing(false);
-            queryClient.invalidateQueries({ queryKey: ['regions', worldView.id] });
-            queryClient.invalidateQueries({ queryKey: ['regionGeometries'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.regions.list(worldView.id) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.regions.geometryAll });
 
             // Regenerate display geometries automatically after computation
             if (status.status === 'Complete') {

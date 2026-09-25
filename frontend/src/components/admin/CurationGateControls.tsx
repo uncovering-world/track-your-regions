@@ -22,6 +22,7 @@ import {
 import { invalidateAfterBatchPublication } from '../../utils/queryInvalidation';
 import { plural } from '../../utils/plural';
 import { noticeFor } from './curationGateNotice';
+import { queryKeys } from '../../api/queryKeys';
 
 /**
  * What is waiting, said in the reader's terms rather than the column's.
@@ -150,7 +151,7 @@ export function CurationGateControls({ source }: { source: ExperienceSource }) {
   const gateMutation = useMutation({
     mutationFn: (requiresCuration: boolean) => setCurationGate(source.id, requiresCuration),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.sources });
     },
   });
 
@@ -178,7 +179,7 @@ export function CurationGateControls({ source }: { source: ExperienceSource }) {
     // objects are already committed.
     onSettled: () => {
       setConfirmPublish(false);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.sources });
       // The batch form, not the object form: `invalidateExperiences(qc)` with nothing
       // named reaches no object keys by design — a caller who changed one object is
       // expected to say which — and this call changed a whole source's worth. The

@@ -62,6 +62,7 @@ import { formatDateTime } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { actionLabel } from '../shared/curationLog';
 import { displayNameOf } from '../../utils/displayName';
+import { queryKeys } from '../../api/queryKeys';
 
 // =============================================================================
 // Main Panel
@@ -73,14 +74,14 @@ export function CuratorPanel() {
   const [activityUserId, setActivityUserId] = useState<number | null>(null);
 
   const { data: curators, isLoading } = useQuery({
-    queryKey: ['admin', 'curators'],
+    queryKey: queryKeys.admin.curators,
     queryFn: listCurators,
   });
 
   const revokeMutation = useMutation({
     mutationFn: (assignmentId: number) => revokeCuratorAssignment(assignmentId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'curators'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.curators });
     },
   });
 
@@ -286,7 +287,7 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
 
   // Queries
   const { data: userResults, isFetching: isSearchingUsers } = useQuery({
-    queryKey: ['admin', 'userSearch', userQuery],
+    queryKey: queryKeys.admin.userSearch(userQuery),
     queryFn: () => searchUsers(userQuery),
     enabled: userQuery.length >= 2,
   });
@@ -295,19 +296,19 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
     // Same rule as useNavigation: this list is filtered by visibility, so it
     // is cached per identity. Sharing the key also shares the entry, which is
     // why this no longer refetches what navigation already has.
-    queryKey: ['worldViews', user?.id ?? 'anon'],
+    queryKey: queryKeys.worldViews.forCaller(user?.id),
     queryFn: fetchWorldViews,
     enabled: open && scopeType === 'region',
   });
 
   const { data: regionResults, isFetching: isSearchingRegions } = useQuery({
-    queryKey: ['admin', 'regionSearch', selectedWorldViewId, regionQuery],
+    queryKey: queryKeys.admin.regionSearch(selectedWorldViewId, regionQuery),
     queryFn: () => searchRegions(selectedWorldViewId!, regionQuery),
     enabled: !!selectedWorldViewId && regionQuery.length >= 2,
   });
 
   const { data: sources } = useQuery({
-    queryKey: ['admin', 'sources'],
+    queryKey: queryKeys.admin.sources,
     queryFn: getSources,
     enabled: open && scopeType === 'source',
   });
@@ -315,7 +316,7 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const createMutation = useMutation({
     mutationFn: createCuratorAssignment,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'curators'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.curators });
       handleClose();
     },
   });
@@ -533,7 +534,7 @@ function ActivityDialog({
   const [expanded, setExpanded] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'curatorActivity', userId],
+    queryKey: queryKeys.admin.curatorActivity(userId),
     queryFn: () => getCuratorActivity(userId!),
     enabled: !!userId,
   });

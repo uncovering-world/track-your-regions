@@ -21,6 +21,7 @@ import {
   type ChangePasswordInput,
 } from '../api/auth';
 import { setAccessToken as setGlobalAccessToken, refreshSession, setRefreshSuccessListener } from '../api/fetchUtils';
+import { queryKeys } from '../api/queryKeys';
 
 // =============================================================================
 // JWT Payload Type
@@ -167,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // covers is the case the key cannot see: a refresh that returns the same
       // user with a *different role*, where the key is unchanged but the answer
       // is not. Prefix match, so it reaches the identity-suffixed keys.
-      queryClient.invalidateQueries({ queryKey: ['worldViews'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.worldViews.all });
     });
     return () => setRefreshSuccessListener(null);
   }, [queryClient]);

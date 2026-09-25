@@ -37,6 +37,7 @@ import { useRegionMutations, useRegionQueries } from './WorldViewEditor/hooks';
 import { WorldViewHeader, RegionTreePanel, DivisionSearchPanel, GeometryMapPanel, ActionStrip } from './WorldViewEditor/components';
 import { EditRefusedSnackbar } from './shared/EditRefusedSnackbar';
 import { useAppTheme } from '../theme';
+import { queryKeys } from '../api/queryKeys';
 
 interface WorldViewEditorProps {
   open: boolean;
@@ -235,7 +236,7 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
           createAsSubregions: false,
         }, {
           onSuccess: async () => {
-            await queryClient.refetchQueries({ queryKey: ['regions', worldView.id] });
+            await queryClient.refetchQueries({ queryKey: queryKeys.regions.list(worldView.id) });
             setSelectedRegion({
               id: newRegion.id,
               worldViewId: newRegion.worldViewId,
@@ -248,7 +249,7 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
               hasSubregions: false,
               hasHullChildren: false,
             });
-            queryClient.invalidateQueries({ queryKey: ['regionGeometry', newRegion.id] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.regions.geometry(newRegion.id) });
           }
         });
         setSingleDivisionForCustomBoundary(null);
@@ -508,10 +509,10 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
                 onSelectedRegionChange={setSelectedRegion}
                 onInvalidateQueries={({ regionGeometryId, regions: invalidateRegions }) => {
                   if (regionGeometryId) {
-                    queryClient.invalidateQueries({ queryKey: ['regionGeometry', regionGeometryId] });
+                    queryClient.invalidateQueries({ queryKey: queryKeys.regions.geometry(regionGeometryId) });
                   }
                   if (invalidateRegions) {
-                    queryClient.invalidateQueries({ queryKey: ['regions', worldView.id] });
+                    queryClient.invalidateQueries({ queryKey: queryKeys.regions.list(worldView.id) });
                   }
                 }}
                 onToggleHull={(region) => updateRegionMutation.mutate({
@@ -768,14 +769,14 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
         onClose={() => setCustomSubdivisionDialogOpen(false)}
         onComplete={() => {
           setCustomSubdivisionDialogOpen(false);
-          queryClient.invalidateQueries({ queryKey: ['regions', worldView.id] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.regions.list(worldView.id) });
           if (selectedRegion) {
-            queryClient.invalidateQueries({ queryKey: ['regionMembers', selectedRegion.id] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.regions.members(selectedRegion.id) });
           }
         }}
         onSplitsApplied={() => {
           if (selectedRegion) {
-            queryClient.invalidateQueries({ queryKey: ['regionMembers', selectedRegion.id] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.regions.members(selectedRegion.id) });
           }
         }}
       />
@@ -786,10 +787,10 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
         onClose={() => setSplittingDivision(null)}
         onComplete={() => {
           setSplittingDivision(null);
-          queryClient.invalidateQueries({ queryKey: ['regions', worldView.id] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.regions.list(worldView.id) });
           if (selectedRegion) {
-            queryClient.invalidateQueries({ queryKey: ['regionMembers', selectedRegion.id] });
-            queryClient.invalidateQueries({ queryKey: ['regionGeometry', selectedRegion.id] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.regions.members(selectedRegion.id) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.regions.geometry(selectedRegion.id) });
           }
         }}
       />

@@ -24,6 +24,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Box, Button, TextField, Typography } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { setSourceLine, type ExperienceSource, type SourceLineBody } from '../../api/admin';
+import { queryKeys } from '../../api/queryKeys';
 
 const MIN_SITELINKS = 1;
 const MAX_SITELINKS = 1000;
@@ -72,7 +73,7 @@ export function SourceLineControls({ source }: { source: ExperienceSource }) {
   const [findStayRaw, setFindStayRaw] = useState(String(source.find_stay_sitelinks ?? ''));
   // The stored line as of the last time the fields were synced to it, so a refetch
   // that returns the *same* numbers (this component's own save landing, an unrelated
-  // invalidation of `['admin', 'sources']` elsewhere on the page) does not stomp an
+  // invalidation of `queryKeys.admin.sources` elsewhere on the page) does not stomp an
   // edit the admin has not saved yet. Only an actual change to what the server holds
   // — another admin's save, a correction — re-seeds the fields, and it does so
   // unconditionally: an in-flight edit is discarded in that case, because the value
@@ -104,11 +105,11 @@ export function SourceLineControls({ source }: { source: ExperienceSource }) {
 
   const mutation = useMutation({
     mutationFn: (line: SourceLineBody) => setSourceLine(source.id, line),
-    // The same key the panel's own list reads (`SyncPanel.tsx`'s `['admin', 'sources']`
+    // The same key the panel's own list reads (`SyncPanel.tsx`'s `queryKeys.admin.sources`
     // query): the card's copy names the stored line, so a save that did not refetch it
     // would leave the fields agreeing with the server while the sentence above them did not.
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.sources });
     },
   });
 

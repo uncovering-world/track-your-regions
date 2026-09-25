@@ -53,6 +53,7 @@ import { ExperienceListItem } from './ExperienceList/ExperienceListItem';
 import { VirtualRow } from './shared/VirtualRow';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSeenWindowIds } from '../hooks/useSeenWindowIds';
+import { queryKeys } from '../api/queryKeys';
 
 interface ExperienceGroup {
   kindName: string;
@@ -127,7 +128,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   // Fetch kinds to map kind names → IDs for per-group add buttons
   const { data: kindsData } = useQuery({
-    queryKey: ['experience-kinds'],
+    queryKey: queryKeys.experiences.kinds,
     queryFn: fetchExperienceKinds,
     enabled: !!isCurator,
   });

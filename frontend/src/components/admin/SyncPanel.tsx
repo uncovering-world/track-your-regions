@@ -41,11 +41,12 @@ import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { CurationGateControls } from './CurationGateControls';
 import { SourceLineControls } from './SourceLineControls';
 import { WikidataCacheSection } from './WikidataCacheSection';
+import { queryKeys } from '../../api/queryKeys';
 
 export function SyncPanel() {
   const queryClient = useQueryClient();
   const { data: sources, isLoading } = useQuery({
-    queryKey: ['admin', 'sources'],
+    queryKey: queryKeys.admin.sources,
     queryFn: getSources,
   });
 
@@ -64,7 +65,7 @@ export function SyncPanel() {
   const reorderMutation = useMutation({
     mutationFn: (sourceIds: number[]) => reorderSources(sourceIds),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.sources });
     },
   });
 
@@ -253,8 +254,8 @@ function SourceCard({ source }: SourceCardProps) {
           setEndedBadly({ status: newStatus.status, message: newStatus.statusMessage ?? '' });
         }
         // Refresh sources list to get updated last_sync info
-        queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] });
-        queryClient.invalidateQueries({ queryKey: ['admin', 'syncLogs'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.sources });
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.syncLogsAll });
       }
       wasRunningRef.current = !!newStatus.running;
     } catch (error) {

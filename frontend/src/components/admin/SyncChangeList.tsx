@@ -13,6 +13,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { getSyncLogChanges, type ChangedField, type SyncChange } from '../../api/admin';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
+import { queryKeys } from '../../api/queryKeys';
 
 const PAGE_SIZE = 25;
 
@@ -194,7 +195,7 @@ export function SyncChangeList({ logId }: { logId: number }) {
   const [page, setPage] = useState(0);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['admin', 'syncChanges', logId, significantOnly, page],
+    queryKey: queryKeys.admin.syncChanges(logId, significantOnly, page),
     queryFn: () => getSyncLogChanges(logId, {
       // Not significance='major': created, missing, returned, conflict, contents and
       // failed rows carry no significance — it is null wherever no *field* was weighed

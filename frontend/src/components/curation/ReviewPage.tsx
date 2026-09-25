@@ -33,7 +33,8 @@ import { buildReviewUrl, isFilteredReview } from '../../utils/appUrl';
 import { plural } from '../../utils/plural';
 import { useReviewAddress, type ReviewPatch } from '../../hooks/useReviewAddress';
 import { nextSelection, type RowKind } from './queueRows';
-import { useReviewQueue, QUEUE_KEY } from './useReviewQueue';
+import { useReviewQueue } from './useReviewQueue';
+import { queryKeys } from '../../api/queryKeys';
 import { ReviewQueueList } from './ReviewQueueList';
 import { ReviewToolbar } from './feed/ReviewToolbar';
 import { dayOf } from './feed/rowDate';
@@ -192,7 +193,7 @@ export function ReviewPage() {
   const refresh = (message?: string, experienceId?: number) => {
     setNotice(message ?? null);
     if (experienceId !== undefined) invalidateExperiences(queryClient, { experienceId });
-    return queryClient.invalidateQueries({ queryKey: QUEUE_KEY });
+    return queryClient.invalidateQueries({ queryKey: queryKeys.curation.reviewQueueAll });
   };
 
   /**
@@ -210,7 +211,7 @@ export function ReviewPage() {
         const reason = e instanceof Error ? `: ${e.message}` : '.';
         setNotice(`${failure}${reason}`);
       })
-      .finally(() => { queryClient.invalidateQueries({ queryKey: QUEUE_KEY }); });
+      .finally(() => { queryClient.invalidateQueries({ queryKey: queryKeys.curation.reviewQueueAll }); });
   };
 
   /**

@@ -34,6 +34,7 @@ import { getDeleteImpact, WORLD_VIEW_DESCRIPTION_MAX_LENGTH } from '../api/world
 import type { DeleteImpact } from '../api/worldViews';
 import { lazyChunk } from '../utils/lazyChunk';
 import { ChunkBoundary } from './shared/ChunkBoundary';
+import { queryKeys } from '../api/queryKeys';
 
 // The editor is an admin's tool: loaded the first time it is opened, so a
 // visitor's bundle carries none of it (#643).
@@ -64,7 +65,7 @@ export function HierarchySwitcher() {
   const createMutation = useMutation({
     mutationFn: (data: { name: string; description?: string }) => createWorldView(data),
     onSuccess: (newWorldView) => {
-      queryClient.invalidateQueries({ queryKey: ['worldViews'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.worldViews.all });
       setCreateDialogOpen(false);
       setNewWorldViewName('');
       setNewWorldViewDescription('');
@@ -77,7 +78,7 @@ export function HierarchySwitcher() {
     mutationFn: (data: { name?: string; description?: string; isPublic?: boolean }) =>
       updateWorldView(selectedWorldView!.id, data),
     onSuccess: (updatedWorldView) => {
-      queryClient.invalidateQueries({ queryKey: ['worldViews'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.worldViews.all });
       setSettingsDialogOpen(false);
       setSelectedWorldView(updatedWorldView);
     },
@@ -86,7 +87,7 @@ export function HierarchySwitcher() {
   const deleteMutation = useMutation({
     mutationFn: () => deleteWorldView(selectedWorldView!.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['worldViews'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.worldViews.all });
       setDeleteDialogOpen(false);
       // Switch to default world view
       const defaultWorldView = worldViews.find(w => w.isDefault);

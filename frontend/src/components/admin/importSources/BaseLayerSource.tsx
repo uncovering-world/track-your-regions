@@ -14,6 +14,7 @@ import { Alert, Box, Button, MenuItem, Stack, TextField, Typography } from '@mui
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { startBaseLayerImport } from '../../../api/admin/worldViewImport';
 import type { ImportSourceFormProps } from './types';
+import { queryKeys } from '../../../api/queryKeys';
 
 const DEPTH_OPTIONS = [
   { value: 1, label: 'Roots + countries (~245 regions)' },
@@ -32,7 +33,7 @@ export function BaseLayerForm({ worldViewName }: ImportSourceFormProps) {
   const mutation = useMutation({
     mutationFn: () => startBaseLayerImport({ name: worldViewName, providerLabel, maxDepth }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'importStatus'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.importStatus });
     },
   });
 

@@ -31,6 +31,7 @@ import {
 import type { Region } from '../types';
 import { useNavigation } from './useNavigation';
 import { useAppAddress } from './useAppAddress';
+import { queryKeys } from '../api/queryKeys';
 
 /** The active experience view: region + kind selection */
 export interface ActiveView {
@@ -84,14 +85,14 @@ export function useDiscoverExperiences() {
 
   // Fetch experience kinds (for icon/name mapping)
   const { data: kinds = [] } = useQuery({
-    queryKey: ['experience-kinds'],
+    queryKey: queryKeys.experiences.kinds,
     queryFn: fetchExperienceKinds,
     staleTime: 300000,
   });
 
   // Fetch region counts for current tree level
   const { data: regionCounts = [], isLoading: countsLoading } = useQuery({
-    queryKey: ['discover-region-counts', selectedWorldViewId, currentParentId],
+    queryKey: queryKeys.discover.regionCounts(selectedWorldViewId, currentParentId),
     queryFn: () => fetchExperienceRegionCounts(selectedWorldViewId!, currentParentId ?? undefined),
     enabled: !!selectedWorldViewId,
     staleTime: 120000,
@@ -147,13 +148,13 @@ export function useDiscoverExperiences() {
     // filter below runs in `select`, per observer — so carrying `kindId` in
     // the key gave each tab its own cache entry and refetched the whole region
     // on every switch. That was wasteful at 500 rows and is more so now that a
-    // region is fetched whole. The `['discover-experiences']` prefix used for
+    // region is fetched whole. The `queryKeys.discover.experiencesAll` prefix used for
     // invalidation is unchanged.
     //
     // Read for an open list, and also for a card the address names without a
     // kind — the header writes that on the way from the map — so that the
     // kind can be read off the object below.
-    queryKey: ['discover-experiences', selectedRegion?.id],
+    queryKey: queryKeys.discover.experiences(selectedRegion?.id),
     // The kind filter runs in `select` below, on what came back — so a
     // truncated response is filtered, not a filtered response truncated. At 500
     // that lost the smaller kinds first: on 2026-08-19 Europe held 69 museums
@@ -219,7 +220,7 @@ export function useDiscoverExperiences() {
 
   // Fetch locations for the selected experience (for map display)
   const { data: selectedLocationsData, isPending: selectedLocationsPending } = useQuery({
-    queryKey: ['experience-locations', selectedExperienceId],
+    queryKey: queryKeys.experience.locations(selectedExperienceId),
     queryFn: () => fetchExperienceLocations(selectedExperienceId!),
     enabled: !!selectedExperienceId,
     staleTime: 300000,

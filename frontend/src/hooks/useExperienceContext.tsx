@@ -24,6 +24,7 @@ import { useAppAddress } from './useAppAddress';
 import { useCollapsedExperiences } from './useCollapsedExperiences';
 import { HoverProvider } from './useHoverContext';
 import type { ViewBounds } from '../utils/viewBounds';
+import { queryKeys } from '../api/queryKeys';
 
 // Re-export image utilities from their canonical location for backward compatibility
 export { toThumbnailUrl, extractImageUrl } from '../utils/imageUrl';
@@ -154,7 +155,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
 
   // Fetch experiences for the selected region
   const { data, isLoading } = useQuery({
-    queryKey: ['experiences', 'by-region', regionId, showLost],
+    queryKey: queryKeys.experiences.byRegion(regionId, showLost),
     queryFn: () => fetchExperiencesByRegion(regionId!, {
       includeChildren: false, limit: WHOLE_REGION_LIMIT, includeLost: showLost,
     }),

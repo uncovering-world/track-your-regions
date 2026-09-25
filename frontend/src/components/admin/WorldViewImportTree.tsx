@@ -60,6 +60,7 @@ import { OverlapResolutionDialog } from './OverlapResolutionDialog';
 import type { DivisionOverlaps } from '../../api/admin/worldViewImport';
 import { EditRefusedSnackbar } from '../shared/EditRefusedSnackbar';
 import { failedActionsError } from './suggestChildrenOutcome';
+import { queryKeys } from '../../api/queryKeys';
 
 /** Find a child region's ID by name under a specific parent */
 function findChildIdByName(nodes: MatchTreeNode[], parentId: number, childName: string): number | undefined {
@@ -96,7 +97,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
   } | null>(null);
 
   const { data: tree, isLoading } = useQuery({
-    queryKey: ['admin', 'wvImport', 'matchTree', worldViewId],
+    queryKey: queryKeys.admin.wvImport.matchTree(worldViewId),
     queryFn: () => getMatchTree(worldViewId),
   });
 
@@ -104,7 +105,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
   // staleTime=Infinity: we manage updates manually via setQueryData in refreshCoverage,
   // so prevent TanStack Query from auto-refetching (which would recompute ALL containers).
   const { data: coverageData, isRefetching: coverageRefetching, isLoading: coverageLoading } = useQuery({
-    queryKey: ['admin', 'wvImport', 'childrenCoverage', worldViewId],
+    queryKey: queryKeys.admin.wvImport.childrenCoverage(worldViewId),
     queryFn: () => getChildrenCoverage(worldViewId),
     staleTime: Infinity,
   });

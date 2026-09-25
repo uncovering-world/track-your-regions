@@ -21,6 +21,7 @@ import { Upload as UploadIcon } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { startWorldViewImport } from '../../../api/admin/worldViewImport';
 import type { ImportSourceFormProps } from './types';
+import { queryKeys } from '../../../api/queryKeys';
 
 export function FileForm({ worldViewName }: ImportSourceFormProps) {
   const queryClient = useQueryClient();
@@ -33,7 +34,7 @@ export function FileForm({ worldViewName }: ImportSourceFormProps) {
   const importMutation = useMutation({
     mutationFn: () => startWorldViewImport(worldViewName, treeData, matchingPolicy),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'importStatus'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.importStatus });
     },
   });
 

@@ -12,6 +12,7 @@ import {
 } from '../../api';
 import type { AdministrativeDivision, Region } from '../../types';
 import type { AnchorPoint, FocusBbox } from '../../api/regions';
+import { queryKeys } from '../../api/queryKeys';
 
 interface MetadataEntry {
   name: string;
@@ -102,7 +103,7 @@ export function useRegionMetadata(
   // Under `RegionList`'s key, not one of its own: both ask for the same
   // children of the same region, and under one key React Query asks once.
   const { data: regionMetadata, isLoading: regionsLoading } = useQuery({
-    queryKey: ['subregions', viewingRegionId],
+    queryKey: queryKeys.regions.subregions(viewingRegionId),
     queryFn: () => fetchSubregions(viewingRegionId as number),
     enabled: !!selectedWorldViewId && isCustomWorldView && viewingRegionId !== 'all-leaf',
     staleTime: 30000,
@@ -110,7 +111,7 @@ export function useRegionMetadata(
 
   // Fetch division metadata for GADM (no geometries)
   const { data: divisionMetadata, isLoading: divisionsLoading } = useQuery({
-    queryKey: ['divisionMetadata', viewingParentId],
+    queryKey: queryKeys.divisions.metadata(viewingParentId),
     queryFn: async () => {
       if (viewingParentId === 'root') {
         return fetchRootDivisions();

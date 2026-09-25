@@ -45,6 +45,7 @@ import {
   applyRuleReviewSuggestion,
   type RuleReviewResult,
 } from '../../api/admin/ai';
+import { queryKeys } from '../../api/queryKeys';
 
 /** Icon for an AI rule-review suggestion (merge / contradiction / obsolete). */
 function suggestionIcon(type: RuleReviewResult['suggestions'][number]['type']) {
@@ -75,7 +76,7 @@ export function ExtractionRulesPanel() {
   const [reviewSnapshot, setReviewSnapshot] = useState<Map<number, number> | null>(null);
 
   const { data: rulesData, isLoading, isError, error: rulesError } = useQuery({
-    queryKey: ['ai-rules'],
+    queryKey: queryKeys.ai.rules,
     queryFn: getLearnedRules,
   });
 
@@ -94,7 +95,7 @@ export function ExtractionRulesPanel() {
   const addRuleMutation = useMutation({
     mutationFn: () => addLearnedRule(newRule.feature, newRule.ruleText, newRule.context || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai-rules'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ai.rules });
       setNewRule(r => ({ ...r, ruleText: '', context: '' }));
       setSnackbar({ open: true, message: 'Rule added', severity: 'success' });
     },
@@ -106,7 +107,7 @@ export function ExtractionRulesPanel() {
   const deleteRuleMutation = useMutation({
     mutationFn: deleteLearnedRule,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai-rules'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ai.rules });
       setSnackbar({ open: true, message: 'Rule deleted', severity: 'success' });
     },
     onError: (err: Error) => {
@@ -135,7 +136,7 @@ export function ExtractionRulesPanel() {
   const applyMutation = useMutation({
     mutationFn: applyRuleReviewSuggestion,
     onSuccess: (_data, appliedSuggestion) => {
-      queryClient.invalidateQueries({ queryKey: ['ai-rules'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ai.rules });
       setReviewResult(prev => {
         if (!prev) return null;
         // Filter by object identity, not keepId — multiple suggestions may share the same keepId

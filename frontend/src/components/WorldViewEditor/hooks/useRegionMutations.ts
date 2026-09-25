@@ -13,6 +13,7 @@ import {
 } from '../../../api';
 import type { Region } from '../../../types';
 import type { WorldView } from '../../../api/worldViews';
+import { queryKeys } from '../../../api/queryKeys';
 
 interface InvalidationOptions {
   regionsChanged?: boolean;
@@ -59,10 +60,10 @@ export function useRegionMutations({
 
     if (regionsChanged) {
       console.log('[invalidateWorldViewQueries] Invalidating regions for worldView:', worldView.id);
-      queryClient.invalidateQueries({ queryKey: ['regions', worldView.id], refetchType: 'active' });
-      queryClient.invalidateQueries({ queryKey: ['rootRegions', worldView.id], refetchType: 'active' });
+      queryClient.invalidateQueries({ queryKey: queryKeys.regions.list(worldView.id), refetchType: 'active' });
+      queryClient.invalidateQueries({ queryKey: queryKeys.regions.roots(worldView.id), refetchType: 'active' });
       // Every level the map or the list has read, by parent region id (#649).
-      queryClient.invalidateQueries({ queryKey: ['subregions'], refetchType: 'active' });
+      queryClient.invalidateQueries({ queryKey: queryKeys.regions.subregionsAll, refetchType: 'active' });
     }
 
     if (membersChanged) {
@@ -70,12 +71,12 @@ export function useRegionMutations({
         // Invalidate specific regions' members
         console.log('[invalidateWorldViewQueries] Invalidating members for specific regions:', specificRegionIds);
         specificRegionIds.forEach(id => {
-          queryClient.invalidateQueries({ queryKey: ['regionMembers', id], refetchType: 'active' });
+          queryClient.invalidateQueries({ queryKey: queryKeys.regions.members(id), refetchType: 'active' });
         });
       } else {
         // Invalidate ALL member queries
         console.log('[invalidateWorldViewQueries] Invalidating ALL member queries');
-        queryClient.invalidateQueries({ queryKey: ['regionMembers'], refetchType: 'active' });
+        queryClient.invalidateQueries({ queryKey: queryKeys.regions.membersAll, refetchType: 'active' });
       }
     }
 
@@ -84,11 +85,11 @@ export function useRegionMutations({
       if (specificRegionIds && specificRegionIds.length > 0) {
         console.log('[invalidateWorldViewQueries] Invalidating geometries for specific regions:', specificRegionIds);
         specificRegionIds.forEach(id => {
-          queryClient.invalidateQueries({ queryKey: ['regionGeometry', id], refetchType: 'active' });
+          queryClient.invalidateQueries({ queryKey: queryKeys.regions.geometry(id), refetchType: 'active' });
         });
       } else {
         console.log('[invalidateWorldViewQueries] Invalidating ALL geometry queries');
-        queryClient.invalidateQueries({ queryKey: ['regionGeometry'], refetchType: 'active' });
+        queryClient.invalidateQueries({ queryKey: queryKeys.regions.geometryAll, refetchType: 'active' });
       }
     }
 
@@ -282,8 +283,8 @@ export function useRegionMutations({
       flattenSubregion(parentRegionId, subregionId),
     onSuccess: (_data, variables) => {
       // Remove stale member data first so the UI doesn't show deleted subregions
-      queryClient.removeQueries({ queryKey: ['regionMembers', variables.subregionId] });
-      queryClient.removeQueries({ queryKey: ['regionMembers', variables.parentRegionId] });
+      queryClient.removeQueries({ queryKey: queryKeys.regions.members(variables.subregionId) });
+      queryClient.removeQueries({ queryKey: queryKeys.regions.members(variables.parentRegionId) });
       invalidateWorldViewQueries({
         regionsChanged: true,
         membersChanged: true,
@@ -311,7 +312,7 @@ export function useRegionMutations({
   const updateWorldViewMutation = useMutation({
     mutationFn: (data: { name?: string; description?: string; source?: string }) => updateWorldView(worldView.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['worldViews'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.worldViews.all });
       onWorldViewRenamed?.();
     },
   });

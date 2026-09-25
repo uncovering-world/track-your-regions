@@ -9,9 +9,10 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  boxForViewport, detailForZoom, pointsKey, queryForView, sameQuestion,
+  boxForViewport, detailForZoom, queryForView, sameQuestion,
 } from './worldPointsView';
 import { MARKER_FADE_START } from './layers';
+import { queryKeys } from '../../api/queryKeys';
 
 describe('detailForZoom', () => {
   it('asks for the pins from the zoom the region layer starts fading them in', () => {
@@ -144,11 +145,12 @@ describe('sameQuestion', () => {
   const berlin = { west: 13, south: 52, east: 14, north: 53 };
 
   it('tells two different boxes apart — the bug this function exists for', () => {
-    // `pointsKey(...).join('|')` made every box `[object Object]`, so once the
+    // `worldPoints(...).join('|')` made every box `[object Object]`, so once the
     // layer had crossed into the marker tier no pan ever changed the key:
     // panning from Paris to Berlin at zoom 6 kept Paris' pins. The joined form
     // is asserted here too, so the shortcut cannot come back looking harmless.
-    expect(pointsKey(at(paris)).join('|')).toBe(pointsKey(at(berlin)).join('|'));
+    const key = queryKeys.experiences.worldPoints;
+    expect(key(at(paris)).join('|')).toBe(key(at(berlin)).join('|'));
     expect(sameQuestion(at(paris), at(berlin))).toBe(false);
   });
 

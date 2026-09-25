@@ -53,6 +53,7 @@ import {
   allLeavesApplied,
 } from './coverageResolveUtils';
 import { frameGeoJson } from '../../utils/mapUtils';
+import { queryKeys } from '../../api/queryKeys';
 
 interface CoverageResolveDialogProps {
   open: boolean;
@@ -108,7 +109,7 @@ export function CoverageResolveDialog({
   const [regionQuery, setRegionQuery] = useState('');
 
   const { data: regionResults, isFetching: isSearchingRegions } = useQuery({
-    queryKey: ['admin', 'coverageRegionSearch', worldViewId, regionQuery],
+    queryKey: queryKeys.admin.coverageRegionSearch(worldViewId, regionQuery),
     queryFn: () => searchRegions(worldViewId, regionQuery),
     enabled: searchOpen && regionQuery.length >= 2,
   });

@@ -8,6 +8,7 @@ import { useAuth } from './useAuth';
 import { useAppAddress } from './useAppAddress';
 import { useAddressedRegion, type SelectRegionOptions } from './useAddressedRegion';
 import { RegionHoverProvider } from './useRegionHover';
+import { queryKeys } from '../api/queryKeys';
 
 export type { SelectRegionOptions } from './useAddressedRegion';
 
@@ -112,7 +113,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     // answer. Under separate keys they cannot overwrite each other, and a login
     // or logout stops addressing the old entry rather than having to invalidate
     // it in time.
-    queryKey: ['worldViews', user?.id ?? 'anon'],
+    queryKey: queryKeys.worldViews.forCaller(user?.id),
     queryFn: fetchWorldViews,
     // Correctness comes from the key above; this only avoids spending a request
     // on an anonymous answer that is about to be replaced.
@@ -133,7 +134,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // Fetch root regions for custom world views
   // Uses selectedWorldViewId for eager loading (before full world view object loads)
   const { data: rootRegions = [], isLoading: rootRegionsLoading } = useQuery({
-    queryKey: ['rootRegions', selectedWorldViewId],
+    queryKey: queryKeys.regions.roots(selectedWorldViewId),
     queryFn: () => fetchRootRegions(selectedWorldViewId!),
     enabled: isCustomWorldView && !!selectedWorldViewId,
   });
@@ -149,7 +150,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   // Update breadcrumbs when division changes (only for GADM hierarchy)
   const { data: ancestorData } = useQuery({
-    queryKey: ['ancestors', selectedDivision?.id, selectedWorldView?.id],
+    queryKey: queryKeys.divisions.ancestors(selectedDivision?.id, selectedWorldView?.id),
     queryFn: () => fetchDivisionAncestors(selectedDivision!.id, selectedWorldView!.id),
     enabled: !!selectedDivision && !!selectedWorldView && !isCustomWorldView,
   });

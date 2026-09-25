@@ -39,6 +39,7 @@ import {
   MapStateOverlay,
   type ToolbarStyles,
 } from './GeometryMapPanelParts';
+import { queryKeys } from '../../../api/queryKeys';
 
 /** What a compute run tells the selection about the region it just drew, or kept. */
 type ComputedRegionPatch = Pick<ComputeResult, 'preserved' | 'usesHull' | 'focusBbox' | 'anchorPoint'>;
@@ -191,7 +192,7 @@ export function GeometryMapPanel({
 
   const geometryFlavor = displayMode === 'real' ? undefined : 'hull';
   const { data: selectedRegionGeometry, isLoading: geometryLoading } = useQuery({
-    queryKey: ['regionGeometry', selectedRegion?.id, displayMode],
+    queryKey: queryKeys.regions.geometryAs(selectedRegion?.id, displayMode),
     queryFn: () => selectedRegion
       ? fetchRegionGeometry(selectedRegion.id, geometryFlavor)
       : null,

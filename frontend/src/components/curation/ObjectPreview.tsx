@@ -13,6 +13,7 @@ import { fetchExperience, type ImageCredit } from '../../api/experiences';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
+import { queryKeys } from '../../api/queryKeys';
 
 /**
  * The object as a curator may see it, which is the only reason it can be seen.
@@ -35,7 +36,7 @@ export function ObjectPreview({ experienceId }: { experienceId: number }) {
   // finding as `ObjectContext`, same shape, second site.
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['experience', experienceId],
+    queryKey: queryKeys.experience.one(experienceId),
     queryFn: () => fetchExperience(experienceId),
   });
 

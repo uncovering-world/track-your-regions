@@ -26,6 +26,7 @@ import type { Region } from '../types';
 import { fetchRegionAncestors } from '../api';
 import type { AppAddress } from '../utils/appUrl';
 import type { GoOptions } from './useAppAddress';
+import { queryKeys } from '../api/queryKeys';
 
 export interface SelectRegionOptions {
   /** Discover's open kind list, written beside the region; the map ignores it. */
@@ -110,7 +111,7 @@ export function useAddressedRegion({ address, go, isCustomWorldView, authLoading
   // hidden, or not there — not a hiccup to retry.
   const ancestorsFor = restoreId ?? selectedRegion?.id ?? null;
   const { data: regionAncestors, isError: ancestorsFailed } = useQuery({
-    queryKey: ['regionAncestors', ancestorsFor],
+    queryKey: queryKeys.regions.ancestors(ancestorsFor),
     queryFn: () => fetchRegionAncestors(ancestorsFor!),
     enabled: ancestorsFor !== null && (restoring ? !authLoading : isCustomWorldView),
     ...(restoring ? { retry: false } : {}),

@@ -30,6 +30,7 @@ import { DiscoverRegionList } from './DiscoverRegionList';
 import { DiscoverExperienceView } from './DiscoverExperienceView';
 import { ExperienceDetailPanel } from './ExperienceDetailPanel';
 import { kindColor, shortKindName } from '../../utils/kindColors';
+import { queryKeys } from '../../api/queryKeys';
 
 const LEFT_PANEL_WIDTH = 380;
 const DETAIL_PANEL_WIDTH = 480;
@@ -62,7 +63,7 @@ export function DiscoverPage() {
 
   // Fetch curator scopes (for determining which regions show "+" button)
   const { data: curatorScopes } = useQuery({
-    queryKey: ['curator-scopes'],
+    queryKey: queryKeys.curation.scopes,
     queryFn: () => fetchMyAccount().then(account => account.curatorScopes ?? []),
     enabled: isCurator,
     staleTime: 300_000,

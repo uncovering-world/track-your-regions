@@ -50,6 +50,7 @@ import { MakerList, MAX_MAKERS } from './MakerList';
 import { YearField } from './YearField';
 import { PictureWithCredit } from './PictureWithCredit';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
+import { queryKeys } from '../../api/queryKeys';
 
 /** The work a curator is correcting, as the surface that opened it knows it. */
 export interface WorkToCorrect {
@@ -322,7 +323,7 @@ export function WorkCorrection({ work, onDone, onCancel }: {
       // for five minutes — so without the prefix, the form's own promise that
       // the correction is what every one of them shows would be false on the
       // next card opened in the same session.
-      queryClient.invalidateQueries({ queryKey: ['experience-contents'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.experience.contentsAll });
       onDone(correctionOutcome(work, correction, reply));
     },
   });

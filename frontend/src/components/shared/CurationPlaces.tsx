@@ -46,6 +46,7 @@ import { claimLabel } from '../../utils/placeClaims';
 import { ContentsList } from './ContentsList';
 import { PointPreviewDialog } from './PointPreviewDialog';
 import type { UnseenReason } from './PointCorrection';
+import { queryKeys } from '../../api/queryKeys';
 
 /** As many as the review page lists before it says "showing N of M". */
 const PLACES_SHOWN = 25;
@@ -130,7 +131,7 @@ export function CurationPlaces({
   objectMissingSince?: string | null;
 }) {
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['experience-locations', experienceId],
+    queryKey: queryKeys.experience.locations(experienceId),
     queryFn: () => fetchExperienceLocations(experienceId),
   });
   // The place a curator opened, held as the place rather than a flag. The dialog

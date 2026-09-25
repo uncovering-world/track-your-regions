@@ -21,6 +21,7 @@ import { fetchRootDivisions, fetchSubdivisions, fetchSubregions, fetchRootRegion
 import { LoadingSpinner } from './shared/LoadingSpinner';
 import type { AdministrativeDivision, Region } from '../types';
 import type { WorldView } from '../api/worldViews';
+import { queryKeys } from '../api/queryKeys';
 
 async function fetchDivisionsForView(
   worldView: WorldView | null,
@@ -219,14 +220,14 @@ export function RegionList() {
 
   // Fetch divisions for GADM hierarchy
   const { data: divisions = [], isLoading: divisionsLoading } = useQuery({
-    queryKey: ['divisions', selectedWorldView?.id, selectedDivision?.id],
+    queryKey: queryKeys.divisions.children(selectedWorldView?.id, selectedDivision?.id),
     queryFn: () => fetchDivisionsForView(selectedWorldView, selectedDivision),
     enabled: !!selectedWorldView && !isCustomWorldView,
   });
 
   // Fetch subregions for selected region (only if it has subregions)
   const { data: subregions = [], isLoading: subregionsLoading } = useQuery({
-    queryKey: ['subregions', selectedRegion?.id],
+    queryKey: queryKeys.regions.subregions(selectedRegion?.id),
     queryFn: () => fetchSubregions(selectedRegion!.id),
     enabled: isCustomWorldView && !!selectedRegion && selectedRegion.hasSubregions === true,
   });
@@ -234,7 +235,7 @@ export function RegionList() {
   // Fetch siblings for leaf regions (regions with same parent)
   // Also runs if hasSubregions is undefined (treat as no subregions)
   const { data: siblings = [], isLoading: siblingsLoading } = useQuery({
-    queryKey: ['subregions', selectedRegion?.parentRegionId ?? 'root'],
+    queryKey: queryKeys.regions.subregions(selectedRegion?.parentRegionId ?? 'root'),
     queryFn: () => selectedRegion?.parentRegionId
       ? fetchSubregions(selectedRegion.parentRegionId)
       : fetchRootRegions(selectedWorldView!.id),
