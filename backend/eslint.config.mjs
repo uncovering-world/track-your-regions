@@ -134,6 +134,22 @@ const EXPERIENCE_WRITE_RULES = [
   { selector: `Literal[value=${EXPERIENCE_WRITE_TEXT}]`, message: EXPERIENCE_WRITE },
 ];
 
+/**
+ * A write to `experience_locations` — an object's points — outside the modules
+ * that write it (ADR-0069, #791): the curator's writes in
+ * `src/controllers/experience/experienceLocationWriter.ts`, every one of them
+ * under the object's `LockedExperience` token; the run's location writer
+ * (`src/services/sync/locationWriter.ts`), which takes the same lock; and the
+ * seed.
+ */
+const EXPERIENCE_LOCATION_WRITE = 'experience_locations is written by its writer modules only (ADR-0069): add a named '
+  + 'write to src/controllers/experience/experienceLocationWriter.ts, taking the object\'s LockedExperience token.';
+const EXPERIENCE_LOCATION_WRITE_TEXT = '/\\b(INSERT\\s+INTO|UPDATE)\\s+experience_locations(?!\\w)/i';
+const EXPERIENCE_LOCATION_WRITE_RULES = [
+  { selector: `TemplateElement[value.raw=${EXPERIENCE_LOCATION_WRITE_TEXT}]`, message: EXPERIENCE_LOCATION_WRITE },
+  { selector: `Literal[value=${EXPERIENCE_LOCATION_WRITE_TEXT}]`, message: EXPERIENCE_LOCATION_WRITE },
+];
+
 /** What the response-shape rule says. */
 const RESPONSE_SHAPE = [
   'A success body is sent through respond(res, Schema, body) from src/api/respond.ts, with its schema in src/api/responses/,',
@@ -272,7 +288,7 @@ export default [
     ignores: ['src/**/*.test.ts', 'src/api/respond.ts'],
     rules: {
       'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES],
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES],
     },
   },
   // The two modules the reader predicates are spelled in (#791): every entry
@@ -281,7 +297,7 @@ export default [
     files: ['src/db/readerPredicates.ts', 'src/db/membership.ts'],
     rules: {
       'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...EXPERIENCE_WRITE_RULES],
+        ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES],
     },
   },
   // The modules that write `experiences` (ADR-0069): every entry above but
@@ -292,8 +308,26 @@ export default [
       'src/services/sync/experienceUpsert.ts',
       'src/services/sync/missingDetection.ts',
       'src/services/sync/pictureRepair.ts',
-      'src/db/seed/**/*.ts',
     ],
+    rules: {
+      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES],
+    },
+  },
+  // The modules that write `experience_locations` (ADR-0069), the same way.
+  {
+    files: [
+      'src/controllers/experience/experienceLocationWriter.ts',
+      'src/services/sync/locationWriter.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES],
+    },
+  },
+  // The seed writes both tables, as the fixture it is.
+  {
+    files: ['src/db/seed/**/*.ts'],
     rules: {
       'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
         ...READER_PREDICATE_RULES],
