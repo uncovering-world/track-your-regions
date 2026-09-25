@@ -56,7 +56,7 @@ Three tables hold what one row held (ADR-0045 decision 4; the calls this slice t
 
 What follows from the split, in the code as it stands:
 
-- **A reader-facing read asks admission and the gate of the place through its memberships.** `db/membership.ts` is the one spelling: `placeAdmittedSql` (some membership admitted), `placeVisibleSql` (some membership passed) and `placeOfferedSql` (both, of *one* membership — the composition matters the day a place has two, since one membership admitted and another passed is offered by no single kind). `hideRefusedSql`, `hidePendingSql` and `experienceOfferedToReaderSql` in `experienceLifecycle.ts` delegate to them, so every list, count, search and map feed reads as it did — a place has exactly one membership today, and migration 046 refuses a database where it does not.
+- **A reader-facing read asks admission and the gate of the place through its memberships.** `db/membership.ts` is the one spelling: `placeAdmittedSql` (some membership admitted), `placeVisibleSql` (some membership passed) and `placeOfferedSql` (both, of *one* membership — the composition matters the day a place has two, since one membership admitted and another passed is offered by no single kind). `hideRefusedSql`, `hidePendingSql` and `experienceOfferedToReaderSql` in `db/readerPredicates.ts` delegate to them, so every list, count, search and map feed reads as it did — a place has exactly one membership today, and migration 046 refuses a database where it does not.
 - **A run writes the membership beside the place** (`experienceUpsert.ts`): the kind read off the source, the source, `admitted_for`, and the gate state of the arrival — `pending` with no `published_at` under a gate, `auto` and now otherwise. The hold (a gated source may not overwrite what a reader can see) is a question about the memberships now, which is why the upsert became one transaction per object that locks the place in a statement of its own and reads the hold in the next — see § Change provenance. The admission writes (`admission.ts`), the held-proposal pointer and the curator-pass decay target the membership the run's own source brought.
 - **A curator answers the membership** where the endpoint is keyed on the place — `/:id/publish`, `/:id/decline-held`, `/:id/admission` — through `membershipToAnswerSql`: the one waiting for a publish or a decline, the refused one for a verdict, the place's only one until #755 makes a second and its API names it. The publication and the verdict land on the membership; the content, and who decided and when, on the place.
 - **Counts follow ADR-0046 decision 8** (`experienceCounts.ts`): a kind's count is of memberships — `/kinds`' `experience_count` and the tree's per-kind counts — and a region's count is of places; equal today, apart from the first merge.
@@ -249,9 +249,9 @@ sees does not change, because a withdrawn point used to be deleted and so left e
 moment a run stopped seeing it: the predicate `missing_since IS NULL` keeps it out
 of the marker batch, the experience's own location list, `location_count`, the per-user visited
 status, "mark all locations visited", the visit a viewed treasure records for its venue, and
-region placement. The controllers take it from one fragment, `offeredLocationSql()`
-(`experienceLifecycle.ts`); `regionAssignmentService.ts` writes it out, since a service
-importing a controller module would be the first such import in the codebase.
+region placement. Every one of them takes it from one fragment, `offeredLocationSql()`
+(`db/readerPredicates.ts`), placement included: the fragments live in `db/` so the sync
+services compose them too (#791).
 
 Since [ADR-0026](../decisions/0026-a-run-records-what-a-container-holds.md) that fragment carries a
 second term, `existence <> 'lost'`, and it is the location half of the pair an experience has
@@ -346,7 +346,7 @@ answers with the ids it accepted, so unfiltered it confirmed that an unread row 
 sighting of a chip that had never been on screen. It now carries `admission` and the gate, and
 `existence` stays out for the reason above — a chip seen on something since lost was still seen.
 
-So the rule is stated by **shape** and not as a list, in `experienceLifecycle.ts`'s own doctrine
+So the rule is stated by **shape** and not as a list, in `db/readerPredicates.ts`'s own doctrine
 block: **any statement that records a claim about a row and answers with something about that row
 belongs to it** — a visit, a viewed work, a seen chip. Enumerating the writers is what let the fifth
 exist: each of the four was fixed once, three came back carrying a different subset of the
@@ -2833,7 +2833,7 @@ membership, which is what every writer of a reader's claim composes — and
 `publishedContentSql()` gates a content row — a location, a treasure link, a treasure — because
 ADR-0025's split is load-bearing: a published museum may hold newly-written, unread paintings, and
 a predicate that only checked the experience would publish them the moment a run wrote them. Both
-live beside `hideLostSql`, `hideRefusedSql` and `offeredLocationSql` in `experienceLifecycle.ts`, unconditional everywhere a list,
+live beside `hideLostSql`, `hideRefusedSql` and `offeredLocationSql` in `db/readerPredicates.ts`, unconditional everywhere a list,
 count, search or map feed applies them — there is no `?includeUnread=true`, unlike `?includeLost`,
 because a reader has no legitimate reason to ask for what nobody has checked. The by-region
 **count**'s two `FILTER` expressions both need it, or a row that is both `lost` and `pending` gets
@@ -2883,7 +2883,7 @@ queue empty. A read that answers "what is in this region" from that table alone 
 an object on the strength of a row no reader is shown: the region's list gains it, the
 `location_count` beside it reads through `publishedContentSql` and says none of its points are on
 offer here, the marker batch draws nothing, and opening it lists places in other regions (#521).
-`readerRegionMembershipSql()` (`experienceLifecycle.ts`) is the further question — does this
+`readerRegionMembershipSql()` (`db/readerPredicates.ts`) is the further question — does this
 region hold a point of this object that is offered *and* published — and every reader-facing
 region read carries it: the by-region list and its count in both branches, the marker batch in
 both branches, `region-counts`, and the `regions[]` of both
@@ -2985,10 +2985,14 @@ one.
 An object a run merely flagged looks completely ordinary. That is the point of leaving both
 verdicts to a curator: a source outage must not change what anyone sees.
 
-`hideLostSql()` / `lifecycleSelectSql()` / `includeLost()` live in
-`controllers/experience/experienceLifecycle.ts` rather than inline, because the predicate goes
+`hideLostSql()` and `lifecycleSelectSql()` live in `db/readerPredicates.ts`, and the
+request's ask for lost rows (`includeLost()`) in `controllers/experience/includeLost.ts`,
+rather than inline, because the predicate goes
 into a dozen queries built by string concatenation and the one that forgets it is the one that
-lies. Two traps it has already caught: `searchExperiences` needs brackets round its two name
+lies. The rule holds by construction since #791: a literal `curation_state <> 'pending'` or
+`existence <> 'lost'` in a statement anywhere but `db/readerPredicates.ts` and
+`db/membership.ts` fails the backend lint (`READER_PREDICATE_RULES` in
+`backend/eslint.config.mjs`), the sync writers included. Two traps it has already caught: `searchExperiences` needs brackets round its two name
 alternatives (unbracketed, `OR` binds looser than the lifecycle `AND` and every lost object
 matching by trigram comes straight back), and the by-region **count** has to carry the same
 rule as the list or the page says one number and shows another. `listKinds` carries both
