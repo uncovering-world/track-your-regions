@@ -118,7 +118,7 @@ function functionBody(name: string): string {
  */
 function parametersRead(name: string, body: string): Map<string, string> {
   const params = new Map<string, string>();
-  const READ = "(query_params->>'";
+  const READ = "query_param_int(query_params, '";
 
   for (const line of body.split('\n')) {
     const at = line.indexOf(READ);
@@ -177,6 +177,21 @@ describe('tile function scope guards', () => {
     // in TILE_SOURCES is the case this catches.
     expect(declaredTileFunctions()).toEqual(Object.keys(TILE_SOURCES).sort());
   });
+
+  it.each(Object.entries(TILE_SOURCES))(
+    '%s reads query_params only through the helpers, never directly',
+    (name) => {
+      // A bare `(query_params->>'x')::integer` raises on a value that is not
+      // an integer, and Martin answers that with HTTP 500 and the database's
+      // error text (#664). query_param_int reads a value as no scope instead,
+      // and query_param_sent asks whether one was sent. With those two calls
+      // taken out, the body names query_params nowhere: not through ->>, #>>
+      // or ->, not through json_extract_path_text, not inside a CAST, so no
+      // spelling can reintroduce the cast. The signature is outside the body.
+      const withoutHelpers = functionBody(name).replace(/query_param_(int|sent)\(query_params,/g, '');
+      expect(withoutHelpers).not.toMatch(/\bquery_params\b/);
+    },
+  );
 
   it.each(Object.entries(TILE_SOURCES))(
     '%s reads exactly the parameters it declares',
