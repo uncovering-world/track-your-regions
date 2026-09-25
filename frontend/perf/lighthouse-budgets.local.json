@@ -18,7 +18,7 @@
     "resource-summary:script:size": [
       "error",
       {
-        "maxNumericValue": 925000
+        "maxNumericValue": 590000
       }
     ],
     "resource-summary:stylesheet:size": [
@@ -30,7 +30,7 @@
     "resource-summary:total:size": [
       "error",
       {
-        "maxNumericValue": 1255000
+        "maxNumericValue": 965000
       }
     ],
     "resource-summary:total:count": [
