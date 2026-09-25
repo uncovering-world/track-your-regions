@@ -55,7 +55,8 @@ vi.mock('./imageCredit.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { orchestrateSync, type SyncServiceConfig, type SyncRunContext } from './syncOrchestrator.js';
+import { orchestrateSync } from './syncOrchestrator.js';
+import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { collectTier1Museums } from './museum/pipeline.js';
 import { upsertVenueTreasures } from './museum/treasureWriter.js';

@@ -12,7 +12,7 @@
  */
 
 import { vi } from 'vitest';
-import type { SyncServiceConfig, ProcessItemResult } from './syncOrchestrator.js';
+import type { SyncServiceConfig, ProcessItemResult } from './syncContract.js';
 import { runningSyncs, type SyncProgress } from './types.js';
 import {
   missingDetectionSkipReason, flagMissingExperiences, countActiveExperiences,

@@ -15,7 +15,7 @@ import { makeResolver } from '../museum/venueGraph.js';
 import type { PoolWork } from '../museum/queries.js';
 import type { WorksCollection } from '../museum/worksCollector.js';
 import type { WorshipTrees } from './classes.js';
-import type { FilteredEntity } from '../syncOrchestrator.js';
+import type { FilteredEntity } from '../syncContract.js';
 
 const LOG_PREFIX = '[Worship Sync]';
 

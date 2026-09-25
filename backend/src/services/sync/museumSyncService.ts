@@ -12,8 +12,8 @@
 
 import { pool } from '../../db/index.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
-import { orchestrateSync, getSyncStatus, cancelSync, type FilteredEntity } from './syncOrchestrator.js';
-import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
+import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
+import type { FilteredEntity, ProcessItemResult, SyncRunContext } from './syncContract.js';
 import type { ChangeSetResult } from './changeSet.js';
 import type {
   SyncProgress,

@@ -42,7 +42,7 @@ import {
   type EntityFacts,
   type ContainerFacts,
 } from './queries.js';
-import type { FilteredEntity } from '../syncOrchestrator.js';
+import type { FilteredEntity } from '../syncContract.js';
 import type { WikidataLandmark } from '../types.js';
 
 /**

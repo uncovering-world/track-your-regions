@@ -29,7 +29,7 @@ import {
 import type { FindFacts } from './finds.js';
 import type { ArchaeologyTrees } from './classes.js';
 import { lineStanding, type LinePair, type SourceLine } from '../sourceLine.js';
-import type { FilteredEntity } from '../syncOrchestrator.js';
+import type { FilteredEntity } from '../syncContract.js';
 import type { ProcessedContent } from '../types.js';
 
 export interface CollectedArchaeologyMuseum {

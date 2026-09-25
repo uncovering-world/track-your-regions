@@ -46,7 +46,8 @@ vi.mock('./imageCredit.js', () => ({
   creditToWrite: vi.fn().mockReturnValue({}),
 }));
 
-import { orchestrateSync, type SyncServiceConfig, type SyncRunContext } from './syncOrchestrator.js';
+import { orchestrateSync } from './syncOrchestrator.js';
+import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { withCache } from './wikidataCache.js';
 import { collectPublicArt } from './publicArt/pipeline.js';

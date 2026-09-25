@@ -23,7 +23,7 @@ import {
 import { worshipVerdict } from './worshipTest.js';
 import { BROAD_WORSHIP_ROOTS, type WorshipTrees, type WorshipType } from './classes.js';
 import { belowLineReason, lineStanding, type SourceLine } from '../sourceLine.js';
-import type { FilteredEntity } from '../syncOrchestrator.js';
+import type { FilteredEntity } from '../syncContract.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;

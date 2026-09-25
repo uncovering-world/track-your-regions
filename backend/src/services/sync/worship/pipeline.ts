@@ -61,7 +61,7 @@ import type { WorshipTrees, WorshipType } from './classes.js';
 import { contentsLine, type SourceLine } from '../sourceLine.js';
 import type { ClosureOptions } from '../classClosure.js';
 import { unique, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
-import type { FilteredEntity } from '../syncOrchestrator.js';
+import type { FilteredEntity } from '../syncContract.js';
 import type { ProcessedContent } from '../types.js';
 
 const LOG_PREFIX = '[Worship Sync]';

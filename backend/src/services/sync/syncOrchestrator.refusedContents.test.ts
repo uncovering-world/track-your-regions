@@ -16,9 +16,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  orchestrateSync, type SyncServiceConfig, type ProcessItemResult, type FetchResult,
-} from './syncOrchestrator.js';
+import { orchestrateSync } from './syncOrchestrator.js';
+import type { SyncServiceConfig, ProcessItemResult, FetchResult } from './syncContract.js';
 import { runningSyncs } from './types.js';
 
 vi.mock('./syncUtils.js', () => ({
