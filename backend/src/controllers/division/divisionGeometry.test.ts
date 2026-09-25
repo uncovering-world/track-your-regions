@@ -111,3 +111,32 @@ describe('the relaxation wins over requireAuth on the wire', () => {
     expect(String(headers.vary).toLowerCase()).toContain('authorization');
   });
 });
+
+/**
+ * A division's boundary at the detail the caller asks for (#1010). France is
+ * 2.9 million characters of GeoJSON in full and about 100 000 at the stored
+ * simplifications a preview draws; the cutting tools store what they cut, so
+ * the full shape is the default.
+ */
+describe('the division geometry read answers the detail it is asked for', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValue({ rows: [{ geometry: { type: 'MultiPolygon', coordinates: [] } }] });
+  });
+
+  const sqlFor = async (query: Record<string, string>) => {
+    await getGeometry({ params: { divisionId: '1' }, query } as never, makeRes() as never);
+    return String(mockedQuery.mock.calls[0][0]);
+  };
+
+  it.each([
+    ['low', 'COALESCE(geom_simplified_low, geom)'],
+    ['medium', 'COALESCE(geom_simplified_medium, geom)'],
+  ])('reads the stored %s simplification, falling back to the full shape', async (detail, column) => {
+    expect(await sqlFor({ detail })).toContain(`ST_AsGeoJSON(${column})`);
+  });
+
+  it('reads the full shape for high', async () => {
+    expect(await sqlFor({ detail: 'high' })).toContain('ST_AsGeoJSON(geom)');
+  });
+});
