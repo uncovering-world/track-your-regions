@@ -89,7 +89,10 @@ export const registerSchema = z.object({
   password: z.string()
     .min(8, 'Password must be at least 8 characters')
     .max(128, 'Password must be at most 128 characters'),
+  // Trimmed first, so a name of spaces is refused rather than stored and
+  // later shown as a blank curator (#998).
   displayName: z.string()
+    .trim()
     .min(1, 'Display name is required')
     .max(COLUMN_WIDTHS.users.display_name, `Display name must be at most ${COLUMN_WIDTHS.users.display_name} characters`),
 });

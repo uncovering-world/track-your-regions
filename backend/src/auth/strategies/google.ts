@@ -28,7 +28,8 @@ export function configureGoogleStrategy(): void {
         try {
           const email = profile.emails?.[0]?.value;
           const providerId = profile.id;
-          const displayName = profile.displayName || email?.split('@')[0] || 'User';
+          // A name of spaces takes the same fallback as none (#998).
+          const displayName = profile.displayName?.trim() || email?.split('@')[0] || 'User';
           const avatarUrl = profile.photos?.[0]?.value || null;
 
           // First, check if user exists by Google provider ID

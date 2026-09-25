@@ -444,7 +444,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                        -- the experience's claim set", which is the question.
                        'claim', (
                          SELECT jsonb_build_object(
-                                  'by', COALESCE(u.display_name, 'a curator'),
+                                  'by', COALESCE(NULLIF(regexp_replace(u.display_name, '^[[:space:]]+|[[:space:]]+$', '', 'g'), ''), 'a curator'),
                                   'at', log.created_at)
                            FROM experience_curation_log log
                            JOIN users u ON u.id = log.curator_id
@@ -467,7 +467,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                        -- answered twice.
                        'decidedBefore', COALESCE((
                          SELECT jsonb_agg(jsonb_build_object(
-                                  'by', COALESCE(u.display_name, 'a curator'),
+                                  'by', COALESCE(NULLIF(regexp_replace(u.display_name, '^[[:space:]]+|[[:space:]]+$', '', 'g'), ''), 'a curator'),
                                   'at', log.created_at,
                                   'action', log.action,
                                   'applied', COALESCE(d->>'applied', d->>'declined'))
