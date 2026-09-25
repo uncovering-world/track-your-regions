@@ -75,7 +75,6 @@ function mountedRoutersOf(router: Router): Layer[] {
 }
 
 const NAMED_READS: Array<[Router, string, string]> = [
-  [experienceRouter, 'get', '/'],
   [experienceRouter, 'get', '/by-region/:regionId'],
   [experienceRouter, 'get', '/by-region/:regionId/locations'],
   [experienceRouter, 'get', '/region-counts'],
@@ -116,7 +115,6 @@ const OWN_DATA_READS: Array<[string, string]> = [
   ['get', '/me'],
   ['get', '/me/visited-regions'],
   ['get', '/me/visited-regions/by-world-view/:worldViewId'],
-  ['get', '/me/visited-experiences'],
   ['get', '/me/visited-experiences/ids'],
   ['get', '/me/visited-locations/ids'],
   ['get', '/me/experiences/:id/visited-status'],

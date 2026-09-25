@@ -120,8 +120,8 @@ describe('requireVisibleWorldView', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  // regionIdQuery: an optional filter (used by /api/experiences and
-  // /api/experiences/:id/locations), unlike the three mandatory-id sources
+  // regionIdQuery: an optional filter (used by /api/experiences/:id/locations),
+  // unlike the three mandatory-id sources
   // above. Absent must pass through untouched; present-but-unparseable must
   // still 404 rather than reach the database.
 

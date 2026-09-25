@@ -18,19 +18,15 @@ import {
   idParamSchema,
   visitedRegionBodySchema,
   markVisitedBodySchema,
-  updateVisitBodySchema,
   markLocationVisitedBodySchema,
-  visitedExperiencesQuerySchema,
   visitedIdsQuerySchema,
   visitedLocationIdsQuerySchema,
   viewedTreasureIdsQuerySchema,
   markAllLocationsQuerySchema,
 } from '../types/index.js';
 import {
-  getVisitedExperiences,
   markVisited,
   unmarkVisited,
-  updateVisit,
   getVisitedIds,
   getVisitedLocationIds,
   markLocationVisited,
@@ -215,12 +211,6 @@ router.delete('/me/visited-regions/:regionId', validate(regionIdParamSchema, 'pa
 // =============================================================================
 
 /**
- * GET /api/users/me/visited-experiences
- * Get all visited experiences for current user
- */
-router.get('/me/visited-experiences', validate(visitedExperiencesQuerySchema, 'query'), requireAuth, getVisitedExperiences);
-
-/**
  * GET /api/users/me/visited-experiences/ids
  * Get just the IDs of visited experiences (for quick lookup)
  */
@@ -231,12 +221,6 @@ router.get('/me/visited-experiences/ids', validate(visitedIdsQuerySchema, 'query
  * Mark an experience as visited
  */
 router.post('/me/visited-experiences/:experienceId', validate(experienceIdParamSchema, 'params'), validate(markVisitedBodySchema), requireAuth, markVisited);
-
-/**
- * PATCH /api/users/me/visited-experiences/:experienceId
- * Update visit notes/rating
- */
-router.patch('/me/visited-experiences/:experienceId', validate(experienceIdParamSchema, 'params'), validate(updateVisitBodySchema), requireAuth, updateVisit);
 
 /**
  * DELETE /api/users/me/visited-experiences/:experienceId

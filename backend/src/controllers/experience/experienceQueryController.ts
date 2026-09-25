@@ -1,7 +1,7 @@
 /**
  * Experience Query Controller
  *
- * Public browsing endpoints: list, get, search, region counts, kinds.
+ * Public browsing endpoints: get, search, region counts, kinds.
  */
 
 import { Request, Response } from 'express';
@@ -13,177 +13,20 @@ import {
 } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import type { ExperienceKindsRow } from '../../db/schema.generated.js';
-import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import {
   hideLostSql, hideRefusedSql, hidePendingSql, lifecycleSelectSql, includeLost,
-  offeredLocationSql, publishedContentSql, readerPositionSql, readerRegionMembershipSql,
+  readerPositionSql, readerRegionMembershipSql,
 } from './experienceLifecycle.js';
 import { KINDS, MEMBERSHIPS, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
-import { dangerSelectSql, withDangerFields } from './experienceDanger.js';
+import { withDangerFields } from './experienceDanger.js';
 import {
   experienceDetailOf, experienceOf, searchResultOf, type ExperienceDetailRow, type ExperienceListRow, type SearchRow,
 } from './experienceAnswerRows.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
-
-interface ListExperiencesFilters {
-  conditions: string[];
-  params: (string | number)[];
-}
-
-function buildExperiencesFilters(query: Request['query']): ListExperiencesFilters {
-  const conditions: string[] = [];
-  const params: (string | number)[] = [];
-  let paramIndex = 1;
-
-  // Unconditional unless asked: a caller that forgets a filter should get less
-  // than it wanted, never a demolished building offered as somewhere to go.
-  if (!includeLost(query)) conditions.push(hideLostSql());
-  // Unconditional full stop: `includeLost` is a reader asking to see what is
-  // gone, and a row the kind's own rule turned down was never theirs to
-  // miss (ADR-0024).
-  conditions.push(hideRefusedSql());
-  // Unconditional, and with no toggle at all: unlike `includeLost`, there is
-  // no "show me the unread ones too" affordance for a list. The only
-  // relaxation `curation_state` gets is on the three by-id reads (ADR-0025).
-  conditions.push(hidePendingSql());
-
-  // The kind, off the row's membership (#819): the join `buildListQuery`'s
-  // caller adds is what puts `m` in scope here.
-  if (query.kindId) {
-    conditions.push(`m.kind_id = $${paramIndex++}`);
-    params.push(parseInt(String(query.kindId)));
-  }
-  if (query.type) {
-    conditions.push(`e.type = $${paramIndex++}`);
-    params.push(String(query.type));
-  }
-  if (query.regionId) {
-    // The roll-up says where an object's points are, including the ones a
-    // gated run wrote unread — so membership is asked of the points this
-    // caller may see (#521, `readerRegionMembershipSql`). The same question
-    // the by-region list asks, asked here because this filter answers it for
-    // the same reader.
-    conditions.push(`e.id IN (
-      SELECT er.experience_id FROM experience_regions er
-      WHERE er.region_id = $${paramIndex++}
-        AND ${readerRegionMembershipSql('er.experience_id')}
-    )`);
-    params.push(parseInt(String(query.regionId)));
-  }
-  if (query.country) {
-    conditions.push(`$${paramIndex++} = ANY(e.country_codes)`);
-    params.push(String(query.country).toUpperCase());
-  }
-  if (query.search) {
-    conditions.push(`e.name ILIKE $${paramIndex++}`);
-    params.push(`%${String(query.search)}%`);
-  }
-  const box = parseBbox(query.bbox);
-  if (box) {
-    // A box asks where an object is, and this catalogue answers that with
-    // places: region membership is derived from `experience_location_regions`
-    // rather than from the object's own coordinate, and ADR-0028 says the same
-    // of a pin. So the box matches a place this caller may see, and falls back
-    // to the object's own coordinate only where no such place exists -- which
-    // is `readerPositionSql`'s COALESCE asked as a filter instead of a column.
-    //
-    // Matching the anchor was the contradiction: hundreds of objects have one that is
-    // not any of their places, so a box around 144.97,-15.65 matched Wet
-    // Tropics of Queensland and answered with a pin 191 km away at Lake
-    // Barrin, while a box drawn around Lake Barrin -- the part a reader is
-    // actually shown -- did not match it at all.
-    //
-    // What one coordinate per row still cannot say: a serial site matched on a
-    // part inside the box is answered with the part nearest its anchor, which
-    // can be outside it -- four of the 47 objects an Alps-sized box holds, the
-    // starkest being the Ancient and Primeval Beech Forests, matched on a part
-    // in the Alps and answered at 22.19, 48.92 in the Carpathians. Drawing
-    // every part is #558's question, not a filter's.
-    // The antimeridian half of a box is `bboxEnvelopes.ts`'s rule, shared
-    // with the world layer's points read (#910) rather than spelled twice:
-    // `west > east` is a box drawn across the line, and one envelope
-    // silently normalises it into the whole planet except the strip asked
-    // for. That module carries the measurement.
-    const at = {
-      west: paramIndex++, south: paramIndex++, east: paramIndex++, north: paramIndex++,
-    };
-    const inBox = (column: string) => bboxIntersectsSql(column, box, at);
-    const visiblePlaces = `SELECT 1 FROM experience_locations el
-      WHERE el.experience_id = e.id
-        AND ${offeredLocationSql()} AND ${publishedContentSql('el')}`;
-    conditions.push(`(EXISTS (${visiblePlaces} AND (${inBox('el.location')}))
-      OR (NOT EXISTS (${visiblePlaces}) AND (${inBox('e.location')})))`);
-    params.push(box.west, box.south, box.east, box.north);
-  }
-  return { conditions, params };
-}
-
-/**
- * List experiences with filtering and pagination
- * GET /api/experiences
- *
- * Query params:
- * - kindId: Filter by the kind (#819)
- * - type: Filter by the type within the kind (cultural, natural, mixed; monument, sculpture;
- *   cathedral, church, chapel, monastery, mosque, temple, shrine, synagogue)
- * - regionId: Filter by region
- * - search: Search by name
- * - limit: Max results (default 50, at most `WHOLE_REGION_LIMIT`)
- * - offset: Pagination offset
- * - bbox: Bounding box filter "west,south,east,north"
- */
-export async function listExperiences(req: Request, res: Response): Promise<void> {
-  const limit = Math.min(parseInt(String(req.query.limit)) || 50, WHOLE_REGION_LIMIT);
-  const offset = parseInt(String(req.query.offset)) || 0;
-  const { conditions, params } = buildExperiencesFilters(req.query);
-  const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
-
-  const limitIdx = params.length + 1;
-  const offsetIdx = params.length + 2;
-
-  const query = `
-    SELECT
-      e.id,
-      e.external_id,
-      e.name,
-      e.short_description,
-      e.type,
-      -- The kind, off the row's membership: what a colour and a group are
-      -- decided by (#814, #819).
-      ${rowKindSelectSql()},
-      e.country_codes,
-      e.country_names,
-      e.image_url,
-      -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
-      -- Commons, and the licences most of them carry ask one thing of a page
-      -- showing a picture: that whoever took it is named wherever it appears.
-      e.metadata->'imageCredit' as image_credit,
-      e.metadata->>'dateInscribed' as date_inscribed,
-      ${dangerSelectSql('e')},
-      ${readerPositionSql('e')}
-    FROM experiences e
-    ${rowKindJoinSql('e')}
-    ${whereClause}
-    ORDER BY e.name LIMIT $${limitIdx} OFFSET $${offsetIdx}
-  `;
-
-  const result = await pool.query(query, [...params, limit, offset]);
-
-  const countQuery = `SELECT COUNT(*) FROM experiences e ${rowKindJoinSql('e')}${whereClause}`;
-  const countResult = await pool.query(countQuery, params);
-
-  // eslint-disable-next-line no-restricted-syntax -- no client calls this endpoint, and whether it stays is #1033
-  res.json({
-    experiences: result.rows.map(withDangerFields),
-    total: parseInt(countResult.rows[0].count),
-    limit,
-    offset,
-  });
-}
 
 /**
  * Get single experience by ID
@@ -311,8 +154,8 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
 export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
   const includeChildren = req.query.includeChildren !== 'false';
-  // The same ceiling as `listExperiences` above, and the number the client asks
-  // for: a region is read whole or truncated mid-alphabet, never paged
+  // The number the client asks for: a region is read whole or truncated
+  // mid-alphabet, never paged
   // (`WHOLE_REGION_LIMIT`). Callers that want a page still get one by passing
   // `limit`; the default of 100 is unchanged.
   const limit = Math.min(parseInt(String(req.query.limit)) || 100, WHOLE_REGION_LIMIT);

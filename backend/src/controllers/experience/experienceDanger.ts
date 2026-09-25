@@ -9,10 +9,10 @@
  * question in both directions (`parseDangerListing`, used by the importer that
  * writes the flag and by this read months later).
  *
- * One place, because three select lists and two reads ask it: the by-region
- * list, its `includeChildren` twin, and the flat list. The raw listing does not
- * leave the server — a client that had to parse "Y 2013" for itself would be a
- * third copy of the same rule.
+ * One place, because more than one select list asks it: the by-region list and
+ * its `includeChildren` twin. The raw listing does not leave the server — a
+ * client that had to parse "Y 2013" for itself would be another copy of the
+ * same rule.
  */
 
 import { parseDangerListing } from '../../services/sync/dangerListing.js';

@@ -188,26 +188,12 @@ export const experienceSearchQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-export const experienceListQuerySchema = z.object({
-  kindId: z.coerce.number().int().positive().optional(),
-  /** The type within the kind — `cultural`, `monument` … — not the kind, which is `kindId`. */
-  type: z.string().max(255).optional(),
-  country: z.string().max(255).optional(),
-  regionId: z.coerce.number().int().positive().optional(),
-  search: z.string().max(255).optional(),
-  bbox: z.string().max(100).optional(),
-  includeLost: booleanStringSchema,
-  limit: z.coerce.number().int().min(1).max(5000).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-});
-
 /**
  * The map's world layer (#910): which kind, which box, how much of each point.
  *
  * `bbox` is a string here and parsed in one place (`db/bboxEnvelopes.ts`),
  * because the interesting half of a box is the antimeridian rule rather than
- * its syntax, and that rule already has an owner. 100 characters is the same
- * ceiling `experienceListQuerySchema` gives the same parameter.
+ * its syntax, and that rule already has an owner.
  *
  * `detail` and `folded` are named rather than inferred: `validate()` replaces
  * req.query with what Zod parsed and strips whatever it does not name, so a
@@ -229,9 +215,7 @@ export const worldPointsQuerySchema = z.object({
   // the map's read is a viewport, and a box nobody can parse must not quietly
   // widen it to the whole catalogue — the argument the tile source made for a
   // malformed kind id, applied to the parameter that decides how much of the
-  // world is answered. 100 characters is the ceiling `experienceListQuerySchema`
-  // gives the same parameter, which drops it instead because its answer is
-  // bounded by a `limit` and this one is not.
+  // world is answered.
   bbox: z.string().max(100)
     .refine(value => parseBbox(value) !== null,
       { message: 'bbox must be four numbers: west,south,east,north' })
@@ -247,8 +231,7 @@ export const experiencesByRegionQuerySchema = z.object({
   // name — so the whole "show what no longer exists" path would be dead over
   // HTTP while passing every test that calls the controller directly.
   includeLost: booleanStringSchema,
-  // 5000 to match `experienceListQuerySchema` above and the controller's own
-  // clamp. Neither surface that reads a region paginates, so a ceiling below the
+  // 5000 to match the controller's own clamp (`WHOLE_REGION_LIMIT`). Neither surface that reads a region paginates, so a ceiling below the
   // largest region truncated the list instead of paging it — and because the
   // rows are ordered by name, the loss was a tail of the alphabet.
   limit: z.coerce.number().int().min(1).max(5000).default(100),
@@ -329,19 +312,8 @@ export const markVisitedBodySchema = z.object({
   rating: z.number().int().min(1).max(5).optional(),
 });
 
-export const updateVisitBodySchema = z.object({
-  notes: z.string().max(2000).nullable().optional(),
-  rating: z.number().int().min(1).max(5).nullable().optional(),
-});
-
 export const markLocationVisitedBodySchema = z.object({
   notes: z.string().max(2000).optional(),
-});
-
-export const visitedExperiencesQuerySchema = z.object({
-  kindId: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(100),
-  offset: z.coerce.number().int().min(0).default(0),
 });
 
 export const visitedIdsQuerySchema = z.object({

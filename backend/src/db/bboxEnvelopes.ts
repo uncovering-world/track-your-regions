@@ -7,14 +7,14 @@
  * and a single envelope cannot hold one: ST_MakeEnvelope(170, -10, -170, 10)
  * does not fail, it silently normalises to xmin -170 / xmax 170, which is the
  * whole planet *except* the strip that was asked for. Measured on the
- * catalogue when the list endpoint was written: that box matched 290 places
- * between 10 S and 10 N where one is truly in it.
+ * catalogue: that box matched 290 places between 10 S and 10 N where one is
+ * truly in it.
  *
  * So a crossing box is two envelopes meeting at the line, and every caller
- * that filters on a box gets the same answer to that question. The list
- * endpoint (experienceQueryController) asked it first and the world layer's
- * points read asks it second; a third spelling is what this module exists to
- * prevent.
+ * that filters on a box gets the same answer to that question. The world
+ * layer's points read (`worldPointsController`, through
+ * `worldPointsQuerySchema`) is the one that asks it; a second spelling is what
+ * this module exists to prevent.
  */
 
 /** A box as the API spells it: west, south, east, north. */
@@ -30,8 +30,9 @@ export interface Bbox {
  * names none.
  *
  * Null rather than a throw for a malformed value, and rather than the whole
- * world: a caller decides what a box it cannot read means. Both current
- * callers drop the filter, which is what they did before this module existed.
+ * world: a caller decides what a box it cannot read means. The points read's
+ * schema refuses one, since a box nobody can parse must not widen the answer
+ * to the whole catalogue.
  */
 export function parseBbox(raw: unknown): Bbox | null {
   // A string, and only a string. Express parses a repeated parameter into an
@@ -44,8 +45,8 @@ export function parseBbox(raw: unknown): Bbox | null {
   if (typeof raw !== 'string' || raw === '') return null;
   const fields = raw.split(',');
   // A blank segment is not a zero, which is what `map(Number)` alone makes it:
-  // `1,2,,4` parsed as east 0 and named a box from the prime meridian, and the
-  // list endpoint would have filtered on it without a word.
+  // `1,2,,4` parsed as east 0 and named a box from the prime meridian, and a
+  // caller would have filtered on it without a word.
   if (fields.length !== 4 || fields.some(field => field.trim() === '')) return null;
   const parts = fields.map(Number);
   if (!parts.every(value => Number.isFinite(value))) return null;

@@ -14,13 +14,11 @@ import { describe, it, expect } from 'vitest';
 import {
   experiencesByRegionQuerySchema,
   regionLocationsQuerySchema,
-  experienceListQuerySchema,
 } from './index.js';
 
 const readsIncludeLost = [
   ['a region list', experiencesByRegionQuerySchema],
   ['its location batch', regionLocationsQuerySchema],
-  ['the flat list', experienceListQuerySchema],
 ] as const;
 
 describe('includeLost survives validation', () => {
