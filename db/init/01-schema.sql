@@ -1869,6 +1869,58 @@ COMMENT ON COLUMN administrative_divisions.geom_3857 IS 'Pre-computed geometry i
 -- and proper simplification based on zoom level.
 
 -- -----------------------------------------------------------------------------
+-- Function: query_param_int
+-- A tile source's id parameter, or NULL when the request sent none that reads
+-- as one
+-- -----------------------------------------------------------------------------
+-- Martin publishes these sources on an unauthenticated port, and a bare
+-- `(query_params->>'x')::integer` raised on a value that is not an integer:
+-- Martin answered HTTP 500 with the database's error text (#664). Read through
+-- this instead, a missing, empty or malformed value is no scope at all, and the
+-- source's own early return answers an empty tile (HTTP 204), as it does for a
+-- request that named nothing. A guarded cast rather than an exception block,
+-- which would open a subtransaction on every tile request; plpgsql, so the
+-- digit check runs before the cast even when the planner is handed a constant.
+-- It is never published itself: Martin serves only functions shaped
+-- (z, x, y, query_params) returning bytea.
+CREATE OR REPLACE FUNCTION query_param_int(query_params json, name text)
+RETURNS integer
+LANGUAGE plpgsql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+DECLARE
+    raw text := query_params->>name;
+BEGIN
+    IF raw ~ '^[0-9]{1,10}$' THEN
+        -- Ten digits reach past integer's range; the bigint compare keeps
+        -- 9999999999 from raising where 'abc' does not.
+        IF raw::bigint <= 2147483647 THEN
+            RETURN raw::integer;
+        END IF;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+COMMENT ON FUNCTION query_param_int IS 'A tile source''s integer parameter, or NULL for a missing, empty or malformed one (#664)';
+
+-- Whether a request sent a parameter at all: present and not empty. The island
+-- source asks it of its optional parent_id, so that one sent malformed narrows
+-- to nothing where one left out means the whole world view. A source reads
+-- query_params only through these two helpers (tileScopeGuards.test.ts).
+CREATE OR REPLACE FUNCTION query_param_sent(query_params json, name text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+    SELECT COALESCE(query_params->>name, '') <> ''
+$$;
+
+COMMENT ON FUNCTION query_param_sent IS 'Whether a tile request sent a parameter: present and not empty (#664)';
+
+-- -----------------------------------------------------------------------------
 -- Function: tile_world_view_root_regions
 -- Returns root-level regions for a world view as MVT
 -- -----------------------------------------------------------------------------
@@ -1888,7 +1940,7 @@ DECLARE
     bounds geometry;
     p_world_view_id integer;
 BEGIN
-    p_world_view_id := (query_params->>'world_view_id')::integer;
+    p_world_view_id := query_param_int(query_params, 'world_view_id');
 
     -- Required, the way parent_id is on the two subdivision sources and
     -- world_view_id is on the island one: a tile parameter whose answer is
@@ -1976,7 +2028,7 @@ DECLARE
     bounds geometry;
     p_parent_id integer;
 BEGIN
-    p_parent_id := (query_params->>'parent_id')::integer;
+    p_parent_id := query_param_int(query_params, 'parent_id');
 
     IF p_parent_id IS NULL THEN
         RETURN '';
@@ -2116,7 +2168,7 @@ DECLARE
     bounds geometry;
     p_parent_id integer;
 BEGIN
-    p_parent_id := (query_params->>'parent_id')::integer;
+    p_parent_id := query_param_int(query_params, 'parent_id');
 
     IF p_parent_id IS NULL THEN
         RETURN '';
@@ -2186,8 +2238,16 @@ DECLARE
     p_world_view_id integer;
     p_parent_id integer;
 BEGIN
-    p_world_view_id := (query_params->>'world_view_id')::integer;
-    p_parent_id := (query_params->>'parent_id')::integer;
+    p_world_view_id := query_param_int(query_params, 'world_view_id');
+    p_parent_id := query_param_int(query_params, 'parent_id');
+
+    -- Optional, so NULL means the whole world view; a parent_id that was sent
+    -- and does not read as an id narrows to nothing rather than widening to
+    -- that (#664). An empty one is what a URL built from an unset variable
+    -- carries, and reads as absent.
+    IF p_parent_id IS NULL AND query_param_sent(query_params, 'parent_id') THEN
+        RETURN '';
+    END IF;
 
     -- Required, the way parent_id is on the two subdivision sources: a tile
     -- parameter whose answer is meaningless without it is refused rather than
@@ -2264,7 +2324,7 @@ DECLARE
     bounds geometry;
     p_world_view_id integer;
 BEGIN
-    p_world_view_id := (query_params->>'world_view_id')::integer;
+    p_world_view_id := query_param_int(query_params, 'world_view_id');
 
     -- Required, as on the root-region source above and for the same reason.
     -- This one is the broader leak of the two: is_leaf is a property of a row
