@@ -135,7 +135,7 @@ export function decodeCursor(s: string): Cursor | null {
 
 /**
  * A conflict: the newest changeset row still arguing with a claim the curator
- * holds. `reviewQueueController.ts` § conflicts is the authority — the
+ * holds. `queryConflicts` (`reviewQueueConflicts.ts`) is the authority — the
  * `DISTINCT ON`, the landed-changeset clause that stops a silent agreement
  * from looking like a standing disagreement, and the by-value refusal test.
  *

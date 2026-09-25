@@ -2,11 +2,11 @@
  * One card of the review queue, from the row a query answered to the shape the
  * answer declares (`ReviewQueueItem`, `api/responses/reviewQueue.ts`, ADR-0066).
  *
- * Every query of the queue (`reviewQueueController.ts`, `reviewQueueContents.ts`,
- * `reviewQueueRefusedParts.ts`) passes its rows through here, so what a card
- * carries is decided in one place. A column a query selects reaches the curator
- * only once this names it, and a key a query does not select is written as
- * `undefined`, which JSON drops.
+ * Every query of the queue (`reviewQueueController.ts`, `reviewQueueConflicts.ts`,
+ * `reviewQueueContents.ts`, `reviewQueueRefusedParts.ts`) passes its rows through
+ * here, so what a card carries is decided in one place. A column a query selects
+ * reaches the curator only once this names it, and a key a query does not select
+ * is written as `undefined`, which JSON drops.
  */
 
 import type {
