@@ -53,12 +53,14 @@ statement exists for. Moving the other two would only rename their paths.
 id, columns)` runs the `OBJECT_LOCK` statement on the caller's connection. It returns the row it
 read together with a `LockedExperience`, a token whose type only that function can produce. Every
 write made under the lock requires the token, so the type checker refuses an update issued
-before the lock or without it. A write outside the lock rule, as `db/locks.ts` names them, takes
-no token and says why in its own docblock:
+before the lock or without it. A write outside the lock rule takes no token, and `db/locks.ts` names each one and why:
 
-- the sync upsert's insert, which is its own row lock;
-- missing detection's bulk mark;
-- the picture repair.
+- the manual create's insert, which is its own row lock;
+- missing detection's bulk mark and the picture repair, each one statement on the pool that holds
+  nothing past itself.
+
+The run's upsert does take the lock, through `lockSourcedExperience`; its statement stays in its
+own module for the reason above.
 
 **The lint holds the list.** An `INSERT INTO` or `UPDATE` of the table anywhere but those
 modules fails the backend lint (`EXPERIENCE_WRITE_RULES` in `backend/eslint.config.mjs`), as a
