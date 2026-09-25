@@ -27,7 +27,7 @@ Two rules follow from shipping source:
 - **One module, one concern, no relative import of a sibling.** Node's own type stripping runs the backend's emitted `dist/` against this source, and `./labels.js` would not exist on disk. A spec imports its module with the `.js` extension, which only vitest resolves.
 - **Subpath exports only, no barrel.** `import { foldLabel } from '@tyr/shared/labels'`; a consumer bundles only the modules it imports (`"sideEffects": false`).
 
-In Docker, `docker-compose.yml` hands this directory to each image as a named build context and the Dockerfiles copy it to `/packages/shared`, where `../packages/shared` from `/app` finds it exactly as on a checkout; the dev stack bind-mounts `src/` there too.
+In Docker, `docker-compose.yml` hands this directory to each image as a named build context and the Dockerfiles copy it to `/packages/shared`, where `../packages/shared` from `/app` finds it exactly as on a checkout; the dev stack bind-mounts `src/` there too. Only `src/` is mounted, so a new module, which adds a subpath to `exports`, reaches a running dev container only once its image is rebuilt (`npm run dev`, or `dev:backend:rebuild` and `dev:frontend:rebuild`). Until then the backend stops at `ERR_PACKAGE_PATH_NOT_EXPORTED`.
 
 ## Gates
 
