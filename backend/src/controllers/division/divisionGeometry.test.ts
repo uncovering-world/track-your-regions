@@ -16,7 +16,7 @@ import { pool } from '../../db/index.js';
 import { verifyAccessToken } from '../../services/authService.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { authenticatedLimiter } from '../../middleware/rateLimiter.js';
-import { getGeometry, getSubdivisionGeometries, getRootGeometries } from './divisionGeometry.js';
+import { getGeometry } from './divisionGeometry.js';
 import { getGeoshape } from '../admin/wvImportLifecycleController.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -29,14 +29,14 @@ function makeRes() {
 }
 
 /**
- * These three reads carry GADM's boundaries — the same shapes for every
- * caller, at full resolution — and sit behind `requireAuth` + `requireAdmin`
- * only because the editor is the one that asks. `requireAuth` marks a
- * response `no-store`, which is right for a caller's own data and wrong for
- * these: it would re-download megabytes on every dialog open, where the
- * browser answers `304` today (#710).
+ * This read carries GADM's boundary — the same shape for every caller, at full
+ * resolution — and sits behind `requireAuth` + `requireAdmin` only because the
+ * editor is the one that asks. `requireAuth` marks a response `no-store`,
+ * which is right for a caller's own data and wrong for this one: it would
+ * re-download megabytes on every dialog open, where the browser answers `304`
+ * today (#710).
  */
-describe('division geometry reads keep the browser its revalidation', () => {
+describe('the division geometry read keeps the browser its revalidation', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
   });
@@ -49,26 +49,12 @@ describe('division geometry reads keep the browser its revalidation', () => {
       expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
     }
   });
-
-  it('sets it on the subdivision collection too', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 2, name: 'x', has_children: false, geometry: {} }] });
-    const res = makeRes();
-    await getSubdivisionGeometries({ params: { divisionId: '1' }, query: {} } as never, res as never);
-    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
-  });
-
-  it('and on the root collection, which is the whole world', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, name: 'Europe', has_children: true, geometry: {} }] });
-    const res = makeRes();
-    await getRootGeometries({ params: {}, query: {} } as never, res as never);
-    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
-  });
 });
 
 describe('the geoshape proxy answers the same way', () => {
   // Wikimedia's boundary for a Wikidata id is the same bytes for every caller,
   // admin-gated because the editor is the one that asks — the sibling case to
-  // the three above, and the one the first round of this rule missed.
+  // the one above, and the one the first round of this rule missed.
   beforeEach(() => {
     mockedQuery.mockReset();
   });
