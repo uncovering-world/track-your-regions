@@ -11,12 +11,12 @@
  *
  * **A write that assumes the object's lock takes the lock.** `lockExperience`
  * runs `OBJECT_LOCK` (`db/locks.ts`) on the caller's connection and hands back a
- * `LockedExperience`, which nothing else in the codebase produces; every write
+ * `LockedExperience`, which nothing outside this module produces; every write
  * made under that lock requires one, so a write issued before the lock, or on a
- * path that never took it, does not type-check. Writes to the object's points
- * and works do not take the token yet — they get their own writer in the
- * `experience_locations` slice of #791 — so for them "the object first" is
- * still each handler's order of statements.
+ * path that never took it, does not type-check. The curator's writes to the
+ * object's points take it too (`controllers/experience/experienceLocationWriter.ts`),
+ * so for a point "the object first" is a property of the types; a work's
+ * writes do not take it yet, and for them the order is still each handler's.
  *
  * A write outside the lock rule takes no token, and `db/locks.ts` names why.
  */
@@ -28,8 +28,10 @@ import { offeredLocationSql, publishedContentSql } from './readerPredicates.js';
 declare const locked: unique symbol;
 
 /**
- * Proof that this transaction holds the object's row lock: produced only by
- * `lockExperience`, on the connection the transaction runs on.
+ * Proof that this transaction holds the object's row lock, on the connection it
+ * runs on. Produced only in this module: by `lockExperience`,
+ * `lockSourcedExperience`, and `insertCuratedExperience`, whose insert's own row
+ * lock is the object lock.
  */
 export type LockedExperience = { readonly id: number; readonly [locked]: true };
 
@@ -207,10 +209,10 @@ export async function setLifecycleVerdict(
  * A place a curator adds by hand, as `createManualExperience` builds it:
  * `is_manual`, owned by nobody's run, and `active` from the moment it exists.
  *
- * Outside the lock rule by the exception `db/locks.ts` names: the insert's own
- * row lock is the object lock, and no other transaction can hold a row of an
- * object that did not exist when it began. The caller's transaction goes on to
- * write the membership and the point under it.
+ * Answers with the object's token, because the insert's own row lock *is* the
+ * object lock (`db/locks.ts`): no other transaction can hold a row of an object
+ * that did not exist when it began. The caller's transaction goes on to write
+ * the membership and the point under it.
  */
 export async function insertCuratedExperience(
   client: PoolClient,
@@ -229,7 +231,7 @@ export async function insertCuratedExperience(
     metadata: string | null;
     createdBy: number;
   },
-): Promise<number> {
+): Promise<LockedExperience> {
   const inserted = await client.query(`
     INSERT INTO experiences (
       source_id, external_id, name, short_description, type,
@@ -245,5 +247,5 @@ export async function insertCuratedExperience(
     row.longitude, row.latitude, row.imageUrl, row.tags, row.countryCodes, row.countryNames,
     row.metadata, row.createdBy,
   ]);
-  return inserted.rows[0].id as number;
+  return { id: inserted.rows[0].id as number } as LockedExperience;
 }

@@ -552,7 +552,7 @@ export async function publishUnderLock(
       // The parts, after the object and in the same transaction: a held
       // attribution published while the pointer that named it stayed would be
       // a proposal answered and still asked.
-      appliedParts = await applyHeldPartWrites(client, parts);
+      appliedParts = await applyHeldPartWrites(client, locked.lock, parts);
       partsNotFound = parts.notFound;
 
       // What was answered, by value, in the same transaction as the write it
@@ -572,7 +572,7 @@ export async function publishUnderLock(
     const { locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =
       fieldsOnly
         ? { locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0 }
-        : await publishContents(client, experienceId, locationIds, treasureIds);
+        : await publishContents(client, locked.lock, locationIds, treasureIds);
 
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)

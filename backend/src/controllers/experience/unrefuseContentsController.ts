@@ -52,6 +52,7 @@ import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { restoreRefusedPoints } from './experienceLocationWriter.js';
 
 /**
  * Ask again about points and works this object's curator had turned down — the
@@ -134,7 +135,7 @@ export async function unrefuseContentsUnderLock(
     // Named ids narrow each kind the way the refusal narrows its statements: a
     // caller naming works alone touches no point.
     if (locationIds !== undefined || !anyNamed) {
-      restoredPoints = await restorePoints(client, experienceId, locationIds);
+      restoredPoints = await restoreRefusedPoints(client, locked.lock, locationIds);
     }
     if (treasureIds !== undefined || !anyNamed) {
       restoredLinks = await restoreLinks(client, experienceId, treasureIds);
@@ -190,33 +191,6 @@ export async function unrefuseContentsUnderLock(
     treasureIds: restoredLinks,
     ...placementReport(placementFailures),
   } };
-}
-
-/**
- * Clear the mark on the turned-down points, and say which.
- *
- * The mark alone, with no offered term beside it, and that is a decision rather
- * than an omission. A refused point is always `pending` — the refusal only marks
- * rows `unreadPointSql` reaches — and `withdrawnPointOpenSql` asks for a
- * published point (`publishedContentSql`), so a refused point the source then stops
- * offering raises no `withdrawn` card either. Filtering on offered here would
- * leave it on no screen at all, with the answer that put it there permanently
- * unanswerable — which is the whole thing this module exists to prevent.
- * Restoring one changes nothing a reader sees: it is `pending` and withdrawn,
- * exactly the state it would have been in had nobody turned it down.
- */
-async function restorePoints(
-  client: PoolClient, experienceId: number, locationIds?: number[],
-): Promise<number[]> {
-  const named = locationIds !== undefined;
-  const points = await client.query<{ id: number }>(
-    `UPDATE experience_locations SET refused_at = NULL
-      WHERE experience_id = $1 AND refused_at IS NOT NULL
-      ${named ? 'AND id = ANY($2::int[])' : ''}
-      RETURNING id`,
-    named ? [experienceId, locationIds] : [experienceId],
-  );
-  return points.rows.map(row => row.id);
 }
 
 /**

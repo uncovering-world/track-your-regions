@@ -22,6 +22,7 @@ import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { lockExperience, anchorToItsPoint } from '../../db/experienceWriter.js';
+import { correctPoint } from './experienceLocationWriter.js';
 
 /** What a curator may claim on a point — see `db/migrations/027`. */
 type Claim = 'name' | 'location';
@@ -99,7 +100,9 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     );
     const before = locked.rows[0] as
       { name: string | null; curated_fields: string[]; lat: number; lon: number } | undefined;
-    if (!before) {
+    // The object going takes its points with it, so a missing object is the
+    // same 404 as a missing point.
+    if (!before || !object) {
       unusable = await rollbackQuietly(client);
       res.status(404).json({ error: 'Location not found' });
       return;
@@ -109,17 +112,10 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     if (name !== undefined) claims.push('name');
     if (movesPoint) claims.push('location');
 
-    await client.query(
-      `UPDATE experience_locations
-          SET name = COALESCE($2, name),
-              location = CASE WHEN $3::boolean
-                              THEN ST_SetSRID(ST_MakePoint($4, $5), 4326)
-                              ELSE location END,
-              curated_fields = $6::jsonb
-        WHERE id = $1`,
-      [locationId, name ?? null, movesPoint, longitude ?? null, latitude ?? null,
-        JSON.stringify(withClaims(before.curated_fields ?? [], claims))],
-    );
+    await correctPoint(client, object.lock, locationId, {
+      name: name ?? null, movesPoint, longitude: longitude ?? null, latitude: latitude ?? null,
+      curatedFields: withClaims(before.curated_fields ?? [], claims),
+    });
 
     // **The anchor goes with the point, where there is only one point.**
     //
@@ -150,8 +146,7 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     // and a reader is positioned over nothing here yet — and the publication is
     // where the two can be brought together if it ever needs to be.
     if (movesPoint) {
-      anchorMoved = object !== null
-        && await anchorToItsPoint(client, object.lock, longitude, latitude, locationId);
+      anchorMoved = await anchorToItsPoint(client, object.lock, longitude, latitude, locationId);
     }
 
     await client.query(

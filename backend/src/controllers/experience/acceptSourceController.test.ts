@@ -379,7 +379,8 @@ describe('acceptSourceValue', () => {
     );
 
     const write = queries.find(q => q.sql.includes('ST_MakePoint'));
-    expect(write?.params).toEqual([41, 10.5, 50.2]);
+    // The point, the coordinate, and the object it has to belong to (the lock's).
+    expect(write?.params).toEqual([41, 10.5, 50.2, 5]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ movedPoints: [41] }));
     // A pin that moved is a region fact, and its `auto` rows were computed from
     // where it used to be.
@@ -424,7 +425,7 @@ describe('acceptSourceValue', () => {
     );
 
     const write = queries.find(q => q.sql.includes('ST_MakePoint'));
-    expect(write?.params).toEqual([55, 3.5, 42.9]);
+    expect(write?.params).toEqual([55, 3.5, 42.9, 5]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ movedPoints: [55] }));
   });
 

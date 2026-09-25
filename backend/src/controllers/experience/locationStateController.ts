@@ -22,6 +22,7 @@ import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { setPointVerdict } from './experienceLocationWriter.js';
 
 /** The point's two axes, as the columns' CHECK lists spell them. */
 type Membership = CheckValue<'experience_locations', 'source_membership'>;
@@ -219,7 +220,7 @@ export async function answerLocationStateUnderLock(
     // the order true of every writer, which is the property that makes the mode
     // argument hold at all. A handler whose only route to the parent is a lock it
     // never states is one statement away from reopening the cycle.
-    await lockExperience(client, experienceId);
+    const object = await lockExperience(client, experienceId);
 
     // Both axes are written whatever the curator sent, the unsent one defaulting to
     // what is stored — so the axis nobody decided has to be read under the lock that
@@ -237,7 +238,9 @@ export async function answerLocationStateUnderLock(
     // pre-lock reads select only what the scope check needs.
     const before = locked.rows[0] as
       { source_membership: string; existence: string; missing_since: Date | null } | undefined;
-    if (!before) return await refuse({ status: 404, error: 'Location not found' });
+    // The object going takes its points with it, so a missing object is the
+    // same 404 as a missing point.
+    if (!before || !object) return await refuse({ status: 404, error: 'Location not found' });
     nextMembership = membership ?? (before.source_membership as Membership);
     nextExistence = existence ?? (before.existence as Existence);
 
@@ -317,16 +320,10 @@ export async function answerLocationStateUnderLock(
     isVisible = offeredToReaders(clearFlag || before.missing_since == null, nextExistence);
     visibilityChanged = isVisible !== wasVisible;
 
-    await client.query(`
-      UPDATE experience_locations
-      SET source_membership = $2,
-          existence = $3,
-          missing_since = CASE WHEN $4 THEN NULL ELSE missing_since END,
-          state_decided_by = $5,
-          state_decided_at = NOW(),
-          state_note = $6
-      WHERE id = $1
-    `, [locationId, nextMembership, nextExistence, clearFlag, userId, note ?? null]);
+    await setPointVerdict(client, object.lock, locationId, {
+      sourceMembership: nextMembership, existence: nextExistence, clearFlag,
+      decidedBy: userId, note: note ?? null,
+    });
 
     for (const action of actions) {
       // Against the experience, because the trail a curator reads is the object's —

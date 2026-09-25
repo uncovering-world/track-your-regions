@@ -90,7 +90,8 @@ describe('publishing the held fields of an object\'s parts', () => {
     expect(lock.sql).toContain('el.experience_id = $1');
     expect(lock.params).toEqual([5, '1755-004', 'Château de Montésgur']);
     const write = only(queries, 'UPDATE experience_locations SET name');
-    expect(write.params).toEqual([88, 'Château de Montségur']);
+    // The point, its name, and the object it has to belong to (the lock's).
+    expect(write.params).toEqual([88, 'Château de Montségur', 5]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{ kind: 'locations', name: 'Château de Montésgur', fields: ['name'], claimedFieldsSkipped: [] }],
     }));
@@ -115,7 +116,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     await publish({ expectedSyncLogId: 64 }, client);
 
     const write = only(queries, 'UPDATE experience_locations SET name');
-    expect(write.params).toEqual([9972, 'Geoagiu / Drumul Romanilor (Germisara)']);
+    expect(write.params).toEqual([9972, 'Geoagiu / Drumul Romanilor (Germisara)', 5]);
   });
 
   it('writes a held work\'s title and makers as a person would type them', async () => {
@@ -378,7 +379,7 @@ describe('publishing the held fields of an object\'s parts', () => {
       row: HELD_ROW, contents: { locations: { changed: [MONTSEGUR] } }, parts: { location: MONTSEGUR_ROW },
     });
     await publish({ fieldsOnly: true, expectedSyncLogId: 64 }, fields.client);
-    expect(only(fields.queries, 'UPDATE experience_locations SET name').params).toEqual([88, 'Château de Montségur']);
+    expect(only(fields.queries, 'UPDATE experience_locations SET name').params).toEqual([88, 'Château de Montségur', 5]);
     expect(none(fields.queries, 'UPDATE experience_locations SET curation_state')).toBe(true);
 
     grantScope();
