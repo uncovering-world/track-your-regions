@@ -262,7 +262,7 @@ export const CURATED_KEY_BY_FIELD: Record<string, string> = {
  *
  * Read in two runtimes. `claimKeyFor` below is one; the queue's conflict SQL is
  * the other, and takes this object as a parameter rather than spelling the rule
- * out again — see `reviewQueueController.ts`.
+ * out again — see `queryConflicts` in `reviewQueueConflicts.ts`.
  */
 export const CLAIM_KEY_BY_FAMILY: Record<string, string> = {
   nameLocal: 'name_local',
