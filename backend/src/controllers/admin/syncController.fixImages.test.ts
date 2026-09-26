@@ -21,7 +21,11 @@ vi.mock('../../services/sync/index.js', async (importOriginal) => ({
 
 import { pool } from '../../db/index.js';
 import { fixUnescoImages, runningSyncs } from '../../services/sync/index.js';
-import { fixImages } from './syncController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const fixImagesRoute = routeAt(adminDeclaredRoutes, '/sync/sources/:sourceId/fix-images', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedRepair = fixUnescoImages as unknown as ReturnType<typeof vi.fn>;
@@ -45,7 +49,7 @@ describe('fixImages', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 1, is_active: true }] });
     const res = makeRes();
 
-    await fixImages(request(1) as never, res as never);
+    await answerRoute(fixImagesRoute, request(1) as never, res as never);
 
     expect(mockedRepair).toHaveBeenCalledWith(7);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: true }));
@@ -58,7 +62,7 @@ describe('fixImages', () => {
     runningSyncs.set(1, { cancel: false, kind: 'sync', status: 'processing' } as never);
     const res = makeRes();
 
-    await fixImages(request(1) as never, res as never);
+    await answerRoute(fixImagesRoute, request(1) as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(mockedRepair).not.toHaveBeenCalled();
@@ -68,7 +72,7 @@ describe('fixImages', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 1, is_active: false }] });
     const res = makeRes();
 
-    await fixImages(request(1) as never, res as never);
+    await answerRoute(fixImagesRoute, request(1) as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(mockedRepair).not.toHaveBeenCalled();
@@ -78,7 +82,7 @@ describe('fixImages', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await fixImages(request(1) as never, res as never);
+    await answerRoute(fixImagesRoute, request(1) as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(mockedRepair).not.toHaveBeenCalled();
@@ -88,7 +92,7 @@ describe('fixImages', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, is_active: true }] });
     const res = makeRes();
 
-    await fixImages(request(3) as never, res as never);
+    await answerRoute(fixImagesRoute, request(3) as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('not implemented') }));
@@ -98,7 +102,7 @@ describe('fixImages', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await fixImages(request(99) as never, res as never);
+    await answerRoute(fixImagesRoute, request(99) as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(404);
   });

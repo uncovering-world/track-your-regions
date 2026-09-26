@@ -7,12 +7,12 @@
  * gate controls are their own component rather than more of `SyncPanel.tsx`.
  */
 
-import { Response } from 'express';
+import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
-import { respond } from '../../api/respond.js';
-import { CurationGateSet } from '../../api/responses/admin.js';
+import type { CurationGateSet } from '../../api/responses/admin.js';
 import type { ExperienceSourcesRow } from '../../db/schema.generated.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { notFound } from '../../middleware/errorHandler.js';
+import type { curationGateBodySchema, sourceIdParamSchema } from '../../types/index.js';
 
 /**
  * Hold a source's new and changed content for review, or stop holding it.
@@ -44,9 +44,13 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
  * Admin-only, and mounted beside the other source writes rather than on the
  * experiences router: this is a property of the source, not of any object.
  */
-export async function setCurationGate(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
-  const { requiresCuration } = req.body as { requiresCuration: boolean };
+export async function setCurationGate(
+  { params: { sourceId }, body: { requiresCuration }, caller }: {
+    params: z.output<typeof sourceIdParamSchema>;
+    body: z.output<typeof curationGateBodySchema>;
+    caller: Express.User;
+  },
+): Promise<CurationGateSet> {
 
   // `is_active` in the guard, not only the id: the panel lists active sources,
   // so a request naming an inactive one is either stale or hand-made, and
@@ -59,22 +63,20 @@ export async function setCurationGate(req: AuthenticatedRequest, res: Response):
     [requiresCuration, sourceId],
   );
 
-  if (result.rows.length === 0) {
-    res.status(404).json({ error: 'Source not found' });
-    return;
-  }
+  if (result.rows.length === 0) throw notFound('Source not found');
 
   const source = result.rows[0];
   // There is no per-source audit table and inventing one is out of scope, but a
   // gate flip that leaves no trace anywhere is not acceptable either: this is the
   // switch that decides whether a whole source reaches readers unreviewed.
   console.log(
-    `[curation-gate] ${source.name} (${source.id}) -> ${source.requires_curation ? 'held for review' : 'published on arrival'} by user ${req.user?.id}`,
+    '[curation-gate] %s (%s) -> %s by user %s',
+    source.name, source.id, source.requires_curation ? 'held for review' : 'published on arrival', caller.id,
   );
 
-  respond(res, CurationGateSet, {
+  return {
     sourceId: source.id,
     name: source.name,
     requiresCuration: source.requires_curation,
-  });
+  };
 }

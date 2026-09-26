@@ -16,7 +16,12 @@ vi.mock('../../db/index.js', () => ({
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { catalogueAssertions } from './dataAssertions/catalogueAssertions.js';
-import { acceptDataAssertion, getDataAssertions } from './dataAssertionsController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const getDataAssertionsRoute = routeAt(adminDeclaredRoutes, '/data-assertions', 'get');
+const acceptDataAssertionRoute = routeAt(adminDeclaredRoutes, '/data-assertions/accept', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -62,7 +67,7 @@ describe('the report', () => {
   it('sends every assertion, including the ones with nothing to say', async () => {
     everythingClear();
     const res = fakeRes();
-    await getDataAssertions({} as AuthenticatedRequest, res as never);
+    await answerRoute(getDataAssertionsRoute, {} as AuthenticatedRequest, res as never);
 
     const body = res.body as { assertions: { id: string }[]; needsAttention: number };
     // A panel showing only the assertions in trouble leaves an admin unable to
@@ -82,7 +87,7 @@ describe('a database whose ledger is not there yet', () => {
       return { rows: [] };
     });
     const res = fakeRes();
-    await getDataAssertions({} as AuthenticatedRequest, res as never);
+    await answerRoute(getDataAssertionsRoute, {} as AuthenticatedRequest, res as never);
 
     const body = res.body as { assertions: unknown[]; acceptancesUnavailable: string | null };
     expect(res.statusCode).toBe(200);
@@ -96,7 +101,7 @@ describe('a database whose ledger is not there yet', () => {
       return { rows: [] };
     });
     const res = fakeRes();
-    await acceptDataAssertion(asRequest({ assertionId: 'held-by-no-region' }), res as never);
+    await answerRoute(acceptDataAssertionRoute, asRequest({ assertionId: 'held-by-no-region' }), res as never);
 
     expect(res.statusCode).toBe(503);
     expect((res.body as { error: string }).error).toMatch(/031-data-assertion-acceptances\.sql/);
@@ -114,7 +119,7 @@ describe('a ledger failure that is not a missing table', () => {
     });
     const res = fakeRes();
 
-    await expect(acceptDataAssertion(asRequest({ assertionId: 'held-by-no-region' }), res as never))
+    await expect(answerRoute(acceptDataAssertionRoute, asRequest({ assertionId: 'held-by-no-region' }), res as never))
       .rejects.toThrow(/foreign key/);
     expect(res.body).toBeUndefined();
   });
@@ -125,7 +130,7 @@ describe('a ledger failure that is not a missing table', () => {
       return { rows: [] };
     });
     const res = fakeRes();
-    await getDataAssertions({} as AuthenticatedRequest, res as never);
+    await answerRoute(getDataAssertionsRoute, {} as AuthenticatedRequest, res as never);
 
     const body = res.body as { acceptancesUnavailable: string | null };
     expect(body.acceptancesUnavailable).toMatch(/could not be read/);
@@ -144,7 +149,7 @@ describe('reading the ledger back after writing to it', () => {
       .mockRejectedValueOnce(new Error('connection terminated'));
     const res = fakeRes();
 
-    await acceptDataAssertion(asRequest({ assertionId: 'held-by-no-region' }), res as never);
+    await answerRoute(acceptDataAssertionRoute, asRequest({ assertionId: 'held-by-no-region' }), res as never);
 
     const body = res.body as { accepted: number; status: string; needsAttention: boolean; acceptedBy: string | null };
     expect(body.accepted).toBe(2);
@@ -165,7 +170,7 @@ describe('accepting a number', () => {
       .mockResolvedValueOnce({ rows: [] });
     const res = fakeRes();
 
-    await acceptDataAssertion(asRequest({ assertionId: 'held-by-no-region' }), res as never);
+    await answerRoute(acceptDataAssertionRoute, asRequest({ assertionId: 'held-by-no-region' }), res as never);
 
     const insert = mockedQuery.mock.calls.find(call => /INSERT INTO data_assertion_acceptances/.test(String(call[0])));
     expect(insert).toBeDefined();
@@ -175,7 +180,7 @@ describe('accepting a number', () => {
 
   it('refuses an assertion nobody has heard of', async () => {
     const res = fakeRes();
-    await acceptDataAssertion(asRequest({ assertionId: 'not-a-rule' }), res as never);
+    await answerRoute(acceptDataAssertionRoute, asRequest({ assertionId: 'not-a-rule' }), res as never);
 
     expect(res.statusCode).toBe(404);
     expect(mockedQuery).not.toHaveBeenCalled();
@@ -183,7 +188,7 @@ describe('accepting a number', () => {
 
   it('refuses a watch, whose count is a number to watch rather than a debt', async () => {
     const res = fakeRes();
-    await acceptDataAssertion(asRequest({ assertionId: 'visits-on-places-no-reader-is-shown' }), res as never);
+    await answerRoute(acceptDataAssertionRoute, asRequest({ assertionId: 'visits-on-places-no-reader-is-shown' }), res as never);
 
     // ADR-0022 makes those rows legitimate: there is nothing to answer for, so
     // refusing is the honest answer to a button that should not exist.
@@ -195,7 +200,7 @@ describe('accepting a number', () => {
     mockedQuery.mockRejectedValueOnce(new Error('relation does not exist'));
     const res = fakeRes();
 
-    await acceptDataAssertion(asRequest({ assertionId: 'held-by-no-region' }), res as never);
+    await answerRoute(acceptDataAssertionRoute, asRequest({ assertionId: 'held-by-no-region' }), res as never);
 
     // A zero written here would turn a broken query into a clean bill of health,
     // and the next report would read its silence as debt somebody answered for.
@@ -203,11 +208,9 @@ describe('accepting a number', () => {
     expect(mockedQuery.mock.calls.some(call => /INSERT/.test(String(call[0])))).toBe(false);
   });
 
-  it('refuses an unauthenticated request rather than recording an anonymous decision', async () => {
-    const res = fakeRes();
-    await acceptDataAssertion(asRequest({ assertionId: 'held-by-no-region' }, null), res as never);
-
-    expect(res.statusCode).toBe(401);
-    expect(mockedQuery).not.toHaveBeenCalled();
+  it('is an admin route, so no anonymous decision reaches the handler to be recorded', () => {
+    // The token and the role are the declaration's: its chain answers 401 or
+    // 403 before the handler runs (`api/route.test.ts` holds that order).
+    expect(acceptDataAssertionRoute.access).toBe('admin');
   });
 });

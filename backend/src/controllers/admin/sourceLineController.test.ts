@@ -14,7 +14,11 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { setSourceLine } from './sourceLineController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const setSourceLineRoute = routeAt(adminDeclaredRoutes, '/sync/sources/:sourceId/line', 'put');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -47,7 +51,7 @@ describe('setSourceLine', () => {
         rows: [{ id: 4, name: 'Places of worship', api_config: { enterSitelinks: 30, staySitelinks: 25, pageSize: 100 } }],
       });
 
-    await setSourceLine(makeReq('4', { enterSitelinks: 30, staySitelinks: 25 }), makeRes() as never);
+    await answerRoute(setSourceLineRoute, makeReq('4', { enterSitelinks: 30, staySitelinks: 25 }), makeRes() as never);
 
     expect(mockedQuery).toHaveBeenCalledTimes(2);
     const [sql, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
@@ -65,7 +69,7 @@ describe('setSourceLine', () => {
       });
     const res = makeRes();
 
-    await setSourceLine(makeReq('4', { enterSitelinks: 30, staySitelinks: 25 }), res as never);
+    await answerRoute(setSourceLineRoute, makeReq('4', { enterSitelinks: 30, staySitelinks: 25 }), res as never);
 
     expect(res.json).toHaveBeenCalledWith({
       sourceId: 4, name: 'Places of worship', enterSitelinks: 30, staySitelinks: 25,
@@ -86,7 +90,7 @@ describe('setSourceLine', () => {
       });
     const res = makeRes();
 
-    await setSourceLine(
+    await answerRoute(setSourceLineRoute, 
       makeReq('5', {
         enterSitelinks: 22, staySitelinks: 18, findEnterSitelinks: 18, findStaySitelinks: 15,
       }),
@@ -118,7 +122,7 @@ describe('setSourceLine', () => {
       });
     const res = makeRes();
 
-    await setSourceLine(makeReq('4', { enterSitelinks: 30, staySitelinks: 25 }), res as never);
+    await answerRoute(setSourceLineRoute, makeReq('4', { enterSitelinks: 30, staySitelinks: 25 }), res as never);
 
     const [, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
     expect(JSON.parse(String((params as unknown[])[0]))).toEqual({ enterSitelinks: 30, staySitelinks: 25 });
@@ -129,7 +133,7 @@ describe('setSourceLine', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await setSourceLine(makeReq('999', { enterSitelinks: 30, staySitelinks: 25 }), res as never);
+    await answerRoute(setSourceLineRoute, makeReq('999', { enterSitelinks: 30, staySitelinks: 25 }), res as never);
 
     expect(mockedQuery).toHaveBeenCalledTimes(1);
     const [sql] = mockedQuery.mock.calls[0] as [string, unknown[]];
@@ -142,7 +146,7 @@ describe('setSourceLine', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 1, has_line: false }] });
     const res = makeRes();
 
-    await setSourceLine(makeReq('1', { enterSitelinks: 30, staySitelinks: 25 }), res as never);
+    await answerRoute(setSourceLineRoute, makeReq('1', { enterSitelinks: 30, staySitelinks: 25 }), res as never);
 
     expect(mockedQuery).toHaveBeenCalledTimes(1);
     expect(res.status).toHaveBeenCalledWith(409);
@@ -160,7 +164,7 @@ describe('setSourceLine', () => {
       });
     const res = makeRes();
 
-    await setSourceLine(makeReq('4', { enterSitelinks: 22, staySitelinks: 18 }), res as never);
+    await answerRoute(setSourceLineRoute, makeReq('4', { enterSitelinks: 22, staySitelinks: 18 }), res as never);
 
     const [guardSql] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(guardSql).toContain("api_config ?| array['enterSitelinks', 'staySitelinks', 'findEnterSitelinks', 'findStaySitelinks']");

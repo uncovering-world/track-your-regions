@@ -17,11 +17,11 @@
  * and the act of accepting a number.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { DataAssertion, DataAssertionReport } from '../../api/responses/dataAssertions.js';
+import type { z } from 'zod/v4';
+import type { DataAssertion, DataAssertionReport } from '../../api/responses/dataAssertions.js';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { badRequest, failure, notFound } from '../../middleware/errorHandler.js';
+import type { dataAssertionAcceptBodySchema } from '../../types/index.js';
 import { catalogueAssertions } from './dataAssertions/catalogueAssertions.js';
 import {
   assess,
@@ -95,13 +95,13 @@ function ledgerNotice(error: Error | undefined): string | null {
  * from "nothing ran", and the second is the state this lane most needs to make
  * visible.
  */
-export async function getDataAssertions(_req: AuthenticatedRequest, res: Response): Promise<void> {
+export async function getDataAssertions(): Promise<DataAssertionReport> {
   const [outcomes, accepted] = await Promise.all([
     runCatalogueAssertions(),
     readAcceptedNumbers(),
   ]);
   const entries = toReport(assess(outcomes, accepted.numbers));
-  respond(res, DataAssertionReport, {
+  return {
     assertions: entries,
     // Counted here rather than in the panel: the rule for what needs a person
     // is the server's, and two places deciding it is how the badge and the list
@@ -115,7 +115,7 @@ export async function getDataAssertions(_req: AuthenticatedRequest, res: Respons
     // Anything that is not a missing table says so instead of borrowing the
     // diagnosis, and either way the error itself is logged rather than swallowed.
     acceptancesUnavailable: ledgerNotice(accepted.error),
-  });
+  };
 }
 
 /**
@@ -142,30 +142,20 @@ export async function getDataAssertions(_req: AuthenticatedRequest, res: Respons
  * its count is a number to watch rather than a debt, so there is nothing to
  * answer for. Refusing is the honest answer to a button that should not exist.
  */
-export async function acceptDataAssertion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const { assertionId } = req.body as { assertionId: string };
+export async function acceptDataAssertion(
+  { body: { assertionId }, caller }: { body: z.output<typeof dataAssertionAcceptBodySchema>; caller: Express.User },
+): Promise<DataAssertion> {
   const assertion = catalogueAssertions.find(candidate => candidate.id === assertionId);
-  if (!assertion) {
-    res.status(404).json({ error: 'No such assertion' });
-    return;
-  }
-  if (assertion.kind === 'watch') {
-    res.status(400).json({ error: 'A watch has nothing to accept: its count is not a debt' });
-    return;
-  }
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
+  if (!assertion) throw notFound('No such assertion');
+  if (assertion.kind === 'watch') throw badRequest('A watch has nothing to accept: its count is not a debt');
+  const userId = caller.id;
 
   const [outcome] = await runCatalogueAssertions([assertion]);
   if (outcome.error) {
     // Nothing is recorded for an assertion that could not run: a zero written
     // here would turn a broken query into a clean bill of health, and the next
     // report would read its silence as debt somebody answered for.
-    res.status(503).json({ error: couldNotRun(outcome.error) });
-    return;
+    throw failure(couldNotRun(outcome.error), 503);
   }
 
   const found = outcome.rows.length;
@@ -187,10 +177,9 @@ export async function acceptDataAssertion(req: AuthenticatedRequest, res: Respon
     // goes to the error handler, which logs it and answers 500, rather than
     // being dressed up as a migration nobody owes.
     if (!isMissingLedger(error)) throw error;
-    res.status(503).json({ error: MIGRATION_OWED });
-    return;
+    throw failure(MIGRATION_OWED, 503);
   }
-  console.log(`[data-assertions] ${assertion.id} accepted at ${found} by user ${userId}`);
+  console.log('[data-assertions] %s accepted at %s by user %s', assertion.id, found, userId);
 
   // Read back for one thing only: the display name of whoever accepted it. The
   // number and the moment are already known — the insert committed and returned
@@ -219,5 +208,5 @@ export async function acceptDataAssertion(req: AuthenticatedRequest, res: Respon
     );
   }
   const number = ledger.numbers[assertion.id] ?? { count: found, acceptedAt, acceptedBy: null };
-  respond(res, DataAssertion, toReport(assess([outcome], { [assertion.id]: number }))[0]);
+  return toReport(assess([outcome], { [assertion.id]: number }))[0];
 }

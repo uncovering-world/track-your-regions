@@ -401,12 +401,9 @@ export const clearCacheQuerySchema = z.object({
 });
 
 /**
- * Whose lifetime is being changed, and of which kind.
- *
- * **Both**, because `validate(..., 'params')` replaces `req.params` with what
- * the schema parsed. Naming only `kind` left the handler reading
- * `req.params.sourceId` off an object that no longer had it — `parseInt` of
- * `undefined` is `NaN`, and the endpoint could not work at all.
+ * Whose lifetime is being changed, and of which kind: both of the path's
+ * parameters, since the handler reads only what this schema parsed, and a
+ * declared route's `params` must name every `:name` in its path (ADR-0071).
  */
 export const cacheKindParamSchema = z.object({
   sourceId: z.coerce.number().int().positive(),
@@ -1114,6 +1111,23 @@ export const addLearnedRuleBodySchema = z.object({
   // same refuse-the-absurd bound every other free-text request field carries.
   ruleText: z.string().trim().min(1).max(2000),
   context: z.string().max(2000).optional(),
+});
+
+/** `DELETE /api/admin/ai/rules/:id` — a learned rule's id. */
+export const aiRuleIdParamSchema = z.object({
+  id: z.coerce.number().int().positive(),
+});
+
+/** `POST /api/admin/ai/rules/apply-review` — one suggestion of a rule review, as the panel sends it back. */
+export const applyRuleReviewBodySchema = z.object({
+  keepId: z.number().int().positive(),
+  deleteIds: z.array(z.number().int().positive()),
+  replacementText: z.string().nullable().optional(),
+});
+
+/** `POST /api/admin/ai/hierarchy-review/:worldViewId` — the subtree to review, or none for the whole tree. */
+export const hierarchyReviewBodySchema = z.object({
+  regionId: z.number().int().positive().optional(),
 });
 
 export const suggestGroupBodySchema = z.object({

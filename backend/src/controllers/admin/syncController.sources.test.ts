@@ -17,13 +17,19 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
-vi.mock('../experience/waitingCounts.js', () => ({
+vi.mock('../experience/waitingCounts.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../experience/waitingCounts.js')>()),
   waitingCountsBySource: vi.fn(),
 }));
 
 import { pool } from '../../db/index.js';
 import { waitingCountsBySource } from '../experience/waitingCounts.js';
-import { getSources, reorderSources } from './syncController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const getSourcesRoute = routeAt(adminDeclaredRoutes, '/sync/sources', 'get');
+const reorderSourcesRoute = routeAt(adminDeclaredRoutes, '/sync/sources/reorder', 'put');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -60,7 +66,7 @@ describe('getSources', () => {
   it('asks for the gate flag itself, not only for what is waiting under it', async () => {
     mockedCounts.mockResolvedValue(new Map());
 
-    await getSources({} as never, makeRes() as never);
+    await answerRoute(getSourcesRoute, {} as never, makeRes() as never);
 
     // Asserted against the statement rather than the fixture: the mock answers `SOURCES`
     // whatever is selected, and `pool.query`'s rows are untyped on the way into the
@@ -94,7 +100,7 @@ describe('getSources', () => {
     mockedCounts.mockResolvedValue(new Map([[2, { arrivals: 18, held: 1, contents: 3 }]]));
     const res = makeRes();
 
-    await getSources({} as never, res as never);
+    await answerRoute(getSourcesRoute, {} as never, res as never);
 
     const [payload] = res.json.mock.calls[0] as [Array<{ id: number; waiting: unknown }>];
     // The aggregate groups, so a source with nothing waiting is absent from it rather
@@ -108,7 +114,7 @@ describe('getSources', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const res = makeRes();
 
-    await getSources({} as never, res as never);
+    await answerRoute(getSourcesRoute, {} as never, res as never);
 
     const [payload] = res.json.mock.calls[0] as [Array<{ id: number; name: string; waiting: unknown }>];
     // Every source still there, with everything the panel needs to run and cancel a
@@ -156,7 +162,7 @@ describe('reorderSources', () => {
     const res = makeRes();
 
     // Public Art & Monuments first, then UNESCO, then the museums.
-    await reorderSources({ body: { sourceIds: [3, 1, 2] } } as never, res as never);
+    await answerRoute(reorderSourcesRoute, { body: { sourceIds: [3, 1, 2] } } as never, res as never);
 
     const onClient = client.query.mock.calls.map(call => String(call[0]));
     expect(onClient[0]).toBe('BEGIN');
@@ -172,7 +178,7 @@ describe('reorderSources', () => {
       .mockResolvedValueOnce({ rows: [] })  // BEGIN
       .mockRejectedValueOnce(new Error('deadlock detected'));
 
-    await expect(reorderSources(
+    await expect(answerRoute(reorderSourcesRoute, 
       { body: { sourceIds: [3, 1, 2] } } as never, makeRes() as never,
     )).rejects.toThrow('deadlock detected');
 
@@ -185,9 +191,9 @@ describe('reorderSources', () => {
     const client = pinClient();
     const res = makeRes();
 
-    await reorderSources({ body: {} } as never, res as never);
+    // The route's schema refuses a body with no list before the handler runs.
+    await expect(answerRoute(reorderSourcesRoute, { body: {} } as never, res as never)).rejects.toThrow();
 
-    expect(res.status).toHaveBeenCalledWith(400);
     expect(mockedConnect).not.toHaveBeenCalled();
     expect(client.query).not.toHaveBeenCalled();
   });

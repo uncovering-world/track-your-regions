@@ -12,7 +12,13 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { getSyncLogChanges } from './syncController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const getSyncLogsRoute = routeAt(adminDeclaredRoutes, '/sync/logs', 'get');
+const getSyncLogDetailsRoute = routeAt(adminDeclaredRoutes, '/sync/logs/:logId', 'get');
+const getSyncLogChangesRoute = routeAt(adminDeclaredRoutes, '/sync/logs/:logId/changes', 'get');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -51,12 +57,11 @@ describe('sync log queries', () => {
     // After slice 1 any run that changed something also wrote a changeset, so
     // its absence beside a non-zero count is what marks the older meaning of
     // total_updated — which ADR-0020 requires the card to state.
-    const { getSyncLogs } = await import('./syncController.js');
     mockedQuery.mockReset();
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     mockedQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
-    await getSyncLogs({ query: {} } as never, makeRes() as never);
+    await answerRoute(getSyncLogsRoute, { query: {} } as never, makeRes() as never);
 
     expect(String(mockedQuery.mock.calls[0][0])).toContain('AS has_changeset');
   });
@@ -65,14 +70,13 @@ describe('sync log queries', () => {
     // has_changeset alone reads a lost record as an old run and a partial
     // landing as a whole one; the marker is what the orchestrator stamps when
     // records existed and did not land, and both admin surfaces read it.
-    const { getSyncLogs, getSyncLogDetails } = await import('./syncController.js');
     mockedQuery.mockReset();
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     mockedQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [LOG_ROW] });
 
-    await getSyncLogs({ query: {} } as never, makeRes() as never);
-    await getSyncLogDetails(makeReq(), makeRes() as never);
+    await answerRoute(getSyncLogsRoute, { query: {} } as never, makeRes() as never);
+    await answerRoute(getSyncLogDetailsRoute, makeReq(), makeRes() as never);
 
     for (const call of [mockedQuery.mock.calls[0][0], mockedQuery.mock.calls[2][0]]) {
       expect(String(call)).toContain('AS changeset_lost');
@@ -91,7 +95,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [CHANGE_ROW] });
     const res = makeRes();
 
-    await getSyncLogChanges(makeReq(), res as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq(), res as never);
 
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       changes: [CHANGE_ROW],
@@ -103,7 +107,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getSyncLogChanges(makeReq({ type: 'missing' }), makeRes() as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq({ type: 'missing' }), makeRes() as never);
 
     const [sql, params] = mockedQuery.mock.calls[0];
     expect(String(sql)).toContain('change_type = ');
@@ -114,7 +118,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getSyncLogChanges(makeReq({ significance: 'major' }), makeRes() as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq({ significance: 'major' }), makeRes() as never);
 
     const params = mockedQuery.mock.calls[0][1] as unknown[];
     expect(params).toContain('major');
@@ -124,7 +128,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getSyncLogChanges(makeReq({ type: 'missing', significance: 'major' }), makeRes() as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq({ type: 'missing', significance: 'major' }), makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     expect(sql).not.toContain('missing');
@@ -135,7 +139,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getSyncLogChanges(makeReq({ significantOnly: 'false' }), makeRes() as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq({ significantOnly: 'false' }), makeRes() as never);
 
     const countSql = String(mockedQuery.mock.calls[0][0]);
     expect(countSql).not.toContain("change_type <> 'updated'");
@@ -150,7 +154,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getSyncLogChanges(makeReq({ significantOnly: 'true' }), makeRes() as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq({ significantOnly: 'true' }), makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     // Filtering on significance alone would hide every row that has none
@@ -169,7 +173,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [contentsRow] });
     const res = makeRes();
 
-    await getSyncLogChanges(makeReq({ significantOnly: 'true' }), res as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq({ significantOnly: 'true' }), res as never);
 
     // `significance` weighs field changes only, so a run that rewrote one minor field
     // *and* added a component lands as `updated`/`minor` — dropped by the other two
@@ -202,7 +206,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getSyncLogChanges(makeReq({ significantOnly: 'true' }), makeRes() as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq({ significantOnly: 'true' }), makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     // A held row is a proposal waiting on a curator (#519), and most of them are
@@ -239,7 +243,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [conflictRow] });
     const res = makeRes();
 
-    await getSyncLogChanges(makeReq({ significantOnly: 'true' }), res as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq({ significantOnly: 'true' }), res as never);
 
     // The containment test over the stored `changed_fields` is the shape the queue
     // and both verdict endpoints already read the flag with, so the report and the
@@ -259,7 +263,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getSyncLogChanges(makeReq(), makeRes() as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq(), makeRes() as never);
 
     // A plain DESC would put NULL-significance rows first; DESC NULLS LAST would
     // bury created and missing rows behind every minor field edit. Neither is
@@ -276,7 +280,7 @@ describe('getSyncLogChanges', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getSyncLogChanges(makeReq(), makeRes() as never);
+    await answerRoute(getSyncLogChangesRoute, makeReq(), makeRes() as never);
 
     for (const call of mockedQuery.mock.calls) {
       expect(String(call[0])).toContain('sync_log_id = $1');

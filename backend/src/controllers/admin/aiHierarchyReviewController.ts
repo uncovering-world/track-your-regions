@@ -6,10 +6,10 @@
  * single-subtree review modes.
  */
 
-import type { Response } from 'express';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { respond } from '../../api/respond.js';
-import { HierarchyReviewAction, HierarchyReviewResult } from '../../api/responses/adminAi.js';
+import type { z } from 'zod/v4';
+import { HierarchyReviewAction, type HierarchyReviewResult } from '../../api/responses/adminAi.js';
+import { failure, notFound } from '../../middleware/errorHandler.js';
+import type { hierarchyReviewBodySchema, worldViewIdParamSchema } from '../../types/index.js';
 import OpenAI from 'openai';
 import { pool } from '../../db/index.js';
 import { getModelForFeature } from '../../services/ai/aiSettingsService.js';
@@ -445,13 +445,9 @@ async function runSubtreeReview(
   model: string,
   worldViewId: number,
   regionId: number,
-  res: Response,
-): Promise<ReviewRun | null> {
+): Promise<ReviewRun> {
   const rows = await queryTree(worldViewId, regionId);
-  if (rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return null;
-  }
+  if (rows.length === 0) throw notFound('Region not found in this world view');
   const treeText = formatTreeText(rows, Infinity);
 
   const response = await chatCompletion(client, {
@@ -614,29 +610,21 @@ async function runFullTreeReview(
 // ---------------------------------------------------------------------------
 
 export async function hierarchyReview(
-  req: AuthenticatedRequest,
-  res: Response,
-): Promise<void> {
-  if (!isOpenAIAvailable()) {
-    res.status(503).json({ error: 'OpenAI API is not configured' });
-    return;
-  }
-
-  const worldViewId = Number(req.params.worldViewId);
-  const { regionId } = req.body as { regionId?: number };
+  { params: { worldViewId }, body: { regionId } }: {
+    params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof hierarchyReviewBodySchema>;
+  },
+): Promise<HierarchyReviewResult> {
+  if (!isOpenAIAvailable()) throw failure('OpenAI API is not configured', 503);
 
   const startTime = Date.now();
 
-  let body: HierarchyReviewResult;
   try {
     const model = await getModelForFeature('hierarchy_review');
     const client = getClient();
 
     const review = regionId != null
-      ? await runSubtreeReview(client, model, worldViewId, regionId, res)
+      ? await runSubtreeReview(client, model, worldViewId, regionId)
       : await runFullTreeReview(client, model, worldViewId);
-
-    if (!review) return; // response already sent via early-exit path
 
     const durationMs = Date.now() - startTime;
     const cost = calculateCost(review.promptTokens, review.completionTokens, model);
@@ -654,7 +642,7 @@ export async function hierarchyReview(
         : `Full tree review (${review.passes} passes) for world view ${worldViewId}`),
     });
 
-    body = {
+    return {
       report: review.report,
       actions: review.actions,
       stats: {
@@ -665,9 +653,9 @@ export async function hierarchyReview(
       },
     };
   } catch (err) {
+    // A region the subtree review could not find is its own answer, not a failure.
+    if ((err as { statusCode?: unknown }).statusCode === 404) throw err;
     console.error('[AI Hierarchy Review] Error:', err);
-    res.status(500).json({ error: 'AI hierarchy review failed' });
-    return;
+    throw failure('AI hierarchy review failed', 500);
   }
-  respond(res, HierarchyReviewResult, body);
 }

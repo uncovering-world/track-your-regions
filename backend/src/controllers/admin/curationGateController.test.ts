@@ -15,7 +15,11 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { setCurationGate } from './curationGateController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const setCurationGateRoute = routeAt(adminDeclaredRoutes, '/sync/sources/:sourceId/curation-gate', 'put');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -39,7 +43,7 @@ describe('setCurationGate', () => {
       rows: [{ id: 2, name: 'Art Museums', requires_curation: true }],
     });
 
-    await setCurationGate(makeReq(true), makeRes() as never);
+    await answerRoute(setCurationGateRoute, makeReq(true), makeRes() as never);
 
     expect(mockedQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
@@ -54,7 +58,7 @@ describe('setCurationGate', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await setCurationGate(makeReq(true), res as never);
+    await answerRoute(setCurationGateRoute, makeReq(true), res as never);
 
     const [sql] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('is_active = true');
@@ -70,7 +74,7 @@ describe('setCurationGate', () => {
     });
     const res = makeRes();
 
-    await setCurationGate(makeReq(true), res as never);
+    await answerRoute(setCurationGateRoute, makeReq(true), res as never);
 
     expect(res.json).toHaveBeenCalledWith({
       sourceId: 2, name: 'Art Museums', requiresCuration: false,
@@ -82,7 +86,7 @@ describe('setCurationGate', () => {
       rows: [{ id: 2, name: 'Art Museums', requires_curation: false }],
     });
 
-    await setCurationGate(makeReq(false), makeRes() as never);
+    await answerRoute(setCurationGateRoute, makeReq(false), makeRes() as never);
 
     // Turning it off must not publish anything: the only statement is the same
     // one-table update, so nothing can move a row out of `pending` here.
