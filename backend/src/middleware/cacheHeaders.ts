@@ -8,11 +8,13 @@ import { Response } from 'express';
  * reads behind it are the other thing: the same bytes for every caller, gated
  * because only the editor asks for them, and large enough that the browser's
  * revalidation round-trip is worth keeping. GADM's boundaries at full
- * resolution (`controllers/division/divisionGeometry.ts`) and Wikimedia's
+ * resolution (`GET /api/divisions/:divisionId/geometry`) and Wikimedia's
  * geoshape for a Wikidata id (`controllers/admin/wvImportLifecycleController.ts`)
  * are both that shape: `no-store` there would trade a `304` for the whole body
  * on every dialog open and protect nothing, since there is nothing of the
- * caller's in it.
+ * caller's in it. A declared route says it with its `revalidate` policy
+ * (`api/route.ts`, ADR-0071), which writes the same value; this helper is for
+ * the handlers not yet declared.
  *
  * `no-cache`, not a `max-age`: the browser stores the body and revalidates
  * every use, so the origin re-authorizes each one — which is what keeps an

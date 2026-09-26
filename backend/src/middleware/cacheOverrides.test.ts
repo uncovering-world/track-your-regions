@@ -84,7 +84,6 @@ const MUST_WRITE: Array<{ file: string; writes: number }> = [
  * handler each, so for them the two counts agree.
  */
 const MUST_CALL_HELPER: Array<{ file: string; helper: string; handlers: number }> = [
-  { file: 'controllers/division/divisionGeometry.ts', helper: 'markPublicReferenceBody', handlers: 1 },
   { file: 'controllers/admin/wvImportLifecycleController.ts', helper: 'markPublicReferenceBody', handlers: 1 },
   // The three streams, which say the same thing for the same reason and said
   // it in eight identical comment lines apiece until the helper took it.

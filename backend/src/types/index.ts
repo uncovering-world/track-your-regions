@@ -75,6 +75,11 @@ export const idParamSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
 
+/** `/api/divisions/:divisionId…` — a GADM division's id. */
+export const divisionIdParamSchema = z.object({
+  divisionId: divisionIdSchema,
+});
+
 export const regionIdParamSchema = z.object({
   regionId: z.coerce.number().int().positive(),
 });

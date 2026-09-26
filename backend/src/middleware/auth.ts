@@ -41,11 +41,12 @@ export interface AuthenticatedRequest extends Request {
  * Not everything behind this middleware is. Some of it is public reference
  * data that happens to be admin-gated — GADM's boundaries at full resolution
  * and Wikimedia's geoshape for a Wikidata id, gated because the editor is the
- * only caller rather than because the answer is anyone's own. Those four reads
- * say `private, no-cache` back through `markPublicReferenceBody`
+ * only caller rather than because the answer is anyone's own. Those reads say
+ * `private, no-cache` back: a declared route by its `revalidate` policy
+ * (`api/route.ts`, ADR-0071), the rest through `markPublicReferenceBody`
  * (`middleware/cacheHeaders.ts`), which is where that rule and its reasons
  * live. That is the shape every exception takes — set after the middleware,
- * where `setHeader` replaces: those four, the three streams' `private,
+ * where `setHeader` replaces: those, the three streams' `private,
  * no-cache` through `markStreamBody`, the admin images' `max-age`. All but one
  * keep `private` deliberately, since replacing the value drops it along with
  * the `no-store`; the exception is the admin image proxy, which answers

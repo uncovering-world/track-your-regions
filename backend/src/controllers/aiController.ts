@@ -3,9 +3,10 @@
  */
 
 import type { Request, Response } from 'express';
+import type { z } from 'zod/v4';
 import { respond } from '../api/respond.js';
 import {
-  AIGeocodeResult,
+  type AIGeocodeResult,
   AIModels,
   AIStatus,
   BatchSuggestions,
@@ -27,6 +28,8 @@ import {
   setWebSearchModel,
   getWebSearchCapableModels,
 } from '../services/ai/openaiService.js';
+import { badRequest, failure } from '../middleware/errorHandler.js';
+import type { aiGeocodeBodySchema } from '../types/index.js';
 
 /**
  * Check if AI features are available
@@ -293,39 +296,27 @@ export async function generateDescriptions(req: Request, res: Response) {
  * POST /api/ai/geocode
  * Body: { description: string }
  */
-export async function geocodeWithAI(req: Request, res: Response) {
-  const { description } = req.body;
-
-  if (!description || typeof description !== 'string' || description.trim().length < 2) {
-    return res.status(400).json({ error: 'description is required (at least 2 characters)' });
+export async function geocodeWithAI(
+  { body: { description } }: { body: z.output<typeof aiGeocodeBodySchema> },
+): Promise<AIGeocodeResult> {
+  if (description.trim().length < 2) {
+    throw badRequest('description is required (at least 2 characters)');
   }
 
   if (!isOpenAIAvailable()) {
-    return res.status(503).json({
-      error: 'AI features are not available',
-      message: 'OpenAI API key not configured. Set OPENAI_API_KEY in .env to enable AI features.',
-    });
+    throw failure('AI features are not available', 503);
   }
 
-  let result: AIGeocodeResult;
   try {
-    result = await geocodeDescription(description.trim());
+    return await geocodeDescription(description.trim());
   } catch (error: unknown) {
     console.error('AI geocode error:', error);
 
     const errorObj = error as { status?: number; code?: string; message?: string };
     if (errorObj?.status === 429 || errorObj?.code === 'insufficient_quota') {
-      return res.status(429).json({
-        error: 'AI quota exceeded',
-        code: 'quota_exceeded',
-        message: 'AI rate limit reached. Please try again later.',
-      });
+      throw failure('AI quota exceeded', 429, 'quota_exceeded');
     }
 
-    res.status(500).json({
-      error: 'Failed to geocode description',
-    });
-    return;
+    throw failure('Failed to geocode description', 500);
   }
-  respond(res, AIGeocodeResult, result);
 }

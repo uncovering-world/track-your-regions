@@ -33,7 +33,7 @@ router.get('/health', async (_req, res) => {
 router.use('/api/auth', authRoutes);
 
 // Protected API routes
-router.use('/api/divisions', requireAuth, requireAdmin, divisionRoutes);  // GADM data - admin only
+router.use('/api/divisions', divisionRoutes);  // GADM data - admin only, declared per route (ADR-0071)
 router.use('/api/world-views', worldViewRoutes);  // World Views - mixed auth (read: user, write: admin)
 router.use('/api/users', userRoutes);  // User and visited regions - auth handled per route
 router.use('/api/ai', requireAuth, requireAdmin, aiRoutes);  // AI-assisted features - admin only

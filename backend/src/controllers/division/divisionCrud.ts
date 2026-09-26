@@ -2,33 +2,36 @@
  * Division CRUD operations
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { AdministrativeDivision, AdministrativeDivisions } from '../../api/responses/divisions.js';
+import type { z } from 'zod/v4';
+import type { AdministrativeDivision, AdministrativeDivisions } from '../../api/responses/divisions.js';
 // ADR-0064: raw parameterized SQL on the pool, typed by the generated rows.
 import { pool } from '../../db/index.js';
 import type { AdministrativeDivisionsRow } from '../../db/schema.generated.js';
 import { notFound } from '../../middleware/errorHandler.js';
+import type { divisionIdParamSchema, getSubdivisionsQuerySchema } from '../../types/index.js';
 import { DIVISION_COLUMNS, divisionOf, type DivisionRow } from './divisionAnswerRows.js';
 
 /**
  * Get root divisions (no parent)
  */
-export async function getRootDivisions(_req: Request, res: Response): Promise<void> {
+export async function getRootDivisions(): Promise<AdministrativeDivisions> {
   const result = await pool.query<DivisionRow>(
     `SELECT ${DIVISION_COLUMNS}
      FROM administrative_divisions
      WHERE parent_id IS NULL`,
   );
 
-  respond(res, AdministrativeDivisions, result.rows.map(divisionOf));
+  return result.rows.map(divisionOf);
 }
+
+type DivisionParams = z.output<typeof divisionIdParamSchema>;
 
 /**
  * Get a specific division by ID
  */
-export async function getDivisionById(req: Request, res: Response): Promise<void> {
-  const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
+export async function getDivisionById(
+  { params: { divisionId } }: { params: DivisionParams },
+): Promise<AdministrativeDivision> {
 
   const result = await pool.query<DivisionRow>(
     `SELECT ${DIVISION_COLUMNS}
@@ -42,17 +45,17 @@ export async function getDivisionById(req: Request, res: Response): Promise<void
     throw notFound(`Division ${divisionId} not found`);
   }
 
-  respond(res, AdministrativeDivision, divisionOf(result.rows[0]));
+  return divisionOf(result.rows[0]);
 }
 
 /**
  * Get subdivisions for a specific division
  */
-export async function getSubdivisions(req: Request, res: Response): Promise<void> {
-  const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
-  const getAll = req.query.getAll === 'true';
-  const limit = parseInt(String(req.query.limit ?? '1000'));
-  const offset = parseInt(String(req.query.offset ?? '0'));
+export async function getSubdivisions(
+  { params: { divisionId }, query }: { params: DivisionParams; query: z.output<typeof getSubdivisionsQuerySchema> },
+): Promise<AdministrativeDivisions> {
+  const getAll = query.getAll === 'true';
+  const { limit, offset } = query;
 
   // Check if division exists
   const exists = await pool.query<Pick<AdministrativeDivisionsRow, 'id'>>(
@@ -64,10 +67,10 @@ export async function getSubdivisions(req: Request, res: Response): Promise<void
     throw notFound(`Division ${divisionId} not found`);
   }
 
-  let query: string;
+  let sql: string;
 
   if (getAll) {
-    query = `
+    sql = `
       WITH RECURSIVE subdivisions AS (
         SELECT id, parent_id, name, has_children, focus_bbox, anchor_point, 1 as depth
         FROM administrative_divisions
@@ -83,7 +86,7 @@ export async function getSubdivisions(req: Request, res: Response): Promise<void
       LIMIT $2 OFFSET $3
     `;
   } else {
-    query = `
+    sql = `
       SELECT ${DIVISION_COLUMNS}
       FROM administrative_divisions
       WHERE parent_id = $1
@@ -92,18 +95,18 @@ export async function getSubdivisions(req: Request, res: Response): Promise<void
     `;
   }
 
-  const result = await pool.query<DivisionRow>(query, [divisionId, limit, offset]);
+  const result = await pool.query<DivisionRow>(sql, [divisionId, limit, offset]);
 
-  respond(res, AdministrativeDivisions, result.rows.map(divisionOf));
+  return result.rows.map(divisionOf);
 }
 
 /**
  * Get ancestors (parent chain) for a division
  */
-export async function getAncestors(req: Request, res: Response): Promise<void> {
-  const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
-
-  const query = `
+export async function getAncestors(
+  { params: { divisionId } }: { params: DivisionParams },
+): Promise<AdministrativeDivisions> {
+  const sql = `
     WITH RECURSIVE ancestors AS (
       SELECT id, parent_id, name, has_children, focus_bbox, anchor_point, 1 as depth
       FROM administrative_divisions
@@ -118,20 +121,21 @@ export async function getAncestors(req: Request, res: Response): Promise<void> {
     ORDER BY depth DESC
   `;
 
-  const result = await pool.query<DivisionRow>(query, [divisionId]);
+  const result = await pool.query<DivisionRow>(sql, [divisionId]);
 
   if (result.rows.length === 0) {
     throw notFound(`Division ${divisionId} not found`);
   }
 
-  respond(res, AdministrativeDivisions, result.rows.map(divisionOf));
+  return result.rows.map(divisionOf);
 }
 
 /**
  * Get siblings for a division
  */
-export async function getSiblings(req: Request, res: Response): Promise<void> {
-  const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
+export async function getSiblings(
+  { params: { divisionId } }: { params: DivisionParams },
+): Promise<AdministrativeDivisions> {
 
   const divisionResult = await pool.query<Pick<AdministrativeDivisionsRow, 'parent_id'>>(
     'SELECT parent_id FROM administrative_divisions WHERE id = $1 LIMIT 1',
@@ -158,5 +162,5 @@ export async function getSiblings(req: Request, res: Response): Promise<void> {
       [parentId],
     );
 
-  respond(res, AdministrativeDivisions, result.rows.map(divisionOf));
+  return result.rows.map(divisionOf);
 }

@@ -14,8 +14,10 @@ vi.mock('../../services/authService.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { verifyAccessToken } from '../../services/authService.js';
-import { requireAuth } from '../../middleware/auth.js';
-import { authenticatedLimiter } from '../../middleware/rateLimiter.js';
+import { routerOf } from '../../api/route.js';
+import { errorHandler } from '../../middleware/errorHandler.js';
+import { divisionRoutes } from '../../routes/divisionRoutes.js';
+import { getGeometryQuerySchema } from '../../types/index.js';
 import { getGeometry } from './divisionGeometry.js';
 import { getGeoshape } from '../admin/wvImportLifecycleController.js';
 
@@ -27,29 +29,6 @@ function makeRes() {
   res.status.mockReturnValue(res);
   return res;
 }
-
-/**
- * This read carries GADM's boundary — the same shape for every caller, at full
- * resolution — and sits behind `requireAuth` + `requireAdmin` only because the
- * editor is the one that asks. `requireAuth` marks a response `no-store`,
- * which is right for a caller's own data and wrong for this one: it would
- * re-download megabytes on every dialog open, where the browser answers `304`
- * today (#710).
- */
-describe('the division geometry read keeps the browser its revalidation', () => {
-  beforeEach(() => {
-    mockedQuery.mockReset();
-  });
-
-  it('sets private, no-cache on a division geometry, rows or none', async () => {
-    for (const rows of [[{ geometry: { type: 'MultiPolygon', coordinates: [] } }], []]) {
-      mockedQuery.mockResolvedValueOnce({ rows });
-      const res = makeRes();
-      await getGeometry({ params: { divisionId: '1' }, query: {} } as never, res as never);
-      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
-    }
-  });
-});
 
 describe('the geoshape proxy answers the same way', () => {
   // Wikimedia's boundary for a Wikidata id is the same bytes for every caller,
@@ -68,7 +47,14 @@ describe('the geoshape proxy answers the same way', () => {
   });
 });
 
-describe('the relaxation wins over requireAuth on the wire', () => {
+/**
+ * GADM's boundary is the same shape for every caller, at full resolution, and
+ * sits behind `admin` only because the editor is the one that asks. Its route
+ * declares `revalidate`, so the browser keeps the megabytes and answers `304`
+ * rather than fetching them whole on every dialog open (#710), and says so on
+ * the wire for the 204 as well as the body.
+ */
+describe('the division geometry route keeps the browser its revalidation', () => {
   let server: Server;
   let port: number;
 
@@ -76,11 +62,8 @@ describe('the relaxation wins over requireAuth on the wire', () => {
     mockedVerify.mockReturnValue({ sub: 7, uuid: 'u', role: 'admin' });
     const app = express();
     app.disable('x-powered-by');
-    // The chain as routes/index.ts wires it: identity first, then the
-    // handler. `setHeader` replaces, so the handler's value is what ships —
-    // asserting it on the wire is the only way to hold that, since a unit
-    // call never sees the middleware's header at all.
-    app.get('/geometry/:divisionId', authenticatedLimiter, requireAuth, getGeometry);
+    app.use(routerOf(divisionRoutes));
+    app.use(errorHandler);
     server = app.listen(0);
     await new Promise<void>((resolve) => server.once('listening', resolve));
     port = (server.address() as AddressInfo).port;
@@ -90,25 +73,40 @@ describe('the relaxation wins over requireAuth on the wire', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  it('answers private, no-cache, not the middleware\'s no-store', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ geometry: { type: 'MultiPolygon', coordinates: [] } }] });
+  const get = (path: string) => new Promise<{ status?: number; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
+    const req = request(
+      { port, path, method: 'GET', headers: { authorization: 'Bearer x' } },
+      (res) => {
+        res.resume();
+        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers }));
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
 
-    const headers = await new Promise<Record<string, string | string[] | undefined>>((resolve, reject) => {
-      const req = request(
-        { port, path: '/geometry/1', method: 'GET', headers: { authorization: 'Bearer x' } },
-        (res) => {
-          res.resume();
-          res.on('end', () => resolve(res.headers));
-        },
-      );
-      req.on('error', reject);
-      req.end();
-    });
+  it.each([
+    ['a boundary', [{ geometry: { type: 'MultiPolygon', coordinates: [] } }], 200],
+    ['none', [], 204],
+  ])('answers private, no-cache for %s, not no-store', async (_what, rows, status) => {
+    mockedQuery.mockResolvedValueOnce({ rows });
 
-    expect(headers['cache-control']).toBe('private, no-cache');
-    // The Vary the middleware appended survives — only Cache-Control was
-    // replaced, and a private cache still keys the entry on the caller.
-    expect(String(headers.vary).toLowerCase()).toContain('authorization');
+    const answer = await get('/1/geometry');
+
+    expect(answer.status).toBe(status);
+    expect(answer.headers['cache-control']).toBe('private, no-cache');
+    // The Vary requireAuth appended survives: a private cache still keys the
+    // entry on the caller.
+    expect(String(answer.headers.vary).toLowerCase()).toContain('authorization');
+  });
+
+  it('refuses an id that is not a number before it reaches the database', async () => {
+    mockedQuery.mockReset();
+
+    const answer = await get('/abc/geometry');
+
+    expect(answer.status).toBe(400);
+    expect(mockedQuery).not.toHaveBeenCalled();
   });
 });
 
@@ -125,7 +123,7 @@ describe('the division geometry read answers the detail it is asked for', () => 
   });
 
   const sqlFor = async (query: Record<string, string>) => {
-    await getGeometry({ params: { divisionId: '1' }, query } as never, makeRes() as never);
+    await getGeometry({ params: { divisionId: 1 }, query: getGeometryQuerySchema.parse(query) });
     return String(mockedQuery.mock.calls[0][0]);
   };
 

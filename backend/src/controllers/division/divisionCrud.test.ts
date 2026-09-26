@@ -16,6 +16,7 @@ import { pool } from '../../db/index.js';
 import {
   getAncestors, getDivisionById, getRootDivisions, getSiblings, getSubdivisions,
 } from './divisionCrud.js';
+import { divisionIdParamSchema, getSubdivisionsQuerySchema } from '../../types/index.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -41,12 +42,12 @@ const DIVISION = {
 
 const FOCUS_ALIASES = /AS focus_bbox_json,[\s\S]*AS anchor_point_json/;
 
-function makeRes() {
-  return { json: vi.fn() };
-}
-
-function makeReq(divisionId: string, query: Record<string, string> = {}) {
-  return { params: { divisionId }, query } as never;
+/** A handler's input as the route hands it over: the path and query, parsed by their schemas. */
+function input(divisionId: string, query: Record<string, string> = {}) {
+  return {
+    params: divisionIdParamSchema.parse({ divisionId }),
+    query: getSubdivisionsQuerySchema.parse(query),
+  };
 }
 
 beforeEach(() => {
@@ -57,34 +58,30 @@ beforeEach(() => {
 describe('getRootDivisions', () => {
   it('selects the divisions without a parent, focus included, and maps them', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [ROW] });
-    const res = makeRes();
-
-    await getRootDivisions({} as never, res as never);
+    const answer = await getRootDivisions();
 
     const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[] | undefined];
     expect(sql).toMatch(/WHERE parent_id IS NULL/);
     expect(sql).toMatch(FOCUS_ALIASES);
     expect(params).toBeUndefined();
-    expect(res.json).toHaveBeenCalledWith([DIVISION]);
+    expect(answer).toEqual([DIVISION]);
   });
 });
 
 describe('getDivisionById', () => {
   it('reads one row by id with its focus', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [ROW] });
-    const res = makeRes();
-
-    await getDivisionById(makeReq('12'), res as never);
+    const answer = await getDivisionById(input('12'));
 
     const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toMatch(/WHERE id = \$1/);
     expect(sql).toMatch(FOCUS_ALIASES);
     expect(params).toEqual([12]);
-    expect(res.json).toHaveBeenCalledWith(DIVISION);
+    expect(answer).toEqual(DIVISION);
   });
 
   it('answers 404 for an id that is not there', async () => {
-    await expect(getDivisionById(makeReq('999'), makeRes() as never))
+    await expect(getDivisionById(input('999')))
       .rejects.toMatchObject({ statusCode: 404 });
   });
 });
@@ -94,9 +91,7 @@ describe('getSubdivisions', () => {
     mockedQuery
       .mockResolvedValueOnce({ rows: [{ id: 12 }] })
       .mockResolvedValueOnce({ rows: [{ ...ROW, id: 13, name: 'Gilbert Islands', parent_id: 12 }] });
-    const res = makeRes();
-
-    await getSubdivisions(makeReq('12'), res as never);
+    const answer = await getSubdivisions(input('12'));
 
     const [existsSql, existsParams] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(existsSql).toMatch(/SELECT id FROM administrative_divisions WHERE id = \$1/);
@@ -104,8 +99,8 @@ describe('getSubdivisions', () => {
     const [listSql, listParams] = mockedQuery.mock.calls[1] as [string, unknown[]];
     expect(listSql).toMatch(/WHERE parent_id = \$1/);
     expect(listSql).toMatch(FOCUS_ALIASES);
-    expect(listParams).toEqual([12, 1000, 0]);
-    expect(res.json).toHaveBeenCalledWith([
+    expect(listParams).toEqual([12, 100, 0]);
+    expect(answer).toEqual([
       { ...DIVISION, id: 13, name: 'Gilbert Islands', parentId: 12 },
     ]);
   });
@@ -113,7 +108,7 @@ describe('getSubdivisions', () => {
   it('walks the whole subtree when asked for all, still carrying the focus', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 12 }] });
 
-    await getSubdivisions(makeReq('12', { getAll: 'true' }), makeRes() as never);
+    await getSubdivisions(input('12', { getAll: 'true' }));
 
     const [listSql] = mockedQuery.mock.calls[1] as [string];
     expect(listSql).toMatch(/WITH RECURSIVE subdivisions AS/);
@@ -121,7 +116,7 @@ describe('getSubdivisions', () => {
   });
 
   it('answers 404 for a parent that is not there, without listing', async () => {
-    await expect(getSubdivisions(makeReq('999'), makeRes() as never))
+    await expect(getSubdivisions(input('999')))
       .rejects.toMatchObject({ statusCode: 404 });
     expect(mockedQuery).toHaveBeenCalledTimes(1);
   });
@@ -130,20 +125,18 @@ describe('getSubdivisions', () => {
 describe('getAncestors', () => {
   it('walks up from the division with the focus of every step', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [ROW, { ...ROW, id: 13, parent_id: 12 }] });
-    const res = makeRes();
-
-    await getAncestors(makeReq('13'), res as never);
+    const answer = await getAncestors(input('13'));
 
     const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toMatch(/WITH RECURSIVE ancestors AS/);
     expect(sql).toMatch(/ORDER BY depth DESC/);
     expect(sql).toMatch(FOCUS_ALIASES);
     expect(params).toEqual([13]);
-    expect(res.json).toHaveBeenCalledWith([DIVISION, { ...DIVISION, id: 13, parentId: 12 }]);
+    expect(answer).toEqual([DIVISION, { ...DIVISION, id: 13, parentId: 12 }]);
   });
 
   it('answers 404 when the walk finds nothing', async () => {
-    await expect(getAncestors(makeReq('999'), makeRes() as never))
+    await expect(getAncestors(input('999')))
       .rejects.toMatchObject({ statusCode: 404 });
   });
 });
@@ -153,9 +146,7 @@ describe('getSiblings', () => {
     mockedQuery
       .mockResolvedValueOnce({ rows: [{ parent_id: 12 }] })
       .mockResolvedValueOnce({ rows: [{ ...ROW, id: 13, parent_id: 12 }] });
-    const res = makeRes();
-
-    await getSiblings(makeReq('13'), res as never);
+    const answer = await getSiblings(input('13'));
 
     const [parentSql, parentParams] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(parentSql).toMatch(/SELECT parent_id FROM administrative_divisions WHERE id = \$1/);
@@ -164,25 +155,23 @@ describe('getSiblings', () => {
     expect(sql).toMatch(/WHERE parent_id = \$1/);
     expect(sql).toMatch(FOCUS_ALIASES);
     expect(params).toEqual([12]);
-    expect(res.json).toHaveBeenCalledWith([{ ...DIVISION, id: 13, parentId: 12 }]);
+    expect(answer).toEqual([{ ...DIVISION, id: 13, parentId: 12 }]);
   });
 
   it("lists the other roots for a root, since NULL is never '= $1'", async () => {
     mockedQuery
       .mockResolvedValueOnce({ rows: [{ parent_id: null }] })
       .mockResolvedValueOnce({ rows: [ROW] });
-    const res = makeRes();
-
-    await getSiblings(makeReq('12'), res as never);
+    const answer = await getSiblings(input('12'));
 
     const [sql, params] = mockedQuery.mock.calls[1] as [string, unknown[] | undefined];
     expect(sql).toMatch(/WHERE parent_id IS NULL/);
     expect(params).toBeUndefined();
-    expect(res.json).toHaveBeenCalledWith([DIVISION]);
+    expect(answer).toEqual([DIVISION]);
   });
 
   it('answers 404 for a division that is not there', async () => {
-    await expect(getSiblings(makeReq('999'), makeRes() as never))
+    await expect(getSiblings(input('999')))
       .rejects.toMatchObject({ statusCode: 404 });
     expect(mockedQuery).toHaveBeenCalledTimes(1);
   });
