@@ -3058,7 +3058,7 @@ Every read `frontend/src/api/experiences.ts` and `frontend/src/api/worldPoints.t
 
 ### User visits (`requireAuth`)
 
-Every response `requireAuth` lets through here carries `Cache-Control: private, no-store` and `Vary: Authorization`, set by the middleware itself: the bodies are one traveller's own history, and `no-store` is what keeps them out of the browser's disk cache after sign-out (#710; the reasoning is in `docs/security/SECURITY.md` § Headers). A request that never reaches it answers with Express's defaults instead — the router's rate limit at 429, and the 400 from `validate`, which is wired ahead of `requireAuth` on every route in the table below — and neither carries anything of the caller's to keep. `backend/src/routes/callerShapedReads.test.ts` holds that every route on the user router carries the middleware.
+Every response `requireAuth` lets through here carries `Cache-Control: private, no-store` and `Vary: Authorization`, set by the middleware itself: the bodies are one traveller's own history, and `no-store` is what keeps them out of the browser's disk cache after sign-out (#710; the reasoning is in `docs/security/SECURITY.md` § Headers). A request that never reaches it is refused by the route's limiter at 429, which runs first and carries nothing of the caller's to keep; a request `requireAuth` lets through is parsed after it, so a malformed one answers 400 under the same `no-store`. Every route on the user router is declared `signed-in` (ADR-0071), which builds `requireAuth` into its chain.
 
 Every call the web makes here lives in `frontend/src/api/visited.ts`, and its answer is a schema in `backend/src/api/responses/visited.ts` (ADR-0066), built key by key, a visit's `visited_at` leaving as an ISO string or null.
 
