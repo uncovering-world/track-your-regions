@@ -56,6 +56,20 @@ function readId(req: AuthenticatedRequest, source: VisibilitySource): number | n
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+/** A world view, or a region whose world view decides. */
+export type VisibleScope = { readonly worldViewId: number } | { readonly regionId: number };
+
+/**
+ * Whether a reader who is not an admin may see `scope`: its world view is
+ * active and public. A missing row and a hidden world view answer the same.
+ */
+export async function isVisibleToReaders(scope: VisibleScope): Promise<boolean> {
+  const [sql, id] = 'regionId' in scope ? [BY_REGION, scope.regionId] : [BY_WORLD_VIEW, scope.worldViewId];
+  const result = await pool.query<{ is_public: boolean }>(sql, [id]);
+  return result.rows.length > 0 && result.rows[0].is_public === true;
+}
+
+/** The guard for a route not yet declared; a declared one names its `scope` (ADR-0071). */
 export function requireVisibleWorldView(source: VisibilitySource) {
   return async function visibilityGuard(
     req: AuthenticatedRequest,
@@ -78,12 +92,11 @@ export function requireVisibleWorldView(source: VisibilitySource) {
       return;
     }
 
-    const sql = source === 'regionIdParam' || source === 'regionIdQuery' ? BY_REGION : BY_WORLD_VIEW;
-    const result = await pool.query(sql, [id]);
+    const scope = source === 'regionIdParam' || source === 'regionIdQuery' ? { regionId: id } : { worldViewId: id };
 
     // A missing row and a hidden world view get the same answer on purpose:
     // 404 leaks nothing about which world views exist.
-    if (result.rows.length === 0 || result.rows[0].is_public !== true) {
+    if (!(await isVisibleToReaders(scope))) {
       res.status(404).json({ error: 'Not found' });
       return;
     }
