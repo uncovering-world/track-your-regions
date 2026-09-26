@@ -32,7 +32,7 @@ import type { z } from 'zod/v4';
 import { optionalAuth, requireAdmin, requireAuth, requireCurator, type AuthenticatedRequest } from '../middleware/auth.js';
 import { notFound } from '../middleware/errorHandler.js';
 import { isVisibleToReaders, type VisibleScope } from '../middleware/worldViewVisibility.js';
-import { respond } from './respond.js';
+import { respond, writeEvent } from './respond.js';
 
 /**
  * Who may call a route.
@@ -72,6 +72,30 @@ export type PathParams<P extends string> =
     : P extends `${string}:${infer Name}` ? Name
       : never;
 
+/**
+ * A streamed answer: server-sent events, each held to `events` the way a body
+ * is held to its schema (ADR-0066). The registry opens the stream — its type,
+ * keep-alive, the headers flushed — and the handler writes events with
+ * `send`; the registry ends the stream when the handler returns.
+ */
+export interface StreamAnswer<E extends z.ZodType> {
+  readonly events: E;
+}
+
+/** Declare a route's answer as a stream of `events`. */
+export function stream<E extends z.ZodType>(events: E): StreamAnswer<E> {
+  return { events };
+}
+
+function isStream(response: z.ZodType | StreamAnswer<z.ZodType>): response is StreamAnswer<z.ZodType> {
+  return 'events' in response && !('safeParse' in response);
+}
+
+/** What a streaming handler writes with. */
+export interface StreamExchange<Event> extends RouteExchange {
+  readonly send: (event: Event) => void;
+}
+
 /** Answers with no body: a 204. Returned by a handler whose route declares `noContent`. */
 export const NO_CONTENT: unique symbol = Symbol('no content');
 
@@ -108,7 +132,7 @@ export type RouteDeclaration<
   PS extends z.ZodType | undefined,
   QS extends z.ZodType | undefined,
   BS extends z.ZodType | undefined,
-  RS extends z.ZodType,
+  RS extends z.ZodType | StreamAnswer<z.ZodType>,
   NC extends boolean,
 > = {
   readonly method: Method;
@@ -129,10 +153,12 @@ export type RouteDeclaration<
    * input names none, for an optional filter.
    */
   readonly scope?: (input: RouteParts<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>>) => VisibleScope | undefined;
-  readonly handler: (
-    input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, A>,
-    exchange: RouteExchange,
-  ) => Promise<z.output<RS> | (NC extends true ? typeof NO_CONTENT : never)>;
+  readonly handler: RS extends StreamAnswer<infer E>
+    ? (input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, A>, exchange: StreamExchange<z.output<E>>) => Promise<void>
+    : (
+      input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, A>,
+      exchange: RouteExchange,
+    ) => Promise<z.output<RS & z.ZodType> | (NC extends true ? typeof NO_CONTENT : never)>;
 } & ParamsField<P, PS>;
 
 /** A declared route, its types erased: what the registry builds and a spec reads. */
@@ -145,18 +171,21 @@ export interface Route {
   readonly params?: z.ZodType;
   readonly query?: z.ZodType;
   readonly body?: z.ZodType;
-  readonly response: z.ZodType;
+  readonly response: z.ZodType | StreamAnswer<z.ZodType>;
   readonly status?: number;
   readonly noContent?: boolean;
   readonly scope?: (input: RouteParts<unknown, unknown, unknown>) => VisibleScope | undefined;
-  readonly handler: (input: RouteParts<unknown, unknown, unknown> & { readonly caller?: Express.User }, exchange: RouteExchange) => Promise<unknown>;
+  readonly handler: (
+    input: RouteParts<unknown, unknown, unknown> & { readonly caller?: Express.User },
+    exchange: RouteExchange & { readonly send?: (event: unknown) => void },
+  ) => Promise<unknown>;
 }
 
 /** Declare a route. The declaration is checked by the compiler; `routerOf` builds it. */
 export function defineRoute<
   const P extends string,
   A extends Access,
-  RS extends z.ZodType,
+  RS extends z.ZodType | StreamAnswer<z.ZodType>,
   PS extends z.ZodType | undefined = undefined,
   QS extends z.ZodType | undefined = undefined,
   BS extends z.ZodType | undefined = undefined,
@@ -180,6 +209,27 @@ function parsed(schema: z.ZodType | undefined, value: unknown): unknown {
   const result = schema.safeParse(value);
   if (!result.success) throw result.error;
   return result.data;
+}
+
+/**
+ * Answer as a stream: its headers go out before the handler runs, so a failure
+ * after them cannot become a status. It is logged and the stream ended; a
+ * handler that means to tell the reader writes its own error event first.
+ */
+async function openStream(
+  events: z.ZodType, input: unknown, route: Route, req: Request, res: Response,
+): Promise<void> {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  const send = (event: unknown): void => writeEvent(res, events, event);
+  try {
+    await route.handler(input as Parameters<Route['handler']>[0], { req, res, send });
+  } catch (err) {
+    console.error('Stream %s %s failed:', route.method.toUpperCase(), route.path, err);
+  } finally {
+    if (!res.writableEnded) res.end();
+  }
 }
 
 /** The chain one declaration builds, in the order the module comment gives; `scope` is checked after the body. */
@@ -206,12 +256,17 @@ function chainOf(route: Route): RequestHandler[] {
       if (scope && caller?.role !== 'admin' && !(await isVisibleToReaders(scope))) {
         throw notFound('Not found');
       }
-      const body = await route.handler(route.access === 'public' ? parts : { ...parts, caller }, { req, res });
+      const input = route.access === 'public' ? parts : { ...parts, caller };
+      if (isStream(route.response)) {
+        await openStream(route.response.events, input, route, req, res);
+        return;
+      }
+      const body = await route.handler(input, { req, res });
       if (body === NO_CONTENT) {
         res.status(204).send();
         return;
       }
-      respond(route.status ? res.status(route.status) : res, route.response, body);
+      respond(route.status ? res.status(route.status) : res, route.response as z.ZodType, body);
     } catch (err) {
       next(err);
     }

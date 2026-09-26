@@ -23,7 +23,7 @@ vi.mock('../db/index.js', () => ({
 import { verifyAccessToken } from '../services/authService.js';
 import { pool } from '../db/index.js';
 import { errorHandler } from '../middleware/errorHandler.js';
-import { defineRoute, NO_CONTENT, routerOf, shadowOf, type Route } from './route.js';
+import { defineRoute, NO_CONTENT, routerOf, shadowOf, stream, type Route } from './route.js';
 
 const mockedVerify = verifyAccessToken as unknown as ReturnType<typeof vi.fn>;
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -85,6 +85,16 @@ const routes: Route[] = [
     },
   }),
   defineRoute({
+    method: 'get', path: '/ticks', access: 'curator', cache: 'revalidate',
+    query: z.object({ fail: z.enum(['true', 'false']).default('false') }),
+    response: stream(z.strictObject({ tick: z.number() })),
+    handler: async ({ query }, { send }) => {
+      send({ tick: 1 });
+      if (query.fail === 'true') throw new Error('after the headers');
+      send({ tick: 2 });
+    },
+  }),
+  defineRoute({
     method: 'get', path: '/maybe', access: 'optional', cache: 'revalidate',
     query: z.object({ worldViewId: z.coerce.number().int().positive().optional() }),
     scope: ({ query }) => (query.worldViewId === undefined ? undefined : { worldViewId: query.worldViewId }),
@@ -137,6 +147,19 @@ function send(method: string, path: string, { token, body }: { token?: string; b
     });
     req.on('error', reject);
     if (body !== undefined) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+/** The raw text of an answer, for a stream whose body is not one JSON value. */
+function sendRaw(path: string, token: string): Promise<{ status?: number; headers: Record<string, string | string[] | undefined>; text: string }> {
+  return new Promise((resolve, reject) => {
+    const req = request({ port, path, method: 'GET', headers: { authorization: `Bearer ${token}` } }, (res) => {
+      let text = '';
+      res.on('data', (chunk) => { text += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text }));
+    });
+    req.on('error', reject);
     req.end();
   });
 }
@@ -238,6 +261,31 @@ describe('the world view a route names in scope', () => {
     visible(true);
     expect((await send('GET', '/maybe?worldViewId=3')).status).toBe(200);
     expect(mockedQuery).toHaveBeenCalledWith(expect.stringContaining('FROM world_views'), [3]);
+  });
+});
+
+describe('a streamed answer', () => {
+  it('opens the stream, writes each event, and ends it when the handler returns', async () => {
+    signedIn('curator');
+    const answer = await sendRaw('/ticks', 't');
+    expect(answer.status).toBe(200);
+    expect(answer.headers['content-type']).toContain('text/event-stream');
+    expect(answer.headers['cache-control']).toBe('private, no-cache');
+    expect(answer.text).toBe('data: {"tick":1}\n\ndata: {"tick":2}\n\n');
+  });
+
+  it('ends a stream whose handler fails after its headers, keeping what it wrote', async () => {
+    signedIn('curator');
+    const answer = await sendRaw('/ticks?fail=true', 't');
+    expect(answer.status).toBe(200);
+    expect(answer.text).toBe('data: {"tick":1}\n\n');
+  });
+
+  it('refuses a caller before it opens anything', async () => {
+    signedIn('user');
+    const answer = await sendRaw('/ticks', 't');
+    expect(answer.status).toBe(403);
+    expect(answer.headers['content-type']).not.toContain('text/event-stream');
   });
 });
 

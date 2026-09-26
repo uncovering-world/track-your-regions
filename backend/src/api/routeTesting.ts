@@ -7,10 +7,12 @@
  * caller is `req.user`, and the body goes through `respond()`. A failure the
  * handler throws with a status answers through the error handler itself. What
  * is not here is the middleware — the limiter, the token, the cache header,
- * `scope` — which `route.test.ts` holds on a real server.
+ * `scope` — which `route.test.ts` holds on a real server, and a streamed
+ * answer, whose handler a spec drives with a `send` of its own.
  */
 
 import type { Response } from 'express';
+import type { z } from 'zod/v4';
 import type { Method, Route } from './route.js';
 import { NO_CONTENT } from './route.js';
 import { respond } from './respond.js';
@@ -33,6 +35,9 @@ export function routeAt(routes: readonly Route[], path: string, method: Method =
 
 /** Answer `req` on `route` into `res`, which needs `status` and `json`. */
 export async function answer(route: Route, req: SpecRequest, res: unknown): Promise<void> {
+  if ('events' in route.response && !('safeParse' in route.response)) {
+    throw new Error(`${route.method.toUpperCase()} ${route.path} answers with a stream: drive its handler with a send of the spec's own`);
+  }
   const out = res as Response;
   const parts = {
     params: route.params ? route.params.parse(req.params ?? {}) : undefined,
@@ -53,5 +58,5 @@ export async function answer(route: Route, req: SpecRequest, res: unknown): Prom
     out.status(204);
     return;
   }
-  respond(route.status ? out.status(route.status) : out, route.response, body);
+  respond(route.status ? out.status(route.status) : out, route.response as z.ZodType, body);
 }
