@@ -3,7 +3,7 @@
  * What it answers is declared in `api/responses/`, once (ADR-0066).
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { parseBbox } from '../db/bboxEnvelopes.js';
 import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { foldLabel, tidyLabel } from '@tyr/shared/labels';
@@ -1102,7 +1102,7 @@ export const suggestGroupBodySchema = z.object({
   regionName: z.string().max(500),
   availableGroups: z.array(z.string().max(500)),
   parentRegion: z.string().max(500),
-  groupDescriptions: z.record(z.string()).optional(),
+  groupDescriptions: z.record(z.string(), z.string()).optional(),
   useWebSearch: z.boolean().optional(),
   worldViewSource: z.string().max(1000).optional(),
   escalationLevel: z.enum(['fast', 'reasoning', 'reasoning_search']).optional(),
@@ -1118,7 +1118,7 @@ export const suggestGroupsBatchBodySchema = z.object({
   worldViewDescription: z.string().max(2000).optional(),
   worldViewSource: z.string().max(1000).optional(),
   useWebSearch: z.boolean().optional(),
-  groupDescriptions: z.record(z.string()).optional(),
+  groupDescriptions: z.record(z.string(), z.string()).optional(),
 });
 
 export const generateDescriptionsBodySchema = z.object({

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { COLUMN_WIDTHS, type CheckValue } from '../db/schema.generated.js';
 
 /**

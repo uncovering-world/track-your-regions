@@ -7,7 +7,7 @@
  * cycle.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { COLUMN_WIDTHS } from '../db/schema.generated.js';
 import {
   isStorableHttpUrl,
