@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { markPublicReferenceBody, markStreamBody, markTokenResponse } from './cacheHeaders.js';
+import { markPublicReferenceBody, markStreamBody } from './cacheHeaders.js';
 
 function makeRes() {
   return { setHeader: vi.fn() };
@@ -25,19 +25,6 @@ describe('markPublicReferenceBody', () => {
     // every use, so the origin re-authorizes each one. `private` stays,
     // because replacing the header would otherwise drop it with the no-store.
     expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
-  });
-});
-
-describe('markTokenResponse', () => {
-  it('refuses every cache and says so in both fields RFC 6749 § 5.1 names', () => {
-    const res = makeRes();
-    markTokenResponse(res as never);
-
-    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
-    // Deprecated for responses by RFC 9111 § 5.4 and read by nothing in this
-    // stack; it is here because 6749 asks for it, and an auditor reading these
-    // five responses should not have to take the method's word for it.
-    expect(res.setHeader).toHaveBeenCalledWith('Pragma', 'no-cache');
   });
 });
 

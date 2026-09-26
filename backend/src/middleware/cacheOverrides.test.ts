@@ -33,19 +33,17 @@ const SRC = join(fileURLToPath(new URL('.', import.meta.url)), '..');
  *   header, or `private` is lost (#710); `markStreamBody` puts
  *   it back, and for a caller whose token is a query parameter it is the whole
  *   of the guarantee;
- * - the responses that hand back an access token mostly sit *ahead* of it —
- *   four of the five run before `requireAuth` reaches them — and need the same
- *   value it would have written, plus the `Pragma` RFC 6749 § 5.1 asks for, so
- *   `markTokenResponse` states it where the middleware cannot.
+ * - the responses that hand back an access token are declared routes with the
+ *   `token` policy, which `routerOf` requires of any route whose response
+ *   schema declares `accessToken` (ADR-0071); one written by hand elsewhere
+ *   would escape that, so the source is searched for one.
  *
- * What they share is not a value but a call: something has to be there, and
- * nothing but this file notices when it is not.
+ * What the first two share is not a value but a call: something has to be
+ * there, and nothing but this file notices when it is not.
  *
  * Drop one of those calls, or add a handler without it, and every test in this
  * repository still passes while the response quietly ships something else. So
- * the calls are counted, and the token responses are found in the source and
- * paired with their mark rather than counted into a number here — a number
- * catches a call that goes missing and not a handler added without one.
+ * the calls are counted — a number catches a call that goes missing.
  *
  * It reads the source as a syntax tree rather than as text: a regex over these
  * files matches the header named in a comment or a string, misses a call split
@@ -61,8 +59,8 @@ const SRC = join(fileURLToPath(new URL('.', import.meta.url)), '..');
  * three documents went on describing a 24-hour value.
  */
 const MUST_WRITE: Array<{ file: string; writes: number }> = [
-  // markPublicReferenceBody, markTokenResponse and markStreamBody.
-  { file: 'middleware/cacheHeaders.ts', writes: 3 },
+  // markPublicReferenceBody and markStreamBody.
+  { file: 'middleware/cacheHeaders.ts', writes: 2 },
   // requireAuth and optionalAuth, the two that carry the rule itself.
   { file: 'middleware/auth.ts', writes: 2 },
   // The two admin image values and the proxy's public one.
@@ -250,50 +248,33 @@ describe('the overrides that answer with something other than no-store', () => {
     },
   );
 
-  it('every response handing back an access token is marked', () => {
-    // Every file, not `authRoutes.ts` alone: a token handed back from
-    // somewhere else is the case this would otherwise be blind to, and the one
-    // where nobody would think to look. `markTokenResponse` is exported from
-    // `middleware/cacheHeaders.ts`, so a payload anywhere can be marked — and
-    // one that is not fails here, wherever it lives.
-    const unmarked: string[] = [];
-    let payloads = 0;
-
-    // A token payload is recognised by the key `accessToken` or by the name
-    // of a schema that declares one, so a file holding neither has none to
-    // find and is not parsed: parsing and walking every file costs most of
-    // vitest's per-test budget (#1007). A key can also be spelled with an
-    // escape (`'access\u0054oken'`) that the text does not show, so a file
-    // with any `\u` or `\x` is parsed too.
+  it('hands back an access token only from a declared route', () => {
+    // Every file: a declared route whose schema declares `accessToken` is held
+    // to the `token` policy by `routerOf`, and a response written by hand
+    // anywhere else would answer with whatever ran before it. A token
+    // payload is recognised by the key `accessToken` or by the name of a
+    // schema that declares one, so a file holding neither is not parsed:
+    // parsing and walking every file costs most of vitest's per-test budget
+    // (#1007). A key can also be spelled with an escape (`'access\u0054oken'`)
+    // that the text does not show, so a file with any `\u` or `\x` is parsed too.
+    const handWritten: string[] = [];
     const markers = ['accessToken', '\\u', '\\x', ...TOKEN_SCHEMAS];
     for (const name of sourceFiles()) {
       const text = read(name);
       if (!markers.some((marker) => text.includes(marker))) continue;
       const source = parse(name, text);
-      const marks = helperCalls(source, 'markTokenResponse');
-
       eachNode(source, (node) => {
         if (!ts.isCallExpression(node) || !answersWithToken(node)) return;
-
-        payloads += 1;
-        // The mark has to run before this response and in the same handler: a
-        // call elsewhere in the file says nothing about this one.
-        const scope = enclosingFunction(node);
-        const marked = marks.some((m) => m.end <= node.getStart(source) && enclosingFunction(m) === scope);
-        if (!marked) {
-          const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
-          unmarked.push(`${name}:${line + 1}`);
-        }
+        const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+        handWritten.push(`${name}:${line + 1}`);
       });
     }
 
+    expect(TOKEN_SCHEMAS.size, 'no response schema declares accessToken — this scan is reading the wrong shape and would pass on anything')
+      .toBeGreaterThan(0);
     expect(
-      payloads,
-      'no token-returning response found anywhere under backend/src — this scan is reading the wrong shape and would pass on anything',
-    ).toBeGreaterThan(0);
-    expect(
-      unmarked,
-      'a response handing back an accessToken with no markTokenResponse ahead of it in the same handler answers with Express\'s defaults; RFC 6749 § 5.1 asks a token response for Cache-Control: no-store',
+      handWritten,
+      'a response handing back an accessToken outside a declared route; declare it with the token cache policy (RFC 6749 § 5.1)',
     ).toEqual([]);
   });
 });

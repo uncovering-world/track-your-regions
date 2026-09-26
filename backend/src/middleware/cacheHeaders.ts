@@ -45,27 +45,6 @@ export function markPublicReferenceBody(res: Response): void {
 }
 
 /**
- * Say that this response hands the caller an access token, so no cache keeps it.
- *
- * Four of the five that do run ahead of `requireAuth` — a token is what a
- * caller gets before holding one — so the rule that middleware carries (#710)
- * does not reach them, and Express's defaults are all they would send. The
- * fifth, `/change-password`, is behind it and already carries the value; it is
- * marked anyway, so a reader of these five does not have to work out which.
- *
- * In practice a browser stores no `POST` response, which is what all five are.
- * The headers are here because RFC 6749 § 5.1 asks a token response for them
- * outright, and "the method protects it" is a guarantee about caches rather
- * than about this endpoint. `Pragma` is the same RFC's second half: RFC 9111
- * § 5.4 deprecates it in a response and no cache here reads it, so it states
- * the intent for an auditor rather than changing behaviour.
- */
-export function markTokenResponse(res: Response): void {
-  res.setHeader('Cache-Control', 'private, no-store');
-  res.setHeader('Pragma', 'no-cache');
-}
-
-/**
  * Say that this response is a stream the caller opened with `EventSource`.
  *
  * `no-cache` is what an SSE response has always carried here, and `private`
