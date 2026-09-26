@@ -4,9 +4,9 @@
  * Read-only operations for region members and their geometries.
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { DescendantMemberGeometries, MemberGeometries, RegionMembers } from '../../api/responses/regions.js';
+import type { z } from 'zod/v4';
+import type { DescendantMemberGeometries, MemberGeometries, RegionMembers } from '../../api/responses/regions.js';
+import type { regionIdParamSchema } from '../../types/index.js';
 import { pool } from '../../db/index.js';
 import {
   divisionMemberOf, subregionMemberOf, type DivisionMemberRow, type SubregionMemberRow,
@@ -15,13 +15,14 @@ import {
   descendantMemberGeometryOf, hasGeometry, memberGeometryOf, type DescendantMemberGeometryRow, type MemberGeometryRow,
 } from './regionGeometryAnswerRows.js';
 
+type RegionParams = z.output<typeof regionIdParamSchema>;
+
 /**
  * Get all member admin divisions of a region, plus any subregions
  * Includes full path for admin divisions to distinguish duplicates like Russia in Asia vs Europe
  * Excludes admin divisions that are already represented as subregions (to avoid duplicates)
  */
-export async function getRegionMembers(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
+export async function getRegionMembers({ params: { regionId } }: { params: RegionParams }): Promise<RegionMembers> {
 
   // Get subregions first (child regions of this region)
   const subregions = await pool.query<SubregionMemberRow>(`
@@ -83,18 +84,19 @@ export async function getRegionMembers(req: Request, res: Response): Promise<voi
   // Filter out admin divisions that have a matching subregion (added with checkbox)
   const filteredDivisions = divisions.rows.filter(d => !subregionNames.has(d.name));
 
-  respond(res, RegionMembers, [
+  return [
     ...subregions.rows.map(subregionMemberOf),
     ...filteredDivisions.map(divisionMemberOf),
-  ]);
+  ];
 }
 
 /**
  * Get geometries for all division members of a region
  * Returns a GeoJSON FeatureCollection with geometries (using custom_geom if available)
  */
-export async function getRegionMemberGeometries(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
+export async function getRegionMemberGeometries(
+  { params: { regionId } }: { params: RegionParams },
+): Promise<MemberGeometries> {
 
   const result = await pool.query<MemberGeometryRow>(`
     SELECT
@@ -125,10 +127,10 @@ export async function getRegionMemberGeometries(req: Request, res: Response): Pr
       AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
   `, [regionId]);
 
-  respond(res, MemberGeometries, {
+  return {
     type: 'FeatureCollection',
     features: result.rows.filter(hasGeometry).map(memberGeometryOf),
-  });
+  };
 }
 
 /**
@@ -136,8 +138,9 @@ export async function getRegionMemberGeometries(req: Request, res: Response): Pr
  * Returns a GeoJSON FeatureCollection for read-only context display in the map.
  * Uses more aggressive simplification (0.005) since these are context-only.
  */
-export async function getDescendantMemberGeometries(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
+export async function getDescendantMemberGeometries(
+  { params: { regionId } }: { params: RegionParams },
+): Promise<DescendantMemberGeometries> {
 
   const result = await pool.query<DescendantMemberGeometryRow>(`
     WITH RECURSIVE descendant_regions AS (
@@ -174,8 +177,8 @@ export async function getDescendantMemberGeometries(req: Request, res: Response)
     WHERE (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
   `, [regionId]);
 
-  respond(res, DescendantMemberGeometries, {
+  return {
     type: 'FeatureCollection',
     features: result.rows.filter(hasGeometry).map(descendantMemberGeometryOf),
-  });
+  };
 }

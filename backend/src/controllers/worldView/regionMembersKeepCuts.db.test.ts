@@ -1,10 +1,15 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { expandToSubregions, flattenSubregion } from './regionMemberOperations.js';
 import { mergeChildIntoParent, removeRegionFromImport } from '../admin/wvImportTreeOpsController.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { deleteRegion } from './regionCrud.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const expandToSubregionsRoute = routeAt(worldViewRoutes, '/regions/:regionId/expand', 'post');
+const deleteRegionRoute = routeAt(worldViewRoutes, '/regions/:regionId', 'delete');
+const flattenSubregionRoute = routeAt(worldViewRoutes, '/regions/:parentRegionId/flatten/:subregionId', 'post');
 
 /**
  * A member row that is a cut part of a division stays that part through a
@@ -101,7 +106,7 @@ describe('expanding a region into subregions (#1004)', () => {
   it('makes one subregion per member row, holding what that row held, under its own name', async () => {
     const req = { params: { regionId: String(EASTERN_ID) }, body: {} } as unknown as Request;
     const res = answer();
-    await expandToSubregions(req, res);
+    await answerRoute(expandToSubregionsRoute, req, res);
 
     const subregions = await pool.query<{ id: number; name: string }>(
       'SELECT id, name FROM regions WHERE parent_region_id = $1 ORDER BY name',
@@ -124,7 +129,7 @@ describe('deleting a region and moving its members to the parent (#384)', () => 
       params: { regionId: String(EASTERN_ID) },
       query: { moveChildrenToParent: 'true' },
     } as unknown as Request;
-    await deleteRegion(req, answer());
+    await answerRoute(deleteRegionRoute, req, answer());
 
     expect(sorted(await members())).toEqual(sorted([
       { region_id: EUROPE_ID, division_id: RUSSIA_DIV, custom_name: 'Russia west of the Urals', part: 'west' },
@@ -140,7 +145,7 @@ describe('deleting a region and moving its members to the parent (#384)', () => 
       query: { moveChildrenToParent: 'true' },
     } as unknown as Request;
     const res = answer();
-    await deleteRegion(req, res);
+    await answerRoute(deleteRegionRoute, req, res);
 
     expect(res.statusCode).toBe(204);
     const belarus = (await members()).filter((m) => m.division_id === BELARUS_DIV);
@@ -161,7 +166,7 @@ describe('flattening a subregion back into its parent (#1004)', () => {
     const req = {
       params: { parentRegionId: String(EASTERN_ID), subregionId: String(SIBERIA_ID) },
     } as unknown as Request;
-    await flattenSubregion(req, answer());
+    await answerRoute(flattenSubregionRoute, req, answer());
 
     expect(sorted(await members())).toEqual(sorted([
       { region_id: EASTERN_ID, division_id: RUSSIA_DIV, custom_name: 'Russia west of the Urals', part: 'west' },

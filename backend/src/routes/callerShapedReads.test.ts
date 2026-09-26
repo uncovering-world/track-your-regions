@@ -6,41 +6,26 @@ vi.mock('../db/index.js', () => ({
   rollbackQuietly: vi.fn(),
 }));
 
-import worldViewRouter from './worldViewRoutes.js';
 import userRouter from './userRoutes.js';
 
 /**
- * The reads whose answer depends on who asks, and the two middlewares that say
- * so in the headers — for the route files that still list their middleware by
- * hand. A declared route (ADR-0071) holds both halves by construction: its
- * handler is told who is calling only where its `access` reads a token, and
- * the order that puts the caller before `scope` is the registry's, one for
- * every route. The experience reads are declared (`experienceReadRoutes`);
- * #793 deletes this file with the last hand-written route.
+ * The reads of the caller's own data, for the one route file that still lists
+ * its middleware by hand (#793 deletes this file with it). A declared route
+ * (ADR-0071) holds this by construction: its `access` is what reads the token
+ * and its `cache` what marks the answer, one declaration for both.
  *
- * `optionalAuth` marks every response it shapes `Cache-Control: private,
- * no-cache` + `Vary: Authorization`; `requireAuth` marks every response it
- * fronts `private, no-store` (`middleware/auth.test.ts` holds both). What this
- * file holds is the other half of the claim — that each read the rule is for
- * actually carries the middleware, so the rule reaches it. It walks the
- * routers Express built rather than the source: a route's chain is what runs,
- * and a regex over the file would pass on a commented-out line.
+ * `requireAuth` marks every response it fronts `private, no-store`
+ * (`middleware/auth.test.ts` holds that). What this file holds is the other
+ * half of the claim — that each read the rule is for actually carries the
+ * middleware, so the rule reaches it. It walks the router Express built rather
+ * than the source: a route's chain is what runs, and a regex over the file
+ * would pass on a commented-out line.
  *
- * Two shapes of caller-shaped read exist (#597):
- *
- * - the reads `docs/security/SECURITY.md` names, whose handlers read
- *   `req.user` themselves — curator rejection visibility, a curator's whole
- *   `regions[]`, a reader's own `is_new`, a gated museum's unread treasures;
- * - every read behind `requireVisibleWorldView`, where an admin gets 200 for
- *   a hidden world view and everyone else 404. The guard needs `req.user`, so
- *   `optionalAuth` must run *before* it — order is asserted, not just presence.
- *
- * And one shape of read of the caller's own data (#710): everything under
- * `/api/users/me` — a traveller's visited regions, experiences, locations and
- * viewed works, and the profile with its email — which V14.2.1 classifies as
- * sensitive, and which `no-store` keeps out of the browser's disk cache after
- * sign-out. The named reads are the ones the issue measured; the blanket
- * assertion is what holds a route added tomorrow.
+ * Everything under `/api/users/me` — a traveller's visited regions,
+ * experiences, locations and viewed works, and the profile with its email — is
+ * what V14.2.1 classifies as sensitive, and `no-store` keeps it out of the
+ * browser's disk cache after sign-out (#710). The named reads are the ones the
+ * issue measured; the blanket assertion is what holds a route added tomorrow.
  */
 
 interface Layer {
@@ -77,37 +62,6 @@ function mountedRoutersOf(router: Router): Layer[] {
     (layer) => !layer.route && Array.isArray(layer.handle.stack),
   );
 }
-
-const NAMED_READS: Array<[Router, string, string]> = [
-  [worldViewRouter, 'get', '/'],
-];
-
-describe('every caller-shaped read carries optionalAuth', () => {
-  it.each(NAMED_READS.map(([router, method, path]) => [method, path, router]))(
-    '%s %s',
-    (method, path, router) => {
-      const route = routesOf(router as Router).find((r) => r.method === method && r.path === path);
-      expect(route, `${method} ${path} is not a route any more`).toBeDefined();
-      expect(route!.chain).toContain('optionalAuth');
-    },
-  );
-
-  it('runs optionalAuth before every world view visibility guard', () => {
-    // `requireVisibleWorldView` returns a function named `visibilityGuard`;
-    // the name is what Express keeps of it.
-    const guarded = routesOf(worldViewRouter)
-      .filter((r) => r.chain.includes('visibilityGuard'));
-    expect(guarded.length).toBeGreaterThan(0);
-
-    for (const r of guarded) {
-      const auth = r.chain.indexOf('optionalAuth');
-      const guard = r.chain.indexOf('visibilityGuard');
-      expect(auth, `${r.method} ${r.path} has no optionalAuth ahead of its guard: ${r.chain.join(' > ')}`)
-        .toBeGreaterThanOrEqual(0);
-      expect(auth).toBeLessThan(guard);
-    }
-  });
-});
 
 const OWN_DATA_READS: Array<[string, string]> = [
   ['get', '/me'],

@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const getSavedHullParamsRoute = routeAt(worldViewRoutes, '/regions/:regionId/hull/params', 'get');
 
 const poolQuery = vi.fn();
 vi.mock('../../db/index.js', () => ({ pool: { query: (...args: unknown[]) => poolQuery(...args) } }));
 
-import { getSavedHullParams } from './hullOperations.js';
 
 function call(regionId: string) {
   const json = vi.fn();
   const res = { json, status: vi.fn().mockReturnThis() };
-  return getSavedHullParams({ params: { regionId } } as never, res as never).then(() => ({ res, body: json.mock.calls[0]?.[0] }));
+  return answerRoute(getSavedHullParamsRoute, { params: { regionId } } as never, res as never).then(() => ({ res, body: json.mock.calls[0]?.[0] }));
 }
 
 beforeEach(() => poolQuery.mockReset());

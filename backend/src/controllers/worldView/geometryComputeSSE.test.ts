@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Request, Response } from 'express';
+import type { ComputeProgressEvent } from '../../api/responses/geometry.js';
 
 const client = { query: vi.fn(), release: vi.fn() };
 const poolQuery = vi.fn();
@@ -13,6 +13,7 @@ vi.mock('../../services/hull/index.js', () => ({
 }));
 
 import { computeSingleRegionGeometrySSE } from './geometryComputeSSE.js';
+import { computeSSEQuerySchema } from '../../types/index.js';
 import { UNION_SHAPE, coarseningProblems } from './unionGeomToleranceGuard.js';
 import { droppedMemberProblems } from './unionKeepsMembersGuard.js';
 
@@ -46,19 +47,17 @@ function respondPool(sql: string) {
   return { rows: [], rowCount: 0 };
 }
 
-function createSSERes() {
-  const chunks: string[] = [];
-  const res = {
-    setHeader: vi.fn(),
-    flushHeaders: vi.fn(),
-    write: vi.fn((chunk: string) => { chunks.push(chunk); return true; }),
-    end: vi.fn(),
-  };
-  return { res, chunks };
-}
-
-function parseEvents(chunks: string[]): Array<{ type: string; data?: Record<string, unknown> }> {
-  return chunks.map((c) => JSON.parse(c.replace(/^data: /, '').trimEnd()));
+/**
+ * Run the stream's handler as its route does once the stream is open: the
+ * query parsed by the route's schema, each event handed to `send`.
+ */
+async function runStream(): Promise<ComputeProgressEvent[]> {
+  const events: ComputeProgressEvent[] = [];
+  await computeSingleRegionGeometrySSE(
+    { params: { regionId: 42 }, query: computeSSEQuerySchema.parse({}) },
+    { send: (event) => { events.push(event); } },
+  );
+  return events;
 }
 
 // Regression test: computeSingleRegionGeometrySSE (the
@@ -74,12 +73,7 @@ describe('computeSingleRegionGeometrySSE reaches the same fast path', () => {
   });
 
   it('copies the member geometry for a region that is exactly one division', async () => {
-    const req = { params: { regionId: '42' }, query: {} } as unknown as Request;
-    const { res, chunks } = createSSERes();
-
-    await computeSingleRegionGeometrySSE(req, res as unknown as Response);
-
-    const events = parseEvents(chunks);
+    const events = await runStream();
     const complete = events.find((e) => e.type === 'complete');
     expect(complete?.data).toMatchObject({ computed: true, points: 5000 });
 
@@ -135,10 +129,7 @@ describe('the SSE union path writes regions.geom with no tolerance of its own', 
   });
 
   it('stores what the cleaning step produced, and nothing on the way simplifies', async () => {
-    const req = { params: { regionId: '42' }, query: {} } as unknown as Request;
-    const { res } = createSSERes();
-
-    await computeSingleRegionGeometrySSE(req, res as unknown as Response);
+    await runStream();
 
     const calls = client.query.mock.calls as Array<[unknown, unknown[]?]>;
     expect(coarseningProblems(calls, CLEANED)).toEqual([]);
@@ -202,10 +193,7 @@ describe('the SSE snap keeps the direct members a mixed region holds', () => {
   it('carries the members through the snap into the union', async () => {
     // `skipSnapping` absent: this endpoint's schema defaults it to 'false', so
     // the snap runs — the shape a caller who names no parameter gets.
-    const req = { params: { regionId: '42' }, query: {} } as unknown as Request;
-    const { res } = createSSERes();
-
-    await computeSingleRegionGeometrySSE(req, res as unknown as Response);
+    await runStream();
 
     const calls = client.query.mock.calls as Array<[unknown, unknown[]?]>;
     expect(droppedMemberProblems(calls, { memberGeom: MEMBERS, snappedGeom: SNAPPED })).toEqual([]);

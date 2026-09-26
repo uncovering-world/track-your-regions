@@ -2,7 +2,7 @@
  * SSE-based geometry computation with progress streaming
  */
 
-import { Request, Response } from 'express';
+import type { z } from 'zod/v4';
 import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { generateSingleHull } from '../../services/hull/index.js';
@@ -10,9 +10,8 @@ import { recomputeRegionGeometry } from './helpers.js';
 import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
 import { collectUnionInputs, CollectedUnionInputs } from './collectUnionInputs.js';
 import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
-import { markStreamBody } from '../../middleware/cacheHeaders.js';
-import { writeEvent } from '../../api/respond.js';
-import { ComputeProgressEvent } from '../../api/responses/geometry.js';
+import type { ComputeProgressEvent } from '../../api/responses/geometry.js';
+import type { computeSSEQuerySchema, regionIdParamSchema } from '../../types/index.js';
 import type { AnchorPoint, FocusBbox } from '../../api/responses/regions.js';
 
 const GEOMETRY_QUERY_TIMEOUT_MS = 300000;
@@ -20,33 +19,26 @@ const GEOMETRY_QUERY_TIMEOUT_MS = 300000;
 type LogStep = (step: string, data?: Record<string, unknown>) => void;
 type SendEvent = (event: ComputeProgressEvent) => void;
 
-interface SSEContext {
-  sendEvent: SendEvent;
+interface ProgressContext {
   logStep: LogStep;
   startTime: number;
   elapsed: () => number;
 }
 
-function startSSEStream(res: Response, regionId: number): SSEContext {
-  res.setHeader('Content-Type', 'text/event-stream');
-  markStreamBody(res);
-  res.setHeader('Connection', 'keep-alive');
-  // CORS is handled globally by the cors() middleware (origin: FRONTEND_ORIGIN,
-  // credentials: true). Setting Access-Control-Allow-Origin: * here would both
-  // widen the policy AND break credentialed SSE (browsers reject '*' with
-  // credentials).
-  res.flushHeaders();
-
+/**
+ * The stream's progress reporting. The route opens the stream and holds each
+ * event to `ComputeProgressEvent` (ADR-0071); CORS is the global middleware's,
+ * never a wildcard here, which would also break a credentialed stream.
+ */
+function progressOf(sendEvent: SendEvent, regionId: number): ProgressContext {
   const startTime = Date.now();
-  // ADR-0066: every event is held to the stream's schema, as respond() holds a body.
-  const sendEvent: SendEvent = (event) => writeEvent(res, ComputeProgressEvent, event);
   const logStep: LogStep = (step, data) => {
     const elapsed = (Date.now() - startTime) / 1000;
     const dataStr = data ? ` ${JSON.stringify(data)}` : '';
     console.log(`[ComputeSingle] Region ${regionId}: ${step}${dataStr} (${elapsed.toFixed(1)}s)`);
     sendEvent({ type: 'progress', step, elapsed, data });
   };
-  return { sendEvent, logStep, startTime, elapsed: () => (Date.now() - startTime) / 1000 };
+  return { logStep, startTime, elapsed: () => (Date.now() - startTime) / 1000 };
 }
 
 interface RegionRow {
@@ -452,11 +444,16 @@ async function runUnionPipelineSteps(
  * Compute geometry for a single region with SSE progress streaming
  * GET /api/world-views/regions/:regionId/geometry/compute-stream
  */
-export async function computeSingleRegionGeometrySSE(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const skipSnapping = req.query.skipSnapping === 'true';
+export async function computeSingleRegionGeometrySSE(
+  { params: { regionId }, query }: {
+    params: z.output<typeof regionIdParamSchema>;
+    query: z.output<typeof computeSSEQuerySchema>;
+  },
+  { send: sendEvent }: { send: SendEvent },
+): Promise<void> {
+  const skipSnapping = query.skipSnapping === 'true';
 
-  const { sendEvent, logStep, elapsed } = startSSEStream(res, regionId);
+  const { logStep, elapsed } = progressOf(sendEvent, regionId);
 
   try {
     const regionCheck = await pool.query(
@@ -465,17 +462,13 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
     );
     if (regionCheck.rows.length === 0) {
       sendEvent({ type: 'error', message: 'Region not found' });
-      res.end();
       return;
     }
 
     const regionRow = regionCheck.rows[0] as RegionRow;
     logStep(`Starting computation for: ${regionRow.name}`);
 
-    if (await shortCircuitForCustomBoundary(regionId, regionRow, sendEvent, logStep)) {
-      res.end();
-      return;
-    }
+    if (await shortCircuitForCustomBoundary(regionId, regionRow, sendEvent, logStep)) return;
 
     await precomputeMissingChildren(regionId, logStep);
 
@@ -513,13 +506,12 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
     if (!pipelineResult) {
       // Don't reset/release here — the outer `finally` already does both.
       // Releasing twice on the same client throws and propagates out of
-      // `finally`, ending up in the outer catch that then tries to `res.write`
-      // on an already-ended SSE stream ("headers already sent").
+      // `finally` into the outer catch, which would write a second, wrong
+      // error event after this one.
       sendEvent({
         type: 'error',
         message: 'Nothing was saved: there were no geometries to merge, or the boundary was drawn by hand while this ran',
       });
-      res.end();
       return;
     }
 
@@ -566,6 +558,4 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
       elapsed: elapsed(),
     });
   }
-
-  res.end();
 }

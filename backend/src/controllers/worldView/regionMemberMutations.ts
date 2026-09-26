@@ -4,12 +4,17 @@
  * Add, remove, and move division members within regions.
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { DivisionsAdded, DivisionsRemoved, MemberMoved, type CreatedSubregion } from '../../api/responses/regions.js';
+import type { z } from 'zod/v4';
+import type { DivisionsAdded, DivisionsRemoved, MemberMoved, CreatedSubregion } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import type { RegionMembersRow } from '../../db/schema.generated.js';
 import { ensureRegionMember, syncImportMatchStatus } from './helpers.js';
+import { badRequest, notFound } from '../../middleware/errorHandler.js';
+import type {
+  addDivisionsToRegionBodySchema, moveMemberBodySchema, regionIdParamSchema, removeDivisionsFromRegionBodySchema,
+} from '../../types/index.js';
+
+type RegionParams = z.output<typeof regionIdParamSchema>;
 
 interface AddDivisionsCtx {
   worldViewId: number;
@@ -171,38 +176,35 @@ async function addDivisionDirectly(
  * - childIds: number[] - If provided, only add these specific child admin divisions (used with includeChildren)
  * - customName: string - If provided, use this name for the created region instead of the GADM name
  */
-export async function addDivisionsToRegion(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
+export async function addDivisionsToRegion(
+  { params: { regionId }, body }: { params: RegionParams; body: z.output<typeof addDivisionsToRegionBodySchema> },
+): Promise<DivisionsAdded> {
   const {
     divisionIds,
     createAsSubregions,
     includeChildren,
-    inheritColor = true,
+    inheritColor,
     childIds,
     customName,
     customGeometry,
-  } = req.body;
+  } = body;
 
-  if (!Array.isArray(divisionIds) || divisionIds.length === 0) {
-    res.status(400).json({ error: 'divisionIds must be a non-empty array' });
-    return;
+  if (!divisionIds || divisionIds.length === 0) {
+    throw badRequest('divisionIds must be a non-empty array');
   }
 
   const regionInfo = await pool.query(
     'SELECT world_view_id, color FROM regions WHERE id = $1',
     [regionId],
   );
-  if (regionInfo.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found' });
-    return;
-  }
+  if (regionInfo.rows.length === 0) throw notFound('Region not found');
 
   const ctx: AddDivisionsCtx = {
     worldViewId: regionInfo.rows[0].world_view_id,
     rootRegionId: regionId,
     colorToUse: inheritColor ? (regionInfo.rows[0].color || '#3388ff') : '#3388ff',
-    hasSelectedChildren: Array.isArray(childIds) && childIds.length > 0,
-    childIds: Array.isArray(childIds) ? childIds : undefined,
+    hasSelectedChildren: childIds !== undefined && childIds.length > 0,
+    childIds,
     includeChildren,
     customName,
     customGeometry,
@@ -224,10 +226,10 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
     await syncImportMatchStatus(rid);
   }
 
-  respond(res.status(201), DivisionsAdded, {
+  return {
     added: divisionIds.length,
     createdRegions: createAsSubregions ? ctx.createdRegions : undefined,
-  });
+  };
 }
 
 /**
@@ -236,15 +238,17 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
  * - divisionIds: removes records without custom_geom (original divisions)
  * - memberRowIds: removes specific records by their row ID (for custom geometry parts)
  */
-export async function removeDivisionsFromRegion(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const { divisionIds, memberRowIds } = req.body;
-
+export async function removeDivisionsFromRegion(
+  { params: { regionId }, body: { divisionIds, memberRowIds } }: {
+    params: RegionParams;
+    body: z.output<typeof removeDivisionsFromRegionBodySchema>;
+  },
+): Promise<DivisionsRemoved> {
   // If memberRowIds provided, delete by row ID (for custom geometry parts)
   // The answer counts the rows that went, not the ids the call named: an id
   // that names no member of this region removes nothing.
   let removed = 0;
-  if (Array.isArray(memberRowIds) && memberRowIds.length > 0) {
+  if (memberRowIds && memberRowIds.length > 0) {
     for (const rowId of memberRowIds) {
       const deleted = await pool.query(
         'DELETE FROM region_members WHERE id = $1 AND region_id = $2',
@@ -253,13 +257,11 @@ export async function removeDivisionsFromRegion(req: Request, res: Response): Pr
       removed += deleted.rowCount ?? 0;
     }
     await syncImportMatchStatus(regionId);
-    respond(res, DivisionsRemoved, { removed });
-    return;
+    return { removed };
   }
 
-  if (!Array.isArray(divisionIds) || divisionIds.length === 0) {
-    res.status(400).json({ error: 'divisionIds or memberRowIds must be a non-empty array' });
-    return;
+  if (!divisionIds || divisionIds.length === 0) {
+    throw badRequest('divisionIds or memberRowIds must be a non-empty array');
   }
 
   for (const divisionId of divisionIds) {
@@ -274,32 +276,26 @@ export async function removeDivisionsFromRegion(req: Request, res: Response): Pr
 
   await syncImportMatchStatus(regionId);
 
-  respond(res, DivisionsRemoved, { removed });
+  return { removed };
 }
 
 /**
  * Move a member (by memberRowId) to a different region
  * This preserves the custom_geom and custom_name
  */
-export async function moveMemberToRegion(req: Request, res: Response): Promise<void> {
-  const fromRegionId = parseInt(String(req.params.regionId));
-  const { memberRowId, toRegionId } = req.body;
-
-  if (!memberRowId || !toRegionId) {
-    res.status(400).json({ error: 'memberRowId and toRegionId are required' });
-    return;
-  }
-
+export async function moveMemberToRegion(
+  { params: { regionId: fromRegionId }, body: { memberRowId, toRegionId } }: {
+    params: RegionParams;
+    body: z.output<typeof moveMemberBodySchema>;
+  },
+): Promise<MemberMoved> {
   // Update the region_id of the member record
   const result = await pool.query<Pick<RegionMembersRow, 'id' | 'region_id'>>(
     'UPDATE region_members SET region_id = $1 WHERE id = $2 AND region_id = $3 RETURNING id, region_id',
     [toRegionId, memberRowId, fromRegionId]
   );
 
-  if (result.rows.length === 0) {
-    res.status(404).json({ error: 'Member not found' });
-    return;
-  }
+  if (result.rows.length === 0) throw notFound('Member not found');
 
   // Both regions' geometry is cleared by the member trigger, which sees the
   // row leave one and arrive at the other (ADR-0068).
@@ -308,10 +304,10 @@ export async function moveMemberToRegion(req: Request, res: Response): Promise<v
   await syncImportMatchStatus(fromRegionId);
   await syncImportMatchStatus(toRegionId);
 
-  respond(res, MemberMoved, {
+  return {
     moved: true,
     memberRowId: result.rows[0].id,
     fromRegionId,
     toRegionId: result.rows[0].region_id,
-  });
+  };
 }

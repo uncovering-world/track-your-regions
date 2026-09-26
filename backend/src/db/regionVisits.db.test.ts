@@ -1,8 +1,12 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Request, Response } from 'express';
 import { pool } from './index.js';
-import { deleteRegion } from '../controllers/worldView/regionCrud.js';
-import { deleteWorldView } from '../controllers/worldView/worldViewCrud.js';
+import { answer as answerRoute, routeAt } from '../api/routeTesting.js';
+import { worldViewRoutes } from '../routes/worldViewRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const deleteRegionRoute = routeAt(worldViewRoutes, '/regions/:regionId', 'delete');
+const deleteWorldViewRoute = routeAt(worldViewRoutes, '/:worldViewId', 'delete');
 
 /**
  * A hierarchy edit never deletes a traveller's visit (#764), executed against
@@ -82,7 +86,9 @@ describe('a visited region', () => {
 
   it('refuses deleteRegion on its parent before anything is moved or deleted', async () => {
     const req = { params: { regionId: String(EUROPE_ID) }, query: {} } as unknown as Request;
-    await expect(deleteRegion(req, answer())).rejects.toMatchObject({ statusCode: 409 });
+    const res = answer();
+    await answerRoute(deleteRegionRoute, req, res);
+    expect(res.statusCode).toBe(409);
 
     const left = await pool.query<{ id: number; parent_region_id: number | null }>(
       'SELECT id, parent_region_id FROM regions WHERE world_view_id = $1 ORDER BY id',
@@ -101,7 +107,7 @@ describe('a visited region', () => {
       query: { moveChildrenToParent: 'true' },
     } as unknown as Request;
     const res = answer();
-    await deleteRegion(req, res);
+    await answerRoute(deleteRegionRoute, req, res);
 
     expect(res.statusCode).toBe(204);
     const malta = await pool.query<{ parent_region_id: number | null }>(
@@ -115,7 +121,7 @@ describe('a visited region', () => {
   it('goes with its world view, whose delete the admin confirmed', async () => {
     const req = { params: { worldViewId: String(WORLD_VIEW_ID) } } as unknown as Request;
     const res = answer();
-    await deleteWorldView(req, res);
+    await answerRoute(deleteWorldViewRoute, req, res);
 
     expect(res.statusCode).toBe(204);
     expect(await visitsOnMalta()).toBe(0);

@@ -18,7 +18,13 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { computeWorldViewGeometries, getComputationStatus } from './computationProgress.js';
+import { runningComputations } from './types.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const computeWorldViewGeometriesRoute = routeAt(worldViewRoutes, '/:worldViewId/compute-geometries', 'post');
+const getComputationStatusRoute = routeAt(worldViewRoutes, '/:worldViewId/compute-geometries/status', 'get');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -47,7 +53,7 @@ async function selectionSqlFor(force: boolean): Promise<string> {
   nextWorldView += 1;
   const req = { params: { worldViewId: String(nextWorldView) }, query: force ? { force: 'true' } : {} } as never;
   const res = { json: vi.fn(), status: vi.fn().mockReturnThis() } as never;
-  await computeWorldViewGeometries(req, res);
+  await answerRoute(computeWorldViewGeometriesRoute, req, res);
   const call = mockedQuery.mock.calls.find(([sql]) => String(sql).includes('group_depth'));
   if (!call) throw new Error('the run issued no group selection');
   return String(call[0]).replace(/\s+/g, ' ');
@@ -124,11 +130,11 @@ describe('the run status a curator polls', () => {
 
     // Polled while the run is still on the books: the entry is cleaned up once
     // the run finishes, and it is the live payload this pins.
-    const running = computeWorldViewGeometries(req, res);
+    const running = answerRoute(computeWorldViewGeometriesRoute, req, res);
     const statusReq = { params: { worldViewId: String(nextWorldView) } } as never;
     const statusJson = vi.fn();
     const statusRes = { json: statusJson, status: vi.fn().mockReturnThis() } as never;
-    await getComputationStatus(statusReq, statusRes);
+    await answerRoute(getComputationStatusRoute, statusReq, statusRes);
     await running;
 
     const payload = statusJson.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -137,5 +143,41 @@ describe('the run status a curator polls', () => {
     expect(payload).not.toHaveProperty('currentGroup');
     // The tally the completion alert turns amber on.
     expect(payload).toHaveProperty('errors');
+  });
+});
+
+describe('the slot a run holds', () => {
+  it('stays with a later run when a cancelled one fails its read after it', async () => {
+    nextWorldView += 1;
+    const worldViewId = nextWorldView;
+    const req = { params: { worldViewId: String(worldViewId) }, query: {} } as never;
+    let failFirst: (err: Error) => void = () => {};
+    mockedQuery.mockImplementationOnce(() => new Promise((_resolve, reject) => { failFirst = reject; }));
+    const first = answerRoute(computeWorldViewGeometriesRoute, req, { json: vi.fn(), status: vi.fn().mockReturnThis() } as never);
+
+    // Cancelled while its first read is pending: the guard lets a second run
+    // take the slot, which then holds it.
+    runningComputations.get(worldViewId)!.cancel = true;
+    const later = { cancel: false, progress: 0, total: 1, status: 'Computing', computed: 0, skipped: 0, errors: 0, currentGroup: '', currentMembers: 0 };
+    runningComputations.set(worldViewId, later);
+
+    failFirst(new Error('connection terminated'));
+    await expect(first).rejects.toThrow('connection terminated');
+    expect(runningComputations.get(worldViewId)).toBe(later);
+    runningComputations.delete(worldViewId);
+  });
+
+  it('is released when a read before the start fails, so the next request is not answered 409', async () => {
+    nextWorldView += 1;
+    const req = { params: { worldViewId: String(nextWorldView) }, query: {} } as never;
+    mockedQuery.mockImplementation(() => Promise.reject(new Error('connection terminated')));
+    await expect(answerRoute(computeWorldViewGeometriesRoute, req, { json: vi.fn(), status: vi.fn().mockReturnThis() } as never))
+      .rejects.toThrow('connection terminated');
+
+    stubDatabase();
+    const res = { json: vi.fn(), status: vi.fn().mockReturnThis() };
+    await answerRoute(computeWorldViewGeometriesRoute, req, res as never);
+    expect(res.status).not.toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: false }));
   });
 });

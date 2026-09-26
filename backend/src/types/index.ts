@@ -89,6 +89,18 @@ export const worldViewIdParamSchema = z.object({
   worldViewId: z.coerce.number().int().positive(),
 });
 
+/** `/regions/:regionId/members/:divisionId/…` — a region, and a GADM division among its members. */
+export const regionDivisionParamSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  divisionId: z.coerce.number().int().positive(),
+});
+
+/** `/regions/:parentRegionId/flatten/:subregionId` — a region, and the child folded into it. */
+export const flattenParamSchema = z.object({
+  parentRegionId: z.coerce.number().int().positive(),
+  subregionId: z.coerce.number().int().positive(),
+});
+
 export const experienceIdParamSchema = z.object({
   experienceId: z.coerce.number().int().positive(),
 });

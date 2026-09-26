@@ -75,7 +75,9 @@ export function markTokenResponse(res: Response): void {
  * response, excludes nothing for these, and the `Vary: Authorization`
  * `requireAuth` appends selects nothing either — `private` is the whole of the
  * guarantee. Replacing the middleware's value, which a stream must do, is what
- * would otherwise drop it along with the `no-store`.
+ * would otherwise drop it along with the `no-store`. A declared stream says the
+ * same with its route's `revalidate` policy (ADR-0071); this is for the ones
+ * not yet declared.
  */
 export function markStreamBody(res: Response): void {
   res.setHeader('Cache-Control', 'private, no-cache');

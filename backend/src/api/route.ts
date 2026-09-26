@@ -28,7 +28,7 @@
  */
 
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import type { z } from 'zod/v4';
+import { z } from 'zod/v4';
 import { optionalAuth, requireAdmin, requireAuth, requireCurator, type AuthenticatedRequest } from '../middleware/auth.js';
 import { notFound } from '../middleware/errorHandler.js';
 import { isVisibleToReaders, type VisibleScope } from '../middleware/worldViewVisibility.js';
@@ -95,6 +95,12 @@ function isStream(response: z.ZodType | StreamAnswer<z.ZodType>): response is St
 export interface StreamExchange<Event> extends RouteExchange {
   readonly send: (event: Event) => void;
 }
+
+/**
+ * The answer of a route that never has a body: every success is a 204. Declared
+ * with `noContent: true`, and its handler returns `NO_CONTENT`.
+ */
+export const NO_BODY = z.never();
 
 /** Answers with no body: a 204. Returned by a handler whose route declares `noContent`. */
 export const NO_CONTENT: unique symbol = Symbol('no content');

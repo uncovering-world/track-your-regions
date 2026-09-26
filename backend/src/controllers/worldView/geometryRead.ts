@@ -2,10 +2,11 @@
  * Geometry read operations for regions
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { DisplayGeometryStatus } from '../../api/responses/geometry.js';
-import { RegionGeometry } from '../../api/responses/regions.js';
+import type { z } from 'zod/v4';
+import { NO_CONTENT } from '../../api/route.js';
+import type { DisplayGeometryStatus } from '../../api/responses/geometry.js';
+import type { RegionGeometry } from '../../api/responses/regions.js';
+import type { regionGeometryDetailQuerySchema, regionIdParamSchema, worldViewIdParamSchema } from '../../types/index.js';
 import { pool } from '../../db/index.js';
 import { regionGeometryOf, type RegionGeometryRow } from './regionGeometryAnswerRows.js';
 
@@ -13,9 +14,9 @@ import { regionGeometryOf, type RegionGeometryRow } from './regionGeometryAnswer
  * Get geometry status for a world view
  * Returns counts of regions with/without geometries
  */
-export async function getDisplayGeometryStatus(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-
+export async function getDisplayGeometryStatus(
+  { params: { worldViewId } }: { params: z.output<typeof worldViewIdParamSchema> },
+): Promise<DisplayGeometryStatus> {
   const result = await pool.query<{ total: number; with_geom: number; with_anchor: number; hull_regions: number; with_hull: number }>(`
     SELECT
       COUNT(*)::int as total,
@@ -28,13 +29,13 @@ export async function getDisplayGeometryStatus(req: Request, res: Response): Pro
   `, [worldViewId]);
 
   const row = result.rows[0];
-  respond(res, DisplayGeometryStatus, {
+  return {
     total: row.total,
     withGeom: row.with_geom,
     withAnchor: row.with_anchor,
     hullRegions: row.hull_regions,
     withHull: row.with_hull,
-  });
+  };
 }
 
 /**
@@ -45,9 +46,13 @@ export async function getDisplayGeometryStatus(req: Request, res: Response): Pro
  * Returns the stored geometry if it exists, otherwise 204 No Content.
  * Does NOT auto-compute geometry - use computeWorldViewGeometries for that
  */
-export async function getRegionGeometry(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const wantsHull = req.query.detail === 'hull';
+export async function getRegionGeometry(
+  { params: { regionId }, query: { detail } }: {
+    params: z.output<typeof regionIdParamSchema>;
+    query: z.output<typeof regionGeometryDetailQuerySchema>;
+  },
+): Promise<RegionGeometry | typeof NO_CONTENT> {
+  const wantsHull = detail === 'hull';
 
   // The hull, and whether it crosses the dateline, come in the same read. That
   // is read off focus_bbox -- west > east -- which the trigger computed from
@@ -64,12 +69,9 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
     [regionId, wantsHull],
   );
 
-  if (result.rows.length === 0) {
-    // No geometry computed yet
-    res.status(204).send();
-    return;
-  }
+  // No geometry computed yet
+  if (result.rows.length === 0) return NO_CONTENT;
 
-  respond(res, RegionGeometry, regionGeometryOf(regionId, result.rows[0], wantsHull));
+  return regionGeometryOf(regionId, result.rows[0], wantsHull);
 }
 

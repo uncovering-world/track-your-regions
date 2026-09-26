@@ -2,25 +2,25 @@
  * Geometry computation with progress tracking for world views
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { ComputationCancelled, ComputationStartResult, ComputationStatus } from '../../api/responses/geometry.js';
+import type { z } from 'zod/v4';
+import type { ComputationCancelled, ComputationStartResult, ComputationStatus } from '../../api/responses/geometry.js';
+import { createError } from '../../middleware/errorHandler.js';
+import type { computeGeometryQuerySchema, worldViewIdParamSchema } from '../../types/index.js';
 import { pool } from '../../db/index.js';
 import { runningComputations } from './types.js';
 import type { ComputationProgress } from './types.js';
 import { computeRegionGeometryCore } from './geometryComputeSingle.js';
 
+type WorldViewParams = z.output<typeof worldViewIdParamSchema>;
+
 /**
  * Get status of geometry computation for a hierarchy
  */
-export async function getComputationStatus(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-
+export async function getComputationStatus(
+  { params: { worldViewId } }: { params: WorldViewParams },
+): Promise<ComputationStatus> {
   const status = runningComputations.get(worldViewId);
-  if (!status) {
-    respond(res, ComputationStatus, { running: false });
-    return;
-  }
+  if (!status) return { running: false };
 
   // Check if computation has finished (Complete, Cancelled, or errored).
   // `Error:` is set by the background pipeline's catch block and must be
@@ -30,7 +30,7 @@ export async function getComputationStatus(req: Request, res: Response): Promise
     || status.status === 'Cancelled'
     || status.status.startsWith('Error:');
 
-  respond(res, ComputationStatus, {
+  return {
     running: !isFinished,
     progress: status.progress,
     total: status.total,
@@ -41,22 +41,32 @@ export async function getComputationStatus(req: Request, res: Response): Promise
     errors: status.errors,
     currentRegion: status.currentGroup,
     currentMembers: status.currentMembers,
-  });
+  };
 }
 
 /**
  * Cancel geometry computation for a hierarchy
  */
-export async function cancelComputation(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-
+export async function cancelComputation(
+  { params: { worldViewId } }: { params: WorldViewParams },
+): Promise<ComputationCancelled> {
   const status = runningComputations.get(worldViewId);
   if (status) {
     status.cancel = true;
     status.status = 'Cancelling...';
   }
 
-  respond(res, ComputationCancelled, { cancelled: true });
+  return { cancelled: true };
+}
+
+/**
+ * Give up a world view's slot, if this run still holds it. A cancelled run no
+ * longer blocks the guard, so a new one may have taken the slot while this one
+ * was still reading or winding down; deleting by key alone would drop that
+ * run's progress from the status a curator polls and let a third one start.
+ */
+function releaseSlot(worldViewId: number, run: ComputationProgress): void {
+  if (runningComputations.get(worldViewId) === run) runningComputations.delete(worldViewId);
 }
 
 interface GroupRow {
@@ -252,16 +262,16 @@ async function finalizeComputation(
  * Processes groups from bottom to top (deepest first) so parent groups
  * can include already-computed child geometries
  */
-export async function computeWorldViewGeometries(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const forceRecompute = req.query.force === 'true';
-  const skipSnapping = req.query.skipSnapping === 'true';
+export async function computeWorldViewGeometries(
+  { params: { worldViewId }, query }: { params: WorldViewParams; query: z.output<typeof computeGeometryQuerySchema> },
+): Promise<ComputationStartResult> {
+  const forceRecompute = query.force === 'true';
+  const skipSnapping = query.skipSnapping === 'true';
 
   // Re-entry guard: only block if a previous computation is genuinely still running.
   // Completed/cancelled/errored entries are cleaned up so a new run can start.
   if (isComputationRunning(runningComputations.get(worldViewId))) {
-    res.status(409).json({ error: 'Computation already in progress for this hierarchy' });
-    return;
+    throw createError('Computation already in progress for this hierarchy', 409);
   }
   // Reserve the slot synchronously — BEFORE the first await — so a second
   // concurrent request can't pass the guard while we're inspecting the DB.
@@ -279,37 +289,54 @@ export async function computeWorldViewGeometries(req: Request, res: Response): P
   };
   runningComputations.set(worldViewId, progressState);
 
-  const groups = await loadGroupsToCompute(worldViewId, forceRecompute);
-  const totalCount = await pool.query<{ count: number }>(
-    'SELECT COUNT(*)::int as count FROM regions WHERE world_view_id = $1',
-    [worldViewId],
-  );
-  const total = totalCount.rows[0].count;
+  // The slot is released on a failed read here too: nothing has started, and a
+  // placeholder left behind would answer every later request 409.
+  let groups: Awaited<ReturnType<typeof loadGroupsToCompute>>;
+  let total: number;
+  try {
+    groups = await loadGroupsToCompute(worldViewId, forceRecompute);
+    const totalCount = await pool.query<{ count: number }>(
+      'SELECT COUNT(*)::int as count FROM regions WHERE world_view_id = $1',
+      [worldViewId],
+    );
+    total = totalCount.rows[0].count;
+  } catch (err) {
+    releaseSlot(worldViewId, progressState);
+    throw err;
+  }
   const alreadyComputed = total - groups.length;
 
   if (groups.length === 0) {
-    runningComputations.delete(worldViewId);
-    respond(res, ComputationStartResult, {
+    releaseSlot(worldViewId, progressState);
+    return {
       started: false,
       total,
       needsComputation: 0,
       alreadyComputed,
       message: 'All groups already have computed geometries',
-    });
-    return;
+    };
   }
 
   progressState.total = groups.length;
   progressState.skipped = alreadyComputed;
 
-  respond(res, ComputationStartResult, {
+  // Not awaited: the answer goes out when this handler returns, and the
+  // caller polls /status for the rest.
+  void computeInBackground(worldViewId, groups, progressState, skipSnapping);
+
+  return {
     started: true,
     total,
     needsComputation: groups.length,
     alreadyComputed,
     message: 'Computation started in background. Poll /status endpoint for progress.',
-  });
+  };
+}
 
+/** The pipeline behind `computeWorldViewGeometries`, after its answer has gone. */
+async function computeInBackground(
+  worldViewId: number, groups: GroupRow[], progressState: ComputationProgress, skipSnapping: boolean,
+): Promise<void> {
   console.log(`[Geometry] Starting computation for hierarchy ${worldViewId}: ${groups.length} groups to process (skipSnapping=${skipSnapping})`);
 
   try {
@@ -317,8 +344,8 @@ export async function computeWorldViewGeometries(req: Request, res: Response): P
     await applyCoverageSimplification(worldViewId, progressState);
     await finalizeComputation(worldViewId, progressState);
   } catch (err) {
-    // res.json({ started: true }) already flushed, so we can't return a 500 to
-    // the caller. Mark the slot as errored so isComputationRunning() reports
+    // The answer ({ started: true }) has gone, so this cannot be a 500 to the
+    // caller. Mark the slot as errored so isComputationRunning() reports
     // false and a retry can start immediately (the placeholder cleanup below
     // still runs after 30 s for the final poll). Without this, the slot would
     // be stuck on whatever step string was in flight, blocking retries until
@@ -328,6 +355,6 @@ export async function computeWorldViewGeometries(req: Request, res: Response): P
     progressState.status = 'Error: the computation stopped; the server log has the cause.';
   } finally {
     // Keep status available for ~30s for a final poll, then clean up.
-    setTimeout(() => runningComputations.delete(worldViewId), 30000);
+    setTimeout(() => releaseSlot(worldViewId, progressState), 30000);
   }
 }

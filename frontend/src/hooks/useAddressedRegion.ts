@@ -53,7 +53,7 @@ interface AddressedRegionInput {
 function completeSelectionFromAncestor(selected: Region, ancestor: Region): Partial<Region> | null {
   // The read this answer comes from is keyed on a region id alone, and it is
   // bounded by what the caller may see rather than by what their map is showing
-  // (`requireVisibleWorldView`), so it can answer about another world view's
+  // (the route's world view `scope`), so it can answer about another world view's
   // region. Completing the selection from such an answer would point this map at
   // that world view's regions. Refuse, and the map stays where it is.
   //

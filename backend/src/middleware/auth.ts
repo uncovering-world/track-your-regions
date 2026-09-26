@@ -46,8 +46,9 @@ export interface AuthenticatedRequest extends Request {
  * (`api/route.ts`, ADR-0071), the rest through `markPublicReferenceBody`
  * (`middleware/cacheHeaders.ts`), which is where that rule and its reasons
  * live. That is the shape every exception takes — set after the middleware,
- * where `setHeader` replaces: those, the three streams' `private,
- * no-cache` through `markStreamBody`, the admin images' `max-age`. All but one
+ * where `setHeader` replaces: those, the streams' `private, no-cache`
+ * (a declared stream's `revalidate` policy, the rest through
+ * `markStreamBody`), the admin images' `max-age`. All but one
  * keep `private` deliberately, since replacing the value drops it along with
  * the `no-store`; the exception is the admin image proxy, which answers
  * `public, max-age=86400` because what it returns is a Wikimedia Commons
