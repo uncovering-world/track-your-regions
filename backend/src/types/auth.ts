@@ -121,6 +121,16 @@ export const resendVerificationSchema = z.object({
   email: z.string().email('Invalid email address'),
 });
 
+/** `POST /api/auth/exchange-code`: the one-time code an OAuth callback put in the address, 64 hex characters. */
+export const exchangeCodeSchema = z.object({
+  code: z.string().min(1, 'Authorization code is required').max(128),
+});
+
+/** `GET /api/auth/google`: the address Google may pre-select, as long as an email address can be. */
+export const googleStartQuerySchema = z.object({
+  login_hint: z.string().max(320).optional(),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RefreshInput = z.infer<typeof refreshSchema>;
