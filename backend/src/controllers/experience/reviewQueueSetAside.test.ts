@@ -12,7 +12,12 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { setRunAside, bringRunBack } from './reviewQueueSetAside.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const putReviewSetAside = routeAt(experienceCurationRoutes, '/review/set-aside/:syncLogId', 'put');
+const deleteReviewSetAside = routeAt(experienceCurationRoutes, '/review/set-aside/:syncLogId', 'delete');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -30,7 +35,7 @@ describe('setRunAside', () => {
   it('inserts for the calling user only, never an id in the body or params', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ sync_log_id: 98 }] });
 
-    await setRunAside(
+    await answerRoute(putReviewSetAside, 
       { user: CURATOR, params: { syncLogId: 98 } } as never, makeRes() as never);
 
     expect(mockedQuery.mock.calls[0][1][0]).toBe(CURATOR.id);
@@ -43,7 +48,7 @@ describe('setRunAside', () => {
   it('refuses a dry run: the insert only ever matches a real one', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ sync_log_id: 98 }] });
 
-    await setRunAside(
+    await answerRoute(putReviewSetAside, 
       { user: CURATOR, params: { syncLogId: 98 } } as never, makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
@@ -63,7 +68,7 @@ describe('setRunAside', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await setRunAside(
+    await answerRoute(putReviewSetAside, 
       { user: CURATOR, params: { syncLogId: 404 } } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(404);
@@ -74,7 +79,7 @@ describe('setRunAside', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ sync_log_id: 98 }] });
     const res = makeRes();
 
-    await setRunAside(
+    await answerRoute(putReviewSetAside, 
       { user: CURATOR, params: { syncLogId: 98 } } as never, res as never);
 
     expect(res.json).toHaveBeenCalledWith({ syncLogId: 98, setAside: true });
@@ -87,7 +92,7 @@ describe('setRunAside', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
     const res = makeRes();
 
-    await setRunAside(
+    await answerRoute(putReviewSetAside, 
       { user: CURATOR, params: { syncLogId: 98 } } as never, res as never);
 
     expect(res.status).not.toHaveBeenCalled();
@@ -103,7 +108,7 @@ describe('bringRunBack', () => {
   it('deletes for the calling user only', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
-    await bringRunBack(
+    await answerRoute(deleteReviewSetAside, 
       { user: CURATOR, params: { syncLogId: 98 } } as never, makeRes() as never);
 
     const [sql, params] = mockedQuery.mock.calls[0];
@@ -116,7 +121,7 @@ describe('bringRunBack', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const res = makeRes();
 
-    await bringRunBack(
+    await answerRoute(deleteReviewSetAside, 
       { user: CURATOR, params: { syncLogId: 98 } } as never, res as never);
 
     expect(res.status).not.toHaveBeenCalled();

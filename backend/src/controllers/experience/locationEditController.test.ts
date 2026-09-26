@@ -33,7 +33,11 @@ vi.mock('./publishContents.js', () => ({ placeAfterRelease: vi.fn(async () => []
 
 import { pool } from '../../db/index.js';
 import { placeAfterRelease } from './publishContents.js';
-import { editLocation } from './locationEditController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const patchLocationsEdit = routeAt(experienceCurationRoutes, '/locations/:locationId/edit', 'patch');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -99,7 +103,7 @@ describe('editLocation', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await editLocation(
+    await answerRoute(patchLocationsEdit, 
       { params: { locationId: '999' }, body: { name: 'Anywhere' }, user: CURATOR } as never,
       res as never,
     );
@@ -113,7 +117,7 @@ describe('editLocation', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
-    await editLocation(
+    await answerRoute(patchLocationsEdit, 
       { params: { locationId: '31' }, body: { name: 'Anywhere' }, user: CURATOR } as never,
       res as never,
     );
@@ -127,7 +131,7 @@ describe('editLocation', () => {
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
-    await editLocation(
+    await answerRoute(patchLocationsEdit, 
       { params: { locationId: '31' }, body: { latitude: 45.25, longitude: 10.5 }, user: CURATOR } as never,
       makeRes() as never,
     );
@@ -149,7 +153,7 @@ describe('editLocation', () => {
     const { client, queries } = makeClient({ curated_fields: ['name'] });
     mockedConnect.mockResolvedValue(client);
 
-    await editLocation(
+    await answerRoute(patchLocationsEdit, 
       { params: { locationId: '31' }, body: { latitude: 45.25, longitude: 10.5 }, user: CURATOR } as never,
       makeRes() as never,
     );
@@ -164,7 +168,7 @@ describe('editLocation', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await editLocation(
+    await answerRoute(patchLocationsEdit, 
       { params: { locationId: '31' }, body: { latitude: 45.25, longitude: 10.5 }, user: CURATOR } as never,
       res as never,
     );
@@ -200,7 +204,7 @@ describe('editLocation', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await editLocation(
+    await answerRoute(patchLocationsEdit, 
       { params: { locationId: '31' }, body: { latitude: 45.25, longitude: 10.5 }, user: CURATOR } as never,
       res as never,
     );
@@ -213,7 +217,7 @@ describe('editLocation', () => {
     const { client } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
-    await editLocation(
+    await answerRoute(patchLocationsEdit, 
       { params: { locationId: '31' }, body: { latitude: 45.25, longitude: 10.5 }, user: CURATOR } as never,
       makeRes() as never,
     );
@@ -225,7 +229,7 @@ describe('editLocation', () => {
     const renaming = makeClient();
     mockedConnect.mockResolvedValue(renaming.client);
 
-    await editLocation(
+    await answerRoute(patchLocationsEdit, 
       { params: { locationId: '31' }, body: { name: 'The east wing' }, user: CURATOR } as never,
       makeRes() as never,
     );
@@ -243,7 +247,7 @@ describe('editLocation', () => {
     mockedPlace.mockResolvedValue([{ worldViewId: 5, worldViewName: 'Administrative' }]);
     const res = makeRes();
 
-    await editLocation(
+    await answerRoute(patchLocationsEdit, 
       { params: { locationId: '31' }, body: { latitude: 45.25, longitude: 10.5 }, user: CURATOR } as never,
       res as never,
     );
@@ -264,7 +268,7 @@ describe('editLocation', () => {
     const { client, queries } = makeClient({ name: 'Wing B', lat: 53.34, lon: -6.25 });
     mockedConnect.mockResolvedValue(client);
 
-    await editLocation(
+    await answerRoute(patchLocationsEdit, 
       { params: { locationId: '31' }, body: { name: 'East wing', latitude: 45.25, longitude: 10.5 }, user: CURATOR } as never,
       makeRes() as never,
     );

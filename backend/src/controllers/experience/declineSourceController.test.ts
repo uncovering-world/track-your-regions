@@ -19,8 +19,12 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { declineSourceValue } from './declineSourceController.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postDeclineSource = routeAt(experienceCurationRoutes, '/:id/decline-source', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -68,7 +72,7 @@ describe('declineSourceValue', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
-    await declineSourceValue(
+    await answerRoute(postDeclineSource, 
       { user: CURATOR, params: { id: '96' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -82,7 +86,7 @@ describe('declineSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await declineSourceValue({
+    await answerRoute(postDeclineSource, {
       user: ADMIN,
       params: { id: '96' },
       // A caller naming its own value is ignored: the queue compares the stored refusal
@@ -112,7 +116,7 @@ describe('declineSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await declineSourceValue({
+    await answerRoute(postDeclineSource, {
       user: ADMIN, params: { id: '96' }, body: { fields: ['name'], expectedSyncLogId: 9 },
     } as never, res as never);
 
@@ -126,7 +130,7 @@ describe('declineSourceValue', () => {
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
 
-    await declineSourceValue(
+    await answerRoute(postDeclineSource, 
       { user: ADMIN, params: { id: '96' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       makeRes() as never,
     );
@@ -142,7 +146,7 @@ describe('declineSourceValue', () => {
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
 
-    await declineSourceValue(
+    await answerRoute(postDeclineSource, 
       { user: ADMIN, params: { id: '96' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       makeRes() as never,
     );
@@ -157,7 +161,7 @@ describe('declineSourceValue', () => {
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
 
-    await declineSourceValue(
+    await answerRoute(postDeclineSource, 
       { user: ADMIN, params: { id: '96' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       makeRes() as never,
     );
@@ -176,7 +180,7 @@ describe('declineSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await declineSourceValue(
+    await answerRoute(postDeclineSource, 
       { user: ADMIN, params: { id: '96' }, body: { fields: ['name'], expectedSyncLogId: 8 } } as never,
       res as never,
     );
@@ -195,7 +199,7 @@ describe('declineSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await declineSourceValue(
+    await answerRoute(postDeclineSource, 
       { user: ADMIN, params: { id: '96' }, body: { fields: ['imageUrl'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -211,7 +215,7 @@ describe('declineSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await declineSourceValue(
+    await answerRoute(postDeclineSource, 
       { user: ADMIN, params: { id: '96' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -230,7 +234,7 @@ describe('declineSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await declineSourceValue(
+    await answerRoute(postDeclineSource, 
       { user: ADMIN, params: { id: '96' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
       res as never,
     );

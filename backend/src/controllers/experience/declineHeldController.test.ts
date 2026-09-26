@@ -27,8 +27,12 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { declineHeldValue } from './declineHeldController.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postDeclineHeld = routeAt(experienceCurationRoutes, '/:id/decline-held', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -99,7 +103,7 @@ const WITH_A_WORK = {
 
 function decline(body: unknown, client: unknown, user: { id: number; role: 'admin' | 'curator' } = ADMIN) {
   const res = makeRes();
-  return declineHeldValue(
+  return answerRoute(postDeclineHeld, 
     { user, params: { id: '1138' }, body } as never, res as never,
   ).then(() => res);
 }

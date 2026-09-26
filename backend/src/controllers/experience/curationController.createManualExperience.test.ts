@@ -1,4 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postRoot = routeAt(experienceCurationRoutes, '/', 'post');
 
 const { mockPoolQuery, mockClientQuery, mockPoolConnect } = vi.hoisted(() => {
   const clientQuery = vi.fn();
@@ -13,7 +18,6 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: mockPoolQuery, connect: mockPoolConnect },
 }));
 
-import { createManualExperience } from './curationController.js';
 
 const ADMIN = { id: 1, role: 'admin' };
 const KIND_ID = 3;
@@ -63,7 +67,7 @@ function callCreateManualExperience() {
   const res = makeRes();
   return {
     res,
-    done: createManualExperience(
+    done: answerRoute(postRoot, 
       { body: BODY, user: ADMIN } as never,
       res as never,
     ),

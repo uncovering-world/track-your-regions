@@ -24,9 +24,13 @@ vi.mock('./publishContents.js', () => ({ placeAfterRelease: vi.fn(async () => []
 
 import { pool } from '../../db/index.js';
 import { placeAfterRelease } from './publishContents.js';
-import { acceptSourceValue } from './acceptSourceController.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postAcceptSource = routeAt(experienceCurationRoutes, '/:id/accept-source', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -98,7 +102,7 @@ describe('acceptSourceValue', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: CURATOR, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -111,7 +115,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(makeClient(['name'], []).client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -125,7 +129,7 @@ describe('acceptSourceValue', () => {
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       makeRes() as never,
     );
@@ -147,7 +151,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -169,7 +173,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -187,7 +191,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 41 } } as never,
       res as never,
     );
@@ -211,7 +215,7 @@ describe('acceptSourceValue', () => {
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       makeRes() as never,
     );
@@ -246,7 +250,7 @@ describe('acceptSourceValue', () => {
     client.release.mockImplementation(() => { if (!rollbackDone) releasedBeforeRollback = true; });
     mockedConnect.mockResolvedValue(client);
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 41 } } as never,
       makeRes() as never,
     );
@@ -264,7 +268,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 41 } } as never,
       res as never,
     );
@@ -281,7 +285,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(makeClient(['name'], PROPOSAL).client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 42 } } as never,
       res as never,
     );
@@ -300,7 +304,7 @@ describe('acceptSourceValue', () => {
     // clear it either — every other writer of curated_fields only ever adds —
     // so releasing the claim is the only way off the queue, and the next run
     // then writes the value through the ordinary upsert.
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['tags'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -328,7 +332,7 @@ describe('acceptSourceValue', () => {
     // the source's coordinate to `experiences.location` while the pin keeps the
     // curator's — the object positioned by the source and its only place by the
     // curator, which is #550 made by the endpoints written to close it.
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -373,7 +377,7 @@ describe('acceptSourceValue', () => {
     // candidate the moment nothing claims it, and the run withdraws the row and
     // inserts the source's point beside it — a `withdrawn` card for a component
     // nobody delisted, and the visit record left on a pin no reader is shown.
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -419,7 +423,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -443,7 +447,7 @@ describe('acceptSourceValue', () => {
     // The entry names another component. Writing its coordinate onto this row
     // would put the pin somewhere no source ever placed it, and a row the source
     // already matches within the tolerance pairs without any help.
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -477,7 +481,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -496,7 +500,7 @@ describe('acceptSourceValue', () => {
     // A claimed pin is not an answer about the object's name, and the object's
     // own `location` claim is left standing here too — this request was about
     // one field, and `open` is what the release follows.
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -516,7 +520,7 @@ describe('acceptSourceValue', () => {
     );
     mockedConnect.mockResolvedValue(client);
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['imageUrl'], expectedSyncLogId: 9 } } as never,
       makeRes() as never,
     );
@@ -546,7 +550,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['imageUrl'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -565,7 +569,7 @@ describe('acceptSourceValue', () => {
     const { client, queries } = makeClient(['name', 'metadata.imageCredit'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       makeRes() as never,
     );
@@ -584,7 +588,7 @@ describe('acceptSourceValue', () => {
     const { client, queries } = makeClient(['name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       makeRes() as never,
     );
@@ -605,7 +609,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
@@ -620,7 +624,7 @@ describe('acceptSourceValue', () => {
     mockedConnect.mockResolvedValue(makeClient(['name'], PROPOSAL).client);
     const res = makeRes();
 
-    await acceptSourceValue(
+    await answerRoute(postAcceptSource, 
       { user: ADMIN, params: { id: '5' }, body: { fields: ['description'], expectedSyncLogId: 9 } } as never,
       res as never,
     );

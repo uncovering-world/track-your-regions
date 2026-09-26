@@ -22,12 +22,12 @@
  * something was refused.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { DeclineHeldResult, type DeclinedPart } from '../../api/responses/curation.js';
+import type { z } from 'zod/v4';
+import type { DeclineHeldResult, DeclinedPart } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
+import type { declineHeldBodySchema, idParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { answeredHeldRows, recordHeldAnswers } from './heldDecisions.js';
 import {
@@ -55,40 +55,37 @@ export interface DeclineRefusal {
  * the run the pointer names. Refusing the wrong run silences a proposal nobody
  * read, which is the mirror of publishing one nobody read.
  */
-export async function declineHeldValue(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-  const { fields, parts, expectedSyncLogId } = req.body as {
-    fields?: string[]; parts?: SelectedPart[]; expectedSyncLogId: number;
-  };
+export async function declineHeldValue(
+  { params: { id: experienceId }, body: { fields, parts, expectedSyncLogId }, caller }: {
+    params: z.output<typeof idParamSchema>; body: z.output<typeof declineHeldBodySchema>; caller: Express.User;
+  },
+): Promise<DeclineHeldResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   const expResult = await pool.query(
     `SELECT id, source_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
 
   const { permitted, logRegionId } = await resolveExperienceScope(
     userId, userRole, experienceId, expResult.rows[0].source_id as number,
   );
   if (!permitted) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   const outcome = await refuseUnderLock(
     experienceId, userId, logRegionId, { fields, parts }, expectedSyncLogId,
   );
   if (outcome.refusal) {
-    const { status, ...payload } = outcome.refusal;
-    res.status(status).json(payload);
-    return;
+    const { status, ...body } = outcome.refusal;
+    throw new Refusal(status, body);
   }
-  respond(res, DeclineHeldResult, outcome.result!);
+  return outcome.result!;
 }
 
 /** The parts of a refusal, grouped by the part the record names, for the report. */

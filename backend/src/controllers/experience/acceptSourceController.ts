@@ -8,11 +8,11 @@
  * field back to the source (ADR-0021). The moved text is unchanged.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { AcceptSourceResult } from '../../api/responses/curation.js';
+import type { z } from 'zod/v4';
+import type { AcceptSourceResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
+import type { acceptSourceBodySchema, idParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor, METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
 import { tidyLabel } from '@tyr/shared/labels';
@@ -36,26 +36,20 @@ import { releaseAnchorPointClaim, movePointTo } from './experienceLocationWriter
  * to a different run is refused rather than substituted. The response names it
  * back, along with which fields were applied now and which were only released.
  */
-export async function acceptSourceValue(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-  const { fields, expectedSyncLogId } = req.body as {
-    fields: string[]; expectedSyncLogId: number;
-  };
-
-  if (!Array.isArray(fields) || fields.length === 0) {
-    res.status(400).json({ error: 'fields is required' });
-    return;
-  }
+export async function acceptSourceValue(
+  { params: { id: experienceId }, body: { fields, expectedSyncLogId }, caller }: {
+    params: z.output<typeof idParamSchema>; body: z.output<typeof acceptSourceBodySchema>; caller: Express.User;
+  },
+): Promise<AcceptSourceResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   const expResult = await pool.query(
     `SELECT id, source_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
   const existing = expResult.rows[0];
 
@@ -63,16 +57,12 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     userId, userRole, experienceId, existing.source_id as number,
   );
   if (!permitted) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   const outcome = await acceptSourceUnderLock(experienceId, userId, logRegionId, fields, expectedSyncLogId);
-  if (outcome.refusal) {
-    res.status(409).json(outcome.refusal);
-    return;
-  }
-  respond(res, AcceptSourceResult, outcome.result!);
+  if (outcome.refusal) throw new Refusal(409, outcome.refusal);
+  return outcome.result!;
 }
 
 /**

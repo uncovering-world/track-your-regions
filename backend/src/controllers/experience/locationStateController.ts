@@ -12,12 +12,12 @@
  * there — see `missing_since` below.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { LocationStateResult } from '../../api/responses/curation.js';
+import type { z } from 'zod/v4';
+import type { LocationStateResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { CheckValue } from '../../db/schema.generated.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
+import type { lifecycleStateBodySchema, locationIdParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
@@ -123,16 +123,13 @@ function offeredToReaders(flagClear: boolean, existence: Existence): boolean {
  * failed rather than swallowing it. It is also why this route carries
  * `authenticatedLimiter` where its object-level twin does not.
  */
-export async function setLocationState(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const locationId = parseInt(String(req.params.locationId));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-  const body = req.body as LocationStateAnswer;
-
-  if (!body.membership && !body.existence) {
-    res.status(400).json({ error: 'Nothing to decide: pass membership, existence, or both' });
-    return;
-  }
+export async function setLocationState(
+  { params: { locationId }, body, caller }: {
+    params: z.output<typeof locationIdParamSchema>; body: z.output<typeof lifecycleStateBodySchema>; caller: Express.User;
+  },
+): Promise<LocationStateResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   // The point carries no scope of its own: it is judged through the object holding
   // it, which is where the regions and the source live.
@@ -144,8 +141,7 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
     [locationId],
   );
   if (found.rows.length === 0) {
-    res.status(404).json({ error: 'Location not found' });
-    return;
+    throw notFound('Location not found');
   }
   const { experience_id: experienceId, source_id: sourceId } = found.rows[0];
 
@@ -153,19 +149,17 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
     userId, userRole, experienceId as number, sourceId as number,
   );
   if (!permitted) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   const outcome = await answerLocationStateUnderLock(
     locationId, experienceId as number, userId, logRegionId, body,
   );
   if (outcome.refusal) {
-    const { status, ...payload } = outcome.refusal;
-    res.status(status).json(payload);
-    return;
+    const { status, ...body } = outcome.refusal;
+    throw new Refusal(status, body);
   }
-  respond(res, LocationStateResult, outcome.result!);
+  return outcome.result!;
 }
 
 /** What a curator sends about one point, and the point as they were looking at it. */

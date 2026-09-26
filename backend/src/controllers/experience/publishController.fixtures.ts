@@ -20,7 +20,8 @@ import { pool } from '../../db/index.js';
 import {
   assignRegionsForExperiences, worldViewsWithGeometry,
 } from '../../services/sync/regionAssignmentService.js';
-import { publishExperience } from './publishController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
 
 export const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 export const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -258,6 +259,6 @@ export async function publish(
 ) {
   const res = makeRes();
   mockedConnect.mockResolvedValue(client);
-  await publishExperience({ user, params: { id: '5' }, body } as never, res as never);
+  await answerRoute(routeAt(experienceCurationRoutes, '/:id/publish', 'post'), { user, params: { id: '5' }, body } as never, res as never);
   return res;
 }

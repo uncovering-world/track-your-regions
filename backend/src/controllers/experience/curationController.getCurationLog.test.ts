@@ -5,7 +5,11 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { getCurationLog } from './curationController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const getCurationLog2 = routeAt(experienceCurationRoutes, '/:id/curation-log', 'get');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -48,7 +52,7 @@ function callGetCurationLog(user: { id: number; role: string }) {
   const res = makeRes();
   return {
     res,
-    done: getCurationLog({ params: { id: String(EXPERIENCE_ID) }, user } as never, res as never),
+    done: answerRoute(getCurationLog2, { params: { id: String(EXPERIENCE_ID) }, user } as never, res as never),
   };
 }
 

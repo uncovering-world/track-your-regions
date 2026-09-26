@@ -14,14 +14,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../db/index.js', () => ({ pool: { query: vi.fn() } }));
 
 import { pool } from '../../db/index.js';
-import {
-  queryQueueKeys, encodeCursor, decodeCursor, KIND_RANK,
-} from './reviewQueueKeys.js';
-import { getReviewQueue } from './reviewQueueController.js';
-import {
-  missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, contentsOpenSql,
-  withdrawnPointOpenSql, withdrawnContainerOpenSql, conflictChangeOpenSql,
-} from './reviewQueuePredicates.js';
+import { queryQueueKeys, encodeCursor, decodeCursor, KIND_RANK } from './reviewQueueKeys.js';
+import { missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, contentsOpenSql, withdrawnPointOpenSql, withdrawnContainerOpenSql, conflictChangeOpenSql } from './reviewQueuePredicates.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const getReviewQueue = routeAt(experienceCurationRoutes, '/review/queue', 'get');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const base = { userId: 7, isAdmin: false, filters: { sort: 'date' as const, limit: 25 } };
@@ -370,7 +369,7 @@ describe('queryQueueKeys', () => {
         ? { rows: [{ page, total: page.length, facets: {} }] }
         : { rows: [] }
     ));
-    await getReviewQueue(
+    await answerRoute(getReviewQueue, 
       { user: { id: 1, role: 'admin' as const }, query: { sort: 'date', limit: 25 } } as never,
       { json: vi.fn(), status: vi.fn().mockReturnThis() } as never,
     );

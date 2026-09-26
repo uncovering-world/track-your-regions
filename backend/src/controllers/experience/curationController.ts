@@ -6,16 +6,19 @@
  * All routes require curator authentication + scope verification.
  */
 
-import { Response } from 'express';
 import type { PoolClient } from 'pg';
-import { respond } from '../../api/respond.js';
-import {
-  CurationLog, type CurationLogEntry, ExperienceEditResult, ManualExperienceCreated, RegionMembershipResult,
+import type { z } from 'zod/v4';
+import type {
+  CurationLog, CurationLogEntry, ExperienceEditResult, ManualExperienceCreated, RegionMembershipResult,
 } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import type { ExperienceCurationLogRow, RegionsRow, UsersRow } from '../../db/schema.generated.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { badRequest, createError, notFound } from '../../middleware/errorHandler.js';
+import type {
+  assignExperienceBodySchema, createManualExperienceBodySchema, editExperienceBodySchema, idAndRegionIdParamSchema,
+  idParamSchema, rejectExperienceBodySchema, unrejectExperienceBodySchema,
+} from '../../types/index.js';
 import type { UserRole } from '../../types/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import {
@@ -37,9 +40,9 @@ import { insertCuratedPoint } from './experienceLocationWriter.js';
 
 /**
  * The same rule the request schema applied, asked again where the value is
- * written. Both routes below run `validate()` first, so this is a second layer
- * and not the only one — but it is the layer a direct call to the controller
- * still passes through, and it reads the rule and its wording from
+ * written. Both routes below parse their body with that schema first, so this
+ * is a second layer and not the only one — but it is the layer a direct call
+ * to the handler still passes through, and it reads the rule and its wording from
  * `urlSafety.ts` rather than restating either: a second spelling here can
  * disagree with the schema's about whitespace, which is how a scheme behind
  * one space gets stored (#693).
@@ -56,29 +59,27 @@ function refusalFor(value: unknown, isStorable: (url: string) => boolean, messag
  * POST /api/experiences/:id/reject
  * Body: { regionId, reason? }
  */
-export async function rejectExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const { regionId, reason } = req.body;
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
+type IdParams = z.output<typeof idParamSchema>;
+type IdAndRegionParams = z.output<typeof idAndRegionIdParamSchema>;
 
-  if (!regionId) {
-    res.status(400).json({ error: 'regionId is required' });
-    return;
-  }
+export async function rejectExperience(
+  { params: { id: experienceId }, body: { regionId, reason }, caller }: {
+    params: IdParams; body: z.output<typeof rejectExperienceBodySchema>; caller: Express.User;
+  },
+): Promise<RegionMembershipResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   // Get experience source for scope check
   const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
 
   // Check curator scope
   const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
   if (!hasScope) {
-    res.status(403).json({ error: 'You do not have curator permissions for this region' });
-    return;
+    throw createError('You do not have curator permissions for this region', 403);
   }
 
   // Upsert rejection
@@ -95,7 +96,7 @@ export async function rejectExperience(req: AuthenticatedRequest, res: Response)
     VALUES ($1, $2, 'rejected', $3, $4)
   `, [experienceId, userId, regionId, reason ? JSON.stringify({ reason }) : null]);
 
-  respond(res, RegionMembershipResult, { success: true, experienceId, regionId });
+  return { success: true, experienceId, regionId };
 }
 
 /**
@@ -103,29 +104,24 @@ export async function rejectExperience(req: AuthenticatedRequest, res: Response)
  * POST /api/experiences/:id/unreject
  * Body: { regionId }
  */
-export async function unrejectExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const { regionId } = req.body;
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-
-  if (!regionId) {
-    res.status(400).json({ error: 'regionId is required' });
-    return;
-  }
+export async function unrejectExperience(
+  { params: { id: experienceId }, body: { regionId }, caller }: {
+    params: IdParams; body: z.output<typeof unrejectExperienceBodySchema>; caller: Express.User;
+  },
+): Promise<RegionMembershipResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   // Get experience source for scope check
   const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
 
   // Check curator scope
   const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
   if (!hasScope) {
-    res.status(403).json({ error: 'You do not have curator permissions for this region' });
-    return;
+    throw createError('You do not have curator permissions for this region', 403);
   }
 
   const result = await pool.query(
@@ -134,8 +130,7 @@ export async function unrejectExperience(req: AuthenticatedRequest, res: Respons
   );
 
   if (result.rowCount === 0) {
-    res.status(404).json({ error: 'No rejection found for this experience in this region' });
-    return;
+    throw notFound('No rejection found for this experience in this region');
   }
 
   // Log the action
@@ -144,7 +139,7 @@ export async function unrejectExperience(req: AuthenticatedRequest, res: Respons
     VALUES ($1, $2, 'unrejected', $3)
   `, [experienceId, userId, regionId]);
 
-  respond(res, RegionMembershipResult, { success: true, experienceId, regionId });
+  return { success: true, experienceId, regionId };
 }
 
 /**
@@ -152,36 +147,30 @@ export async function unrejectExperience(req: AuthenticatedRequest, res: Respons
  * POST /api/experiences/:id/assign
  * Body: { regionId }
  */
-export async function assignExperienceToRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const { regionId } = req.body;
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-
-  if (!regionId) {
-    res.status(400).json({ error: 'regionId is required' });
-    return;
-  }
+export async function assignExperienceToRegion(
+  { params: { id: experienceId }, body: { regionId }, caller }: {
+    params: IdParams; body: z.output<typeof assignExperienceBodySchema>; caller: Express.User;
+  },
+): Promise<RegionMembershipResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   // Verify experience exists
   const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
 
   // Check curator scope
   const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
   if (!hasScope) {
-    res.status(403).json({ error: 'You do not have curator permissions for this region' });
-    return;
+    throw createError('You do not have curator permissions for this region', 403);
   }
 
   // Verify region exists
   const regionResult = await pool.query('SELECT id FROM regions WHERE id = $1', [regionId]);
   if (regionResult.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found' });
-    return;
+    throw notFound('Region not found');
   }
 
   // Pin all three writes (assignment upsert, rejection clear, audit log) to a
@@ -219,31 +208,29 @@ export async function assignExperienceToRegion(req: AuthenticatedRequest, res: R
     client.release();
   }
 
-  respond(res, RegionMembershipResult, { success: true, experienceId, regionId });
+  return { success: true, experienceId, regionId };
 }
 
 /**
  * Unassign an experience from a region (manual assignments only)
  * DELETE /api/experiences/:id/assign/:regionId
  */
-export async function unassignExperienceFromRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const regionId = parseInt(String(req.params.regionId));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
+export async function unassignExperienceFromRegion(
+  { params: { id: experienceId, regionId }, caller }: { params: IdAndRegionParams; caller: Express.User },
+): Promise<RegionMembershipResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   // Get experience source for scope check
   const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
 
   // Check curator scope
   const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
   if (!hasScope) {
-    res.status(403).json({ error: 'You do not have curator permissions for this region' });
-    return;
+    throw createError('You do not have curator permissions for this region', 403);
   }
 
   // Only remove manual assignments (never remove auto-computed spatial assignments)
@@ -255,8 +242,7 @@ export async function unassignExperienceFromRegion(req: AuthenticatedRequest, re
   );
 
   if (result.rowCount === 0) {
-    res.status(404).json({ error: 'No manual assignment found for this experience in this region' });
-    return;
+    throw notFound('No manual assignment found for this experience in this region');
   }
 
   // Log the action
@@ -265,7 +251,7 @@ export async function unassignExperienceFromRegion(req: AuthenticatedRequest, re
     VALUES ($1, $2, 'removed_from_region', $3)
   `, [experienceId, userId, regionId]);
 
-  respond(res, RegionMembershipResult, { success: true, experienceId, regionId });
+  return { success: true, experienceId, regionId };
 }
 
 /**
@@ -277,24 +263,22 @@ export async function unassignExperienceFromRegion(req: AuthenticatedRequest, re
  * row is kept as a guard — if a future spatial recompute re-adds the
  * experience, it will automatically be hidden again.
  */
-export async function removeExperienceFromRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const regionId = parseInt(String(req.params.regionId));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
+export async function removeExperienceFromRegion(
+  { params: { id: experienceId, regionId }, caller }: { params: IdAndRegionParams; caller: Express.User },
+): Promise<RegionMembershipResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   // Get experience source for scope check
   const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
 
   // Check curator scope
   const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
   if (!hasScope) {
-    res.status(403).json({ error: 'You do not have curator permissions for this region' });
-    return;
+    throw createError('You do not have curator permissions for this region', 403);
   }
 
   // Remove the region assignment (any type: auto or manual)
@@ -304,8 +288,7 @@ export async function removeExperienceFromRegion(req: AuthenticatedRequest, res:
   );
 
   if (result.rowCount === 0) {
-    res.status(404).json({ error: 'Experience is not assigned to this region' });
-    return;
+    throw notFound('Experience is not assigned to this region');
   }
 
   // Keep rejection row — it acts as a guard if spatial recompute re-adds the experience.
@@ -316,7 +299,7 @@ export async function removeExperienceFromRegion(req: AuthenticatedRequest, res:
     VALUES ($1, $2, 'removed_from_region', $3)
   `, [experienceId, userId, regionId]);
 
-  respond(res, RegionMembershipResult, { success: true, experienceId, regionId });
+  return { success: true, experienceId, regionId };
 }
 
 interface FieldUpdate {
@@ -508,16 +491,18 @@ function buildEditAuditDetails(
  * Logs old/new values to curation_log, under a region the caller has scope
  * over — see `resolveEditScope`.
  */
-export async function editExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
+export async function editExperience(
+  { params: { id: experienceId }, body, caller }: {
+    params: IdParams; body: z.output<typeof editExperienceBodySchema>; caller: Express.User;
+  },
+): Promise<ExperienceEditResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
-  const payload = parseEditPayload(req.body as Record<string, unknown>);
+  const payload = parseEditPayload(body);
   const validationError = validateEditPayload(payload);
   if (validationError) {
-    res.status(400).json({ error: validationError });
-    return;
+    throw badRequest(validationError);
   }
 
   const expResult = await pool.query(
@@ -526,8 +511,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     [experienceId],
   );
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
   const existing = expResult.rows[0];
 
@@ -538,8 +522,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     existing.source_id as number,
   );
   if (!permitted) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   // Outside the transaction, because it is a request to somebody else's server
@@ -576,12 +559,9 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
       client, experienceId, 'curated_fields, name, short_description, description, type, image_url, tags, metadata',
     );
     // A row deleted since the read above has nothing to lock and nothing to
-    // edit: 404, as the read would have answered a moment later.
-    if (!locked) {
-      unusable = await rollbackQuietly(client);
-      res.status(404).json({ error: 'Experience not found' });
-      return;
-    }
+    // edit: 404, as the read would have answered a moment later. The catch
+    // below rolls the transaction back.
+    if (!locked) throw notFound('Experience not found');
     const before = locked.row;
     const built = buildUpdateQuery(payload, (before.curated_fields as string[]) || []);
     newCurated = built.newCurated;
@@ -601,7 +581,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     client.release(unusable);
   }
 
-  respond(res, ExperienceEditResult, { success: true, experienceId, curatedFields: newCurated });
+  return { success: true, experienceId, curatedFields: newCurated };
 }
 
 /**
@@ -658,18 +638,18 @@ async function resolveCurationLogScope(
  * and a region-scoped curator gets only the rows for regions they cover — the
  * scope check qualifies the result set, not one representative region.
  */
-export async function getCurationLog(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
+export async function getCurationLog(
+  { params: { id: experienceId }, caller }: { params: IdParams; caller: Express.User },
+): Promise<CurationLog> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   const expResult = await pool.query(
     'SELECT source_id FROM experiences WHERE id = $1',
     [experienceId],
   );
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
 
   const { unrestricted, hasScopedRegion } = await resolveCurationLogScope(
@@ -679,8 +659,7 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
     expResult.rows[0].source_id as number,
   );
   if (!unrestricted && !hasScopedRegion) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   // A row survives when the curator is unrestricted, when it names no region
@@ -703,7 +682,7 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
     LIMIT 50
   `, [userId, experienceId, unrestricted]);
 
-  respond(res, CurationLog, result.rows.map(row => ({
+  return result.rows.map(row => ({
     id: row.id,
     // The column's CHECK list is `CURATION_LOG_ACTIONS` (`curationLogActions.test.ts`).
     action: row.action as CurationLogEntry['action'],
@@ -712,7 +691,7 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
     details: row.details as CurationLogEntry['details'],
     created_at: row.created_at?.toISOString() ?? null,
     curator_name: row.curator_name,
-  })));
+  }));
 }
 
 /** One row of the log read, as the driver hands it over. */
@@ -848,21 +827,20 @@ async function insertManualExperience(
  * POST /api/experiences
  * Body: { name, shortDescription?, type?, longitude, latitude, imageUrl?, tags?, countryCode?, countryName?, regionId, kindId, websiteUrl?, wikipediaUrl? }
  */
-export async function createManualExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-  const body = req.body as CreateManualBody;
+export async function createManualExperience(
+  { body, caller }: { body: z.output<typeof createManualExperienceBodySchema>; caller: Express.User },
+): Promise<ManualExperienceCreated> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   const validationError = validateCreateManualInput(body);
   if (validationError) {
-    res.status(400).json({ error: validationError });
-    return;
+    throw badRequest(validationError);
   }
 
   const hasScope = await checkCuratorScope(userId, userRole, body.regionId as number);
   if (!hasScope) {
-    res.status(403).json({ error: 'You do not have curator permissions for this region' });
-    return;
+    throw createError('You do not have curator permissions for this region', 403);
   }
 
   // A curator picks the kind; the row is filed under that kind's own source —
@@ -875,8 +853,7 @@ export async function createManualExperience(req: AuthenticatedRequest, res: Res
     [body.kindId],
   );
   if (sourceResult.rows.length === 0) {
-    res.status(400).json({ error: 'Invalid kindId' });
-    return;
+    throw badRequest('Invalid kindId');
   }
   const sourceId = sourceResult.rows[0].id as number;
 
@@ -906,7 +883,7 @@ export async function createManualExperience(req: AuthenticatedRequest, res: Res
   // issued after the COMMIT with nothing left to undo. The route's
   // `createManualExperienceBodySchema` has already required the name to be a
   // string.
-  respond(res.status(201), ManualExperienceCreated, {
+  return {
     id: created.experienceId, name: body.name as string, externalId: created.externalId,
-  });
+  };
 }

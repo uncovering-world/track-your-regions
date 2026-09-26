@@ -16,7 +16,12 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { placeOfferedSql } from '../../db/membership.js';
-import { isNewSql, NEW_BADGE_PERSONAL_DAYS, markNewBadgesSeen } from './experienceNewBadge.js';
+import { isNewSql, NEW_BADGE_PERSONAL_DAYS } from './experienceNewBadge.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postNewBadgesSeen = routeAt(experienceCurationRoutes, '/new-badges/seen', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -99,7 +104,7 @@ describe('markNewBadgesSeen', () => {
   });
 
   it('keeps the first impression and ignores later ones', async () => {
-    await markNewBadgesSeen(
+    await answerRoute(postNewBadgesSeen, 
       { user: { id: 9 }, body: { experienceIds: [4] } } as never, makeRes() as never);
 
     // DO UPDATE would restart the week on every later view, and the chip would
@@ -110,7 +115,7 @@ describe('markNewBadgesSeen', () => {
   });
 
   it('survives an id the reader no longer has', async () => {
-    await markNewBadgesSeen(
+    await answerRoute(postNewBadgesSeen, 
       { user: { id: 9 }, body: { experienceIds: [4, 999] } } as never, makeRes() as never);
 
     // Inserting the ids directly would let the foreign key reject the whole
@@ -121,7 +126,7 @@ describe('markNewBadgesSeen', () => {
   });
 
   it('records a sighting only for a row this reader could have been shown', async () => {
-    await markNewBadgesSeen(
+    await answerRoute(postNewBadgesSeen, 
       { user: { id: 9 }, body: { experienceIds: [4] } } as never, makeRes() as never);
 
     // This writes a claim ("they saw its chip") and answers with the ids it
@@ -138,14 +143,14 @@ describe('markNewBadgesSeen', () => {
   it('reports what it actually recorded, not what it was asked to', async () => {
     const res = makeRes();
 
-    await markNewBadgesSeen(
+    await answerRoute(postNewBadgesSeen, 
       { user: { id: 9 }, body: { experienceIds: [4, 5] } } as never, res as never);
 
     expect(res.json).toHaveBeenCalledWith({ recorded: [4] });
   });
 
   it('writes for the caller, never for an id in the body', async () => {
-    await markNewBadgesSeen(
+    await answerRoute(postNewBadgesSeen, 
       { user: { id: 9 }, body: { experienceIds: [4] } } as never, makeRes() as never);
 
     expect(mockedQuery.mock.calls[0][1]).toEqual([9, [4]]);

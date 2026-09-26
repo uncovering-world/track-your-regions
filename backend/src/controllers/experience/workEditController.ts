@@ -18,11 +18,11 @@
  * below.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { WorkEditResult } from '../../api/responses/curation.js';
+import type { z } from 'zod/v4';
+import type { WorkEditResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { createError, notFound } from '../../middleware/errorHandler.js';
+import type { editWorkBodySchema, workEditParamsSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { offeredLinkSql } from '../../db/readerPredicates.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
@@ -65,13 +65,13 @@ interface StoredWork {
   curated_fields: string[];
 }
 
-export async function editWork(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const treasureId = parseInt(String(req.params.treasureId));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-  const { name, artists, year, imageUrl } = req.body as
-    { name?: string; artists?: string[]; year?: number | null; imageUrl?: string };
+export async function editWork(
+  { params: { id: experienceId, treasureId }, body: { name, artists, year, imageUrl }, caller }: {
+    params: z.output<typeof workEditParamsSchema>; body: z.output<typeof editWorkBodySchema>; caller: Express.User;
+  },
+): Promise<WorkEditResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
   // `''` is how a form says "no picture" — the same reading `editExperience`
   // gives it (#696). `undefined` still means the edit does not touch the
   // picture at all, and the two must not collapse: one drops a photograph and
@@ -101,8 +101,7 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
     [experienceId, treasureId],
   );
   if (found.rows.length === 0) {
-    res.status(404).json({ error: 'Work not found in this experience' });
-    return;
+    throw notFound('Work not found in this experience');
   }
   const sourceId = found.rows[0].source_id as number;
 
@@ -110,8 +109,7 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
     userId, userRole, experienceId, sourceId,
   );
   if (!permitted) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   // What this edit claims, decided once: the transaction writes it onto the row
@@ -156,11 +154,8 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
       [treasureId],
     );
     const before = locked.rows[0] as StoredWork | undefined;
-    if (!before) {
-      unusable = await rollbackQuietly(client);
-      res.status(404).json({ error: 'Work not found' });
-      return;
-    }
+    // The catch below rolls the transaction back.
+    if (!before) throw notFound('Work not found');
 
     await client.query(
       `UPDATE treasures
@@ -230,10 +225,10 @@ export async function editWork(req: AuthenticatedRequest, res: Response): Promis
   // promised: a Commons file whose credit request timed out is stored with a
   // `null`, and a screen that assumed a name would show the picture as
   // credited to nobody without saying that is what happened.
-  respond(res, WorkEditResult, {
+  return {
     success: true,
     treasureId,
     claimed: claims,
     imageCredit: picture === undefined ? undefined : credit,
-  });
+  };
 }

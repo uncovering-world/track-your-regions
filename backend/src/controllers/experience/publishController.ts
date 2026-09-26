@@ -32,14 +32,14 @@
  * the two halves' call sites.
  */
 
-import { Response } from 'express';
 import type { PoolClient } from 'pg';
-import { respond } from '../../api/respond.js';
-import { PublishResult, type AppliedPart, type PartNotFound } from '../../api/responses/curation.js';
+import type { z } from 'zod/v4';
+import type { PublishResult, AppliedPart, PartNotFound } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
+import type { idParamSchema, publishExperienceBodySchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
@@ -193,36 +193,35 @@ interface PublishRefusal {
  * publish, so it is refused on a `pending` row for the same reason `fieldsOnly`
  * is, and it may not accompany a contents shape.
  */
-export async function publishExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-  const body = req.body as PublishRequest;
+export async function publishExperience(
+  { params: { id: experienceId }, body, caller }: {
+    params: z.output<typeof idParamSchema>; body: z.output<typeof publishExperienceBodySchema>; caller: Express.User;
+  },
+): Promise<PublishResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   const expResult = await pool.query(
     `SELECT id, source_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
 
   const { permitted, logRegionId } = await resolveExperienceScope(
     userId, userRole, experienceId, expResult.rows[0].source_id as number,
   );
   if (!permitted) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   const outcome = await publishUnderLock(experienceId, userId, logRegionId, body);
   if (outcome.refusal) {
-    const { status, ...payload } = outcome.refusal;
-    res.status(status).json(payload);
-    return;
+    const { status, ...body } = outcome.refusal;
+    throw new Refusal(status, body);
   }
-  respond(res, PublishResult, outcome.result!);
+  return outcome.result!;
 }
 
 /**

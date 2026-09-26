@@ -9,18 +9,17 @@
  * text is unchanged; the split is a move.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { ReviewQueue, type ReviewQueueItem } from '../../api/responses/reviewQueue.js';
+import type { z } from 'zod/v4';
+import type { ReviewQueue, ReviewQueueItem } from '../../api/responses/reviewQueue.js';
 import { queueItemOf, type QueueRow } from './reviewQueueItem.js';
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, admissionAnsweredSql, rowKindJoinSql } from '../../db/membership.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { reviewQueueQuerySchema } from '../../types/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import {
-  objectContextSelectSql, countedWorksSelectSql, QUEUE_PAGE_SIZE,
+  objectContextSelectSql, countedWorksSelectSql,
 } from './reviewQueueContext.js';
 import {
   heldPartsSelectSql, queryAnsweredWithdrawals, queryContents, queryWithdrawn,
@@ -37,21 +36,8 @@ import {
 import { heldFieldAnsweredSql } from './heldDecisions.js';
 import { withDangerFields } from './experienceDanger.js';
 
-/** The request as `reviewQueueQuerySchema` leaves it, and as a test may not. */
-interface ReviewQueueQuery {
-  q?: string;
-  source?: string;
-  kind?: string;
-  region?: number | 'none';
-  run?: number;
-  aside?: 'show';
-  sort?: 'date' | 'question';
-  cursor?: string;
-  limit?: number;
-  keptOutOffset?: number;
-  answeredWithdrawalsOffset?: number;
-  refusedPartsOffset?: number;
-}
+/** The request as `reviewQueueQuerySchema` leaves it. */
+type ReviewQueueQuery = z.output<typeof reviewQueueQuerySchema>;
 
 /** The words a `kind` chip may carry: the five classes and the three sub-kinds. */
 const KIND_WORDS = new Set<string>([...QUEUE_KINDS, ...WAITING_SUBS]);
@@ -169,19 +155,20 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
  * question was asked by and these are answered, and neither list is counted in
  * the facets that the region chip states.
  */
-export async function getReviewQueue(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user!.id;
-  const isAdmin = req.user!.role === 'admin';
-  const query = req.query as ReviewQueueQuery;
-  const limit = Number(query.limit ?? QUEUE_PAGE_SIZE);
+export async function getReviewQueue(
+  { query, caller }: { query: ReviewQueueQuery; caller: Express.User },
+): Promise<ReviewQueue> {
+  const userId = caller.id;
+  const isAdmin = caller.role === 'admin';
+  const { limit } = query;
   const filters = queueFilters(query, limit);
   // The three lists that are not open questions keep an offset each: the page
   // renders them in blocks of their own, so a shared number would page one
   // whenever a curator paged another.
   const offsets = {
-    keptOut: query.keptOutOffset ?? 0,
-    answeredWithdrawals: query.answeredWithdrawalsOffset ?? 0,
-    refusedParts: query.refusedPartsOffset ?? 0,
+    keptOut: query.keptOutOffset,
+    answeredWithdrawals: query.answeredWithdrawalsOffset,
+    refusedParts: query.refusedPartsOffset,
   };
 
   // Those three ask for one row more than the page, so "is there another page" is
@@ -525,7 +512,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // then a lookup by id, not an order of its own); `total` and `facets` are counted over
   // the union under the filter; and `paging` is the one cursor the seven kinds share,
   // beside the three offsets that are not part of it.
-  respond(res, ReviewQueue, {
+  return {
     missing: cards(missing),
     refused: cards(refused),
     keptOut: cards(keptOutPage.items),
@@ -553,7 +540,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
         offset: offsets.refusedParts, hasMore: refusedPartsPage.hasMore,
       },
     },
-  });
+  };
 }
 
 /**
