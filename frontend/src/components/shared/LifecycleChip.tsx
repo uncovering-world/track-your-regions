@@ -20,10 +20,11 @@
  */
 
 import { Chip, Tooltip } from '@mui/material';
+import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 
 export interface LifecycleState {
-  source_membership?: 'present' | 'former';
-  existence?: 'extant' | 'lost';
+  source_membership?: SourceMembership;
+  existence?: Existence;
 }
 
 /** The label and reason for a state, or null when there is nothing to say. */

@@ -59,6 +59,7 @@ import type { PlaceToCorrect } from '../shared/PointCorrection';
 import { HelpHint } from './HelpHint';
 import { displayNameOf } from '../../utils/displayName';
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
+import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 
 type WithdrawnPoint = NonNullable<ReviewQueueItem['withdrawn_points']>[number];
 
@@ -171,7 +172,7 @@ function PointVerdict({ item, point, onDone }: {
   const hasPoint = typeof point.latitude === 'number' && typeof point.longitude === 'number';
 
   const decide = useMutation({
-    mutationFn: (decision: { membership?: 'present' | 'former'; existence?: 'extant' | 'lost' }) =>
+    mutationFn: (decision: { membership?: SourceMembership; existence?: Existence }) =>
       setLocationState(point.id, {
         ...decision,
         note: note || undefined,
@@ -428,7 +429,7 @@ function AnsweredVerdict({ item, point, onDone }: {
   const hasPoint = typeof point.latitude === 'number' && typeof point.longitude === 'number';
 
   const takeBack = useMutation({
-    mutationFn: (decision: { membership?: 'present' | 'former'; existence?: 'extant' | 'lost' }) =>
+    mutationFn: (decision: { membership?: SourceMembership; existence?: Existence }) =>
       setLocationState(point.id, {
         ...decision,
         // The row as this card is showing it, both axes and the flag. Compared under

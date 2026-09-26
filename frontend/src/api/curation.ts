@@ -14,6 +14,7 @@ import type {
   RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from '@tyr/shared/api';
 import { API_URL, authFetchJson } from './fetchUtils';
+import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -49,8 +50,8 @@ export async function rejectExperience(
 export async function setExperienceState(
   experienceId: number,
   decision: {
-    membership?: 'present' | 'former';
-    existence?: 'extant' | 'lost';
+    membership?: SourceMembership;
+    existence?: Existence;
     note?: string;
     /**
      * The row as the card showed it, flag included. Compared under the write
@@ -58,7 +59,7 @@ export async function setExperienceState(
      * either axis, so the axes alone cannot tell a live question from a
      * withdrawn one.
      */
-    expected: { membership: 'present' | 'former'; existence: 'extant' | 'lost'; flagged: boolean };
+    expected: { membership: SourceMembership; existence: Existence; flagged: boolean };
   },
 ): Promise<ExperienceStateResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/state`, {
@@ -82,10 +83,10 @@ export async function setExperienceState(
 export async function setLocationState(
   locationId: number,
   decision: {
-    membership?: 'present' | 'former';
-    existence?: 'extant' | 'lost';
+    membership?: SourceMembership;
+    existence?: Existence;
     note?: string;
-    expected: { membership: 'present' | 'former'; existence: 'extant' | 'lost'; flagged: boolean };
+    expected: { membership: SourceMembership; existence: Existence; flagged: boolean };
   },
 ): Promise<LocationStateResult> {
   return authFetchJson(`${API_URL}/api/experiences/locations/${locationId}/state`, {

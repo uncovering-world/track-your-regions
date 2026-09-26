@@ -49,6 +49,7 @@ import { arrivalWaitingSql, contentsWaitingSql, heldWaitingSql } from './waiting
 import type { PlacementFailure, PublishResult } from '../../api/responses/curation.js';
 import type { ReviewAnswerDid } from '../../api/responses/reviewQueue.js';
 import type { QueueKind as AnswerKind, ReviewAnswer as Answer } from './reviewQueueVocabulary.js';
+import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 
 export type { AnswerKind, Answer };
 
@@ -251,10 +252,10 @@ async function answerRefused(who: Answerer, answer: Answer): Promise<Outcome> {
   };
 }
 
-type Axes = { source_membership: 'present' | 'former'; existence: 'extant' | 'lost'; missing_since: Date | null };
+type Axes = { source_membership: SourceMembership; existence: Existence; missing_since: Date | null };
 
 /** The verdict the answer names, on either an object or a point. */
-function verdictFor(answer: Answer): { membership?: 'former' | 'present'; existence?: 'lost' } {
+function verdictFor(answer: Answer): { membership?: SourceMembership; existence?: 'lost' } {
   if (answer === 'lost') return { existence: 'lost' };
   return { membership: answer === 'accept' ? 'former' : 'present' };
 }

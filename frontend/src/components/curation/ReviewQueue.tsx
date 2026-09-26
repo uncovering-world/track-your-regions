@@ -42,6 +42,7 @@ import { FactTable, ProposalSummary } from './FactTable';
 import { rowsFor } from './factRows';
 import { fieldLabel } from './fieldMeaning';
 import { RefusalLine } from './RefusalLine';
+import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 
 
 /**
@@ -54,7 +55,7 @@ import { RefusalLine } from './RefusalLine';
 export function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const [note, setNote] = useState('');
   const decide = useMutation({
-    mutationFn: (decision: { membership?: 'present' | 'former'; existence?: 'extant' | 'lost' }) =>
+    mutationFn: (decision: { membership?: SourceMembership; existence?: Existence }) =>
       setExperienceState(item.id, {
         ...decision,
         note: note || undefined,
