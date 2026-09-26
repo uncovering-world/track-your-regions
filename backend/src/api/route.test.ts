@@ -23,7 +23,7 @@ vi.mock('../db/index.js', () => ({
 import { verifyAccessToken } from '../services/authService.js';
 import { pool } from '../db/index.js';
 import { errorHandler } from '../middleware/errorHandler.js';
-import { defineRoute, NO_CONTENT, routerOf, shadowOf, stream, type Route } from './route.js';
+import { defineRoute, NO_CONTENT, REDIRECT, routerOf, shadowOf, stream, whenAnswered, type Route } from './route.js';
 
 const mockedVerify = verifyAccessToken as unknown as ReturnType<typeof vi.fn>;
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -92,6 +92,24 @@ const routes: Route[] = [
       send({ tick: 1 });
       if (query.fail === 'true') throw new Error('after the headers');
       send({ tick: 2 });
+    },
+  }),
+  defineRoute({
+    method: 'post', path: '/session', access: 'public', cache: 'token',
+    response: z.strictObject({ accessToken: z.string() }),
+    handler: async () => ({ accessToken: 't' }),
+  }),
+  defineRoute({
+    method: 'get', path: '/away', access: 'public', cache: 'no-store',
+    query: z.object({ by: z.enum(['handler', 'middleware', 'nothing']).default('handler') }),
+    response: REDIRECT,
+    handler: async ({ query }, { res }) => {
+      if (query.by === 'handler') {
+        res.redirect('https://example.org/there');
+      } else if (query.by === 'middleware') {
+        // What passport does: answer from a callback, never calling next.
+        await whenAnswered(res, () => setTimeout(() => res.redirect('https://example.org/later'), 5));
+      }
     },
   }),
   defineRoute({
@@ -289,6 +307,33 @@ describe('a streamed answer', () => {
   });
 });
 
+describe('an answer that hands out a token', () => {
+  it('is kept by no cache, and says so in both fields RFC 6749 § 5.1 names', async () => {
+    const answer = await send('POST', '/session', { body: {} });
+    expect(answer.status).toBe(200);
+    expect(answer.headers['cache-control']).toBe('private, no-store');
+    expect(answer.headers.pragma).toBe('no-cache');
+  });
+});
+
+describe('an answer the handler writes itself', () => {
+  it('sends the redirect the handler writes', async () => {
+    const answer = await sendRaw('/away', 't');
+    expect(answer.status).toBe(302);
+    expect(answer.headers.location).toBe('https://example.org/there');
+  });
+
+  it('waits for a redirect written later, the way passport answers', async () => {
+    const answer = await sendRaw('/away?by=middleware', 't');
+    expect(answer.status).toBe(302);
+    expect(answer.headers.location).toBe('https://example.org/later');
+  });
+
+  it('answers 500 for a handler that returned without answering', async () => {
+    expect((await sendRaw('/away?by=nothing', 't')).status).toBe(500);
+  });
+});
+
 describe('the cache header each policy writes', () => {
   it.each([
     ['/public', undefined, 'public, no-cache'],
@@ -336,6 +381,13 @@ describe('what the registry refuses to build', () => {
     expect(shadowOf([route('post', '/:id')], route('get', '/search'))).toBeUndefined();
     expect(shadowOf([route('get', '/:id')], route('get', '/search/more'))).toBeUndefined();
     expect(shadowOf([route('get', '/:id/geometry')], route('get', '/root/geometry'))?.path).toBe('/:id/geometry');
+  });
+
+  it('refuses a route that hands out an access token under any policy but token', () => {
+    const tokenRoute = { ...route('post', '/login'), response: z.strictObject({ accessToken: z.string() }) };
+    expect(() => routerOf([tokenRoute]))
+      .toThrow('POST /login hands out an access token, and must declare the token cache policy');
+    expect(() => routerOf([{ ...tokenRoute, cache: 'token' }])).not.toThrow();
   });
 
   it('refuses a shared cache on a route that reads a token, however the declaration was built', () => {
