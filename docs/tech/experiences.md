@@ -3085,7 +3085,7 @@ authenticated account could read a refused row's points there. Everything else i
 person's own record — what they visited, marking and unmarking it — and stays unfiltered whatever a
 kind later decides about the building.
 
-### Curator (`requireAuth + requireCurator`)
+### Curator (declared `curator`)
 
 Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in `backend/src/api/responses/curation.ts` (ADR-0066), and the web types each answer from it. Each one that can re-place the object after its commit reports the outcome in `PublishResult`'s words: `placementFailed` with the named `placementFailedWorldViews`, or neither, built once by `placementReport` (`controllers/experience/placementReport.ts`). The curation log's entries are typed and mapped key by key: `action` is the curation-log vocabulary, and `curator_name` is null for a curator with no display name.
 
