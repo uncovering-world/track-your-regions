@@ -38,6 +38,9 @@ export async function answer(route: Route, req: SpecRequest, res: unknown): Prom
   if ('events' in route.response && !('safeParse' in route.response)) {
     throw new Error(`${route.method.toUpperCase()} ${route.path} answers with a stream: drive its handler with a send of the spec's own`);
   }
+  if ('redirect' in route.response && !('safeParse' in route.response)) {
+    throw new Error(`${route.method.toUpperCase()} ${route.path} answers with a redirect its handler writes: drive the handler directly`);
+  }
   const out = res as Response;
   const parts = {
     params: route.params ? route.params.parse(req.params ?? {}) : undefined,

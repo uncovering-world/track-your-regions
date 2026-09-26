@@ -55,13 +55,21 @@ export type Access = 'public' | 'optional' | 'signed-in' | 'curator' | 'admin';
  *   public reference data behind a gate (`middleware/cacheHeaders.ts` has why).
  * - `shared-revalidate`: stored by any cache, and revalidated on every use. The
  *   same body for everyone; `public` routes only.
+ * - `token`: an answer that hands the caller an access token — `no-store`,
+ *   with the `Pragma: no-cache` RFC 6749 § 5.1 asks for beside it. Most of
+ *   these answer a `POST` no browser stores, and most run before any token is
+ *   held, so neither the method nor `requireAuth` can be what says it; `Pragma`
+ *   is deprecated in a response (RFC 9111 § 5.4) and read by nothing here, and
+ *   states the intent for an auditor. A route whose response schema declares
+ *   `accessToken` must say `token`; `routerOf` refuses one that does not.
  */
-export type CachePolicy = 'no-store' | 'revalidate' | 'shared-revalidate';
+export type CachePolicy = 'no-store' | 'revalidate' | 'shared-revalidate' | 'token';
 
 const CACHE_HEADER: Record<CachePolicy, string> = {
   'no-store': 'private, no-store',
   revalidate: 'private, no-cache',
   'shared-revalidate': 'public, no-cache',
+  token: 'private, no-store',
 };
 
 export type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
@@ -87,8 +95,47 @@ export function stream<E extends z.ZodType>(events: E): StreamAnswer<E> {
   return { events };
 }
 
-function isStream(response: z.ZodType | StreamAnswer<z.ZodType>): response is StreamAnswer<z.ZodType> {
+function isStream(response: Answer): response is StreamAnswer<z.ZodType> {
   return 'events' in response && !('safeParse' in response);
+}
+
+/**
+ * An answer the handler writes itself: a redirect, such as passport's to a
+ * provider and back to the web. The handler returns once the response is
+ * finished; `whenAnswered` waits for that where something else writes it.
+ */
+export const REDIRECT = { redirect: true } as const;
+export type RedirectAnswer = typeof REDIRECT;
+
+function isRedirect(response: Answer): response is RedirectAnswer {
+  return 'redirect' in response && !('safeParse' in response);
+}
+
+/** What a route may answer with: a body's schema, a stream, or a redirect. */
+type Answer = z.ZodType | StreamAnswer<z.ZodType> | RedirectAnswer;
+
+/**
+ * Run `start`, which hands the response to middleware of its own (passport),
+ * and settle once the response has finished — or with the failure it passes
+ * to `next`. Passport answers a redirect without calling `next`, so waiting on
+ * it alone would never settle.
+ */
+export function whenAnswered(res: Response, start: (next: NextFunction) => void): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (res.writableEnded) {
+      resolve();
+      return;
+    }
+    res.once('finish', () => resolve());
+    res.once('close', () => resolve());
+    start((err?: unknown) => (err ? reject(err) : reject(new Error('The response was handed on without an answer'))));
+  });
+}
+
+/** Whether a response schema hands the caller an access token. */
+function declaresAccessToken(response: Answer): boolean {
+  const shape = (response as { shape?: Record<string, unknown> }).shape;
+  return typeof shape === 'object' && shape !== null && 'accessToken' in shape;
 }
 
 /** What a streaming handler writes with. */
@@ -138,7 +185,7 @@ export type RouteDeclaration<
   PS extends z.ZodType | undefined,
   QS extends z.ZodType | undefined,
   BS extends z.ZodType | undefined,
-  RS extends z.ZodType | StreamAnswer<z.ZodType>,
+  RS extends Answer,
   NC extends boolean,
 > = {
   readonly method: Method;
@@ -161,6 +208,8 @@ export type RouteDeclaration<
   readonly scope?: (input: RouteParts<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>>) => VisibleScope | undefined;
   readonly handler: RS extends StreamAnswer<infer E>
     ? (input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, A>, exchange: StreamExchange<z.output<E>>) => Promise<void>
+    : RS extends RedirectAnswer
+    ? (input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, A>, exchange: RouteExchange) => Promise<void>
     : (
       input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, A>,
       exchange: RouteExchange,
@@ -177,7 +226,7 @@ export interface Route {
   readonly params?: z.ZodType;
   readonly query?: z.ZodType;
   readonly body?: z.ZodType;
-  readonly response: z.ZodType | StreamAnswer<z.ZodType>;
+  readonly response: Answer;
   readonly status?: number;
   readonly noContent?: boolean;
   readonly scope?: (input: RouteParts<unknown, unknown, unknown>) => VisibleScope | undefined;
@@ -191,7 +240,7 @@ export interface Route {
 export function defineRoute<
   const P extends string,
   A extends Access,
-  RS extends z.ZodType | StreamAnswer<z.ZodType>,
+  RS extends Answer,
   PS extends z.ZodType | undefined = undefined,
   QS extends z.ZodType | undefined = undefined,
   BS extends z.ZodType | undefined = undefined,
@@ -243,6 +292,7 @@ function chainOf(route: Route): RequestHandler[] {
   const cacheHeader: RequestHandler = (_req, res, next) => {
     // eslint-disable-next-line no-restricted-syntax -- CACHE_HEADER's one public value is refused off a public route by routerOf and by the declaration's type
     res.setHeader('Cache-Control', CACHE_HEADER[route.cache]);
+    if (route.cache === 'token') res.setHeader('Pragma', 'no-cache');
     next();
   };
   // Every failure goes to `next`, and from there to the error handler: a
@@ -265,6 +315,13 @@ function chainOf(route: Route): RequestHandler[] {
       const input = route.access === 'public' ? parts : { ...parts, caller };
       if (isStream(route.response)) {
         await openStream(route.response.events, input, route, req, res);
+        return;
+      }
+      if (isRedirect(route.response)) {
+        await route.handler(input, { req, res });
+        // A caller that left before the answer settles `whenAnswered` too, with
+        // nothing written; only a live connection left unanswered is a fault.
+        if (!res.headersSent && !res.destroyed) throw new Error(`${route.method.toUpperCase()} ${route.path} returned without answering`);
         return;
       }
       const body = await route.handler(input, { req, res });
@@ -324,6 +381,9 @@ export function routerOf(routes: readonly Route[]): Router {
     }
     if (route.cache === 'shared-revalidate' && route.access !== 'public') {
       throw new Error(`${route.method.toUpperCase()} ${route.path} is ${route.access}, and its answer may not be kept by a shared cache`);
+    }
+    if (declaresAccessToken(route.response) && route.cache !== 'token') {
+      throw new Error(`${route.method.toUpperCase()} ${route.path} hands out an access token, and must declare the token cache policy`);
     }
     router[route.method](route.path, ...chainOf(route));
   });
