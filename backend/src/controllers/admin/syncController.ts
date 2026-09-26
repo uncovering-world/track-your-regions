@@ -4,9 +4,8 @@
  * Handles sync operations for experience sources (UNESCO, etc.)
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import {
+import type { z } from 'zod/v4';
+import type {
   AssignmentCancelled,
   AssignmentStarted,
   AssignmentStatus,
@@ -57,7 +56,12 @@ import {
   cancelAssignment,
   getExperienceCountsByRegion,
 } from '../../services/sync/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { badRequest, createError, notFound } from '../../middleware/errorHandler.js';
+import type {
+  cacheKindParamSchema, cacheTtlBodySchema, clearCacheQuerySchema, experienceCountsQuerySchema, logIdParamSchema,
+  regionAssignmentStatusQuerySchema, reorderSourcesBodySchema, sourceIdParamSchema, startRegionAssignmentBodySchema,
+  startSyncBodySchema, syncChangesQuerySchema, syncLogsQuerySchema,
+} from '../../types/index.js';
 import {
   cacheSummary, clearCache, setCacheTtl, CACHED_KINDS_BY_SOURCE, type CacheKind,
 } from '../../services/sync/wikidataCache.js';
@@ -97,8 +101,13 @@ const syncRegistry: Record<
  * Start sync for a source
  * POST /api/admin/sync/sources/:sourceId/start
  */
-export async function startSync(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
+type SourceParams = z.output<typeof sourceIdParamSchema>;
+
+export async function startSync(
+  { params: { sourceId }, body, caller }: {
+    params: SourceParams; body: z.output<typeof startSyncBodySchema>; caller: Express.User;
+  },
+): Promise<SyncStarted> {
 
   // Validate source exists
   const source = await pool.query<Pick<ExperienceSourcesRow, 'id' | 'name' | 'is_active'>>(
@@ -106,52 +115,39 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
     [sourceId]
   );
 
-  if (source.rows.length === 0) {
-    res.status(404).json({ error: 'Source not found' });
-    return;
-  }
-
-  if (!source.rows[0].is_active) {
-    res.status(400).json({ error: 'Source is not active' });
-    return;
-  }
+  if (source.rows.length === 0) throw notFound('Source not found');
+  if (!source.rows[0].is_active) throw badRequest('Source is not active');
 
   // Check if already running
   const existing = runningSyncs.get(sourceId);
   if (existing && !isTerminalSyncStatus(existing.status)) {
-    res.status(409).json({ error: 'Sync already in progress for this source' });
-    return;
+    throw createError('Sync already in progress for this source', 409);
   }
 
-  // Get triggering user ID
-  const triggeredBy = req.user?.id || null;
+  const triggeredBy = caller.id;
 
-  const dryRun = req.body.dryRun === true;
+  const dryRun = body.dryRun === true;
   // Asked for per run rather than configured per source: the reason to ignore
   // the cache is always about *this* attempt — the source published something a
   // moment ago, or a cached answer is suspected of being wrong.
-  const refreshCache = req.body.refreshCache === true;
+  const refreshCache = body.refreshCache === true;
 
   // Start sync based on source type
   const syncFn = syncRegistry[sourceId];
-  if (!syncFn) {
-    res.status(400).json({ error: `Sync not implemented for source: ${source.rows[0].name}` });
-    return;
-  }
+  if (!syncFn) throw badRequest(`Sync not implemented for source: ${source.rows[0].name}`);
 
   syncFn(triggeredBy, { dryRun, refreshCache }).catch((err) => {
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- sourceId is a parseInt result, so it cannot carry a format specifier
-    console.error(`[Sync Controller] Sync error for source ${sourceId}:`, err);
+    console.error('[Sync Controller] Sync error for source %s:', sourceId, err);
   });
 
-  respond(res, SyncStarted, {
+  return {
     started: true,
     sourceId,
     sourceName: source.rows[0].name,
     dryRun,
     refreshCache,
     message: buildStartMessage({ dryRun, refreshCache }),
-  });
+  };
 }
 
 function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean }): string {
@@ -171,9 +167,8 @@ function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean }): st
  * What answers we are keeping from the source, and how old they are.
  * GET /api/admin/sync/sources/:sourceId/cache
  */
-export async function getWikidataCache(req: Request, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
-  respond(res, WikidataCache, { kinds: await cacheSummary(sourceId) });
+export async function getWikidataCache({ params: { sourceId } }: { params: SourceParams }): Promise<WikidataCache> {
+  return { kinds: await cacheSummary(sourceId) };
 }
 
 /**
@@ -183,11 +178,11 @@ export async function getWikidataCache(req: Request, res: Response): Promise<voi
  * A delete rather than an expiry stamp: an admin pressing this means "ask the
  * source again", and a row marked expired reads the same as one that aged out.
  */
-export async function clearWikidataCache(req: Request, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
-  const kind = typeof req.query.kind === 'string' ? req.query.kind : undefined;
+export async function clearWikidataCache(
+  { params: { sourceId }, query: { kind } }: { params: SourceParams; query: z.output<typeof clearCacheQuerySchema> },
+): Promise<WikidataCacheCleared> {
   const removed = await clearCache(sourceId, kind);
-  respond(res, WikidataCacheCleared, { removed, kind: kind ?? null });
+  return { removed, kind: kind ?? null };
 }
 
 /**
@@ -199,10 +194,11 @@ export async function clearWikidataCache(req: Request, res: Response): Promise<v
  * kind at once, and the number says whether the next run re-fetches five things
  * or five hundred.
  */
-export async function setWikidataCacheTtl(req: Request, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
-  const kind = String(req.params.kind);
-  const hours = Number((req.body as { hours: number }).hours);
+export async function setWikidataCacheTtl(
+  { params: { sourceId, kind }, body: { hours } }: {
+    params: z.output<typeof cacheKindParamSchema>; body: z.output<typeof cacheTtlBodySchema>;
+  },
+): Promise<WikidataCacheTtlSet> {
 
   // The hours are already bounded by Zod (a minute to a month), but the kind is
   // any string the schema's length allows. An unknown one would write a policy
@@ -212,24 +208,20 @@ export async function setWikidataCacheTtl(req: Request, res: Response): Promise<
   // learns which kinds this source actually has.
   const declared = CACHED_KINDS_BY_SOURCE[sourceId] ?? [];
   if (!declared.includes(kind as CacheKind)) {
-    res.status(400).json({
-      error: declared.length === 0
-        ? 'This source caches nothing, so it has no lifetimes to set'
-        : `Unknown cache kind "${kind}". This source caches: ${declared.join(', ')}`,
-    });
-    return;
+    throw badRequest(declared.length === 0
+      ? 'This source caches nothing, so it has no lifetimes to set'
+      : `Unknown cache kind "${kind}". This source caches: ${declared.join(', ')}`);
   }
 
   const { restamped } = await setCacheTtl(sourceId, kind, Math.round(hours * 60 * 60 * 1000));
-  respond(res, WikidataCacheTtlSet, { kind, hours, restamped });
+  return { kind, hours, restamped };
 }
 
 /**
  * Get sync status for a source
  * GET /api/admin/sync/sources/:sourceId/status
  */
-export async function getSyncStatus(req: Request, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
+export async function getSyncStatus({ params: { sourceId } }: { params: SourceParams }): Promise<SyncStatus> {
 
   // Get in-memory sync status (generic for all sources)
   const status = getServiceSyncStatus(sourceId);
@@ -241,7 +233,7 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
     // and a copy that lags shows up as a button promising what the server
     // refuses.
     const cancellable = isCancellable(status);
-    respond(res, SyncStatus, {
+    return {
       running: isRunning,
       cancellable,
       kind: status.kind,
@@ -261,8 +253,7 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
       currentItem: status.currentItem,
       logId: status.logId,
       dryRun: status.dryRun,
-    });
-    return;
+    };
   }
 
   // No in-memory status - check the database for last sync status
@@ -271,37 +262,30 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
     [sourceId]
   );
 
-  if (source.rows.length === 0) {
-    res.status(404).json({ error: 'Source not found' });
-    return;
-  }
+  if (source.rows.length === 0) throw notFound('Source not found');
 
-  respond(res, SyncStatus, {
+  return {
     running: false,
     lastSyncAt: source.rows[0].last_sync_at === null ? null : source.rows[0].last_sync_at.toISOString(),
     // The CHECK is what makes the stored text one of the closing statuses.
     lastSyncStatus: source.rows[0].last_sync_status as CheckValue<'experience_sources', 'last_sync_status'> | null,
-  });
+  };
 }
 
 /**
  * Cancel sync for a source
  * POST /api/admin/sync/sources/:sourceId/cancel
  */
-export async function cancelSync(req: Request, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
+export async function cancelSync({ params: { sourceId } }: { params: SourceParams }): Promise<SyncCancelled> {
 
   const source = await pool.query(
     'SELECT id FROM experience_sources WHERE id = $1',
     [sourceId]
   );
-  if (source.rows.length === 0) {
-    res.status(404).json({ error: 'Source not found' });
-    return;
-  }
+  if (source.rows.length === 0) throw notFound('Source not found');
 
   const cancelled = cancelServiceSync(sourceId);
-  respond(res, SyncCancelled, { cancelled });
+  return { cancelled };
 }
 
 /**
@@ -316,9 +300,10 @@ export async function cancelSync(req: Request, res: Response): Promise<void> {
  * catalogue is an operator's decision, and under a gated source a proposal
  * would be a thousand cards nobody asked for.
  */
-export async function fixImages(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
-  const triggeredBy = req.user?.id || null;
+export async function fixImages(
+  { params: { sourceId }, caller }: { params: SourceParams; caller: Express.User },
+): Promise<PictureRepairStarted> {
+  const triggeredBy = caller.id;
 
   // The same three doors startSync stands at, answered in its order before
   // anything starts: a source that does not exist, one switched off, and a run
@@ -331,30 +316,19 @@ export async function fixImages(req: AuthenticatedRequest, res: Response): Promi
     'SELECT id, is_active FROM experience_sources WHERE id = $1',
     [sourceId],
   );
-  if (source.rows.length === 0) {
-    res.status(404).json({ error: 'Source not found' });
-    return;
-  }
-  if (!source.rows[0].is_active) {
-    res.status(400).json({ error: 'Source is not active' });
-    return;
-  }
+  if (source.rows.length === 0) throw notFound('Source not found');
+  if (!source.rows[0].is_active) throw badRequest('Source is not active');
   const repair = PICTURE_REPAIRS[sourceId];
-  if (!repair) {
-    res.status(400).json({ error: 'Fix images not implemented for this source' });
-    return;
-  }
+  if (!repair) throw badRequest('Fix images not implemented for this source');
   const existing = runningSyncs.get(sourceId);
   if (existing && !isTerminalSyncStatus(existing.status)) {
-    res.status(409).json({ error: 'Sync already in progress for this source' });
-    return;
+    throw createError('Sync already in progress for this source', 409);
   }
 
   repair(triggeredBy).catch((err) => {
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- sourceId is a parseInt result, so it cannot carry a format specifier
-    console.error(`[Sync Controller] Fix images error for source ${sourceId}:`, err);
+    console.error('[Sync Controller] Fix images error for source %s:', sourceId, err);
   });
-  respond(res, PictureRepairStarted, { started: true, message: 'Fixing pictures. Poll /status endpoint for progress.' });
+  return { started: true, message: 'Fixing pictures. Poll /status endpoint for progress.' };
 }
 
 /**
@@ -403,10 +377,9 @@ const SYNC_LOG_COLUMNS_SQL = `
  * Get sync history/logs
  * GET /api/admin/sync/logs
  */
-export async function getSyncLogs(req: Request, res: Response): Promise<void> {
-  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : null;
-  const limit = Math.min(parseInt(String(req.query.limit)) || 20, 100);
-  const offset = parseInt(String(req.query.offset)) || 0;
+export async function getSyncLogs(
+  { query: { sourceId, limit, offset } }: { query: z.output<typeof syncLogsQuerySchema> },
+): Promise<SyncLogs> {
 
   let query = `
     SELECT ${SYNC_LOG_COLUMNS_SQL}
@@ -437,20 +410,21 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
   }
   const countResult = await pool.query(countQuery, countParams);
 
-  respond(res, SyncLogs, {
+  return {
     logs: result.rows.map(syncLogOf),
     total: parseInt(countResult.rows[0].count),
     limit,
     offset,
-  });
+  };
 }
 
 /**
  * Get single sync log with error details
  * GET /api/admin/sync/logs/:logId
  */
-export async function getSyncLogDetails(req: Request, res: Response): Promise<void> {
-  const logId = parseInt(String(req.params.logId));
+type LogParams = z.output<typeof logIdParamSchema>;
+
+export async function getSyncLogDetails({ params: { logId } }: { params: LogParams }): Promise<SyncLogDetail> {
 
   const result = await pool.query<SyncLogRow & { error_details: unknown }>(
     `SELECT ${SYNC_LOG_COLUMNS_SQL}, l.error_details
@@ -461,12 +435,9 @@ export async function getSyncLogDetails(req: Request, res: Response): Promise<vo
     [logId]
   );
 
-  if (result.rows.length === 0) {
-    res.status(404).json({ error: 'Sync log not found' });
-    return;
-  }
+  if (result.rows.length === 0) throw notFound('Sync log not found');
 
-  respond(res, SyncLogDetail, syncLogDetailOf(result.rows[0]));
+  return syncLogDetailOf(result.rows[0]);
 }
 
 /**
@@ -477,12 +448,11 @@ export async function getSyncLogDetails(req: Request, res: Response): Promise<vo
  * Ordering puts the significant ones first, since that is what a reviewer came
  * for.
  */
-export async function getSyncLogChanges(req: Request, res: Response): Promise<void> {
-  const logId = parseInt(String(req.params.logId));
-  const { type, significance, significantOnly, limit = 50, offset = 0 } = req.query as {
-    type?: string; significance?: string; significantOnly?: 'true' | 'false';
-    limit?: number; offset?: number;
-  };
+export async function getSyncLogChanges(
+  { params: { logId }, query: { type, significance, significantOnly, limit, offset } }: {
+    params: LogParams; query: z.output<typeof syncChangesQuerySchema>;
+  },
+): Promise<SyncChanges> {
 
   const conditions = ['sync_log_id = $1'];
   const params: unknown[] = [logId];
@@ -557,12 +527,12 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
     [...params, limit, offset]
   );
 
-  respond(res, SyncChanges, {
+  return {
     changes: rowsResult.rows.map(syncChangeOf),
     total: Number(countResult.rows[0]?.total ?? 0),
-    limit: Number(limit),
-    offset: Number(offset),
-  });
+    limit,
+    offset,
+  };
 }
 
 /**
@@ -573,7 +543,7 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
  * the gate is `curationGateController.ts`, because this file is about starting, watching
  * and cancelling runs while that is about what a run is allowed to show.
  */
-export async function getSources(req: Request, res: Response): Promise<void> {
+export async function getSources(): Promise<ExperienceSources> {
   // Get sources
   const sourcesResult = await pool.query<SourceRow>(`
     SELECT
@@ -643,7 +613,7 @@ export async function getSources(req: Request, res: Response): Promise<void> {
   // existed to feed that comparison and no client ever read it on its own. The
   // column is still written by `assignExperiencesToRegions` and still available
   // to whatever wants it later.
-  respond(res, ExperienceSources, sourcesResult.rows.map(source => experienceSourceOf(source, {
+  return sourcesResult.rows.map(source => experienceSourceOf(source, {
     // Three zeros for a source the aggregate returned no row for — it groups, so a
     // source with nothing waiting is absent rather than zero — but `null` when the
     // aggregate itself did not answer. A zero there would be a claim about the source
@@ -662,7 +632,7 @@ export async function getSources(req: Request, res: Response): Promise<void> {
     // same registry the route answers from — the museums' missing pictures, and
     // the World Heritage ones the Centre's terms do not let us show (ADR-0043).
     repairsPictures: source.id in PICTURE_REPAIRS,
-  })));
+  }));
 }
 
 // =============================================================================
@@ -673,14 +643,9 @@ export async function getSources(req: Request, res: Response): Promise<void> {
  * Start region assignment for a world view
  * POST /api/admin/experiences/assign-regions
  */
-export async function startRegionAssignment(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.body.worldViewId || req.query.worldViewId));
-  const sourceId = req.body.sourceId ? parseInt(String(req.body.sourceId)) : undefined;
-
-  if (!worldViewId || isNaN(worldViewId)) {
-    res.status(400).json({ error: 'worldViewId is required' });
-    return;
-  }
+export async function startRegionAssignment(
+  { body: { worldViewId, sourceId } }: { body: z.output<typeof startRegionAssignmentBodySchema> },
+): Promise<AssignmentStarted> {
 
   // Validate world view exists
   const worldView = await pool.query<Pick<WorldViewsRow, 'id' | 'name'>>(
@@ -688,46 +653,35 @@ export async function startRegionAssignment(req: Request, res: Response): Promis
     [worldViewId]
   );
 
-  if (worldView.rows.length === 0) {
-    res.status(404).json({ error: 'World view not found' });
-    return;
-  }
+  if (worldView.rows.length === 0) throw notFound('World view not found');
 
   // Start assignment in background
   assignExperiencesToRegions(worldViewId, sourceId).catch((err) => {
     console.error('[Sync Controller] Region assignment error:', err);
   });
 
-  respond(res, AssignmentStarted, {
+  return {
     started: true,
     worldViewId,
     worldViewName: worldView.rows[0].name,
     sourceId: sourceId || null,
     message: 'Region assignment started. Poll /status endpoint for progress.',
-  });
+  };
 }
 
 /**
  * Get region assignment status
  * GET /api/admin/experiences/assign-regions/status
  */
-export async function getRegionAssignmentStatus(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.query.worldViewId));
-
-  if (!worldViewId || isNaN(worldViewId)) {
-    res.status(400).json({ error: 'worldViewId query parameter is required' });
-    return;
-  }
-
+export async function getRegionAssignmentStatus(
+  { query: { worldViewId } }: { query: z.output<typeof regionAssignmentStatusQuerySchema> },
+): Promise<AssignmentStatus> {
   const status = getAssignmentStatus(worldViewId);
-  if (!status) {
-    respond(res, AssignmentStatus, { running: false });
-    return;
-  }
+  if (!status) return { running: false };
 
   const isRunning = !isTerminalSyncStatus(status.status);
 
-  respond(res, AssignmentStatus, {
+  return {
     running: isRunning,
     status: status.status,
     statusMessage: status.statusMessage,
@@ -735,40 +689,28 @@ export async function getRegionAssignmentStatus(req: Request, res: Response): Pr
     ancestorAssignments: status.ancestorAssignments,
     totalAssignments: status.directAssignments + status.ancestorAssignments,
     errors: status.errors,
-  });
+  };
 }
 
 /**
  * Cancel region assignment
  * POST /api/admin/experiences/assign-regions/cancel
  */
-export async function cancelRegionAssignment(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.body.worldViewId || req.query.worldViewId));
-
-  if (!worldViewId || isNaN(worldViewId)) {
-    res.status(400).json({ error: 'worldViewId is required' });
-    return;
-  }
-
+export async function cancelRegionAssignment(
+  { body: { worldViewId } }: { body: z.output<typeof startRegionAssignmentBodySchema> },
+): Promise<AssignmentCancelled> {
   const cancelled = cancelAssignment(worldViewId);
-  respond(res, AssignmentCancelled, { cancelled });
+  return { cancelled };
 }
 
 /**
  * Get experience counts by region
  * GET /api/admin/experiences/counts-by-region
  */
-export async function getExperienceCounts(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.query.worldViewId));
-  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : undefined;
-
-  if (!worldViewId || isNaN(worldViewId)) {
-    res.status(400).json({ error: 'worldViewId query parameter is required' });
-    return;
-  }
-
-  const counts = await getExperienceCountsByRegion(worldViewId, sourceId);
-  respond(res, PlacementCounts, counts);
+export async function getExperienceCounts(
+  { query: { worldViewId, sourceId } }: { query: z.output<typeof experienceCountsQuerySchema> },
+): Promise<PlacementCounts> {
+  return getExperienceCountsByRegion(worldViewId, sourceId);
 }
 
 /**
@@ -776,13 +718,9 @@ export async function getExperienceCounts(req: Request, res: Response): Promise<
  * PUT /api/admin/sync/sources/reorder
  * Body: { sourceIds: [1, 3, 2] }  -- array of source IDs in desired order
  */
-export async function reorderSources(req: Request, res: Response): Promise<void> {
-  const { sourceIds } = req.body as { sourceIds?: number[] };
-
-  if (!Array.isArray(sourceIds) || sourceIds.length === 0) {
-    res.status(400).json({ error: 'sourceIds array is required' });
-    return;
-  }
+export async function reorderSources(
+  { body: { sourceIds } }: { body: z.output<typeof reorderSourcesBodySchema> },
+): Promise<SourcesReordered> {
 
   // One client, not pool.query('BEGIN') — see the note in curationController:
   // pg.Pool hands out an arbitrary idle client per call, so a transaction has
@@ -809,5 +747,5 @@ export async function reorderSources(req: Request, res: Response): Promise<void>
     client.release(unusable);
   }
 
-  respond(res, SourcesReordered, { success: true, order: sourceIds });
+  return { success: true, order: sourceIds };
 }

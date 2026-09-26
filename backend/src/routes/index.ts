@@ -28,6 +28,10 @@ router.use('/api/world-views', worldViewRoutes);  // World Views - mixed auth (r
 router.use('/api/users', userRoutes);  // User and visited regions - auth handled per route
 router.use('/api/ai', aiRoutes);  // AI-assisted features - admin only, declared per route (ADR-0071)
 router.use('/api/admin', requireAuth, requireAdmin, adminRoutes);  // Admin dashboard - admin only
+// The mount guard above is for the routes adminRoutes.ts still writes by hand;
+// its declared ones (routes/adminDeclaredRoutes.ts) are `admin` themselves, so
+// their token is checked twice until the last hand-written route is declared
+// and the guard goes (ADR-0071).
 router.use('/api/experiences', experienceRoutes);  // Experiences - public read
 router.use('/api/geocode', geocodeRoutes);  // Geocode/place search - public
 

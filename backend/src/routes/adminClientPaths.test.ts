@@ -7,13 +7,15 @@
  * path the client modules spell, with the method its call uses, and asks
  * whether that method and path would match a route `adminRoutes.ts` registers.
  *
- * A guard that reads source, until the route declarations of #793 give the
- * paths one owner both sides import; that owner retires it.
+ * The declared routes are read from their declarations (ADR-0071); the ones
+ * `adminRoutes.ts` still writes by hand are read from its text, until #793
+ * declares the last of them and the text reading goes.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { backendSrc, repoFile } from '../testSupport/repoFile.js';
+import { adminDeclaredRoutes } from './adminDeclaredRoutes.js';
 
 interface ClientCall {
   module: string;
@@ -23,11 +25,11 @@ interface ClientCall {
 }
 
 /**
- * Each route `adminRoutes.ts` registers, as a method and its path's segments.
- * Read from the file rather than from an imported router: importing it
- * transforms the whole import pipeline, OpenCV included, which takes this lane
- * minutes. The file registers every route directly on its router, with a
- * literal path, which is what makes the text the table.
+ * Each route `adminRoutes.ts` writes by hand, as a method and its path's
+ * segments. Read from the file rather than from an imported router: importing
+ * it transforms the whole import pipeline, OpenCV included, which takes this
+ * lane minutes. The file registers each such route directly on its router,
+ * with a literal path, which is what makes the text the table.
  */
 function routesOf(source: string): Array<{ method: string; segments: string[] }> {
   return [...source.matchAll(/router\.(get|post|put|delete|patch)\(\s*'([^']+)'/g)].map(match => ({
@@ -69,7 +71,10 @@ const clientDir = repoFile('frontend', 'src', 'api', 'admin');
 const calls = readdirSync(clientDir)
   .filter(file => file.endsWith('.ts') && !file.endsWith('.test.ts'))
   .flatMap(file => callsOf(file, readFileSync(`${clientDir}/${file}`, 'utf8')));
-const routes = routesOf(readFileSync(`${backendSrc}/routes/adminRoutes.ts`, 'utf8'));
+const routes = [
+  ...routesOf(readFileSync(`${backendSrc}/routes/adminRoutes.ts`, 'utf8')),
+  ...adminDeclaredRoutes.map(route => ({ method: route.method.toUpperCase(), segments: route.path.split('/') })),
+];
 
 describe('the admin client and the admin routes', () => {
   it('reads the client\'s calls and the routes at all', () => {

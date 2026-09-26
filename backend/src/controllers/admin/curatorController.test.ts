@@ -25,7 +25,13 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { createCuratorAssignment, revokeCuratorAssignment, listCurators } from './curatorController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const listCuratorsRoute = routeAt(adminDeclaredRoutes, '/curators', 'get');
+const createCuratorAssignmentRoute = routeAt(adminDeclaredRoutes, '/curators', 'post');
+const revokeCuratorAssignmentRoute = routeAt(adminDeclaredRoutes, '/curators/:assignmentId', 'delete');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -68,7 +74,7 @@ describe('listing curators by role and assignment', () => {
         { id: ADMIN.id, display_name: 'Admin', email: 'admin@example.org', role: 'admin', avatar_url: null },
         { id: CANDIDATE, display_name: 'Curator', email: null, role: 'curator', avatar_url: null },
       ] }));
-    await listCurators({} as never, res as never);
+    await answerRoute(listCuratorsRoute, {} as never, res as never);
 
     // The people read keeps an admin whatever they hold, and a curator only
     // while an assignment stands (#905).
@@ -143,7 +149,7 @@ describe('granting a curator their scope', () => {
     const client = pinClient();
     const res = makeRes();
 
-    await createCuratorAssignment({
+    await answerRoute(createCuratorAssignmentRoute, {
       body: { userId: CANDIDATE, scopeType: 'region', regionId: ALGERIA },
       user: ADMIN,
     } as never, res as never);
@@ -161,7 +167,7 @@ describe('granting a curator their scope', () => {
     answering({ role: 'curator', lockedRole: 'curator' });
     const client = pinClient();
 
-    await createCuratorAssignment({
+    await answerRoute(createCuratorAssignmentRoute, {
       body: { userId: CANDIDATE, scopeType: 'region', regionId: ALGERIA },
       user: ADMIN,
     } as never, makeRes() as never);
@@ -174,7 +180,7 @@ describe('granting a curator their scope', () => {
   it('takes the user row under the lock before it writes anything', async () => {
     const client = pinClient();
 
-    await createCuratorAssignment({
+    await answerRoute(createCuratorAssignmentRoute, {
       body: { userId: CANDIDATE, scopeType: 'region', regionId: ALGERIA },
       user: ADMIN,
     } as never, makeRes() as never);
@@ -197,7 +203,7 @@ describe('granting a curator their scope', () => {
     const client = pinClient();
     const res = makeRes();
 
-    await createCuratorAssignment({
+    await answerRoute(createCuratorAssignmentRoute, {
       body: { userId: CANDIDATE, scopeType: 'region', regionId: ALGERIA },
       user: ADMIN,
     } as never, res as never);
@@ -211,7 +217,7 @@ describe('granting a curator their scope', () => {
     const client = pinClient();
     failOn(/UPDATE users/i, 'could not serialize access');
 
-    await expect(createCuratorAssignment({
+    await expect(answerRoute(createCuratorAssignmentRoute, {
       body: { userId: CANDIDATE, scopeType: 'region', regionId: ALGERIA },
       user: ADMIN,
     } as never, makeRes() as never)).rejects.toThrow('could not serialize access');
@@ -227,7 +233,7 @@ describe('granting a curator their scope', () => {
     const res = makeRes();
 
     // Region scope with no region names nothing to curate.
-    await createCuratorAssignment({
+    await answerRoute(createCuratorAssignmentRoute, {
       body: { userId: CANDIDATE, scopeType: 'region' }, user: ADMIN,
     } as never, res as never);
 
@@ -250,7 +256,7 @@ describe('taking a curator scope back', () => {
 
     answering({ role: 'curator', lockedRole: 'curator', remaining: '0' });
 
-    await revokeCuratorAssignment(
+    await answerRoute(revokeCuratorAssignmentRoute, 
       { params: { assignmentId: '77' } } as never, res as never);
 
     const onClient = clientSql(client);
@@ -273,7 +279,7 @@ describe('taking a curator scope back', () => {
     const client = pinClient();
     const res = makeRes();
 
-    await revokeCuratorAssignment(
+    await answerRoute(revokeCuratorAssignmentRoute, 
       { params: { assignmentId: '77' } } as never, res as never);
 
     expect(clientSql(client).filter(sql => /UPDATE users/i.test(sql))).toHaveLength(0);
@@ -286,7 +292,7 @@ describe('taking a curator scope back', () => {
     const client = pinClient();
     failOn(/DELETE FROM curator_assignments/i, 'deadlock detected');
 
-    await expect(revokeCuratorAssignment(
+    await expect(answerRoute(revokeCuratorAssignmentRoute, 
       { params: { assignmentId: '77' } } as never, makeRes() as never,
     )).rejects.toThrow('deadlock detected');
 
@@ -297,7 +303,7 @@ describe('taking a curator scope back', () => {
   it('takes the user row under the lock before it deletes', async () => {
     const client = pinClient();
 
-    await revokeCuratorAssignment(
+    await answerRoute(revokeCuratorAssignmentRoute, 
       { params: { assignmentId: '77' } } as never, makeRes() as never);
 
     // The same order granting uses, which is what keeps the two from
@@ -325,7 +331,7 @@ describe('taking a curator scope back', () => {
         : answers(sql, params)
     ));
 
-    await revokeCuratorAssignment(
+    await answerRoute(revokeCuratorAssignmentRoute, 
       { params: { assignmentId: '77' } } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(404);

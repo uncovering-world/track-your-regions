@@ -5,30 +5,31 @@
  * All routes require admin authentication.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import {
+import type { z } from 'zod/v4';
+import type {
   CuratorActivity,
   CuratorAssignmentCreated,
   CuratorAssignmentRevoked,
   Curators,
-  type CuratorActivityEntry,
-  type CuratorInfo,
+  CuratorActivityEntry,
+  CuratorInfo,
 } from '../../api/responses/admin.js';
 import type { CuratorScope } from '../../api/responses/auth.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type {
   ExperienceCurationLogRow, ExperiencesRow, RegionsRow, UsersRow,
 } from '../../db/schema.generated.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import type { CuratorScopeType } from '../../types/auth.js';
+import { createError, notFound } from '../../middleware/errorHandler.js';
+import type {
+  assignmentIdParamSchema, createCuratorAssignmentBodySchema, curatorActivityQuerySchema, userIdParamSchema,
+} from '../../types/index.js';
 import { CURATOR_SCOPES_SQL, curatorScopeOf, type CuratorScopeOfUserRow } from './curatorScopeRows.js';
 
 /**
  * List all curators with their scopes
  * GET /api/admin/curators
  */
-export async function listCurators(_req: AuthenticatedRequest, res: Response): Promise<void> {
+export async function listCurators(): Promise<Curators> {
   const users = await pool.query<Pick<UsersRow, 'id' | 'display_name' | 'email' | 'role' | 'avatar_url'>>(`
     SELECT u.id, u.display_name, u.email, u.role, u.avatar_url
     FROM users u
@@ -45,23 +46,18 @@ export async function listCurators(_req: AuthenticatedRequest, res: Response): P
     scopesByUser.set(row.user_id, list);
   }
 
-  respond(res, Curators, users.rows.map((u): CuratorInfo => ({
+  return users.rows.map((u): CuratorInfo => ({
     user_id: u.id,
     display_name: u.display_name,
     email: u.email,
     role: u.role,
     avatar_url: u.avatar_url,
     scopes: scopesByUser.get(u.id) ?? [],
-  })));
+  }));
 }
 
-interface AssignmentInput {
-  userId: number;
-  scopeType: CuratorScopeType;
-  regionId?: number;
-  sourceId?: number;
-  notes?: string;
-}
+/** The body `createCuratorAssignmentBodySchema` passed: a user, a scope type from its vocabulary. */
+type AssignmentInput = z.output<typeof createCuratorAssignmentBodySchema>;
 
 type ValidationError = { status: number; error: string };
 
@@ -80,14 +76,9 @@ type ValidationError = { status: number; error: string };
  */
 const USER_ROLE_LOCK = 'FOR NO KEY UPDATE';
 
+/** What the schema cannot say: which id a scope type needs. */
 function validateAssignmentInput(body: AssignmentInput): ValidationError | null {
-  const { userId, scopeType, regionId, sourceId } = body;
-  if (!userId || !scopeType) {
-    return { status: 400, error: 'userId and scopeType are required' };
-  }
-  if (!['region', 'source', 'global'].includes(scopeType)) {
-    return { status: 400, error: 'scopeType must be region, source, or global' };
-  }
+  const { scopeType, regionId, sourceId } = body;
   if (scopeType === 'region' && !regionId) {
     return { status: 400, error: 'regionId is required for region scope' };
   }
@@ -195,33 +186,27 @@ async function insertAssignmentAndPromote(
  * POST /api/admin/curators
  * Body: { userId, scopeType, regionId?, sourceId?, notes? }
  */
-export async function createCuratorAssignment(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const body = req.body as AssignmentInput;
-  const assignedBy = req.user!.id;
+export async function createCuratorAssignment(
+  { body, caller }: { body: z.output<typeof createCuratorAssignmentBodySchema>; caller: Express.User },
+): Promise<CuratorAssignmentCreated> {
+  const assignedBy = caller.id;
 
   const inputError = validateAssignmentInput(body);
-  if (inputError) {
-    res.status(inputError.status).json({ error: inputError.error });
-    return;
-  }
+  if (inputError) throw createError(inputError.error, inputError.status);
 
   const refError = await verifyAssignmentReferences(body);
-  if (refError) {
-    res.status(refError.status).json({ error: refError.error });
-    return;
-  }
+  if (refError) throw createError(refError.error, refError.status);
 
   let inserted: Awaited<ReturnType<typeof insertAssignmentAndPromote>>;
   try {
     inserted = await insertAssignmentAndPromote(body, assignedBy);
   } catch (error: unknown) {
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === '23505') {
-      res.status(409).json({ error: 'This curator assignment already exists' });
-      return;
+      throw createError('This curator assignment already exists', 409);
     }
     throw error;
   }
-  respond(res.status(201), CuratorAssignmentCreated, {
+  return {
     id: inserted.id,
     userId: body.userId,
     scopeType: body.scopeType,
@@ -229,15 +214,16 @@ export async function createCuratorAssignment(req: AuthenticatedRequest, res: Re
     sourceId: body.sourceId || null,
     assignedAt: inserted.assignedAt === null ? null : inserted.assignedAt.toISOString(),
     rolePromoted: inserted.rolePromoted,
-  });
+  };
 }
 
 /**
  * Revoke a curator assignment
  * DELETE /api/admin/curators/:assignmentId
  */
-export async function revokeCuratorAssignment(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const assignmentId = parseInt(String(req.params.assignmentId));
+export async function revokeCuratorAssignment(
+  { params: { assignmentId } }: { params: z.output<typeof assignmentIdParamSchema> },
+): Promise<CuratorAssignmentRevoked> {
 
   // Get assignment details before deletion
   const assignmentResult = await pool.query(
@@ -245,10 +231,7 @@ export async function revokeCuratorAssignment(req: AuthenticatedRequest, res: Re
     [assignmentId],
   );
 
-  if (assignmentResult.rows.length === 0) {
-    res.status(404).json({ error: 'Assignment not found' });
-    return;
-  }
+  if (assignmentResult.rows.length === 0) throw notFound('Assignment not found');
 
   const userId = assignmentResult.rows[0].user_id;
 
@@ -258,8 +241,11 @@ export async function revokeCuratorAssignment(req: AuthenticatedRequest, res: Re
   // transaction would count assignments a concurrent revoke has not committed.
   const client = await pool.connect();
   let unusable: Error | undefined;
-  let remaining: number;
+  let remaining = 0;
   let roleReverted = false;
+  // Found gone inside the transaction: answered once it is rolled back and the
+  // client released, so the catch below never rolls it back a second time.
+  let revokedMeanwhile = false;
   try {
     await client.query('BEGIN');
 
@@ -281,25 +267,24 @@ export async function revokeCuratorAssignment(req: AuthenticatedRequest, res: Re
     );
     if (deleted.rowCount === 0) {
       unusable = await rollbackQuietly(client);
-      res.status(404).json({ error: 'Assignment not found' });
-      return;
+      revokedMeanwhile = true;
+    } else {
+      // Check if user has any remaining assignments
+      const remainingResult = await client.query(
+        'SELECT COUNT(*) as count FROM curator_assignments WHERE user_id = $1',
+        [userId],
+      );
+
+      remaining = parseInt(remainingResult.rows[0].count);
+
+      // Revert role to 'user' if no remaining assignments (and not admin)
+      if (remaining === 0 && locked.rows[0]?.role === 'curator') {
+        await client.query("UPDATE users SET role = 'user' WHERE id = $1", [userId]);
+        roleReverted = true;
+      }
+
+      await client.query('COMMIT');
     }
-
-    // Check if user has any remaining assignments
-    const remainingResult = await client.query(
-      'SELECT COUNT(*) as count FROM curator_assignments WHERE user_id = $1',
-      [userId],
-    );
-
-    remaining = parseInt(remainingResult.rows[0].count);
-
-    // Revert role to 'user' if no remaining assignments (and not admin)
-    if (remaining === 0 && locked.rows[0]?.role === 'curator') {
-      await client.query("UPDATE users SET role = 'user' WHERE id = $1", [userId]);
-      roleReverted = true;
-    }
-
-    await client.query('COMMIT');
   } catch (error) {
     // A client whose ROLLBACK also failed must be destroyed, not pooled: it
     // would otherwise carry an open transaction into the next request.
@@ -309,13 +294,15 @@ export async function revokeCuratorAssignment(req: AuthenticatedRequest, res: Re
     client.release(unusable);
   }
 
-  respond(res, CuratorAssignmentRevoked, {
+  if (revokedMeanwhile) throw notFound('Assignment not found');
+
+  return {
     success: true,
     assignmentId,
     userId,
     remainingAssignments: remaining,
     roleReverted,
-  });
+  };
 }
 
 /** One act of the log as the activity read selects it. */
@@ -345,10 +332,11 @@ function activityEntryOf(row: ActivityRow): CuratorActivityEntry {
  * GET /api/admin/curators/:userId/activity
  * Query: limit, offset
  */
-export async function getCuratorActivity(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = parseInt(String(req.params.userId));
-  const limit = Math.min(parseInt(String(req.query.limit)) || 50, 200);
-  const offset = parseInt(String(req.query.offset)) || 0;
+export async function getCuratorActivity(
+  { params: { userId }, query: { limit, offset } }: {
+    params: z.output<typeof userIdParamSchema>; query: z.output<typeof curatorActivityQuerySchema>;
+  },
+): Promise<CuratorActivity> {
 
   const result = await pool.query<ActivityRow>(`
     SELECT
@@ -373,10 +361,10 @@ export async function getCuratorActivity(req: AuthenticatedRequest, res: Respons
     [userId],
   );
 
-  respond(res, CuratorActivity, {
+  return {
     activity: result.rows.map(activityEntryOf),
     total: parseInt(countResult.rows[0].count),
     limit,
     offset,
-  });
+  };
 }

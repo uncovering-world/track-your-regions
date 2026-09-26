@@ -32,11 +32,11 @@
  * refuses to start on it until the save lands (`SourceLineControls`).
  */
 
-import { Response } from 'express';
+import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
-import { respond } from '../../api/respond.js';
-import { SourceLineSet } from '../../api/responses/admin.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { SourceLineSet } from '../../api/responses/admin.js';
+import { createError, notFound } from '../../middleware/errorHandler.js';
+import type { sourceIdParamSchema, sourceLineBodySchema } from '../../types/index.js';
 
 /**
  * Set a source's fame line: how many sitelinks a row needs to enter the world
@@ -44,16 +44,14 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
  * source with a second door, the same pair for its finds.
  * PUT /api/admin/sync/sources/:sourceId/line
  */
-export async function setSourceLine(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
-  const {
-    enterSitelinks, staySitelinks, findEnterSitelinks, findStaySitelinks,
-  } = req.body as {
-    enterSitelinks: number;
-    staySitelinks: number;
-    findEnterSitelinks?: number;
-    findStaySitelinks?: number;
-  };
+export async function setSourceLine(
+  { params: { sourceId }, body, caller }: {
+    params: z.output<typeof sourceIdParamSchema>;
+    body: z.output<typeof sourceLineBodySchema>;
+    caller: Express.User;
+  },
+): Promise<SourceLineSet> {
+  const { enterSitelinks, staySitelinks, findEnterSitelinks, findStaySitelinks } = body;
 
   // Only the keys the body carries are written, so a one-door source keeps a
   // row with one pair on it and a finds line is never invented for a source
@@ -76,15 +74,9 @@ export async function setSourceLine(req: AuthenticatedRequest, res: Response): P
     [sourceId],
   );
 
-  if (exists.rows.length === 0) {
-    res.status(404).json({ error: 'Source not found' });
-    return;
-  }
+  if (exists.rows.length === 0) throw notFound('Source not found');
 
-  if (!exists.rows[0].has_line) {
-    res.status(409).json({ error: 'This source keeps its line in code' });
-    return;
-  }
+  if (!exists.rows[0].has_line) throw createError('This source keeps its line in code', 409);
 
   // `||` merges rather than replaces, so a source's other api_config keys
   // (its userAgent, its cache settings) survive a line change untouched.
@@ -104,13 +96,14 @@ export async function setSourceLine(req: AuthenticatedRequest, res: Response): P
     ? ''
     : `, finds enter ${line.findEnterSitelinks}, finds stay ${line.findStaySitelinks}`;
   console.log(
-    `[source-line] ${source.name} (${source.id}) -> enter ${enterSitelinks}, stay ${staySitelinks}${finds} by user ${req.user?.id}`,
+    '[source-line] %s (%s) -> enter %s, stay %s%s by user %s',
+    source.name, source.id, enterSitelinks, staySitelinks, finds, caller.id,
   );
 
   // The keys this request wrote, so the panel's own fields answer with what it
   // just sent. A body that left the finds pair out left the stored one where it
   // was: this route moves a line, it does not take a door away.
-  respond(res, SourceLineSet, {
+  return {
     sourceId: source.id,
     name: source.name,
     enterSitelinks,
@@ -118,5 +111,5 @@ export async function setSourceLine(req: AuthenticatedRequest, res: Response): P
     ...(findEnterSitelinks !== undefined && findStaySitelinks !== undefined
       ? { findEnterSitelinks, findStaySitelinks }
       : {}),
-  });
+  };
 }

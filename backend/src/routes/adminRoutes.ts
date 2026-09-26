@@ -5,37 +5,16 @@
  * Handles sync operations, geometry computation, and other admin tasks.
  */
 
-import { Router, Response } from 'express';
+import { Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
-import { pool } from '../db/index.js';
-import type { UsersRow } from '../db/schema.generated.js';
 import { respond } from '../api/respond.js';
-import { UserSearchResults } from '../api/responses/admin.js';
+import { routerOf } from '../api/route.js';
+import { adminDeclaredRoutes } from './adminDeclaredRoutes.js';
 import { ReviewAnswered } from '../api/responses/wvImportCvMatch.js';
 import { validate } from '../middleware/errorHandler.js';
-import { authenticatedLimiter, expensiveAdminLimiter } from '../middleware/rateLimiter.js';
+import { expensiveAdminLimiter } from '../middleware/rateLimiter.js';
 import { z } from 'zod/v4';
 import {
-  sourceIdParamSchema,
-  logIdParamSchema,
-  assignmentIdParamSchema,
-  userIdParamSchema,
-  startSyncBodySchema,
-  clearCacheQuerySchema,
-  cacheKindParamSchema,
-  cacheTtlBodySchema,
-  reorderSourcesBodySchema,
-  curationGateBodySchema,
-  sourceLineBodySchema,
-  dataAssertionAcceptBodySchema,
-  startRegionAssignmentBodySchema,
-  regionAssignmentStatusQuerySchema,
-  experienceCountsQuerySchema,
-  syncLogsQuerySchema,
-  syncChangesQuerySchema,
-  createCuratorAssignmentBodySchema,
-  curatorActivityQuerySchema,
-  adminUserSearchQuerySchema,
   worldViewIdParamSchema,
   worldViewRegionIdParamSchema,
   wvExtractStartSchema,
@@ -51,9 +30,6 @@ import {
   wvImportSplitDeeperSchema,
   wvImportVisionMatchSchema,
   wvImportColorMatchSchema,
-  aiSettingKeyParamSchema,
-  aiSettingValueBodySchema,
-  addLearnedRuleBodySchema,
   reviewIdParamSchema,
   wvImportWaterCropParamSchema,
   wvImportClusterHighlightParamSchema,
@@ -82,34 +58,7 @@ import {
   coverageSSEQuerySchema,
   childrenCoverageQuerySchema,
 } from '../types/index.js';
-import {
-  startSync,
-  getSyncStatus,
-  cancelSync,
-  fixImages,
-  getSyncLogs,
-  getWikidataCache,
-  clearWikidataCache,
-  setWikidataCacheTtl,
-  getSyncLogDetails,
-  getSyncLogChanges,
-  getSources,
-  reorderSources,
-  startRegionAssignment,
-  getRegionAssignmentStatus,
-  cancelRegionAssignment,
-  getExperienceCounts,
-} from '../controllers/admin/syncController.js';
-import { setCurationGate } from '../controllers/admin/curationGateController.js';
 import { acceptBatchAndRejectRest, rejectBatchSuggestions } from '../controllers/admin/wvImportMatchDecisions.js';
-import { setSourceLine } from '../controllers/admin/sourceLineController.js';
-import { acceptDataAssertion, getDataAssertions } from '../controllers/admin/dataAssertionsController.js';
-import {
-  listCurators,
-  createCuratorAssignment,
-  revokeCuratorAssignment,
-  getCuratorActivity,
-} from '../controllers/admin/curatorController.js';
 import {
   // Lifecycle
   startWorldViewImport, getWorldViewImportStatus, cancelWorldViewImport, getGeoshape,
@@ -148,193 +97,14 @@ import {
   answerExtractionQuestion,
   deleteCacheFile,
 } from '../controllers/admin/wikivoyageExtractController.js';
-import {
-  getAISettings, updateAISetting, getAIUsage, updatePricing,
-  getLearnedRules, addLearnedRule, deleteLearnedRule,
-  reviewLearnedRules, applyRuleReviewSuggestion,
-} from '../controllers/admin/aiController.js';
-import { hierarchyReview } from '../controllers/admin/aiHierarchyReviewController.js';
 import { startBaseLayerImportEndpoint } from '../controllers/admin/baseLayerImportController.js';
 import { pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE } from '../types/urlSafety.js';
 import { fetchPicture } from '../services/pictureFetch.js';
 
-const router = Router();
-
-// =============================================================================
-// Sync Routes
-// =============================================================================
-
-// List all experience sources
-router.get('/sync/sources', getSources);
-
-// Reorder experience sources (set display_priority)
-router.put('/sync/sources/reorder', validate(reorderSourcesBodySchema), reorderSources);
-
-/**
- * Whether this source holds new and changed content for a curator (ADR-0025).
- *
- * Admin-only, like everything on this router — the guard is the mount
- * (`routes/index.ts`: `router.use('/api/admin', requireAuth, requireAdmin, …)`),
- * which is why no route here repeats it. The gate is a property of the source: a
- * curator answers what a gated run leaves waiting, while deciding that a source
- * needs answering at all is the admin's.
- */
-router.put(
-  '/sync/sources/:sourceId/curation-gate',
-  validate(sourceIdParamSchema, 'params'),
-  validate(curationGateBodySchema),
-  setCurationGate,
-);
-
-/**
- * A source's fame line (ADR-0023, ADR-0052): how many sitelinks a row needs to
- * enter the world tier and how few it may fall to before the tier lets it go.
- * Admin-only, like everything on this router, and a property of the source
- * rather than of any object — the same reason the gate switch sits here.
- */
-router.put(
-  '/sync/sources/:sourceId/line',
-  validate(sourceIdParamSchema, 'params'),
-  validate(sourceLineBodySchema),
-  setSourceLine,
-);
-
-// Start sync for a source
-router.post('/sync/sources/:sourceId/start', validate(sourceIdParamSchema, 'params'), validate(startSyncBodySchema), startSync);
-
-// Get sync status for a source (poll this endpoint)
-router.get('/sync/sources/:sourceId/status', validate(sourceIdParamSchema, 'params'), getSyncStatus);
-
-// Cancel sync for a source
-router.post('/sync/sources/:sourceId/cancel', validate(sourceIdParamSchema, 'params'), cancelSync);
-
-// Fix missing images for a source
-// Behind the expensive-action limiter like a rematch is: the route reads the
-// source and the run table before it starts, and a repair is a run over every
-// row of a source — CodeQL's js/missing-rate-limiting is the same point.
-router.post('/sync/sources/:sourceId/fix-images', expensiveAdminLimiter, validate(sourceIdParamSchema, 'params'), fixImages);
-
-// What we are keeping from the source, per kind of question, with its age and
-// expiry — and the button that forgets it. Read and delete rather than a
-// mutation of the cache's own rules: an admin's only two questions here are
-// "how old is this" and "ask again".
-router.get(
-  '/sync/sources/:sourceId/cache',
-  validate(sourceIdParamSchema, 'params'),
-  getWikidataCache,
-);
-router.delete(
-  '/sync/sources/:sourceId/cache',
-  validate(sourceIdParamSchema, 'params'),
-  validate(clearCacheQuerySchema, 'query'),
-  clearWikidataCache,
-);
-// Changing a lifetime re-stamps what is already kept, so the panel and the
-// reader cannot disagree about when an answer stops being used.
-router.put(
-  '/sync/sources/:sourceId/cache/:kind/ttl',
-  validate(cacheKindParamSchema, 'params'),
-  validate(cacheTtlBodySchema),
-  setWikidataCacheTtl,
-);
-
-// Get sync history/logs
-router.get('/sync/logs', validate(syncLogsQuerySchema, 'query'), getSyncLogs);
-
-// Get single sync log with error details
-router.get('/sync/logs/:logId', validate(logIdParamSchema, 'params'), getSyncLogDetails);
-
-// Per-object breakdown of what a run did
-router.get('/sync/logs/:logId/changes', validate(logIdParamSchema, 'params'), validate(syncChangesQuerySchema, 'query'), getSyncLogChanges);
-
-// =============================================================================
-// Experience Region Assignment Routes
-// =============================================================================
-
-// Start region assignment for a world view
-router.post('/experiences/assign-regions', validate(startRegionAssignmentBodySchema), startRegionAssignment);
-
-// Get region assignment status
-router.get('/experiences/assign-regions/status', validate(regionAssignmentStatusQuerySchema, 'query'), getRegionAssignmentStatus);
-
-// Cancel region assignment
-router.post('/experiences/assign-regions/cancel', validate(startRegionAssignmentBodySchema), cancelRegionAssignment);
-
-// Get experience counts by region
-router.get('/experiences/counts-by-region', validate(experienceCountsQuerySchema, 'query'), getExperienceCounts);
-
-// =============================================================================
-// Catalogue Data Assertions
-// =============================================================================
-
-// What the catalogue's own rows say about themselves, and what has been accepted
-// as the debt it carries. A statement per assertion over the whole catalogue, so it is
-// rate-limited with the other expensive admin work and read when a person opens
-// the section rather than polled.
-router.get('/data-assertions', expensiveAdminLimiter, getDataAssertions);
-
-// Accept what one assertion currently finds. The body names the assertion only:
-// the number is measured on the server as it records it, since an accepted
-// figure that a browser supplied would be a claim rather than a measurement.
-//
-// `authenticatedLimiter` and not the expensive one, by the rule in
-// `docs/tech/rate-limiting.md`: 5/min is a ceiling on the *person*, and the
-// state this screen exists for is a database where nobody has answered for
-// anything — a press per invariant, one after another, which five a minute
-// would refuse halfway through. One accept re-runs a single assertion and
-// inserts one row. That one statement is not always cheap — the rung rule reads
-// a full-resolution geometry column and takes eight seconds (#685) — so the
-// order the two buckets were in has inverted: 60 presses a minute is up to eight
-// minutes of database work per minute from one address, against the report
-// bucket's five scans of about eleven seconds. What holds is not the ratio but
-// what each is a ceiling on: the report is a whole scan any caller can repeat,
-// while an accept is a person answering for one rule and
-// runs out of rules to answer for.
-router.post(
-  '/data-assertions/accept',
-  authenticatedLimiter,
-  validate(dataAssertionAcceptBodySchema),
-  acceptDataAssertion,
-);
-
-// =============================================================================
-// Curator Management Routes
-// =============================================================================
-
-// List all curators with scopes
-router.get('/curators', listCurators);
-
-// Create a curator assignment (promote user + assign scope)
-router.post('/curators', validate(createCuratorAssignmentBodySchema), createCuratorAssignment);
-
-// Revoke a curator assignment (and potentially demote role)
-router.delete('/curators/:assignmentId', validate(assignmentIdParamSchema, 'params'), revokeCuratorAssignment);
-
-// Get curator activity log
-router.get('/curators/:userId/activity', validate(userIdParamSchema, 'params'), validate(curatorActivityQuerySchema, 'query'), getCuratorActivity);
-
-// =============================================================================
-// User Search (for curator promotion)
-// =============================================================================
-
-router.get('/users/search', validate(adminUserSearchQuerySchema, 'query'), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const { q } = req.query as unknown as { q: string };
-
-  const result = await pool.query<Pick<UsersRow, 'id' | 'display_name' | 'email' | 'role'>>(`
-    SELECT id, display_name, email, role
-    FROM users
-    WHERE display_name ILIKE $1 OR email ILIKE $1
-    ORDER BY display_name
-    LIMIT 20
-  `, [`%${q}%`]);
-
-  respond(res, UserSearchResults, result.rows.map(u => ({
-    id: u.id,
-    display_name: u.display_name,
-    email: u.email,
-    role: u.role,
-  })));
-});
+// The routes below still list their middleware by hand (#793), on the router
+// the declared ones are built into. They are all under `/wv-import`,
+// `/wv-extract` or `/image-proxy`, where no declared route has a path.
+const router = routerOf(adminDeclaredRoutes);
 
 // =============================================================================
 // Wikivoyage Extraction Routes
@@ -741,37 +511,5 @@ router.get('/image-proxy', validate(imageProxyQuerySchema, 'query'), async (req:
     res.status(502).json({ error: 'Failed to fetch image' });
   }
 });
-
-// =============================================================================
-// AI Settings & Usage Routes
-// =============================================================================
-
-router.get('/ai/settings', getAISettings);
-router.put(
-  '/ai/settings/:key',
-  validate(aiSettingKeyParamSchema, 'params'),
-  validate(aiSettingValueBodySchema),
-  updateAISetting,
-);
-router.get('/ai/usage', getAIUsage);
-router.post('/ai/update-pricing', updatePricing);
-router.get('/ai/rules', getLearnedRules);
-router.post(
-  '/ai/rules',
-  validate(addLearnedRuleBodySchema),
-  addLearnedRule,
-);
-router.delete('/ai/rules/:id', validate(z.object({ id: z.coerce.number().int().positive() }), 'params'), deleteLearnedRule);
-router.post('/ai/rules/review', reviewLearnedRules);
-router.post('/ai/rules/apply-review', validate(z.object({
-  keepId: z.number().int().positive(),
-  deleteIds: z.array(z.number().int().positive()),
-  replacementText: z.string().nullable().optional(),
-})), applyRuleReviewSuggestion);
-
-// AI hierarchy review
-router.post('/ai/hierarchy-review/:worldViewId', validate(worldViewIdParamSchema, 'params'), validate(z.object({
-  regionId: z.number().int().positive().optional(),
-})), hierarchyReview);
 
 export default router;

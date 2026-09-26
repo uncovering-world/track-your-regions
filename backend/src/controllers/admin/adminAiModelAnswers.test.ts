@@ -6,6 +6,12 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const hierarchyReviewRoute = routeAt(adminDeclaredRoutes, '/ai/hierarchy-review/:worldViewId', 'post');
+const reviewLearnedRulesRoute = routeAt(adminDeclaredRoutes, '/ai/rules/review', 'post');
 
 const chatCompletion = vi.fn();
 const poolQuery = vi.fn();
@@ -24,8 +30,6 @@ vi.mock('../../services/ai/learnedRulesService.js', () => ({
 }));
 vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-import { reviewLearnedRules } from './aiController.js';
-import { hierarchyReview } from './aiHierarchyReviewController.js';
 
 function modelWrites(content: string) {
   chatCompletion.mockResolvedValueOnce({ choices: [{ message: { content } }], usage: { prompt_tokens: 900, completion_tokens: 120 } });
@@ -52,7 +56,7 @@ describe('a rule review', () => {
       consolidatedCount: 1.5,
     }));
     const res = makeRes();
-    await reviewLearnedRules({} as never, res as never);
+    await answerRoute(reviewLearnedRulesRoute, {} as never, res as never);
 
     expect(res.json).toHaveBeenCalledWith({
       suggestions: [
@@ -79,7 +83,7 @@ describe('a hierarchy review of one branch', () => {
       ],
     }));
     const res = makeRes();
-    await hierarchyReview({ params: { worldViewId: '5' }, body: { regionId: 7001 } } as never, res as never);
+    await answerRoute(hierarchyReviewRoute, { params: { worldViewId: '5' }, body: { regionId: 7001 } } as never, res as never);
 
     const [body] = res.json.mock.calls[0];
     expect(body.actions).toEqual([
@@ -95,7 +99,7 @@ describe('a hierarchy review of one branch', () => {
     ] });
     modelWrites('The branch looks fine.');
     const res = makeRes();
-    await hierarchyReview({ params: { worldViewId: '5' }, body: { regionId: 7001 } } as never, res as never);
+    await answerRoute(hierarchyReviewRoute, { params: { worldViewId: '5' }, body: { regionId: 7001 } } as never, res as never);
 
     expect(res.json.mock.calls[0][0]).toMatchObject({ report: 'The branch looks fine.', actions: [] });
   });
