@@ -2611,6 +2611,7 @@ that each list holds what its name says, which the nature rule secures.
 - 1.5s delay between image downloads
 - `curated_fields` JSONB on `experiences` protects curator edits during sync upserts — each field is checked individually in the `ON CONFLICT` clause (implemented in `upsertExperienceRecord()`)
 - Sync log lifecycle: `createSyncLog()` → processing → `updateSyncLog()` (also updates `experience_sources.last_sync_*`)
+- A sync log's `status` is never NULL, and once closed it never reads `running` again: a trigger, `guard_run_status_move()`, refuses the move, and `RUN_STATUS_MOVES` in `@tyr/shared/runStatuses` lists the moves a run makes. A closed verdict may still be corrected — placement downgrades `success` to `partial` (`annotateClosedSyncLog()`), and a failure after the log was written closes it `failed` — but a closed run reading `running` would be taken by the startup sweep below for one a restart interrupted. `runStatusMoves.db.test.ts` walks every pair on the database lane
 - Startup cleanup in `index.ts` marks orphaned `running` sync logs as `failed`
 
 ## Assignment Model
