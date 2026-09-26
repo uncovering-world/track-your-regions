@@ -5,7 +5,19 @@
  * User visited endpoints are in userRoutes.ts
  */
 
-import { Router } from 'express';
+import { defineRoute, routerOf } from '../api/route.js';
+import {
+  ExperienceDetail,
+  ExperienceKinds,
+  ExperienceLocationsResponse,
+  ExperienceSearch,
+  ExperiencesByRegionResponse,
+  ExperienceTreasuresResponse,
+  RegionExperienceCounts,
+  RegionExperienceLocationsResponse,
+  SiteFindsResponse,
+} from '../api/responses/experiences.js';
+import { WorldPointsResponse } from '../api/responses/worldPoints.js';
 import {
   getExperience,
   getExperiencesByRegion,
@@ -44,8 +56,7 @@ import {
   answerReviewRows,
   markNewBadgesSeen,
 } from '../controllers/experience/index.js';
-import { requireAuth, requireCurator, optionalAuth } from '../middleware/auth.js';
-import { requireVisibleWorldView } from '../middleware/worldViewVisibility.js';
+import { requireAuth, requireCurator } from '../middleware/auth.js';
 import { publicReadLimiter, searchLimiter, authenticatedLimiter } from '../middleware/rateLimiter.js';
 import { validate } from '../middleware/errorHandler.js';
 import {
@@ -82,37 +93,112 @@ import {
   createManualExperienceBodySchema,
 } from '../types/index.js';
 
-const router = Router();
-
 // =============================================================================
-// Public Experience Routes
+// Reads (ADR-0071)
 // =============================================================================
 
-// Search experiences (full-text search)
-router.get('/search', searchLimiter, validate(experienceSearchQuerySchema, 'query'), searchExperiences);
+export const experienceReadRoutes = [
+  // Search experiences (full-text search)
+  defineRoute({
+    method: 'get', path: '/search', access: 'public', cache: 'shared-revalidate', limiter: searchLimiter,
+    query: experienceSearchQuerySchema,
+    response: ExperienceSearch,
+    handler: searchExperiences,
+  }),
+  // List the kinds a traveller browses by (#819)
+  defineRoute({
+    method: 'get', path: '/kinds', access: 'public', cache: 'shared-revalidate', limiter: publicReadLimiter,
+    response: ExperienceKinds,
+    handler: listKinds,
+  }),
+  // The catalogue's places across the whole world, before a region is chosen
+  // (#910). Above `/:id` for the reason the review routes are: a one-segment
+  // literal path must not be read as an id.
+  //
+  // Public, and that is the whole scope of the endpoint rather than an
+  // omission: like `/search` and `/:id/finds`, it names only what any reader may
+  // open and answers the same to everyone. The curator relaxation of ADR-0025
+  // stops at the three by-id reads, so there is no caller-shaped answer here to
+  // widen — which is also why this read may be cached and shared.
+  defineRoute({
+    method: 'get', path: '/points', access: 'public', cache: 'shared-revalidate', limiter: publicReadLimiter,
+    query: worldPointsQuerySchema,
+    response: WorldPointsResponse,
+    handler: getWorldPoints,
+  }),
+  // Experience counts per region per kind (the Discover page's tree). `optional`
+  // for the world view's own visibility, which an admin bypasses.
+  defineRoute({
+    method: 'get', path: '/region-counts', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    query: experienceRegionCountsQuerySchema,
+    scope: ({ query }) => ({ worldViewId: query.worldViewId }),
+    response: RegionExperienceCounts,
+    handler: getExperienceRegionCounts,
+  }),
+  // Experiences by region (`optional`: a curator sees rejected items marked)
+  defineRoute({
+    method: 'get', path: '/by-region/:regionId', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    params: regionIdParamSchema,
+    query: experiencesByRegionQuerySchema,
+    scope: ({ params }) => ({ regionId: params.regionId }),
+    response: ExperiencesByRegionResponse,
+    handler: getExperiencesByRegion,
+  }),
+  // All locations for all experiences in a region (batch, eliminates N+1)
+  defineRoute({
+    method: 'get', path: '/by-region/:regionId/locations', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    params: regionIdParamSchema,
+    query: regionLocationsQuerySchema,
+    scope: ({ params }) => ({ regionId: params.regionId }),
+    response: RegionExperienceLocationsResponse,
+    handler: getRegionExperienceLocations,
+  }),
+  // One experience (`optional`: 404s on a refused row (ADR-0024) and on an
+  // unread `pending` row outside a curator/admin's scope (ADR-0025); its
+  // regions[] are filtered in the handler on two axes — the world view's own
+  // visibility, which only an admin bypasses, and whether the region holds a
+  // point of this object that this caller may see (#521), which a curator whose
+  // scope reaches the object bypasses too, a manual assignment being exempt)
+  defineRoute({
+    method: 'get', path: '/:id', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    params: idParamSchema,
+    response: ExperienceDetail,
+    handler: getExperience,
+  }),
+  // An experience's locations (multi-location support). The region it is asked
+  // about, when it names one, is held to that region's world view.
+  defineRoute({
+    method: 'get', path: '/:id/locations', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    params: idParamSchema,
+    query: experienceLocationsQuerySchema,
+    scope: ({ query }) => (query.regionId === undefined ? undefined : { regionId: query.regionId }),
+    response: ExperienceLocationsResponse,
+    handler: getExperienceLocations,
+  }),
+  // Treasures (artworks, artifacts) of an experience (`optional`: a curator or
+  // admin reaching a gated museum from the queue sees its unread treasures too —
+  // see getExperienceTreasures/maySeeUnreadExperience, ADR-0025)
+  defineRoute({
+    method: 'get', path: '/:id/treasures', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    params: idParamSchema,
+    response: ExperienceTreasuresResponse,
+    handler: getExperienceTreasures,
+  }),
+  // The finds dug up at a site and the museums that show them (#894). Public:
+  // like /search, it names only what a reader may open and answers the same to
+  // everyone, so it is not a caller-shaped read.
+  defineRoute({
+    method: 'get', path: '/:id/finds', access: 'public', cache: 'shared-revalidate', limiter: publicReadLimiter,
+    params: idParamSchema,
+    response: SiteFindsResponse,
+    handler: getSiteFinds,
+  }),
+];
 
-// List the kinds a traveller browses by (#819)
-router.get('/kinds', publicReadLimiter, listKinds);
-
-// The catalogue's places across the whole world, before a region is chosen
-// (#910). Above `/:id` for the reason the review routes are: a one-segment
-// literal path must not be read as an id.
-//
-// No optionalAuth, and that is the whole scope of the endpoint rather than an
-// omission: like `/search` and `/:id/finds`, it names only what any reader may
-// open and answers the same to everyone. The curator relaxation of ADR-0025
-// stops at the three by-id reads, so there is no caller-shaped answer here to
-// widen — which is also why this read may be cached and shared.
-router.get('/points', publicReadLimiter, validate(worldPointsQuerySchema, 'query'), getWorldPoints);
-
-// Get experience counts per region per kind (for Discover page tree)
-router.get('/region-counts', publicReadLimiter, validate(experienceRegionCountsQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('worldViewIdQuery'), getExperienceRegionCounts);
-
-// Get experiences by region (optionalAuth to support curator rejection visibility)
-router.get('/by-region/:regionId', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(experiencesByRegionQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdParam'), getExperiencesByRegion);
-
-// Get all locations for all experiences in a region (batch, eliminates N+1)
-router.get('/by-region/:regionId/locations', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(regionLocationsQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdParam'), getRegionExperienceLocations);
+// The curation routes below still list their middleware by hand (#793's next
+// slice), on the router the reads are built into. None of them is a GET that
+// a declared read above could answer first.
+const router = routerOf(experienceReadRoutes);
 
 // =============================================================================
 // Curation Routes (require curator auth)
@@ -309,26 +395,5 @@ router.delete('/:id/assign/:regionId', validate(idAndRegionIdParamSchema, 'param
 
 // Remove an experience from a region entirely (any assignment type, keeps rejection as guard)
 router.delete('/:id/remove-from-region/:regionId', validate(idAndRegionIdParamSchema, 'params'), requireAuth, requireCurator, removeExperienceFromRegion);
-
-// Get single experience (optionalAuth: 404s on a refused row (ADR-0024) and
-// on an unread `pending` row outside a curator/admin's scope (ADR-0025); its
-// regions[] are filtered in the controller on two axes — the world view's own
-// visibility, which only an admin bypasses, and whether the region holds a
-// point of this object that this caller may see (#521), which a curator whose
-// scope reaches the object bypasses too, a manual assignment being exempt)
-router.get('/:id', publicReadLimiter, validate(idParamSchema, 'params'), optionalAuth, getExperience);
-
-// Get locations for an experience (multi-location support; optionalAuth
-// for the same regionId visibility guard as the list endpoint above)
-router.get('/:id/locations', publicReadLimiter, validate(idParamSchema, 'params'), validate(experienceLocationsQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdQuery'), getExperienceLocations);
-
-// Get treasures (artworks, artifacts) for an experience (optionalAuth: a
-// curator or admin reaching a gated museum from the queue sees its unread
-// treasures too — see getExperienceTreasures/maySeeUnreadExperience, ADR-0025)
-router.get('/:id/treasures', publicReadLimiter, validate(idParamSchema, 'params'), optionalAuth, getExperienceTreasures);
-// The finds dug up at a site and the museums that show them (#894). No
-// optionalAuth: like /search, it names only what a reader may open and answers
-// the same to everyone, so it is not a caller-shaped read.
-router.get('/:id/finds', publicReadLimiter, validate(idParamSchema, 'params'), getSiteFinds);
 
 export default router;

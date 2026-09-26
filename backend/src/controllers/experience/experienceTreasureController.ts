@@ -4,9 +4,10 @@
  * Treasure (artwork) browsing and viewed-treasure tracking.
  */
 
-import { Response } from 'express';
+import type { Response } from 'express';
+import type { z } from 'zod/v4';
 import { respond } from '../../api/respond.js';
-import { ExperienceTreasuresResponse } from '../../api/responses/experiences.js';
+import type { ExperienceTreasuresResponse } from '../../api/responses/experiences.js';
 import { TreasureViewMarked, TreasureViewUnmarked, ViewedTreasureIds } from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
 import type { TreasuresRow, UserViewedTreasuresRow } from '../../db/schema.generated.js';
@@ -26,6 +27,7 @@ import { treasureOf, type TreasureRow } from './experienceAnswerRows.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { idParamSchema } from '../../types/index.js';
 
 /**
  * Get contents (treasures) for an experience
@@ -36,9 +38,10 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
  * museum's page from the queue also sees its unread treasures and links,
  * rather than a container that opened onto an empty list.
  */
-export async function getExperienceTreasures(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const maySeeUnread = await maySeeUnreadExperience(req.user?.id, req.user?.role, experienceId);
+export async function getExperienceTreasures(
+  { params: { id: experienceId }, caller }: { params: z.output<typeof idParamSchema>; caller: Express.User | undefined },
+): Promise<ExperienceTreasuresResponse> {
+  const maySeeUnread = await maySeeUnreadExperience(caller?.id, caller?.role, experienceId);
 
   const result = await pool.query<TreasureRow>(`
     SELECT
@@ -110,11 +113,11 @@ export async function getExperienceTreasures(req: AuthenticatedRequest, res: Res
     ORDER BY t.sitelinks_count DESC
   `, [experienceId, maySeeUnread]);
 
-  respond(res, ExperienceTreasuresResponse, {
+  return {
     experienceId,
     treasures: result.rows.map(treasureOf),
     total: result.rows.length,
-  });
+  };
 }
 
 /**

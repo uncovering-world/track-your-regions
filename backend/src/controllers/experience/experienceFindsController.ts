@@ -15,9 +15,9 @@
  * item, and this read is built from rows the two doors already write.
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { SiteFindsResponse } from '../../api/responses/experiences.js';
+import type { z } from 'zod/v4';
+import type { SiteFindsResponse } from '../../api/responses/experiences.js';
+import type { idParamSchema } from '../../types/index.js';
 import { pool } from '../../db/index.js';
 import { rowKindJoinSql } from '../../db/membership.js';
 import { experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql } from '../../db/readerPredicates.js';
@@ -43,8 +43,9 @@ import { readerRegionsJsonSql } from './readerRegions.js';
  * `external_id`, the row of the site's own kind preferred, since that is the
  * list a traveller collecting archaeology is reading.
  */
-export async function getSiteFinds(req: Request, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
+export async function getSiteFinds(
+  { params: { id: experienceId } }: { params: z.output<typeof idParamSchema> },
+): Promise<SiteFindsResponse> {
 
   const result = await pool.query<SiteFindRow>(`
     SELECT f.*
@@ -94,9 +95,9 @@ export async function getSiteFinds(req: Request, res: Response): Promise<void> {
     ORDER BY f.sitelinks_count DESC, f.id
   `, [experienceId]);
 
-  respond(res, SiteFindsResponse, {
+  return {
     experienceId,
     finds: result.rows.map(siteFindOf),
     total: result.rows.length,
-  });
+  };
 }

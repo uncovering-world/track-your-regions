@@ -33,17 +33,10 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import {
-  getExperienceLocations,
-  getRegionExperienceLocations,
-  getExperienceVisitedStatus,
-  markAllLocationsVisited,
-  markLocationVisited,
-  getVisitedLocationIds,
-  unmarkAllLocationsVisited,
-  unmarkLocationVisited,
-} from './experienceLocationController.js';
+import { getExperienceVisitedStatus, markAllLocationsVisited, markLocationVisited, getVisitedLocationIds, unmarkAllLocationsVisited, unmarkLocationVisited } from './experienceLocationController.js';
 import { experienceOfferedToReaderSql, hidePendingSql, hideRefusedSql, offeredToReaderSql } from '../../db/readerPredicates.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -121,13 +114,13 @@ describe('reads that show a point', () => {
   });
 
   it('leaves a withdrawn point out of an experience own list', async () => {
-    await getExperienceLocations({ params: { id: '42' }, query: {} } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), { params: { id: '42' }, query: {} } as never, makeRes() as never);
 
     expect(locationRead()).toMatch(/el\.missing_since IS NULL/);
   });
 
   it('leaves an unread point out of an experience own list, for an anonymous caller', async () => {
-    await getExperienceLocations({ params: { id: '42' }, query: {} } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), { params: { id: '42' }, query: {} } as never, makeRes() as never);
 
     // ADR-0025: a content row is gated on its own state, so a location can be
     // pending while its experience is not.
@@ -144,7 +137,7 @@ describe('reads that show a point', () => {
     mockedQuery.mockResolvedValue({ rows: [placeRow({ curated_fields: ['location'] })], rowCount: 1 });
 
     let res = makeRes();
-    await getExperienceLocations({ params: { id: '42' }, query: {} } as never, res as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), { params: { id: '42' }, query: {} } as never, res as never);
     expect(locationRead()).toMatch(/el\.curated_fields/);
     // And whether a reader sees it yet, for the screen that corrects an unread one.
     expect(locationRead()).toMatch(/el\.curation_state/);
@@ -153,14 +146,14 @@ describe('reads that show a point', () => {
     for (const query of [{}, { includeChildren: 'false' }]) {
       mockedQuery.mockClear();
       res = makeRes();
-      await getRegionExperienceLocations({ params: { regionId: '7' }, query } as never, res as never);
+      await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), { params: { regionId: '7' }, query } as never, res as never);
       expect(locationRead()).toMatch(/el\.curated_fields/);
       expect(res.json.mock.calls[0][0].locationsByExperience[42][0].curated_fields).toEqual(['location']);
     }
   });
 
   it('leaves a withdrawn point out of the markers a region asks for', async () => {
-    await getRegionExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
 
     // The marker batch feeds the map. A pin at a point the source withdrew is
@@ -169,7 +162,7 @@ describe('reads that show a point', () => {
   });
 
   it('leaves an unread point out of the markers a region asks for, with no relaxation', async () => {
-    await getRegionExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
 
     // The map feed is a set, not a by-id read, so ADR-0025's curator
@@ -180,7 +173,7 @@ describe('reads that show a point', () => {
   });
 
   it('leaves an unread museum off the map too, not just its own unread point', async () => {
-    await getRegionExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
 
     // The two predicates guard different rows and neither stands in for the
@@ -195,7 +188,7 @@ describe('reads that show a point', () => {
   });
 
   it('leaves it out whether or not the region asks for its children', async () => {
-    await getRegionExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
       { params: { regionId: '7' }, query: { includeChildren: 'false' } } as never,
       makeRes() as never);
 
@@ -209,7 +202,7 @@ describe('reads that show a point', () => {
     // here is one nobody may see. This batch answers for the rows the list
     // shows — a feed carrying an object the list dropped is the same
     // disagreement from the other side, markers with no row to hang on.
-    await getRegionExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
 
     expect(locationRead()).toMatch(/mem_elr\.region_id = er\.region_id/);
@@ -218,7 +211,7 @@ describe('reads that show a point', () => {
   it('answers for them in the other branch too', async () => {
     // Two independently built statements, as everywhere else in this pair of
     // controllers: one being right says nothing about the other.
-    await getRegionExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
       { params: { regionId: '7' }, query: { includeChildren: 'false' } } as never,
       makeRes() as never);
 
@@ -535,7 +528,7 @@ describe('the by-id reads and a refused row', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await getExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
       { params: { id: '6205' }, query: {} } as never,
       res as never,
     );
@@ -551,7 +544,7 @@ describe('the by-id reads and a refused row', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await getExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
       { params: { id: '1' }, query: {} } as never,
       makeRes() as never,
     );
@@ -566,7 +559,7 @@ describe('the by-id reads and a refused row', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Palmyra' }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await getExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
       { params: { id: '1' }, query: {} } as never,
       makeRes() as never,
     );
@@ -663,7 +656,7 @@ describe('the by-id relaxation on /:id/locations', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await getExperienceLocations({ params: { id: '1' }, query: {} } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), { params: { id: '1' }, query: {} } as never, makeRes() as never);
 
     // Exactly the existence check and the location list — no third call for a
     // scope check nobody asked for.
@@ -682,7 +675,7 @@ describe('the by-id relaxation on /:id/locations', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await getExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
       { params: { id: '1' }, query: {}, user: { id: 1, role: 'admin' } } as never,
       makeRes() as never,
     );
@@ -701,7 +694,7 @@ describe('the by-id relaxation on /:id/locations', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] }) // existence
       .mockResolvedValueOnce({ rows: [] }); // list
 
-    await getExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
       { params: { id: '1' }, query: {}, user: { id: 9, role: 'curator' } } as never,
       makeRes() as never,
     );
@@ -717,7 +710,7 @@ describe('the by-id relaxation on /:id/locations', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await getExperienceLocations(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
       { params: { id: '1' }, query: { regionId: '7' } } as never,
       makeRes() as never,
     );

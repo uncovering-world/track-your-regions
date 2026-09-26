@@ -5,15 +5,10 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import {
-  getExperience,
-  getExperiencesByRegion,
-  searchExperiences,
-  getExperienceRegionCounts,
-  listKinds,
-} from './experienceQueryController.js';
 import { membershipAdmittedSql, membershipVisibleSql } from '../../db/membership.js';
 import { hidePendingSql, hideRefusedSql } from '../../db/readerPredicates.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -99,7 +94,7 @@ describe('getExperience visibility', () => {
     queueQueries([PUBLIC_WV_REGION]);
     const res = makeRes();
 
-    await getExperience({ params: { id: '281' } } as never, res as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id'), { params: { id: '281' } } as never, res as never);
 
     const [sql, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
     // Same predicate shape as getWorldViews (worldViewCrud.ts): is_active is
@@ -118,7 +113,7 @@ describe('getExperience visibility', () => {
     queueQueries([HIDDEN_WV_REGION, PUBLIC_WV_REGION]);
     const res = makeRes();
 
-    await getExperience(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id'), 
       { params: { id: '281' }, user: { role: 'admin' } } as never,
       res as never,
     );
@@ -139,7 +134,7 @@ describe('getExperience visibility', () => {
     queueQueries([]);
     const res = makeRes();
 
-    await getExperience(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id'), 
       { params: { id: '281' }, user: { role: 'curator' } } as never,
       res as never,
     );
@@ -168,7 +163,7 @@ describe('getExperience curation relaxation', () => {
   it('binds the gate closed for an anonymous caller, without asking the database about scope', async () => {
     queueQueries([PUBLIC_WV_REGION]);
 
-    await getExperience({ params: { id: '281' } } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id'), { params: { id: '281' } } as never, makeRes() as never);
 
     // Exactly the two queries `getExperience` itself makes — no third call for
     // a scope check nobody needs.
@@ -181,7 +176,7 @@ describe('getExperience curation relaxation', () => {
   it('opens the gate for an admin, without asking the database about scope', async () => {
     queueQueries([PUBLIC_WV_REGION]);
 
-    await getExperience(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id'), 
       { params: { id: '281' }, user: { id: 1, role: 'admin' } } as never,
       makeRes() as never,
     );
@@ -210,7 +205,7 @@ describe('getExperience curation relaxation', () => {
   it('opens the gate for a curator whose scope reaches the experience', async () => {
     queueCuratorPath({ unrestricted: true, scoped_region_id: null }, [PUBLIC_WV_REGION]);
 
-    await getExperience(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id'), 
       { params: { id: '281' }, user: { id: 9, role: 'curator' } } as never,
       makeRes() as never,
     );
@@ -222,7 +217,7 @@ describe('getExperience curation relaxation', () => {
   it('keeps the gate closed for a curator whose scope does not reach the experience', async () => {
     queueCuratorPath({ unrestricted: false, scoped_region_id: null }, []);
 
-    await getExperience(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id'), 
       { params: { id: '281' }, user: { id: 9, role: 'curator' } } as never,
       makeRes() as never,
     );
@@ -267,19 +262,19 @@ describe('lifecycle visibility across the read paths', () => {
     {
       name: 'a region list',
       filtersLost: true,
-      run: () => getExperiencesByRegion(
+      run: () => answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
         { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never),
     },
     {
       name: 'search',
       filtersLost: true,
-      run: () => searchExperiences({ query: { q: 'abbey' } } as never, makeRes() as never),
+      run: () => answerRoute(routeAt(experienceReadRoutes, '/search'), { query: { q: 'abbey' } } as never, makeRes() as never),
     },
     {
       name: 'the region counts',
       filtersLost: true,
       countsMemberships: 'm',
-      run: () => getExperienceRegionCounts({ query: { worldViewId: '1' } } as never, makeRes() as never),
+      run: () => answerRoute(routeAt(experienceReadRoutes, '/region-counts'), { query: { worldViewId: '1' } } as never, makeRes() as never),
     },
     {
       // The count that reported 128 art museums where the catalogue offers 101 —
@@ -289,7 +284,7 @@ describe('lifecycle visibility across the read paths', () => {
       name: 'the kind counts',
       filtersLost: true,
       countsMemberships: 'km',
-      run: () => listKinds({} as never, makeRes() as never),
+      run: () => answerRoute(routeAt(experienceReadRoutes, '/kinds'), {} as never, makeRes() as never),
     },
     {
       // The by-id read the other five are siblings of (ADR-0024) — the one this
@@ -299,7 +294,7 @@ describe('lifecycle visibility across the read paths', () => {
       // different question.
       name: 'a single experience by id',
       filtersLost: false,
-      run: () => getExperience({ params: { id: '281' } } as never, makeRes() as never),
+      run: () => answerRoute(routeAt(experienceReadRoutes, '/:id'), { params: { id: '281' } } as never, makeRes() as never),
     },
   ];
 
@@ -381,7 +376,7 @@ describe('lifecycle visibility across the read paths', () => {
   it('keeps a refused row hidden from a caller who asked to see what is gone', async () => {
     // The discriminating case for two predicates rather than one: `includeLost`
     // drops the existence filter and must leave admission alone (ADR-0024).
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: { includeLost: 'true' }, user: undefined } as never,
       makeRes() as never);
 
@@ -394,7 +389,7 @@ describe('lifecycle visibility across the read paths', () => {
   });
 
   it('counts the same rows it lists, or the tree would disagree with itself', async () => {
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
     const [list, count] = mockedQuery.mock.calls.map(c => String(c[0]));
@@ -408,7 +403,7 @@ describe('lifecycle visibility across the read paths', () => {
     // pending gate from one and not the other leaves this exact test the
     // only thing standing between that and a green suite, since a check
     // that joined every call together could not tell the two apart.
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
     const [list, count] = mockedQuery.mock.calls.map(c => String(c[0]));
@@ -422,7 +417,7 @@ describe('lifecycle visibility across the read paths', () => {
   });
 
   it('keeps search brackets round the name alternatives', async () => {
-    await searchExperiences({ query: { q: 'abbey' } } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/search'), { query: { q: 'abbey' } } as never, makeRes() as never);
 
     // Unbracketed, `OR` binds looser than the lifecycle AND and every lost
     // object matching by trigram comes straight back
@@ -431,7 +426,7 @@ describe('lifecycle visibility across the read paths', () => {
   });
 
   it('shows them when the caller asks for them', async () => {
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: { includeLost: 'true' }, user: undefined } as never,
       makeRes() as never);
 
@@ -446,7 +441,7 @@ describe('lifecycle visibility across the read paths', () => {
   });
 
   it('says how many it is holding back, so the page can offer to show them', async () => {
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
     // Answered by the count that was already running: a permanent "show lost"
@@ -464,7 +459,7 @@ describe('lifecycle visibility across the read paths', () => {
   });
 
   it('counts everything as shown once the caller asked for them', async () => {
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: { includeLost: 'true' }, user: undefined } as never,
       makeRes() as never);
 
@@ -478,7 +473,7 @@ describe('lifecycle visibility across the read paths', () => {
 
   it('reports nothing hidden once it is showing them', async () => {
     const res = makeRes();
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: { includeLost: 'true' }, user: undefined } as never,
       res as never);
 
@@ -488,7 +483,7 @@ describe('lifecycle visibility across the read paths', () => {
   });
 
   it('binds the reader on $4, which is where both branches leave room', async () => {
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: {}, user: { id: 9, role: 'user' } } as never,
       makeRes() as never);
 
@@ -498,7 +493,7 @@ describe('lifecycle visibility across the read paths', () => {
   });
 
   it('binds the reader on $4 in the other branch too', async () => {
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: { includeChildren: 'false' }, user: { id: 9, role: 'user' } } as never,
       makeRes() as never);
 
@@ -510,7 +505,7 @@ describe('lifecycle visibility across the read paths', () => {
   });
 
   it('keeps the reader out of the count, which is executed with the region alone', async () => {
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: {}, user: { id: 9, role: 'user' } } as never,
       makeRes() as never);
 
@@ -521,7 +516,7 @@ describe('lifecycle visibility across the read paths', () => {
   });
 
   it('leaves an anonymous reader the source window alone', async () => {
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
     // `v.user_id = NULL` is never true, so the personal clause drops out
@@ -532,7 +527,7 @@ describe('lifecycle visibility across the read paths', () => {
   });
 
   it('labels every row with both axes, so a card can say which it is', async () => {
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
     expect(String(mockedQuery.mock.calls[0][0])).toContain('e.source_membership');
@@ -567,13 +562,13 @@ describe('region membership a reader can see', () => {
     {
       name: 'a region list and its count',
       statements: 2,
-      run: () => getExperiencesByRegion(
+      run: () => answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
         { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never),
     },
     {
       name: 'a region list without its children',
       statements: 2,
-      run: () => getExperiencesByRegion(
+      run: () => answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
         { params: { regionId: '1' }, query: { includeChildren: 'false' }, user: undefined } as never,
         makeRes() as never),
     },
@@ -583,7 +578,7 @@ describe('region membership a reader can see', () => {
       // in it still reaches the tree, and that one joins no membership at all.
       name: 'the tree counts',
       statements: 1,
-      run: () => getExperienceRegionCounts({ query: { worldViewId: '1' } } as never, makeRes() as never),
+      run: () => answerRoute(routeAt(experienceReadRoutes, '/region-counts'), { query: { worldViewId: '1' } } as never, makeRes() as never),
     },
   ];
 
@@ -601,7 +596,7 @@ describe('region membership a reader can see', () => {
   }
 
   it('asks it of the whole point a reader may see, not of the gate alone', async () => {
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
@@ -614,7 +609,7 @@ describe('region membership a reader can see', () => {
   it('keeps asking it of a reader who asked to see what is gone', async () => {
     // `includeLost` widens one axis — objects that no longer exist — and says
     // nothing about whether the region holds a point of them anybody may see.
-    await getExperiencesByRegion(
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: { includeLost: 'true' }, user: undefined } as never,
       makeRes() as never);
 
@@ -629,7 +624,7 @@ describe('region membership a reader can see', () => {
     // a queue item has to be shown where publishing will put it.
     queueQueries([PUBLIC_WV_REGION]);
 
-    await getExperience({ params: { id: '281' } } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id'), { params: { id: '281' } } as never, makeRes() as never);
 
     const [sql, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
     expect(sql).toMatch(/mem_elr\.region_id = er\.region_id/);
@@ -650,7 +645,7 @@ describe('getExperience and the tags column', () => {
   it('does not return tags, which is what lets a gated run write them unreviewed', async () => {
     queueQueries([PUBLIC_WV_REGION]);
 
-    await getExperience({ params: { id: '281' } } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id'), { params: { id: '281' } } as never, makeRes() as never);
 
     const [sql] = mockedQuery.mock.calls[0];
     expect(String(sql)).not.toMatch(/\be\.tags\b/);
@@ -673,7 +668,7 @@ describe('searchExperiences region context', () => {
   });
 
   async function searchSql(): Promise<string> {
-    await searchExperiences({ query: { q: 'rijksmuseum' } } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/search'), { query: { q: 'rijksmuseum' } } as never, makeRes() as never);
     return String(mockedQuery.mock.calls[0][0]);
   }
 
@@ -758,7 +753,7 @@ describe('the extent a by-id read hands over', () => {
   it('simplifies a polygon too large to draw, and leaves a small one alone', async () => {
     queueQueries([]);
     const res = makeRes();
-    await getExperience(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id'), 
       { params: { id: '281' }, user: undefined } as never,
       res as never,
     );

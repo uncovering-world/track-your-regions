@@ -14,8 +14,9 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { getSiteFinds } from './experienceFindsController.js';
 import { experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -24,7 +25,7 @@ function makeRes() {
 }
 
 async function findsSql(): Promise<string> {
-  await getSiteFinds({ params: { id: '14730' } } as never, makeRes() as never);
+  await answerRoute(routeAt(experienceReadRoutes, '/:id/finds'), { params: { id: '14730' } } as never, makeRes() as never);
   return String(mockedQuery.mock.calls[0][0]);
 }
 
@@ -103,7 +104,7 @@ describe('getSiteFinds', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [find] });
     const res = makeRes();
 
-    await getSiteFinds({ params: { id: '14730' } } as never, res as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/finds'), { params: { id: '14730' } } as never, res as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     expect(sql).toContain("t.metadata->'imageCredit' AS image_credit");

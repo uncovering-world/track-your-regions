@@ -16,8 +16,12 @@ import type { Response, NextFunction } from 'express';
 import { pool } from '../db/index.js';
 import type { AuthenticatedRequest } from './auth.js';
 
-/** Where in the request the identifier lives. */
-export type VisibilitySource = 'worldViewIdParam' | 'worldViewIdQuery' | 'regionIdParam' | 'regionIdQuery';
+/**
+ * Where in the request the identifier lives: a path parameter. A declared
+ * route names its world view in `scope` instead, from any part of its parsed
+ * input (ADR-0071).
+ */
+export type VisibilitySource = 'worldViewIdParam' | 'regionIdParam';
 
 const BY_WORLD_VIEW = `
   SELECT is_public
@@ -32,26 +36,9 @@ const BY_REGION = `
   WHERE r.id = $1 AND wv.is_active = true
 `;
 
-/**
- * Reads the id for `source` from the request.
- *
- * Returns `undefined` only for `regionIdQuery`'s "not supplied" case — that
- * source is an optional filter (an unfiltered read is legitimate), unlike the
- * other three sources where the id is mandatory and a missing value is just
- * another shape of "doesn't parse", folded into `null` below.
- */
-function readId(req: AuthenticatedRequest, source: VisibilitySource): number | null | undefined {
-  let raw: unknown;
-  if (source === 'worldViewIdQuery') {
-    raw = req.query?.worldViewId;
-  } else if (source === 'regionIdParam') {
-    raw = req.params?.regionId;
-  } else if (source === 'regionIdQuery') {
-    if (req.query?.regionId === undefined) return undefined;
-    raw = req.query.regionId;
-  } else {
-    raw = req.params?.worldViewId;
-  }
+/** The id for `source`, or null where it is missing or does not parse. */
+function readId(req: AuthenticatedRequest, source: VisibilitySource): number | null {
+  const raw = source === 'regionIdParam' ? req.params?.regionId : req.params?.worldViewId;
   const id = parseInt(String(raw ?? ''), 10);
   return Number.isInteger(id) && id > 0 ? id : null;
 }
@@ -82,17 +69,12 @@ export function requireVisibleWorldView(source: VisibilitySource) {
     }
 
     const id = readId(req, source);
-    if (id === undefined) {
-      // regionIdQuery, not supplied: a legitimate unfiltered read, pass through.
-      next();
-      return;
-    }
     if (id === null) {
       res.status(404).json({ error: 'Not found' });
       return;
     }
 
-    const scope = source === 'regionIdParam' || source === 'regionIdQuery' ? { regionId: id } : { worldViewId: id };
+    const scope = source === 'regionIdParam' ? { regionId: id } : { worldViewId: id };
 
     // A missing row and a hidden world view get the same answer on purpose:
     // 404 leaks nothing about which world views exist.

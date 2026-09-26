@@ -7,6 +7,7 @@ import { z } from 'zod/v4';
 import { parseBbox } from '../db/bboxEnvelopes.js';
 import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { foldLabel, tidyLabel } from '@tyr/shared/labels';
+import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
 import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.js';
 
@@ -232,15 +233,16 @@ export const worldPointsQuerySchema = z.object({
 
 export const experiencesByRegionQuerySchema = z.object({
   includeChildren: booleanStringSchema.default('true'),
-  // Without this the parameter never reaches the controller: `validate()`
-  // replaces req.query with the parsed object, and Zod strips what it does not
-  // name — so the whole "show what no longer exists" path would be dead over
-  // HTTP while passing every test that calls the controller directly.
+  // Without this the parameter never reaches the handler, which receives the
+  // parsed object, and Zod strips what it does not name — so the whole "show
+  // what no longer exists" path would be dead over HTTP while passing every
+  // test that calls the handler directly.
   includeLost: booleanStringSchema,
-  // 5000 to match the controller's own clamp (`WHOLE_REGION_LIMIT`). Neither surface that reads a region paginates, so a ceiling below the
-  // largest region truncated the list instead of paging it — and because the
-  // rows are ordered by name, the loss was a tail of the alphabet.
-  limit: z.coerce.number().int().min(1).max(5000).default(100),
+  // The whole region, at most: neither surface that reads a region paginates,
+  // so a ceiling below the largest region truncated the list instead of paging
+  // it — and because the rows are ordered by name, the loss was a tail of the
+  // alphabet.
+  limit: z.coerce.number().int().min(1).max(WHOLE_REGION_LIMIT).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
