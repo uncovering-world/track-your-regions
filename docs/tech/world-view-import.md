@@ -136,6 +136,8 @@ Wikivoyage API responses are cached to `data/cache/wikivoyage-cache.json` (persi
 
 On server start, orphaned `import_runs` with status `running` or `matching` are marked as `failed` (same pattern as sync log cleanup).
 
+An import run's `status` is never NULL and walks one way: `running` → `matching` → `reviewing`, or `failed` from either of the first two. A trigger, `guard_run_status_move()`, refuses every other move, so a run in `reviewing` or `failed` never reopens; the moves are `RUN_STATUS_MOVES` in `@tyr/shared/runStatuses`, and `runStatusMoves.db.test.ts` walks every pair against it. A region's `match_status` has no such list: every move between its six values is some admin action — accept, reject, reset, flatten, undo, or the copy of one region's match onto another with the same source page — so a list would refuse nothing.
+
 ## Matching Algorithm
 
 ### Country-Level Matching
