@@ -140,9 +140,9 @@ routes/
 └── ...
 ```
 
-Each route file applies appropriate middleware (`requireAuth`, `requireAdmin`, `requireCurator`, `validate()`, rate limiters). Every endpoint must have:
-- **Auth middleware** — `requireAuth`, `requireAdmin`, `requireCurator`, or `optionalAuth`
-- **Zod validation** via `validate()` — validate body, query, and path params
+A declared route (`defineRoute`, ADR-0071, § API Layer) states its access, cache policy, schemas and limiter, and the registry builds the middleware from them. A route file not yet declared applies the middleware by hand (`requireAuth`, `requireAdmin`, `requireCurator`, `validate()`, rate limiters). Either way, every endpoint must have:
+- **Auth** — `access` on a declaration; `requireAuth`, `requireAdmin`, `requireCurator` or `optionalAuth` otherwise
+- **Zod validation** of body, query and path params — the declaration's schemas, or `validate()`
 - **Rate limiting** — see `backend/src/middleware/rateLimiter.ts` and `docs/tech/rate-limiting.md`
 
 ### Services
@@ -454,11 +454,22 @@ TypeScript checks only the keys a literal writes itself, so build the body to wr
 - Rows are typed from the generated row types (§ Database Queries) and mapped key by key, never passed through as `result.rows`. An untyped row is `any`, and `any` satisfies every type.
 - A resource that several endpoints answer with is one schema and one mapper over one SELECT. Every region answer is `regionOf` over `REGION_SELECT_SQL` (`controllers/worldView/regionAnswerRows.ts`), and a write answers with that read rather than with its own `RETURNING`. A narrower copy for one endpoint drifts from what the client does with the answer, which is the same thing whichever endpoint it came from.
 
-The runtime parse catches what the compiler cannot, on every path a lane exercises. Error bodies stay `{ error }`, and #793's route declarations are where they will be declared.
+The runtime parse catches what the compiler cannot, on every path a lane exercises. Error bodies stay `{ error }`.
+
+**A route is declared once, and its middleware follows from the declaration** (ADR-0071, #793). A route file is a list of `defineRoute({ … })` from `backend/src/api/route.ts`, and `routerOf(list)` builds its router:
+
+- `access` (`public`, `optional`, `signed-in`, `curator`, `admin`) and `cache` (`no-store`, `revalidate`, `shared-revalidate`) are required. `shared-revalidate`, the one a shared cache may keep, is only for a `public` route.
+- A `:name` in the path must be named by the `params` schema. `query` and `body` are the other schemas, `response` the answer's, `limiter` the rate limiter if any (`docs/tech/rate-limiting.md`).
+- The chain is the same for every route: limiter, the caller, the cache header, params, query, body, handler. A refused caller gets its 401 or 403 before any 400, and a handler never runs on input its schemas refused.
+- The handler takes `{ params, query, body, caller }`, typed from the schemas, and returns the body, which the registry sends through `respond()`. It returns `NO_CONTENT` for a 204 where the declaration says `noContent: true`, and a create declares `status: 201`.
+- A handler fails by throwing: `notFound`, `badRequest` and `createError` from `middleware/errorHandler.ts`, or `failure(sentence, status, code?)` for a sentence the product wrote, which stays readable at a 5xx in production.
+- `routerOf` refuses, at startup, a route an earlier one shadows (`/:id` above `/search`).
+
+Request schemas are on `zod/v4`, as the response schemas are. The route files move onto the registry one by one: `/api/divisions` and `/api/geocode` are declared, and the rest still list their middleware by hand, with `validate()` and the guards that hold them (the Cache-Control lint rules, `cacheOverrides.test.ts`, `callerShapedReads.test.ts`, `adminClientPaths.test.ts`). #793 removes those with the last file.
 
 A success body sent around `respond()` fails `lint`: a `no-restricted-syntax` entry in `backend/eslint.config.mjs` (`RESPONSE_SHAPE_RULES`) reports a bare `res.json(…)`, or a `.json(…)` after a literal 2xx status, and the same with `send` when its argument is an object or array literal, which Express sends as JSON. It reads every source file but the specs and `respond.ts` itself. An error answer passes, including one whose status is a variable, and so does a `send` of a Buffer, a string or a name, whose type the rule cannot read. The rule exempts an endpoint only line by line, with an `eslint-disable-next-line` that names the issue deciding whether it stays: the endpoints the web does not call, #1006 and #1033.
 
-An error body carries a sentence written for its reader, never the error's own text (#1021). A driver, an HTTP client or a model SDK writes table names, URLs and internals into `err.message`. A handler that catches its own failure logs the error with `console.error` and answers a fixed sentence. A cause the reader can act on is named by a code, the way the AI routes answer `quota_exceeded`. A failure the product names in its own words is thrown as a `ReaderFacingError` (`backend/src/api/readerFacingError.ts`), and `sentenceFor(err, fallback)` shows that sentence where any other error gets the fallback: the picture repair's "Wikidata did not answer, so nothing was changed — try again later" is the admin's only word that nothing changed. `ERROR_TEXT_RULES` in `backend/eslint.config.mjs` fails `lint` on an error's `.message`, the error passed to `String()`, turned into a string by its own `toString()` or interpolated whole into a template, inside a response body (`json`, `send`, `respond`), a redirect's address, a stream's event (`sendEvent`, `writeEvent`) or a progress status (`status`, `statusMessage`). The string cases read the error by its name (`e`, `err`, `error`, or a name ending in `Err` or `Error`), since `String(id)` or `${id}` in a body is an ordinary value. A value read into a variable first is beyond a selector, so review holds that case. `backend/src/middleware/errorTextLint.test.ts` pins both directions of the rule.
+An error body carries a sentence written for its reader, never the error's own text (#1021). A driver, an HTTP client or a model SDK writes table names, URLs and internals into `err.message`. A handler that catches its own failure logs the error with `console.error` and answers a fixed sentence. A cause the reader can act on is named by a code, the way the AI routes answer `quota_exceeded` (a declared route passes it as `failure`'s third argument). A failure the product names in its own words is thrown as a `ReaderFacingError` (`backend/src/api/readerFacingError.ts`), and `sentenceFor(err, fallback)` shows that sentence where any other error gets the fallback: the picture repair's "Wikidata did not answer, so nothing was changed — try again later" is the admin's only word that nothing changed. `ERROR_TEXT_RULES` in `backend/eslint.config.mjs` fails `lint` on an error's `.message`, the error passed to `String()`, turned into a string by its own `toString()` or interpolated whole into a template, inside a response body (`json`, `send`, `respond`), a redirect's address, a stream's event (`sendEvent`, `writeEvent`) or a progress status (`status`, `statusMessage`). The string cases read the error by its name (`e`, `err`, `error`, or a name ending in `Err` or `Error`), since `String(id)` or `${id}` in a body is an ordinary value. A value read into a variable first is beyond a selector, so review holds that case. `backend/src/middleware/errorTextLint.test.ts` pins both directions of the rule.
 
 After changing a schema, run `npm --prefix backend run api:types` and commit `packages/shared/src/api.generated.ts`. `backend/src/api/apiTypes.test.ts` fails while the file is not what the schemas render to.
 
@@ -898,7 +909,7 @@ never keep the superseded behaviour in the comment because it is informative.
 This project follows **OWASP ASVS 5.0 Level 2**. Key rules:
 
 - **Never** concatenate user input into SQL — use parameterized queries
-- **Always** validate inputs with Zod schemas via `validate()` middleware
+- **Always** validate inputs with Zod schemas: a route declaration's `params`, `query` and `body`, or `validate()` on a route not yet declared
 - **Always** verify resource ownership (IDOR prevention)
 - **Always** apply auth middleware to new endpoints
 - **Never** expose secrets in code, configs, logs, or error messages
