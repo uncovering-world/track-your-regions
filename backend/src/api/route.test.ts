@@ -16,12 +16,17 @@ vi.mock('../services/authService.js', () => ({
   verifyAccessToken: vi.fn(),
   updateUserLastSeen: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock('../db/index.js', () => ({
+  pool: { query: vi.fn() },
+}));
 
 import { verifyAccessToken } from '../services/authService.js';
+import { pool } from '../db/index.js';
 import { errorHandler } from '../middleware/errorHandler.js';
 import { defineRoute, NO_CONTENT, routerOf, shadowOf, type Route } from './route.js';
 
 const mockedVerify = verifyAccessToken as unknown as ReturnType<typeof vi.fn>;
+const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
 const Count = z.strictObject({ n: z.number() });
 const idParams = z.object({ id: z.coerce.number().int().positive() });
@@ -68,6 +73,24 @@ const routes: Route[] = [
     response: Count,
     handler: async ({ caller }) => ({ n: caller?.id ?? 0 }),
   }),
+  defineRoute({
+    method: 'get', path: '/regions/:regionId', access: 'optional', cache: 'revalidate',
+    params: z.object({ regionId: z.coerce.number().int().positive() }),
+    query: z.object({ worldViewId: z.coerce.number().int().positive().optional() }),
+    scope: ({ params }) => ({ regionId: params.regionId }),
+    response: Count,
+    handler: async ({ params }) => {
+      handled();
+      return { n: params.regionId };
+    },
+  }),
+  defineRoute({
+    method: 'get', path: '/maybe', access: 'optional', cache: 'revalidate',
+    query: z.object({ worldViewId: z.coerce.number().int().positive().optional() }),
+    scope: ({ query }) => (query.worldViewId === undefined ? undefined : { worldViewId: query.worldViewId }),
+    response: Count,
+    handler: async () => ({ n: 1 }),
+  }),
 ];
 
 let server: Server;
@@ -91,6 +114,7 @@ afterAll(async () => {
 beforeEach(() => {
   handled.mockReset();
   mockedVerify.mockReset();
+  mockedQuery.mockReset();
   limiterRefuses = false;
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -177,6 +201,46 @@ describe('what the handler receives and answers', () => {
   });
 });
 
+describe('the world view a route names in scope', () => {
+  const visible = (isPublic: boolean) => mockedQuery.mockResolvedValueOnce({ rows: [{ is_public: isPublic }] });
+
+  it('answers a reader where the world view is public', async () => {
+    visible(true);
+    const answer = await send('GET', '/regions/5');
+    expect(answer.status).toBe(200);
+    expect(mockedQuery).toHaveBeenCalledWith(expect.stringContaining('JOIN world_views'), [5]);
+  });
+
+  it('answers 404 to a reader where it is hidden or missing, the same for both', async () => {
+    visible(false);
+    const hidden = await send('GET', '/regions/5');
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    const missing = await send('GET', '/regions/6');
+    expect([hidden.status, missing.status]).toEqual([404, 404]);
+    expect(hidden.body).toEqual(missing.body);
+    expect(handled).not.toHaveBeenCalled();
+  });
+
+  it('lets an admin through without asking', async () => {
+    signedIn('admin');
+    expect((await send('GET', '/regions/5', { token: 't' })).status).toBe(200);
+    expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('reads the id from the parsed input, so a malformed one is a 400 and never a query', async () => {
+    expect((await send('GET', '/regions/abc')).status).toBe(400);
+    expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('passes a read that names no world view, which is an unfiltered one', async () => {
+    expect((await send('GET', '/maybe')).status).toBe(200);
+    expect(mockedQuery).not.toHaveBeenCalled();
+    visible(true);
+    expect((await send('GET', '/maybe?worldViewId=3')).status).toBe(200);
+    expect(mockedQuery).toHaveBeenCalledWith(expect.stringContaining('FROM world_views'), [3]);
+  });
+});
+
 describe('the cache header each policy writes', () => {
   it.each([
     ['/public', undefined, 'public, no-cache'],
@@ -191,6 +255,21 @@ describe('the cache header each policy writes', () => {
   it('keys an answer that reads the token on the caller, and one that does not on nothing', async () => {
     expect(String((await send('GET', '/mine')).headers.vary).toLowerCase()).toContain('authorization');
     expect(String((await send('GET', '/public')).headers.vary ?? '').toLowerCase()).not.toContain('authorization');
+  });
+});
+
+describe('what the compiler refuses', () => {
+  it('tells a public route nothing about who is calling, so a handler that shapes its answer by the caller cannot be public', () => {
+    const shapedByCaller = async ({ caller }: { caller: Express.User | undefined }) => ({ n: caller ? 1 : 0 });
+    expect(defineRoute({
+      method: 'get', path: '/shaped', access: 'optional', cache: 'revalidate', response: Count,
+      handler: shapedByCaller,
+    }).access).toBe('optional');
+    defineRoute({
+      method: 'get', path: '/shaped', access: 'public', cache: 'shared-revalidate', response: Count,
+      // @ts-expect-error -- a public route's input has no caller
+      handler: shapedByCaller,
+    });
   });
 });
 

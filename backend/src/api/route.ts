@@ -6,7 +6,7 @@
  * answers (`response`). The middleware follows from those fields, in one order
  * for every route:
  *
- *   limiter → the caller (`access`) → the cache header → params → query → body → handler
+ *   limiter → the caller (`access`) → the cache header → params → query → body → scope → handler
  *
  * so a caller the route refuses learns nothing about its inputs, and a handler
  * never runs on input its schema did not pass.
@@ -20,12 +20,18 @@
  * body; the registry sends it through `respond()`, which types it from
  * `response` and parses it outside production (ADR-0066). A handler that
  * answers with no body returns `NO_CONTENT`, and only where the declaration
- * says it may.
+ * says it may. A handler on a `public` route is not told who is calling at all,
+ * so one that shapes its answer by the caller cannot be declared `public`.
+ *
+ * A route that reads a hidden world view's data names it in `scope`, and the
+ * registry answers 404 to anyone but an admin before the handler runs.
  */
 
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import type { z } from 'zod/v4';
 import { optionalAuth, requireAdmin, requireAuth, requireCurator, type AuthenticatedRequest } from '../middleware/auth.js';
+import { notFound } from '../middleware/errorHandler.js';
+import { isVisibleToReaders, type VisibleScope } from '../middleware/worldViewVisibility.js';
 import { respond } from './respond.js';
 
 /**
@@ -69,21 +75,22 @@ export type PathParams<P extends string> =
 /** Answers with no body: a 204. Returned by a handler whose route declares `noContent`. */
 export const NO_CONTENT: unique symbol = Symbol('no content');
 
-/** Who the handler is told is calling. */
-type CallerOf<A extends Access> =
-  A extends 'public' ? undefined
-    : A extends 'optional' ? Express.User | undefined
-      : Express.User;
-
 type OutputOf<S> = S extends z.ZodType ? z.output<S> : undefined;
 
-/** What a handler receives: its input, parsed, and the caller. */
-export interface RouteInput<Params, Query, Body, Caller> {
+/** What a handler receives: its input, parsed. */
+export interface RouteParts<Params, Query, Body> {
   readonly params: Params;
   readonly query: Query;
   readonly body: Body;
-  readonly caller: Caller;
 }
+
+/**
+ * What a handler receives: its input, and who is calling. A `public` route's
+ * handler has no `caller`, so a handler that needs one does not compile there.
+ */
+export type RouteInput<Params, Query, Body, A extends Access> = RouteParts<Params, Query, Body>
+  & (A extends 'public' ? unknown
+    : { readonly caller: A extends 'optional' ? Express.User | undefined : Express.User });
 
 /** The request and response, for a handler that needs a header or a cookie. */
 export interface RouteExchange {
@@ -116,8 +123,14 @@ export type RouteDeclaration<
   readonly status?: 201;
   /** Whether the handler may answer 204 by returning `NO_CONTENT`. */
   readonly noContent?: NC;
+  /**
+   * The world view the answer belongs to, read from the parsed input; a
+   * hidden one answers 404 to anyone but an admin. `undefined` where the
+   * input names none, for an optional filter.
+   */
+  readonly scope?: (input: RouteParts<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>>) => VisibleScope | undefined;
   readonly handler: (
-    input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, CallerOf<A>>,
+    input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, A>,
     exchange: RouteExchange,
   ) => Promise<z.output<RS> | (NC extends true ? typeof NO_CONTENT : never)>;
 } & ParamsField<P, PS>;
@@ -135,7 +148,8 @@ export interface Route {
   readonly response: z.ZodType;
   readonly status?: number;
   readonly noContent?: boolean;
-  readonly handler: (input: RouteInput<unknown, unknown, unknown, Express.User | undefined>, exchange: RouteExchange) => Promise<unknown>;
+  readonly scope?: (input: RouteParts<unknown, unknown, unknown>) => VisibleScope | undefined;
+  readonly handler: (input: RouteParts<unknown, unknown, unknown> & { readonly caller?: Express.User }, exchange: RouteExchange) => Promise<unknown>;
 }
 
 /** Declare a route. The declaration is checked by the compiler; `routerOf` builds it. */
@@ -168,7 +182,7 @@ function parsed(schema: z.ZodType | undefined, value: unknown): unknown {
   return result.data;
 }
 
-/** The chain one declaration builds, in the order the module comment gives. */
+/** The chain one declaration builds, in the order the module comment gives; `scope` is checked after the body. */
 function chainOf(route: Route): RequestHandler[] {
   const cacheHeader: RequestHandler = (_req, res, next) => {
     // eslint-disable-next-line no-restricted-syntax -- CACHE_HEADER's one public value is refused off a public route by routerOf and by the declaration's type
@@ -180,13 +194,19 @@ function chainOf(route: Route): RequestHandler[] {
   // to `express-async-errors`, which only a server that imports it has.
   const handle = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const input = {
+      const parts = {
         params: parsed(route.params, req.params),
         query: parsed(route.query, req.query),
         body: parsed(route.body, req.body),
-        caller: (req as AuthenticatedRequest).user,
       };
-      const body = await route.handler(input, { req, res });
+      const caller = route.access === 'public' ? undefined : (req as AuthenticatedRequest).user;
+      const scope = route.scope?.(parts);
+      // A missing row and a hidden world view answer the same 404, which
+      // says nothing about which world views exist.
+      if (scope && caller?.role !== 'admin' && !(await isVisibleToReaders(scope))) {
+        throw notFound('Not found');
+      }
+      const body = await route.handler(route.access === 'public' ? parts : { ...parts, caller }, { req, res });
       if (body === NO_CONTENT) {
         res.status(204).send();
         return;
