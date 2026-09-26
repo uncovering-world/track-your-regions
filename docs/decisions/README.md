@@ -89,6 +89,7 @@ and accepted by it.
 | [0067](0067-accepting-a-refusal-keeps-it-and-a-batch-answer-pins-nothing.md) | Accepting a refusal keeps it, and a batch answer pins nothing | Accepted | 2026-09-24 |
 | [0068](0068-a-member-change-invalidates-its-region-in-the-database.md) | A member change invalidates its region in the database | Accepted | 2026-09-25 |
 | [0069](0069-a-catalogue-tables-writers-are-a-closed-list-and-a-locked-write-takes-the-lock.md) | A catalogue table's writers are a closed list, and a locked write takes the lock | Accepted | 2026-09-25 |
+| [0070](0070-the-database-refuses-a-curation-state-move-the-gate-does-not-allow.md) | The database refuses a curation-state move the gate does not allow | Accepted | 2026-09-26 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
