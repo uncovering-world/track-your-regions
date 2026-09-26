@@ -29,6 +29,10 @@ import {
   type ClosedSyncStatus, type ImportRunStatus, type MatchStatus, type SyncLogStatus,
 } from '@tyr/shared/runStatuses';
 import {
+  ADMISSIONS, CURATION_MOVES, CURATION_STATES, EXISTENCES, SOURCE_MEMBERSHIPS,
+  type Admission, type CurationState, type Existence, type SourceMembership,
+} from '@tyr/shared/lifecycle';
+import {
   CHECK_VALUES,
   type AuthProvider as SchemaAuthProvider,
   type CheckValue,
@@ -57,6 +61,21 @@ describe('the vocabularies both sides import', () => {
     expect([...CLOSED_SYNC_STATUSES]).toEqual([...CHECK_VALUES.experience_sources.last_sync_status]);
     expect([...IMPORT_RUN_STATUSES]).toEqual([...CHECK_VALUES.import_runs.status]);
     expect([...MATCH_STATUSES]).toEqual([...CHECK_VALUES.region_import_state.match_status]);
+  });
+
+  it('name exactly the lifecycle states the schema allows, on every table that carries each (#794)', () => {
+    expectTypeOf<Admission>().toEqualTypeOf<CheckValue<'experience_kind_memberships', 'admission'>>();
+    expectTypeOf<Existence>().toEqualTypeOf<CheckValue<'experiences', 'existence'>>();
+    expectTypeOf<Existence>().toEqualTypeOf<CheckValue<'experience_locations', 'existence'>>();
+    expectTypeOf<SourceMembership>().toEqualTypeOf<CheckValue<'experiences', 'source_membership'>>();
+    expectTypeOf<SourceMembership>().toEqualTypeOf<CheckValue<'experience_locations', 'source_membership'>>();
+    for (const table of Object.keys(CURATION_MOVES) as (keyof typeof CURATION_MOVES)[]) {
+      expect([...CURATION_STATES]).toEqual([...CHECK_VALUES[table].curation_state]);
+    }
+    expectTypeOf<CurationState>().toEqualTypeOf<CheckValue<'experience_kind_memberships', 'curation_state'>>();
+    expect([...ADMISSIONS]).toEqual([...CHECK_VALUES.experience_kind_memberships.admission]);
+    expect([...EXISTENCES]).toEqual([...CHECK_VALUES.experiences.existence]);
+    expect([...SOURCE_MEMBERSHIPS]).toEqual([...CHECK_VALUES.experiences.source_membership]);
   });
 
   it('name exactly the roles and the sign-in providers the schema has', () => {
