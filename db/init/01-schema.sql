@@ -2657,7 +2657,7 @@ CREATE TABLE IF NOT EXISTS experience_sync_logs (
     source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
     started_at TIMESTAMPTZ DEFAULT NOW(),
     completed_at TIMESTAMPTZ,
-    status VARCHAR(50) DEFAULT 'running' CHECK (status IN ('running', 'success', 'partial', 'failed', 'cancelled')),
+    status VARCHAR(50) NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'success', 'partial', 'failed', 'cancelled')),
     total_fetched INTEGER DEFAULT 0,
     total_created INTEGER DEFAULT 0,
     total_updated INTEGER DEFAULT 0,
@@ -3581,13 +3581,51 @@ CREATE TABLE IF NOT EXISTS import_runs (
     id SERIAL PRIMARY KEY,
     world_view_id INTEGER REFERENCES world_views(id) ON DELETE CASCADE,
     source_type VARCHAR(50) NOT NULL,  -- 'wikivoyage', 'osm', etc.
-    status VARCHAR(20) DEFAULT 'running' CHECK (status IN ('running', 'matching', 'reviewing', 'failed')),
+    status VARCHAR(20) NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'matching', 'reviewing', 'failed')),
     data_path TEXT,  -- filesystem path to raw JSON (/data/imports/{id}.json)
     stats JSONB,
     started_at TIMESTAMPTZ DEFAULT NOW(),
     completed_at TIMESTAMPTZ
 );
 COMMENT ON COLUMN import_runs.status IS 'Import run status: running, matching, reviewing, failed (CHECK; @tyr/shared/runStatuses)';
+
+-- A run's status move the lifecycle does not allow is refused (#794).
+--
+-- A sync log closes from running and may have its verdict corrected after,
+-- but never becomes running again: the startup sweep would take it for a run
+-- a restart interrupted. An import run goes running -> matching -> reviewing,
+-- or to failed from either of the first two, and nothing leaves reviewing or
+-- failed. The moves are listed in @tyr/shared/runStatuses (RUN_STATUS_MOVES)
+-- and here, and a database-lane spec (runStatusMoves.db.test.ts) walks every
+-- pair against the list. An insert is not a move.
+CREATE OR REPLACE FUNCTION guard_run_status_move() RETURNS TRIGGER AS $$
+DECLARE
+  allowed BOOLEAN;
+BEGIN
+  allowed := CASE TG_TABLE_NAME
+    WHEN 'experience_sync_logs' THEN NEW.status <> 'running'
+    WHEN 'import_runs' THEN (OLD.status, NEW.status) IN
+      (('running', 'matching'), ('matching', 'reviewing'), ('running', 'failed'), ('matching', 'failed'))
+    ELSE FALSE
+  END;
+  IF NOT allowed THEN
+    RAISE EXCEPTION 'status may not move from % to % on %', OLD.status, NEW.status, TG_TABLE_NAME
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS guard_run_status_move ON experience_sync_logs;
+CREATE TRIGGER guard_run_status_move
+  BEFORE UPDATE OF status ON experience_sync_logs
+  FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status)
+  EXECUTE FUNCTION guard_run_status_move();
+DROP TRIGGER IF EXISTS guard_run_status_move ON import_runs;
+CREATE TRIGGER guard_run_status_move
+  BEFORE UPDATE OF status ON import_runs
+  FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status)
+  EXECUTE FUNCTION guard_run_status_move();
 
 CREATE INDEX IF NOT EXISTS idx_import_runs_wv ON import_runs(world_view_id);
 

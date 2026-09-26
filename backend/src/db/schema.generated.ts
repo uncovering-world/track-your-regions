@@ -258,7 +258,7 @@ export interface ExperienceSyncLogsRow {
   source_id: number;
   started_at: Date | null;
   completed_at: Date | null;
-  status: string | null;
+  status: string;
   total_fetched: number | null;
   total_created: number | null;
   total_updated: number | null;
@@ -327,7 +327,7 @@ export interface ImportRunsRow {
   id: number;
   world_view_id: number | null;
   source_type: string;
-  status: string | null;
+  status: string;
   data_path: string | null;
   stats: unknown | null;
   started_at: Date | null;

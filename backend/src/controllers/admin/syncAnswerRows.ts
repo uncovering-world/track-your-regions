@@ -103,7 +103,7 @@ export function syncLogOf(row: SyncLogRow): SyncLog {
     started_at: isoOf(row.started_at),
     completed_at: isoOf(row.completed_at),
     // The CHECK is what makes the stored text one of the declared statuses.
-    status: row.status as CheckValue<'experience_sync_logs', 'status'> | null,
+    status: row.status as CheckValue<'experience_sync_logs', 'status'>,
     total_fetched: row.total_fetched,
     total_created: row.total_created,
     total_updated: row.total_updated,
