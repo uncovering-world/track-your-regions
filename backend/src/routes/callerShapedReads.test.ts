@@ -6,13 +6,17 @@ vi.mock('../db/index.js', () => ({
   rollbackQuietly: vi.fn(),
 }));
 
-import experienceRouter from './experienceRoutes.js';
 import worldViewRouter from './worldViewRoutes.js';
 import userRouter from './userRoutes.js';
 
 /**
  * The reads whose answer depends on who asks, and the two middlewares that say
- * so in the headers.
+ * so in the headers — for the route files that still list their middleware by
+ * hand. A declared route (ADR-0071) holds both halves by construction: its
+ * handler is told who is calling only where its `access` reads a token, and
+ * the order that puts the caller before `scope` is the registry's, one for
+ * every route. The experience reads are declared (`experienceReadRoutes`);
+ * #793 deletes this file with the last hand-written route.
  *
  * `optionalAuth` marks every response it shapes `Cache-Control: private,
  * no-cache` + `Vary: Authorization`; `requireAuth` marks every response it
@@ -75,12 +79,6 @@ function mountedRoutersOf(router: Router): Layer[] {
 }
 
 const NAMED_READS: Array<[Router, string, string]> = [
-  [experienceRouter, 'get', '/by-region/:regionId'],
-  [experienceRouter, 'get', '/by-region/:regionId/locations'],
-  [experienceRouter, 'get', '/region-counts'],
-  [experienceRouter, 'get', '/:id'],
-  [experienceRouter, 'get', '/:id/locations'],
-  [experienceRouter, 'get', '/:id/treasures'],
   [worldViewRouter, 'get', '/'],
 ];
 
@@ -97,7 +95,7 @@ describe('every caller-shaped read carries optionalAuth', () => {
   it('runs optionalAuth before every world view visibility guard', () => {
     // `requireVisibleWorldView` returns a function named `visibilityGuard`;
     // the name is what Express keeps of it.
-    const guarded = [...routesOf(experienceRouter), ...routesOf(worldViewRouter)]
+    const guarded = routesOf(worldViewRouter)
       .filter((r) => r.chain.includes('visibilityGuard'));
     expect(guarded.length).toBeGreaterThan(0);
 

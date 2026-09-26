@@ -48,9 +48,9 @@
  * for a rule that already had one.
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { WorldPointsResponse } from '../../api/responses/worldPoints.js';
+import type { z } from 'zod/v4';
+import type { WorldPointsResponse } from '../../api/responses/worldPoints.js';
+import type { worldPointsQuerySchema } from '../../types/index.js';
 import type { PointsDetail } from './worldPointsVocabulary.js';
 import { pool } from '../../db/index.js';
 import { placeOfferedSql, rowKindJoinSql } from '../../db/membership.js';
@@ -172,14 +172,13 @@ function readerGuardsSql(): string {
  * - detail: overview (default) or markers
  * - folded: one point per object instead of one per place
  */
-export async function getWorldPoints(req: Request, res: Response): Promise<void> {
-  const detail: PointsDetail = req.query.detail === 'markers' ? 'markers' : 'overview';
-  // `String` rather than a comparison against the literal, so the parsed
-  // query's 'true' and a test calling the handler with a boolean read the
-  // same — the shape `includeLost` accepts for the same reason.
-  const folded = String(req.query.folded) === 'true';
-  const kindId = req.query.kindId === undefined ? null : Number(req.query.kindId);
-  const box = parseBbox(req.query.bbox);
+export async function getWorldPoints(
+  { query: q }: { query: z.output<typeof worldPointsQuerySchema> },
+): Promise<WorldPointsResponse> {
+  const detail: PointsDetail = q.detail;
+  const folded = q.folded === 'true';
+  const kindId = q.kindId ?? null;
+  const box = parseBbox(q.bbox);
 
   const params: number[] = [];
   const conditions = [readerGuardsSql()];
@@ -217,7 +216,7 @@ export async function getWorldPoints(req: Request, res: Response): Promise<void>
   // One more than the cap, so hitting it is distinguishable from filling it.
   const { rows } = await pool.query<PointRow>(query, params);
   const truncated = rows.length > MAX_POINTS;
-  respond(res, WorldPointsResponse, toColumns(truncated ? rows.slice(0, MAX_POINTS) : rows, detail, folded, truncated));
+  return toColumns(truncated ? rows.slice(0, MAX_POINTS) : rows, detail, folded, truncated);
 }
 
 /**

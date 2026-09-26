@@ -4,12 +4,10 @@
  * Public browsing endpoints: get, search, region counts, kinds.
  */
 
-import { Request, Response } from 'express';
-import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
-import { respond } from '../../api/respond.js';
-import {
+import type { z } from 'zod/v4';
+import type {
   ExperienceDetail, ExperienceKinds, ExperienceSearch, ExperiencesByRegionResponse, RegionExperienceCounts,
-  type ExperienceRegionRef,
+  ExperienceRegionRef,
 } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import type { ExperienceKindsRow } from '../../db/schema.generated.js';
@@ -31,7 +29,12 @@ import { withDangerFields } from './experienceDanger.js';
 import {
   experienceDetailOf, experienceOf, searchResultOf, type ExperienceDetailRow, type ExperienceListRow, type SearchRow,
 } from './experienceAnswerRows.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { checkCuratorScope } from '../../middleware/auth.js';
+import { notFound } from '../../middleware/errorHandler.js';
+import type {
+  experienceRegionCountsQuerySchema, experienceSearchQuerySchema, experiencesByRegionQuerySchema,
+  idParamSchema, regionIdParamSchema,
+} from '../../types/index.js';
 
 /**
  * Get single experience by ID
@@ -46,13 +49,14 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
  * predicate matches `getWorldViews` (worldViewCrud.ts) exactly so the two
  * cannot drift apart.
  */
-export async function getExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const id = parseInt(String(req.params.id));
-  const isAdmin = req.user?.role === 'admin';
+export async function getExperience(
+  { params: { id }, caller }: { params: z.output<typeof idParamSchema>; caller: Express.User | undefined },
+): Promise<ExperienceDetail> {
+  const isAdmin = caller?.role === 'admin';
   // Resolved before the row is fetched, because it has to be a parameter
   // inside that query's WHERE — see `maySeeUnreadExperience` for why this is
   // the one place the pending gate opens (ADR-0025).
-  const maySeeUnread = await maySeeUnreadExperience(req.user?.id, req.user?.role, id);
+  const maySeeUnread = await maySeeUnreadExperience(caller?.id, caller?.role, id);
 
   const result = await pool.query<ExperienceDetailRow>(`
     SELECT
@@ -121,10 +125,7 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
       AND ($2::boolean OR ${hidePendingSql()})
   `, [id, maySeeUnread]);
 
-  if (result.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
-  }
+  if (result.rows.length === 0) throw notFound('Experience not found');
 
   // Get assigned regions, filtered to world views visible to this caller.
   const regionsResult = await pool.query<ExperienceRegionRef>(`
@@ -146,7 +147,7 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
     ORDER BY wv.name, r.name
   `, [id, isAdmin, maySeeUnread]);
 
-  respond(res, ExperienceDetail, experienceDetailOf(result.rows[0], regionsResult.rows));
+  return experienceDetailOf(result.rows[0], regionsResult.rows);
 }
 
 /**
@@ -156,25 +157,28 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
  * Uses optionalAuth: curators see rejected items marked with is_rejected,
  * regular users have them filtered out entirely.
  */
-export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const includeChildren = req.query.includeChildren !== 'false';
-  // The number the client asks for: a region is read whole or truncated
-  // mid-alphabet, never paged
-  // (`WHOLE_REGION_LIMIT`). Callers that want a page still get one by passing
-  // `limit`; the default of 100 is unchanged.
-  const limit = Math.min(parseInt(String(req.query.limit)) || 100, WHOLE_REGION_LIMIT);
-  const offset = parseInt(String(req.query.offset)) || 0;
+export async function getExperiencesByRegion(
+  { params: { regionId }, query: q, caller }: {
+    params: z.output<typeof regionIdParamSchema>;
+    query: z.output<typeof experiencesByRegionQuerySchema>;
+    caller: Express.User | undefined;
+  },
+): Promise<ExperiencesByRegionResponse> {
+  const includeChildren = q.includeChildren !== 'false';
+  // The number the client asks for, up to the whole region
+  // (`WHOLE_REGION_LIMIT`, the schema's ceiling): a region is read whole or
+  // truncated mid-alphabet, never paged. The default is 100.
+  const { limit, offset } = q;
 
   // Determine if the user is a curator with scope for this region
-  const userRole = req.user?.role;
-  const userId = req.user?.id;
+  const userRole = caller?.role;
+  const userId = caller?.id;
   const showRejected = userId && userRole && (userRole === 'curator' || userRole === 'admin')
-    ? await import('../../middleware/auth.js').then(m => m.checkCuratorScope(userId, userRole, regionId))
+    ? await checkCuratorScope(userId, userRole, regionId)
     : false;
 
   const { query, countQuery, params } = buildRegionQueries({
-    regionId, includeChildren, showRejected, includeLostRows: includeLost(req.query), limit, offset, userId,
+    regionId, includeChildren, showRejected, includeLostRows: includeLost(q), limit, offset, userId,
   });
 
   const result = await pool.query(query, params);
@@ -199,13 +203,10 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
     WHERE r.id = $1
   `, [regionId]);
 
-  if (regionResult.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found' });
-    return;
-  }
+  if (regionResult.rows.length === 0) throw notFound('Region not found');
 
   const region = regionResult.rows[0];
-  respond(res, ExperiencesByRegionResponse, {
+  return {
     region: { id: region.id, name: region.name, world_view_name: region.world_view_name },
     // The driver's rows, read as the columns `buildRegionQueries` selects.
     experiences: result.rows.map(row => experienceOf(withDangerFields(row) as ExperienceListRow)),
@@ -216,10 +217,10 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
     // than a permanent control for a rare state. Zero also once they are being
     // shown — nothing is hidden then, and a field that still counted them
     // would have the page offering to reveal what is already on screen.
-    lostHidden: includeLost(req.query) ? 0 : countResult.rows[0].lost_hidden,
+    lostHidden: includeLost(q) ? 0 : countResult.rows[0].lost_hidden,
     limit,
     offset,
-  });
+  };
 }
 
 /**
@@ -231,7 +232,7 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
  * headers, the way the source row's own `is_active` took it off this list
  * when the two were one row.
  */
-export async function listKinds(_req: Request, res: Response): Promise<void> {
+export async function listKinds(): Promise<ExperienceKinds> {
   const result = await pool.query<Pick<ExperienceKindsRow, 'id' | 'name' | 'display_priority'> & { experience_count: string }>(`
     SELECT
       k.id,
@@ -251,12 +252,12 @@ export async function listKinds(_req: Request, res: Response): Promise<void> {
     ORDER BY k.display_priority, k.name
   `);
 
-  respond(res, ExperienceKinds, result.rows.map(row => ({
+  return result.rows.map(row => ({
     id: row.id,
     name: row.name,
     display_priority: row.display_priority,
     experience_count: row.experience_count,
-  })));
+  }));
 }
 
 /**
@@ -271,15 +272,9 @@ export async function listKinds(_req: Request, res: Response): Promise<void> {
  * that holds the Great Barrier Reef must not answer "no results" for it because
  * no region has claimed it yet (#469, #470).
  */
-export async function searchExperiences(req: Request, res: Response): Promise<void> {
-  const query = req.query.q ? String(req.query.q) : '';
-  const limit = Math.min(parseInt(String(req.query.limit)) || 20, 100);
-
-  if (!query || query.length < 2) {
-    res.status(400).json({ error: 'Search query must be at least 2 characters' });
-    return;
-  }
-
+export async function searchExperiences(
+  { query: { q: query, limit } }: { query: z.output<typeof experienceSearchQuerySchema> },
+): Promise<ExperienceSearch> {
   const result = await pool.query<SearchRow>(`
     -- The match and its LIMIT first, the region context after it. A scalar
     -- subquery in the select list of the matching query would be carried
@@ -350,11 +345,11 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
     ORDER BY m.name_contains DESC, m.relevance DESC
   `, [query, `%${query}%`, limit]);
 
-  respond(res, ExperienceSearch, {
+  return {
     query,
     results: result.rows.map(searchResultOf),
     total: result.rows.length,
-  });
+  };
 }
 
 /**
@@ -368,15 +363,9 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
  * Returns an array of { region_id, region_name, has_subregions, kind_counts: { [kindId]: count } }
  * Only returns direct assignment counts (not recursive children).
  */
-export async function getExperienceRegionCounts(req: Request, res: Response): Promise<void> {
-  const worldViewId = req.query.worldViewId ? parseInt(String(req.query.worldViewId)) : null;
-  const parentRegionId = req.query.parentRegionId ? parseInt(String(req.query.parentRegionId)) : null;
-
-  if (!worldViewId) {
-    res.status(400).json({ error: 'worldViewId is required' });
-    return;
-  }
-
+export async function getExperienceRegionCounts(
+  { query: { worldViewId, parentRegionId } }: { query: z.output<typeof experienceRegionCountsQuerySchema> },
+): Promise<RegionExperienceCounts> {
   // Get counts broken down by kind for regions at the requested level.
   // Rejected and lost are both excluded: these counts say how much there is to
   // go and see in a region, and neither is. A `lost` object someone already
@@ -444,5 +433,5 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
     kind_counts: countMap.get(row.region_id) || {},
   }));
 
-  respond(res, RegionExperienceCounts, response);
+  return response;
 }

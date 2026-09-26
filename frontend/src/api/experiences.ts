@@ -125,8 +125,8 @@ export async function fetchRegionExperienceLocations(
   const query = params.toString();
   const querySuffix = query ? `?${query}` : '';
   // Authenticated for the same reason as fetchExperiencesByRegion, plus a
-  // sharper one: `requireVisibleWorldView` guards this route, and a hidden world
-  // view answers an anonymous caller with 404. Sent unauthenticated, the batch
+  // sharper one: the route names its region's world view as its `scope`, and a
+  // hidden world view answers an anonymous caller with 404. Sent unauthenticated, the batch
   // failed for every experience in the region at once, and each row rendered the
   // absence as `0/N in region` — the count comes from this response while the
   // total falls back to `experience.location_count`.

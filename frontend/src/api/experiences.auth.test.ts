@@ -3,8 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 /**
  * Reads on a hidden world view must carry the token.
  *
- * `requireVisibleWorldView` answers 404 — not 401 — when a world view has
- * `is_public = false` and the caller is not an admin. A read sent through the
+ * The world view visibility check — a route's declared `scope`, or
+ * `requireVisibleWorldView` on one not yet declared — answers 404, not 401,
+ * when a world view has `is_public = false` and the caller is not an admin. A read sent through the
  * unauthenticated `fetchJson` is therefore indistinguishable from a missing
  * region, and react-query stores the rejection as `data: undefined` rather than
  * surfacing it. The batch that fell into this returned nothing for every
@@ -17,11 +18,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * separates these endpoints from the genuinely public ones.
  *
  * The class is "reads whose response depends on world-view visibility", not
- * "reads carrying `requireVisibleWorldView`". Those are not the same set, and
- * the difference is one route a search for the guard never finds:
+ * "reads that name a `scope`". Those are not the same set, and the difference
+ * is one route a search for the check never finds:
  * `GET /api/experiences/:id` is public by design and does the filtering inline
  * — it returns every region assignment only to an admin — so it fails the same
- * way while never appearing in a search for the guard. It is also the one most
+ * way while never appearing in a search for the check. It is also the one most
  * likely to be undone, because dropping `authFetchJson` there reads as a
  * cleanup of a plainly public route, passes, and silently restores an empty
  * `regions[]`.
@@ -97,7 +98,7 @@ describe('experience reads whose response depends on world-view visibility', () 
   });
 
   it('sends the token when fetching one experience\'s locations for a region', async () => {
-    // Guarded by `regionIdQuery`: the guard engages exactly when a regionId is
+    // Scoped by the optional `regionId`: the check engages exactly when one is
     // passed and waves the request through when it is absent. No call site
     // passes one today — both go through the unguarded shape — so this fixes
     // the contract before a caller starts rather than covering one that exists.
@@ -125,8 +126,8 @@ describe('experience reads whose response depends on world-view visibility', () 
   });
 
   it('sends the token when fetching region counts for a world view', async () => {
-    // `worldViewIdQuery` is mandatory here, so every call on a hidden world view
-    // 404s — the Discover tree renders those counts.
+    // Its `worldViewId` is mandatory and is its scope, so every call on a hidden
+    // world view 404s — the Discover tree renders those counts.
     await fetchExperienceRegionCounts(5);
 
     expect(authHeaderOf(fetchSpy.mock.calls[0])).toBe(`Bearer ${token}`);

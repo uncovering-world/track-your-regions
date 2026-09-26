@@ -4,11 +4,12 @@
  * Multi-location support and batch location fetching for experiences.
  */
 
-import { Request, Response } from 'express';
+import type { Response } from 'express';
+import type { z } from 'zod/v4';
 import { respond } from '../../api/respond.js';
 import {
-  ExperienceLocationsResponse,
-  RegionExperienceLocationsResponse,
+  type ExperienceLocationsResponse,
+  type RegionExperienceLocationsResponse,
   type ExperienceLocation,
   type ExperienceLocationWithState,
   type RegionExperienceLocation,
@@ -33,6 +34,8 @@ import {
 import { includeLost } from './includeLost.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { notFound } from '../../middleware/errorHandler.js';
+import type { experienceLocationsQuerySchema, idParamSchema, regionIdParamSchema, regionLocationsQuerySchema } from '../../types/index.js';
 
 /**
  * A point as both location reads select it.
@@ -81,9 +84,13 @@ function locationOf(row: LocationRow): ExperienceLocation {
  * Single query returning all locations grouped by experience_id.
  * Used by ExperienceMarkers and ExperienceList to avoid N+1 calls.
  */
-export async function getRegionExperienceLocations(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const includeChildren = req.query.includeChildren !== 'false';
+export async function getRegionExperienceLocations(
+  { params: { regionId }, query: q }: {
+    params: z.output<typeof regionIdParamSchema>;
+    query: z.output<typeof regionLocationsQuerySchema>;
+  },
+): Promise<RegionExperienceLocationsResponse> {
+  const includeChildren = q.includeChildren !== 'false';
 
   // Follows the list. These are the markers for exactly the rows the list is
   // showing, so a reader who asked to see what no longer exists would
@@ -94,7 +101,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
   // follows, and the curator relaxation (ADR-0025) stops at the three by-id
   // reads so the two never disagree on what is being shown.
   const lifecycleFilter = `AND ${hideRefusedSql()} `
-    + (includeLost(req.query) ? '' : `AND ${hideLostSql()} `)
+    + (includeLost(q) ? '' : `AND ${hideLostSql()} `)
     + `AND ${hidePendingSql()}`;
 
   let query: string;
@@ -221,7 +228,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
     locationsByExperience[row.experience_id] = points;
   }
 
-  respond(res, RegionExperienceLocationsResponse, { locationsByExperience });
+  return { locationsByExperience };
 }
 
 // =============================================================================
@@ -234,14 +241,19 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
  * Query params:
  *   - regionId: Filter to show which locations are in this region
  */
-export async function getExperienceLocations(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const regionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
+export async function getExperienceLocations(
+  { params: { id: experienceId }, query, caller }: {
+    params: z.output<typeof idParamSchema>;
+    query: z.output<typeof experienceLocationsQuerySchema>;
+    caller: Express.User | undefined;
+  },
+): Promise<ExperienceLocationsResponse> {
+  const regionId = query.regionId ?? null;
   // Resolved once, ahead of both queries below, and reused by both: the
   // existence gate needs it to decide 404 vs. 200, and the list needs it so a
   // curator who was let through the gate is not then handed an empty list of
   // its (also pending) locations. See `maySeeUnreadExperience` (ADR-0025).
-  const maySeeUnread = await maySeeUnreadExperience(req.user?.id, req.user?.role, experienceId);
+  const maySeeUnread = await maySeeUnreadExperience(caller?.id, caller?.role, experienceId);
 
   // Verify the experience exists *and* is one this catalogue still offers.
   //
@@ -255,10 +267,7 @@ export async function getExperienceLocations(req: AuthenticatedRequest, res: Res
      WHERE e.id = $1 AND ${hideRefusedSql()} AND ($2::boolean OR ${hidePendingSql()})`,
     [experienceId, maySeeUnread],
   );
-  if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
-  }
+  if (expResult.rows.length === 0) throw notFound('Experience not found');
 
   // Get locations with region membership info. `maySeeUnread` is bound as the
   // last parameter regardless of whether `regionId` is present, so the two
@@ -309,13 +318,13 @@ export async function getExperienceLocations(req: AuthenticatedRequest, res: Res
     refused_at: row.refused_at?.toISOString() ?? null,
   }));
 
-  respond(res, ExperienceLocationsResponse, {
+  return {
     experienceId,
     experienceName: expResult.rows[0].name,
     locations,
     totalLocations: locations.length,
     regionId,
-  });
+  };
 }
 
 /**

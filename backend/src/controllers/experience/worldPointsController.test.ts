@@ -30,9 +30,10 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { getWorldPoints } from './worldPointsController.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { placeOfferedSql } from '../../db/membership.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -41,7 +42,7 @@ function makeRes() {
 }
 
 async function ask(query: Record<string, unknown> = {}): Promise<{ sql: string; params: unknown[] }> {
-  await getWorldPoints({ query } as never, makeRes() as never);
+  await answerRoute(routeAt(experienceReadRoutes, '/points'), { query } as never, makeRes() as never);
   // The last call, not the first: two asks in one test would otherwise both
   // read the first one's SQL and the second assertion would pass on the
   // wrong query.
@@ -52,7 +53,7 @@ async function ask(query: Record<string, unknown> = {}): Promise<{ sql: string; 
 async function answer(rows: Record<string, unknown>[], query: Record<string, unknown> = {}) {
   mockedQuery.mockResolvedValue({ rows });
   const res = makeRes();
-  await getWorldPoints({ query } as never, res as never);
+  await answerRoute(routeAt(experienceReadRoutes, '/points'), { query } as never, res as never);
   return res.json.mock.calls.at(-1)![0] as Record<string, unknown>;
 }
 
@@ -188,31 +189,27 @@ describe('getWorldPoints', () => {
     // concatenation never carries a value. Every interpolation in the module is
     // an alias this file passes, a module constant, or a shared fragment; the
     // two things a caller controls go through `params`.
-    it('keeps a hostile kind out of the statement and in the parameters', async () => {
-      const hostile = "1); DROP TABLE experiences; --";
-      const { sql, params } = await ask({ kindId: hostile });
-      expect(sql).not.toContain('DROP');
-      expect(sql).not.toContain(hostile);
-      expect(sql).toContain('m.kind_id = $1');
-      // `Number` is what the handler reads it through, so what reaches the
-      // driver is a number the database refuses, never text it might run. Over
-      // HTTP it never gets this far: the schema refuses it with a 400.
-      expect(params).toHaveLength(1);
-      expect(typeof params[0]).toBe('number');
+    it('refuses a hostile kind before any SQL is built', async () => {
+      // The route's schema reads the kind as a bounded positive integer, so
+      // text never reaches the handler, let alone the statement.
+      mockedQuery.mockClear();
+      await expect(ask({ kindId: "1); DROP TABLE experiences; --" })).rejects.toThrow();
+      expect(mockedQuery).not.toHaveBeenCalled();
     });
 
-    it('drops a hostile box entirely rather than parameterising it', async () => {
-      // Stronger than parameterisation, and worth pinning as what it is: a
-      // segment that is not a number makes `parseBbox` name no box at all, so
-      // there is no envelope and no parameter. Over HTTP the schema refuses it
-      // with a 400 before the handler runs, for the reason the schema carries —
-      // a box nobody can parse must not widen the answer to the whole
-      // catalogue. Here the handler is called directly, and the filter is
-      // simply absent.
-      const { sql, params } = await ask({ bbox: '0,0,0,0) OR true --' });
-      expect(sql).not.toContain('OR true');
-      expect(sql).not.toContain('ST_MakeEnvelope');
-      expect(params).toEqual([]);
+    it('parameterises a kind it can read', async () => {
+      const { sql, params } = await ask({ kindId: '2' });
+      expect(sql).toContain('m.kind_id = $1');
+      expect(params).toEqual([2]);
+    });
+
+    it('refuses a box it cannot read rather than widening to the whole catalogue', async () => {
+      // A segment that is not a number makes `parseBbox` name no box at all,
+      // and a box nobody can parse must not quietly become the whole world:
+      // the schema refuses it before the handler runs.
+      mockedQuery.mockClear();
+      await expect(ask({ bbox: '0,0,0,0) OR true --' })).rejects.toThrow();
+      expect(mockedQuery).not.toHaveBeenCalled();
     });
 
     it('parameterises a box it can read, all four numbers', async () => {
@@ -223,12 +220,14 @@ describe('getWorldPoints', () => {
     });
 
     it('rounds to a constant, never to anything a caller named', async () => {
-      // `detail` picks a column list and a precision from module constants, and
-      // the handler forces it to one of two literals before either is read.
-      for (const detail of ['markers', 'overview', 'bogus', '2); DROP TABLE x; --']) {
+      // `detail` picks a column list and a precision from module constants,
+      // and the schema holds it to the two it names.
+      for (const detail of ['markers', 'overview']) {
         const { sql } = await ask({ detail });
         expect(sql).toMatch(/::numeric, [25]\)/);
-        expect(sql).not.toContain('DROP');
+      }
+      for (const detail of ['bogus', '2); DROP TABLE x; --']) {
+        await expect(ask({ detail })).rejects.toThrow();
       }
     });
   });

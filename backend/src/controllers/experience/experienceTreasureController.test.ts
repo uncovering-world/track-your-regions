@@ -21,7 +21,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { getExperienceTreasures, markTreasureViewed } from './experienceTreasureController.js';
+import { markTreasureViewed } from './experienceTreasureController.js';
 import {
   experienceOfferedToReaderSql,
   hideLostSql,
@@ -29,6 +29,8 @@ import {
   hideRefusedSql,
   linkedForReaderSql,
 } from '../../db/readerPredicates.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -55,7 +57,7 @@ describe('getExperienceTreasures gate', () => {
   it('gates the experience, the link and the treasure, not the container alone', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getExperienceTreasures({ params: { id: '1' } } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), { params: { id: '1' } } as never, makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     // The container's two questions are its membership's (#822), asked
@@ -81,7 +83,7 @@ describe('getExperienceTreasures gate', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [workRow(work)] });
     const res = makeRes();
 
-    await getExperienceTreasures({ params: { id: '6187' } } as never, res as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), { params: { id: '6187' } } as never, res as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     expect(sql).toContain('t.curated_fields,');
@@ -109,7 +111,7 @@ describe('getExperienceTreasures gate', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [workRow(find)] });
     const res = makeRes();
 
-    await getExperienceTreasures({ params: { id: '6187' } } as never, res as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), { params: { id: '6187' } } as never, res as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     expect(sql).toContain("t.metadata->'foundAt' AS found_at");
@@ -135,7 +137,7 @@ describe('getExperienceTreasures gate', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [workRow(find)] });
     const res = makeRes();
 
-    await getExperienceTreasures({ params: { id: '14551' } } as never, res as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), { params: { id: '14551' } } as never, res as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     expect(sql).toMatch(/WHERE site\.type = 'site'\s+AND site\.external_id = t\.metadata->'foundAt'->>'qid'/);
@@ -156,7 +158,7 @@ describe('getExperienceTreasures gate', () => {
     // curator's list showing it would put back on screen what the run took off.
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getExperienceTreasures({ params: { id: '1' } } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), { params: { id: '1' } } as never, makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     expect(sql).toContain('et.missing_since IS NULL');
@@ -166,7 +168,7 @@ describe('getExperienceTreasures gate', () => {
   it('binds the gate closed for an anonymous caller, without asking the database about scope', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getExperienceTreasures({ params: { id: '1' } } as never, makeRes() as never);
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), { params: { id: '1' } } as never, makeRes() as never);
 
     // Exactly the one query this read makes — no scope check for a caller who
     // never asked to see anything unread.
@@ -178,7 +180,7 @@ describe('getExperienceTreasures gate', () => {
   it('opens the gate for an admin, on all three predicates, without a scope query', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await getExperienceTreasures(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), 
       { params: { id: '1' }, user: { id: 1, role: 'admin' } } as never,
       makeRes() as never,
     );
@@ -197,7 +199,7 @@ describe('getExperienceTreasures gate', () => {
       .mockResolvedValueOnce({ rows: [{ unrestricted: true, scoped_region_id: null }] }) // scope check
       .mockResolvedValueOnce({ rows: [] }); // the treasures query itself
 
-    await getExperienceTreasures(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), 
       { params: { id: '1' }, user: { id: 9, role: 'curator' } } as never,
       makeRes() as never,
     );
@@ -212,7 +214,7 @@ describe('getExperienceTreasures gate', () => {
       .mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await getExperienceTreasures(
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), 
       { params: { id: '1' }, user: { id: 9, role: 'curator' } } as never,
       makeRes() as never,
     );
