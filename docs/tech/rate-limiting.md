@@ -43,11 +43,12 @@ Per-IP limiting for logged-in user actions (tracking visits, viewed treasures).
 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
-| `authenticatedLimiter` | 1 min | 60 | All `userRoutes.ts` endpoints (visited regions/experiences/locations, viewed treasures), plus `POST /api/experiences/new-badges/seen` |
+| `authenticatedLimiter` | 1 min | 60 | Every `userRoutes.ts` endpoint (the account, visited regions/experiences/locations, viewed treasures), plus `POST /api/experiences/new-badges/seen` |
 
-Applied via `router.use(authenticatedLimiter)` at the router level in `userRoutes.ts`, since all
-its routes require auth. The badge-impression endpoint takes it per route instead: it lives in
-`experienceRoutes.ts` among the curation routes the section below exempts, and it is not one of
+Declared on each of `userRoutes.ts`'s routes, since all of them require auth (a path under
+`/api/users` that no route declares is a plain 404 that runs no handler). The badge-impression
+endpoint carries it too: it lives in `experienceRoutes.ts` among the curation routes the section
+below exempts, and it is not one of
 them — it is an ordinary authenticated action, and the only endpoint there a client calls on its
 own initiative rather than in response to a click.
 
@@ -59,7 +60,7 @@ Routes behind `requireAuth` + `requireAdmin` or `requireCurator` are **not** rat
 - Admin operations include long-running batch tasks (geometry computation, sync) where rate limiting could cause failures
 - The attack surface is negligible (requires compromised admin credentials)
 
-**Exempt by default:** `adminRoutes.ts`, `divisionRoutes.ts` (every route declared `admin`), `viewRoutes.ts`, `aiRoutes.ts`, plus write operations in `worldViewRoutes.ts` and `experienceRoutes.ts` curation routes.
+**Exempt by default:** `adminRoutes.ts`, `divisionRoutes.ts` and `aiRoutes.ts` (every route declared `admin`), `viewRoutes.ts`, plus write operations in `worldViewRoutes.ts` and `experienceRoutes.ts` curation routes.
 
 The exemption is about the *attack* surface, and it stops applying when a request
 is expensive to the system regardless of who sends it. The exceptions are named here, and the
@@ -308,12 +309,6 @@ A route file not yet declared places it as the first middleware argument:
 
 ```typescript
 router.get('/example', publicReadLimiter, validate(schema, 'query'), optionalAuth, handler);
-```
-
-For router-wide application (when all routes in a file need the same limiter):
-
-```typescript
-router.use(authenticatedLimiter);
 ```
 
 ## Technical details
