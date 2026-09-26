@@ -33,10 +33,18 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { getExperienceVisitedStatus, markAllLocationsVisited, markLocationVisited, getVisitedLocationIds, unmarkAllLocationsVisited, unmarkLocationVisited } from './experienceLocationController.js';
 import { experienceOfferedToReaderSql, hidePendingSql, hideRefusedSql, offeredToReaderSql } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
+import { userRoutes } from '../../routes/userRoutes.js';
+
+/** The user routes these specs answer through (ADR-0071). */
+const getVisitedLocationIdsRoute = routeAt(userRoutes, '/me/visited-locations/ids', 'get');
+const postVisitedLocation = routeAt(userRoutes, '/me/visited-locations/:locationId', 'post');
+const deleteVisitedLocation = routeAt(userRoutes, '/me/visited-locations/:locationId', 'delete');
+const postMarkAllLocations = routeAt(userRoutes, '/me/experiences/:experienceId/mark-all-locations', 'post');
+const deleteMarkAllLocations = routeAt(userRoutes, '/me/experiences/:experienceId/mark-all-locations', 'delete');
+const getVisitedStatus = routeAt(userRoutes, '/me/experiences/:id/visited-status', 'get');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -153,7 +161,7 @@ describe('reads that show a point', () => {
   });
 
   it('leaves a withdrawn point out of the markers a region asks for', async () => {
-    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'),
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
 
     // The marker batch feeds the map. A pin at a point the source withdrew is
@@ -162,7 +170,7 @@ describe('reads that show a point', () => {
   });
 
   it('leaves an unread point out of the markers a region asks for, with no relaxation', async () => {
-    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'),
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
 
     // The map feed is a set, not a by-id read, so ADR-0025's curator
@@ -173,7 +181,7 @@ describe('reads that show a point', () => {
   });
 
   it('leaves an unread museum off the map too, not just its own unread point', async () => {
-    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'),
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
 
     // The two predicates guard different rows and neither stands in for the
@@ -188,7 +196,7 @@ describe('reads that show a point', () => {
   });
 
   it('leaves it out whether or not the region asks for its children', async () => {
-    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'),
       { params: { regionId: '7' }, query: { includeChildren: 'false' } } as never,
       makeRes() as never);
 
@@ -202,7 +210,7 @@ describe('reads that show a point', () => {
     // here is one nobody may see. This batch answers for the rows the list
     // shows — a feed carrying an object the list dropped is the same
     // disagreement from the other side, markers with no row to hang on.
-    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'),
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
 
     expect(locationRead()).toMatch(/mem_elr\.region_id = er\.region_id/);
@@ -211,7 +219,7 @@ describe('reads that show a point', () => {
   it('answers for them in the other branch too', async () => {
     // Two independently built statements, as everywhere else in this pair of
     // controllers: one being right says nothing about the other.
-    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'),
       { params: { regionId: '7' }, query: { includeChildren: 'false' } } as never,
       makeRes() as never);
 
@@ -238,7 +246,7 @@ describe('a visit outlives the point', () => {
   });
 
   it('counts a reader progress over the points still on offer', async () => {
-    await getExperienceVisitedStatus(
+    await answerRoute(getVisitedStatus,
       { params: { id: '42' }, user: { id: 5 } } as never, makeRes() as never);
 
     // Returning a withdrawn point because this reader had visited it puts the
@@ -255,7 +263,7 @@ describe('a visit outlives the point', () => {
   it('marks only the points still on offer when asked to mark them all', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ id: 1 }], rowCount: 1 });
 
-    await markAllLocationsVisited(
+    await answerRoute(postMarkAllLocations,
       { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
       makeRes() as never);
 
@@ -265,7 +273,7 @@ describe('a visit outlives the point', () => {
   it('does not manufacture a visit to a point nobody has read yet, "mark all" — #520', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ id: 1 }], rowCount: 1 });
 
-    await markAllLocationsVisited(
+    await answerRoute(postMarkAllLocations,
       { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
       makeRes() as never);
 
@@ -282,7 +290,7 @@ describe('a visit outlives the point', () => {
   it('does not manufacture a visit to a point nobody has read yet, "mark all" in a region', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ id: 1 }], rowCount: 1 });
 
-    await markAllLocationsVisited(
+    await answerRoute(postMarkAllLocations,
       { params: { experienceId: '42' }, query: { regionId: '7' }, user: { id: 5 } } as never,
       makeRes() as never);
 
@@ -295,7 +303,7 @@ describe('a visit outlives the point', () => {
   it('still lets a user take back a visit to a point that was withdrawn', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ count: '0' }], rowCount: 1 });
 
-    await unmarkAllLocationsVisited(
+    await answerRoute(deleteMarkAllLocations,
       { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
       makeRes() as never);
 
@@ -319,7 +327,7 @@ describe('a visit outlives the point', () => {
     mockedQuery.mockReset();
     mockedQuery.mockResolvedValue({ rows: [{ experience_id: 42, count: '0' }], rowCount: 1 });
 
-    await unmarkLocationVisited(
+    await answerRoute(deleteVisitedLocation,
       { params: { locationId: '7' }, user: { id: 5 } } as never, makeRes() as never);
 
     // A visit surviving on a withdrawn point would otherwise hold the count at
@@ -357,7 +365,7 @@ describe('a transaction is pinned to one connection', () => {
   it('marks every location on the pinned client, BEGIN through COMMIT', async () => {
     const client = pinClient();
 
-    await markAllLocationsVisited(
+    await answerRoute(postMarkAllLocations,
       { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
       makeRes() as never);
 
@@ -372,7 +380,7 @@ describe('a transaction is pinned to one connection', () => {
   it('takes the visits back on the pinned client, both deletes included', async () => {
     const client = pinClient();
 
-    await unmarkAllLocationsVisited(
+    await answerRoute(deleteMarkAllLocations,
       { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
       makeRes() as never);
 
@@ -391,7 +399,7 @@ describe('a transaction is pinned to one connection', () => {
       .mockResolvedValueOnce({ rows: [] })           // BEGIN
       .mockRejectedValueOnce(new Error('insert failed'));
 
-    await expect(markAllLocationsVisited(
+    await expect(answerRoute(postMarkAllLocations,
       { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
       makeRes() as never)).rejects.toThrow('insert failed');
 
@@ -419,7 +427,7 @@ describe('the single-mark write and the visited-ids read — #520', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await markLocationVisited(
+    await answerRoute(postVisitedLocation,
       { params: { locationId: '99' }, body: {}, user: { id: 5 } } as never,
       res as never,
     );
@@ -439,7 +447,7 @@ describe('the single-mark write and the visited-ids read — #520', () => {
   it('lists only visited locations a reader may still see', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ location_id: 1, experience_id: 42 }] });
 
-    await getVisitedLocationIds(
+    await answerRoute(getVisitedLocationIdsRoute,
       { query: {}, user: { id: 5 } } as never, makeRes() as never);
 
     // All four, named one at a time rather than as "the lifecycle predicates":
@@ -457,14 +465,14 @@ describe('the single-mark write and the visited-ids read — #520', () => {
 
   it('asks for exactly what its sibling asks, so a badge cannot read 3 of 2', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ location_id: 1, experience_id: 42 }] });
-    await getVisitedLocationIds(
+    await answerRoute(getVisitedLocationIdsRoute,
       { query: {}, user: { id: 5 } } as never, makeRes() as never);
     const [idsSql] = mockedQuery.mock.calls[0] as [string, unknown[]];
 
     mockedQuery.mockReset();
     mockedQuery.mockResolvedValueOnce({ rows: [visitStatusRow({ location_id: 1, visit_id: null })] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
-    await getExperienceVisitedStatus(
+    await answerRoute(getVisitedStatus,
       { params: { id: '42' }, user: { id: 5 } } as never, makeRes() as never);
     const statusSql = (mockedQuery.mock.calls.at(-1) as [string, unknown[]])[0];
 
@@ -495,18 +503,18 @@ describe('a claim can only be added for a row that was showable', () => {
   const cases: Array<[string, () => Promise<unknown>]> = [
     ['markLocationVisited', () => {
       mockedQuery.mockResolvedValueOnce({ rows: [] });
-      return markLocationVisited(
+      return answerRoute(postVisitedLocation,
         { params: { locationId: '1' }, body: {}, user: { id: 5 } } as never, makeRes() as never);
     }],
     ['markAllLocationsVisited, whole object', () => {
       mockedQuery.mockResolvedValueOnce({ rows: [] });
-      return markAllLocationsVisited(
-        { params: { id: '42' }, query: {}, body: {}, user: { id: 5 } } as never, makeRes() as never);
+      return answerRoute(postMarkAllLocations,
+        { params: { experienceId: '42' }, query: {}, body: {}, user: { id: 5 } } as never, makeRes() as never);
     }],
     ['markAllLocationsVisited, one region', () => {
       mockedQuery.mockResolvedValueOnce({ rows: [] });
-      return markAllLocationsVisited(
-        { params: { id: '42' }, query: { regionId: '7' }, body: {}, user: { id: 5 } } as never,
+      return answerRoute(postMarkAllLocations,
+        { params: { experienceId: '42' }, query: { regionId: '7' }, body: {}, user: { id: 5 } } as never,
         makeRes() as never);
     }],
   ];
@@ -528,7 +536,7 @@ describe('the by-id reads and a refused row', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'),
       { params: { id: '6205' }, query: {} } as never,
       res as never,
     );
@@ -544,7 +552,7 @@ describe('the by-id reads and a refused row', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'),
       { params: { id: '1' }, query: {} } as never,
       makeRes() as never,
     );
@@ -559,7 +567,7 @@ describe('the by-id reads and a refused row', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Palmyra' }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'),
       { params: { id: '1' }, query: {} } as never,
       makeRes() as never,
     );
@@ -575,7 +583,7 @@ describe('the by-id reads and a refused row', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await getExperienceVisitedStatus(
+    await answerRoute(getVisitedStatus,
       { params: { id: '6205' }, user: { id: 5 } } as never, res as never);
 
     // The one query here carries the admission predicate ANDed with the
@@ -590,7 +598,7 @@ describe('the by-id reads and a refused row', () => {
   it('reaches the visited status through the catalogue, not past it', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [visitStatusRow({ location_id: 1, visit_id: null })] });
 
-    await getExperienceVisitedStatus(
+    await answerRoute(getVisitedStatus,
       { params: { id: '6205' }, user: { id: 5 } } as never, makeRes() as never);
 
     // This read never joined `experiences` at all, so no admission predicate
@@ -609,7 +617,7 @@ describe('the by-id reads and a refused row', () => {
   it('filters admission only here too, as the read one segment up does', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [visitStatusRow({ location_id: 1, visit_id: null })] });
 
-    await getExperienceVisitedStatus(
+    await answerRoute(getVisitedStatus,
       { params: { id: '6205' }, user: { id: 5 } } as never, makeRes() as never);
 
     // Same choice as the read one segment up, for the same reason: the
@@ -627,7 +635,7 @@ describe('the by-id reads and a refused row', () => {
   it('keeps an unread museum out of a progress denominator, with no curator relaxation', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [visitStatusRow({ location_id: 1, visit_id: null })] });
 
-    await getExperienceVisitedStatus(
+    await answerRoute(getVisitedStatus,
       { params: { id: '6205' }, user: { id: 5 } } as never, makeRes() as never);
 
     // This is a reader's own progress read, not one of the three by-id reads
@@ -675,7 +683,7 @@ describe('the by-id relaxation on /:id/locations', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'),
       { params: { id: '1' }, query: {}, user: { id: 1, role: 'admin' } } as never,
       makeRes() as never,
     );
@@ -694,7 +702,7 @@ describe('the by-id relaxation on /:id/locations', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] }) // existence
       .mockResolvedValueOnce({ rows: [] }); // list
 
-    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'),
       { params: { id: '1' }, query: {}, user: { id: 9, role: 'curator' } } as never,
       makeRes() as never,
     );
@@ -710,7 +718,7 @@ describe('the by-id relaxation on /:id/locations', () => {
       .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'),
       { params: { id: '1' }, query: { regionId: '7' } } as never,
       makeRes() as never,
     );

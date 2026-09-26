@@ -4,9 +4,7 @@
  * Multi-location support and batch location fetching for experiences.
  */
 
-import type { Response } from 'express';
 import type { z } from 'zod/v4';
-import { respond } from '../../api/respond.js';
 import {
   type ExperienceLocationsResponse,
   type RegionExperienceLocationsResponse,
@@ -14,9 +12,9 @@ import {
   type ExperienceLocationWithState,
   type RegionExperienceLocation,
 } from '../../api/responses/experiences.js';
-import {
+import type {
   AllLocationsMarked, AllLocationsUnmarked, ExperienceVisitedStatusResponse, LocationVisitMarked, LocationVisitUnmarked,
-  VisitedLocationIds, type VisitedStatus,
+  VisitedLocationIds, VisitedStatus,
 } from '../../api/responses/visited.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type {
@@ -33,9 +31,12 @@ import {
 } from '../../db/readerPredicates.js';
 import { includeLost } from './includeLost.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { notFound } from '../../middleware/errorHandler.js';
-import type { experienceLocationsQuerySchema, idParamSchema, regionIdParamSchema, regionLocationsQuerySchema } from '../../types/index.js';
+import type {
+  experienceIdParamSchema, experienceLocationsQuerySchema, idParamSchema, locationIdParamSchema,
+  markAllLocationsQuerySchema, markLocationVisitedBodySchema, regionIdParamSchema, regionLocationsQuerySchema,
+  visitedLocationIdsQuerySchema,
+} from '../../types/index.js';
 
 /**
  * A point as both location reads select it.
@@ -331,14 +332,11 @@ export async function getExperienceLocations(
  * Get visited location IDs for current user
  * GET /api/users/me/visited-locations/ids
  */
-export async function getVisitedLocationIds(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const experienceId = req.query.experienceId ? parseInt(String(req.query.experienceId)) : null;
+export async function getVisitedLocationIds(
+  { query: q, caller }: { query: z.output<typeof visitedLocationIdsQuerySchema>; caller: Express.User },
+): Promise<VisitedLocationIds> {
+  const userId = caller.id;
+  const experienceId = q.experienceId ?? null;
 
   // Carries exactly what `getExperienceVisitedStatus` carries, and the reason is
   // that the two answer the same question about the same rows: this endpoint
@@ -393,26 +391,26 @@ export async function getVisitedLocationIds(req: AuthenticatedRequest, res: Resp
     byExperience[row.experience_id].push(row.location_id);
   }
 
-  respond(res, VisitedLocationIds, {
+  return {
     visitedLocationIds: result.rows.map(r => r.location_id),
     byExperience,
     total: result.rows.length,
-  });
+  };
 }
 
 /**
  * Mark a location as visited
  * POST /api/users/me/visited-locations/:locationId
  */
-export async function markLocationVisited(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const locationId = parseInt(String(req.params.locationId));
-  const notes = req.body.notes ? String(req.body.notes) : null;
+export async function markLocationVisited(
+  { params: { locationId }, body, caller }: {
+    params: z.output<typeof locationIdParamSchema>;
+    body: z.output<typeof markLocationVisitedBodySchema>;
+    caller: Express.User;
+  },
+): Promise<LocationVisitMarked> {
+  const userId = caller.id;
+  const notes = body.notes || null;
 
   // Verify location exists and get experience info. Gated on curation_state,
   // both the container's and the location's own (ADR-0025): without this, any
@@ -434,10 +432,7 @@ export async function markLocationVisited(req: AuthenticatedRequest, res: Respon
     WHERE el.id = $1 AND ${offeredToReaderSql()}
   `, [locationId]);
 
-  if (locResult.rows.length === 0) {
-    res.status(404).json({ error: 'Location not found' });
-    return;
-  }
+  if (locResult.rows.length === 0) throw notFound('Location not found');
 
   const location = locResult.rows[0];
 
@@ -460,7 +455,7 @@ export async function markLocationVisited(req: AuthenticatedRequest, res: Respon
   `, [userId, location.experience_id]);
 
   const visit = result.rows[0];
-  respond(res, LocationVisitMarked, {
+  return {
     success: true,
     locationId,
     locationName: location.name,
@@ -469,31 +464,24 @@ export async function markLocationVisited(req: AuthenticatedRequest, res: Respon
     id: visit.id,
     visited_at: visit.visited_at?.toISOString() ?? null,
     notes: visit.notes,
-  });
+  };
 }
 
 /**
  * Unmark a location as visited
  * DELETE /api/users/me/visited-locations/:locationId
  */
-export async function unmarkLocationVisited(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const locationId = parseInt(String(req.params.locationId));
+export async function unmarkLocationVisited(
+  { params: { locationId }, caller }: { params: z.output<typeof locationIdParamSchema>; caller: Express.User },
+): Promise<LocationVisitUnmarked> {
+  const userId = caller.id;
 
   // Get the experience ID before deleting
   const locResult = await pool.query(`
     SELECT el.experience_id FROM experience_locations el WHERE el.id = $1
   `, [locationId]);
 
-  if (locResult.rows.length === 0) {
-    res.status(404).json({ error: 'Location not found' });
-    return;
-  }
+  if (locResult.rows.length === 0) throw notFound('Location not found');
 
   const experienceId = locResult.rows[0].experience_id;
 
@@ -503,10 +491,7 @@ export async function unmarkLocationVisited(req: AuthenticatedRequest, res: Resp
     [userId, locationId]
   );
 
-  if (result.rowCount === 0) {
-    res.status(404).json({ error: 'Visit record not found' });
-    return;
-  }
+  if (result.rowCount === 0) throw notFound('Visit record not found');
 
   // Does the reader still hold a visit to a point this experience offers? If
   // not, the experience-level record goes with the last one.
@@ -532,7 +517,7 @@ export async function unmarkLocationVisited(req: AuthenticatedRequest, res: Resp
     );
   }
 
-  respond(res, LocationVisitUnmarked, { success: true, locationId, experienceId });
+  return { success: true, locationId, experienceId };
 }
 
 /**
@@ -541,15 +526,15 @@ export async function unmarkLocationVisited(req: AuthenticatedRequest, res: Resp
  * Query params:
  *   - regionId: If provided, only mark locations that are in this region
  */
-export async function markAllLocationsVisited(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const experienceId = parseInt(String(req.params.experienceId));
-  const regionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
+export async function markAllLocationsVisited(
+  { params: { experienceId }, query: q, caller }: {
+    params: z.output<typeof experienceIdParamSchema>;
+    query: z.output<typeof markAllLocationsQuerySchema>;
+    caller: Express.User;
+  },
+): Promise<AllLocationsMarked> {
+  const userId = caller.id;
+  const regionId = q.regionId ?? null;
 
   // Get locations for this experience, optionally filtered by region
   let locationsQuery: string;
@@ -584,10 +569,7 @@ export async function markAllLocationsVisited(req: AuthenticatedRequest, res: Re
 
   const locationsResult = await pool.query(locationsQuery, locationsParams);
 
-  if (locationsResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found or has no locations in this region' });
-    return;
-  }
+  if (locationsResult.rows.length === 0) throw notFound('Experience not found or has no locations in this region');
 
   // Mark locations as visited in a single transaction, on one client — see the
   // note in curationController: pg.Pool hands out an arbitrary idle client per
@@ -623,12 +605,12 @@ export async function markAllLocationsVisited(req: AuthenticatedRequest, res: Re
     client.release(unusable);
   }
 
-  respond(res, AllLocationsMarked, {
+  return {
     success: true,
     experienceId,
     regionId,
     locationsMarked: locationsResult.rows.length,
-  });
+  };
 }
 
 /**
@@ -637,15 +619,15 @@ export async function markAllLocationsVisited(req: AuthenticatedRequest, res: Re
  * Query params:
  *   - regionId: If provided, only unmark locations that are in this region
  */
-export async function unmarkAllLocationsVisited(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const experienceId = parseInt(String(req.params.experienceId));
-  const regionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
+export async function unmarkAllLocationsVisited(
+  { params: { experienceId }, query: q, caller }: {
+    params: z.output<typeof experienceIdParamSchema>;
+    query: z.output<typeof markAllLocationsQuerySchema>;
+    caller: Express.User;
+  },
+): Promise<AllLocationsUnmarked> {
+  const userId = caller.id;
+  const regionId = q.regionId ?? null;
 
   // One client for the whole transaction, as in `markAllLocationsVisited` above.
   // This half is the sharper one: its body is deletes, so a ROLLBACK that
@@ -710,26 +692,22 @@ export async function unmarkAllLocationsVisited(req: AuthenticatedRequest, res: 
     client.release(unusable);
   }
 
-  respond(res, AllLocationsUnmarked, {
+  return {
     success: true,
     experienceId,
     regionId,
     locationsUnmarked,
-  });
+  };
 }
 
 /**
  * Get experience visited status with location details
  * GET /api/users/me/experiences/:id/visited-status
  */
-export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const experienceId = parseInt(String(req.params.id));
+export async function getExperienceVisitedStatus(
+  { params: { id: experienceId }, caller }: { params: z.output<typeof idParamSchema>; caller: Express.User },
+): Promise<ExperienceVisitedStatusResponse> {
+  const userId = caller.id;
 
   // Get all locations with their visited status
   // The place's own columns, the two coordinates it computes, and the visit the
@@ -785,10 +763,7 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
     ORDER BY el.ordinal
   `, [experienceId, userId]);
 
-  if (result.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found or has no locations' });
-    return;
-  }
+  if (result.rows.length === 0) throw notFound('Experience not found or has no locations');
 
   const totalLocations = result.rows.length;
   const visitedLocations = result.rows.filter(r => r.visit_id !== null).length;
@@ -803,7 +778,7 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
     visitedStatus = 'partial';
   }
 
-  respond(res, ExperienceVisitedStatusResponse, {
+  return {
     experienceId,
     visitedStatus,
     totalLocations,
@@ -818,5 +793,5 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
       visitedAt: r.visited_at?.toISOString() ?? null,
       notes: r.notes,
     })),
-  });
+  };
 }

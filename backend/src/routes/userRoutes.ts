@@ -1,13 +1,33 @@
-import { Router, Response } from 'express';
-import { respond } from '../api/respond.js';
-import { MyAccount, type CuratorScope } from '../api/responses/auth.js';
-import { VisitedRegion, VisitedRegions } from '../api/responses/visited.js';
-import { CURATOR_SCOPES_SQL, curatorScopeOf, type CuratorScopeOfUserRow } from '../controllers/admin/curatorScopeRows.js';
-import { pool } from '../db/index.js';
-import type { UsersRow, UserVisitedRegionsRow } from '../db/schema.generated.js';
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+/**
+ * User Routes — the signed-in reader's own account and records, mounted at
+ * /api/users (ADR-0071).
+ *
+ * Every route is the caller's own data: `signed-in`, `no-store`, and limited as
+ * an ordinary authenticated user action (`authenticatedLimiter`,
+ * `docs/tech/rate-limiting.md`). The limiter is on each declared route, so a
+ * path under /api/users that no route declares is a plain 404 that runs no
+ * handler and passes no limiter.
+ */
+
+import { defineRoute, NO_BODY, routerOf } from '../api/route.js';
+import { MyAccount } from '../api/responses/auth.js';
+import {
+  AllLocationsMarked,
+  AllLocationsUnmarked,
+  ExperienceVisitedStatusResponse,
+  ExperienceVisitMarked,
+  ExperienceVisitUnmarked,
+  LocationVisitMarked,
+  LocationVisitUnmarked,
+  TreasureViewMarked,
+  TreasureViewUnmarked,
+  ViewedTreasureIds,
+  VisitedExperienceIds,
+  VisitedLocationIds,
+  VisitedRegion,
+  VisitedRegions,
+} from '../api/responses/visited.js';
 import { authenticatedLimiter } from '../middleware/rateLimiter.js';
-import { validate } from '../middleware/errorHandler.js';
 import {
   regionIdParamSchema,
   worldViewIdParamSchema,
@@ -24,6 +44,13 @@ import {
   viewedTreasureIdsQuerySchema,
   markAllLocationsQuerySchema,
 } from '../types/index.js';
+import { getMyAccount } from '../controllers/user/myAccount.js';
+import {
+  getVisitedRegions,
+  getVisitedRegionsInWorldView,
+  markRegionVisited,
+  unmarkRegionVisited,
+} from '../controllers/user/visitedRegions.js';
 import {
   markVisited,
   unmarkVisited,
@@ -39,255 +66,143 @@ import {
   unmarkTreasureViewed,
 } from '../controllers/experience/index.js';
 
-const router = Router();
+/** The fields every route here shares: the caller's own data. */
+const OWN = { access: 'signed-in', cache: 'no-store', limiter: authenticatedLimiter } as const;
 
-// Rate limit all user endpoints (60 req/min per IP)
-router.use(authenticatedLimiter);
+export const userRoutes = [
+  // The caller's account (includes curatorScopes for curators and admins)
+  defineRoute({
+    ...OWN, method: 'get', path: '/me',
+    response: MyAccount,
+    handler: getMyAccount,
+  }),
 
-/**
- * GET /api/users/me
- * Get current user info (includes curatorScopes for curators/admins)
- */
-router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  let body: MyAccount;
-  try {
-    // Fetch full profile from DB (the JWT carries no PII)
-    const userResult = await pool.query<Pick<UsersRow, 'id' | 'uuid' | 'email' | 'display_name' | 'role' | 'avatar_url'>>(
-      `SELECT id, uuid, email, display_name, role, avatar_url FROM users WHERE id = $1`,
-      [req.user!.id],
-    );
-    if (userResult.rows.length === 0) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-    const u = userResult.rows[0];
+  // =============================================================================
+  // Visited Regions
+  // =============================================================================
 
-    // Include curator scopes for curators and admins
-    let curatorScopes: CuratorScope[] | undefined;
-    if (req.user!.role === 'curator' || req.user!.role === 'admin') {
-      const scopesResult = await pool.query<CuratorScopeOfUserRow>(CURATOR_SCOPES_SQL, [[req.user!.id]]);
-      curatorScopes = scopesResult.rows.map(curatorScopeOf);
-    }
+  defineRoute({
+    ...OWN, method: 'get', path: '/me/visited-regions',
+    response: VisitedRegions,
+    handler: getVisitedRegions,
+  }),
+  defineRoute({
+    ...OWN, method: 'get', path: '/me/visited-regions/by-world-view/:worldViewId',
+    params: worldViewIdParamSchema,
+    response: VisitedRegions,
+    handler: getVisitedRegionsInWorldView,
+  }),
+  defineRoute({
+    ...OWN, method: 'post', path: '/me/visited-regions/:regionId',
+    params: regionIdParamSchema,
+    body: visitedRegionBodySchema,
+    response: VisitedRegion,
+    handler: markRegionVisited,
+  }),
+  defineRoute({
+    ...OWN, method: 'delete', path: '/me/visited-regions/:regionId',
+    params: regionIdParamSchema,
+    response: NO_BODY,
+    noContent: true,
+    handler: unmarkRegionVisited,
+  }),
 
-    body = {
-      id: u.id,
-      uuid: u.uuid,
-      email: u.email,
-      displayName: u.display_name,
-      role: u.role,
-      avatarUrl: u.avatar_url,
-      curatorScopes,
-    };
-  } catch (error) {
-    console.error('Error getting user:', error);
-    res.status(500).json({ error: 'Failed to get user' });
-    return;
-  }
-  respond(res, MyAccount, body);
-});
+  // =============================================================================
+  // Visited Experiences
+  // =============================================================================
 
-/** A visited region as the three region statements select it. */
-type VisitedRegionRow = Pick<UserVisitedRegionsRow, 'region_id' | 'visited_at' | 'notes'>;
+  // Just the ids of visited experiences, for quick lookup
+  defineRoute({
+    ...OWN, method: 'get', path: '/me/visited-experiences/ids',
+    query: visitedIdsQuerySchema,
+    response: VisitedExperienceIds,
+    handler: getVisitedIds,
+  }),
+  defineRoute({
+    ...OWN, method: 'post', path: '/me/visited-experiences/:experienceId',
+    params: experienceIdParamSchema,
+    body: markVisitedBodySchema,
+    response: ExperienceVisitMarked,
+    handler: markVisited,
+  }),
+  defineRoute({
+    ...OWN, method: 'delete', path: '/me/visited-experiences/:experienceId',
+    params: experienceIdParamSchema,
+    response: ExperienceVisitUnmarked,
+    handler: unmarkVisited,
+  }),
 
-/** A visited region as the answer declares it, key by key. */
-function visitedRegionOf(row: VisitedRegionRow): VisitedRegion {
-  return { region_id: row.region_id, visited_at: row.visited_at?.toISOString() ?? null, notes: row.notes };
-}
+  // =============================================================================
+  // Visited Locations (multi-location support)
+  // =============================================================================
 
-/**
- * GET /api/users/me/visited-regions
- * Get all visited region IDs for current user
- */
-router.get('/me/visited-regions', requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  let rows: VisitedRegionRow[];
-  try {
-    const result = await pool.query<VisitedRegionRow>(
-      `SELECT region_id, visited_at, notes 
-       FROM user_visited_regions 
-       WHERE user_id = $1 
-       ORDER BY visited_at DESC`,
-      [req.user!.id]
-    );
-    rows = result.rows;
-  } catch (error) {
-    console.error('Error getting visited regions:', error);
-    res.status(500).json({ error: 'Failed to get visited regions' });
-    return;
-  }
-  // Outside the try: a body that fails its schema is the named 500 `respond()`
-  // raises (ADR-0066), not this route's generic message.
-  respond(res, VisitedRegions, rows.map(visitedRegionOf));
-});
+  defineRoute({
+    ...OWN, method: 'get', path: '/me/visited-locations/ids',
+    query: visitedLocationIdsQuerySchema,
+    response: VisitedLocationIds,
+    handler: getVisitedLocationIds,
+  }),
+  defineRoute({
+    ...OWN, method: 'post', path: '/me/visited-locations/:locationId',
+    params: locationIdParamSchema,
+    body: markLocationVisitedBodySchema,
+    response: LocationVisitMarked,
+    handler: markLocationVisited,
+  }),
+  defineRoute({
+    ...OWN, method: 'delete', path: '/me/visited-locations/:locationId',
+    params: locationIdParamSchema,
+    response: LocationVisitUnmarked,
+    handler: unmarkLocationVisited,
+  }),
+  // An experience's visited status with its locations broken down
+  defineRoute({
+    ...OWN, method: 'get', path: '/me/experiences/:id/visited-status',
+    params: idParamSchema,
+    response: ExperienceVisitedStatusResponse,
+    handler: getExperienceVisitedStatus,
+  }),
+  // Mark every location of an experience visited (or only those in a region)
+  defineRoute({
+    ...OWN, method: 'post', path: '/me/experiences/:experienceId/mark-all-locations',
+    params: experienceIdParamSchema,
+    query: markAllLocationsQuerySchema,
+    response: AllLocationsMarked,
+    handler: markAllLocationsVisited,
+  }),
+  defineRoute({
+    ...OWN, method: 'delete', path: '/me/experiences/:experienceId/mark-all-locations',
+    params: experienceIdParamSchema,
+    query: markAllLocationsQuerySchema,
+    response: AllLocationsUnmarked,
+    handler: unmarkAllLocationsVisited,
+  }),
 
-/**
- * GET /api/users/me/visited-regions/by-world-view/:worldViewId
- * Get visited region IDs for a specific world view
- */
-router.get('/me/visited-regions/by-world-view/:worldViewId', validate(worldViewIdParamSchema, 'params'), requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  let rows: VisitedRegionRow[];
-  try {
-    const { worldViewId } = req.params as unknown as { worldViewId: number };
+  // =============================================================================
+  // Viewed Treasures (artwork "seen" tracking)
+  // =============================================================================
 
-    const result = await pool.query<VisitedRegionRow>(
-      `SELECT uvr.region_id, uvr.visited_at, uvr.notes
-       FROM user_visited_regions uvr
-       JOIN regions r ON r.id = uvr.region_id
-       WHERE uvr.user_id = $1 AND r.world_view_id = $2
-       ORDER BY uvr.visited_at DESC`,
-      [req.user!.id, worldViewId]
-    );
-    rows = result.rows;
-  } catch (error) {
-    console.error('Error getting visited regions:', error);
-    res.status(500).json({ error: 'Failed to get visited regions' });
-    return;
-  }
-  respond(res, VisitedRegions, rows.map(visitedRegionOf));
-});
+  defineRoute({
+    ...OWN, method: 'get', path: '/me/viewed-treasures/ids',
+    query: viewedTreasureIdsQuerySchema,
+    response: ViewedTreasureIds,
+    handler: getViewedTreasureIds,
+  }),
+  // Mark a treasure viewed (auto-marks the venue it was seen in as visited)
+  defineRoute({
+    ...OWN, method: 'post', path: '/me/viewed-treasures/:treasureId',
+    params: treasureIdParamSchema,
+    body: markTreasureViewedBodySchema,
+    response: TreasureViewMarked,
+    handler: markTreasureViewed,
+  }),
+  // Unmark a treasure viewed (does NOT unvisit the venue)
+  defineRoute({
+    ...OWN, method: 'delete', path: '/me/viewed-treasures/:treasureId',
+    params: treasureIdParamSchema,
+    response: TreasureViewUnmarked,
+    handler: unmarkTreasureViewed,
+  }),
+];
 
-/**
- * POST /api/users/me/visited-regions/:regionId
- * Mark a region as visited
- */
-router.post('/me/visited-regions/:regionId', validate(regionIdParamSchema, 'params'), validate(visitedRegionBodySchema), requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  let row: VisitedRegionRow;
-  try {
-    const { regionId } = req.params as unknown as { regionId: number };
-    const { notes } = req.body || {};
-
-    // Verify region exists
-    const regionCheck = await pool.query(
-      'SELECT id FROM regions WHERE id = $1',
-      [regionId]
-    );
-
-    if (regionCheck.rows.length === 0) {
-      res.status(404).json({ error: 'Region not found' });
-      return;
-    }
-
-    // Insert or update
-    const result = await pool.query<VisitedRegionRow>(
-      `INSERT INTO user_visited_regions (user_id, region_id, notes)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (user_id, region_id)
-       DO UPDATE SET visited_at = NOW(), notes = COALESCE($3, user_visited_regions.notes)
-       RETURNING region_id, visited_at, notes`,
-      [req.user!.id, regionId, notes || null]
-    );
-    row = result.rows[0];
-  } catch (error) {
-    console.error('Error marking region as visited:', error);
-    res.status(500).json({ error: 'Failed to mark region as visited' });
-    return;
-  }
-  // Outside the try for the reason above, and one more: the write has committed
-  // by now, which the named 500 says and the generic message would not.
-  respond(res, VisitedRegion, visitedRegionOf(row));
-});
-
-/**
- * DELETE /api/users/me/visited-regions/:regionId
- * Unmark a region as visited
- */
-router.delete('/me/visited-regions/:regionId', validate(regionIdParamSchema, 'params'), requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  try {
-    const { regionId } = req.params as unknown as { regionId: number };
-
-    await pool.query(
-      'DELETE FROM user_visited_regions WHERE user_id = $1 AND region_id = $2',
-      [req.user!.id, regionId]
-    );
-
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error unmarking region as visited:', error);
-    res.status(500).json({ error: 'Failed to unmark region as visited' });
-  }
-});
-
-// =============================================================================
-// Visited Experiences Routes
-// =============================================================================
-
-/**
- * GET /api/users/me/visited-experiences/ids
- * Get just the IDs of visited experiences (for quick lookup)
- */
-router.get('/me/visited-experiences/ids', validate(visitedIdsQuerySchema, 'query'), requireAuth, getVisitedIds);
-
-/**
- * POST /api/users/me/visited-experiences/:experienceId
- * Mark an experience as visited
- */
-router.post('/me/visited-experiences/:experienceId', validate(experienceIdParamSchema, 'params'), validate(markVisitedBodySchema), requireAuth, markVisited);
-
-/**
- * DELETE /api/users/me/visited-experiences/:experienceId
- * Unmark an experience as visited
- */
-router.delete('/me/visited-experiences/:experienceId', validate(experienceIdParamSchema, 'params'), requireAuth, unmarkVisited);
-
-// =============================================================================
-// Visited Locations Routes (Multi-Location Support)
-// =============================================================================
-
-/**
- * GET /api/users/me/visited-locations/ids
- * Get IDs of visited locations for quick lookup
- */
-router.get('/me/visited-locations/ids', validate(visitedLocationIdsQuerySchema, 'query'), requireAuth, getVisitedLocationIds);
-
-/**
- * POST /api/users/me/visited-locations/:locationId
- * Mark a location as visited
- */
-router.post('/me/visited-locations/:locationId', validate(locationIdParamSchema, 'params'), validate(markLocationVisitedBodySchema), requireAuth, markLocationVisited);
-
-/**
- * DELETE /api/users/me/visited-locations/:locationId
- * Unmark a location as visited
- */
-router.delete('/me/visited-locations/:locationId', validate(locationIdParamSchema, 'params'), requireAuth, unmarkLocationVisited);
-
-/**
- * GET /api/users/me/experiences/:experienceId/visited-status
- * Get detailed visited status for an experience (locations breakdown)
- */
-router.get('/me/experiences/:id/visited-status', validate(idParamSchema, 'params'), requireAuth, getExperienceVisitedStatus);
-
-/**
- * POST /api/users/me/experiences/:experienceId/mark-all-locations
- * Mark ALL locations of an experience as visited
- */
-router.post('/me/experiences/:experienceId/mark-all-locations', validate(experienceIdParamSchema, 'params'), validate(markAllLocationsQuerySchema, 'query'), requireAuth, markAllLocationsVisited);
-
-/**
- * DELETE /api/users/me/experiences/:experienceId/mark-all-locations
- * Unmark ALL locations of an experience as visited
- */
-router.delete('/me/experiences/:experienceId/mark-all-locations', validate(experienceIdParamSchema, 'params'), validate(markAllLocationsQuerySchema, 'query'), requireAuth, unmarkAllLocationsVisited);
-
-// =============================================================================
-// Viewed Treasures Routes (artwork "seen" tracking)
-// =============================================================================
-
-/**
- * GET /api/users/me/viewed-treasures/ids
- * Get IDs of viewed treasures for quick lookup
- */
-router.get('/me/viewed-treasures/ids', validate(viewedTreasureIdsQuerySchema, 'query'), requireAuth, getViewedTreasureIds);
-
-/**
- * POST /api/users/me/viewed-treasures/:treasureId
- * Mark a treasure as viewed (auto-marks parent experience as visited)
- */
-router.post('/me/viewed-treasures/:treasureId', validate(treasureIdParamSchema, 'params'), validate(markTreasureViewedBodySchema), requireAuth, markTreasureViewed);
-
-/**
- * DELETE /api/users/me/viewed-treasures/:treasureId
- * Unmark a treasure as viewed (does NOT unvisit parent experience)
- */
-router.delete('/me/viewed-treasures/:treasureId', validate(treasureIdParamSchema, 'params'), requireAuth, unmarkTreasureViewed);
-
-export default router;
+export default routerOf(userRoutes);

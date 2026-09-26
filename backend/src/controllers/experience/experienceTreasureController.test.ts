@@ -21,7 +21,6 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { markTreasureViewed } from './experienceTreasureController.js';
 import {
   experienceOfferedToReaderSql,
   hideLostSql,
@@ -31,6 +30,10 @@ import {
 } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
+import { userRoutes } from '../../routes/userRoutes.js';
+
+/** The user routes these specs answer through (ADR-0071). */
+const postViewedTreasure = routeAt(userRoutes, '/me/viewed-treasures/:treasureId', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -180,7 +183,7 @@ describe('getExperienceTreasures gate', () => {
   it('opens the gate for an admin, on all three predicates, without a scope query', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'),
       { params: { id: '1' }, user: { id: 1, role: 'admin' } } as never,
       makeRes() as never,
     );
@@ -199,7 +202,7 @@ describe('getExperienceTreasures gate', () => {
       .mockResolvedValueOnce({ rows: [{ unrestricted: true, scoped_region_id: null }] }) // scope check
       .mockResolvedValueOnce({ rows: [] }); // the treasures query itself
 
-    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'),
       { params: { id: '1' }, user: { id: 9, role: 'curator' } } as never,
       makeRes() as never,
     );
@@ -214,7 +217,7 @@ describe('getExperienceTreasures gate', () => {
       .mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), 
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'),
       { params: { id: '1' }, user: { id: 9, role: 'curator' } } as never,
       makeRes() as never,
     );
@@ -243,7 +246,7 @@ describe('a viewed claim can only be added for a link that was showable', () => 
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
 
-    await markTreasureViewed(
+    await answerRoute(postViewedTreasure,
       { params: { treasureId: '9' }, body: { experienceId: 42 }, user: { id: 5 } } as never,
       makeRes() as never);
 
@@ -260,7 +263,7 @@ describe('markTreasureViewed auto-mark — #520', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await markTreasureViewed(
+    await answerRoute(postViewedTreasure,
       { params: { treasureId: '3' }, body: {}, user: { id: 5 } } as never,
       res as never,
     );
@@ -273,7 +276,7 @@ describe('markTreasureViewed auto-mark — #520', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await markTreasureViewed(
+    await answerRoute(postViewedTreasure,
       { params: { treasureId: '3' }, body: {}, user: { id: 5 } } as never,
       res as never,
     );
@@ -291,7 +294,7 @@ describe('markTreasureViewed auto-mark — #520', () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT INTO user_viewed_treasures
       .mockResolvedValueOnce({ rows: [] }); // linkResult — gated out below
 
-    await markTreasureViewed(
+    await answerRoute(postViewedTreasure,
       { params: { treasureId: '3' }, body: { experienceId: 2 }, user: { id: 5 } } as never,
       makeRes() as never,
     );
@@ -314,7 +317,7 @@ describe('markTreasureViewed auto-mark — #520', () => {
       .mockResolvedValueOnce({ rows: [] }); // linkResult empty — pending container or link
     const res = makeRes();
 
-    await markTreasureViewed(
+    await answerRoute(postViewedTreasure,
       { params: { treasureId: '3' }, body: { experienceId: 2 }, user: { id: 5 } } as never,
       res as never,
     );
@@ -337,7 +340,7 @@ describe('markTreasureViewed auto-mark — #520', () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT INTO user_visited_locations (the one under test)
       .mockResolvedValueOnce({ rows: [{ name: 'Museum' }] }); // SELECT name FROM experiences
 
-    await markTreasureViewed(
+    await answerRoute(postViewedTreasure,
       { params: { treasureId: '3' }, body: { experienceId: 2 }, user: { id: 5 } } as never,
       makeRes() as never,
     );

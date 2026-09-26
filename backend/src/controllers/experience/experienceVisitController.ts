@@ -4,35 +4,31 @@
  * Authenticated endpoints for tracking user visited experiences.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { ExperienceVisitMarked, ExperienceVisitUnmarked, VisitedExperienceIds } from '../../api/responses/visited.js';
+import type { z } from 'zod/v4';
+import type { ExperienceVisitMarked, ExperienceVisitUnmarked, VisitedExperienceIds } from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
 import type { ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.generated.js';
 import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
 import { rowKindJoinSql } from '../../db/membership.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { notFound } from '../../middleware/errorHandler.js';
+import type { experienceIdParamSchema, markVisitedBodySchema, visitedIdsQuerySchema } from '../../types/index.js';
+
+type ExperienceParams = z.output<typeof experienceIdParamSchema>;
 
 /**
  * Mark experience as visited
  * POST /api/users/me/visited-experiences/:experienceId
  */
-export async function markVisited(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const experienceId = parseInt(String(req.params.experienceId));
-  const notes = req.body.notes ? String(req.body.notes) : null;
-  const rating = req.body.rating ? parseInt(String(req.body.rating)) : null;
-
-  // Validate rating if provided
-  if (rating !== null && (rating < 1 || rating > 5)) {
-    res.status(400).json({ error: 'Rating must be between 1 and 5' });
-    return;
-  }
+export async function markVisited(
+  { params: { experienceId }, body, caller }: {
+    params: ExperienceParams;
+    body: z.output<typeof markVisitedBodySchema>;
+    caller: Express.User;
+  },
+): Promise<ExperienceVisitMarked> {
+  const userId = caller.id;
+  const notes = body.notes || null;
+  const rating = body.rating ?? null;
 
   // Verify the experience exists *and* is one this reader could have been
   // shown — `experienceOfferedToReaderSql`, the same predicate the other
@@ -51,10 +47,7 @@ export async function markVisited(req: AuthenticatedRequest, res: Response): Pro
     `SELECT e.id, e.name FROM experiences e WHERE e.id = $1 AND ${experienceOfferedToReaderSql()}`,
     [experienceId],
   );
-  if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
-  }
+  if (expResult.rows.length === 0) throw notFound('Experience not found');
 
   // Upsert visited record
   const result = await pool.query<Pick<UserVisitedExperiencesRow, 'id' | 'visited_at' | 'notes' | 'rating'>>(`
@@ -68,7 +61,7 @@ export async function markVisited(req: AuthenticatedRequest, res: Response): Pro
   `, [userId, experienceId, notes, rating]);
 
   const visit = result.rows[0];
-  respond(res, ExperienceVisitMarked, {
+  return {
     success: true,
     experienceId,
     experienceName: expResult.rows[0].name,
@@ -76,47 +69,34 @@ export async function markVisited(req: AuthenticatedRequest, res: Response): Pro
     visited_at: visit.visited_at?.toISOString() ?? null,
     notes: visit.notes,
     rating: visit.rating,
-  });
+  };
 }
 
 /**
  * Unmark experience as visited
  * DELETE /api/users/me/visited-experiences/:experienceId
  */
-export async function unmarkVisited(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const experienceId = parseInt(String(req.params.experienceId));
-
+export async function unmarkVisited(
+  { params: { experienceId }, caller }: { params: ExperienceParams; caller: Express.User },
+): Promise<ExperienceVisitUnmarked> {
   const result = await pool.query(
     'DELETE FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2 RETURNING id',
-    [userId, experienceId]
+    [caller.id, experienceId]
   );
 
-  if (result.rowCount === 0) {
-    res.status(404).json({ error: 'Visit record not found' });
-    return;
-  }
+  if (result.rowCount === 0) throw notFound('Visit record not found');
 
-  respond(res, ExperienceVisitUnmarked, { success: true, experienceId });
+  return { success: true, experienceId };
 }
 
 /**
  * Get visited experience IDs for quick lookup
  * GET /api/users/me/visited-experiences/ids
  */
-export async function getVisitedIds(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const kindId = req.query.kindId ? parseInt(String(req.query.kindId)) : null;
+export async function getVisitedIds(
+  { query: { kindId }, caller }: { query: z.output<typeof visitedIdsQuerySchema>; caller: Express.User },
+): Promise<VisitedExperienceIds> {
+  const userId = caller.id;
 
   let query = `
     SELECT uve.experience_id
@@ -138,8 +118,8 @@ export async function getVisitedIds(req: AuthenticatedRequest, res: Response): P
 
   const result = await pool.query<Pick<UserVisitedExperiencesRow, 'experience_id'>>(query, params);
 
-  respond(res, VisitedExperienceIds, {
+  return {
     visitedIds: result.rows.map(r => r.experience_id),
     total: result.rows.length,
-  });
+  };
 }
