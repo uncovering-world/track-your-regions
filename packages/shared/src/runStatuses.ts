@@ -1,6 +1,6 @@
 /**
  * What a run's status columns may say — a sync log, an import run and a
- * region's match in an import (#794).
+ * region's match in an import — and the moves a run's status may make (#794).
  *
  * Declared here in the order the schema's CHECKs list them, and pinned to those
  * CHECKs by a type: `backend/src/db/curationLogActions.test.ts` asks TypeScript
@@ -41,3 +41,43 @@ export const MATCH_STATUSES = [
   'suggested',
 ] as const;
 export type MatchStatus = (typeof MATCH_STATUSES)[number];
+
+/** A move of a run's status from one value to another; staying put is no move. */
+export type RunStatusMove<S extends string> = readonly [from: S, to: S];
+
+/**
+ * The moves a run's `status` may make, table by table. The database refuses
+ * every other move (`guard_run_status_move()`, `db/init/01-schema.sql`), and a
+ * database-lane spec walks every pair against this list.
+ *
+ * - A sync log is opened `running` and closed with how the run ended. A closed
+ *   verdict may still be corrected — placement downgrades `success` to
+ *   `partial` after the log is written, and a failure between the log and the
+ *   source's mirror of it closes the run `failed` over the verdict already
+ *   written — but a closed run never becomes `running` again: the startup
+ *   sweep would take it for a run a restart interrupted.
+ * - An import run is `running` while the source is fetched, `matching` once
+ *   its regions are written, and `reviewing` when matching is done; the startup
+ *   sweep closes one in either of the first two `failed`. Nothing moves a run
+ *   out of `reviewing` or `failed`.
+ *
+ * `region_import_state.match_status` has no list: every one of its thirty
+ * moves is made by some writer — an admin's accept, reject, reset, flatten or
+ * undo, and the copy of one region's match onto another — so a list would
+ * refuse nothing. What that column must hold is a claim about the region
+ * itself (a match names members, a suggestion sits on a region that has
+ * children), which a move between two values cannot see.
+ */
+export const RUN_STATUS_MOVES = {
+  experience_sync_logs: SYNC_LOG_STATUSES.flatMap(from =>
+    SYNC_LOG_STATUSES
+      .filter(to => to !== from && to !== 'running')
+      .map((to): RunStatusMove<SyncLogStatus> => [from, to])),
+  import_runs: [
+    ['running', 'matching'],
+    ['matching', 'reviewing'],
+    ['running', 'failed'],
+    ['matching', 'failed'],
+  ] as const satisfies readonly RunStatusMove<ImportRunStatus>[],
+};
+export type RunTable = keyof typeof RUN_STATUS_MOVES;
