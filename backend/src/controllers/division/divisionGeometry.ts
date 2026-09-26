@@ -2,25 +2,13 @@
  * Division geometry operations
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { DivisionGeometry } from '../../api/responses/divisions.js';
+import type { z } from 'zod/v4';
+import { NO_CONTENT } from '../../api/route.js';
+import type { DivisionGeometry } from '../../api/responses/divisions.js';
 import type { MultiPolygon } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import { divisionGeometryOf } from './divisionAnswerRows.js';
-import { markPublicReferenceBody } from '../../middleware/cacheHeaders.js';
-import type { GetGeometryQuery } from '../../types/index.js';
-
-/**
- * This read answers with GADM's own boundary — the same shape for every
- * caller, at full resolution by default: 2.8 MB of GeoJSON text for France
- * alone, which is what the cutting tools take. It sits
- * behind `requireAuth` + `requireAdmin` (`routes/index.ts`) because only the
- * editor asks for it, not because the answer is anyone's own, so it says what
- * that makes it — see `middleware/cacheHeaders.ts` for the rule and its
- * reasons, including why the `Vary: Authorization` the middleware appended is
- * left alone.
- */
+import type { divisionIdParamSchema, GetGeometryQuery } from '../../types/index.js';
 
 /**
  * The column each detail level reads. A preview asks for a stored
@@ -36,13 +24,15 @@ const DETAIL_COLUMN: Record<GetGeometryQuery['detail'], string> = {
 
 /**
  * Get geometry for a division, at the detail the caller asks for: `high`, the
- * full shape, unless it names a lower one.
+ * full shape, unless it names a lower one. A division with no geometry answers
+ * 204.
  */
-export async function getGeometry(req: Request, res: Response): Promise<void> {
-  markPublicReferenceBody(res);
-
-  const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
-  const { detail } = req.query as unknown as GetGeometryQuery;
+export async function getGeometry(
+  { params: { divisionId }, query: { detail } }: {
+    params: z.output<typeof divisionIdParamSchema>;
+    query: GetGeometryQuery;
+  },
+): Promise<DivisionGeometry | typeof NO_CONTENT> {
 
   const result = await pool.query<{ geometry: MultiPolygon }>(
     `SELECT ST_AsGeoJSON(${DETAIL_COLUMN[detail] ?? DETAIL_COLUMN.high})::json as geometry
@@ -50,10 +40,7 @@ export async function getGeometry(req: Request, res: Response): Promise<void> {
     [divisionId]
   );
 
-  if (result.rows.length === 0) {
-    res.status(204).send();
-    return;
-  }
+  if (result.rows.length === 0) return NO_CONTENT;
 
-  respond(res, DivisionGeometry, divisionGeometryOf(divisionId, result.rows[0].geometry));
+  return divisionGeometryOf(divisionId, result.rows[0].geometry);
 }

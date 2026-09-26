@@ -2,12 +2,12 @@
  * Division search operations
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { DivisionSearchResults } from '../../api/responses/divisions.js';
+import type { z } from 'zod/v4';
+import type { DivisionSearchResults } from '../../api/responses/divisions.js';
 import { pool } from '../../db/index.js';
 import { divisionSearchResultOf, type DivisionRow } from './divisionAnswerRows.js';
 import { FOCUS_JSON_COLUMNS } from './focusColumns.js';
+import type { searchQuerySchema } from '../../types/index.js';
 
 /** One match, as the search's final SELECT lists it. */
 type DivisionSearchRow = DivisionRow & { path: string; relevance_score: number };
@@ -26,14 +26,12 @@ type DivisionSearchRow = DivisionRow & { path: string; relevance_score: number }
  * - Shorter names: +0-100 points
  * - Trigram similarity (fuzzy fallback only): +0-400 points
  */
-export async function searchDivisions(req: Request, res: Response): Promise<void> {
-  const inputQuery = String(req.query.query ?? '').trim();
-  const limit = parseInt(String(req.query.limit ?? '50'));
+export async function searchDivisions(
+  { query: { query, limit, worldViewId } }: { query: z.output<typeof searchQuerySchema> },
+): Promise<DivisionSearchResults> {
+  const inputQuery = query.trim();
 
-  if (inputQuery.length < 2) {
-    respond(res, DivisionSearchResults, []);
-    return;
-  }
+  if (inputQuery.length < 2) return [];
 
   // Split into terms for multi-word search
   const queryTerms = inputQuery.split(/\s+/).filter(t => t.length > 0);
@@ -175,15 +173,12 @@ export async function searchDivisions(req: Request, res: Response): Promise<void
     .sort((a, b) => b.relevance_score - a.relevance_score)
     .slice(0, limit);
 
-  // Get worldViewId for usage counting (optional)
-  const worldViewId = parseInt(String(req.query.worldViewId ?? req.query.hierarchyId ?? '0'));
-
-  // If worldViewId is provided and valid, fetch usage counts for these divisions
+  // Usage counts in the world view asked about (the schema defaults it to 1)
   const usageCounts: Record<number, number> = {};
   const usedAsSubdivisionCount: Record<number, number> = {};
   const hasUsedSubdivisions: Record<number, boolean> = {};
 
-  if (worldViewId > 0 && sorted.length > 0) {
+  if (sorted.length > 0) {
     const divisionIds = sorted.map(d => d.id);
 
     // Get direct usage counts
@@ -276,9 +271,9 @@ export async function searchDivisions(req: Request, res: Response): Promise<void
     }
   }
 
-  respond(res, DivisionSearchResults, sorted.map(d => divisionSearchResultOf(d, {
+  return sorted.map(d => divisionSearchResultOf(d, {
     usageCount: usageCounts[d.id] || 0,
     usedAsSubdivisionCount: usedAsSubdivisionCount[d.id] || 0,
     hasUsedSubdivisions: hasUsedSubdivisions[d.id] || false,
-  })));
+  }));
 }

@@ -7,9 +7,10 @@
  * - Max 1 request per second
  */
 
-import type { Request, Response } from 'express';
-import { respond } from '../api/respond.js';
-import { ImageSuggestion, PlaceSearch } from '../api/responses/geocode.js';
+import type { z } from 'zod/v4';
+import type { ImageSuggestion, PlaceSearch } from '../api/responses/geocode.js';
+import { badRequest, failure, notFound } from '../middleware/errorHandler.js';
+import type { geocodeSearchQuerySchema, suggestImageQuerySchema } from '../types/index.js';
 import { userAgent } from '../config/userAgent.js';
 
 // No bot marker: both lookups here run while a curator waits on the dialog.
@@ -36,14 +37,9 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function searchPlaces(req: Request, res: Response) {
-  const q = req.query.q as string;
-  const limit = Math.min(parseInt(req.query.limit as string) || 5, 10);
-
-  if (!q || q.length < 2) {
-    return res.status(400).json({ error: 'Query must be at least 2 characters' });
-  }
-
+export async function searchPlaces(
+  { query: { q, limit } }: { query: z.output<typeof geocodeSearchQuerySchema> },
+): Promise<PlaceSearch> {
   // Enforce 1 request/second rate limit
   const now = Date.now();
   const elapsed = now - lastRequestTime;
@@ -52,7 +48,7 @@ export async function searchPlaces(req: Request, res: Response) {
   }
   lastRequestTime = Date.now();
 
-  let body: PlaceSearch;
+  let response: globalThis.Response;
   try {
     const url = new URL('https://nominatim.openstreetmap.org/search');
     url.searchParams.set('q', q);
@@ -61,18 +57,23 @@ export async function searchPlaces(req: Request, res: Response) {
     url.searchParams.set('addressdetails', '0');
     url.searchParams.set('extratags', '1');
 
-    const response = await fetch(url.toString(), {
+    response = await fetch(url.toString(), {
       headers: {
         'User-Agent': USER_AGENT,
         'Accept': 'application/json',
       },
       signal: AbortSignal.timeout(PLACE_SEARCH_TIMEOUT_MS),
     });
+  } catch (error) {
+    console.error('Nominatim search error:', error);
+    throw failure('Geocode search failed', 500);
+  }
 
-    if (!response.ok) {
-      return res.status(response.status).json({ error: 'Nominatim request failed' });
-    }
+  if (!response.ok) {
+    throw failure('Nominatim request failed', response.status);
+  }
 
+  try {
     const data = await response.json() as Array<{
       display_name: string;
       lat: string;
@@ -81,7 +82,7 @@ export async function searchPlaces(req: Request, res: Response) {
       extratags?: Record<string, string>;
     }>;
 
-    body = {
+    return {
       results: data.map((item) => ({
         display_name: item.display_name,
         lat: parseFloat(item.lat),
@@ -92,10 +93,8 @@ export async function searchPlaces(req: Request, res: Response) {
     };
   } catch (error) {
     console.error('Nominatim search error:', error);
-    res.status(500).json({ error: 'Geocode search failed' });
-    return;
+    throw failure('Geocode search failed', 500);
   }
-  respond(res, PlaceSearch, body);
 }
 
 // ---------------------------------------------------------------------------
@@ -326,14 +325,11 @@ async function suggestByName(name: string | undefined, signal: AbortSignal): Pro
  * GET /api/geocode/suggest-image
  * Layered Wikidata image lookup for experience creation.
  */
-export async function suggestImage(req: Request, res: Response) {
-  const name = req.query.name as string | undefined;
-  const lat = req.query.lat ? parseFloat(req.query.lat as string) : undefined;
-  const lng = req.query.lng ? parseFloat(req.query.lng as string) : undefined;
-  const wikidataId = req.query.wikidataId as string | undefined;
-
+export async function suggestImage(
+  { query: { name, lat, lng, wikidataId } }: { query: z.output<typeof suggestImageQuerySchema> },
+): Promise<ImageSuggestion> {
   if (!name && !wikidataId && (lat == null || lng == null)) {
-    return res.status(400).json({ error: 'Provide at least one of: name, wikidataId, or lat+lng' });
+    throw badRequest('Provide at least one of: name, wikidataId, or lat+lng');
   }
 
   let suggestion: ImageSuggestion | null = null;
@@ -353,12 +349,8 @@ export async function suggestImage(req: Request, res: Response) {
     }
   } catch (error) {
     console.error('Image suggestion error:', error);
-    res.status(500).json({ error: 'Image suggestion failed' });
-    return;
+    throw failure('Image suggestion failed', 500);
   }
-  if (!suggestion) {
-    res.status(404).json({ error: 'No image found' });
-    return;
-  }
-  respond(res, ImageSuggestion, suggestion);
+  if (!suggestion) throw notFound('No image found');
+  return suggestion;
 }

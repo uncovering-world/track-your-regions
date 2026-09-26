@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { suggestImage, searchPlaces } from './geocodeController.js';
+import { geocodeSearchQuerySchema, suggestImageQuerySchema } from '../types/index.js';
 
 const fetchMock = vi.fn();
 vi.stubGlobal('fetch', fetchMock);
@@ -9,12 +10,9 @@ function reply(body: unknown) {
   fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(body) });
 }
 
-async function call(handler: typeof searchPlaces, query: Record<string, string>) {
-  const json = vi.fn();
-  const res = { json, status: vi.fn().mockReturnThis() };
-  await handler({ query } as never, res as never);
-  return { res, body: json.mock.calls[0]?.[0] };
-}
+/** Each handler with its query as the route hands it over, parsed by its schema. */
+const search = (query: Record<string, string>) => searchPlaces({ query: geocodeSearchQuerySchema.parse(query) });
+const suggest = (query: Record<string, string>) => suggestImage({ query: suggestImageQuerySchema.parse(query) });
 
 const KREMLIN = 'Казанский кремль, проезд Шейнкмана, Вахитовский район, Казань, городской округ Казань, Татарстан, Приволжский федеральный округ, 420014, Россия';
 const STREET = 'Кремлёвская улица, Старо-Татарская слобода, Вахитовский район, Казань, городской округ Казань, Татарстан, Приволжский федеральный округ, 420111, Россия';
@@ -28,8 +26,7 @@ describe('searchPlaces', () => {
       { display_name: KREMLIN, lat: '55.7990218', lon: '49.1061691', type: 'castle', extratags: { wikidata: 'Q603622' } },
       { display_name: STREET, lat: '55.7954296', lon: '49.1112151', type: 'unclassified', extratags: {} },
     ]);
-    const { body } = await call(searchPlaces, { q: 'Kazan Kremlin' });
-    expect(body).toEqual({
+    expect(await search({ q: 'Kazan Kremlin' })).toEqual({
       results: [
         { display_name: KREMLIN, lat: 55.7990218, lng: 49.1061691, type: 'castle', wikidataId: 'Q603622' },
         { display_name: STREET, lat: 55.7954296, lng: 49.1112151, type: 'unclassified', wikidataId: null },
@@ -39,9 +36,14 @@ describe('searchPlaces', () => {
 
   it('answers 500 with its own message when Nominatim cannot be reached', async () => {
     fetchMock.mockRejectedValueOnce(new Error('socket hang up'));
-    const { res, body } = await call(searchPlaces, { q: 'Kazan Kremlin' });
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(body).toEqual({ error: 'Geocode search failed' });
+    await expect(search({ q: 'Kazan Kremlin' }))
+      .rejects.toMatchObject({ statusCode: 500, message: 'Geocode search failed' });
+  });
+
+  it("passes Nominatim's refusal on with its status", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve([]) });
+    await expect(search({ q: 'Kazan Kremlin' }))
+      .rejects.toMatchObject({ statusCode: 429, message: 'Nominatim request failed' });
   });
 });
 
@@ -58,8 +60,7 @@ describe('suggestImage', () => {
         },
       },
     });
-    const { body } = await call(suggestImage, { wikidataId: 'Q603622' });
-    expect(body).toEqual({
+    expect(await suggest({ wikidataId: 'Q603622' })).toEqual({
       imageUrl: `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent('Казанский кремль. Панорама с колеса обозрения.jpg')}`,
       source: 'wikidata_direct',
       entityLabel: 'Qazan Kremlin',
@@ -71,8 +72,12 @@ describe('suggestImage', () => {
 
   it('answers 404 when no layer finds a picture', async () => {
     reply({ entities: { Q603622: { labels: { en: { value: 'Qazan Kremlin' } }, claims: {} } } });
-    const { res, body } = await call(suggestImage, { wikidataId: 'Q603622' });
-    expect(res.status).toHaveBeenCalledWith(404);
-    expect(body).toEqual({ error: 'No image found' });
+    await expect(suggest({ wikidataId: 'Q603622' }))
+      .rejects.toMatchObject({ statusCode: 404, message: 'No image found' });
+  });
+
+  it('answers 400 when it is given nothing to look for', async () => {
+    await expect(suggest({})).rejects.toMatchObject({ statusCode: 400 });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
