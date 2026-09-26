@@ -219,7 +219,7 @@ export const SyncLog = z.strictObject({
   source_name: z.string(),
   started_at: timestamp.nullable(),
   completed_at: timestamp.nullable(),
-  status: z.enum(SYNC_LOG_STATUSES).nullable(),
+  status: z.enum(SYNC_LOG_STATUSES),
   total_fetched: count,
   total_created: count,
   total_updated: count.describe('Rows whose fields changed. Runs before change provenance counted every row the upsert touched.'),

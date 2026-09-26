@@ -3772,7 +3772,7 @@ export interface SyncLog {
   source_name: string;
   started_at: string | null;
   completed_at: string | null;
-  status: "running" | "success" | "partial" | "failed" | "cancelled" | null;
+  status: "running" | "success" | "partial" | "failed" | "cancelled";
   total_fetched: number;
   total_created: number;
   /**
@@ -3811,7 +3811,7 @@ export interface SyncLogDetail {
   source_name: string;
   started_at: string | null;
   completed_at: string | null;
-  status: "running" | "success" | "partial" | "failed" | "cancelled" | null;
+  status: "running" | "success" | "partial" | "failed" | "cancelled";
   total_fetched: number;
   total_created: number;
   /**
