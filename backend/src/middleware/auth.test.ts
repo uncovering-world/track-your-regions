@@ -204,17 +204,17 @@ describe('requireAuth on the wire', () => {
     const app = express();
     app.disable('x-powered-by');
     app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
-    // The chain as userRoutes.ts wires it: limiter, then identity, then the
-    // handler (the limiter is router-level there; inline here for CodeQL's
-    // missing-rate-limiting query, which reads the route in isolation).
+    // The chain a `signed-in` declaration builds: limiter, then identity,
+    // then the handler (`api/route.ts`).
     app.get('/mine', authenticatedLimiter, requireAuth, (_req, res) => {
       res.json({ visited: [1, 2, 3] });
     });
     // A stream sets its own Cache-Control after the middleware — the import
-    // streams through markStreamBody, a declared one through its policy; `setHeader` replaces, so the stream
-    // keeps the `no-cache` EventSource proxies expect — and the `private`
-    // beside it, since the stream's token rides in the query string and RFC
-    // 9111 § 3.5 excludes nothing for a request with no Authorization header.
+    // streams through markStreamBody, a declared one through its policy.
+    // `setHeader` replaces, so the stream keeps the `no-cache` EventSource
+    // proxies expect — and the `private` beside it, since the stream's token
+    // rides in the query string and RFC 9111 § 3.5 excludes nothing for a
+    // request with no Authorization header.
     app.get('/stream', authenticatedLimiter, requireAuth, (_req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'private, no-cache');

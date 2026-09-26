@@ -2,11 +2,9 @@
  * AI Controller for region grouping suggestions
  */
 
-import type { Request, Response } from 'express';
 import type { z } from 'zod/v4';
-import { respond } from '../api/respond.js';
-import {
-  type AIGeocodeResult,
+import type {
+  AIGeocodeResult,
   AIModels,
   AIStatus,
   BatchSuggestions,
@@ -29,16 +27,19 @@ import {
   getWebSearchCapableModels,
 } from '../services/ai/openaiService.js';
 import { badRequest, failure } from '../middleware/errorHandler.js';
-import type { aiGeocodeBodySchema } from '../types/index.js';
+import type {
+  aiGeocodeBodySchema, generateDescriptionsBodySchema, setModelBodySchema, suggestGroupBodySchema,
+  suggestGroupsBatchBodySchema,
+} from '../types/index.js';
 
 /**
  * Check if AI features are available
  */
-export async function checkAIStatus(_req: Request, res: Response) {
+export async function checkAIStatus(): Promise<AIStatus> {
   const availableModels = await fetchAvailableModelsFromAPI();
   const webSearchModels = getWebSearchCapableModels();
 
-  respond(res, AIStatus, {
+  return {
     available: isOpenAIAvailable(),
     message: isOpenAIAvailable()
       ? 'AI features are available'
@@ -47,94 +48,81 @@ export async function checkAIStatus(_req: Request, res: Response) {
     webSearchModel: getWebSearchModel(),
     availableModels,
     webSearchModels,
-  });
+  };
 }
 
 /**
  * Get available models
  */
-export async function getModels(_req: Request, res: Response) {
+export async function getModels(): Promise<AIModels> {
   const availableModels = await fetchAvailableModelsFromAPI();
   const webSearchModels = getWebSearchCapableModels();
 
-  respond(res, AIModels, {
+  return {
     currentModel: getModel(),
     webSearchModel: getWebSearchModel(),
     availableModels,
     webSearchModels,
-  });
+  };
 }
 
 /**
  * Set the current model
  */
-export async function setCurrentModel(req: Request, res: Response) {
-  const { modelId } = req.body;
-
-  if (!modelId || typeof modelId !== 'string') {
-    return res.status(400).json({ error: 'modelId is required' });
-  }
-
+export async function setCurrentModel(
+  { body: { modelId } }: { body: z.output<typeof setModelBodySchema> },
+): Promise<ModelSet> {
   setModel(modelId);
-  respond(res, ModelSet, { success: true, currentModel: getModel() });
+  return { success: true, currentModel: getModel() };
 }
 
 /**
  * Set the web search model
  */
-export async function setCurrentWebSearchModel(req: Request, res: Response) {
-  const { modelId } = req.body;
-
-  if (!modelId || typeof modelId !== 'string') {
-    return res.status(400).json({ error: 'modelId is required' });
-  }
-
+export async function setCurrentWebSearchModel(
+  { body: { modelId } }: { body: z.output<typeof setModelBodySchema> },
+): Promise<WebSearchModelSet> {
   setWebSearchModel(modelId);
-  respond(res, WebSearchModelSet, { success: true, webSearchModel: getWebSearchModel() });
+  return { success: true, webSearchModel: getWebSearchModel() };
+}
+
+/**
+ * What a model call's failure answers: the quota refusal the web shows as
+ * such, or the route's own sentence. Never the SDK's text (#1021).
+ */
+function modelFailure(error: unknown, sentence: string): Error {
+  const errorObj = error as { status?: number; code?: string };
+  if (errorObj?.status === 429 || errorObj?.code === 'insufficient_quota') {
+    return failure('AI quota exceeded', 429, 'quota_exceeded');
+  }
+  return failure(sentence, 500);
+}
+
+/** The refusal every model call gives when no key is configured. */
+function requireOpenAI(): void {
+  if (!isOpenAIAvailable()) throw failure('AI features are not available', 503);
 }
 
 /**
  * Suggest which group a region belongs to
  *
  * POST /api/ai/suggest-group
- * Body: {
- *   regionPath: string,
- *   regionName: string,
- *   availableGroups: string[],
- *   parentRegion: string,
- *   groupDescriptions?: Record<string, string>,
- *   useWebSearch?: boolean,
- *   worldViewSource?: string,
- *   escalationLevel?: 'fast' | 'reasoning' | 'reasoning_search'
- * }
  */
-export async function suggestGroup(req: Request, res: Response) {
-  const { regionPath, regionName, availableGroups, parentRegion, groupDescriptions, useWebSearch, worldViewSource, escalationLevel } = req.body;
+export async function suggestGroup(
+  { body }: { body: z.output<typeof suggestGroupBodySchema> },
+): Promise<GroupSuggestion> {
+  const { regionPath, regionName, availableGroups, parentRegion, groupDescriptions, useWebSearch, worldViewSource, escalationLevel } = body;
 
-  // Validation
-  if (!regionPath || typeof regionPath !== 'string') {
-    return res.status(400).json({ error: 'regionPath is required and must be a string' });
-  }
-  if (!regionName || typeof regionName !== 'string') {
-    return res.status(400).json({ error: 'regionName is required and must be a string' });
-  }
-  if (!Array.isArray(availableGroups) || availableGroups.length === 0) {
-    return res.status(400).json({ error: 'availableGroups must be a non-empty array of strings' });
-  }
-  if (!parentRegion || typeof parentRegion !== 'string') {
-    return res.status(400).json({ error: 'parentRegion is required and must be a string' });
-  }
+  // The schema takes these as strings and a list; empty ones are refused here.
+  if (!regionPath) throw badRequest('regionPath is required and must be a string');
+  if (!regionName) throw badRequest('regionName is required and must be a string');
+  if (availableGroups.length === 0) throw badRequest('availableGroups must be a non-empty array of strings');
+  if (!parentRegion) throw badRequest('parentRegion is required and must be a string');
 
-  if (!isOpenAIAvailable()) {
-    return res.status(503).json({
-      error: 'AI features are not available',
-      message: 'OpenAI API key not configured. Set OPENAI_API_KEY in .env to enable AI features.',
-    });
-  }
+  requireOpenAI();
 
-  let suggestion: GroupSuggestion;
   try {
-    suggestion = await suggestGroupForRegion(
+    return await suggestGroupForRegion(
       regionPath,
       regionName,
       availableGroups,
@@ -146,63 +134,27 @@ export async function suggestGroup(req: Request, res: Response) {
     );
   } catch (error: unknown) {
     console.error('AI suggestion error:', error);
-
-    // Handle OpenAI quota/rate limit errors
-    const errorObj = error as { status?: number; code?: string; message?: string };
-    if (errorObj?.status === 429 || errorObj?.code === 'insufficient_quota') {
-      return res.status(429).json({
-        error: 'AI quota exceeded',
-        code: 'quota_exceeded',
-        message: "Oops! Looks like our AI hamsters are tired and need more snacks. 🐹💤 Please ask your admin to add more AI credits!",
-      });
-    }
-
-    res.status(500).json({
-      error: 'Failed to get AI suggestion',
-    });
-    return;
+    throw modelFailure(error, 'Failed to get AI suggestion');
   }
-  respond(res, GroupSuggestion, suggestion);
 }
 
 /**
  * Suggest groups for multiple regions at once (batch processing)
  *
  * POST /api/ai/suggest-groups-batch
- * Body: {
- *   regions: Array<{ path: string, name: string }>,
- *   availableGroups: string[],
- *   parentRegion: string,
- *   worldViewDescription?: string,
- *   worldViewSource?: string,
- *   useWebSearch?: boolean,
- *   groupDescriptions?: Record<string, string>
- * }
  */
-export async function suggestGroupsBatch(req: Request, res: Response) {
-  const { regions, availableGroups, parentRegion, worldViewDescription, worldViewSource, useWebSearch, groupDescriptions } = req.body;
+export async function suggestGroupsBatch(
+  { body }: { body: z.output<typeof suggestGroupsBatchBodySchema> },
+): Promise<BatchSuggestions> {
+  const { regions, availableGroups, parentRegion, worldViewDescription, worldViewSource, useWebSearch, groupDescriptions } = body;
 
-  // Validation
-  if (!Array.isArray(regions) || regions.length === 0) {
-    return res.status(400).json({ error: 'regions must be a non-empty array' });
-  }
-  if (!Array.isArray(availableGroups) || availableGroups.length === 0) {
-    return res.status(400).json({ error: 'availableGroups must be a non-empty array of strings' });
-  }
-  if (!parentRegion || typeof parentRegion !== 'string') {
-    return res.status(400).json({ error: 'parentRegion is required and must be a string' });
-  }
+  if (availableGroups.length === 0) throw badRequest('availableGroups must be a non-empty array of strings');
+  if (!parentRegion) throw badRequest('parentRegion is required and must be a string');
 
-  if (!isOpenAIAvailable()) {
-    return res.status(503).json({
-      error: 'AI features are not available',
-      message: 'OpenAI API key not configured. Set OPENAI_API_KEY in .env to enable AI features.',
-    });
-  }
+  requireOpenAI();
 
-  let result: BatchSuggestions;
   try {
-    result = await suggestGroupsForMultipleRegions(
+    return await suggestGroupsForMultipleRegions(
       regions,
       availableGroups,
       parentRegion,
@@ -213,58 +165,26 @@ export async function suggestGroupsBatch(req: Request, res: Response) {
     );
   } catch (error: unknown) {
     console.error('AI batch suggestion error:', error);
-
-    // Handle OpenAI quota/rate limit errors
-    const errorObj = error as { status?: number; code?: string; message?: string };
-    if (errorObj?.status === 429 || errorObj?.code === 'insufficient_quota') {
-      return res.status(429).json({
-        error: 'AI quota exceeded',
-        code: 'quota_exceeded',
-        message: "Oops! Looks like our AI hamsters are tired and need more snacks. 🐹💤 Please ask your admin to add more AI credits!",
-      });
-    }
-
-    res.status(500).json({
-      error: 'Failed to get AI suggestions',
-    });
-    return;
+    throw modelFailure(error, 'Failed to get AI suggestions');
   }
-  respond(res, BatchSuggestions, result);
 }
 
 /**
  * Generate descriptions for groups to assist in classification
  *
  * POST /api/ai/generate-group-descriptions
- * Body: {
- *   groups: string[],
- *   parentRegion: string,
- *   worldViewDescription?: string,
- *   worldViewSource?: string,
- *   useWebSearch?: boolean
- * }
  */
-export async function generateDescriptions(req: Request, res: Response) {
-  const { groups, parentRegion, worldViewDescription, worldViewSource, useWebSearch } = req.body;
+export async function generateDescriptions(
+  { body }: { body: z.output<typeof generateDescriptionsBodySchema> },
+): Promise<GroupDescriptions> {
+  const { groups, parentRegion, worldViewDescription, worldViewSource, useWebSearch } = body;
 
-  // Validation
-  if (!Array.isArray(groups) || groups.length === 0) {
-    return res.status(400).json({ error: 'groups must be a non-empty array of strings' });
-  }
-  if (!parentRegion || typeof parentRegion !== 'string') {
-    return res.status(400).json({ error: 'parentRegion is required and must be a string' });
-  }
+  if (!parentRegion) throw badRequest('parentRegion is required and must be a string');
 
-  if (!isOpenAIAvailable()) {
-    return res.status(503).json({
-      error: 'AI features are not available',
-      message: 'OpenAI API key not configured. Set OPENAI_API_KEY in .env to enable AI features.',
-    });
-  }
+  requireOpenAI();
 
-  let result: GroupDescriptions;
   try {
-    result = await generateGroupDescriptions(
+    return await generateGroupDescriptions(
       groups,
       worldViewDescription,
       worldViewSource,
@@ -272,22 +192,8 @@ export async function generateDescriptions(req: Request, res: Response) {
     );
   } catch (error: unknown) {
     console.error('AI description generation error:', error);
-
-    const errorObj = error as { status?: number; code?: string; message?: string };
-    if (errorObj?.status === 429 || errorObj?.code === 'insufficient_quota') {
-      return res.status(429).json({
-        error: 'AI quota exceeded',
-        code: 'quota_exceeded',
-        message: "Oops! Looks like our AI hamsters are tired and need more snacks. 🐹💤 Please ask your admin to add more AI credits!",
-      });
-    }
-
-    res.status(500).json({
-      error: 'Failed to generate group descriptions',
-    });
-    return;
+    throw modelFailure(error, 'Failed to generate group descriptions');
   }
-  respond(res, GroupDescriptions, result);
 }
 
 /**
@@ -303,20 +209,12 @@ export async function geocodeWithAI(
     throw badRequest('description is required (at least 2 characters)');
   }
 
-  if (!isOpenAIAvailable()) {
-    throw failure('AI features are not available', 503);
-  }
+  requireOpenAI();
 
   try {
     return await geocodeDescription(description.trim());
   } catch (error: unknown) {
     console.error('AI geocode error:', error);
-
-    const errorObj = error as { status?: number; code?: string; message?: string };
-    if (errorObj?.status === 429 || errorObj?.code === 'insufficient_quota') {
-      throw failure('AI quota exceeded', 429, 'quota_exceeded');
-    }
-
-    throw failure('Failed to geocode description', 500);
+    throw modelFailure(error, 'Failed to geocode description');
   }
 }

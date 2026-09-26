@@ -119,7 +119,7 @@ export function useAISuggestions({
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('hamsters') || errorMessage.includes('quota') || errorMessage.includes('429')) {
+      if (errorMessage.includes('quota') || errorMessage.includes('429')) {
         setQuotaError(errorMessage);
       }
 
@@ -213,7 +213,7 @@ export function useAISuggestions({
     } catch (error: unknown) {
       console.error('Batch processing failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('hamsters') || errorMessage.includes('quota') || errorMessage.includes('429')) {
+      if (errorMessage.includes('quota') || errorMessage.includes('429')) {
         setQuotaError(errorMessage);
       }
     } finally {

@@ -4,11 +4,9 @@
  * Treasure (artwork) browsing and viewed-treasure tracking.
  */
 
-import type { Response } from 'express';
 import type { z } from 'zod/v4';
-import { respond } from '../../api/respond.js';
 import type { ExperienceTreasuresResponse } from '../../api/responses/experiences.js';
-import { TreasureViewMarked, TreasureViewUnmarked, ViewedTreasureIds } from '../../api/responses/visited.js';
+import type { TreasureViewMarked, TreasureViewUnmarked, ViewedTreasureIds } from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
 import type { TreasuresRow, UserViewedTreasuresRow } from '../../db/schema.generated.js';
 import { rowKindJoinSql } from '../../db/membership.js';
@@ -26,8 +24,10 @@ import {
 import { treasureOf, type TreasureRow } from './experienceAnswerRows.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import type { idParamSchema } from '../../types/index.js';
+import { notFound } from '../../middleware/errorHandler.js';
+import type {
+  idParamSchema, markTreasureViewedBodySchema, treasureIdParamSchema, viewedTreasureIdsQuerySchema,
+} from '../../types/index.js';
 
 /**
  * Get contents (treasures) for an experience
@@ -124,14 +124,11 @@ export async function getExperienceTreasures(
  * Get viewed treasure IDs for current user
  * GET /api/users/me/viewed-treasures/ids
  */
-export async function getViewedTreasureIds(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const experienceId = req.query.experienceId ? parseInt(String(req.query.experienceId)) : null;
+export async function getViewedTreasureIds(
+  { query: q, caller }: { query: z.output<typeof viewedTreasureIdsQuerySchema>; caller: Express.User },
+): Promise<ViewedTreasureIds> {
+  const userId = caller.id;
+  const experienceId = q.experienceId ?? null;
 
   let query = `
     SELECT uvt.treasure_id
@@ -157,9 +154,9 @@ export async function getViewedTreasureIds(req: AuthenticatedRequest, res: Respo
 
   const result = await pool.query<Pick<UserViewedTreasuresRow, 'treasure_id'>>(query, params);
 
-  respond(res, ViewedTreasureIds, {
+  return {
     viewedTreasureIds: result.rows.map(r => r.treasure_id),
-  });
+  };
 }
 
 /**
@@ -168,14 +165,14 @@ export async function getViewedTreasureIds(req: AuthenticatedRequest, res: Respo
  * Body: { experienceId } — needed to auto-mark the venue as visited (treasure can be in multiple venues).
  * Also auto-marks the parent experience as visited.
  */
-export async function markTreasureViewed(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const treasureId = parseInt(String(req.params.treasureId));
+export async function markTreasureViewed(
+  { params: { treasureId }, body, caller }: {
+    params: z.output<typeof treasureIdParamSchema>;
+    body: z.output<typeof markTreasureViewedBodySchema>;
+    caller: Express.User;
+  },
+): Promise<TreasureViewMarked> {
+  const userId = caller.id;
 
   // Verify the treasure exists *and* is one a read could have shown this
   // caller. Gated on its own curation_state (ADR-0025): without this, any
@@ -188,10 +185,7 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
     [treasureId],
   );
 
-  if (treasureResult.rows.length === 0) {
-    res.status(404).json({ error: 'Treasure not found' });
-    return;
-  }
+  if (treasureResult.rows.length === 0) throw notFound('Treasure not found');
 
   const treasure = treasureResult.rows[0];
 
@@ -203,7 +197,7 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
   `, [userId, treasureId]);
 
   // If experienceId provided, auto-mark that venue as visited
-  const experienceId = req.body.experienceId ? parseInt(String(req.body.experienceId)) : null;
+  const experienceId = body.experienceId ?? null;
   let experienceName: string | null = null;
 
   if (experienceId) {
@@ -252,13 +246,13 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
     }
   }
 
-  respond(res, TreasureViewMarked, {
+  return {
     success: true,
     treasureId,
     treasureName: treasure.name,
     experienceId,
     experienceName,
-  });
+  };
 }
 
 /**
@@ -266,24 +260,15 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
  * DELETE /api/users/me/viewed-treasures/:treasureId
  * Does NOT unvisit the parent experience.
  */
-export async function unmarkTreasureViewed(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
-
-  const treasureId = parseInt(String(req.params.treasureId));
-
+export async function unmarkTreasureViewed(
+  { params: { treasureId }, caller }: { params: z.output<typeof treasureIdParamSchema>; caller: Express.User },
+): Promise<TreasureViewUnmarked> {
   const result = await pool.query(
     'DELETE FROM user_viewed_treasures WHERE user_id = $1 AND treasure_id = $2 RETURNING id',
-    [userId, treasureId]
+    [caller.id, treasureId]
   );
 
-  if (result.rowCount === 0) {
-    res.status(404).json({ error: 'Viewed record not found' });
-    return;
-  }
+  if (result.rowCount === 0) throw notFound('Viewed record not found');
 
-  respond(res, TreasureViewUnmarked, { success: true, treasureId });
+  return { success: true, treasureId };
 }

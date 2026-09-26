@@ -89,7 +89,7 @@ export function useGroupDescriptions({
     } catch (error) {
       console.error('Failed to generate descriptions:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('hamsters') || errorMessage.includes('quota') || errorMessage.includes('429')) {
+      if (errorMessage.includes('quota') || errorMessage.includes('429')) {
         setQuotaError(errorMessage);
       }
     } finally {

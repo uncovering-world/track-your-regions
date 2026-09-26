@@ -22,8 +22,12 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { markVisited } from './experienceVisitController.js';
 import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { userRoutes } from '../../routes/userRoutes.js';
+
+/** The user routes these specs answer through (ADR-0071). */
+const postVisitedExperience = routeAt(userRoutes, '/me/visited-experiences/:experienceId', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -38,7 +42,7 @@ describe('markVisited — #520', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await markVisited(
+    await answerRoute(postVisitedExperience,
       { params: { experienceId: '281' }, body: {}, user: { id: 5 } } as never,
       res as never,
     );
@@ -61,7 +65,7 @@ describe('markVisited — #520', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await markVisited(
+    await answerRoute(postVisitedExperience,
       { params: { experienceId: '281' }, body: {}, user: { id: 5 } } as never,
       res as never,
     );
@@ -79,7 +83,7 @@ describe('markVisited — #520', () => {
       .mockResolvedValueOnce({ rows: [{ id: 9, visited_at: new Date('2026-01-01T00:00:00.000Z'), notes: null, rating: null }] });
     const res = makeRes();
 
-    await markVisited(
+    await answerRoute(postVisitedExperience,
       { params: { experienceId: '281' }, body: {}, user: { id: 5 } } as never,
       res as never,
     );
