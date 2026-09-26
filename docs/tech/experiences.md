@@ -4861,6 +4861,16 @@ apart without a reader having to infer it from which columns moved.
 
 ## Curation Guarantees
 
+- **A row's `curation_state` moves only the ways the gate allows**
+  ([ADR-0070](../decisions/0070-the-database-refuses-a-curation-state-move-the-gate-does-not-allow.md)).
+  - `CURATION_MOVES` in `@tyr/shared/lifecycle` lists, per table, the moves each writer makes and
+    why.
+  - A trigger, `guard_curation_state_move()`, refuses every other move with `check_violation`,
+    whatever writer tries it. That includes the set-based publications, decays and refusals.
+  - The two moves nothing makes are what it exists for: `verified` → `pending` would take a
+    published row off every screen, and `pending` → `auto` would publish one nobody has passed.
+  - `curationMoves.db.test.ts` walks every pair on every table against the list on the database
+    lane.
 - `curated_fields` on `experiences` protects edited fields during sync upserts
 - Manual experiences (`is_manual = true`) are not replaced by source sync
 - Manual region assignments are preserved across assignment recompute jobs
