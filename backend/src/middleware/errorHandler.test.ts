@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
-import { createError, notFound, badRequest, errorHandler } from './errorHandler.js';
+import { createError, notFound, badRequest, errorHandler, failure } from './errorHandler.js';
 
 describe('createError', () => {
   it('creates an error with message and status code', () => {
@@ -62,14 +62,14 @@ describe('badRequest', () => {
 
 /** Collects what the handler answered, standing in for an Express response. */
 function captureResponse() {
-  const sent: { status?: number; body?: { error?: string } } = {};
+  const sent: { status?: number; body?: { error?: string; code?: string } } = {};
   const res = {
     status(code: number) {
       sent.status = code;
       return this;
     },
     json(body: unknown) {
-      sent.body = body as { error?: string };
+      sent.body = body as { error?: string; code?: string };
       return this;
     },
   } as unknown as Response;
@@ -153,5 +153,37 @@ describe('errorHandler', () => {
     const sent = handle(new Error('boom'));
 
     expect(sent.status).toBe(500);
+  });
+
+  describe('in production', () => {
+    beforeEach(() => {
+      vi.stubEnv('NODE_ENV', 'production');
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("masks a 5xx's own text, which a driver or an upstream wrote", () => {
+      expect(handle(createError('relation "regions" does not exist', 500)).body).toEqual({ error: 'Internal server error' });
+    });
+
+    it('keeps the sentence a failure() carries, at a 5xx too', () => {
+      const sent = handle(failure('AI features are not available', 503));
+
+      expect(sent.status).toBe(503);
+      expect(sent.body).toEqual({ error: 'AI features are not available' });
+    });
+
+    it('passes on the code a failure() names for the client to act on', () => {
+      expect(handle(failure('AI quota exceeded', 429, 'quota_exceeded')).body)
+        .toEqual({ error: 'AI quota exceeded', code: 'quota_exceeded' });
+    });
+
+    it("never passes on a driver's code", () => {
+      const err = Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505', statusCode: 409 });
+
+      expect(handle(err).body).not.toHaveProperty('code');
+    });
   });
 });

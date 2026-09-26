@@ -1,10 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod/v4';
 import { isVisitedRegionDelete, VISITED_REGION_REFUSAL } from '../db/regionVisits.js';
+import { ReaderFacingError } from '../api/readerFacingError.js';
 
 export interface ApiError extends Error {
   statusCode: number;
   details?: unknown;
+  /** A cause the reader can act on, named for the client to branch on (`quota_exceeded`). */
+  code?: string;
 }
 
 export function createError(message: string, statusCode: number, details?: unknown): ApiError {
@@ -20,6 +23,19 @@ export function notFound(message = 'Resource not found'): ApiError {
 
 export function badRequest(message = 'Bad request', details?: unknown): ApiError {
   return createError(message, 400, details);
+}
+
+/**
+ * A failure the product names, whatever its status: the sentence reaches the
+ * reader in production too, where a 5xx's own text is otherwise masked. For a
+ * sentence this codebase wrote ("AI features are not available"), never for
+ * text an upstream or a driver put in an error (#1021).
+ */
+export function failure(message: string, statusCode: number, code?: string): ApiError {
+  const error = new ReaderFacingError(message) as ReaderFacingError & ApiError;
+  error.statusCode = statusCode;
+  if (code) error.code = code;
+  return error;
 }
 
 // Error handling middleware
@@ -79,13 +95,14 @@ export function errorHandler(
   const statusCode = 'statusCode' in err ? err.statusCode : 500;
 
   // In production, mask internal error messages on 500s to avoid leaking implementation details
-  const message = statusCode >= 500 && process.env.NODE_ENV === 'production'
+  const message = statusCode >= 500 && process.env.NODE_ENV === 'production' && !(err instanceof ReaderFacingError)
     ? 'Internal server error'
     : err.message || 'Internal server error';
 
   res.status(statusCode).json({
     error: message,
     ...('details' in err && err.details ? { details: err.details } : {}),
+    ...(err instanceof ReaderFacingError && 'code' in err && typeof err.code === 'string' ? { code: err.code } : {}),
   });
 }
 
