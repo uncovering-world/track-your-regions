@@ -3009,8 +3009,8 @@ default, and a count that labels a kind rather than a page does not move when a 
 the list.**
 
 `?includeLost=true` puts them back — named in the **query schemas** as well as read in the
-controllers, because `validate()` replaces `req.query` with the parsed object and Zod strips
-what it does not name. A parameter the controller reads but the schema omits never arrives,
+handlers, because a handler receives the parsed object its route's schema produced, and Zod
+strips what it does not name. A parameter the controller reads but the schema omits never arrives,
 while every test calling the controller directly keeps passing; `types/experienceQuerySchemas.test.ts`
 guards that. The location batch carries the same flag, or a revealed row would arrive with no
 markers and a zero location count. The by-region response carries `lostHidden` — computed by
@@ -3186,8 +3186,8 @@ A name — a place's, a point's, a work's title and each of its makers — is
 tidied before it is bounded (`storedName`, the schemas' spelling of
 `tidyLabel`): edges trimmed, a run of whitespace inside collapsed to one space,
 so a title of nothing but spaces is refused as empty rather than stored, the
-width is measured on what the row will hold, and what `validate()` puts back on
-the request is that form. The correction dialogs compare what was typed with
+width is measured on what the row will hold, and what the route's schema hands
+the handler is that form. The correction dialogs compare what was typed with
 what is stored by the same rule before deciding whether to send a name, so a
 title pasted with two spaces over a stored one with one claims nothing
 (`backend/src/types/storedName.test.ts`).
