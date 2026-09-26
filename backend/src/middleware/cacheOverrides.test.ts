@@ -14,8 +14,9 @@ const SRC = join(fileURLToPath(new URL('.', import.meta.url)), '..');
  * it is written: `no-restricted-syntax` in `backend/eslint.config.mjs` fails
  * any value that drops `private`, and any it cannot find `private` in at all —
  * a name, a call, a template that is all holes — since none of those can be
- * checked there; and the one deliberate exception — the admin image proxy's `public` —
- * carries its reason as a suppression on its own line. That rule is the right
+ * checked there; and the two writes that may say `public` — the admin image
+ * proxy's, and the route registry's for a declared `public` route
+ * (`api/route.ts`) — carry their reason as a suppression on their own line. That rule is the right
  * shape for a linter: it fires on code that exists.
  *
  * A linter cannot fire on code that stopped existing, and that is the failure
@@ -66,6 +67,8 @@ const MUST_WRITE: Array<{ file: string; writes: number }> = [
   { file: 'middleware/auth.ts', writes: 2 },
   // The two admin image values and the proxy's public one.
   { file: 'routes/adminRoutes.ts', writes: 3 },
+  // The registry's one write, of the policy each declaration names (ADR-0071).
+  { file: 'api/route.ts', writes: 1 },
 ];
 
 /**
