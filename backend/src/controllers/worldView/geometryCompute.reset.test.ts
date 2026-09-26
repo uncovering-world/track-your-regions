@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Request, Response } from 'express';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const resetRegionToGADMRoute = routeAt(worldViewRoutes, '/regions/:regionId/geometry/reset', 'post');
 
 const poolQuery = vi.fn();
 
@@ -7,7 +12,6 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: (...args: unknown[]) => poolQuery(...args) },
 }));
 
-import { resetRegionToGADM } from './geometryCompute.js';
 
 function answer() {
   const res = {
@@ -35,7 +39,7 @@ describe('resetRegionToGADM keeps a boundary drawn while it ran (#439)', () => {
     });
     const res = answer();
 
-    await resetRegionToGADM(req, res as unknown as Response);
+    await answerRoute(resetRegionToGADMRoute, req, res as unknown as Response);
 
     expect(res.statusCode).toBe(409);
     expect(res.body).toEqual({ error: 'The boundary was drawn by hand while it was being reset; the drawing is kept' });
@@ -52,7 +56,7 @@ describe('resetRegionToGADM keeps a boundary drawn while it ran (#439)', () => {
     });
     const res = answer();
 
-    await resetRegionToGADM(req, res as unknown as Response);
+    await answerRoute(resetRegionToGADMRoute, req, res as unknown as Response);
 
     expect(res.statusCode).toBe(200);
     expect(res.body).toMatchObject({ reset: true, points: 0 });

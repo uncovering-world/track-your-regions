@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Request, Response } from 'express';
+import type { Route } from '../../api/route.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const removeDivisionsFromRegionRoute = routeAt(worldViewRoutes, '/regions/:regionId/members', 'delete');
+const moveMemberToRegionRoute = routeAt(worldViewRoutes, '/regions/:regionId/members/move', 'post');
+const expandToSubregionsRoute = routeAt(worldViewRoutes, '/regions/:regionId/expand', 'post');
+const getDivisionUsageCountsRoute = routeAt(worldViewRoutes, '/:worldViewId/division-usage', 'post');
+const addChildDivisionsAsSubregionsRoute = routeAt(worldViewRoutes, '/regions/:regionId/members/:divisionId/add-children', 'post');
 
 const { poolQuery, invalidateRegionGeometry } = vi.hoisted(() => ({
   poolQuery: vi.fn(),
@@ -15,13 +24,12 @@ vi.mock('./helpers.js', () => ({
   syncImportMatchStatus: vi.fn(),
 }));
 
-import { moveMemberToRegion, removeDivisionsFromRegion } from './regionMemberMutations.js';
-import { addChildDivisionsAsSubregions, expandToSubregions, getDivisionUsageCounts } from './regionMemberOperations.js';
 
-function call(handler: (req: Request, res: Response) => Promise<void>, req: Record<string, unknown>) {
+/** The body a request on `route` answers with. */
+function call(route: Route, req: Record<string, unknown>) {
   const json = vi.fn();
   const res = { json, status: vi.fn().mockReturnThis() };
-  return handler(req as unknown as Request, res as unknown as Response).then(() => json.mock.calls[0]?.[0]);
+  return answerRoute(route, req, res).then(() => json.mock.calls[0]?.[0]);
 }
 
 beforeEach(() => {
@@ -33,13 +41,13 @@ describe('removeDivisionsFromRegion', () => {
   it('counts the member rows that went, not the ids the call named', async () => {
     // Two of the three rows belong to the region; the third names another one.
     poolQuery.mockResolvedValueOnce({ rowCount: 1 }).mockResolvedValueOnce({ rowCount: 1 }).mockResolvedValueOnce({ rowCount: 0 });
-    const answer = await call(removeDivisionsFromRegion, { params: { regionId: '7323' }, body: { memberRowIds: [11340, 11341, 9010] } });
+    const answer = await call(removeDivisionsFromRegionRoute, { params: { regionId: '7323' }, body: { memberRowIds: [11340, 11341, 9010] } });
     expect(answer).toEqual({ removed: 2 });
   });
 
   it('counts the same way when divisions are named rather than rows', async () => {
     poolQuery.mockResolvedValueOnce({ rowCount: 1 }).mockResolvedValueOnce({ rowCount: 0 });
-    const answer = await call(removeDivisionsFromRegion, { params: { regionId: '7323' }, body: { divisionIds: [345039, 22704] } });
+    const answer = await call(removeDivisionsFromRegionRoute, { params: { regionId: '7323' }, body: { divisionIds: [345039, 22704] } });
     expect(answer).toEqual({ removed: 1 });
   });
 });
@@ -47,7 +55,7 @@ describe('removeDivisionsFromRegion', () => {
 describe('moveMemberToRegion', () => {
   it('answers with the move, never the member row, whose cut geometry can run to megabytes', async () => {
     poolQuery.mockResolvedValueOnce({ rows: [{ id: 11340, region_id: 7349 }] });
-    const answer = await call(moveMemberToRegion, { params: { regionId: '7323' }, body: { memberRowId: 11340, toRegionId: 7349 } });
+    const answer = await call(moveMemberToRegionRoute, { params: { regionId: '7323' }, body: { memberRowId: 11340, toRegionId: 7349 } });
 
     expect(answer).toEqual({ moved: true, memberRowId: 11340, fromRegionId: 7323, toRegionId: 7349 });
     expect(String(poolQuery.mock.calls[0][0])).not.toMatch(/RETURNING \*/);
@@ -65,7 +73,7 @@ describe('expandToSubregions', () => {
       if (s.includes('INSERT INTO regions')) return { rows: [{ id: 9001, name: 'Nicosia' }] };
       return { rows: [] };
     });
-    const answer = await call(expandToSubregions, { params: { regionId: '5377' }, body: {} });
+    const answer = await call(expandToSubregionsRoute, { params: { regionId: '5377' }, body: {} });
     expect(answer).toEqual({ createdRegions: [{ id: 9001, name: 'Nicosia', divisionId: 57365 }], expandedCount: 1 });
   });
 });
@@ -73,7 +81,7 @@ describe('expandToSubregions', () => {
 describe('getDivisionUsageCounts', () => {
   it('keys each count by the division id, as JSON keys an object', async () => {
     poolQuery.mockResolvedValueOnce({ rows: [{ division_id: 377, usage_count: 2 }] });
-    const answer = await call(getDivisionUsageCounts, { params: { worldViewId: '5' }, body: { divisionIds: [377, 999] } });
+    const answer = await call(getDivisionUsageCountsRoute, { params: { worldViewId: '5' }, body: { divisionIds: [377, 999] } });
     expect(answer).toEqual({ 377: 2 });
   });
 });
@@ -107,7 +115,7 @@ describe('addChildDivisionsAsSubregions', () => {
 
   it('counts the children it placed, not the ones it skipped', async () => {
     mockCyprus(1);
-    const answer = await call(addChildDivisionsAsSubregions, request);
+    const answer = await call(addChildDivisionsAsSubregionsRoute, request);
     expect(answer).toEqual({
       added: 1, removedOriginal: true, createdRegions: [{ id: 9002, name: 'Limassol', divisionId: 57366 }],
     });
@@ -115,7 +123,7 @@ describe('addChildDivisionsAsSubregions', () => {
 
   it('says the original stayed when there was no row of it to remove', async () => {
     mockCyprus(0);
-    const answer = await call(addChildDivisionsAsSubregions, request) as { removedOriginal: boolean };
+    const answer = await call(addChildDivisionsAsSubregionsRoute, request) as { removedOriginal: boolean };
     expect(answer.removedOriginal).toBe(false);
   });
 
@@ -123,13 +131,13 @@ describe('addChildDivisionsAsSubregions', () => {
     // Nothing was removed from Cyprus itself, so no member trigger fires on
     // it, and the new Limassol subregion has no geometry to cascade from.
     mockCyprus(0);
-    await call(addChildDivisionsAsSubregions, { ...request, body: { ...request.body, removeOriginal: false } });
+    await call(addChildDivisionsAsSubregionsRoute, { ...request, body: { ...request.body, removeOriginal: false } });
     expect(invalidateRegionGeometry).toHaveBeenCalledWith(5377);
   });
 
   it('names nothing when the children join Cyprus as flat members, which the member trigger clears', async () => {
     mockCyprus(1);
-    await call(addChildDivisionsAsSubregions, { ...request, body: { createAsSubregions: false } });
+    await call(addChildDivisionsAsSubregionsRoute, { ...request, body: { createAsSubregions: false } });
     expect(invalidateRegionGeometry).not.toHaveBeenCalled();
   });
 });

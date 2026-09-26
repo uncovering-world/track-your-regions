@@ -85,9 +85,7 @@ const MUST_WRITE: Array<{ file: string; writes: number }> = [
  */
 const MUST_CALL_HELPER: Array<{ file: string; helper: string; handlers: number }> = [
   { file: 'controllers/admin/wvImportLifecycleController.ts', helper: 'markPublicReferenceBody', handlers: 1 },
-  // The three streams, which say the same thing for the same reason and said
-  // it in eight identical comment lines apiece until the helper took it.
-  { file: 'controllers/worldView/geometryComputeSSE.ts', helper: 'markStreamBody', handlers: 1 },
+  // The streams not yet declared; a declared stream's policy is its route's.
   { file: 'controllers/admin/wvImportMatchPipeline.ts', helper: 'markStreamBody', handlers: 1 },
   { file: 'controllers/admin/wvImportCoverageController.ts', helper: 'markStreamBody', handlers: 1 },
 ];

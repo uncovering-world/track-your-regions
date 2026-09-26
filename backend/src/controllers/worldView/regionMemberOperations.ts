@@ -4,14 +4,17 @@
  * Complex structural operations: expand to subregions, flatten, add children, usage counts.
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import {
-  ChildDivisionsAdded, DivisionUsageCounts, SubregionFlattened, SubregionsExpanded, type CreatedSubregion,
+import type { z } from 'zod/v4';
+import type {
+  ChildDivisionsAdded, DivisionUsageCounts, SubregionFlattened, SubregionsExpanded, CreatedSubregion,
 } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import { visitedRegionRefusal, visitsUnder } from '../../db/regionVisits.js';
-import { createError } from '../../middleware/errorHandler.js';
+import { badRequest, createError, notFound } from '../../middleware/errorHandler.js';
+import type {
+  addChildDivisionsBodySchema, divisionUsageBodySchema, expandToSubregionsBodySchema, flattenParamSchema,
+  regionDivisionParamSchema, regionIdParamSchema, worldViewIdParamSchema,
+} from '../../types/index.js';
 import { ensureRegionMember, invalidateRegionGeometry, moveMembersToRegion, syncImportMatchStatus } from './helpers.js';
 
 interface ChildRow { id: number; name: string }
@@ -125,25 +128,18 @@ async function addChildrenAsFlatMembers(
  * - inheritColor: boolean - If true (default), inherit parent region's color. If false, use default blue.
  * - createAsSubregions: boolean - If true (default), create subregions for each child. If false, just add as GADM members.
  */
-export async function addChildDivisionsAsSubregions(req: Request, res: Response): Promise<void> {
-  // Route: /regions/:regionId/members/:divisionId/add-children
-  //   regionId = user-defined region, divisionId = GADM division
-  const userRegionId = parseInt(String(req.params.regionId));
-  const gadmDivisionId = parseInt(String(req.params.divisionId));
-
-  const {
-    childIds,
-    removeOriginal = true,
-    inheritColor = true,
-    createAsSubregions = true,
-    assignments,
-  } = req.body || {};
+export async function addChildDivisionsAsSubregions(
+  // regionId is the user-defined region, divisionId the GADM division
+  { params: { regionId: userRegionId, divisionId: gadmDivisionId }, body }: {
+    params: z.output<typeof regionDivisionParamSchema>;
+    body: z.output<typeof addChildDivisionsBodySchema>;
+  },
+): Promise<ChildDivisionsAdded> {
+  const { childIds, removeOriginal, inheritColor, createAsSubregions, assignments } = body;
 
   const assignmentMap = new Map<number, number>();
-  if (Array.isArray(assignments)) {
-    for (const a of assignments as Array<{ gadmChildId: number; existingRegionId: number }>) {
-      assignmentMap.set(a.gadmChildId, a.existingRegionId);
-    }
+  for (const a of assignments ?? []) {
+    assignmentMap.set(a.gadmChildId, a.existingRegionId);
   }
 
   console.log(`[AddChildren] Request: userRegionId=${userRegionId}, gadmDivisionId=${gadmDivisionId}, childIds=${childIds ? childIds.length : 'all'}, removeOriginal=${removeOriginal}, inheritColor=${inheritColor}, createAsSubregions=${createAsSubregions}`);
@@ -152,31 +148,19 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
     'SELECT world_view_id, color FROM regions WHERE id = $1',
     [userRegionId],
   );
-  if (regionInfo.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found' });
-    return;
-  }
+  if (regionInfo.rows.length === 0) throw notFound('Region not found');
 
   const divisionInfo = await pool.query(
     'SELECT id, name, has_children FROM administrative_divisions WHERE id = $1',
     [gadmDivisionId],
   );
-  if (divisionInfo.rows.length === 0) {
-    res.status(404).json({ error: `Division ${gadmDivisionId} not found in GADM` });
-    return;
-  }
-  if (!divisionInfo.rows[0].has_children) {
-    res.status(400).json({ error: 'Division has no subdivisions to add' });
-    return;
-  }
+  if (divisionInfo.rows.length === 0) throw notFound(`Division ${gadmDivisionId} not found in GADM`);
+  if (!divisionInfo.rows[0].has_children) throw badRequest('Division has no subdivisions to add');
 
   console.log(`[AddChildren] Division ${gadmDivisionId} (${divisionInfo.rows[0].name}) - fetching children`);
 
   const childrenToAdd = await loadChildrenToAdd(gadmDivisionId, childIds);
-  if (childrenToAdd.length === 0) {
-    res.status(400).json({ error: 'No children to add' });
-    return;
-  }
+  if (childrenToAdd.length === 0) throw badRequest('No children to add');
 
   const createdRegions: CreatedSubregion[] = [];
   const affectedRegionIds = new Set<number>();
@@ -222,21 +206,20 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
     await syncImportMatchStatus(rid);
   }
 
-  respond(res.status(201), ChildDivisionsAdded, {
+  return {
     added,
     removedOriginal,
     createdRegions,
-  });
+  };
 }
 
 /**
  * Flatten a subregion - moves all GADM divisions from the subregion to the parent region and deletes the subregion
  * This converts a hierarchy structure back to flat GADM members
  */
-export async function flattenSubregion(req: Request, res: Response): Promise<void> {
-  const parentRegionId = parseInt(String(req.params.parentRegionId));
-  const subregionId = parseInt(String(req.params.subregionId));
-
+export async function flattenSubregion(
+  { params: { parentRegionId, subregionId } }: { params: z.output<typeof flattenParamSchema> },
+): Promise<SubregionFlattened> {
   console.log(`[Flatten] Request: parentRegionId=${parentRegionId}, subregionId=${subregionId}`);
 
   // Verify the subregion exists and belongs to the parent
@@ -245,14 +228,10 @@ export async function flattenSubregion(req: Request, res: Response): Promise<voi
     [subregionId]
   );
 
-  if (subregionInfo.rows.length === 0) {
-    res.status(404).json({ error: 'Subregion not found' });
-    return;
-  }
+  if (subregionInfo.rows.length === 0) throw notFound('Subregion not found');
 
   if (subregionInfo.rows[0].parent_region_id !== parentRegionId) {
-    res.status(400).json({ error: 'Subregion does not belong to the specified parent region' });
-    return;
+    throw badRequest('Subregion does not belong to the specified parent region');
   }
 
   // Before the first write: the members move to the parent before the
@@ -303,10 +282,10 @@ export async function flattenSubregion(req: Request, res: Response): Promise<voi
   // Sync import match status for the parent (which now has the divisions)
   await syncImportMatchStatus(parentRegionId);
 
-  respond(res, SubregionFlattened, {
+  return {
     movedDivisions: movedCount,
     deletedRegion: true,
-  });
+  };
 }
 
 /**
@@ -314,20 +293,19 @@ export async function flattenSubregion(req: Request, res: Response): Promise<voi
  * For each GADM division member in a region, create a subregion with the same name containing that division
  * This is the opposite of flattenSubregion
  */
-export async function expandToSubregions(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const { inheritColor = true } = req.body;
-
+export async function expandToSubregions(
+  { params: { regionId }, body: { inheritColor } }: {
+    params: z.output<typeof regionIdParamSchema>;
+    body: z.output<typeof expandToSubregionsBodySchema>;
+  },
+): Promise<SubregionsExpanded> {
   // Get the region info
   const regionInfo = await pool.query(
     'SELECT id, name, world_view_id, color FROM regions WHERE id = $1',
     [regionId]
   );
 
-  if (regionInfo.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found' });
-    return;
-  }
+  if (regionInfo.rows.length === 0) throw notFound('Region not found');
 
   const region = regionInfo.rows[0];
 
@@ -341,10 +319,7 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
     ORDER BY rm.id
   `, [regionId]);
 
-  if (members.rows.length === 0) {
-    res.status(400).json({ error: 'No GADM members to expand' });
-    return;
-  }
+  if (members.rows.length === 0) throw badRequest('No GADM members to expand');
 
   console.log(`[Expand] Expanding ${members.rows.length} GADM members to subregions in region ${regionId}`);
 
@@ -380,24 +355,23 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
     await syncImportMatchStatus(cr.id);
   }
 
-  respond(res, SubregionsExpanded, {
+  return {
     createdRegions,
     expandedCount: createdRegions.length,
-  });
+  };
 }
 
 /**
  * Get usage counts for divisions within a world view
  * Returns how many regions each division belongs to
  */
-export async function getDivisionUsageCounts(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { divisionIds } = req.body;
-
-  if (!Array.isArray(divisionIds) || divisionIds.length === 0) {
-    respond(res, DivisionUsageCounts, {});
-    return;
-  }
+export async function getDivisionUsageCounts(
+  { params: { worldViewId }, body: { divisionIds } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof divisionUsageBodySchema>;
+  },
+): Promise<DivisionUsageCounts> {
+  if (!divisionIds || divisionIds.length === 0) return {};
 
   // Query to count how many groups each division belongs to within this hierarchy
   const result = await pool.query<{ division_id: number; usage_count: number }>(`
@@ -416,5 +390,5 @@ export async function getDivisionUsageCounts(req: Request, res: Response): Promi
     usageCounts[String(row.division_id)] = row.usage_count;
   }
 
-  respond(res, DivisionUsageCounts, usageCounts);
+  return usageCounts;
 }

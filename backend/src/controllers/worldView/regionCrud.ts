@@ -2,15 +2,22 @@
  * Regions CRUD operations (User-defined regions within World Views)
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { Region, Regions, RegionSearchResults, RegionUpdated } from '../../api/responses/regions.js';
+import type { z } from 'zod/v4';
+import { NO_CONTENT } from '../../api/route.js';
+import type { Region, Regions, RegionSearchResults, RegionUpdated } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import type { RegionsRow } from '../../db/schema.generated.js';
 import { visitedRegionRefusal, visitsUnder } from '../../db/regionVisits.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import { invalidateRegionGeometry, moveMembersToRegion } from './helpers.js';
 import { REGION_SELECT_SQL, regionOf, regionSearchResultOf, type RegionRow, type RegionSearchRow } from './regionAnswerRows.js';
+import type {
+  createRegionBodySchema, deleteRegionQuerySchema, regionIdParamSchema, regionSearchQuerySchema,
+  updateRegionBodySchema, worldViewIdParamSchema,
+} from '../../types/index.js';
+
+type WorldViewParams = z.output<typeof worldViewIdParamSchema>;
+type RegionParams = z.output<typeof regionIdParamSchema>;
 
 /**
  * One region as every region answer reads it. A write answers with this read
@@ -26,54 +33,46 @@ async function readRegion(regionId: number): Promise<Region> {
 /**
  * Get all regions in a World View
  */
-export async function getRegions(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-
+export async function getRegions({ params: { worldViewId } }: { params: WorldViewParams }): Promise<Regions> {
   const result = await pool.query<RegionRow>(`
     ${REGION_SELECT_SQL}
     WHERE cg.world_view_id = $1
     ORDER BY cg.name
   `, [worldViewId]);
 
-  respond(res, Regions, result.rows.map(regionOf));
+  return result.rows.map(regionOf);
 }
 
 /**
  * Get root-level regions in a World View (no parent)
  */
-export async function getRootRegions(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-
+export async function getRootRegions({ params: { worldViewId } }: { params: WorldViewParams }): Promise<Regions> {
   const result = await pool.query<RegionRow>(`
     ${REGION_SELECT_SQL}
     WHERE cg.world_view_id = $1 AND cg.parent_region_id IS NULL
     ORDER BY cg.name
   `, [worldViewId]);
 
-  respond(res, Regions, result.rows.map(regionOf));
+  return result.rows.map(regionOf);
 }
 
 /**
  * Get subregions of a region
  */
-export async function getSubregions(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-
+export async function getSubregions({ params: { regionId } }: { params: RegionParams }): Promise<Regions> {
   const result = await pool.query<RegionRow>(`
     ${REGION_SELECT_SQL}
     WHERE cg.parent_region_id = $1
     ORDER BY cg.name
   `, [regionId]);
 
-  respond(res, Regions, result.rows.map(regionOf));
+  return result.rows.map(regionOf);
 }
 
 /**
  * Get ancestors of a region (from root to the region itself)
  */
-export async function getRegionAncestors(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-
+export async function getRegionAncestors({ params: { regionId } }: { params: RegionParams }): Promise<Regions> {
   // The whole row of each, as every region answer carries it: the client's
   // selection takes the last entry as the selected region itself, and a region
   // restored from the address has nothing else to be completed from.
@@ -95,22 +94,22 @@ export async function getRegionAncestors(req: Request, res: Response): Promise<v
     throw notFound(`Region ${regionId} not found`);
   }
 
-  respond(res, Regions, result.rows.map(regionOf));
+  return result.rows.map(regionOf);
 }
 
 /**
  * Search regions by name within a World View
  * Uses ILIKE with unaccent fallback and fuzzy trigram matching
  */
-export async function searchRegions(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const inputQuery = String(req.query.query ?? '').trim();
-  const limit = parseInt(String(req.query.limit ?? '50'));
-
-  if (inputQuery.length < 2) {
-    respond(res, RegionSearchResults, []);
-    return;
-  }
+export async function searchRegions(
+  { params: { worldViewId }, query: { query, limit } }: {
+    params: WorldViewParams;
+    query: z.output<typeof regionSearchQuerySchema>;
+  },
+): Promise<RegionSearchResults> {
+  // The schema counts what was typed; two characters of it may be blanks.
+  const inputQuery = query.trim();
+  if (inputQuery.length < 2) return [];
 
   const queryTerms = inputQuery.split(/\s+/).filter(t => t.length > 0);
   const params: (string | number)[] = [inputQuery, worldViewId];
@@ -229,15 +228,18 @@ export async function searchRegions(req: Request, res: Response): Promise<void> 
     .sort((a, b) => b.relevance_score - a.relevance_score)
     .slice(0, limit);
 
-  respond(res, RegionSearchResults, sorted.map(regionSearchResultOf));
+  return sorted.map(regionSearchResultOf);
 }
 
 /**
  * Create a new region in a World View
  */
-export async function createRegion(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { name, description, parentRegionId, color, customGeometry } = req.body;
+export async function createRegion(
+  { params: { worldViewId }, body: { name, description, parentRegionId, color, customGeometry } }: {
+    params: WorldViewParams;
+    body: z.output<typeof createRegionBodySchema>;
+  },
+): Promise<Region> {
   const parentId = parentRegionId;
 
   console.log(`[CreateRegion] name=${name}, hasCustomGeometry=${!!customGeometry}, customGeometryType=${customGeometry?.type}`);
@@ -271,16 +273,10 @@ export async function createRegion(req: Request, res: Response): Promise<void> {
     createdId = inserted.rows[0].id;
   }
 
-  respond(res.status(201), Region, await readRegion(createdId));
+  return readRegion(createdId);
 }
 
-interface UpdateRegionBody {
-  name?: string;
-  description?: string;
-  parentRegionId?: number | null;
-  color?: string;
-  usesHull?: boolean;
-}
+type UpdateRegionBody = z.output<typeof updateRegionBodySchema>;
 
 type ScalarValue = string | number | boolean | null;
 
@@ -354,9 +350,9 @@ async function moveDivisionMembershipsForParentChange(
 /**
  * Update a region
  */
-export async function updateRegion(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const body = req.body as UpdateRegionBody;
+export async function updateRegion(
+  { params: { regionId }, body }: { params: RegionParams; body: UpdateRegionBody },
+): Promise<RegionUpdated> {
   const newParentId = body.parentRegionId;
 
   const currentRegion = await pool.query<Pick<RegionsRow, 'name' | 'parent_region_id' | 'uses_hull'>>(`
@@ -371,10 +367,7 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
   const oldUsesHull = Boolean(currentRegion.rows[0].uses_hull);
 
   const { setClauses, values } = buildRegionUpdateClauses(body);
-  if (setClauses.length === 0) {
-    respond(res, RegionUpdated, await readRegion(regionId));
-    return;
-  }
+  if (setClauses.length === 0) return readRegion(regionId);
 
   const idIdx = values.length + 1;
   values.push(regionId);
@@ -432,11 +425,10 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
       'UPDATE world_views SET tile_version = COALESCE(tile_version, 0) + 1 WHERE id = $1 RETURNING tile_version',
       [result.rows[0].world_view_id],
     );
-    respond(res, RegionUpdated, { ...await readRegion(regionId), tileVersion: bumped.rows[0].tile_version });
-    return;
+    return { ...await readRegion(regionId), tileVersion: bumped.rows[0].tile_version };
   }
 
-  respond(res, RegionUpdated, await readRegion(regionId));
+  return readRegion(regionId);
 }
 
 /**
@@ -444,9 +436,10 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
  * Query params:
  * - moveChildrenToParent: if true, move children to this region's parent instead of deleting them
  */
-export async function deleteRegion(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const moveChildrenToParent = req.query.moveChildrenToParent === 'true';
+export async function deleteRegion(
+  { params: { regionId }, query }: { params: RegionParams; query: z.output<typeof deleteRegionQuerySchema> },
+): Promise<typeof NO_CONTENT> {
+  const moveChildrenToParent = query.moveChildrenToParent === 'true';
 
   // Get region info before deleting
   const regionResult = await pool.query(
@@ -454,10 +447,7 @@ export async function deleteRegion(req: Request, res: Response): Promise<void> {
     [regionId]
   );
 
-  if (regionResult.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found' });
-    return;
-  }
+  if (regionResult.rows.length === 0) throw notFound('Region not found');
 
   const parentRegionId = regionResult.rows[0].parent_region_id;
 
@@ -499,5 +489,5 @@ export async function deleteRegion(req: Request, res: Response): Promise<void> {
     await invalidateRegionGeometry(parentRegionId);
   }
 
-  res.status(204).send();
+  return NO_CONTENT;
 }

@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Request, Response } from 'express';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const updateRegionRoute = routeAt(worldViewRoutes, '/regions/:regionId', 'put');
+const deleteRegionRoute = routeAt(worldViewRoutes, '/regions/:regionId', 'delete');
+const getRegionAncestorsRoute = routeAt(worldViewRoutes, '/regions/:regionId/ancestors', 'get');
 
 const poolQuery = vi.fn();
 const client = { query: vi.fn(), release: vi.fn() };
@@ -11,7 +18,6 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
-import { updateRegion, deleteRegion, getRegionAncestors } from './regionCrud.js';
 
 /**
  * A structural change is the one thing the geometry trigger cannot see.
@@ -82,7 +88,7 @@ describe('updateRegion invalidates both sides of a reparent (#680)', () => {
       body: { parentRegionId: NEW_PARENT },
     } as unknown as Request;
     const res = { json: vi.fn() } as unknown as Response;
-    return updateRegion(req, res);
+    return answerRoute(updateRegionRoute, req, res);
   }
 
   it('names the moved region, the parent it left and the parent it joined', async () => {
@@ -98,7 +104,7 @@ describe('updateRegion invalidates both sides of a reparent (#680)', () => {
       params: { regionId: String(REGION) },
       body: { parentRegionId: OLD_PARENT, name: 'Chile' },
     } as unknown as Request;
-    await updateRegion(req, { json: vi.fn() } as unknown as Response);
+    await answerRoute(updateRegionRoute, req, { json: vi.fn() } as unknown as Response);
 
     expect(invalidatedIds()).toEqual([]);
   });
@@ -123,7 +129,7 @@ describe('deleteRegion invalidates the parent it left behind (#680)', () => {
     const req = { params: { regionId: String(REGION) }, query: {} } as unknown as Request;
     const res = { status: vi.fn(() => ({ send: vi.fn(), json: vi.fn() })) } as unknown as Response;
 
-    await deleteRegion(req, res);
+    await answerRoute(deleteRegionRoute, req, res);
 
     expect(invalidatedIds()).toEqual([PARENT]);
   });
@@ -139,7 +145,7 @@ describe('deleteRegion invalidates the parent it left behind (#680)', () => {
     const req = { params: { regionId: String(REGION) }, query: {} } as unknown as Request;
     const res = { status: vi.fn(() => ({ send: vi.fn(), json: vi.fn() })) } as unknown as Response;
 
-    await deleteRegion(req, res);
+    await answerRoute(deleteRegionRoute, req, res);
 
     expect(invalidatedIds()).toEqual([]);
   });
@@ -153,9 +159,11 @@ describe('deleteRegion invalidates the parent it left behind (#680)', () => {
       return { rows: [], rowCount: 0 };
     });
     const req = { params: { regionId: String(REGION) }, query: {} } as unknown as Request;
-    const res = { status: vi.fn(() => ({ send: vi.fn(), json: vi.fn() })) } as unknown as Response;
+    const status = vi.fn(() => ({ send: vi.fn(), json: vi.fn() }));
 
-    await expect(deleteRegion(req, res)).rejects.toMatchObject({ statusCode: 409 });
+    await answerRoute(deleteRegionRoute, req, { status });
+
+    expect(status).toHaveBeenCalledWith(409);
 
     const writes = poolQuery.mock.calls
       .map(([sql]) => String(sql))
@@ -215,7 +223,7 @@ describe('updateRegion bumps the tile version when the hull flag flips (#685)', 
   async function setUsesHull(usesHull: boolean, stored: boolean): Promise<unknown> {
     mockRegion(stored);
     const json = vi.fn();
-    await updateRegion(
+    await answerRoute(updateRegionRoute, 
       { params: { regionId: String(REGION) }, body: { usesHull } } as unknown as Request,
       { json } as unknown as Response,
     );
@@ -241,7 +249,7 @@ describe('updateRegion bumps the tile version when the hull flag flips (#685)', 
 
   it('leaves it alone for a write that does not name the flag', async () => {
     mockRegion(false);
-    await updateRegion(
+    await answerRoute(updateRegionRoute, 
       { params: { regionId: String(REGION) }, body: { name: 'Fiji' } } as unknown as Request,
       { json: vi.fn() } as unknown as Response,
     );
@@ -272,7 +280,7 @@ describe('getRegionAncestors', () => {
       return { rows: [] };
     });
     const json = vi.fn();
-    await getRegionAncestors({ params: { regionId: '7349' } } as unknown as Request, { json } as unknown as Response);
+    await answerRoute(getRegionAncestorsRoute, { params: { regionId: '7349' } } as unknown as Request, { json } as unknown as Response);
 
     // Root first is the query's to decide (the recursion counts depth up from
     // the region); the mock hands the rows over in that order, so the order is

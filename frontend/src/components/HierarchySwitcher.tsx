@@ -41,7 +41,7 @@ import { queryKeys } from '../api/queryKeys';
 const WorldViewEditor = lazyChunk(() => import('./WorldViewEditor').then(m => ({ default: m.WorldViewEditor })));
 
 export function HierarchySwitcher() {
-  // The server already filters by visibility (requireVisibleWorldView /
+  // The server already filters by visibility (a route's world view scope and
   // getWorldViews); whatever arrived here is what this user may see.
   const { worldViews, selectedWorldView, setSelectedWorldView, invalidateTileCache } = useNavigation();
   const { isAdmin } = useAuth();

@@ -2,16 +2,20 @@
  * World Views CRUD operations
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { DeleteImpact, WorldView, WorldViews } from '../../api/responses/worldViews.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { z } from 'zod/v4';
+import { NO_CONTENT } from '../../api/route.js';
+import type { DeleteImpact, WorldView, WorldViews } from '../../api/responses/worldViews.js';
 import { pool } from '../../db/index.js';
 import type { WorldViewsRow } from '../../db/schema.generated.js';
-import { notFound } from '../../middleware/errorHandler.js';
+import { badRequest, notFound } from '../../middleware/errorHandler.js';
+import type {
+  createWorldViewBodySchema, updateWorldViewBodySchema, worldViewIdParamSchema,
+} from '../../types/index.js';
 import {
   deleteImpactOf, WORLD_VIEW_COLUMNS_SQL, worldViewOf, type DeleteImpactRow, type WorldViewRow,
 } from './worldViewAnswerRows.js';
+
+type WorldViewParams = z.output<typeof worldViewIdParamSchema>;
 
 /**
  * Get all World Views visible to the caller.
@@ -20,11 +24,13 @@ import {
  * rather than in the client so a hidden world view is not merely absent from a
  * dropdown — it is absent from the response.
  */
-export async function getWorldViews(req: AuthenticatedRequest, res: Response): Promise<void> {
+export async function getWorldViews(
+  { caller }: { caller: Express.User | undefined },
+): Promise<WorldViews> {
   // The rows depend on who is asking. The headers that keep a shared cache
-  // from serving an admin's list to a visitor come from `optionalAuth` on the
-  // route, as on every read whose answer is shaped by the caller.
-  const isAdmin = req.user?.role === 'admin';
+  // from serving an admin's list to a visitor come from the route's
+  // `revalidate` policy, as on every read whose answer is shaped by the caller.
+  const isAdmin = caller?.role === 'admin';
   const result = await pool.query<WorldViewRow>(`
     SELECT ${WORLD_VIEW_COLUMNS_SQL}
     FROM world_views
@@ -33,15 +39,15 @@ export async function getWorldViews(req: AuthenticatedRequest, res: Response): P
     ORDER BY is_default DESC, name
   `, [isAdmin]);
 
-  respond(res, WorldViews, result.rows.map(worldViewOf));
+  return result.rows.map(worldViewOf);
 }
 
 /**
  * Create a new World View
  */
-export async function createWorldView(req: Request, res: Response): Promise<void> {
-  const { name, description, source } = req.body;
-
+export async function createWorldView(
+  { body: { name, description, source } }: { body: z.output<typeof createWorldViewBodySchema> },
+): Promise<WorldView> {
   const result = await pool.query<WorldViewRow>(
     `INSERT INTO world_views (name, description, source, is_default, is_active)
      VALUES ($1, $2, $3, false, true)
@@ -49,16 +55,18 @@ export async function createWorldView(req: Request, res: Response): Promise<void
     [name, description || null, source || null]
   );
 
-  respond(res.status(201), WorldView, worldViewOf(result.rows[0]));
+  return worldViewOf(result.rows[0]);
 }
 
 /**
  * Update a World View
  */
-export async function updateWorldView(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { name, description, source, isPublic } = req.body;
-
+export async function updateWorldView(
+  { params: { worldViewId }, body: { name, description, source, isPublic } }: {
+    params: WorldViewParams;
+    body: z.output<typeof updateWorldViewBodySchema>;
+  },
+): Promise<WorldView> {
   const result = await pool.query<WorldViewRow>(
     `UPDATE world_views
      SET name = COALESCE($1, name),
@@ -76,7 +84,7 @@ export async function updateWorldView(req: Request, res: Response): Promise<void
     throw notFound(`World View ${worldViewId} not found`);
   }
 
-  respond(res, WorldView, worldViewOf(result.rows[0]));
+  return worldViewOf(result.rows[0]);
 }
 
 /**
@@ -84,9 +92,9 @@ export async function updateWorldView(req: Request, res: Response): Promise<void
  * Returns counts of regions, experience-to-region assignments, and user visit
  * records so admins can see the blast radius before confirming deletion.
  */
-export async function getDeleteImpact(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-
+export async function getDeleteImpact(
+  { params: { worldViewId } }: { params: WorldViewParams },
+): Promise<DeleteImpact> {
   const check = await pool.query<Pick<WorldViewsRow, 'is_default'>>(
     'SELECT is_default FROM world_views WHERE id = $1',
     [worldViewId],
@@ -106,15 +114,15 @@ export async function getDeleteImpact(req: Request, res: Response): Promise<void
        WHERE r.world_view_id = $1)::int AS user_visit_count
   `, [worldViewId]);
 
-  respond(res, DeleteImpact, deleteImpactOf(result.rows[0], check.rows[0].is_default));
+  return deleteImpactOf(result.rows[0], check.rows[0].is_default);
 }
 
 /**
  * Delete a World View
  */
-export async function deleteWorldView(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-
+export async function deleteWorldView(
+  { params: { worldViewId } }: { params: WorldViewParams },
+): Promise<typeof NO_CONTENT> {
   // Check if it's the default World View
   const check = await pool.query(
     'SELECT is_default FROM world_views WHERE id = $1',
@@ -126,8 +134,7 @@ export async function deleteWorldView(req: Request, res: Response): Promise<void
   }
 
   if (check.rows[0].is_default) {
-    res.status(400).json({ error: 'Cannot delete the default GADM World View' });
-    return;
+    throw badRequest('Cannot delete the default GADM World View');
   }
 
   // The one delete that takes visits with it: getDeleteImpact counted them
@@ -142,5 +149,5 @@ export async function deleteWorldView(req: Request, res: Response): Promise<void
     DELETE FROM world_views WHERE id = $1
   `, [worldViewId]);
 
-  res.status(204).send();
+  return NO_CONTENT;
 }

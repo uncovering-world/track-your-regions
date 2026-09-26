@@ -2,17 +2,16 @@
  * Hull preview and save operations for regions
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { HullPreview, HullSaved, SavedHullParams } from '../../api/responses/geometry.js';
+import type { z } from 'zod/v4';
+import type { HullPreview, HullSaved, SavedHullParams } from '../../api/responses/geometry.js';
+import { badRequest, failure, notFound } from '../../middleware/errorHandler.js';
+import type { hullPreviewBodySchema, hullSaveBodySchema, regionIdParamSchema } from '../../types/index.js';
 import { pool } from '../../db/index.js';
 import type { RegionsRow } from '../../db/schema.generated.js';
 import { previewHull, previewHullFromGeometry, generateSingleHull, DEFAULT_HULL_PARAMS } from '../../services/hull/index.js';
 import type { HullParams, PreviewHullResult } from '../../services/hull/index.js';
 
-// Each handler answers after its try: the catch answers with a message of its
-// own, and a body that fails its schema must reach the error handler as the
-// named 500 instead (development guide § API Layer).
+type RegionParams = z.output<typeof regionIdParamSchema>;
 
 /**
  * Preview hull with custom parameters without saving.
@@ -20,10 +19,12 @@ import type { HullParams, PreviewHullResult } from '../../services/hull/index.js
  * Body: { bufferKm: number, concavity: number, simplifyTolerance: number, customGeometry?: GeoJSON.Geometry }
  * If customGeometry is provided, it will be used instead of fetching from DB.
  */
-export async function previewHullGeometry(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const { bufferKm, concavity, simplifyTolerance, customGeometry } = req.body;
-
+export async function previewHullGeometry(
+  { params: { regionId }, body: { bufferKm, concavity, simplifyTolerance, customGeometry } }: {
+    params: RegionParams;
+    body: z.output<typeof hullPreviewBodySchema>;
+  },
+): Promise<HullPreview> {
   const params: HullParams = {
     bufferKm: bufferKm ?? DEFAULT_HULL_PARAMS.bufferKm,
     concavity: concavity ?? DEFAULT_HULL_PARAMS.concavity,
@@ -41,23 +42,19 @@ export async function previewHullGeometry(req: Request, res: Response): Promise<
       : await previewHull(regionId, params);
   } catch (e) {
     console.error(`[Hull] Preview error:`, e);
-    res.status(500).json({ error: 'Failed to preview hull' });
-    return;
+    throw failure('Failed to preview hull', 500);
   }
 
-  if (result.error) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
+  if (result.error) throw badRequest(result.error);
 
   // The source bounds the preview also returns are logged by the service and
   // not sent: no reader draws them.
-  respond(res, HullPreview, {
+  return {
     geometry: result.geometry,
     pointCount: result.pointCount,
     crossesDateline: result.crossesDateline,
     params,
-  });
+  };
 }
 
 /**
@@ -65,10 +62,12 @@ export async function previewHullGeometry(req: Request, res: Response): Promise<
  * POST /api/world-views/regions/:regionId/hull/save
  * Body: { bufferKm: number, concavity: number, simplifyTolerance: number }
  */
-export async function saveHullGeometry(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const { bufferKm, concavity, simplifyTolerance } = req.body;
-
+export async function saveHullGeometry(
+  { params: { regionId }, body: { bufferKm, concavity, simplifyTolerance } }: {
+    params: RegionParams;
+    body: z.output<typeof hullSaveBodySchema>;
+  },
+): Promise<HullSaved> {
   const params: HullParams = {
     bufferKm: bufferKm ?? DEFAULT_HULL_PARAMS.bufferKm,
     concavity: concavity ?? DEFAULT_HULL_PARAMS.concavity,
@@ -83,52 +82,45 @@ export async function saveHullGeometry(req: Request, res: Response): Promise<voi
     result = await generateSingleHull(regionId, params);
   } catch (e) {
     console.error(`[Hull] Save error:`, e);
-    res.status(500).json({ error: 'Failed to save hull' });
-    return;
+    throw failure('Failed to save hull', 500);
   }
 
-  if (result.error) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
+  if (result.error) throw badRequest(result.error);
 
-  respond(res, HullSaved, {
+  return {
     saved: result.generated,
     pointCount: result.pointCount ?? 0,
     crossesDateline: result.crossesDateline ?? false,
     params,
-  });
+  };
 }
 
 /**
  * Get saved hull parameters for a region.
  * GET /api/world-views/regions/:regionId/hull/params
  */
-export async function getSavedHullParams(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-
-  let saved: HullParams | null;
+export async function getSavedHullParams(
+  { params: { regionId } }: { params: RegionParams },
+): Promise<SavedHullParams> {
+  let rows: Pick<RegionsRow, 'hull_params'>[];
   try {
     const result = await pool.query<Pick<RegionsRow, 'hull_params'>>(
       'SELECT hull_params FROM regions WHERE id = $1',
       [regionId]
     );
-
-    if (result.rows.length === 0) {
-      res.status(404).json({ error: 'Region not found' });
-      return;
-    }
-    saved = result.rows[0].hull_params as HullParams | null;
+    rows = result.rows;
   } catch (e) {
     console.error(`[Hull] Error fetching params:`, e);
-    res.status(500).json({ error: 'Failed to fetch hull params' });
-    return;
+    throw failure('Failed to fetch hull params', 500);
   }
 
+  if (rows.length === 0) throw notFound('Region not found');
+  const saved = rows[0].hull_params as HullParams | null;
+
   // Stored JSON reaches a reader only through the keys its schema names.
-  respond(res, SavedHullParams, {
+  return {
     params: saved
       ? { bufferKm: saved.bufferKm, concavity: saved.concavity, simplifyTolerance: saved.simplifyTolerance }
       : null,
-  });
+  };
 }

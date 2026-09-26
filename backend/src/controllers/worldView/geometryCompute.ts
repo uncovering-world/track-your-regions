@@ -2,9 +2,13 @@
  * Geometry CRUD operations for regions
  */
 
-import { Request, Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { RegenerateDisplayGeometriesResult, RegionReset } from '../../api/responses/geometry.js';
+import type { z } from 'zod/v4';
+import { NO_CONTENT } from '../../api/route.js';
+import type { RegenerateDisplayGeometriesResult, RegionReset } from '../../api/responses/geometry.js';
+import { badRequest, createError } from '../../middleware/errorHandler.js';
+import type {
+  regenerateDisplayQuerySchema, regionIdParamSchema, updateGeometryBodySchema, worldViewIdParamSchema,
+} from '../../types/index.js';
 import { pool } from '../../db/index.js';
 
 /**
@@ -108,9 +112,13 @@ async function regionsInScopeByDepth(
  * ~4 000 km wide. The SET list named neither geom nor hull_geom, so the trigger did not
  * fire to correct it; touching hull_geom is the narrowest write that fires it (#666).
  */
-export async function regenerateDisplayGeometries(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const regionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
+export async function regenerateDisplayGeometries(
+  { params: { worldViewId }, query }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    query: z.output<typeof regenerateDisplayQuerySchema>;
+  },
+): Promise<RegenerateDisplayGeometriesResult> {
+  const regionId = query.regionId ?? null;
 
   console.log(`[Metadata] Regenerating metadata for worldView ${worldViewId}, regionId=${regionId}`);
 
@@ -131,10 +139,10 @@ export async function regenerateDisplayGeometries(req: Request, res: Response): 
 
   console.log(`[Metadata] Regenerated metadata for ${regeneratedCount} regions`);
 
-  respond(res, RegenerateDisplayGeometriesResult, {
+  return {
     regenerated: regeneratedCount,
     message: `Regenerated metadata for ${regeneratedCount} region${regeneratedCount !== 1 ? 's' : ''}`,
-  });
+  };
 }
 
 
@@ -143,14 +151,13 @@ export async function regenerateDisplayGeometries(req: Request, res: Response): 
  * Optionally also updates the hull geometry
  * Also updates 3857 projections and simplified versions for vector tiles
  */
-export async function updateRegionGeometry(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-  const { geometry, isCustomBoundary = true, hullGeometry } = req.body;
-
-  if (!geometry) {
-    res.status(400).json({ error: 'Geometry is required' });
-    return;
-  }
+export async function updateRegionGeometry(
+  { params: { regionId }, body: { geometry, isCustomBoundary, hullGeometry } }: {
+    params: z.output<typeof regionIdParamSchema>;
+    body: z.output<typeof updateGeometryBodySchema>;
+  },
+): Promise<typeof NO_CONTENT> {
+  if (!geometry) throw badRequest('Geometry is required');
 
   // Build the update query dynamically based on whether hullGeometry is provided
   if (hullGeometry) {
@@ -170,7 +177,7 @@ export async function updateRegionGeometry(req: Request, res: Response): Promise
     `, [JSON.stringify(geometry), isCustomBoundary, regionId]);
   }
 
-  res.status(204).send();
+  return NO_CONTENT;
 }
 
 /**
@@ -178,9 +185,9 @@ export async function updateRegionGeometry(req: Request, res: Response): Promise
  * Clears custom boundary flag and recomputes from member divisions
  * Also updates 3857 projections and simplified versions for vector tiles
  */
-export async function resetRegionToGADM(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId));
-
+export async function resetRegionToGADM(
+  { params: { regionId } }: { params: z.output<typeof regionIdParamSchema> },
+): Promise<RegionReset> {
   console.log(`[ResetToGADM] Resetting region ${regionId} to GADM boundaries`);
 
   // First, clear the custom boundary flag and hull columns
@@ -231,16 +238,15 @@ export async function resetRegionToGADM(req: Request, res: Response): Promise<vo
       [regionId],
     );
     if (drawn.rows[0]?.drawn) {
-      res.status(409).json({ error: 'The boundary was drawn by hand while it was being reset; the drawing is kept' });
-      return;
+      throw createError('The boundary was drawn by hand while it was being reset; the drawing is kept', 409);
     }
   }
 
   const points = result.rows[0]?.points || 0;
 
-  respond(res, RegionReset, {
+  return {
     reset: true,
     points,
     message: 'Region reset to GADM boundaries',
-  });
+  };
 }

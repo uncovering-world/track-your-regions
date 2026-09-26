@@ -210,8 +210,8 @@ describe('requireAuth on the wire', () => {
     app.get('/mine', authenticatedLimiter, requireAuth, (_req, res) => {
       res.json({ visited: [1, 2, 3] });
     });
-    // The three SSE streams set their own Cache-Control after the middleware,
-    // the way geometryComputeSSE.ts does; `setHeader` replaces, so the stream
+    // A stream sets its own Cache-Control after the middleware — the import
+    // streams through markStreamBody, a declared one through its policy; `setHeader` replaces, so the stream
     // keeps the `no-cache` EventSource proxies expect — and the `private`
     // beside it, since the stream's token rides in the query string and RFC
     // 9111 § 3.5 excludes nothing for a request with no Authorization header.

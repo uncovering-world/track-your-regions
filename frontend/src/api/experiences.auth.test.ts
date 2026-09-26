@@ -3,9 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 /**
  * Reads on a hidden world view must carry the token.
  *
- * The world view visibility check — a route's declared `scope`, or
- * `requireVisibleWorldView` on one not yet declared — answers 404, not 401,
- * when a world view has `is_public = false` and the caller is not an admin. A read sent through the
+ * The world view visibility check — a route's declared `scope` — answers 404,
+ * not 401, when a world view has `is_public = false` and the caller is not an
+ * admin. A read sent through the
  * unauthenticated `fetchJson` is therefore indistinguishable from a missing
  * region, and react-query stores the rejection as `data: undefined` rather than
  * surfacing it. The batch that fell into this returned nothing for every
