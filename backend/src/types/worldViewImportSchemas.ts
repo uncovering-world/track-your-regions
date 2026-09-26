@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE } from './urlSafety.js';
 import { optionalSafeUrlSchema, requiredSafeUrlSchema, safeUrlSchema } from './urlSchemas.js';

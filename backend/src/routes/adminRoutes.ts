@@ -14,7 +14,7 @@ import { UserSearchResults } from '../api/responses/admin.js';
 import { ReviewAnswered } from '../api/responses/wvImportCvMatch.js';
 import { validate } from '../middleware/errorHandler.js';
 import { authenticatedLimiter, expensiveAdminLimiter } from '../middleware/rateLimiter.js';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import {
   sourceIdParamSchema,
   logIdParamSchema,

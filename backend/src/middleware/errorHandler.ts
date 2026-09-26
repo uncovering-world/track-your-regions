@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ZodError, ZodSchema } from 'zod';
+import { z } from 'zod/v4';
 import { isVisitedRegionDelete, VISITED_REGION_REFUSAL } from '../db/regionVisits.js';
 
 export interface ApiError extends Error {
@@ -31,10 +31,10 @@ export function errorHandler(
 ): void {
   console.error('Error:', err);
 
-  if (err instanceof ZodError) {
+  if (err instanceof z.ZodError) {
     res.status(400).json({
       error: 'Validation error',
-      details: err.errors,
+      details: err.issues,
     });
     return;
   }
@@ -90,8 +90,7 @@ export function errorHandler(
 }
 
 // Validation middleware factory
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic ZodSchema<any> wrapper; per-route schemas are concrete and type-safe
-export function validate(schema: ZodSchema<any>, source: 'body' | 'query' | 'params' = 'body') {
+export function validate(schema: z.ZodType, source: 'body' | 'query' | 'params' = 'body') {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const data = req[source];
     const result = schema.safeParse(data);
