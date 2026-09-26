@@ -34,7 +34,7 @@ Unauthenticated endpoints serving the main UI. Applied to all `optionalAuth` and
 | `publicReadLimiter` | 1 min | 60 | World view/region reads, experience browsing, kinds, treasures, geometries |
 
 **Files using this limiter:**
-- `worldViewRoutes.ts` — all `optionalAuth` GET routes (regions, geometries, members, hull params)
+- `worldViewRoutes.ts` — every `optional` read (the list, regions, geometries, members, hull params, and the `POST …/division-usage` read)
 - `experienceRoutes.ts` — `GET /kinds`, `GET /region-counts`, `GET /by-region/:id`, `GET /`, `GET /:id`, `GET /:id/locations`, `GET /:id/treasures`, `GET /:id/finds`
 
 ### 4. Authenticated user (generous)

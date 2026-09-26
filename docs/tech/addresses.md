@@ -86,8 +86,8 @@ and nothing rests on it:
 ## Degradation is silent
 
 A URL naming something the visitor may not see degrades to the nearest thing they
-may, in place, with no error surface — the same 404-shaped silence
-`requireVisibleWorldView` gives. The address must not become a way to enumerate
+may, in place, with no error surface — the same 404-shaped silence a route's
+world view `scope` gives. The address must not become a way to enumerate
 what exists, and nothing personal goes in a URL.
 
 | The address names | What happens |
