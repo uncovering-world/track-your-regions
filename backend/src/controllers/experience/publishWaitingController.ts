@@ -28,12 +28,11 @@
  * *falsely*: the whole point of the check is that a person looked.
  */
 
-import { Response } from 'express';
+import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { respond } from '../../api/respond.js';
-import { PublishWaitingResult, type PublishedWaitingObject, type RefusedWaitingObject } from '../../api/responses/admin.js';
+import type { PublishWaitingResult, PublishedWaitingObject, RefusedWaitingObject } from '../../api/responses/admin.js';
+import type { sourceIdParamSchema } from '../../types/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishUnderLock } from './publishController.js';
@@ -53,10 +52,11 @@ import { arrivalWaitingSql, contentsWaitingSql, heldWaitingSql } from './waiting
  * because a batch that quietly published fewer than it found would leave them
  * believing the source was clear.
  */
-export async function publishWaiting(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
+export async function publishWaiting(
+  { params: { sourceId }, caller }: { params: z.output<typeof sourceIdParamSchema>; caller: Express.User },
+): Promise<PublishWaitingResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   // Ordered by id so a run of this endpoint is reproducible, and both kinds asked
   // for in one statement so the two cannot be answered against different snapshots
@@ -206,7 +206,7 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
     console.error('[publish-waiting] held count failed for source %d:', sourceId, error);
   }
 
-  respond(res, PublishWaitingResult, {
+  return {
     sourceId,
     published,
     refused,
@@ -219,5 +219,5 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
     // filter twenty lines above, and for a region-scoped curator it is a real difference
     // by design. The panel's count can also fail on its own and print nothing.
     heldLeftForReview,
-  });
+  };
 }

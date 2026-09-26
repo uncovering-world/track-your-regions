@@ -13,11 +13,11 @@
  * rule that has no counterpart on an object — the anchor, below.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { LocationEditResult } from '../../api/responses/curation.js';
+import type { z } from 'zod/v4';
+import type { LocationEditResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { createError, notFound } from '../../middleware/errorHandler.js';
+import type { editLocationBodySchema, locationIdParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
@@ -34,12 +34,13 @@ function withClaims(stored: string[], added: Claim[]): string[] {
   return [...next];
 }
 
-export async function editLocation(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const locationId = parseInt(String(req.params.locationId));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-  const { name, latitude, longitude } = req.body as
-    { name?: string; latitude?: number; longitude?: number };
+export async function editLocation(
+  { params: { locationId }, body: { name, latitude, longitude }, caller }: {
+    params: z.output<typeof locationIdParamSchema>; body: z.output<typeof editLocationBodySchema>; caller: Express.User;
+  },
+): Promise<LocationEditResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
   const movesPoint = latitude !== undefined && longitude !== undefined;
 
   // The point carries no scope of its own: it is judged through the object
@@ -52,8 +53,7 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     [locationId],
   );
   if (found.rows.length === 0) {
-    res.status(404).json({ error: 'Location not found' });
-    return;
+    throw notFound('Location not found');
   }
   const { experience_id: experienceId, source_id: sourceId } = found.rows[0];
 
@@ -61,8 +61,7 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     userId, userRole, experienceId as number, sourceId as number,
   );
   if (!permitted) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   const client = await pool.connect();
@@ -101,12 +100,8 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     const before = locked.rows[0] as
       { name: string | null; curated_fields: string[]; lat: number; lon: number } | undefined;
     // The object going takes its points with it, so a missing object is the
-    // same 404 as a missing point.
-    if (!before || !object) {
-      unusable = await rollbackQuietly(client);
-      res.status(404).json({ error: 'Location not found' });
-      return;
-    }
+    // same 404 as a missing point. The catch below rolls the transaction back.
+    if (!before || !object) throw notFound('Location not found');
 
     const claims: Claim[] = [];
     if (name !== undefined) claims.push('name');
@@ -189,7 +184,7 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     )
     : [];
 
-  respond(res, LocationEditResult, {
+  return {
     success: true,
     locationId,
     anchorMoved,
@@ -201,5 +196,5 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     // to tell an admin which object and which world views — the disclosure
     // `SECURITY.md` already argues for on the sibling endpoints.
     ...placementReport(placementFailures),
-  });
+  };
 }

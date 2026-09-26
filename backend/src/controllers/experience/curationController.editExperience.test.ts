@@ -19,8 +19,12 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
-import { editExperience } from './curationController.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const patchEdit = routeAt(experienceCurationRoutes, '/:id/edit', 'patch');
 
 const EXPERIENCE_ID = 281;
 const SOURCE_ID = 1;
@@ -67,7 +71,7 @@ function callEditExperience(user: { id: number; role: string }) {
   const res = makeRes();
   return {
     res,
-    done: editExperience(
+    done: answerRoute(patchEdit, 
       { params: { id: String(EXPERIENCE_ID) }, body: { name: 'New name' }, user } as never,
       res as never,
     ),
@@ -252,7 +256,7 @@ describe('editExperience and the picture credit', () => {
 
   function editWith(body: Record<string, unknown>) {
     const res = makeRes();
-    return editExperience(
+    return answerRoute(patchEdit, 
       { params: { id: String(EXPERIENCE_ID) }, body, user: ADMIN } as never,
       res as never,
     );
@@ -352,7 +356,7 @@ describe('editExperience and an emptied field', () => {
 
   function editWith(body: Record<string, unknown>) {
     const res = makeRes();
-    return { res, done: editExperience(
+    return { res, done: answerRoute(patchEdit, 
       { params: { id: String(EXPERIENCE_ID) }, body, user: ADMIN } as never,
       res as never,
     ) };

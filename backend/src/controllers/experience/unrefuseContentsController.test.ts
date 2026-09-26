@@ -30,8 +30,12 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { placeAfterRelease } from './publishContents.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { unrefuseContents } from './unrefuseContentsController.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postUnrefuseContents = routeAt(experienceCurationRoutes, '/:id/unrefuse-contents', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -97,12 +101,12 @@ describe('unrefuseContents', () => {
   it('404s an experience that does not exist and 403s a curator out of scope', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const missing = makeRes();
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, missing as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, missing as never);
     expect(missing.status).toHaveBeenCalledWith(404);
 
     mockedScope.mockResolvedValueOnce({ permitted: false, logRegionId: null });
     const outOfScope = makeRes();
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, outOfScope as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, outOfScope as never);
     expect(outOfScope.status).toHaveBeenCalledWith(403);
     expect(mockedConnect).not.toHaveBeenCalled();
   });
@@ -112,7 +116,7 @@ describe('unrefuseContents', () => {
     // against the snapshot the statement opened with, so the row locked and the
     // row read can be two versions of it.
     const client = makeClient(VISIBLE);
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
 
     const lockAt = client.queries.findIndex(q => q.sql.includes(OBJECT_LOCK));
     const readAt = client.queries.findIndex(q => q.sql.includes('AS membership_id'));
@@ -125,7 +129,7 @@ describe('unrefuseContents', () => {
     const client = makeClient(VISIBLE);
     const res = makeRes();
 
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
 
     const points = client.queries.find(q => q.sql.includes('UPDATE experience_locations'));
     expect(points?.sql).toContain('SET refused_at = NULL');
@@ -148,7 +152,7 @@ describe('unrefuseContents', () => {
     // of its own. An offered term here would leave it on no screen at all, with
     // the answer that put it there permanently unanswerable.
     const client = makeClient(VISIBLE);
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
 
     const points = client.queries.find(q => q.sql.includes('UPDATE experience_locations'));
     expect(points?.sql).not.toContain('missing_since IS NULL');
@@ -161,7 +165,7 @@ describe('unrefuseContents', () => {
     // card with its own two answers. Re-pairing it here would answer that card
     // from a screen that never mentioned it.
     const client = makeClient(VISIBLE);
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
 
     expect(client.queries.some(q => q.sql.includes('withdrawal_deferred_for_location_id'))).toBe(false);
     expect(client.queries.some(q => q.sql.includes('missing_since = NULL'))).toBe(false);
@@ -169,7 +173,7 @@ describe('unrefuseContents', () => {
 
   it('names the act and the rows it actually brought back', async () => {
     const client = makeClient(VISIBLE, { points: [{ id: 31 }, { id: 32 }], links: [{ treasure_id: 88 }] });
-    await unrefuseContents(
+    await answerRoute(postUnrefuseContents, 
       { params: { id: '5' }, user: CURATOR, body: { note: 'mis-click' } } as never, makeRes() as never);
 
     const log = client.queries.find(q => q.sql.includes('experience_curation_log'));
@@ -185,7 +189,7 @@ describe('unrefuseContents', () => {
 
   it('touches no point when only works are named, and no work when only points are', async () => {
     const works = makeClient(VISIBLE);
-    await unrefuseContents(
+    await answerRoute(postUnrefuseContents, 
       { params: { id: '5' }, user: CURATOR, body: { treasureIds: [88, 89] } } as never, makeRes() as never);
     expect(works.queries.some(q => q.sql.includes('UPDATE experience_locations'))).toBe(false);
     const links = works.queries.find(q => q.sql.includes('UPDATE experience_treasures'));
@@ -193,7 +197,7 @@ describe('unrefuseContents', () => {
     expect(links?.params).toEqual([5, [88, 89]]);
 
     const points = makeClient(VISIBLE);
-    await unrefuseContents(
+    await answerRoute(postUnrefuseContents, 
       { params: { id: '5' }, user: CURATOR, body: { locationIds: [31] } } as never, makeRes() as never);
     expect(points.queries.some(q => q.sql.includes('UPDATE experience_treasures'))).toBe(false);
   });
@@ -206,7 +210,7 @@ describe('unrefuseContents', () => {
     const client = makeClient(VISIBLE);
     const res = makeRes();
 
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
 
     expect(client.queries.some(q => q.sql === 'COMMIT')).toBe(true);
     expect(mockedPlace).toHaveBeenCalledWith(5, expect.stringContaining('asked again'));
@@ -224,7 +228,7 @@ describe('unrefuseContents', () => {
   it('does not re-place when only a work came back', async () => {
     // A work link moves no pin and counts toward no region.
     makeClient(VISIBLE);
-    await unrefuseContents(
+    await answerRoute(postUnrefuseContents, 
       { params: { id: '5' }, user: CURATOR, body: { treasureIds: [88] } } as never, makeRes() as never);
     expect(mockedPlace).not.toHaveBeenCalled();
   });
@@ -234,7 +238,7 @@ describe('unrefuseContents', () => {
     // here under the lock and by the list that draws the button. Two spellings is
     // how a card comes to offer a take-back the writer refuses.
     const client = makeClient(VISIBLE);
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
 
     const read = client.queries.find(q => q.sql.includes('AS membership_id'));
     expect(read?.sql).toContain(contentsAnswerableSql());
@@ -245,7 +249,7 @@ describe('unrefuseContents', () => {
     const client = makeClient(ARRIVAL);
     const res = makeRes();
 
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -258,7 +262,7 @@ describe('unrefuseContents', () => {
     const client = makeClient(VISIBLE, { missingSince: new Date() });
     const res = makeRes();
 
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(client.queries.some(q => q.sql.trimStart().startsWith('UPDATE'))).toBe(false);
@@ -268,7 +272,7 @@ describe('unrefuseContents', () => {
     const client = makeClient(VISIBLE, { points: [], links: [] });
     const res = makeRes();
 
-    await unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -290,7 +294,7 @@ describe('unrefuseContents', () => {
       return { rows: [], rowCount: 0 };
     });
 
-    await expect(unrefuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never))
+    await expect(answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never))
       .rejects.toThrow('boom');
     // Named, not merely released: a client handed back to the pool with its
     // transaction still open is the failure this whole shape exists to avoid,

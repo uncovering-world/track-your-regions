@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
-import { createError, notFound, badRequest, errorHandler, failure } from './errorHandler.js';
+import { createError, notFound, badRequest, errorHandler, failure, Refusal } from './errorHandler.js';
 
 describe('createError', () => {
   it('creates an error with message and status code', () => {
@@ -153,6 +153,16 @@ describe('errorHandler', () => {
     const sent = handle(new Error('boom'));
 
     expect(sent.status).toBe(500);
+  });
+
+  it('answers a refusal with its body as written and its status, and logs nothing', () => {
+    // A stale card's 409 carries the row as it now stands, which the client
+    // redraws from: the keys beside the sentence are the answer, not details.
+    const sent = handle(new Refusal(409, { error: 'Someone else answered this first', existence: 'lost' }));
+
+    expect(sent.status).toBe(409);
+    expect(sent.body).toEqual({ error: 'Someone else answered this first', existence: 'lost' });
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   describe('in production', () => {

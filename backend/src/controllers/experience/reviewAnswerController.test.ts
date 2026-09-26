@@ -36,9 +36,13 @@ import { acceptSourceUnderLock } from './acceptSourceController.js';
 import { declineSourceUnderLock } from './declineSourceController.js';
 import { answerAdmissionUnderLock, answerStateUnderLock } from './lifecycleController.js';
 import { answerLocationStateUnderLock } from './locationStateController.js';
-import { answerReviewRows } from './reviewAnswerController.js';
 import { missingOpenSql, refusedOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
 import { arrivalWaitingSql, contentsWaitingSql, heldWaitingSql } from './waitingCounts.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postReviewAnswer = routeAt(experienceCurationRoutes, '/review/answer', 'post');
 
 type Mock = ReturnType<typeof vi.fn>;
 const mockedQuery = pool.query as unknown as Mock;
@@ -112,7 +116,7 @@ beforeEach(() => {
 describe('the dispatch table', () => {
   it('accepts an arrival by publishing the whole object', async () => {
     const res = makeRes();
-    await answerReviewRows(req([{ kind: 'waiting', id: 5, runId: 105 }], 'accept'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5, runId: 105 }], 'accept'), res as never);
 
     expect(mockedPublish).toHaveBeenCalledWith(5, 7, 12, {});
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -127,26 +131,26 @@ describe('the dispatch table', () => {
 
   it('accepts a held object against the run the curator saw', async () => {
     poolAnswers({ subs: { arrival: false, held: true, contents: true } });
-    await answerReviewRows(req([{ kind: 'waiting', id: 5, runId: 105 }], 'accept'), makeRes() as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5, runId: 105 }], 'accept'), makeRes() as never);
     expect(mockedPublish).toHaveBeenCalledWith(5, 7, 12, { expectedSyncLogId: 105 });
   });
 
   it('accepts unread contents alone with a contents publish', async () => {
     poolAnswers({ subs: { arrival: false, held: false, contents: true } });
-    await answerReviewRows(req([{ kind: 'waiting', id: 5 }], 'accept'), makeRes() as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }], 'accept'), makeRes() as never);
     expect(mockedPublish).toHaveBeenCalledWith(5, 7, 12, { contentsOnly: true });
   });
 
   it('refuses a held row that names no run rather than guessing one', async () => {
     poolAnswers({ subs: { arrival: false, held: true, contents: false } });
     const res = makeRes();
-    await answerReviewRows(req([{ kind: 'waiting', id: 5, runId: null }], 'accept'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5, runId: null }], 'accept'), res as never);
     expect(mockedPublish).not.toHaveBeenCalled();
     expect(res.json.mock.calls[0][0].refused[0].error).toContain('reload');
   });
 
   it("rejects an arrival with a curator's refusal", async () => {
-    await answerReviewRows(req([{ kind: 'waiting', id: 5 }], 'reject'), makeRes() as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }], 'reject'), makeRes() as never);
     expect(mockedRefuseArrival).toHaveBeenCalledWith(5, 7, 12, {});
     expect(mockedRefuseContents).not.toHaveBeenCalled();
   });
@@ -154,7 +158,7 @@ describe('the dispatch table', () => {
   it('rejects a held object with contents by refusing the whole card, then the contents', async () => {
     poolAnswers({ subs: { arrival: false, held: true, contents: true } });
     const res = makeRes();
-    await answerReviewRows(req([{ kind: 'waiting', id: 5, runId: 105 }], 'reject'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5, runId: 105 }], 'reject'), res as never);
 
     expect(mockedRefuseHeld).toHaveBeenCalledWith(5, 7, 12, null, 105);
     expect(mockedRefuseContents).toHaveBeenCalledWith(5, 7, 12, {});
@@ -169,7 +173,7 @@ describe('the dispatch table', () => {
   it('reads the sub-kinds from the membership and refuses a row waiting on nothing', async () => {
     poolAnswers({ subs: { arrival: false, held: false, contents: false } });
     const res = makeRes();
-    await answerReviewRows(req([{ kind: 'waiting', id: 5 }], 'accept'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }], 'accept'), res as never);
     expect(mockedPublish).not.toHaveBeenCalled();
     expect(res.json.mock.calls[0][0].refused[0].error).toContain('not waiting');
   });
@@ -178,7 +182,7 @@ describe('the dispatch table', () => {
     ['accept', mockedAcceptSource],
     ['reject', mockedDeclineSource],
   ])('%ss every open field of a conflict against the run the curator saw', async (answer, writer) => {
-    await answerReviewRows(req([{ kind: 'conflict', id: 5, runId: 98 }], answer), makeRes() as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'conflict', id: 5, runId: 98 }], answer), makeRes() as never);
     expect(writer).toHaveBeenCalledWith(5, 7, 12, 'all', 98);
   });
 
@@ -188,14 +192,14 @@ describe('the dispatch table', () => {
     ['accept', 'confirm'],
     ['reject', 'override'],
   ])('%ss a refusal as its proposal says, without pinning (%s)', async (answer, decision) => {
-    await answerReviewRows(req([{ kind: 'refused', id: 5 }], answer), makeRes() as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'refused', id: 5 }], answer), makeRes() as never);
     expect(mockedAdmission).toHaveBeenCalledWith(5, 7, 12, { decision, pin: false });
   });
 
   it('refuses an admission answer on a row that is not an open refusal', async () => {
     poolAnswers({ refusedOpen: false });
     const res = makeRes();
-    await answerReviewRows(req([{ kind: 'refused', id: 5 }], 'reject'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'refused', id: 5 }], 'reject'), res as never);
     expect(mockedAdmission).not.toHaveBeenCalled();
     expect(res.json.mock.calls[0][0].refused).toHaveLength(1);
   });
@@ -205,7 +209,7 @@ describe('the dispatch table', () => {
     ['reject', { membership: 'present' }],
     ['lost', { existence: 'lost' }],
   ])('answers a missing row with the verdict "%s" names and the row as the queue showed it', async (answer, verdict) => {
-    await answerReviewRows(req([{ kind: 'missing', id: 5 }], answer), makeRes() as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'missing', id: 5 }], answer), makeRes() as never);
     expect(mockedState).toHaveBeenCalledWith(5, 7, 12, {
       ...verdict, expected: { membership: 'present', existence: 'extant', flagged: true },
     });
@@ -221,7 +225,7 @@ describe('the dispatch table', () => {
       .mockResolvedValueOnce({ result: { locationId: 33, ...failed } });
     const res = makeRes();
 
-    await answerReviewRows(req([{ kind: 'withdrawn', id: 5 }], 'lost'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'withdrawn', id: 5 }], 'lost'), res as never);
 
     expect(mockedLocationState).toHaveBeenCalledTimes(3);
     expect(mockedLocationState).toHaveBeenCalledWith(31, 5, 7, 12, {
@@ -238,20 +242,20 @@ describe('the dispatch table', () => {
     poolAnswers({ points: [point] });
     mockedLocationState.mockResolvedValue({ refusal: { status: 409, error: 'Someone else answered this first' } });
     const res = makeRes();
-    await answerReviewRows(req([{ kind: 'withdrawn', id: 5 }], 'accept'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'withdrawn', id: 5 }], 'accept'), res as never);
     expect(res.json.mock.calls[0][0].refused[0].error).toContain('Someone else');
   });
 
   it('offers Lost to the two kinds that have it and to no other', async () => {
     const res = makeRes();
-    await answerReviewRows(req([{ kind: 'waiting', id: 5 }, { kind: 'refused', id: 5 }, { kind: 'conflict', id: 5, runId: 9 }], 'lost'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }, { kind: 'refused', id: 5 }, { kind: 'conflict', id: 5, runId: 9 }], 'lost'), res as never);
     expect(mockedPublish).not.toHaveBeenCalled();
     expect(mockedAdmission).not.toHaveBeenCalled();
     expect(res.json.mock.calls[0][0].refused).toHaveLength(3);
   });
 
   it('reads the three sub-kinds with the waiting fragments the count reads', async () => {
-    await answerReviewRows(req([{ kind: 'waiting', id: 5 }], 'accept'), makeRes() as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }], 'accept'), makeRes() as never);
     const read = mockedQuery.mock.calls.map(c => c[0] as string).find(s => s.includes(arrivalWaitingSql()));
     expect(read).toContain(heldWaitingSql());
     expect(read).toContain(contentsWaitingSql());
@@ -270,7 +274,7 @@ describe('each object is its own act', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const res = makeRes();
 
-    await answerReviewRows(req([{ kind: 'waiting', id: 5 }, { kind: 'waiting', id: 6 }], 'accept'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }, { kind: 'waiting', id: 6 }], 'accept'), res as never);
 
     const result = res.json.mock.calls[0][0];
     expect(result.refused).toEqual([expect.objectContaining({ id: 5, name: 'Chartres Cathedral' })]);
@@ -282,7 +286,7 @@ describe('each object is its own act', () => {
   it('counts an object outside the scope and does not touch it', async () => {
     mockedScope.mockResolvedValueOnce({ permitted: false, logRegionId: null });
     const res = makeRes();
-    await answerReviewRows(req([{ kind: 'waiting', id: 5 }], 'accept'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }], 'accept'), res as never);
     expect(mockedPublish).not.toHaveBeenCalled();
     expect(res.json.mock.calls[0][0].outOfScope).toBe(1);
   });
@@ -291,14 +295,14 @@ describe('each object is its own act', () => {
     mockedScope.mockRejectedValueOnce(new Error('scope down'));
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const res = makeRes();
-    await answerReviewRows(req([{ kind: 'waiting', id: 5 }], 'accept'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }], 'accept'), res as never);
     expect(res.json.mock.calls[0][0].refused).toHaveLength(1);
     vi.restoreAllMocks();
   });
 
   it('refuses a row whose object is gone by name and answers a row named twice once', async () => {
     const res = makeRes();
-    await answerReviewRows(
+    await answerRoute(postReviewAnswer, 
       req([{ kind: 'waiting', id: 5 }, { kind: 'waiting', id: 5 }, { kind: 'waiting', id: 404 }], 'accept'),
       res as never);
     expect(mockedPublish).toHaveBeenCalledTimes(1);
@@ -310,7 +314,7 @@ describe('each object is its own act', () => {
   it("carries a writer's refusal into the report with its words", async () => {
     mockedPublish.mockResolvedValueOnce({ refusal: { status: 409, error: 'This row was turned down by its source' } });
     const res = makeRes();
-    await answerReviewRows(req([{ kind: 'waiting', id: 5 }], 'accept'), res as never);
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }], 'accept'), res as never);
     expect(res.json.mock.calls[0][0].refused[0].error).toBe('This row was turned down by its source');
   });
 });

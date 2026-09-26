@@ -24,14 +24,13 @@
  * turned-down point that counts toward no region any more.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { ReviewAnswerResult } from '../../api/responses/reviewQueue.js';
+import type { z } from 'zod/v4';
+import type { ReviewAnswerResult } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { reviewAnswerBodySchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import {
-  answerRow, type Answer, type AnswerRow,
+  answerRow, type AnswerRow,
 } from './reviewAnswerDispatch.js';
 
 // The most rows one request answers — the queue's own page maximum, 100 — is
@@ -48,10 +47,11 @@ import {
  * by name rather than 404ing the batch: the list the curator selected from
  * was drawn a moment ago, and one deleted object is one line in the report.
  */
-export async function answerReviewRows(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-  const { rows, answer } = req.body as { rows: AnswerRow[]; answer: Answer };
+export async function answerReviewRows(
+  { body: { rows, answer }, caller }: { body: z.output<typeof reviewAnswerBodySchema>; caller: Express.User },
+): Promise<ReviewAnswerResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   const distinct = dedupe(rows);
   const found = await pool.query(
@@ -102,11 +102,11 @@ export async function answerReviewRows(req: AuthenticatedRequest, res: Response)
     }
   }
 
-  respond(res, ReviewAnswerResult, result);
+  return result;
 }
 
 /** The rows once each, in the order first named — the order the report keeps. */
-function dedupe(rows: AnswerRow[]): AnswerRow[] {
+function dedupe(rows: z.output<typeof reviewAnswerBodySchema>['rows']): AnswerRow[] {
   const seen = new Set<string>();
   const distinct: AnswerRow[] = [];
   for (const row of rows) {

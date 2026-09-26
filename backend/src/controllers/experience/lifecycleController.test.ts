@@ -31,10 +31,15 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { setExperienceState, setExperienceAdmission } from './lifecycleController.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { assignRegionsForExperiences } from '../../services/sync/regionAssignmentService.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postState = routeAt(experienceCurationRoutes, '/:id/state', 'post');
+const postAdmission = routeAt(experienceCurationRoutes, '/:id/admission', 'post');
 
 const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
 
@@ -92,19 +97,18 @@ describe('setExperienceState', () => {
     mockedConnect.mockReset();
   });
 
-  it('refuses a call that decides nothing', async () => {
-    const res = makeRes();
-
-    await setExperienceState({ user: CURATOR, params: { id: '5' }, body: { expected: { membership: 'present', existence: 'extant', flagged: true } } } as never, res as never);
-
-    expect(res.status).toHaveBeenCalledWith(400);
+  it('refuses a call that decides nothing, before anything is read', async () => {
+    await expect(answerRoute(postState,
+      { user: CURATOR, params: { id: '5' }, body: { expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      makeRes() as never)).rejects.toThrow('Pass membership, existence, or both');
+    expect(mockedQuery).not.toHaveBeenCalled();
   });
 
   it('answers 404 for an experience that does not exist', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: CURATOR, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       res as never,
     );
@@ -121,7 +125,7 @@ describe('setExperienceState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       res as never,
     );
@@ -136,7 +140,7 @@ describe('setExperienceState', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: CURATOR, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       res as never,
     );
@@ -150,7 +154,7 @@ describe('setExperienceState', () => {
     mockedConnect.mockResolvedValue(client);
 
     // "present" over an already-present row: the source hiccupped, nothing moved
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       makeRes() as never,
     );
@@ -164,7 +168,7 @@ describe('setExperienceState', () => {
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'former', existence: 'lost', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       makeRes() as never,
     );
@@ -182,7 +186,7 @@ describe('setExperienceState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { existence: 'lost', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       res as never,
     );
@@ -201,7 +205,7 @@ describe('setExperienceState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       res as never,
     );
@@ -222,7 +226,7 @@ describe('setExperienceState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'former', existence: 'extant', flagged: false } } } as never,
       res as never,
     );
@@ -239,7 +243,7 @@ describe('setExperienceState', () => {
     const { client, queries } = makeClient({ source_membership: 'present', existence: 'extant' });
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       makeRes() as never,
     );
@@ -256,7 +260,7 @@ describe('setExperienceState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { existence: 'lost', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       res as never,
     );
@@ -276,7 +280,7 @@ describe('setExperienceState', () => {
 
     // Nothing moves here either, but saying "it never went anywhere" is a
     // verdict, and it is the one that clears the flag
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       res as never,
     );
@@ -296,7 +300,7 @@ describe('setExperienceState', () => {
     // "False alarm" over a recorded `former` is a real transition, so no check
     // on the verdict alone catches it: only comparing what B was looking at
     // with what is stored does
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       res as never,
     );
@@ -315,7 +319,7 @@ describe('setExperienceState', () => {
     // `expected` comparison passes and this reaches the branch beyond it.
     // Asserting the message, not just the status, is what keeps the two 409s
     // apart: with `flagged: true` here the test would pass on the wrong gate.
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: false } } } as never,
       res as never,
     );
@@ -334,7 +338,7 @@ describe('setExperienceState', () => {
 
     // `existence: 'extant'` on an extant row is the same assertion made about
     // the other axis: nothing moved, and the curator said so
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { existence: 'extant', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       makeRes() as never,
     );
@@ -359,7 +363,7 @@ describe('setExperienceState', () => {
 
     // A 409 leaves through `finally` like everything else, so dropping the
     // helper's result here pools a client whose transaction never closed
-    await setExperienceState(
+    await answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       res as never,
     );
@@ -382,7 +386,7 @@ describe('setExperienceState', () => {
     });
     mockedConnect.mockResolvedValue(client);
 
-    await expect(setExperienceState(
+    await expect(answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       makeRes() as never,
     )).rejects.toThrow('log write failed');
@@ -412,7 +416,7 @@ describe('setExperienceState', () => {
     });
     mockedConnect.mockResolvedValue(client);
 
-    await expect(setExperienceState(
+    await expect(answerRoute(postState, 
       { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
       makeRes() as never,
     )).rejects.toThrow('log write failed');
@@ -476,7 +480,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
@@ -494,7 +498,7 @@ describe('setExperienceAdmission', () => {
     const { queries, client } = refusedClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
       makeRes() as never);
 
@@ -510,7 +514,7 @@ describe('setExperienceAdmission', () => {
     const { queries, client } = refusedClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
       makeRes() as never);
 
@@ -527,7 +531,7 @@ describe('setExperienceAdmission', () => {
     const { queries, client } = refusedClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
       makeRes() as never);
 
@@ -543,7 +547,7 @@ describe('setExperienceAdmission', () => {
     const { queries, client } = refusedClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
       makeRes() as never);
 
@@ -558,7 +562,7 @@ describe('setExperienceAdmission', () => {
     const { queries, client } = refusedClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
       makeRes() as never);
 
@@ -571,7 +575,7 @@ describe('setExperienceAdmission', () => {
     const { queries, client } = refusedClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
       makeRes() as never);
 
@@ -585,7 +589,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
@@ -612,7 +616,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -637,7 +641,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ withdrawalsReleased: 1 }));
@@ -660,7 +664,7 @@ describe('setExperienceAdmission', () => {
     });
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, makeRes() as never);
 
     expect(mockedPlace).not.toHaveBeenCalled();
@@ -676,7 +680,7 @@ describe('setExperienceAdmission', () => {
     mockedPlace.mockRejectedValueOnce(new Error('world view 1 is busy'));
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
     // The publication itself still landed — a curator whose click did land
@@ -703,7 +707,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
@@ -743,7 +747,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
@@ -770,7 +774,7 @@ describe('setExperienceAdmission', () => {
     const { queries, client } = refusedClient({ curation_state: 'pending' });
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, makeRes() as never);
 
     const read = queries.find(q => q.sql.includes('m.id AS membership_id'))!;
@@ -785,7 +789,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
@@ -801,7 +805,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
@@ -822,7 +826,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(404);
@@ -837,7 +841,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
@@ -850,7 +854,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
@@ -860,7 +864,7 @@ describe('setExperienceAdmission', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(404);
@@ -873,7 +877,7 @@ describe('setExperienceAdmission', () => {
       .mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: CURATOR, body: { decision: 'override' } } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(403);
@@ -885,7 +889,7 @@ describe('setExperienceAdmission', () => {
     const { queries, client } = refusedClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setExperienceAdmission(
+    await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
       makeRes() as never);
 

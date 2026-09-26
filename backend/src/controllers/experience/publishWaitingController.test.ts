@@ -25,8 +25,12 @@ vi.mock('./publishController.js', () => ({
 import { pool } from '../../db/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishUnderLock } from './publishController.js';
-import { publishWaiting } from './publishWaitingController.js';
 import { arrivalWaitingSql, contentsWaitingSql, heldWaitingSql } from './waitingCounts.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postSourcesPublishWaiting = routeAt(experienceCurationRoutes, '/sources/:sourceId/publish-waiting', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedScope = resolveExperienceScope as unknown as ReturnType<typeof vi.fn>;
@@ -59,7 +63,7 @@ describe('publishWaiting', () => {
   it('never selects a held proposal for publishing, only counts it', async () => {
     mockSelection([], 3);
 
-    await publishWaiting(REQ, makeRes() as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, makeRes() as never);
 
     const [selectSql] = mockedQuery.mock.calls[0] as [string];
     const [countSql] = mockedQuery.mock.calls[1] as [string];
@@ -80,7 +84,7 @@ describe('publishWaiting', () => {
       { id: 6215, name: 'Rijksmuseum', kind: 'contents' },
     ]);
 
-    await publishWaiting(REQ, makeRes() as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, makeRes() as never);
 
     expect(mockedPublish).toHaveBeenCalledTimes(2);
     // An empty body is an object publish — it marks the row read and releases
@@ -102,7 +106,7 @@ describe('publishWaiting', () => {
       .mockResolvedValueOnce({ permitted: false, logRegionId: null });
     const res = makeRes();
 
-    await publishWaiting(REQ, res as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, res as never);
 
     expect(mockedPublish).toHaveBeenCalledTimes(1);
     const payload = res.json.mock.calls[0][0];
@@ -125,7 +129,7 @@ describe('publishWaiting', () => {
       .mockResolvedValueOnce({ result: { locationsPublished: 0, treasuresPublished: 4 } });
     const res = makeRes();
 
-    await publishWaiting(REQ, res as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, res as never);
 
     const payload = res.json.mock.calls[0][0];
     expect(payload.published.map((p: { id: number }) => p.id)).toEqual([1, 3]);
@@ -149,7 +153,7 @@ describe('publishWaiting', () => {
       .mockResolvedValueOnce({ result: { locationsPublished: 1, treasuresPublished: 0 } });
     const res = makeRes();
 
-    await publishWaiting(REQ, res as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, res as never);
 
     // `publishUnderLock` rolls back and rethrows anything that is not a refusal.
     // Letting that reject the handler answers 500 to a caller whose first object
@@ -177,7 +181,7 @@ describe('publishWaiting', () => {
       .mockResolvedValueOnce({ permitted: true, logRegionId: null });
     const res = makeRes();
 
-    await publishWaiting(REQ, res as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, res as never);
 
     // `resolveExperienceScope` is a `pool.query` like any other — a recursive CTE run
     // once per row — so a timeout or a reset connection on object 400 is as likely
@@ -202,7 +206,7 @@ describe('publishWaiting', () => {
     });
     const res = makeRes();
 
-    await publishWaiting(REQ, res as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, res as never);
 
     // Rebuilding a world view is an admin's job, so the curator's one useful act
     // is naming the object and the world views to an admin. Dropped here, a
@@ -222,7 +226,7 @@ describe('publishWaiting', () => {
   it('counts only the held changes the caller could be asked about', async () => {
     mockSelection([], 0);
 
-    await publishWaiting(REQ, makeRes() as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, makeRes() as never);
 
     const [countSql, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
     // Every other number in this response is measured against the caller, and
@@ -237,7 +241,7 @@ describe('publishWaiting', () => {
   it('asks the whole source when the caller is an admin', async () => {
     mockSelection([], 0);
 
-    await publishWaiting(
+    await answerRoute(postSourcesPublishWaiting, 
       { params: { sourceId: '2' }, user: { id: 1, role: 'admin' as const } } as never,
       makeRes() as never,
     );
@@ -274,7 +278,7 @@ describe('publishWaiting', () => {
     });
     const res = makeRes();
 
-    await publishWaiting(REQ, res as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, res as never);
 
     // A run can land a held proposal while this is publishing, and the number's
     // job is to explain the remainder the curator sees in the panel a second later.
@@ -289,7 +293,7 @@ describe('publishWaiting', () => {
     });
     const res = makeRes();
 
-    await publishWaiting(REQ, res as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, res as never);
 
     expect(res.json).toHaveBeenCalledWith({
       sourceId: 2,
@@ -319,7 +323,7 @@ describe('publishWaiting', () => {
     });
     const res = makeRes();
 
-    await publishWaiting(REQ, res as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, res as never);
 
     expect(res.json.mock.calls[0][0].published[0].withdrawalsReleased).toBe(2);
   });
@@ -335,7 +339,7 @@ describe('publishWaiting', () => {
     });
     const res = makeRes();
 
-    await publishWaiting(REQ, res as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, res as never);
 
     const entry = res.json.mock.calls[0][0].published[0];
     expect(entry.treasureLinksPublished).toBe(1);
@@ -363,7 +367,7 @@ describe('publishWaiting', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const res = makeRes();
 
-    await publishWaiting(REQ, res as never);
+    await answerRoute(postSourcesPublishWaiting, REQ, res as never);
 
     const body = res.json.mock.calls[0][0];
     expect(body.heldLeftForReview).toBeNull();

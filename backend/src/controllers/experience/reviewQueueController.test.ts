@@ -21,12 +21,16 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { getReviewQueue } from './reviewQueueController.js';
 import { admissionAnsweredSql, membershipAdmittedSql } from '../../db/membership.js';
 import { hidePendingSql, hideRefusedSql, offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const getReviewQueue2 = routeAt(experienceCurationRoutes, '/review/queue', 'get');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -100,7 +104,7 @@ describe('getReviewQueue', () => {
   });
 
   it('asks separately for the rows its kind refused', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // An answered refusal — pinned by a card, or marked by a batch that pins
     // nothing (ADR-0067) — is what takes it out of the open list, in both
@@ -115,7 +119,7 @@ describe('getReviewQueue', () => {
   });
 
   it('names a curator with a blank display name as "a curator", in the claim and in the decisions before (#998)', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // A name of blanks is not missing to COALESCE, and would reach the card as
     // "Claimed by    on …"; trimmed of every whitespace character -- tabs and
@@ -127,7 +131,7 @@ describe('getReviewQueue', () => {
   });
 
   it('asks for the confirmed refusals too, since nothing else can show them', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // Every read hides a refused row and none of them takes a toggle, so a
     // confirmed refusal is invisible everywhere else. Without this query the
@@ -149,7 +153,7 @@ describe('getReviewQueue', () => {
       ? [{ id: 6205, name: 'British Museum', admission_reason: 'not an art museum' }]
       : []));
 
-    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, res as never);
 
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       keptOut: [expect.objectContaining({ name: 'British Museum' })],
@@ -158,7 +162,7 @@ describe('getReviewQueue', () => {
   });
 
   it('keeps a refused row out of the gone-from-the-source list', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // The same row under both headings would ask two contradictory questions,
     // and only one of them has a true answer.
@@ -174,7 +178,7 @@ describe('getReviewQueue', () => {
       ? [{ id: 6205, name: 'British Museum', admission_reason: 'not an art museum' }]
       : []));
 
-    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, res as never);
 
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       refused: [expect.objectContaining({ admission_reason: 'not an art museum' })],
@@ -182,7 +186,7 @@ describe('getReviewQueue', () => {
   });
 
   it('limits a curator to experiences their scope reaches', async () => {
-    await getReviewQueue({ user: CURATOR, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: CURATOR, query: {} } as never, makeRes() as never);
 
     const [sql] = callMatching("'missing' AS kind");
     expect(sql).toContain('curator_scoped_regions');
@@ -190,14 +194,14 @@ describe('getReviewQueue', () => {
   });
 
   it('does not scope an admin, who covers everything', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     const [sql] = callMatching("'missing' AS kind");
     expect(sql).not.toContain('JOIN curator_scoped_regions s ON s.id = er.region_id');
   });
 
   it('asks only for rows a run flagged and nobody has judged yet', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     const [sql] = callMatching("'missing' AS kind");
     // A row already moved to 'former' has been decided; it is not a question
@@ -216,7 +220,7 @@ describe('getReviewQueue', () => {
     // than onto the shared one. A live probe answered 42P18 when it was not.
     for (const query of [{}, { source: '2' }, { q: 'colo' }, { q: 'colo', source: '2' }]) {
       mockedQuery.mockClear();
-      await getReviewQueue({ user: CURATOR, query } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: CURATOR, query } as never, makeRes() as never);
 
       for (const [sql, params] of mockedQuery.mock.calls as Array<[string, unknown[]]>) {
         for (let i = 1; i <= params.length; i++) {
@@ -232,7 +236,7 @@ describe('getReviewQueue', () => {
     // filter that matches nothing. The schema bounds the parameter's length; the
     // value of each id in it is bounded where the list is split, which is the
     // same place a `kind` word the vocabulary does not know is dropped.
-    await getReviewQueue(
+    await answerRoute(getReviewQueue2, 
       { user: ADMIN, query: { source: '99999999999' } } as never, makeRes() as never,
     );
 
@@ -246,7 +250,7 @@ describe('getReviewQueue', () => {
     // Those two are outside the keys phase, so a filter that does not reach them
     // here does not reach them at all: a curator looking for one object by name
     // was shown every other object's kept-out row beside it.
-    await getReviewQueue({
+    await answerRoute(getReviewQueue2, {
       user: ADMIN, query: { q: '100%', source: '1', region: 6737, run: 98 },
     } as never, makeRes() as never);
 
@@ -271,7 +275,7 @@ describe('getReviewQueue', () => {
     // changes the numbering: unfiltered, the binds are userId and the ids.
     for (const query of [{}, { source: '2' }]) {
       mockedQuery.mockClear();
-      await getReviewQueue({ user: CURATOR, query } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: CURATOR, query } as never, makeRes() as never);
 
       const [sql] = callMatching("'missing' AS kind");
       expect(sql).toContain('ca.source_id = e.source_id');
@@ -305,7 +309,7 @@ describe('getReviewQueue', () => {
   }
 
   it('carries a place\'s claims on every row that lists one', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // Every point the page shows can be corrected from the dialog it opens in
     // (#583), and a correction claims the field it changed (migration 027). A
@@ -322,7 +326,7 @@ describe('getReviewQueue', () => {
   });
 
   it('carries a work\'s claims and its other museums on every row that lists one', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // The same rule one level over (#731): a work is corrected from the row the
     // curator is looking at, so the row carries what is already claimed on it
@@ -351,7 +355,7 @@ describe('getReviewQueue', () => {
   });
 
   it('carries the run\'s own question on every card, not only on the preview behind it', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // A row the rule could not settle is held with the doubt written down
     // (ADR-0058) — an art museum with an antiquities department, where whether
@@ -370,7 +374,7 @@ describe('getReviewQueue', () => {
   });
 
   it('drops a conflict once the field is no longer claimed', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // Accepting the source releases the claim but leaves the changeset row as
     // the record of what the run did — the claim is what makes it a question
@@ -395,7 +399,7 @@ describe('getReviewQueue', () => {
         : { rows: [] }
     ));
 
-    await getReviewQueue(
+    await answerRoute(getReviewQueue2, 
       { user: ADMIN, query: { sort: 'date', limit: 25 } } as never, makeRes() as never,
     );
 
@@ -420,7 +424,7 @@ describe('getReviewQueue', () => {
       ? Array.from({ length: 4 }, (_, i) => ({ id: i }))
       : []));
 
-    await getReviewQueue({ user: ADMIN, query: { limit: 3 } } as never, res as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: { limit: 3 } } as never, res as never);
 
     const answered = res.json.mock.calls[0][0];
     expect(answered.keptOut).toHaveLength(3);
@@ -439,7 +443,7 @@ describe('getReviewQueue', () => {
   });
 
   it('stops asking about a proposal a curator already refused', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // Standing by your own edit is recorded as an action, or the card comes
     // back after every run — Aksum's three times in two days, with the source
@@ -450,7 +454,7 @@ describe('getReviewQueue', () => {
   });
 
   it('compares the refusal by value, so a source that changed its mind is heard', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // The one case a curator must not miss. Suppressing by field would answer
     // every future proposal with an answer given about a different value.
@@ -465,7 +469,7 @@ describe('getReviewQueue', () => {
   });
 
   it('treats a proposal with no value and a refusal of none as the same thing', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // A source that stops publishing a claimed `metadata.*` key proposes `undefined`,
     // which JSON.stringify drops from the changeset row — while the refusal of it is
@@ -476,7 +480,7 @@ describe('getReviewQueue', () => {
   });
 
   it('translates the changeset field name to the key curated_fields holds', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // 'shortDescription' is claimed as 'short_description', and
     // 'metadata.inDanger' as plain 'metadata' — not a mechanical case change
@@ -490,7 +494,7 @@ describe('getReviewQueue', () => {
   });
 
   it('resolves a per-language entry to the column its claim is stored under', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // The second lookup, and the reason it exists: a run records one language at
     // a time (#728), and no name of the form `nameLocal.<lang>` is in the map
@@ -506,7 +510,7 @@ describe('getReviewQueue', () => {
   });
 
   it('reads the claim key the way claimKeyFor does, in the same order', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // The SQL is `claimKeyFor` in another runtime, and the two are pinned by
     // shape rather than by structure — nothing can import one into the other.
@@ -519,7 +523,7 @@ describe('getReviewQueue', () => {
   });
 
   it('names who claimed each field and when, by the key the claim is stored under', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     const [conflictSql] = callMatching("'conflict' AS kind");
     // The claim itself is set membership in `curated_fields` and carries no
@@ -550,7 +554,7 @@ describe('getReviewQueue', () => {
   });
 
   it('reads the log through the log’s own per-row scope, not the object’s', async () => {
-    await getReviewQueue({ user: CURATOR, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: CURATOR, query: {} } as never, makeRes() as never);
 
     const [conflictSql] = callMatching("'conflict' AS kind");
     // The outer filter admits an object through *any* of its regions, so a curator
@@ -568,14 +572,14 @@ describe('getReviewQueue', () => {
   });
 
   it('does not filter the log for an admin, who is scoped to everything', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     const [conflictSql] = callMatching("'conflict' AS kind");
     expect(conflictSql).not.toContain('log.region_id IN');
   });
 
   it('carries the earlier decisions on the same field, and the run date the card asks about', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     const [conflictSql] = callMatching("'conflict' AS kind");
     // Both answers record their fields in `details.fields`, so a field's history is
@@ -594,7 +598,7 @@ describe('getReviewQueue', () => {
   });
 
   it('drops a conflict a later run stopped proposing', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // A run that finds the source agreeing writes no changeset row at all, so
     // the absence of a newer conflict proves nothing. last_seen_sync_log_id is
@@ -604,7 +608,7 @@ describe('getReviewQueue', () => {
   });
 
   it('waits for the later run to finish before reading anything into it', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // last_seen is stamped per item inside the loop; the changeset lands in one
     // batch after it. Mid-run the newer value exists and the rows it would be
@@ -614,7 +618,7 @@ describe('getReviewQueue', () => {
   });
 
   it('reads nothing into a run that closed without recording anything', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // Status cannot answer this: a run that throws after the item loop records
     // its changes and only then marks itself failed. The markers can.
@@ -625,7 +629,7 @@ describe('getReviewQueue', () => {
   });
 
   it('still reads a run that failed after recording its batch', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // recordSyncFailure writes the changes and *then* marks the log failed, so
     // keying on status would suppress the inference for a run whose changeset
@@ -635,7 +639,7 @@ describe('getReviewQueue', () => {
   });
 
   it('ignores conflicts that only a preview proposed', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     const [conflictSql] = callMatching("'conflict' AS kind");
     expect(conflictSql).toContain('l.is_dry_run = FALSE');
@@ -663,7 +667,7 @@ describe('getReviewQueue', () => {
     user: typeof ADMIN | typeof CURATOR = ADMIN,
   ): Promise<string> {
     mockedQuery.mockClear();
-    await getReviewQueue({ user, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user, query: {} } as never, makeRes() as never);
     const [sql] = callMatching(QUEUE_KIND_ANCHOR[kind]);
     return sql;
   }
@@ -1061,7 +1065,7 @@ describe('getReviewQueue', () => {
       ? [{ id: 502, name: 'Bilbao Fine Arts Museum' }]
       : []));
 
-    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, res as never);
 
     const body = res.json.mock.calls[0][0];
     expect(body.withdrawn).toEqual([
@@ -1080,7 +1084,7 @@ describe('getReviewQueue', () => {
       ? [{ id: 11586, name: 'Memorial to the Murdered Jews of Europe' }]
       : []));
 
-    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, res as never);
 
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       arrivals: [
@@ -1107,7 +1111,7 @@ describe('getReviewQueue', () => {
         : { rows: [] }
     ));
 
-    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, res as never);
 
     const [, contentsParams] = callMatching("'contents' AS kind");
     expect(contentsParams).toContainEqual([6205]);
@@ -1129,7 +1133,7 @@ describe('getReviewQueue', () => {
         : { rows: [] }
     ));
 
-    await getReviewQueue({ user: ADMIN, query: { cursor: 'eyJ4IjoxfQ' } } as never, res as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: { cursor: 'eyJ4IjoxfQ' } } as never, res as never);
 
     const body = res.json.mock.calls[0][0];
     expect(body.total).toBe(1630);
@@ -1143,7 +1147,7 @@ describe('getReviewQueue', () => {
 
   describe('the withdrawals a curator has already answered', () => {
     it('asks for the points whose verdict stands and which no reader can see', async () => {
-      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
       // Both halves of the criterion, and neither alone is it. A verdict stands —
       // which is what there is to take back, and what no arm of `locationWriter`
@@ -1159,7 +1163,7 @@ describe('getReviewQueue', () => {
     });
 
     it('cannot show a point the card above is still asking about', async () => {
-      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
       // Disjoint by construction rather than by a guard: the waiting query wants
       // both axes clean, this one wants either set. It has to be construction,
@@ -1176,7 +1180,7 @@ describe('getReviewQueue', () => {
     });
 
     it('carries no object-level guard, because it asks nothing', async () => {
-      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
       // The queue's questions exclude a refused, unread or missing *object* so
       // that one row never raises two cards whose answers contradict each other.
@@ -1191,7 +1195,7 @@ describe('getReviewQueue', () => {
     });
 
     it('names the curator through the log, under the log’s own scope', async () => {
-      await getReviewQueue({ user: CURATOR, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: CURATOR, query: {} } as never, makeRes() as never);
 
       // A curation act belongs to the region it was made in: the log endpoint
       // drops an act made by a curator of region B for a reader scoped only to A,
@@ -1204,7 +1208,7 @@ describe('getReviewQueue', () => {
     });
 
     it('picks the newest verdict first and only then asks whether it can be named', async () => {
-      await getReviewQueue({ user: CURATOR, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: CURATOR, query: {} } as never, makeRes() as never);
 
       // The scope test belongs in the select list, not in the subquery's WHERE, and the
       // difference is which act gets named. In the WHERE it returns the newest act this
@@ -1220,7 +1224,7 @@ describe('getReviewQueue', () => {
     });
 
     it('caps the points it lists, and says how many there are', async () => {
-      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
       // Capped where the waiting card is not, and the difference is that this list only
       // grows: a point enters when it is answered and leaves only if the verdict is taken
@@ -1238,7 +1242,7 @@ describe('getReviewQueue', () => {
         ? [{ id: 1592, name: 'Bilbao Fine Arts Museum' }]
         : []));
 
-      await getReviewQueue({ user: ADMIN, query: { answeredWithdrawalsOffset: 25 } } as never, res as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: { answeredWithdrawalsOffset: 25 } } as never, res as never);
 
       const body = res.json.mock.calls[0][0];
       expect(body.answeredWithdrawals).toEqual([
@@ -1264,7 +1268,7 @@ describe('getReviewQueue', () => {
    */
   describe('a point or work the curator turned down', () => {
     it('asks for every marked row, including one the source has stopped offering', async () => {
-      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
       const [sql] = callMatching("'contents-refused' AS kind");
       expect(sql).toContain('el.refused_at IS NOT NULL');
@@ -1288,7 +1292,7 @@ describe('getReviewQueue', () => {
     });
 
     it('names who turned it down by the instant the refusal wrote, under the log scope', async () => {
-      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
       const [sql] = callMatching("'contents-refused' AS kind");
       // The mark and the log row are written in one transaction, and now() is one
@@ -1311,7 +1315,7 @@ describe('getReviewQueue', () => {
     });
 
     it('names the objects holding one before the laterals run', async () => {
-      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
       const [sql] = callMatching("'contents-refused' AS kind");
       // A CROSS JOIN LATERAL has already run by the time a WHERE term is applied,
@@ -1325,7 +1329,7 @@ describe('getReviewQueue', () => {
     });
 
     it('lets the writer decide whether the take-back is offered at all', async () => {
-      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
       const [sql] = callMatching("'contents-refused' AS kind");
       // The writer's own fragment, not a second spelling of it: a card offering a
@@ -1339,7 +1343,7 @@ describe('getReviewQueue', () => {
     });
 
     it('caps each kind and says how many there are', async () => {
-      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
       const [sql] = callMatching("'contents-refused' AS kind");
       // Twice, not once: the row carries two lists and each aggregate caps its own,
@@ -1355,7 +1359,7 @@ describe('getReviewQueue', () => {
         ? [{ id: 6188, name: "Musée d'Orsay" }]
         : []));
 
-      await getReviewQueue({ user: ADMIN, query: { refusedPartsOffset: 25 } } as never, res as never);
+      await answerRoute(getReviewQueue2, { user: ADMIN, query: { refusedPartsOffset: 25 } } as never, res as never);
 
       const body = res.json.mock.calls[0][0];
       expect(body.refusedParts).toEqual([
@@ -1378,7 +1382,7 @@ describe('the object fragment carries the danger listing', () => {
   });
 
   it('selects it through the reader-facing fragment on every kind', async () => {
-    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // One fragment, so a card cannot say less about a site's listing than the
     // badge does. Every kind, named: a kind that composed its own select would
@@ -1403,7 +1407,7 @@ describe('the object fragment carries the danger listing', () => {
       ? [{ id: 208, name: 'Bamiyan Valley', in_danger: 'true', danger_list: 'Y 2003' }]
       : []));
 
-    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+    await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, res as never);
 
     // A card proposing `inDanger: false -> true` on this site is about a listing
     // that began in 2003, and only the year lets it say so.

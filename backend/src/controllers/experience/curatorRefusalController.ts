@@ -31,14 +31,13 @@
  * called by their single-row route here and per row by the batch answer.
  */
 
-import { Response } from 'express';
 import type { z } from 'zod/v4';
-import { respond } from '../../api/respond.js';
-import { RefuseArrivalResult, RefuseContentsResult } from '../../api/responses/curation.js';
+import type { RefuseArrivalResult, RefuseContentsResult } from '../../api/responses/curation.js';
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
+import type { idParamSchema, refuseArrivalBodySchema, refuseContentsBodySchema } from '../../types/index.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 import { offeredLinkSql } from '../../db/readerPredicates.js';
 import { resolveExperienceScope } from './experienceScope.js';
@@ -57,9 +56,13 @@ export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
  * POST /api/experiences/:id/refuse-arrival
  * Body: { note?: string }
  */
-export async function refuseArrival(req: AuthenticatedRequest, res: Response): Promise<void> {
-  await answerThroughScope(req, res, RefuseArrivalResult, (experienceId, userId, logRegionId) =>
-    refuseArrivalUnderLock(experienceId, userId, logRegionId, req.body as { note?: string }));
+export async function refuseArrival(
+  { params: { id }, body, caller }: {
+    params: z.output<typeof idParamSchema>; body: z.output<typeof refuseArrivalBodySchema>; caller: Express.User;
+  },
+): Promise<RefuseArrivalResult> {
+  return answerThroughScope(id, caller, (experienceId, userId, logRegionId) =>
+    refuseArrivalUnderLock(experienceId, userId, logRegionId, body));
 }
 
 /**
@@ -68,14 +71,18 @@ export async function refuseArrival(req: AuthenticatedRequest, res: Response): P
  * POST /api/experiences/:id/refuse-contents
  * Body: { locationIds?: number[], treasureIds?: number[], note?: string }
  */
-export async function refuseContents(req: AuthenticatedRequest, res: Response): Promise<void> {
-  await answerThroughScope(req, res, RefuseContentsResult, (experienceId, userId, logRegionId) =>
-    refuseContentsUnderLock(experienceId, userId, logRegionId,
-      req.body as { locationIds?: number[]; treasureIds?: number[]; note?: string }));
+export async function refuseContents(
+  { params: { id }, body, caller }: {
+    params: z.output<typeof idParamSchema>; body: z.output<typeof refuseContentsBodySchema>; caller: Express.User;
+  },
+): Promise<RefuseContentsResult> {
+  return answerThroughScope(id, caller, (experienceId, userId, logRegionId) =>
+    refuseContentsUnderLock(experienceId, userId, logRegionId, body));
 }
 
 /**
- * The request half every single-row curator route shares: 404, scope, status code.
+ * The request half every single-row curator route shares: 404, scope, and the
+ * writer's refusal thrown with its status.
  *
  * Exported for the take-back beside it (`unrefuseContentsController.ts`), which is
  * the same request from the same person about the same object and would otherwise
@@ -83,41 +90,36 @@ export async function refuseContents(req: AuthenticatedRequest, res: Response): 
  * answer for this object" is exactly the drift `resolveExperienceScope` exists to
  * prevent.
  */
-export async function answerThroughScope<S extends z.ZodType>(
-  req: AuthenticatedRequest,
-  res: Response,
-  schema: S,
+export async function answerThroughScope<T>(
+  experienceId: number,
+  caller: Express.User,
   write: (experienceId: number, userId: number, logRegionId: number | null)
-    => Promise<{ result?: z.output<S>; refusal?: AnswerRefusal }>,
-): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
+    => Promise<{ result?: T; refusal?: AnswerRefusal }>,
+): Promise<T> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   const expResult = await pool.query(
     `SELECT id, source_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
 
   const { permitted, logRegionId } = await resolveExperienceScope(
     userId, userRole, experienceId, expResult.rows[0].source_id as number,
   );
   if (!permitted) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   const outcome = await write(experienceId, userId, logRegionId);
   if (outcome.refusal) {
-    const { status, ...payload } = outcome.refusal;
-    res.status(status).json(payload);
-    return;
+    const { status, ...body } = outcome.refusal;
+    throw new Refusal(status, body);
   }
-  respond(res, schema, outcome.result!);
+  return outcome.result!;
 }
 
 /**

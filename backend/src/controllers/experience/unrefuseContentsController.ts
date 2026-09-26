@@ -40,12 +40,12 @@
  * route, for the same reason the refusal carries it.
  */
 
-import { Response } from 'express';
 import type { PoolClient } from 'pg';
-import { UnrefuseContentsResult } from '../../api/responses/curation.js';
+import type { z } from 'zod/v4';
+import type { UnrefuseContentsResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { idParamSchema, refuseContentsBodySchema } from '../../types/index.js';
 import { answerThroughScope } from './curatorRefusalController.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
@@ -60,10 +60,13 @@ import { restoreRefusedPoints } from './experienceLocationWriter.js';
  * POST /api/experiences/:id/unrefuse-contents
  * Body: { locationIds?: number[], treasureIds?: number[], note?: string }
  */
-export async function unrefuseContents(req: AuthenticatedRequest, res: Response): Promise<void> {
-  await answerThroughScope(req, res, UnrefuseContentsResult, (experienceId, userId, logRegionId) =>
-    unrefuseContentsUnderLock(experienceId, userId, logRegionId,
-      req.body as { locationIds?: number[]; treasureIds?: number[]; note?: string }));
+export async function unrefuseContents(
+  { params: { id }, body, caller }: {
+    params: z.output<typeof idParamSchema>; body: z.output<typeof refuseContentsBodySchema>; caller: Express.User;
+  },
+): Promise<UnrefuseContentsResult> {
+  return answerThroughScope(id, caller, (experienceId, userId, logRegionId) =>
+    unrefuseContentsUnderLock(experienceId, userId, logRegionId, body));
 }
 
 /**

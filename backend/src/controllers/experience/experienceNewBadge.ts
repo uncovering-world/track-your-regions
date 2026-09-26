@@ -52,13 +52,12 @@
  * bound was protecting.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { NewBadgesSeen } from '../../api/responses/experiences.js';
+import type { z } from 'zod/v4';
+import type { NewBadgesSeen } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import type { UserNewBadgeViewsRow } from '../../db/schema.generated.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { newBadgesSeenBodySchema } from '../../types/index.js';
 import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
 
 /**
@@ -128,9 +127,10 @@ export function isNewSql(alias = 'e', userIdParam: NewBadgeReaderParam = 'NULL')
  * the week on every later view would let the chip follow a returning reader
  * around indefinitely, which is the opposite of what it is for.
  */
-export async function markNewBadgesSeen(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user!.id;
-  const { experienceIds } = req.body as { experienceIds: number[] };
+export async function markNewBadgesSeen(
+  { body: { experienceIds }, caller }: { body: z.output<typeof newBadgesSeenBodySchema>; caller: Express.User },
+): Promise<NewBadgesSeen> {
+  const userId = caller.id;
 
   const result = await pool.query<Pick<UserNewBadgeViewsRow, 'experience_id'>>(
     `INSERT INTO user_new_badge_views (user_id, experience_id)
@@ -153,5 +153,5 @@ export async function markNewBadgesSeen(req: AuthenticatedRequest, res: Response
   // never on screen. A chip cannot legitimately be seen on an unread row: the
   // only read that renders one carries the gate. `existence` stays out, matching
   // the by-id reads — a chip seen on something since lost was still seen.
-  respond(res, NewBadgesSeen, { recorded: result.rows.map(r => r.experience_id) });
+  return { recorded: result.rows.map(r => r.experience_id) };
 }

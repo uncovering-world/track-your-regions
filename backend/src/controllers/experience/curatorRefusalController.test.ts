@@ -29,11 +29,15 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { placeAfterRelease } from './publishContents.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import {
-  CURATOR_REFUSAL_REASON, refuseArrival, refuseContents,
-} from './curatorRefusalController.js';
+import { CURATOR_REFUSAL_REASON } from './curatorRefusalController.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { contentsAnswerableSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postRefuseArrival = routeAt(experienceCurationRoutes, '/:id/refuse-arrival', 'post');
+const postRefuseContents = routeAt(experienceCurationRoutes, '/:id/refuse-contents', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -94,12 +98,12 @@ describe('refuseArrival', () => {
   it('404s an experience that does not exist and 403s a curator out of scope', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const missing = makeRes();
-    await refuseArrival({ params: { id: '5' }, user: CURATOR, body: {} } as never, missing as never);
+    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: {} } as never, missing as never);
     expect(missing.status).toHaveBeenCalledWith(404);
 
     mockedScope.mockResolvedValueOnce({ permitted: false, logRegionId: null });
     const outOfScope = makeRes();
-    await refuseArrival({ params: { id: '5' }, user: CURATOR, body: {} } as never, outOfScope as never);
+    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: {} } as never, outOfScope as never);
     expect(outOfScope.status).toHaveBeenCalledWith(403);
     expect(mockedConnect).not.toHaveBeenCalled();
   });
@@ -108,7 +112,7 @@ describe('refuseArrival', () => {
     const client = makeClient(ARRIVAL);
     const res = makeRes();
 
-    await refuseArrival(
+    await answerRoute(postRefuseArrival, 
       { params: { id: '5' }, user: CURATOR, body: { note: 'a parish church' } } as never, res as never);
 
     const membership = client.queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
@@ -132,7 +136,7 @@ describe('refuseArrival', () => {
 
   it('keeps an earlier pin beside the admission one', async () => {
     const client = makeClient({ ...ARRIVAL, curated_fields: ['is_iconic'] });
-    await refuseArrival({ params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
+    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
     const membership = client.queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
     expect(JSON.parse(membership?.params?.[2] as string)).toEqual(['is_iconic', 'admission']);
   });
@@ -146,7 +150,7 @@ describe('refuseArrival', () => {
     const client = makeClient(membership, opts);
     const res = makeRes();
 
-    await refuseArrival({ params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(client.queries.some(q => q.sql.trimStart().startsWith('UPDATE'))).toBe(false);
@@ -159,7 +163,7 @@ describe('refuseContents', () => {
     const client = makeClient(VISIBLE);
     const res = makeRes();
 
-    await refuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postRefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
 
     const points = client.queries.find(q => q.sql.includes('UPDATE experience_locations'));
     expect(points?.sql).toContain('SET refused_at = NOW()');
@@ -193,7 +197,7 @@ describe('refuseContents', () => {
     // the arrival must withdraw the old row the way publishing it would, or
     // readers keep a pin the source dropped, with no card anywhere about it.
     const client = makeClient(VISIBLE);
-    await refuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
+    await answerRoute(postRefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
 
     const updates = client.queries.filter(q => q.sql.includes('UPDATE experience_locations')).map(q => q.sql);
     const mark = updates.findIndex(sql => sql.includes('SET refused_at = NOW()'));
@@ -220,7 +224,7 @@ describe('refuseContents', () => {
     const client = makeClient(VISIBLE);
     const res = makeRes();
 
-    await refuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postRefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
 
     const commitAt = client.queries.findIndex(q => q.sql === 'COMMIT');
     expect(commitAt).toBeGreaterThan(0);
@@ -238,7 +242,7 @@ describe('refuseContents', () => {
 
   it('releases nothing when no point was refused', async () => {
     const client = makeClient(VISIBLE);
-    await refuseContents(
+    await answerRoute(postRefuseContents, 
       { params: { id: '5' }, user: CURATOR, body: { treasureIds: [88] } } as never, makeRes() as never);
     expect(client.queries.some(q => q.sql.includes('SET missing_since = NOW()'))).toBe(false);
     // And no re-place: a refused link moves no pin and counts toward no region.
@@ -248,7 +252,7 @@ describe('refuseContents', () => {
   it('touches no point when only works are named, and records the ids', async () => {
     const client = makeClient(VISIBLE);
 
-    await refuseContents(
+    await answerRoute(postRefuseContents, 
       { params: { id: '5' }, user: CURATOR, body: { treasureIds: [88, 89] } } as never, makeRes() as never);
 
     expect(client.queries.some(q => q.sql.includes('UPDATE experience_locations'))).toBe(false);
@@ -266,7 +270,7 @@ describe('refuseContents', () => {
     // the guard holds for every row, and *every* contents refusal 409s. Verified
     // by deleting it: 15 of 15 green with the endpoint entirely broken.
     const client = makeClient(VISIBLE);
-    await refuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
+    await answerRoute(postRefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
 
     const read = client.queries.find(q => q.sql.includes('AS membership_id'));
     expect(read?.sql).toContain(contentsAnswerableSql());
@@ -277,7 +281,7 @@ describe('refuseContents', () => {
     const client = makeClient(ARRIVAL);
     const res = makeRes();
 
-    await refuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postRefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -290,7 +294,7 @@ describe('refuseContents', () => {
     const client = makeClient(VISIBLE, { rowCount: 0 });
     const res = makeRes();
 
-    await refuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postRefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(client.queries.some(q => q.sql.includes('experience_curation_log'))).toBe(false);
@@ -308,7 +312,7 @@ describe('refuseContents', () => {
       return { rows: [], rowCount: 0 };
     });
 
-    await expect(refuseContents({ params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never))
+    await expect(answerRoute(postRefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never))
       .rejects.toThrow('boom');
     expect(client.release).toHaveBeenCalled();
   });

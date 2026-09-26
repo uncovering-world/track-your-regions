@@ -28,11 +28,13 @@
  * but was never a batch of questions.
  */
 
-import { Response } from 'express';
-import { respond } from '../../api/respond.js';
-import { RunSetAside } from '../../api/responses/reviewQueue.js';
+import type { z } from 'zod/v4';
+import type { RunSetAside } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { notFound } from '../../middleware/errorHandler.js';
+import type { syncLogIdParamSchema } from '../../types/index.js';
+
+type SyncLogParams = z.output<typeof syncLogIdParamSchema>;
 
 /**
  * Put a run's batch of open questions aside.
@@ -46,9 +48,10 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
  * dry run) and when this curator had already set it aside, and only the first
  * of those is a question worth refusing.
  */
-export async function setRunAside(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user!.id;
-  const syncLogId = parseInt(String(req.params.syncLogId));
+export async function setRunAside(
+  { params: { syncLogId }, caller }: { params: SyncLogParams; caller: Express.User },
+): Promise<RunSetAside> {
+  const userId = caller.id;
 
   const inserted = await pool.query(
     `INSERT INTO curator_queue_set_aside (user_id, sync_log_id)
@@ -64,11 +67,10 @@ export async function setRunAside(req: AuthenticatedRequest, res: Response): Pro
       [userId, syncLogId],
     );
     if (already.rows.length === 0) {
-      res.status(404).json({ error: 'Sync run not found' });
-      return;
+      throw notFound('Sync run not found');
     }
   }
-  respond(res, RunSetAside, { syncLogId, setAside: true });
+  return { syncLogId, setAside: true };
 }
 
 /**
@@ -80,13 +82,14 @@ export async function setRunAside(req: AuthenticatedRequest, res: Response): Pro
  * curator never set aside — or already brought back — answers the same 200
  * a first click gets, rather than a 404 that would make the chip a one-shot.
  */
-export async function bringRunBack(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user!.id;
-  const syncLogId = parseInt(String(req.params.syncLogId));
+export async function bringRunBack(
+  { params: { syncLogId }, caller }: { params: SyncLogParams; caller: Express.User },
+): Promise<RunSetAside> {
+  const userId = caller.id;
 
   await pool.query(
     `DELETE FROM curator_queue_set_aside WHERE user_id = $1 AND sync_log_id = $2`,
     [userId, syncLogId],
   );
-  respond(res, RunSetAside, { syncLogId, setAside: false });
+  return { syncLogId, setAside: false };
 }

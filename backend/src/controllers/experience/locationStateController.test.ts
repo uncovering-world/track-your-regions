@@ -30,7 +30,11 @@ vi.mock('./publishContents.js', () => ({ placeAfterRelease: vi.fn(async () => []
 
 import { pool } from '../../db/index.js';
 import { placeAfterRelease } from './publishContents.js';
-import { setLocationState } from './locationStateController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const postLocationsState = routeAt(experienceCurationRoutes, '/locations/:locationId/state', 'post');
 
 const mockedPlace = placeAfterRelease as unknown as ReturnType<typeof vi.fn>;
 
@@ -101,7 +105,7 @@ describe('setLocationState', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '999' }, body: { membership: 'former', expected: WAITING }, user: CURATOR } as never,
       res as never,
     );
@@ -115,7 +119,7 @@ describe('setLocationState', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { membership: 'former', expected: WAITING }, user: CURATOR } as never,
       res as never,
     );
@@ -131,7 +135,7 @@ describe('setLocationState', () => {
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { membership: 'former', expected: WAITING }, user: CURATOR } as never,
       makeRes() as never,
     );
@@ -156,7 +160,7 @@ describe('setLocationState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { membership: 'former', expected: WAITING }, user: CURATOR } as never,
       res as never,
     );
@@ -177,7 +181,7 @@ describe('setLocationState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { membership: 'present', expected: WAITING }, user: CURATOR } as never,
       res as never,
     );
@@ -194,7 +198,7 @@ describe('setLocationState', () => {
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { membership: 'former', expected: WAITING }, user: CURATOR } as never,
       makeRes() as never,
     );
@@ -214,7 +218,7 @@ describe('setLocationState', () => {
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { existence: 'lost', expected: WAITING }, user: CURATOR } as never,
       makeRes() as never,
     );
@@ -230,7 +234,7 @@ describe('setLocationState', () => {
     const { client, queries } = makeClient({ source_membership: 'former' });
     mockedConnect.mockResolvedValue(client);
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       {
         params: { locationId: '13211' },
         body: { membership: 'present', expected: { membership: 'former', existence: 'extant', flagged: true } },
@@ -252,7 +256,7 @@ describe('setLocationState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { membership: 'former', expected: WAITING }, user: CURATOR } as never,
       res as never,
     );
@@ -268,7 +272,7 @@ describe('setLocationState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       {
         params: { locationId: '13211' },
         body: { membership: 'former', expected: { membership: 'former', existence: 'extant', flagged: true } },
@@ -291,7 +295,7 @@ describe('setLocationState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       {
         params: { locationId: '13211' },
         body: { membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: false } },
@@ -311,7 +315,7 @@ describe('setLocationState', () => {
     const { client } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { membership: 'present', expected: WAITING }, user: CURATOR } as never,
       makeRes() as never,
     );
@@ -329,7 +333,7 @@ describe('setLocationState', () => {
     const { client } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { membership: 'former', expected: WAITING }, user: CURATOR } as never,
       makeRes() as never,
     );
@@ -347,7 +351,7 @@ describe('setLocationState', () => {
     const { client } = makeClient({ existence: 'lost', missing_since: null });
     mockedConnect.mockResolvedValue(client);
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       {
         params: { locationId: '13211' },
         body: { existence: 'extant', expected: { membership: 'present', existence: 'lost', flagged: false } },
@@ -369,7 +373,7 @@ describe('setLocationState', () => {
     const { client } = makeClient({ missing_since: null });
     mockedConnect.mockResolvedValue(client);
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       {
         params: { locationId: '13211' },
         body: { existence: 'lost', expected: { membership: 'present', existence: 'extant', flagged: false } },
@@ -393,7 +397,7 @@ describe('setLocationState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       {
         params: { locationId: '13211' },
         body: { existence: 'extant', expected: { membership: 'former', existence: 'lost', flagged: false } },
@@ -417,7 +421,7 @@ describe('setLocationState', () => {
     const { client } = makeClient({ source_membership: 'former', missing_since: null });
     mockedConnect.mockResolvedValue(client);
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       {
         params: { locationId: '13211' },
         body: { membership: 'present', expected: { membership: 'former', existence: 'extant', flagged: false } },
@@ -439,7 +443,7 @@ describe('setLocationState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { membership: 'present', expected: WAITING }, user: CURATOR } as never,
       res as never,
     );
@@ -459,7 +463,7 @@ describe('setLocationState', () => {
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { membership: 'former', expected: WAITING }, user: CURATOR } as never,
       res as never,
     );
@@ -474,7 +478,7 @@ describe('setLocationState', () => {
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
-    await setLocationState(
+    await answerRoute(postLocationsState, 
       { params: { locationId: '13211' }, body: { existence: 'lost', expected: WAITING }, user: CURATOR } as never,
       makeRes() as never,
     );

@@ -39,8 +39,12 @@ vi.mock('../../services/sync/imageCredit.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { creditForOneImage } from '../../services/sync/imageCredit.js';
-import { editWork } from './workEditController.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const patchWorksEdit = routeAt(experienceCurationRoutes, '/:id/works/:treasureId/edit', 'patch');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -125,7 +129,7 @@ describe('editWork', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const res = makeRes();
 
-    await editWork(request({ artists: ['Agasias of Ephesus'] }) as never, res as never);
+    await answerRoute(patchWorksEdit, request({ artists: ['Agasias of Ephesus'] }) as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(mockedConnect).not.toHaveBeenCalled();
@@ -140,7 +144,7 @@ describe('editWork', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
-    await editWork(request({ artists: ['Agasias of Ephesus'] }) as never, res as never);
+    await answerRoute(patchWorksEdit, request({ artists: ['Agasias of Ephesus'] }) as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(403);
     // Nothing was opened, so nothing has to be rolled back.
@@ -155,7 +159,7 @@ describe('editWork', () => {
 
     // Agasias of Ephesus carved it; Nicolas Cordier restored an arm in the 17th
     // century, which is not the same claim on a work.
-    await editWork(request({ artists: ['Agasias of Ephesus'] }) as never, res as never);
+    await answerRoute(patchWorksEdit, request({ artists: ['Agasias of Ephesus'] }) as never, res as never);
 
     const write = only(queries, 'UPDATE treasures');
     expect(write.params[3]).toEqual(['Agasias of Ephesus']);
@@ -170,7 +174,7 @@ describe('editWork', () => {
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValueOnce(client);
 
-    await editWork(request({ name: 'Borghese Gladiator' }) as never, makeRes() as never);
+    await answerRoute(patchWorksEdit, request({ name: 'Borghese Gladiator' }) as never, makeRes() as never);
 
     // OBJECT_LOCK's rule: the audit row reaches `experiences` whatever this
     // handler names, so taking the work first would hold one row and wait for
@@ -187,7 +191,7 @@ describe('editWork', () => {
     const { client, queries } = makeClient({ curated_fields: ['name'] });
     mockedConnect.mockResolvedValueOnce(client);
 
-    await editWork(request({ artists: ['Agasias of Ephesus'] }) as never, makeRes() as never);
+    await answerRoute(patchWorksEdit, request({ artists: ['Agasias of Ephesus'] }) as never, makeRes() as never);
 
     // A curator who corrected the title last month must not hand it back by
     // correcting the attribution today.
@@ -200,7 +204,7 @@ describe('editWork', () => {
     const { client, queries } = makeClient({ curated_fields: ['name'] });
     mockedConnect.mockResolvedValueOnce(client);
 
-    await editWork(request({ year: -100 }) as never, makeRes() as never);
+    await answerRoute(patchWorksEdit, request({ year: -100 }) as never, makeRes() as never);
 
     // `accept-source` takes keys back off a claim set, and one landing between an
     // unlocked read and this write would be undone by the rewrite.
@@ -214,7 +218,7 @@ describe('editWork', () => {
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValueOnce(client);
 
-    await editWork(request({ artists: [] }) as never, makeRes() as never);
+    await answerRoute(patchWorksEdit, request({ artists: [] }) as never, makeRes() as never);
 
     // An empty list is a value: *Salvator Mundi* reading "Leonardeschi" is worse
     // than reading nothing, and COALESCE cannot tell the two requests apart.
@@ -228,7 +232,7 @@ describe('editWork', () => {
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValueOnce(client);
 
-    await editWork(request({ name: 'Borghese Gladiator' }) as never, makeRes() as never);
+    await answerRoute(patchWorksEdit, request({ name: 'Borghese Gladiator' }) as never, makeRes() as never);
 
     const write = only(queries, 'UPDATE treasures');
     // The two booleans that say "this request was about that column".
@@ -242,7 +246,7 @@ describe('editWork', () => {
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValueOnce(client);
 
-    await editWork(request({ artists: ['Agasias of Ephesus'] }) as never, makeRes() as never);
+    await answerRoute(patchWorksEdit, request({ artists: ['Agasias of Ephesus'] }) as never, makeRes() as never);
 
     const log = only(queries, 'experience_curation_log');
     // The action is a literal in the statement, not a parameter, and it has to
@@ -265,7 +269,7 @@ describe('editWork', () => {
     mockedConnect.mockResolvedValueOnce(client);
     const res = makeRes();
 
-    await editWork(request({ imageUrl: COMMONS_FILE }) as never, res as never);
+    await answerRoute(patchWorksEdit, request({ imageUrl: COMMONS_FILE }) as never, res as never);
 
     const write = only(queries, 'UPDATE treasures');
     expect(write.params[7]).toBe(true);
@@ -288,7 +292,7 @@ describe('editWork', () => {
     const { client } = makeClient();
     mockedConnect.mockResolvedValueOnce(client);
 
-    await editWork(request({ imageUrl: COMMONS_FILE }) as never, makeRes() as never);
+    await answerRoute(patchWorksEdit, request({ imageUrl: COMMONS_FILE }) as never, makeRes() as never);
 
     // A lock held across a request to somebody else's server is a lock held for
     // as long as they feel like taking. `connect` is what opens the transaction,
@@ -305,7 +309,7 @@ describe('editWork', () => {
 
     // '' is how a form says "no picture" — and a stored credit under no
     // photograph names somebody for something nobody can see.
-    await editWork(request({ imageUrl: '' }) as never, makeRes() as never);
+    await answerRoute(patchWorksEdit, request({ imageUrl: '' }) as never, makeRes() as never);
 
     const write = only(queries, 'UPDATE treasures');
     expect(write.params[7]).toBe(true);
@@ -319,7 +323,7 @@ describe('editWork', () => {
     const { client, queries } = makeClient({ image_url: COMMONS_FILE });
     mockedConnect.mockResolvedValueOnce(client);
 
-    await editWork(request({ year: -100 }) as never, makeRes() as never);
+    await answerRoute(patchWorksEdit, request({ year: -100 }) as never, makeRes() as never);
 
     const write = only(queries, 'UPDATE treasures');
     expect(write.params[7]).toBe(false);
@@ -335,7 +339,7 @@ describe('editWork', () => {
     const { client, queries } = makeClient({ image_url: null });
     mockedConnect.mockResolvedValueOnce(client);
 
-    await editWork(request({ imageUrl: COMMONS_FILE }) as never, makeRes() as never);
+    await answerRoute(patchWorksEdit, request({ imageUrl: COMMONS_FILE }) as never, makeRes() as never);
 
     const details = JSON.parse(String(only(queries, 'experience_curation_log').params[3]));
     expect(details).toEqual({
@@ -350,7 +354,7 @@ describe('editWork', () => {
     mockedConnect.mockResolvedValueOnce(client);
     const res = makeRes();
 
-    await editWork(request({ artists: ['Agasias of Ephesus'] }) as never, res as never);
+    await answerRoute(patchWorksEdit, request({ artists: ['Agasias of Ephesus'] }) as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(queries.map(q => q.sql)).toContain('ROLLBACK');

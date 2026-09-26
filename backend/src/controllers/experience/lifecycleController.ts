@@ -16,14 +16,14 @@
  * decides about the row itself, under its lock.
  */
 
-import { Response } from 'express';
 import type { PoolClient } from 'pg';
-import { respond } from '../../api/respond.js';
-import { AdmissionResult, ExperienceStateResult } from '../../api/responses/curation.js';
+import type { z } from 'zod/v4';
+import type { AdmissionResult, ExperienceStateResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
+import type { experienceAdmissionBodySchema, idParamSchema, lifecycleStateBodySchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
@@ -70,24 +70,20 @@ export interface AnswerRefusal {
  * stop appearing in the queue. Sending `membership: 'present'` alone is the
  * "false alarm" case — the source hiccupped and the object never went anywhere.
  */
-export async function setExperienceState(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-  const body = req.body as StateAnswer;
-
-  if (!body.membership && !body.existence) {
-    res.status(400).json({ error: 'Nothing to decide: pass membership, existence, or both' });
-    return;
-  }
+export async function setExperienceState(
+  { params: { id: experienceId }, body, caller }: {
+    params: z.output<typeof idParamSchema>; body: z.output<typeof lifecycleStateBodySchema>; caller: Express.User;
+  },
+): Promise<ExperienceStateResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   const expResult = await pool.query(
     `SELECT id, source_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
   const existing = expResult.rows[0];
 
@@ -95,17 +91,15 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
     userId, userRole, experienceId, existing.source_id as number,
   );
   if (!permitted) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   const outcome = await answerStateUnderLock(experienceId, userId, logRegionId, body);
   if (outcome.refusal) {
-    const { status, ...payload } = outcome.refusal;
-    res.status(status).json(payload);
-    return;
+    const { status, ...body } = outcome.refusal;
+    throw new Refusal(status, body);
   }
-  respond(res, ExperienceStateResult, outcome.result!);
+  return outcome.result!;
 }
 
 /**
@@ -323,27 +317,27 @@ function iconicAfterVerdictSql(admitted: boolean): string {
  * not silently re-hide a row the first one just put back — while `override`
  * needs none: it reveals, and two curators clicking it reach the same state.
  */
-export async function setExperienceAdmission(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-  const userId = req.user!.id;
-  const userRole = req.user!.role;
-  const body = req.body as AdmissionAnswer;
+export async function setExperienceAdmission(
+  { params: { id: experienceId }, body, caller }: {
+    params: z.output<typeof idParamSchema>; body: z.output<typeof experienceAdmissionBodySchema>; caller: Express.User;
+  },
+): Promise<AdmissionResult> {
+  const userId = caller.id;
+  const userRole = caller.role;
 
   const expResult = await pool.query(
     `SELECT id, source_id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
-    res.status(404).json({ error: 'Experience not found' });
-    return;
+    throw notFound('Experience not found');
   }
 
   const { permitted, logRegionId } = await resolveExperienceScope(
     userId, userRole, experienceId, expResult.rows[0].source_id as number,
   );
   if (!permitted) {
-    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-    return;
+    throw createError('You do not have curator permissions for this experience', 403);
   }
 
   // Named field by field: `pin` is the batch's to set, never a request's, and a
@@ -352,11 +346,10 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     decision: body.decision, note: body.note,
   });
   if (outcome.refusal) {
-    const { status, ...payload } = outcome.refusal;
-    res.status(status).json(payload);
-    return;
+    const { status, ...body } = outcome.refusal;
+    throw new Refusal(status, body);
   }
-  respond(res, AdmissionResult, outcome.result!);
+  return outcome.result!;
 }
 
 /** The two answers to a refusal, and the curator's note. */

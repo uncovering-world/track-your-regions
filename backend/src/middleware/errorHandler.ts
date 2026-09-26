@@ -38,6 +38,23 @@ export function failure(message: string, statusCode: number, code?: string): Api
   return error;
 }
 
+/**
+ * A refusal whose answer carries more than its sentence — the row as it now
+ * stands, for the client to redraw from — sent as written. `error` is a
+ * sentence the product wrote; every other key is the handler's own, never an
+ * error's text.
+ */
+export class Refusal extends Error {
+  override name = 'Refusal';
+
+  constructor(
+    readonly statusCode: number,
+    readonly body: { readonly error: string; readonly [detail: string]: unknown },
+  ) {
+    super(body.error);
+  }
+}
+
 // Error handling middleware
 export function errorHandler(
   err: Error | ApiError,
@@ -45,6 +62,12 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
+  // An answer the handler wrote, not a failure: nothing to log.
+  if (err instanceof Refusal) {
+    res.status(err.statusCode).json(err.body);
+    return;
+  }
+
   console.error('Error:', err);
 
   if (err instanceof z.ZodError) {
@@ -93,17 +116,21 @@ export function errorHandler(
   }
 
   const statusCode = 'statusCode' in err ? err.statusCode : 500;
+  res.status(statusCode).json(ordinaryAnswer(err, statusCode));
+}
 
+/** The body of any other failure: its sentence, masked where it may be a library's. */
+function ordinaryAnswer(err: Error | ApiError, statusCode: number): Record<string, unknown> {
   // In production, mask internal error messages on 500s to avoid leaking implementation details
   const message = statusCode >= 500 && process.env.NODE_ENV === 'production' && !(err instanceof ReaderFacingError)
     ? 'Internal server error'
     : err.message || 'Internal server error';
 
-  res.status(statusCode).json({
+  return {
     error: message,
     ...('details' in err && err.details ? { details: err.details } : {}),
     ...(err instanceof ReaderFacingError && 'code' in err && typeof err.code === 'string' ? { code: err.code } : {}),
-  });
+  };
 }
 
 // Validation middleware factory

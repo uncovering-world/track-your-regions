@@ -64,8 +64,9 @@ const CHANGED_SNAPSHOT: ExperienceSnapshot = {
 };
 
 import {
-  grantScope, makeClient, none, only, publish, resetPublishMocks, type Proposed,
+  grantScope, makeClient, mockedConnect, none, only, publish, resetPublishMocks, type Proposed,
 } from './publishController.fixtures.js';
+import { publishUnderLock } from './publishController.js';
 
 beforeEach(resetPublishMocks);
 
@@ -166,23 +167,24 @@ describe('publishing a held proposal', () => {
   });
 
   it('refuses a selection at a row that is holding nothing', async () => {
-    grantScope();
     // The pointer was cleared while the card was open — somebody else answered
     // it, or a later run withdrew the proposal. Every gate opens on that path:
     // nothing is written, so the staleness check exempts a caller who named no
     // run, and there is no proposal to be missing either. Reporting success
     // would tell the curator they had answered a card that is not there.
     //
-    // Sent with no run id, which is the shape that reached the end. The schema
-    // refuses such a body over HTTP; the writer refuses it here, because
-    // `publishUnderLock` is exported and the guard has to hold on its own.
+    // Sent with no run id, which is the shape that reached the end. The route's
+    // schema refuses such a body; the writer refuses it here, because
+    // `publishUnderLock` is exported to the batch and the guard has to hold on
+    // its own.
     const { client, queries } = makeClient({
       row: { curation_state: 'auto', pending_change_sync_log_id: null },
     });
+    mockedConnect.mockResolvedValue(client);
 
-    const res = await publish({ heldFields: ['name'] }, client);
+    const outcome = await publishUnderLock(5, 1, null, { heldFields: ['name'] });
 
-    expect(res.status).toHaveBeenCalledWith(409);
+    expect(outcome.refusal?.status).toBe(409);
     expect(none(queries, 'UPDATE experiences')).toBe(true);
   });
 
