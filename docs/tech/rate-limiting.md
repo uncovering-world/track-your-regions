@@ -59,7 +59,7 @@ Routes behind `requireAuth` + `requireAdmin` or `requireCurator` are **not** rat
 - Admin operations include long-running batch tasks (geometry computation, sync) where rate limiting could cause failures
 - The attack surface is negligible (requires compromised admin credentials)
 
-**Exempt by default:** `adminRoutes.ts`, `divisionRoutes.ts` (mounted behind admin middleware), `viewRoutes.ts`, `aiRoutes.ts`, plus write operations in `worldViewRoutes.ts` and `experienceRoutes.ts` curation routes.
+**Exempt by default:** `adminRoutes.ts`, `divisionRoutes.ts` (every route declared `admin`), `viewRoutes.ts`, `aiRoutes.ts`, plus write operations in `worldViewRoutes.ts` and `experienceRoutes.ts` curation routes.
 
 The exemption is about the *attack* surface, and it stops applying when a request
 is expensive to the system regardless of who sends it. The exceptions are named here, and the
@@ -126,7 +126,7 @@ all but `/:id/admission` and the criterion decides per branch, not per endpoint.
 
 The ones that remain — `/:id/state`, `/:id/decline-source`, `/:id/decline-held`,
 `/:id/works/:treasureId/edit`, `/review/queue` — stay exempt, checked rather than
-assumed: each ends at `res.json` with nothing after its `client.release()`.
+assumed: nothing follows any of their `client.release()`.
 `/:id/decline-source` is the plainest of
 them: it writes one small row per field and does not touch the experience at all,
 because the value it refuses had already won every run. `/:id/decline-held` (#722)
@@ -250,7 +250,7 @@ to a curator, whose all-matching walk sends one request per hundred rows. The
 two single-row refusals beside it (ADR-0053) part on the same check. `POST
 /:id/refuse-arrival` joins the verified-exempt list: one membership row inside
 one transaction, touching nothing a reader sees — the row was hidden already —
-and ending at `res.json` with nothing after its `client.release()`. `POST
+with nothing after its `client.release()`. `POST
 /:id/refuse-contents` carries `authenticatedLimiter`, for the branch
 `/:id/publish` is limited for: a refused point counts toward no region any more
 (placement's insert carries `refused_at IS NULL`, ADR-0053) and releases the
@@ -295,7 +295,16 @@ at 60/min and leave the human alone, unless a single call is expensive on its ow
 (a re-match is 20–130s and discards its predecessor's output; a publish is one
 transaction). § 5 above records which routes this has been applied to and why.
 
-**Important:** Always apply rate limiting middleware **before** the route handler in the middleware chain. For per-route application, place it as the first middleware argument:
+**Important:** A rate limiter runs **before** anything else a route does. A declared route (ADR-0071) names it in its declaration, and the registry puts it first in the chain:
+
+```typescript
+defineRoute({
+  method: 'get', path: '/example', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+  query: schema, response: Answer, handler,
+});
+```
+
+A route file not yet declared places it as the first middleware argument:
 
 ```typescript
 router.get('/example', publicReadLimiter, validate(schema, 'query'), optionalAuth, handler);
