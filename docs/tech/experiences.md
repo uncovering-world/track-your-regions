@@ -3722,6 +3722,28 @@ to break. The table's writers are a closed list the backend lint names
 (`EXPERIENCE_LOCATION_WRITE_RULES`): that module; the run's `locationWriter.ts`, which takes the
 same lock; and the seed.
 
+**So are a venue's works and their links** (#1072). Every curator write to `treasures` and
+`experience_treasures` is in `controllers/experience/workWriter.ts` and requires the venue's
+`LockedExperience`:
+
+- `publishUnreadLinks` and `publishUnreadWorks`, the two halves of a publish;
+- `markUnreadLinksRefused` and `restoreRefusedLinks`, the refusal and its take-back;
+- `lockWork` and `correctWork`, a curator's correction;
+- `writeHeldWorkFields`, a published held work, whose fields `publishHeldParts.ts` plans as data
+  rather than as a statement.
+
+A link write names the venue (`experience_id`). A work is one row for every venue that holds it
+(ADR-0025 decision 2), so a write to it goes through a link of the venue whose token it spends:
+the Rijksmuseum's token cannot correct a work only the Mauritshuis holds. For the same reason
+the venue lock does not serialise two curators correcting one work from two venues, so the work
+row takes a lock of its own, after the venue: `lockWork` for a correction, and `lockPart` for a
+held field. Every such transaction takes a venue first and its works second, so two that each
+touch one work cannot wait for each other in opposite orders. A publish touches several, in the
+record's order and then the scan's, so two venues sharing two works and publishing at the same
+moment can still deadlock, and Postgres fails one publish; the fixed order is #1095. The tables' writers are a closed list the backend lint names
+(`WORK_WRITE_RULES`): that module; the run's `museum/treasureWriter.ts` and
+`museum/linkWithdrawal.ts`; and the seed.
+
 The **order**, because the audit row's foreign key reaches `experiences` even in a handler that
 never names it, so a writer that took the point first and logged afterwards was holding one row
 and waiting for the other. That binds `writeExperienceLocations` too, which is why the sync's
