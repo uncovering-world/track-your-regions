@@ -92,7 +92,7 @@ A tier whose gates all sit on untouched inputs prints the sentence rather than
 nothing at all — on a clean `main`, `npm run check` says
 
 ```text
-Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:shared, typecheck:shared, knip:shared, lint:circular, db:types, security:deps, lint:shell, lint:docker, lint:actions, lint:md, lint:links, lint:openapi, lint:pointers, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
+Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:shared, typecheck:shared, knip:shared, lint:circular, db:types, security:deps, lint:shell, lint:docker, lint:actions, lint:md, lint:links, lint:openapi, api:breaking, lint:pointers, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
 ```
 
 and exits 0. That is the one line this runner exists to print: a gate that did
@@ -127,6 +127,7 @@ everything or the base was simply unknown.
 | `docker` | `/(^\|\/)Dockerfile[^/]*$/` | hadolint reads the Dockerfiles themselves, including their per-stage variants. |
 | `workflows` | `.github/workflows/` | actionlint parses the workflow files themselves — their syntax, their expressions, the shell in their `run:` blocks. Every one of them, not only ci.yml: a workflow is checked by nothing else, so a mistake in one is found by the run that hits it, on the branch it is already merged to. |
 | `prose` | `/\.(?:md\|ts\|tsx\|mjs\|cjs\|js\|sql\|sh\|py\|yml\|yaml)$/` | Every tracked file the line-pointer pass reads — Markdown, and each file type that carries a comment — by the extension list the pass itself declares (scripts/lint-line-pointers.mjs), whichever directory the file sits in. |
+| `api-contract` | `packages/shared/src/openapi.generated.json`, `scripts/openapi-breaking.mjs` | The OpenAPI document a client is generated from (ADR-0072), and the check that compares it with the base. The document also sits under app, whose gates regenerate and lint it; this class is what asks whether it still serves a client built against the last one. |
 | `tooling` | `.github/workflows/ci.yml`, `package.json`, `package-lock.json`, `scripts/gates.mjs`, `scripts/require-node-tools.sh`, `scripts/require-py-tools.sh`, `scripts/require-python-312.sh`, `scripts/scan-image.sh`, `.semgrepignore`, `.markdownlint-cli2.jsonc`, `docs/tech/gates.md` | A root config reaches every stack — it decides what the gates are, not what they read — so a change to one runs everything. That is the conservative answer to the reach question #783 had to settle, and the only one that cannot skip a gate its own change just broke. |
 
 ### Gates
@@ -151,6 +152,7 @@ everything or the base was simply unknown.
 | `lint:md` | check | `docs` | `npm run lint:md` | check |
 | `lint:links` | check | `docs` | `npm run lint:links` | check |
 | `lint:openapi` | check | `app` | `npm run lint:openapi` | check |
+| `api:breaking` | check | `api-contract` | `npm run api:breaking` | check |
 | `lint:pointers` | check | `prose` | `node scripts/lint-line-pointers.mjs` | check |
 | `check:py` | check | `python` | `npm run check:py` | check |
 | `security:py:bandit` | check | `python` | `npm run security:py:bandit` | check |
@@ -315,6 +317,38 @@ Success with nothing run on it — because that is the part a reader of the diff
 cannot see. The spec runs in the backend's vitest lane, on the host and in the
 container, which mounts that one workflow file read-only beside the repository
 files the suite already reads.
+
+## The API contract
+
+The OpenAPI document (`packages/shared/src/openapi.generated.json`, ADR-0072) is what a native
+client is generated from, so a change to it can break a client that was built against the
+previous one: a path removed, a response field removed or narrowed, a request field newly
+required. `api:breaking` (`scripts/openapi-breaking.mjs`) asks that of every change to the
+`api-contract` class:
+- It takes the document at the merge base the map settles on: `--base` when the run was given
+  one (the runner hands it to each gate as `GATES_BASE`), `GATES_BASE` in CI, and `main` on a
+  machine.
+- It compares that document with the one in the tree using oasdiff, pinned by digest.
+- It names each change oasdiff classes as breaking, and apart from those, each it classes as
+  possibly breaking, such as a value added to an enum a client may switch over.
+- In CI the count is a warning annotation on the run, and the full list goes to the job
+  summary.
+- A run with no base named at all (the zero sha CI sends on purpose for its weekly and dispatched
+  runs) has no earlier contract to be asked about, and passes with one line saying so. A run whose
+  named base has no merge base, as in a shallow checkout, never passes silently. It is annotated as not compared, and it earns what a
+  break would under the policy. A base older than the document holds no contract to break and
+  passes. That case is decided by `git ls-tree`, so an unreadable commit fails the check rather
+  than reading as "no document".
+
+**The policy is `warn` while no native client exists.** The web is built from the same commit as
+the backend it calls, so a break it does not survive fails its own typecheck in the same pull
+request. A native client does not ship with the backend: an installed app keeps calling the
+contract it was built against for as long as it stays installed. When the first native client is
+released, `POLICY` in the script becomes `fail`, and a deliberate break then needs one of two
+things:
+- a path kept and marked deprecated beside its replacement until the clients that call it are
+  gone;
+- a pull request that says in its description which client versions the break strands.
 
 ## What the map does not reach
 

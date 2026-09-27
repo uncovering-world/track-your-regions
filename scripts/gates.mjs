@@ -145,6 +145,15 @@ export const INPUTS = [
       + ' directory the file sits in.',
   },
   {
+    id: 'api-contract',
+    paths: ['packages/shared/src/openapi.generated.json', 'scripts/openapi-breaking.mjs'],
+    note:
+      'The OpenAPI document a client is generated from (ADR-0072), and the check'
+      + ' that compares it with the base. The document also sits under app, whose'
+      + ' gates regenerate and lint it; this class is what asks whether it still'
+      + ' serves a client built against the last one.',
+  },
+  {
     id: 'tooling',
     paths: [
       // In two classes, and both are true of it: `workflows` is what actionlint
@@ -213,6 +222,10 @@ export const GATES = [
   // from the route declarations into packages/shared/src, so a change to the
   // app is what can change it; the rules are in packages/shared/redocly.yaml.
   { id: 'lint:openapi', tier: 'check', inputs: ['app'], command: ['npm', 'run', 'lint:openapi'], job: 'check', setup: 'docker' },
+  // oasdiff between the base's OpenAPI document and this one (#1090): a warning
+  // while no native client exists, a failure once one does
+  // (`scripts/openapi-breaking.mjs` holds the policy).
+  { id: 'api:breaking', tier: 'check', inputs: ['api-contract'], command: ['npm', 'run', 'api:breaking'], job: 'check', setup: 'docker' },
   // A line pointer — a file name with a line number after it — is refused
   // wherever living prose lives: a Markdown page, a code comment, a workflow's
   // `#` line. Its input is the `prose` class, which is the pass's own
@@ -624,8 +637,12 @@ export function parseArgs(argv) {
  * to report, and a pure-ish return keeps this readable from a test. `spawn` is
  * injectable for the same reason — the shapes this prints are the whole point
  * of the runner, so a test drives them without spawning anything.
+ *
+ * A base given as `--base` reaches each gate as `GATES_BASE`, so a gate that
+ * compares against the base (`api:breaking`) compares against the one this run
+ * chose its gates by.
  */
-export function runTier(decision, tier, { all = false, spawn = spawnSync } = {}) {
+export function runTier(decision, tier, { all = false, spawn = spawnSync, base } = {}) {
   const gates = decision.gates.filter((gate) => gate.tier === tier);
 
   // "Everything applies" owes its sentence here as much as in the listing: a
@@ -663,7 +680,9 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync } = {})
     console.log(`▶ ${gate.id}  ${gate.command.join(' ')}`);
     const result = spawn(gate.command[0], gate.command.slice(1), {
       stdio: 'inherit',
-      env: process.env,
+      // `null` is what `parseArgs` leaves where no `--base` was given; only a
+      // string was given, and an empty one is given too (`resolveBase`).
+      env: typeof base === 'string' ? { ...process.env, GATES_BASE: base } : process.env,
     });
     ran.push(gate.id);
     // A gate killed by a signal, or one whose binary is not there, has no
@@ -758,7 +777,7 @@ function main(argv) {
     return;
   }
   if (args.mode === 'run') {
-    process.exit(runTier(decision, args.tier, { all: args.all }));
+    process.exit(runTier(decision, args.tier, { all: args.all, base: args.base }));
   }
   printList(decision, changed, args.rev);
 }
