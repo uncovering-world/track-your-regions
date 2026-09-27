@@ -10,7 +10,17 @@ import type {
   PublishWaitingResult, SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs,
   SyncStarted, SyncStatus, UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
 } from '@tyr/shared/api';
-import { authFetchJson } from '../fetchUtils';
+import {
+  deleteAdminCuratorsByAssignmentId, deleteAdminSyncSourcesBySourceIdCache, getAdminCurators,
+  getAdminCuratorsByUserIdActivity, getAdminExperiencesAssignRegionsStatus, getAdminExperiencesCountsByRegion,
+  getAdminSyncLogs, getAdminSyncLogsByLogId, getAdminSyncLogsByLogIdChanges, getAdminSyncSources,
+  getAdminSyncSourcesBySourceIdCache, getAdminSyncSourcesBySourceIdStatus, getAdminUsersSearch, postAdminCurators,
+  postAdminExperiencesAssignRegions, postAdminExperiencesAssignRegionsCancel, postAdminSyncSourcesBySourceIdCancel,
+  postAdminSyncSourcesBySourceIdFixImages, postAdminSyncSourcesBySourceIdStart,
+  postExperiencesSourcesBySourceIdPublishWaiting, putAdminSyncSourcesBySourceIdCacheByKindTtl,
+  putAdminSyncSourcesBySourceIdCurationGate, putAdminSyncSourcesBySourceIdLine, putAdminSyncSourcesReorder,
+  type CreateCuratorAssignmentBody, type GetAdminSyncLogsByLogIdChangesParams, type SourceLineBody,
+} from '../client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -25,8 +35,6 @@ export type {
   WikidataCache, WikidataCacheCleared, WikidataCacheKind, WikidataCacheTtlSet,
 } from '@tyr/shared/api';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
 // =============================================================================
 // Types
 // =============================================================================
@@ -36,13 +44,9 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
  * pair only for a source that has one. The route writes whichever keys the body
  * carries, so an absent finds pair leaves the row's own alone — and a finds pair
  * sent for a one-door source would give it a line no run of its would read.
+ * The shape is the document's.
  */
-export interface SourceLineBody {
-  enterSitelinks: number;
-  staySitelinks: number;
-  findEnterSitelinks?: number;
-  findStaySitelinks?: number;
-}
+export type { SourceLineBody } from '../client.generated';
 
 // =============================================================================
 // Sync API
@@ -52,7 +56,7 @@ export interface SourceLineBody {
  * Get all experience sources
  */
 export async function getSources(): Promise<ExperienceSources> {
-  return authFetchJson<ExperienceSources>(`${API_URL}/api/admin/sync/sources`);
+  return getAdminSyncSources();
 }
 
 /**
@@ -65,13 +69,9 @@ export async function startSync(
   sourceId: number,
   options: { dryRun?: boolean; refreshCache?: boolean } = {},
 ): Promise<SyncStarted> {
-  return authFetchJson<SyncStarted>(`${API_URL}/api/admin/sync/sources/${sourceId}/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      dryRun: options.dryRun ?? false,
-      refreshCache: options.refreshCache ?? false,
-    }),
+  return postAdminSyncSourcesBySourceIdStart(sourceId, {
+    dryRun: options.dryRun ?? false,
+    refreshCache: options.refreshCache ?? false,
   });
 }
 
@@ -87,9 +87,7 @@ export async function startSync(
  * sync does.
  */
 export async function fixPictures(sourceId: number): Promise<PictureRepairStarted> {
-  return authFetchJson<PictureRepairStarted>(`${API_URL}/api/admin/sync/sources/${sourceId}/fix-images`, {
-    method: 'POST',
-  });
+  return postAdminSyncSourcesBySourceIdFixImages(sourceId);
 }
 
 /**
@@ -97,17 +95,14 @@ export async function fixPictures(sourceId: number): Promise<PictureRepairStarte
  * discover it while debugging an answer from last week.
  */
 export async function getWikidataCache(sourceId: number): Promise<WikidataCache> {
-  return authFetchJson<WikidataCache>(`${API_URL}/api/admin/sync/sources/${sourceId}/cache`);
+  return getAdminSyncSourcesBySourceIdCache(sourceId);
 }
 
 /** Forget one kind, or everything when `kind` is absent. */
 export async function clearWikidataCache(
   sourceId: number, kind?: string,
 ): Promise<WikidataCacheCleared> {
-  const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
-  return authFetchJson<WikidataCacheCleared>(
-    `${API_URL}/api/admin/sync/sources/${sourceId}/cache${query}`, { method: 'DELETE' },
-  );
+  return deleteAdminSyncSourcesBySourceIdCache(sourceId, kind ? { kind } : undefined);
 }
 
 /**
@@ -120,27 +115,21 @@ export async function clearWikidataCache(
 export async function setWikidataCacheTtl(
   sourceId: number, kind: string, hours: number,
 ): Promise<WikidataCacheTtlSet> {
-  return authFetchJson<WikidataCacheTtlSet>(`${API_URL}/api/admin/sync/sources/${sourceId}/cache/${encodeURIComponent(kind)}/ttl`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hours }),
-  });
+  return putAdminSyncSourcesBySourceIdCacheByKindTtl(sourceId, kind, { hours });
 }
 
 /**
  * Get sync status for a source
  */
 export async function getSyncStatus(sourceId: number): Promise<SyncStatus> {
-  return authFetchJson<SyncStatus>(`${API_URL}/api/admin/sync/sources/${sourceId}/status`);
+  return getAdminSyncSourcesBySourceIdStatus(sourceId);
 }
 
 /**
  * Cancel sync for a source
  */
 export async function cancelSync(sourceId: number): Promise<SyncCancelled> {
-  return authFetchJson<SyncCancelled>(`${API_URL}/api/admin/sync/sources/${sourceId}/cancel`, {
-    method: 'POST',
-  });
+  return postAdminSyncSourcesBySourceIdCancel(sourceId);
 }
 
 /**
@@ -157,11 +146,7 @@ export async function cancelSync(sourceId: number): Promise<SyncCancelled> {
 export async function setCurationGate(
   sourceId: number, requiresCuration: boolean,
 ): Promise<CurationGateSet> {
-  return authFetchJson<CurationGateSet>(`${API_URL}/api/admin/sync/sources/${sourceId}/curation-gate`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ requiresCuration }),
-  });
+  return putAdminSyncSourcesBySourceIdCurationGate(sourceId, { requiresCuration });
 }
 
 /**
@@ -174,11 +159,7 @@ export async function setCurationGate(
 export async function setSourceLine(
   sourceId: number, line: SourceLineBody,
 ): Promise<SourceLineSet> {
-  return authFetchJson<SourceLineSet>(`${API_URL}/api/admin/sync/sources/${sourceId}/line`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(line),
-  });
+  return putAdminSyncSourcesBySourceIdLine(sourceId, line);
 }
 
 /**
@@ -195,20 +176,14 @@ export async function setSourceLine(
  * with the count missing rather than replaced by a `0` nothing checked.
  */
 export async function publishWaiting(sourceId: number): Promise<PublishWaitingResult> {
-  return authFetchJson<PublishWaitingResult>(`${API_URL}/api/experiences/sources/${sourceId}/publish-waiting`, {
-    method: 'POST',
-  });
+  return postExperiencesSourcesBySourceIdPublishWaiting(sourceId);
 }
 
 /**
  * Reorder experience sources (set display_priority)
  */
 export async function reorderSources(sourceIds: number[]): Promise<SourcesReordered> {
-  return authFetchJson<SourcesReordered>(`${API_URL}/api/admin/sync/sources/reorder`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sourceIds }),
-  });
+  return putAdminSyncSourcesReorder({ sourceIds });
 }
 
 /**
@@ -219,19 +194,14 @@ export async function getSyncLogs(
   limit = 20,
   offset = 0
 ): Promise<SyncLogs> {
-  const params = new URLSearchParams();
-  if (sourceId) params.set('sourceId', String(sourceId));
-  params.set('limit', String(limit));
-  params.set('offset', String(offset));
-
-  return authFetchJson<SyncLogs>(`${API_URL}/api/admin/sync/logs?${params}`);
+  return getAdminSyncLogs({ sourceId: sourceId || undefined, limit, offset });
 }
 
 /**
  * Get single sync log with details
  */
 export async function getSyncLogDetails(logId: number): Promise<SyncLogDetail> {
-  return authFetchJson<SyncLogDetail>(`${API_URL}/api/admin/sync/logs/${logId}`);
+  return getAdminSyncLogsByLogId(logId);
 }
 
 /**
@@ -242,21 +212,16 @@ export async function getSyncLogDetails(logId: number): Promise<SyncLogDetail> {
  */
 export async function getSyncLogChanges(
   logId: number,
-  params: {
-    type?: string; significance?: string; significantOnly?: boolean;
-    limit?: number; offset?: number;
-  } = {},
+  params: Omit<GetAdminSyncLogsByLogIdChangesParams, 'significantOnly'> & { significantOnly?: boolean } = {},
 ): Promise<SyncChanges> {
-  const search = new URLSearchParams();
-  if (params.type) search.set('type', params.type);
-  if (params.significance) search.set('significance', params.significance);
-  if (params.significantOnly) search.set('significantOnly', 'true');
-  if (params.limit !== undefined) search.set('limit', String(params.limit));
-  if (params.offset !== undefined) search.set('offset', String(params.offset));
-
-  return authFetchJson<SyncChanges>(
-    `${API_URL}/api/admin/sync/logs/${logId}/changes?${search}`
-  );
+  // Each goes only when it is set, in this order.
+  return getAdminSyncLogsByLogIdChanges(logId, {
+    type: params.type || undefined,
+    significance: params.significance || undefined,
+    significantOnly: params.significantOnly ? 'true' : undefined,
+    limit: params.limit,
+    offset: params.offset,
+  });
 }
 
 // =============================================================================
@@ -270,31 +235,21 @@ export async function startRegionAssignment(
   worldViewId: number,
   sourceId?: number
 ): Promise<AssignmentStarted> {
-  return authFetchJson<AssignmentStarted>(`${API_URL}/api/admin/experiences/assign-regions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ worldViewId, sourceId }),
-  });
+  return postAdminExperiencesAssignRegions({ worldViewId, sourceId });
 }
 
 /**
  * Get region assignment status
  */
 export async function getAssignmentStatus(worldViewId: number): Promise<AssignmentStatus> {
-  return authFetchJson<AssignmentStatus>(
-    `${API_URL}/api/admin/experiences/assign-regions/status?worldViewId=${worldViewId}`
-  );
+  return getAdminExperiencesAssignRegionsStatus({ worldViewId });
 }
 
 /**
  * Cancel region assignment
  */
 export async function cancelAssignment(worldViewId: number): Promise<AssignmentCancelled> {
-  return authFetchJson<AssignmentCancelled>(`${API_URL}/api/admin/experiences/assign-regions/cancel`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ worldViewId }),
-  });
+  return postAdminExperiencesAssignRegionsCancel({ worldViewId });
 }
 
 /**
@@ -304,10 +259,7 @@ export async function getExperienceCountsByRegion(
   worldViewId: number,
   sourceId?: number
 ): Promise<PlacementCounts> {
-  const params = new URLSearchParams({ worldViewId: String(worldViewId) });
-  if (sourceId) params.set('sourceId', String(sourceId));
-
-  return authFetchJson<PlacementCounts>(`${API_URL}/api/admin/experiences/counts-by-region?${params}`);
+  return getAdminExperiencesCountsByRegion({ worldViewId, sourceId: sourceId || undefined });
 }
 
 // =============================================================================
@@ -318,23 +270,14 @@ export async function getExperienceCountsByRegion(
  * List all curators with their scopes
  */
 export async function listCurators(): Promise<Curators> {
-  return authFetchJson<Curators>(`${API_URL}/api/admin/curators`);
+  return getAdminCurators();
 }
 
 /**
  * Create a curator assignment
  */
-export async function createCuratorAssignment(data: {
-  userId: number;
-  scopeType: 'region' | 'source' | 'global';
-  regionId?: number;
-  sourceId?: number;
-  notes?: string;
-}): Promise<CuratorAssignmentCreated> {
-  return authFetchJson<CuratorAssignmentCreated>(`${API_URL}/api/admin/curators`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
+export async function createCuratorAssignment(data: CreateCuratorAssignmentBody): Promise<CuratorAssignmentCreated> {
+  return postAdminCurators(data);
 }
 
 /**
@@ -343,9 +286,7 @@ export async function createCuratorAssignment(data: {
 export async function revokeCuratorAssignment(
   assignmentId: number,
 ): Promise<CuratorAssignmentRevoked> {
-  return authFetchJson<CuratorAssignmentRevoked>(`${API_URL}/api/admin/curators/${assignmentId}`, {
-    method: 'DELETE',
-  });
+  return deleteAdminCuratorsByAssignmentId(assignmentId);
 }
 
 /**
@@ -356,7 +297,7 @@ export async function getCuratorActivity(
   limit = 50,
   offset = 0,
 ): Promise<CuratorActivity> {
-  return authFetchJson<CuratorActivity>(`${API_URL}/api/admin/curators/${userId}/activity?limit=${limit}&offset=${offset}`);
+  return getAdminCuratorsByUserIdActivity(userId, { limit, offset });
 }
 
 /**
@@ -365,5 +306,5 @@ export async function getCuratorActivity(
 export async function searchUsers(
   query: string,
 ): Promise<UserSearchResults> {
-  return authFetchJson<UserSearchResults>(`${API_URL}/api/admin/users/search?q=${encodeURIComponent(query)}`);
+  return getAdminUsersSearch({ q: query });
 }

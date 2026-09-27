@@ -57,8 +57,11 @@ const routes = adminDeclaredRoutes.map(route => ({ method: route.method.toUpperC
 
 describe('the admin client and the admin routes', () => {
   it('reads the client\'s calls and the routes at all', () => {
-    // A reader that found nothing would pass the check below vacuously.
-    expect(calls.length).toBeGreaterThan(100);
+    // A reader that found nothing would pass the check below vacuously. The
+    // calls read here are the world-view import's, still built by hand until
+    // #1107; every other admin module calls the generated client, whose paths
+    // the compiler holds to the document.
+    expect(calls.length).toBeGreaterThan(60);
     expect(routes.length).toBeGreaterThan(100);
     expect(calls).toContainEqual({
       module: 'wvImportCoverage.ts', fn: 'splitDivisionsDeeper', method: 'POST',
