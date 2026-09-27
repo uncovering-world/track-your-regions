@@ -355,6 +355,22 @@ things:
   gone;
 - a pull request that says in its description which client versions the break strands.
 
+### The web client against the document
+
+`api:client` (`frontend/scripts/api-client.mjs`) regenerates the web's API client from the
+document with Orval (ADR-0073) and fails while the committed `frontend/src/api/client.generated.ts`
+is not what that generates.
+- Its inputs are `api-contract` and `app`, which the document's own path belongs to, and
+  `node-deps`, since an Orval upgrade changes the output as surely as a route does.
+- A changed route therefore asks for two regenerations in turn: `npm --prefix backend run
+  api:openapi` for the document (`openApi.test.ts` holds it), then `npm --prefix frontend run
+  api:client` for the client.
+- Orval writes the mutator's import relative to the file it writes, so the check generates beside
+  the committed file under a scratch name, compares the two, and removes the scratch file.
+- What the client buys is checked by the typecheck, not by this gate: a request the document does
+  not describe fails `typecheck:frontend` in any module that calls through the client
+  (`frontend/src/api/apiFetch.test.ts` pins that with `@ts-expect-error`).
+
 ### The running API against the document
 
 `npm run test:api` (`scripts/test-stack.sh run-api-contract`, `scripts/api-contract.mjs`, #1091)
