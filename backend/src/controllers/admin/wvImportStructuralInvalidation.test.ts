@@ -54,8 +54,6 @@ vi.mock('../../services/worldViewImport/spatialAnomalyDetector.js', () => ({
   detectAnomaliesForRegion: vi.fn(),
 }));
 
-import { reparentRegion } from './wvImportRenameController.js';
-import { removeRegionFromImport } from './wvImportTreeOpsController.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
 
@@ -64,6 +62,8 @@ const dismissChildrenRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:w
 const mergeChildIntoParentRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/merge-child', 'post');
 const pruneToLeavesRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/prune-to-leaves', 'post');
 const smartFlattenRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/smart-flatten', 'post');
+const reparentRegionRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/reparent-region', 'post');
+const removeRegionRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/remove-region', 'post');
 
 type Row = Record<string, unknown>;
 type Answer = [RegExp, Row[]];
@@ -130,7 +130,7 @@ describe('reparentRegion', () => {
     // two parents; here there is no membership to move.
     mockPoolQuery.mockImplementation(answering(POOL));
 
-    await reparentRegion(makeReq({ regionId: 200, newParentId: 300 }), makeRes());
+    await answerRoute(reparentRegionRoute, makeReq({ regionId: 200, newParentId: 300 }), makeRes());
 
     expect(invalidated()).toEqual([100, 300]);
     expect(clearedBeforeCommit()).toBe(true);
@@ -143,7 +143,7 @@ describe('reparentRegion', () => {
       return { rows: [], rowCount: 0 };
     });
 
-    await expect(reparentRegion(makeReq({ regionId: 200, newParentId: 300 }), makeRes())).rejects.toThrow('statement timeout');
+    await expect(answerRoute(reparentRegionRoute, makeReq({ regionId: 200, newParentId: 300 }), makeRes())).rejects.toThrow('statement timeout');
 
     const sqls = mockClientQuery.mock.calls.map(call => String(call[0]));
     expect(sqls).toContain('ROLLBACK');
@@ -153,7 +153,7 @@ describe('reparentRegion', () => {
   it('clears the old parent alone when a region is moved out to the root', async () => {
     mockPoolQuery.mockImplementation(answering(POOL));
 
-    await reparentRegion(makeReq({ regionId: 200, newParentId: null }), makeRes());
+    await answerRoute(reparentRegionRoute, makeReq({ regionId: 200, newParentId: null }), makeRes());
 
     expect(invalidated()).toEqual([100]);
   });
@@ -164,7 +164,7 @@ describe('reparentRegion', () => {
       ...POOL.slice(1),
     ]));
 
-    await reparentRegion(makeReq({ regionId: 200, newParentId: 300 }), makeRes());
+    await answerRoute(reparentRegionRoute, makeReq({ regionId: 200, newParentId: 300 }), makeRes());
 
     expect(invalidated()).toEqual([300]);
   });
@@ -178,7 +178,7 @@ describe('reparentRegion', () => {
     ]));
 
     const res = makeRes();
-    await reparentRegion(makeReq({ regionId: 200, newParentId: 300 }), res);
+    await answerRoute(reparentRegionRoute, makeReq({ regionId: 200, newParentId: 300 }), res);
 
     expect(res._status).toBe(400);
     expect(invalidated()).toEqual([]);
@@ -187,7 +187,7 @@ describe('reparentRegion', () => {
   it('clears nothing when the request moves a region to the parent it already has', async () => {
     mockPoolQuery.mockImplementation(answering(POOL));
 
-    await reparentRegion(makeReq({ regionId: 200, newParentId: 100 }), makeRes());
+    await answerRoute(reparentRegionRoute, makeReq({ regionId: 200, newParentId: 100 }), makeRes());
 
     expect(invalidated()).toEqual([]);
   });
@@ -249,7 +249,7 @@ describe('removeRegionFromImport', () => {
   it('clears the parent when the children are moved up into it', async () => {
     mockClientQuery.mockImplementation(answering([found]));
 
-    await removeRegionFromImport(makeReq({ regionId: 200, reparentChildren: true }), makeRes());
+    await answerRoute(removeRegionRoute, makeReq({ regionId: 200, reparentChildren: true }), makeRes());
 
     expect(invalidated()).toEqual([100]);
   });
@@ -257,7 +257,7 @@ describe('removeRegionFromImport', () => {
   it('clears the parent when the whole branch is deleted', async () => {
     mockClientQuery.mockImplementation(answering([found, [/WITH RECURSIVE/, [{ id: 301 }]]]));
 
-    await removeRegionFromImport(makeReq({ regionId: 200, reparentChildren: false }), makeRes());
+    await answerRoute(removeRegionRoute, makeReq({ regionId: 200, reparentChildren: false }), makeRes());
 
     expect(invalidated()).toEqual([100]);
   });
@@ -267,7 +267,7 @@ describe('removeRegionFromImport', () => {
       [/SELECT id, name, parent_region_id FROM regions/, [{ id: 200, name: 'Root', parent_region_id: null }]],
     ]));
 
-    await removeRegionFromImport(makeReq({ regionId: 200, reparentChildren: true }), makeRes());
+    await answerRoute(removeRegionRoute, makeReq({ regionId: 200, reparentChildren: true }), makeRes());
 
     expect(invalidated()).toEqual([]);
   });

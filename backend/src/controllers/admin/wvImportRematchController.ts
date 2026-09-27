@@ -8,11 +8,11 @@
  * See ADR-0009 for the domain-split rationale.
  */
 
-import { Response } from 'express';
+import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { respond } from '../../api/respond.js';
-import { RematchStarted, RematchStatus } from '../../api/responses/worldViewImport.js';
+import type { RematchStarted, RematchStatus } from '../../api/responses/worldViewImport.js';
+import { createError, notFound } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportRematchBodySchema } from '../../types/index.js';
 import { runMatchingPolicy } from '../../services/worldViewImport/index.js';
 import { createInitialProgress, type ImportProgress, type MatchingPolicy } from '../../services/worldViewImport/types.js';
 import { IMPORT_SOURCE_TYPES_ALL, defaultMatchingPolicy } from '../../services/worldViewImport/sourceTypes.js';
@@ -38,8 +38,12 @@ const runningRematches = new Map<number, { progress: ImportProgress; startTime: 
  * deleted, including manually accepted matches. Hand-resolve *after* a re-match,
  * never before.
  */
-export async function rematchWorldView(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
+export async function rematchWorldView(
+  { params: { worldViewId }, body: { matchingPolicy: requested } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof wvImportRematchBodySchema>;
+  },
+): Promise<RematchStarted> {
   console.log(`[WV Import] POST /matches/${worldViewId}/rematch`);
 
   // Check world view exists and is import-sourced
@@ -48,19 +52,16 @@ export async function rematchWorldView(req: AuthenticatedRequest, res: Response)
     [worldViewId, IMPORT_SOURCE_TYPES_ALL],
   );
   if (wvCheck.rows.length === 0) {
-    res.status(404).json({ error: 'Imported world view not found' });
-    return;
+    throw notFound('Imported world view not found');
   }
 
   // Check no rematch is already running
   const existing = runningRematches.get(worldViewId);
   if (existing && existing.progress.status === 'matching') {
-    res.status(409).json({ error: 'Re-matching is already running for this world view' });
-    return;
+    throw createError('Re-matching is already running for this world view', 409);
   }
 
-  const requested = (req.body as { matchingPolicy?: MatchingPolicy } | undefined)?.matchingPolicy;
-  const policy = requested ?? defaultMatchingPolicy(wvCheck.rows[0].source_type);
+  const policy: MatchingPolicy = requested ?? defaultMatchingPolicy(wvCheck.rows[0].source_type);
 
   const progress = createInitialProgress();
   progress.status = 'matching';
@@ -69,8 +70,7 @@ export async function rematchWorldView(req: AuthenticatedRequest, res: Response)
 
   // Run in background
   runRematch(worldViewId, progress, policy).catch((err) => {
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- worldViewId is a number
-    console.error(`[WV Import] Rematch error for worldView ${worldViewId}:`, err);
+    console.error('[WV Import] Rematch error for worldView %d:', worldViewId, err);
     progress.status = 'failed';
     progress.statusMessage = 'Re-match failed; the server log has the cause.';
   }).finally(() => {
@@ -82,7 +82,7 @@ export async function rematchWorldView(req: AuthenticatedRequest, res: Response)
     }, 300_000);
   });
 
-  respond(res, RematchStarted, { started: true, matchingPolicy: policy });
+  return { started: true, matchingPolicy: policy };
 }
 
 async function runRematch(
@@ -159,18 +159,16 @@ async function runRematch(
  * Get re-match progress.
  * GET /api/admin/wv-import/matches/:worldViewId/rematch/status
  */
-export function getRematchStatus(req: AuthenticatedRequest, res: Response): void {
-  const worldViewId = parseInt(String(req.params.worldViewId));
+export async function getRematchStatus(
+  { params: { worldViewId } }: { params: z.output<typeof worldViewIdParamSchema> },
+): Promise<RematchStatus> {
   const entry = runningRematches.get(worldViewId);
-  if (entry) {
-    respond(res, RematchStatus, {
-      status: entry.progress.status,
-      statusMessage: entry.progress.statusMessage,
-      countriesMatched: entry.progress.countriesMatched,
-      totalCountries: entry.progress.totalCountries,
-      noCandidates: entry.progress.noCandidates,
-    });
-  } else {
-    respond(res, RematchStatus, { status: 'idle' });
-  }
+  if (!entry) return { status: 'idle' };
+  return {
+    status: entry.progress.status,
+    statusMessage: entry.progress.statusMessage,
+    countriesMatched: entry.progress.countriesMatched,
+    totalCountries: entry.progress.totalCountries,
+    noCandidates: entry.progress.noCandidates,
+  };
 }

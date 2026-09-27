@@ -6,13 +6,15 @@
  * simplification of the owner region.
  */
 
-import { Response } from 'express';
+import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { syncImportMatchStatus } from '../worldView/helpers.js';
 import { detectAnomaliesForRegion } from '../../services/worldViewImport/spatialAnomalyDetector.js';
-import { respond } from '../../api/respond.js';
-import { SmartSimplifyApplied, SmartSimplifyMoves, type SmartSimplifyMove } from '../../api/responses/wvImportTreeOps.js';
+import type { SmartSimplifyApplied, SmartSimplifyMoves, SmartSimplifyMove } from '../../api/responses/wvImportTreeOps.js';
+import { badRequest, failure, notFound } from '../../middleware/errorHandler.js';
+import type {
+  worldViewIdParamSchema, wvImportSmartSimplifyApplySchema, wvImportSmartSimplifySchema,
+} from '../../types/index.js';
 
 // =============================================================================
 // Types
@@ -198,27 +200,33 @@ async function findSmartSimplifyMoves(children: Array<{ id: number; name: string
  * across sibling regions but split among multiple siblings.
  * POST /api/admin/wv-import/matches/:worldViewId/smart-simplify
  */
-export async function detectSmartSimplify(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { parentRegionId } = req.body;
+export async function detectSmartSimplify(
+  { params: { worldViewId }, body: { parentRegionId } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof wvImportSmartSimplifySchema>;
+  },
+): Promise<SmartSimplifyMoves> {
   console.log(`[WV Import] POST /matches/${worldViewId}/smart-simplify — parentRegionId=${parentRegionId}`);
 
-  let body: SmartSimplifyMoves;
+  let parentFound: boolean;
   try {
     const parentRegion = await pool.query(
       'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
       [parentRegionId, worldViewId],
     );
-    if (parentRegion.rows.length === 0) {
-      res.status(404).json({ error: 'Parent region not found in this world view' });
-      return;
-    }
+    parentFound = parentRegion.rows.length > 0;
+  } catch (err) {
+    console.error('[WV Import] Smart simplify detect failed:', err);
+    throw failure('Smart simplify detect failed', 500);
+  }
+  if (!parentFound) throw notFound('Parent region not found in this world view');
 
+  try {
     const childrenResult = await pool.query<{ id: number; name: string }>(
       'SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2',
       [parentRegionId, worldViewId],
     );
-    body = childrenResult.rows.length === 0
+    return childrenResult.rows.length === 0
       ? { moves: [], spatialAnomalies: [] }
       : {
         moves: await findSmartSimplifyMoves(childrenResult.rows),
@@ -226,22 +234,22 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
       };
   } catch (err) {
     console.error('[WV Import] Smart simplify detect failed:', err);
-    res.status(500).json({ error: 'Smart simplify detect failed' });
-    return;
+    throw failure('Smart simplify detect failed', 500);
   }
-  respond(res, SmartSimplifyMoves, body);
 }
 
 /**
  * Apply a single smart-simplify move: reassign divisions to the owner region, then simplify.
  * POST /api/admin/wv-import/matches/:worldViewId/smart-simplify/apply-move
  */
-export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { parentRegionId, ownerRegionId, memberRowIds } = req.body;
+export async function applySmartSimplifyMove(
+  { params: { worldViewId }, body: { parentRegionId, ownerRegionId, memberRowIds } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof wvImportSmartSimplifyApplySchema>;
+  },
+): Promise<SmartSimplifyApplied> {
   console.log(`[WV Import] POST /matches/${worldViewId}/smart-simplify/apply-move — parent=${parentRegionId} owner=${ownerRegionId} rows=${memberRowIds.length}`);
 
-  let body: SmartSimplifyApplied;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -252,9 +260,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
       [parentRegionId, worldViewId],
     );
     if (parentCheck.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Parent region not found in this world view' });
-      return;
+      throw notFound('Parent region not found in this world view');
     }
 
     const ownerCheck = await client.query(
@@ -262,9 +268,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
       [ownerRegionId, worldViewId],
     );
     if (ownerCheck.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Owner region not found in this world view' });
-      return;
+      throw notFound('Owner region not found in this world view');
     }
 
     // 2. Get child regions of parentRegionId
@@ -276,9 +280,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
 
     // Verify ownerRegionId is a child of parentRegionId
     if (!childIds.has(ownerRegionId)) {
-      await client.query('ROLLBACK');
-      res.status(400).json({ error: 'Owner region is not a child of the parent region' });
-      return;
+      throw badRequest('Owner region is not a child of the parent region');
     }
 
     // 3. Verify all memberRowIds belong to children of parentRegionId (security check)
@@ -287,17 +289,13 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
       [memberRowIds],
     );
     if (memberCheck.rows.length !== memberRowIds.length) {
-      await client.query('ROLLBACK');
-      res.status(400).json({ error: 'Some memberRowIds were not found' });
-      return;
+      throw badRequest('Some memberRowIds were not found');
     }
     const affectedRegionIds = new Set<number>();
     for (const row of memberCheck.rows) {
       const regionId = row.region_id as number;
       if (!childIds.has(regionId)) {
-        await client.query('ROLLBACK');
-        res.status(400).json({ error: `Member row ${row.id} belongs to region ${regionId} which is not a child of the parent` });
-        return;
+        throw badRequest(`Member row ${row.id} belongs to region ${regionId} which is not a child of the parent`);
       }
       affectedRegionIds.add(regionId);
     }
@@ -320,7 +318,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
 
     // 5. Move remaining members to the owner region
     const duplicateSet = new Set(duplicateRowIds);
-    const idsToMove = memberRowIds.filter((id: number) => !duplicateSet.has(id));
+    const idsToMove = memberRowIds.filter(id => !duplicateSet.has(id));
     let moveCount = duplicateRowIds.length; // count deleted duplicates as "moved"
     if (idsToMove.length > 0) {
       const moveResult = await client.query(
@@ -343,12 +341,11 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
     }
 
     console.log(`[WV Import] Smart-simplify applied: moved ${moveCount} members to region ${ownerRegionId}`);
-    body = { moved: moveCount };
+    return { moved: moveCount };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
-  respond(res, SmartSimplifyApplied, body);
 }

@@ -5,12 +5,9 @@
  * sync instances across duplicate regions, handle-as-grouping (country-level matching).
  */
 
-import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import { isVisitedRegionDelete, visitedRegionRefusal, visitsOn } from '../../db/regionVisits.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { respond } from '../../api/respond.js';
-import { InstancesSynced } from '../../api/responses/worldViewImport.js';
+import type { InstancesSynced } from '../../api/responses/worldViewImport.js';
 import {
   matchChildrenAsCountries,
 } from '../../services/worldViewImport/index.js';
@@ -512,12 +509,14 @@ export async function smartFlatten(
  * to all other regions with the same sourceUrl in this world view.
  * POST /api/admin/wv-import/matches/:worldViewId/sync-instances
  */
-export async function syncInstances(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function syncInstances(
+  { params: { worldViewId }, body: { regionId } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof wvImportRegionIdSchema>;
+  },
+): Promise<InstancesSynced> {
   console.log(`[WV Import] POST /matches/${worldViewId}/sync-instances — regionId=${regionId}`);
 
-  let syncedCount: number;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -528,9 +527,7 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
       [regionId, worldViewId],
     );
     if (source.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
+      throw notFound('Region not found in this world view');
     }
 
     const sourceImportState = await client.query(
@@ -539,9 +536,7 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
     );
     const sourceUrl = sourceImportState.rows[0]?.source_url as string | undefined;
     if (!sourceUrl) {
-      await client.query('ROLLBACK');
-      res.status(400).json({ error: 'Region has no sourceUrl' });
-      return;
+      throw badRequest('Region has no sourceUrl');
     }
     const matchStatus = sourceImportState.rows[0].match_status as string;
 
@@ -553,10 +548,11 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
       [worldViewId, regionId, sourceUrl],
     );
 
+    // Nothing to copy to: the transaction wrote nothing, and is closed here
+    // rather than left open on a connection going back to the pool.
     if (siblings.rows.length === 0) {
       await client.query('ROLLBACK');
-      respond(res, InstancesSynced, { synced: 0 });
-      return;
+      return { synced: 0 };
     }
 
     // Get source region_members and suggestions
@@ -611,15 +607,15 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
 
     await client.query('COMMIT');
 
-    syncedCount = siblings.rows.length;
+    const syncedCount = siblings.rows.length;
     console.log(`[WV Import] Synced ${syncedCount} instances of ${sourceUrl}`);
+    return { synced: syncedCount };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
-  respond(res, InstancesSynced, { synced: syncedCount });
 }
 
 /**

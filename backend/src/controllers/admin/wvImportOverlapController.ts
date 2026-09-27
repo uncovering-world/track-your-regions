@@ -7,11 +7,13 @@
  * (redistribute GADM children to target regions).
  */
 
-import { Response } from 'express';
+import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { respond } from '../../api/respond.js';
-import { DivisionOverlaps, OverlapChildren, OverlapResolved } from '../../api/responses/wvImportTreeOps.js';
+import type { DivisionOverlaps, OverlapChildren, OverlapResolved } from '../../api/responses/wvImportTreeOps.js';
+import { notFound } from '../../middleware/errorHandler.js';
+import type {
+  worldViewIdParamSchema, wvImportOverlapChildrenSchema, wvImportResolveOverlapSchema, wvImportSmartSimplifySchema,
+} from '../../types/index.js';
 
 // =============================================================================
 // Division overlap detection helpers
@@ -137,9 +139,12 @@ async function loadOverlapDivisionMetadata(
  *
  * POST /api/admin/wv-import/matches/:worldViewId/check-overlap
  */
-export async function checkDivisionOverlap(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { parentRegionId } = req.body;
+export async function checkDivisionOverlap(
+  { params: { worldViewId }, body: { parentRegionId } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof wvImportSmartSimplifySchema>;
+  },
+): Promise<DivisionOverlaps> {
   console.log(`[WV Import] POST /matches/${worldViewId}/check-overlap — parentRegionId=${parentRegionId}`);
 
   const parentRegion = await pool.query(
@@ -147,18 +152,14 @@ export async function checkDivisionOverlap(req: AuthenticatedRequest, res: Respo
     [parentRegionId, worldViewId],
   );
   if (parentRegion.rows.length === 0) {
-    res.status(404).json({ error: 'Parent region not found in this world view' });
-    return;
+    throw notFound('Parent region not found in this world view');
   }
 
   const childrenResult = await pool.query(
     'SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2 ORDER BY name',
     [parentRegionId, worldViewId],
   );
-  if (childrenResult.rows.length === 0) {
-    respond(res, DivisionOverlaps, { overlaps: [] });
-    return;
-  }
+  if (childrenResult.rows.length === 0) return { overlaps: [] };
 
   const childIds = childrenResult.rows.map(r => r.id as number);
   const childNameById = new Map<number, string>(
@@ -171,10 +172,7 @@ export async function checkDivisionOverlap(req: AuthenticatedRequest, res: Respo
   for (const divs of divsByChild.values()) {
     for (const d of divs) allDivIds.add(d);
   }
-  if (allDivIds.size === 0) {
-    respond(res, DivisionOverlaps, { overlaps: [] });
-    return;
-  }
+  if (allDivIds.size === 0) return { overlaps: [] };
 
   const descendantsOf = await loadDivisionDescendants(Array.from(allDivIds));
   const coveredBy = buildCoveredByMap(divsByChild, descendantsOf);
@@ -187,10 +185,7 @@ export async function checkDivisionOverlap(req: AuthenticatedRequest, res: Respo
     }
   }
 
-  if (overlapDivIds.length === 0) {
-    respond(res, DivisionOverlaps, { overlaps: [] });
-    return;
-  }
+  if (overlapDivIds.length === 0) return { overlaps: [] };
 
   const { pathByDiv, viaNameByDiv, parentOf } = await loadOverlapDivisionMetadata(overlapDivIds, coveredBy);
 
@@ -225,7 +220,7 @@ export async function checkDivisionOverlap(req: AuthenticatedRequest, res: Respo
   }).sort((a, b) => a.divisionPath.localeCompare(b.divisionPath));
 
   console.log(`[WV Import] Overlap check: ${overlaps.length} top-level overlapping divisions found`);
-  respond(res, DivisionOverlaps, { overlaps });
+  return { overlaps };
 }
 
 /**
@@ -235,9 +230,9 @@ export async function checkDivisionOverlap(req: AuthenticatedRequest, res: Respo
  * Body: { divisionId }
  * Returns the direct GADM children with names and which child region (if any) they belong to.
  */
-export async function getOverlapDivisionChildren(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const { divisionId, childRegionIds } = req.body;
-
+export async function getOverlapDivisionChildren(
+  { body: { divisionId, childRegionIds } }: { body: z.output<typeof wvImportOverlapChildrenSchema> },
+): Promise<OverlapChildren> {
   // Get GADM children of this division
   const childrenResult = await pool.query(`
     SELECT ad.id, ad.name, ad.has_children,
@@ -248,10 +243,7 @@ export async function getOverlapDivisionChildren(req: AuthenticatedRequest, res:
     ORDER BY ad.name
   `, [divisionId]);
 
-  if (childrenResult.rows.length === 0) {
-    respond(res, OverlapChildren, { children: [], canSplit: false });
-    return;
-  }
+  if (childrenResult.rows.length === 0) return { children: [], canSplit: false };
 
   // Check which child regions already have these GADM children assigned
   const gadmChildIds = childrenResult.rows.map(r => r.id as number);
@@ -274,7 +266,7 @@ export async function getOverlapDivisionChildren(req: AuthenticatedRequest, res:
     assignedToRegionId: assignedTo.get(r.id as number) ?? null,
   }));
 
-  respond(res, OverlapChildren, { children, canSplit: true });
+  return { children, canSplit: true };
 }
 
 /**
@@ -284,16 +276,15 @@ export async function getOverlapDivisionChildren(req: AuthenticatedRequest, res:
  * Body: { action: 'keep', divisionId, keepInRegionId, removeFromRegionIds }
  *    or { action: 'split', divisionId, splitRegionId, assignments: [{ gadmChildId, targetRegionId }] }
  */
-export async function resolveOverlap(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const { action } = req.body;
-
-  let body: OverlapResolved;
+export async function resolveOverlap(
+  { body: input }: { body: z.output<typeof wvImportResolveOverlapSchema> },
+): Promise<OverlapResolved> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    if (action === 'keep') {
-      const { divisionId, removeFromRegionIds } = req.body;
+    if (input.action === 'keep') {
+      const { divisionId, removeFromRegionIds } = input;
       // Remove the division from the specified regions
       for (const regionId of removeFromRegionIds) {
         await client.query(
@@ -302,49 +293,36 @@ export async function resolveOverlap(req: AuthenticatedRequest, res: Response): 
         );
       }
       await client.query('COMMIT');
-      console.log(`[WV Import] Overlap resolved (keep): division ${divisionId} removed from regions ${removeFromRegionIds.join(', ')}`);
-      body = { success: true, action: 'keep', removed: removeFromRegionIds.length };
-
-    } else if (action === 'split') {
-      const { divisionId, splitRegionId, assignments } = req.body as {
-        action: string;
-        divisionId: number;
-        splitRegionId: number;
-        assignments: Array<{ gadmChildId: number; targetRegionId: number }>;
-      };
-
-      // 1. Remove the coarse division from the region being split
-      await client.query(
-        'DELETE FROM region_members WHERE region_id = $1 AND division_id = $2',
-        [splitRegionId, divisionId],
-      );
-
-      // 2. Add GADM children to their target regions
-      for (const { gadmChildId, targetRegionId } of assignments) {
-        // Upsert: don't fail if already assigned
-        await client.query(`
-          INSERT INTO region_members (region_id, division_id)
-          VALUES ($1, $2)
-          ON CONFLICT (region_id, division_id) DO NOTHING
-        `, [targetRegionId, gadmChildId]);
-      }
-
-      await client.query('COMMIT');
-      console.log(`[WV Import] Overlap resolved (split): division ${divisionId} in region ${splitRegionId} → ${assignments.length} GADM children redistributed`);
-      body = { success: true, action: 'split', assigned: assignments.length };
-
-    } else {
-      // Unreachable in practice (Zod validates `action`), but ROLLBACK
-      // keeps the connection clean if validation is ever relaxed.
-      await client.query('ROLLBACK');
-      res.status(400).json({ error: `Unknown action: ${action}` });
-      return;
+      console.log('[WV Import] Overlap resolved (keep): division %d removed from regions %s', divisionId, removeFromRegionIds.join(', '));
+      return { success: true, action: 'keep', removed: removeFromRegionIds.length };
     }
+
+    // split
+    const { divisionId, splitRegionId, assignments } = input;
+
+    // 1. Remove the coarse division from the region being split
+    await client.query(
+      'DELETE FROM region_members WHERE region_id = $1 AND division_id = $2',
+      [splitRegionId, divisionId],
+    );
+
+    // 2. Add GADM children to their target regions
+    for (const { gadmChildId, targetRegionId } of assignments) {
+      // Upsert: don't fail if already assigned
+      await client.query(`
+        INSERT INTO region_members (region_id, division_id)
+        VALUES ($1, $2)
+        ON CONFLICT (region_id, division_id) DO NOTHING
+      `, [targetRegionId, gadmChildId]);
+    }
+
+    await client.query('COMMIT');
+    console.log('[WV Import] Overlap resolved (split): division %d in region %d → %d GADM children redistributed', divisionId, splitRegionId, assignments.length);
+    return { success: true, action: 'split', assigned: assignments.length };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
-  respond(res, OverlapResolved, body);
 }

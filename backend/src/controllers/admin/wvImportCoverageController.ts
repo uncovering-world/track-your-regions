@@ -11,11 +11,18 @@ import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { syncImportMatchStatus } from '../worldView/helpers.js';
 import { markStreamBody } from '../../middleware/cacheHeaders.js';
-import { respond, writeEvent } from '../../api/respond.js';
+import { writeEvent } from '../../api/respond.js';
 import {
-  CoverageApproved, CoverageEvent, CoverageResult, GapDismissed, GapUndismissed, GeoSuggestResult,
+  CoverageEvent,
+  type CoverageApproved, type CoverageResult, type GapDismissed, type GapUndismissed, type GeoSuggestResult,
   type CoverageSuggestion, type DismissedGap, type GapSubtreeNode, type RegionContextNode,
 } from '../../api/responses/wvImportCoverage.js';
+import type { z } from 'zod/v4';
+import { notFound } from '../../middleware/errorHandler.js';
+import type { divisionIdBodySchema, worldViewIdParamSchema, wvImportApproveCoverageSchema } from '../../types/index.js';
+
+type WorldViewParams = z.output<typeof worldViewIdParamSchema>;
+type GapBody = z.output<typeof divisionIdBodySchema>;
 
 // =============================================================================
 // Coverage gap subtree helper
@@ -281,13 +288,12 @@ function composeCoverageResponse(
  *
  * GET /api/admin/wv-import/matches/:worldViewId/coverage
  */
-export async function getCoverage(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
+export async function getCoverage({ params: { worldViewId } }: { params: WorldViewParams }): Promise<CoverageResult> {
   console.log(`[WV Import] GET /matches/${worldViewId}/coverage`);
 
   const data = await loadCoverageData(worldViewId);
   const suggestionByGapId = await buildSuggestionsForGaps(data.activeGaps, worldViewId);
-  respond(res, CoverageResult, composeCoverageResponse(data, suggestionByGapId));
+  return composeCoverageResponse(data, suggestionByGapId);
 }
 
 function startCoverageSSE(res: Response, worldViewId: number) {
@@ -366,9 +372,9 @@ export async function getCoverageSSE(req: AuthenticatedRequest, res: Response): 
  * (~84ms total).
  * POST /api/admin/wv-import/matches/:worldViewId/geo-suggest-gap
  */
-export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { divisionId } = req.body;
+export async function geoSuggestGap(
+  { params: { worldViewId }, body: { divisionId } }: { params: WorldViewParams; body: GapBody },
+): Promise<GeoSuggestResult> {
   console.log(`[WV Import] POST /matches/${worldViewId}/geo-suggest-gap — divisionId=${divisionId}`);
 
   // A division's anchor_point is the focus trigger's (#674): every row with
@@ -439,10 +445,7 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
     SELECT * FROM per_region ORDER BY distance_km LIMIT 1
   `, [divisionId, worldViewId]);
 
-  if (result.rows.length === 0) {
-    respond(res, GeoSuggestResult, { suggestion: null });
-    return;
-  }
+  if (result.rows.length === 0) return { suggestion: null };
 
   const row = result.rows[0];
   const regionId = row.region_id as number;
@@ -499,7 +502,7 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
     currentParent = node;
   }
 
-  respond(res, GeoSuggestResult, {
+  return {
     suggestion: {
       action: 'add_member',
       targetRegionId: regionId,
@@ -511,16 +514,16 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
     suggestionCenter: [row.sugg_lng as number, row.sugg_lat as number] as [number, number],
     distanceKm: Math.round(row.distance_km as number),
     ...(contextTree ? { contextTree } : {}),
-  });
+  };
 }
 
 /**
  * Dismiss a coverage gap (mark a GADM division as irrelevant for coverage).
  * POST /api/admin/wv-import/matches/:worldViewId/dismiss-gap
  */
-export async function dismissCoverageGap(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { divisionId } = req.body;
+export async function dismissCoverageGap(
+  { params: { worldViewId }, body: { divisionId } }: { params: WorldViewParams; body: GapBody },
+): Promise<GapDismissed> {
   console.log(`[WV Import] POST /matches/${worldViewId}/dismiss-gap — divisionId=${divisionId}`);
 
   await pool.query(
@@ -534,16 +537,16 @@ export async function dismissCoverageGap(req: AuthenticatedRequest, res: Respons
     [worldViewId, divisionId],
   );
 
-  respond(res, GapDismissed, { dismissed: true });
+  return { dismissed: true };
 }
 
 /**
  * Undismiss a coverage gap (restore a GADM division to active gaps).
  * POST /api/admin/wv-import/matches/:worldViewId/undismiss-gap
  */
-export async function undismissCoverageGap(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { divisionId } = req.body;
+export async function undismissCoverageGap(
+  { params: { worldViewId }, body: { divisionId } }: { params: WorldViewParams; body: GapBody },
+): Promise<GapUndismissed> {
   console.log(`[WV Import] POST /matches/${worldViewId}/undismiss-gap — divisionId=${divisionId}`);
 
   await pool.query(
@@ -551,7 +554,7 @@ export async function undismissCoverageGap(req: AuthenticatedRequest, res: Respo
     [worldViewId, divisionId],
   );
 
-  respond(res, GapUndismissed, { undismissed: true });
+  return { undismissed: true };
 }
 
 // =============================================================================
@@ -563,12 +566,15 @@ export async function undismissCoverageGap(req: AuthenticatedRequest, res: Respo
  * or create a new region and add it there.
  * POST /api/admin/wv-import/matches/:worldViewId/approve-coverage
  */
-export async function approveCoverageSuggestion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { divisionId, regionId, action, gapName } = req.body;
+export async function approveCoverageSuggestion(
+  { params: { worldViewId }, body: { divisionId, regionId, action, gapName } }: {
+    params: WorldViewParams;
+    body: z.output<typeof wvImportApproveCoverageSchema>;
+  },
+): Promise<CoverageApproved> {
   console.log(`[WV Import] POST /matches/${worldViewId}/approve-coverage — action=${action}, divisionId=${divisionId}, regionId=${regionId}`);
 
-  let targetRegionId = regionId as number;
+  let targetRegionId = regionId;
 
   if (action === 'add_member') {
     // Verify region belongs to world view
@@ -577,8 +583,7 @@ export async function approveCoverageSuggestion(req: AuthenticatedRequest, res: 
       [regionId, worldViewId],
     );
     if (regionCheck.rows.length === 0) {
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
+      throw notFound('Region not found in this world view');
     }
 
     await pool.query(
@@ -593,12 +598,11 @@ export async function approveCoverageSuggestion(req: AuthenticatedRequest, res: 
       [regionId, worldViewId],
     );
     if (parentCheck.rows.length === 0) {
-      res.status(404).json({ error: 'Parent region not found in this world view' });
-      return;
+      throw notFound('Parent region not found in this world view');
     }
 
     // Get division name for the new region if not provided
-    let regionName = gapName as string | undefined;
+    let regionName = gapName;
     if (!regionName) {
       const divResult = await pool.query(
         'SELECT name FROM administrative_divisions WHERE id = $1',
@@ -638,5 +642,5 @@ export async function approveCoverageSuggestion(req: AuthenticatedRequest, res: 
     [worldViewId, divisionId],
   );
 
-  respond(res, CoverageApproved, { approved: true, regionId: targetRegionId });
+  return { approved: true, regionId: targetRegionId };
 }

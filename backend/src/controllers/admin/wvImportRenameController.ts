@@ -5,37 +5,32 @@
  * within the import tree.
  */
 
-import type { Response } from 'express';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
 import { invalidateRegionGeometry } from '../worldView/helpers.js';
-import { respond } from '../../api/respond.js';
-import { RegionRenamed, RegionReparented } from '../../api/responses/wvImportTreeOps.js';
+import type { RegionRenamed, RegionReparented } from '../../api/responses/wvImportTreeOps.js';
+import { badRequest, notFound } from '../../middleware/errorHandler.js';
+import type {
+  worldViewIdParamSchema, wvImportRenameRegionSchema, wvImportReparentRegionSchema,
+} from '../../types/index.js';
 
 // ---------------------------------------------------------------------------
 // Rename
 // ---------------------------------------------------------------------------
 
 export async function renameRegion(
-  req: AuthenticatedRequest,
-  res: Response,
-): Promise<void> {
-  const worldViewId = Number(req.params.worldViewId);
-  const { regionId, name, sourceUrl, sourceExternalId } = req.body as {
-    regionId: number;
-    name: string;
-    sourceUrl?: string;
-    sourceExternalId?: string;
-  };
-
+  { params: { worldViewId }, body: { regionId, name, sourceUrl, sourceExternalId } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof wvImportRenameRegionSchema>;
+  },
+): Promise<RegionRenamed> {
   // Verify region belongs to this world view
   const check = await pool.query(
     'SELECT id, name FROM regions WHERE id = $1 AND world_view_id = $2',
     [regionId, worldViewId],
   );
   if (check.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   const oldName = check.rows[0].name as string;
@@ -78,7 +73,7 @@ export async function renameRegion(
     client.release();
   }
 
-  respond(res, RegionRenamed, { renamed: true, regionId, oldName, newName: name.trim() });
+  return { renamed: true, regionId, oldName, newName: name.trim() };
 }
 
 // ---------------------------------------------------------------------------
@@ -86,30 +81,24 @@ export async function renameRegion(
 // ---------------------------------------------------------------------------
 
 export async function reparentRegion(
-  req: AuthenticatedRequest,
-  res: Response,
-): Promise<void> {
-  const worldViewId = Number(req.params.worldViewId);
-  const { regionId, newParentId } = req.body as {
-    regionId: number;
-    newParentId: number | null;
-  };
-
+  { params: { worldViewId }, body: { regionId, newParentId } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof wvImportReparentRegionSchema>;
+  },
+): Promise<RegionReparented> {
   // Verify region belongs to this world view
   const check = await pool.query(
     'SELECT id, parent_region_id FROM regions WHERE id = $1 AND world_view_id = $2',
     [regionId, worldViewId],
   );
   if (check.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   const oldParentId = check.rows[0].parent_region_id as number | null;
 
   if (newParentId === oldParentId) {
-    respond(res, RegionReparented, { reparented: true, regionId, oldParentId, newParentId, noChange: true });
-    return;
+    return { reparented: true, regionId, oldParentId, newParentId, noChange: true };
   }
 
   // If moving to a new parent (not root), verify it exists and no circular ref
@@ -119,8 +108,7 @@ export async function reparentRegion(
       [newParentId, worldViewId],
     );
     if (parentCheck.rows.length === 0) {
-      res.status(404).json({ error: 'New parent region not found in this world view' });
-      return;
+      throw notFound('New parent region not found in this world view');
     }
 
     // Circular reference check: newParentId must NOT be a descendant of regionId
@@ -136,8 +124,7 @@ export async function reparentRegion(
       [regionId, worldViewId, newParentId],
     );
     if (circularCheck.rows.length > 0) {
-      res.status(400).json({ error: 'Cannot move region under its own descendant (circular reference)' });
-      return;
+      throw badRequest('Cannot move region under its own descendant (circular reference)');
     }
   }
 
@@ -171,5 +158,5 @@ export async function reparentRegion(
     client.release();
   }
 
-  respond(res, RegionReparented, { reparented: true, regionId, oldParentId, newParentId });
+  return { reparented: true, regionId, oldParentId, newParentId };
 }
