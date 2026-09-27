@@ -96,6 +96,7 @@ npm run security:all   # the fast gates plus the slow Semgrep and Trivy scans it
 TEST_REPORT_LOCAL=1 npm run gates -- run test  # the unit lanes it asks for, on the host
 npm run test:e2e:smoke # isolated test stack + Playwright smoke (the slow tier, when npm run gates lists it)
 npm run test:db        # the database-backed backend specs inside the same stack (the slow tier, when npm run gates lists it)
+npm run test:api       # Schemathesis against the same stack's backend (the slow tier, when npm run gates lists it)
 npm run perf:local     # production build on the dev stack's own data (the slow tier, when npm run gates lists it)
 ```
 
