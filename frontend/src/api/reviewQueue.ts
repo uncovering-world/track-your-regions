@@ -8,9 +8,13 @@
  */
 
 import type {
-  QueueKind, ReviewAnswer, ReviewAnswerResult, ReviewQueue, RunSetAside,
+  ReviewAnswer, ReviewAnswerResult, ReviewQueue, RunSetAside,
 } from '@tyr/shared/api';
-import { API_URL, authFetchJson } from './fetchUtils';
+import {
+  deleteExperiencesReviewSetAsideBySyncLogId, getExperiencesReviewQueue, postExperiencesReviewAnswer,
+  putExperiencesReviewSetAsideBySyncLogId,
+  type ReviewAnswerBodyRowsItem,
+} from './client.generated';
 import type { ReviewAddress } from '../utils/appUrl';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
@@ -44,24 +48,22 @@ export async function fetchReviewQueue(params: ReviewAddress & {
   answeredWithdrawalsOffset?: number;
   refusedPartsOffset?: number;
 }): Promise<ReviewQueue> {
-  const search = new URLSearchParams();
-  if (params.sort === 'question') search.set('sort', params.sort);
-  if (params.q) search.set('q', params.q);
-  if (params.sourceIds.length > 0) search.set('source', params.sourceIds.join(','));
-  if (params.kinds.length > 0) search.set('kind', params.kinds.join(','));
-  if (params.regionId !== null) search.set('region', String(params.regionId));
-  if (params.runId !== null) search.set('run', String(params.runId));
-  if (params.showAside) search.set('aside', 'show');
-  if (params.cursor) search.set('cursor', params.cursor);
-  if (params.limit !== undefined) search.set('limit', String(params.limit));
-  if (params.keptOutOffset) search.set('keptOutOffset', String(params.keptOutOffset));
-  if (params.answeredWithdrawalsOffset) {
-    search.set('answeredWithdrawalsOffset', String(params.answeredWithdrawalsOffset));
-  }
-  if (params.refusedPartsOffset) {
-    search.set('refusedPartsOffset', String(params.refusedPartsOffset));
-  }
-  return authFetchJson<ReviewQueue>(`${API_URL}/api/experiences/review/queue?${search}`);
+  // The generated call writes the entries in this order and skips an
+  // undefined one, so an empty address sends no query at all.
+  return getExperiencesReviewQueue({
+    sort: params.sort === 'question' ? 'question' : undefined,
+    q: params.q || undefined,
+    source: params.sourceIds.length > 0 ? params.sourceIds.join(',') : undefined,
+    kind: params.kinds.length > 0 ? params.kinds.join(',') : undefined,
+    region: params.regionId ?? undefined,
+    run: params.runId ?? undefined,
+    aside: params.showAside ? 'show' : undefined,
+    cursor: params.cursor || undefined,
+    limit: params.limit,
+    keptOutOffset: params.keptOutOffset || undefined,
+    answeredWithdrawalsOffset: params.answeredWithdrawalsOffset || undefined,
+    refusedPartsOffset: params.refusedPartsOffset || undefined,
+  });
 }
 
 /**
@@ -71,24 +73,16 @@ export async function fetchReviewQueue(params: ReviewAddress & {
  * the first (`reviewQueueSetAside.ts`).
  */
 export async function setRunAside(syncLogId: number): Promise<RunSetAside> {
-  return authFetchJson(`${API_URL}/api/experiences/review/set-aside/${syncLogId}`, {
-    method: 'PUT',
-  });
+  return putExperiencesReviewSetAsideBySyncLogId(syncLogId);
 }
 
 /** Undoes `setRunAside`: brings a set-aside run's batch back into view. */
 export async function bringRunBack(syncLogId: number): Promise<RunSetAside> {
-  return authFetchJson(`${API_URL}/api/experiences/review/set-aside/${syncLogId}`, {
-    method: 'DELETE',
-  });
+  return deleteExperiencesReviewSetAsideBySyncLogId(syncLogId);
 }
 
 /** A row as the batch names it: the server's kind word, the object, the run it was asked by. */
-export interface ReviewAnswerRow {
-  kind: QueueKind;
-  id: number;
-  runId: number | null;
-}
+export type ReviewAnswerRow = ReviewAnswerBodyRowsItem;
 
 /** The most rows one request answers — the queue's own page maximum. */
 export const REVIEW_ANSWER_ROWS_MAX = 100;
@@ -101,8 +95,5 @@ export async function answerReviewRows(
   rows: ReviewAnswerRow[],
   answer: ReviewAnswer,
 ): Promise<ReviewAnswerResult> {
-  return authFetchJson(`${API_URL}/api/experiences/review/answer`, {
-    method: 'POST',
-    body: JSON.stringify({ rows, answer }),
-  });
+  return postExperiencesReviewAnswer({ rows, answer });
 }
