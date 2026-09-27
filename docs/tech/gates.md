@@ -92,7 +92,7 @@ A tier whose gates all sit on untouched inputs prints the sentence rather than
 nothing at all — on a clean `main`, `npm run check` says
 
 ```text
-Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:shared, typecheck:shared, knip:shared, lint:circular, db:types, security:deps, lint:shell, lint:docker, lint:actions, lint:md, lint:links, lint:pointers, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
+Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:shared, typecheck:shared, knip:shared, lint:circular, db:types, security:deps, lint:shell, lint:docker, lint:actions, lint:md, lint:links, lint:openapi, lint:pointers, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
 ```
 
 and exits 0. That is the one line this runner exists to print: a gate that did
@@ -150,6 +150,7 @@ everything or the base was simply unknown.
 | `lint:actions` | check | `workflows` | `npm run lint:actions` | check |
 | `lint:md` | check | `docs` | `npm run lint:md` | check |
 | `lint:links` | check | `docs` | `npm run lint:links` | check |
+| `lint:openapi` | check | `app` | `npm run lint:openapi` | check |
 | `lint:pointers` | check | `prose` | `node scripts/lint-line-pointers.mjs` | check |
 | `check:py` | check | `python` | `npm run check:py` | check |
 | `security:py:bandit` | check | `python` | `npm run security:py:bandit` | check |

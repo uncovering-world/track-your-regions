@@ -1,0 +1,20 @@
+# The lint of the OpenAPI document (ADR-0072): Redocly's recommended rules,
+# with each rule the document does not meet named here beside its reason.
+extends:
+  - recommended
+
+rules:
+  # A route declaration states no summary yet (#1092), so no operation has one.
+  operation-summary: off
+  # Every failure answers the one error body, stated once as the `default`
+  # answer, rather than a 4xx listed per operation.
+  operation-4xx-response: off
+  # `/{id}/x` beside `/search/x` is ambiguous to OpenAPI, while Express matches
+  # routes in order and `routerOf` refuses a route an earlier one shadows.
+  no-ambiguous-paths: off
+  # The API is not published under a licence.
+  info-license: off
+  # The builder prunes every component no operation reaches (`api/openApi.ts`),
+  # counting the event schema a stream names in `x-event-schema`, which this
+  # rule does not look inside.
+  no-unused-components: off

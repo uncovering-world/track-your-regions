@@ -81,6 +81,7 @@ describe('what a change asks for', () => {
       'typecheck:shared',
       'knip:shared',
       'lint:circular',
+      'lint:openapi',
       'lint:pointers',
       'test:backend',
       'test:frontend',
