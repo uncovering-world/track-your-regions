@@ -54,7 +54,11 @@ export const wvExtractAnswerSchema = z.object({
 // WorldView import schemas
 // =============================================================================
 
-/** Recursive schema for ImportTreeNode */
+/**
+ * Recursive schema for ImportTreeNode. Named with `.meta({ id })` because a
+ * schema that holds itself needs a name to be referred to by, and the OpenAPI
+ * document would otherwise make one up (`api/openApi.ts`).
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Zod recursive schemas require z.ZodType<any> annotation; runtime shape is concrete (see z.object below)
 const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
@@ -71,7 +75,7 @@ const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
     sourceUrl: optionalSafeUrlSchema,
     children: z.array(importTreeNodeSchema).default([]),
   }),
-);
+).meta({ id: 'ImportTreeNode' });
 
 export const wvImportBodySchema = z.object({
   name: z.string().min(1).max(COLUMN_WIDTHS.world_views.name),

@@ -12,6 +12,7 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "typecheck": "tsc --noEmit",
     "api:types": "tsx src/api/generateApiTypes.ts",
+    "api:openapi": "tsx src/api/generateOpenApi.ts",
     "test": "node ../scripts/test-report.mjs backend-unit",
     "test:watch": "vitest",
     "test:coverage": "node ../scripts/test-report.mjs backend-coverage",
@@ -68,7 +69,8 @@
     "tsx": "^4.22.4",
     "typescript": "^5.6.0",
     "vitest": "^4.1.11",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "zod-openapi": "^6.0.2"
   },
   "engines": {
     "node": ">=22.22.0"
