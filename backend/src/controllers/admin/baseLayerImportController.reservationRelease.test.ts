@@ -31,9 +31,13 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
 }));
 
-import { startBaseLayerImportEndpoint } from './baseLayerImportController.js';
 import { startBaseLayerImport, getLatestImportStatus } from '../../services/worldViewImport/index.js';
 import { buildBaseLayerTree } from '../../services/worldViewImport/baseLayerImporter.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const startBaseLayerImportEndpointRoute = routeAt(adminDeclaredRoutes, '/wv-import/base-layer', 'post');
 
 const mockedBuild = buildBaseLayerTree as unknown as ReturnType<typeof vi.fn>;
 
@@ -67,7 +71,7 @@ describe('startBaseLayerImport — tree build failure (regression)', () => {
     // a later request has to be able to start.
     mockedBuild.mockResolvedValueOnce({ name: 'World', children: [] });
     const res = makeRes();
-    await startBaseLayerImportEndpoint(makeReq('Second'), res as never);
+    await answerRoute(startBaseLayerImportEndpointRoute, makeReq('Second'), res as never);
 
     expect(res.status).not.toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: true }));

@@ -55,13 +55,15 @@ vi.mock('../../services/worldViewImport/spatialAnomalyDetector.js', () => ({
 }));
 
 import { reparentRegion } from './wvImportRenameController.js';
-import {
-  mergeChildIntoParent,
-  removeRegionFromImport,
-  dismissChildren,
-  pruneToLeaves,
-} from './wvImportTreeOpsController.js';
-import { smartFlatten } from './wvImportFlattenController.js';
+import { removeRegionFromImport } from './wvImportTreeOpsController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const dismissChildrenRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/dismiss-children', 'post');
+const mergeChildIntoParentRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/merge-child', 'post');
+const pruneToLeavesRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/prune-to-leaves', 'post');
+const smartFlattenRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/smart-flatten', 'post');
 
 type Row = Record<string, unknown>;
 type Answer = [RegExp, Row[]];
@@ -201,7 +203,7 @@ describe('mergeChildIntoParent', () => {
       [/SELECT id, name FROM regions WHERE id = \$1 AND world_view_id/, [{ id: 100, name: 'Parent' }]],
     ]));
 
-    await mergeChildIntoParent(makeReq({ regionId: 100 }), makeRes());
+    await answerRoute(mergeChildIntoParentRoute, makeReq({ regionId: 100 }), makeRes());
 
     expect(invalidated()).toEqual([100]);
     expect(clearedBeforeCommit()).toBe(true);
@@ -217,7 +219,7 @@ describe('mergeChildIntoParent', () => {
       return answer(sql);
     });
 
-    await expect(mergeChildIntoParent(makeReq({ regionId: 100 }), makeRes())).rejects.toThrow('statement timeout');
+    await expect(answerRoute(mergeChildIntoParentRoute, makeReq({ regionId: 100 }), makeRes())).rejects.toThrow('statement timeout');
 
     const sqls = mockClientQuery.mock.calls.map(call => String(call[0]));
     expect(sqls).toContain('ROLLBACK');
@@ -231,7 +233,7 @@ describe('mergeChildIntoParent', () => {
     ]));
 
     const res = makeRes();
-    await mergeChildIntoParent(makeReq({ regionId: 100 }), res);
+    await answerRoute(mergeChildIntoParentRoute, makeReq({ regionId: 100 }), res);
 
     expect(res._status).toBe(400);
     expect(invalidated()).toEqual([]);
@@ -281,7 +283,7 @@ describe('dismissChildren', () => {
     ]));
 
     const res = makeRes();
-    await dismissChildren(makeReq({ regionId: 100 }), res);
+    await answerRoute(dismissChildrenRoute, makeReq({ regionId: 100 }), res);
 
     expect(res._body).toMatchObject({ dismissed: 2 });
     expect(invalidated()).toEqual([100]);
@@ -293,7 +295,7 @@ describe('dismissChildren', () => {
     ]));
 
     const res = makeRes();
-    await dismissChildren(makeReq({ regionId: 100 }), res);
+    await answerRoute(dismissChildrenRoute, makeReq({ regionId: 100 }), res);
 
     expect(res._status).toBe(400);
     expect(invalidated()).toEqual([]);
@@ -317,7 +319,7 @@ describe('pruneToLeaves', () => {
     ]));
 
     const res = makeRes();
-    await pruneToLeaves(makeReq({ regionId: 100 }), res);
+    await answerRoute(pruneToLeavesRoute, makeReq({ regionId: 100 }), res);
 
     expect(res._body).toMatchObject({ pruned: 2 });
     expect(invalidated()).toEqual([201]);
@@ -330,7 +332,7 @@ describe('pruneToLeaves', () => {
     ]));
 
     const res = makeRes();
-    await pruneToLeaves(makeReq({ regionId: 100 }), res);
+    await answerRoute(pruneToLeavesRoute, makeReq({ regionId: 100 }), res);
 
     expect(res._status).toBe(400);
     expect(invalidated()).toEqual([]);
@@ -347,7 +349,7 @@ describe('smartFlatten', () => {
     ]));
 
     const res = makeRes();
-    await smartFlatten(makeReq({ regionId: 100 }), res);
+    await answerRoute(smartFlattenRoute, makeReq({ regionId: 100 }), res);
 
     expect(res._body).toMatchObject({ absorbed: 2 });
     expect(invalidated()).toEqual([100]);
@@ -362,7 +364,7 @@ describe('smartFlatten', () => {
     ]));
 
     const res = makeRes();
-    await smartFlatten(makeReq({ regionId: 100 }), res);
+    await answerRoute(smartFlattenRoute, makeReq({ regionId: 100 }), res);
 
     // The refusal is an answer naming the children that stop it, so the screen can list them.
     expect(res._status).toBeUndefined();
@@ -387,7 +389,7 @@ describe('smartFlatten', () => {
     });
 
     const res = makeRes();
-    await expect(smartFlatten(makeReq({ regionId: 100 }), res)).rejects.toBe(refusal);
+    await expect(answerRoute(smartFlattenRoute, makeReq({ regionId: 100 }), res)).rejects.toBe(refusal);
 
     expect(res._status).toBeUndefined();
     expect(mockClientQuery.mock.calls.map(([sql]) => String(sql))).toContain('ROLLBACK');
@@ -402,7 +404,7 @@ describe('smartFlatten', () => {
     ]));
 
     const res = makeRes();
-    await smartFlatten(makeReq({ regionId: 100 }), res);
+    await answerRoute(smartFlattenRoute, makeReq({ regionId: 100 }), res);
 
     expect(res._status).toBe(409);
     expect(res._body).toMatchObject({ error: expect.stringContaining('3 visits') });

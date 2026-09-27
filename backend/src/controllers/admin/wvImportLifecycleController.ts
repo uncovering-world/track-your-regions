@@ -9,7 +9,10 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { respond } from '../../api/respond.js';
-import { Geoshape, ImportCancelled, ImportStarted, ImportStatus } from '../../api/responses/worldViewImport.js';
+import { Geoshape, type ImportCancelled, type ImportStarted, type ImportStatus } from '../../api/responses/worldViewImport.js';
+import type { z } from 'zod/v4';
+import { badRequest, createError } from '../../middleware/errorHandler.js';
+import type { wvImportBodySchema } from '../../types/index.js';
 import { markPublicReferenceBody } from '../../middleware/cacheHeaders.js';
 import { geoshapeOf } from './wvImportAnswerRows.js';
 import {
@@ -107,35 +110,34 @@ const MAX_TREE_DEPTH = 15;
  * Start a world view import from JSON data.
  * POST /api/admin/wv-import/import
  */
-export async function startWorldViewImport(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const { name, tree, matchingPolicy } = req.body;
-  console.log(`[WV Import] POST /import — name="${name}", children count=${tree?.children?.length ?? 'N/A'}, policy=${matchingPolicy ?? 'country-based'}`);
+export async function startWorldViewImport(
+  { body: { name, tree, matchingPolicy } }: { body: z.output<typeof wvImportBodySchema> },
+): Promise<ImportStarted> {
+  console.log('[WV Import] POST /import — name="%s", children count=%s, policy=%s',
+    name, tree?.children?.length ?? 'N/A', matchingPolicy);
 
   // Zod handles structural validation; check size limits
   const stats = treeStats(tree);
   if (stats.nodes > MAX_TREE_NODES) {
-    res.status(400).json({ error: `Tree too large: ${stats.nodes} nodes exceeds limit of ${MAX_TREE_NODES}` });
-    return;
+    throw badRequest(`Tree too large: ${stats.nodes} nodes exceeds limit of ${MAX_TREE_NODES}`);
   }
   if (stats.maxDepth > MAX_TREE_DEPTH) {
-    res.status(400).json({ error: `Tree too deep: depth ${stats.maxDepth} exceeds limit of ${MAX_TREE_DEPTH}` });
-    return;
+    throw badRequest(`Tree too deep: depth ${stats.maxDepth} exceeds limit of ${MAX_TREE_DEPTH}`);
   }
 
   // Check no import is already running
   const existing = getLatestImportStatus();
   if (existing && (existing.progress.status === 'importing' || existing.progress.status === 'matching')) {
-    res.status(409).json({ error: 'An import is already running' });
-    return;
+    throw createError('An import is already running', 409);
   }
 
   const opId = startImport(tree, name, {
-    matchingPolicy: matchingPolicy ?? 'country-based',
+    matchingPolicy,
     sourceType: 'imported',
     source: 'File upload',
   });
-  console.log(`[WV Import] POST /import — started opId=${opId}`);
-  respond(res, ImportStarted, { started: true, operationId: opId });
+  console.log('[WV Import] POST /import — started opId=%s', opId);
+  return { started: true, operationId: opId };
 }
 
 /**
@@ -146,7 +148,7 @@ export async function startWorldViewImport(req: AuthenticatedRequest, res: Respo
  * otherwise falls back to querying DB for existing imported world views
  * so the review UI survives page reloads and re-logins.
  */
-export async function getWorldViewImportStatus(_req: AuthenticatedRequest, res: Response): Promise<void> {
+export async function getWorldViewImportStatus(): Promise<ImportStatus> {
   const status = getLatestImportStatus();
 
   // Always fetch existing imported world views from DB (both active and finalized)
@@ -164,9 +166,11 @@ export async function getWorldViewImportStatus(_req: AuthenticatedRequest, res: 
 
   if (status) {
     const isActive = status.progress.status === 'importing' || status.progress.status === 'matching';
-    console.log(`[WV Import] GET /import/status — opId=${status.opId}, status=${status.progress.status}, running=${isActive}, regions=${status.progress.createdRegions}/${status.progress.totalRegions}, countries=${status.progress.countriesMatched}/${status.progress.totalCountries}`);
+    console.log('[WV Import] GET /import/status — opId=%s, status=%s, running=%s, regions=%d/%d, countries=%d/%d',
+      status.opId, status.progress.status, isActive, status.progress.createdRegions, status.progress.totalRegions,
+      status.progress.countriesMatched, status.progress.totalCountries);
     const { progress } = status;
-    respond(res, ImportStatus, {
+    return {
       running: isActive,
       operationId: status.opId,
       status: progress.status,
@@ -180,20 +184,19 @@ export async function getWorldViewImportStatus(_req: AuthenticatedRequest, res: 
       noCandidates: progress.noCandidates,
       worldViewId: progress.worldViewId,
       importedWorldViews,
-    });
-    return;
+    };
   }
 
-  respond(res, ImportStatus, { running: false, importedWorldViews });
+  return { running: false, importedWorldViews };
 }
 
 /**
  * Cancel a running import.
  * POST /api/admin/wv-import/import/cancel
  */
-export async function cancelWorldViewImport(_req: AuthenticatedRequest, res: Response): Promise<void> {
-  console.log(`[WV Import] POST /import/cancel`);
+export async function cancelWorldViewImport(): Promise<ImportCancelled> {
+  console.log('[WV Import] POST /import/cancel');
   const cancelled = cancelImport();
-  console.log(`[WV Import] POST /import/cancel — result: ${cancelled}`);
-  respond(res, ImportCancelled, { cancelled });
+  console.log('[WV Import] POST /import/cancel — result: %s', cancelled);
+  return { cancelled };
 }

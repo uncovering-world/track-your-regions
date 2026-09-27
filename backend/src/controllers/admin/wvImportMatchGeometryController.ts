@@ -7,34 +7,35 @@
  * article marks, where a deeper shape does not exist — and, failing both, look
  * at the pictures and say which divisions a map shows.
  *
- * Its own file beside `wvImportMatchController.ts`, which had reached the
- * length the lint draws the line at (#933); the review's own endpoints stay
- * there and re-export these, so no route moves.
+ * Its own file beside `wvImportMatchController.ts`, which holds the review's
+ * other endpoints; the declared routes import these handlers from here
+ * directly (`routes/adminDeclaredRoutes.ts`).
  */
 
-import { Response } from 'express';
 import sharp from 'sharp';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { matchDivisionsByVision } from '../../services/ai/openaiService.js';
 import {
   type PointInfo,
   generateDivisionsSvg,
   fetchMarkersForDivisions,
 } from './wvImportMatchHelpers.js';
-import { respond } from '../../api/respond.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import {
   SplitDeeperResult, UnionGeometryResult, VisionMatchResult, type DivisionPreview, type DivisionShapeFeature,
 } from '../../api/responses/wvImportCoverage.js';
+import type { z } from 'zod/v4';
+import { badRequest, notFound } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportSplitDeeperSchema, wvImportUnionGeometrySchema, wvImportVisionMatchSchema } from '../../types/index.js';
 
 /**
  * Return per-division geometries as a FeatureCollection with assignment info.
  * POST /api/admin/wv-import/matches/:worldViewId/union-geometry
  */
-export async function getUnionGeometry(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { divisionIds, regionId } = req.body as { divisionIds: number[]; regionId?: number };
+export async function getUnionGeometry(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportUnionGeometrySchema> },
+): Promise<UnionGeometryResult> {
+  const { divisionIds, regionId } = body;
 
   // Check which divisions are already assigned to regions in this world view
   const assignedResult = await pool.query(`
@@ -91,10 +92,9 @@ export async function getUnionGeometry(req: AuthenticatedRequest, res: Response)
   }
 
   if (features.length === 0) {
-    res.status(404).json({ error: 'No geometry found for given divisions' });
-    return;
+    throw notFound('No geometry found for given divisions');
   }
-  respond(res, UnionGeometryResult, { geometry: { type: 'FeatureCollection', features } });
+  return { geometry: { type: 'FeatureCollection', features } };
 }
 
 /**
@@ -330,9 +330,10 @@ async function appendExternalPointMatches(
  *
  * POST /api/admin/wv-import/matches/:worldViewId/split-deeper
  */
-export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { divisionIds, wikidataId, regionId, source } = req.body as { divisionIds: number[]; wikidataId: string; regionId: number; source?: 'geoshape' | 'points' | 'image' };
+export async function splitDivisionsDeeper(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportSplitDeeperSchema> },
+): Promise<SplitDeeperResult> {
+  const { divisionIds, wikidataId, regionId, source } = body;
 
   // When source is 'points', filter children by marker point containment instead of geoshape
   const usePointFilter = source === 'points';
@@ -388,7 +389,7 @@ export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Respo
     })),
   ];
 
-  respond(res, SplitDeeperResult, {
+  return {
     divisions: filteredRows.map(r => ({
       divisionId: r.id as number,
       name: r.name as string,
@@ -402,16 +403,17 @@ export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Respo
       ? { type: 'FeatureCollection', features: filteredFeatures }
       : null,
     ...(points.length > 0 ? { points: points.map(p => ({ name: p.name, lat: p.lat, lon: p.lon })) } : {}),
-  });
+  };
 }
 
 /**
  * Use AI vision to suggest which divisions belong to a region based on its map image.
  * POST /api/admin/wv-import/matches/:worldViewId/vision-match
  */
-export async function visionMatchDivisions(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { divisionIds, regionId, imageUrl } = req.body as { divisionIds: number[]; regionId: number; imageUrl: string };
+export async function visionMatchDivisions(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportVisionMatchSchema> },
+): Promise<VisionMatchResult> {
+  const { divisionIds, regionId, imageUrl } = body;
 
   // Get the region name
   const regionResult = await pool.query(
@@ -420,8 +422,7 @@ export async function visionMatchDivisions(req: AuthenticatedRequest, res: Respo
   );
 
   if (regionResult.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found' });
-    return;
+    throw notFound('Region not found');
   }
 
   const regionName = regionResult.rows[0].name as string;
@@ -438,8 +439,7 @@ export async function visionMatchDivisions(req: AuthenticatedRequest, res: Respo
   `, [divisionIds]);
 
   if (divResult.rows.length === 0) {
-    res.status(400).json({ error: 'No valid divisions found' });
-    return;
+    throw badRequest('No valid divisions found');
   }
 
   const divisions = divResult.rows.map(r => ({
@@ -465,7 +465,7 @@ export async function visionMatchDivisions(req: AuthenticatedRequest, res: Respo
 
   const result = await matchDivisionsByVision(regionName, hiresImageUrl, pngBase64, divisions);
 
-  respond(res, VisionMatchResult, {
+  return {
     suggestedIds: result.suggestedIds,
     rejectedIds: result.rejectedIds,
     unclearIds: result.unclearIds,
@@ -475,5 +475,5 @@ export async function visionMatchDivisions(req: AuthenticatedRequest, res: Respo
       regionMap: hiresImageUrl,
       divisionsMap: pngBase64,
     },
-  });
+  };
 }

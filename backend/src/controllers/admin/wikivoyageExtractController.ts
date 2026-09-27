@@ -4,19 +4,19 @@
  * Handles starting, monitoring, and cancelling Wikivoyage extractions.
  */
 
-import type { Response } from 'express';
+import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { respond } from '../../api/respond.js';
-import {
+import { badRequest, notFound, Refusal } from '../../middleware/errorHandler.js';
+import type {
   ExtractionAnswer,
   ExtractionCancelled,
   ExtractionStarted,
   ExtractionStatus,
   WikivoyageCacheDeleted,
-  type InterviewQuestion,
-  type RegionPreview,
+  InterviewQuestion,
+  RegionPreview,
 } from '../../api/responses/wikivoyageExtract.js';
+import type { wvCacheNameParamSchema, wvExtractAnswerSchema, wvExtractStartSchema } from '../../types/index.js';
 import type { WorldViewsRow } from '../../db/schema.generated.js';
 import {
   startExtraction,
@@ -59,34 +59,24 @@ function regionPreviewOf(region: RegionPreview): RegionPreview {
  * Start a Wikivoyage extraction.
  * POST /api/admin/wv-extract/start
  */
-export function startWikivoyageExtraction(req: AuthenticatedRequest, res: Response): void {
-  const { name, cacheFile } = req.body as { name?: string; cacheFile?: string | null };
-
+export async function startWikivoyageExtraction(
+  { body: { name, cacheFile } }: { body: z.output<typeof wvExtractStartSchema> },
+): Promise<ExtractionStarted> {
   // Check nothing is currently running
   const existing = getLatestExtractionStatus();
   if (existing && !isTerminal(existing.progress.status)) {
-    res.status(409).json({
-      error: 'An extraction is already running',
-      operationId: existing.opId,
-    });
-    return;
+    throw new Refusal(409, { error: 'An extraction is already running', operationId: existing.opId });
   }
 
-  const opId = startExtraction({
-    name: name ?? 'Wikivoyage Regions',
-    cacheFile: cacheFile ?? undefined,
-  });
-  respond(res, ExtractionStarted, { started: true, operationId: opId });
+  const opId = startExtraction({ name, cacheFile: cacheFile ?? undefined });
+  return { started: true, operationId: opId };
 }
 
 /**
  * Get extraction status (also returns existing imported world views and cache list).
  * GET /api/admin/wv-extract/status
  */
-export async function getWikivoyageExtractionStatus(
-  _req: AuthenticatedRequest,
-  res: Response,
-): Promise<void> {
+export async function getWikivoyageExtractionStatus(): Promise<ExtractionStatus> {
   const latest = getLatestExtractionStatus();
 
   // Query existing imported world views from DB
@@ -106,10 +96,7 @@ export async function getWikivoyageExtractionStatus(
 
   const caches = listCaches();
 
-  if (!latest) {
-    respond(res, ExtractionStatus, { running: false, importedWorldViews, caches });
-    return;
-  }
+  if (!latest) return { running: false, importedWorldViews, caches };
 
   const { progress } = latest;
   const running = !isTerminal(progress.status);
@@ -125,7 +112,7 @@ export async function getWikivoyageExtractionStatus(
       extractedRegions: q.extractedRegions.map(regionPreviewOf),
     }));
 
-  respond(res, ExtractionStatus, {
+  return {
     running,
     operationId: latest.opId,
     status: progress.status,
@@ -150,30 +137,26 @@ export async function getWikivoyageExtractionStatus(
     pendingQuestions,
     importedWorldViews,
     caches,
-  });
+  };
 }
 
 /**
  * Cancel a running extraction.
  * POST /api/admin/wv-extract/cancel
  */
-export function cancelWikivoyageExtraction(_req: AuthenticatedRequest, res: Response): void {
-  const cancelled = cancelExtraction();
-  respond(res, ExtractionCancelled, { cancelled });
+export async function cancelWikivoyageExtraction(): Promise<ExtractionCancelled> {
+  return { cancelled: cancelExtraction() };
 }
 
 /**
  * Delete a cache file.
  * DELETE /api/admin/wv-extract/caches/:name
  */
-export function deleteCacheFile(req: AuthenticatedRequest, res: Response): void {
-  const name = req.params.name as string;
-  const deleted = deleteCache(name);
-  if (deleted) {
-    respond(res, WikivoyageCacheDeleted, { deleted: true });
-  } else {
-    res.status(404).json({ error: 'Cache file not found' });
-  }
+export async function deleteCacheFile(
+  { params: { name } }: { params: z.output<typeof wvCacheNameParamSchema> },
+): Promise<WikivoyageCacheDeleted> {
+  if (!deleteCache(name)) throw notFound('Cache file not found');
+  return { deleted: true };
 }
 
 type PendingQuestionLike = NonNullable<ReturnType<typeof findPendingQuestion>>;
@@ -195,21 +178,10 @@ async function advanceToNextQuestion(question: PendingQuestionLike): Promise<voi
 /**
  * Delete a learned rule and re-formulate the current question so the admin can re-answer.
  */
-async function handleDeleteRuleAction(
-  questionId: number,
-  ruleId: number | undefined,
-  res: Response,
-): Promise<void> {
-  if (!ruleId) {
-    res.status(400).json({ error: 'ruleId is required for delete_rule action' });
-    return;
-  }
+async function handleDeleteRuleAction(questionId: number, ruleId: number): Promise<ExtractionAnswer> {
   const deleted = await deleteRule(ruleId);
-  if (!deleted) {
-    res.status(404).json({ error: 'Rule not found' });
-    return;
-  }
-  console.log(`[WV Extract] Deleted rule #${ruleId} from question #${questionId}`);
+  if (!deleted) throw notFound('Rule not found');
+  console.log('[WV Extract] Deleted rule #%d from question #%d', ruleId, questionId);
 
   // Re-formulate the question now that the rule is gone. Don't fail the
   // request if the AI is unavailable — the rule deletion already succeeded
@@ -228,7 +200,7 @@ async function handleDeleteRuleAction(
     }
   }
 
-  respond(res, ExtractionAnswer, {
+  return {
     ruleDeleted: true,
     ruleId,
     ...(question ? {
@@ -237,7 +209,7 @@ async function handleDeleteRuleAction(
       currentQuestion: interviewQuestionOf(question.currentQuestion),
       extractedRegions: question.extractedRegions.map(regionPreviewOf),
     } : {}),
-  });
+  };
 }
 
 /**
@@ -280,16 +252,9 @@ async function applyAnswerResult(
 async function handleAnswerAction(
   question: PendingQuestionLike,
   answer: string | undefined,
-  res: Response,
-): Promise<void> {
-  if (!answer?.trim()) {
-    res.status(400).json({ error: 'Answer is required' });
-    return;
-  }
-  if (!question.currentQuestion) {
-    res.status(400).json({ error: 'No active question to answer' });
-    return;
-  }
+): Promise<ExtractionAnswer> {
+  if (!answer?.trim()) throw badRequest('Answer is required');
+  if (!question.currentQuestion) throw badRequest('No active question to answer');
 
   // Process the answer through interview AI
   const result = await question.processAnswer(question.currentQuestion, answer.trim());
@@ -302,7 +267,7 @@ async function handleAnswerAction(
     try {
       await addRule('extraction', result.rule, context);
       ruleSaved = result.rule;
-      console.log(`[WV Extract] Saved generic rule from interview: "${result.rule}"`);
+      console.log('[WV Extract] Saved generic rule from interview: "%s"', result.rule);
     } catch (err) {
       console.warn('[WV Extract] Failed to save generic rule from interview', {
         pageTitle: question.pageTitle,
@@ -313,13 +278,13 @@ async function handleAnswerAction(
 
   await applyAnswerResult(question, result);
 
-  respond(res, ExtractionAnswer, {
+  return {
     pageTitle: question.pageTitle,
     resolved: question.resolved,
     extractedRegions: question.extractedRegions.map(regionPreviewOf),
     currentQuestion: interviewQuestionOf(question.currentQuestion),
     ruleSaved,
-  });
+  };
 }
 
 /**
@@ -334,31 +299,21 @@ async function handleAnswerAction(
  *
  * POST /api/admin/wv-extract/answer
  */
-export async function answerExtractionQuestion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const { questionId, action, answer, ruleId } = req.body as {
-    questionId: number; action: string; answer?: string; ruleId?: number;
-  };
-
-  // Delete a problematic rule (doesn't resolve the question — admin can then re-answer)
-  if (action === 'delete_rule') {
-    await handleDeleteRuleAction(questionId, ruleId, res);
-    return;
-  }
+export async function answerExtractionQuestion(
+  { body: { questionId, action, answer, ruleId } }: { body: z.output<typeof wvExtractAnswerSchema> },
+): Promise<ExtractionAnswer> {
+  // Delete a problematic rule (doesn't resolve the question — admin can then
+  // re-answer). The schema requires a ruleId with this action.
+  if (action === 'delete_rule') return handleDeleteRuleAction(questionId, ruleId!);
 
   const question = findPendingQuestion(questionId);
-  if (!question || question.resolved) {
-    res.status(404).json({ error: 'Question not found or already resolved' });
-    return;
-  }
+  if (!question || question.resolved) throw notFound('Question not found or already resolved');
 
-  if (action === 'answer') {
-    await handleAnswerAction(question, answer, res);
-  } else if (action === 'accept' || action === 'skip') {
-    question.resolved = true;
-    respond(res, ExtractionAnswer, { resolved: true, pageTitle: question.pageTitle });
-  } else {
-    res.status(400).json({ error: 'Invalid action. Use: answer, accept, or skip' });
-  }
+  if (action === 'answer') return handleAnswerAction(question, answer);
+
+  // 'accept' or 'skip', the schema's two others
+  question.resolved = true;
+  return { resolved: true, pageTitle: question.pageTitle };
 }
 
 function isTerminal(status: string): boolean {

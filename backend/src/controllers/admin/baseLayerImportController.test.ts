@@ -6,7 +6,11 @@ vi.mock('../../services/worldViewImport/index.js', () => ({
 }));
 
 import { startBaseLayerImport, getLatestImportStatus } from '../../services/worldViewImport/index.js';
-import { startBaseLayerImportEndpoint } from './baseLayerImportController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const startBaseLayerImportEndpointRoute = routeAt(adminDeclaredRoutes, '/wv-import/base-layer', 'post');
 
 const mockedStart = startBaseLayerImport as unknown as ReturnType<typeof vi.fn>;
 const mockedStatus = getLatestImportStatus as unknown as ReturnType<typeof vi.fn>;
@@ -23,7 +27,7 @@ describe('startBaseLayerImportEndpoint', () => {
 
   it('starts an import and returns its operation id', async () => {
     const res = makeRes();
-    await startBaseLayerImportEndpoint(
+    await answerRoute(startBaseLayerImportEndpointRoute, 
       { body: { name: 'Administrative', providerLabel: 'Dataset 1.0', maxDepth: 2 } } as never,
       res as never,
     );
@@ -40,7 +44,7 @@ describe('startBaseLayerImportEndpoint', () => {
     mockedStatus.mockReturnValue({ opId: 'wv-import-8', progress: { status: 'importing' } });
     const res = makeRes();
 
-    await startBaseLayerImportEndpoint(
+    await answerRoute(startBaseLayerImportEndpointRoute, 
       { body: { name: 'X', providerLabel: 'Dataset 1.0', maxDepth: 2 } } as never,
       res as never,
     );
@@ -53,7 +57,7 @@ describe('startBaseLayerImportEndpoint', () => {
     mockedStatus.mockReturnValue({ opId: 'wv-import-8', progress: { status: 'matching' } });
     const res = makeRes();
 
-    await startBaseLayerImportEndpoint(
+    await answerRoute(startBaseLayerImportEndpointRoute, 
       { body: { name: 'X', providerLabel: 'Dataset 1.0', maxDepth: 2 } } as never,
       res as never,
     );
@@ -66,7 +70,7 @@ describe('startBaseLayerImportEndpoint', () => {
     mockedStatus.mockReturnValue({ opId: 'wv-import-8', progress: { status: 'complete' } });
     const res = makeRes();
 
-    await startBaseLayerImportEndpoint(
+    await answerRoute(startBaseLayerImportEndpointRoute, 
       { body: { name: 'X', providerLabel: 'Dataset 1.0', maxDepth: 2 } } as never,
       res as never,
     );

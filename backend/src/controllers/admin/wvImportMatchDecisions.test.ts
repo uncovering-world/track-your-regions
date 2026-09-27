@@ -13,15 +13,14 @@ vi.mock('../../db/index.js', () => ({
   pool: { connect: async () => ({ query: clientQuery, release }) },
   rollbackQuietly: async (c: { query: (s: string) => unknown }) => { await c.query('ROLLBACK'); return undefined; },
 }));
-// The match controller re-exports the colour-match stream, whose JavaScript
-// branch starts loading OpenCV when it is imported. Under vitest,
-// `import('@techstark/opencv-js')` resolves through the WASM module's own
-// `then`, which calls itself forever once the runtime is up. That leaves the
-// worker spinning, and the whole lane never exits.
-vi.mock('./wvImportMatchPipeline.js', () => ({ colorMatchDivisionsSSE: vi.fn() }));
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
 
-import { acceptBatchAndRejectRest, rejectBatchSuggestions } from './wvImportMatchDecisions.js';
-import { acceptAndRejectRest, rejectMatch } from './wvImportMatchController.js';
+/** The declared routes these specs answer through (ADR-0071). */
+const acceptBatchAndRejectRest = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/accept-batch-and-reject-rest', 'post');
+const rejectBatchSuggestions = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/reject-batch', 'post');
+const acceptAndRejectRest = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/accept-and-reject', 'post');
+const rejectMatch = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/reject', 'post');
 
 // Gibraltar in the development database's Wikivoyage import (world view 2), and
 // the three GADM divisions named Gibraltar the matcher offered it.
@@ -37,10 +36,10 @@ function answering(regionFound = true) {
   });
 }
 
-function call(handler: typeof acceptBatchAndRejectRest, body: Record<string, unknown>) {
+function call(route: typeof acceptBatchAndRejectRest, body: Record<string, unknown>) {
   const json = vi.fn();
   const res = { json, status: vi.fn().mockReturnThis() };
-  return handler({ params: { worldViewId: String(WORLD_VIEW) }, body } as never, res as never)
+  return answerRoute(route, { params: { worldViewId: String(WORLD_VIEW) }, body }, res)
     .then(() => ({ res, body: json.mock.calls[0]?.[0] }));
 }
 

@@ -25,6 +25,9 @@ import { respond } from '../../api/respond.js';
 import {
   ChildMerged, ChildrenDismissed, ChildrenSimplified, DescendantsPruned, HierarchySimplified, RegionRemoved,
 } from '../../api/responses/wvImportTreeOps.js';
+import type { z } from 'zod/v4';
+import { badRequest, notFound } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportRegionIdSchema } from '../../types/index.js';
 
 // Re-export smart-simplify and overlap handlers (callers import from this module)
 export { detectSmartSimplify, applySmartSimplifyMove } from './wvImportSmartSimplifyController.js';
@@ -143,9 +146,10 @@ async function copyChildImportStateToParent(
   }
 }
 
-export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function mergeChildIntoParent(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<ChildMerged> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/merge-child — regionId=${regionId}`);
 
   let body: ChildMerged;
@@ -159,9 +163,7 @@ export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Respo
       [regionId, worldViewId],
     );
     if (region.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
+      throw notFound('Region not found in this world view');
     }
 
     // Verify exactly 1 child
@@ -170,9 +172,7 @@ export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Respo
       [regionId, worldViewId],
     );
     if (children.rows.length !== 1) {
-      await client.query('ROLLBACK');
-      res.status(400).json({ error: `Region has ${children.rows.length} children, expected exactly 1` });
-      return;
+      throw badRequest(`Region has ${children.rows.length} children, expected exactly 1`);
     }
 
     const childId = children.rows[0].id as number;
@@ -199,7 +199,7 @@ export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Respo
   } finally {
     client.release();
   }
-  respond(res, ChildMerged, body);
+  return body;
 }
 
 /**
@@ -305,9 +305,10 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
  * Dismiss all child regions, making the parent a leaf.
  * POST /api/admin/wv-import/matches/:worldViewId/dismiss-children
  */
-export async function dismissChildren(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function dismissChildren(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<ChildrenDismissed> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/dismiss-children — regionId=${regionId}`);
 
   let body: ChildrenDismissed;
@@ -321,9 +322,7 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
       [regionId, worldViewId],
     );
     if (region.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
+      throw notFound('Region not found in this world view');
     }
 
     // Get all descendant region IDs (recursive)
@@ -337,9 +336,7 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
     `, [regionId]);
 
     if (descendants.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(400).json({ error: 'Region has no children to dismiss' });
-      return;
+      throw badRequest('Region has no children to dismiss');
     }
 
     const descendantIds = descendants.rows.map(r => r.id as number);
@@ -446,7 +443,7 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
   } finally {
     client.release();
   }
-  respond(res, ChildrenDismissed, body);
+  return body;
 }
 
 /**
@@ -454,9 +451,10 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
  * Makes the direct children into leaf nodes. Supports undo.
  * POST /api/admin/wv-import/matches/:worldViewId/prune-to-leaves
  */
-export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function pruneToLeaves(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<DescendantsPruned> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/prune-to-leaves — regionId=${regionId}`);
 
   let body: DescendantsPruned;
@@ -470,9 +468,7 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
       [regionId, worldViewId],
     );
     if (region.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
+      throw notFound('Region not found in this world view');
     }
 
     // Get direct children
@@ -481,9 +477,7 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
       [regionId],
     );
     if (directChildren.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(400).json({ error: 'Region has no children to prune' });
-      return;
+      throw badRequest('Region has no children to prune');
     }
     const childIds = directChildren.rows.map(r => r.id as number);
 
@@ -501,9 +495,7 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
     `, [childIds]);
 
     if (grandDescendants.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(400).json({ error: 'Direct children have no descendants to prune' });
-      return;
+      throw badRequest('Direct children have no descendants to prune');
     }
 
     const grandDescIds = grandDescendants.rows.map(r => r.id as number);
@@ -582,7 +574,7 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
   } finally {
     client.release();
   }
-  respond(res, DescendantsPruned, body);
+  return body;
 }
 
 /**
@@ -590,9 +582,10 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
  * Recursive: keeps merging upward until no more simplifications possible.
  * POST /api/admin/wv-import/matches/:worldViewId/simplify-hierarchy
  */
-export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function simplifyHierarchy(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<HierarchySimplified> {
+  const { regionId } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/simplify-hierarchy — regionId=${regionId}`);
 
   // Verify region belongs to this world view
@@ -601,8 +594,7 @@ export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response
     [regionId, worldViewId],
   );
   if (region.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   const { replacements } = await runSimplifyHierarchy(regionId, worldViewId);
@@ -614,16 +606,17 @@ export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response
   }
 
   const totalReduced = replacements.reduce((sum, r) => sum + r.replacedCount, 0) - replacements.length;
-  respond(res, HierarchySimplified, { replacements, totalReduced });
+  return { replacements, totalReduced };
 }
 
 /**
  * Simplify all children of a parent region, one by one.
  * POST /api/admin/wv-import/matches/:worldViewId/simplify-children
  */
-export async function simplifyChildren(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function simplifyChildren(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<ChildrenSimplified> {
+  const { regionId } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/simplify-children — parentRegionId=${regionId}`);
 
   // Get child regions that have 2+ divisions (simplification candidates)
@@ -655,5 +648,5 @@ export async function simplifyChildren(req: AuthenticatedRequest, res: Response)
     await syncImportMatchStatus(id);
   }
 
-  respond(res, ChildrenSimplified, { results, totalSimplified: results.length });
+  return { results, totalSimplified: results.length };
 }

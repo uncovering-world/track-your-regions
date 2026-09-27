@@ -22,6 +22,9 @@ import {
 } from './wvImportUtils.js';
 import { respond } from '../../api/respond.js';
 import { AutoResolvePreview, ChildrenAutoResolved, OperationUndone } from '../../api/responses/wvImportTreeOps.js';
+import type { z } from 'zod/v4';
+import { Refusal } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportRegionIdSchema } from '../../types/index.js';
 
 // =============================================================================
 // Undo helpers
@@ -518,9 +521,10 @@ async function findAutoResolveMatches(
  * Preview auto-resolve for a container's unmatched leaf descendants.
  * POST /api/admin/wv-import/matches/:worldViewId/auto-resolve-children/preview
  */
-export async function autoResolveChildrenPreview(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function autoResolveChildrenPreview(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<AutoResolvePreview> {
+  const { regionId } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/auto-resolve-children/preview — regionId=${regionId}`);
 
   const result = await findAutoResolveMatches(worldViewId, regionId);
@@ -535,7 +539,7 @@ export async function autoResolveChildrenPreview(req: AuthenticatedRequest, res:
     action: m.action,
   });
 
-  respond(res, AutoResolvePreview, {
+  return {
     autoMatched: result.autoMatched.map(formatMatch),
     needsReview: result.needsReview.map(formatMatch),
     unmatched: result.unmatched,
@@ -544,7 +548,7 @@ export async function autoResolveChildrenPreview(req: AuthenticatedRequest, res:
       redundant: result.parentMembers.redundant,
     },
     total: result.total,
-  });
+  };
 }
 
 // =============================================================================
@@ -648,19 +652,19 @@ async function promoteContainersToChildrenMatched(
  * Execute auto-resolve for a container's unmatched leaf descendants.
  * POST /api/admin/wv-import/matches/:worldViewId/auto-resolve-children
  */
-export async function autoResolveChildren(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function autoResolveChildren(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<ChildrenAutoResolved> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/auto-resolve-children — regionId=${regionId}`);
 
   const result = await findAutoResolveMatches(worldViewId, regionId);
 
   if (result.autoMatched.length === 0 && result.needsReview.length === 0) {
-    res.status(400).json({
+    throw new Refusal(400, {
       error: 'No matches found for any leaf descendants',
       failed: result.unmatched,
     });
-    return;
   }
 
   let body: ChildrenAutoResolved;
@@ -729,5 +733,5 @@ export async function autoResolveChildren(req: AuthenticatedRequest, res: Respon
   } finally {
     client.release();
   }
-  respond(res, ChildrenAutoResolved, body);
+  return body;
 }

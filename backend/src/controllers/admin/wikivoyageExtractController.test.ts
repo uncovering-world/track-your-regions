@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const getWikivoyageExtractionStatusRoute = routeAt(adminDeclaredRoutes, '/wv-extract/status', 'get');
 
 const latest = vi.fn();
 vi.mock('../../db/index.js', () => ({
@@ -13,7 +18,6 @@ vi.mock('../../services/wikivoyageExtract/index.js', () => ({
   deleteCache: vi.fn(),
 }));
 
-import { getWikivoyageExtractionStatus } from './wikivoyageExtractController.js';
 
 describe('the extraction status', () => {
   it('sends a pending question and its regions by their declared keys only', async () => {
@@ -40,7 +44,7 @@ describe('the extraction status', () => {
     });
     const json = vi.fn();
 
-    await getWikivoyageExtractionStatus({} as never, { json, status: vi.fn().mockReturnThis() } as never);
+    await answerRoute(getWikivoyageExtractionStatusRoute, {} as never, { json, status: vi.fn().mockReturnThis() } as never);
 
     const [body] = json.mock.calls[0];
     expect(body.pendingQuestions).toEqual([{

@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const resetMatchRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/reset-match', 'post');
 
 const { mockPoolQuery, mockClientQuery, mockClientRelease, mockPoolConnect } = vi.hoisted(() => {
   const clientQuery = vi.fn();
@@ -30,7 +35,6 @@ vi.mock('../../services/ai/chatCompletion.js', () => ({ chatCompletion: vi.fn() 
 vi.mock('../../services/ai/aiUsageLogger.js', () => ({ logAIUsage: vi.fn() }));
 vi.mock('../../services/wikivoyageExtract/fetcher.js', () => ({ WikivoyageFetcher: class { } }));
 
-import { resetMatch } from './wvImportAIController.js';
 
 function makeReq(overrides: { worldViewId?: string; regionId?: number } = {}): AuthenticatedRequest {
   return {
@@ -59,7 +63,7 @@ describe('resetMatch (#335 — atomicity)', () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [{ id: 100 }], rowCount: 1 });
 
     const res = makeRes();
-    await resetMatch(makeReq(), res);
+    await answerRoute(resetMatchRoute, makeReq(), res);
 
     const sqlCalls = mockClientQuery.mock.calls.map(c => (c[0] as string).trim().split('\n')[0]);
     expect(sqlCalls[0]).toBe('BEGIN');
@@ -81,7 +85,7 @@ describe('resetMatch (#335 — atomicity)', () => {
       .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // ROLLBACK
 
     const res = makeRes();
-    await resetMatch(makeReq(), res);
+    await answerRoute(resetMatchRoute, makeReq(), res);
 
     const sqlCalls = mockClientQuery.mock.calls.map(c => (c[0] as string).trim().split('\n')[0]);
     expect(sqlCalls).toContain('ROLLBACK');
@@ -98,7 +102,7 @@ describe('resetMatch (#335 — atomicity)', () => {
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // ROLLBACK
 
-    await resetMatch(makeReq(), makeRes());
+    await answerRoute(resetMatchRoute, makeReq(), makeRes());
     expect(mockClientRelease).toHaveBeenCalledTimes(1);
   });
 
@@ -106,7 +110,7 @@ describe('resetMatch (#335 — atomicity)', () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const res = makeRes();
-    await resetMatch(makeReq(), res);
+    await answerRoute(resetMatchRoute, makeReq(), res);
 
     expect(mockPoolConnect).not.toHaveBeenCalled();
     expect(mockClientQuery).not.toHaveBeenCalled();
@@ -118,7 +122,7 @@ describe('resetMatch (#335 — atomicity)', () => {
     mockPoolConnect.mockRejectedValueOnce(new Error('pool exhausted'));
 
     const res = makeRes();
-    await resetMatch(makeReq(), res);
+    await answerRoute(resetMatchRoute, makeReq(), res);
 
     expect(mockClientQuery).not.toHaveBeenCalled();
     expect(mockClientRelease).not.toHaveBeenCalled();
@@ -138,7 +142,7 @@ describe('resetMatch (#335 — atomicity)', () => {
       .mockRejectedValueOnce(new Error('connection is closed')); // ROLLBACK also fails
 
     const res = makeRes();
-    await resetMatch(makeReq(), res);
+    await answerRoute(resetMatchRoute, makeReq(), res);
 
     expect(res._status).toBe(500);
     // A sentence for the admin, never the driver's text (#1021).

@@ -4,12 +4,9 @@
  * Match review endpoints: stats, accept, reject, batch accept, tree, map images, manual fix.
  */
 
-import { Response } from 'express';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { acceptDivisionsRejectRest, rejectDivisions } from './wvImportMatchDecisions.js';
 import { matchTreeNodeOf, type MatchTreeRow } from './wvImportAnswerRows.js';
-import { respond } from '../../api/respond.js';
 import {
   MatchAccepted,
   MatchAcceptedRestRejected,
@@ -21,15 +18,9 @@ import {
   type MatchTreeNode,
 } from '../../api/responses/worldViewImport.js';
 import { ManualFixMarked, MapImageSelected, MembersCleared } from '../../api/responses/wvImportTreeOps.js';
-// Re-export review API for adminRoutes (keeps existing import path working)
-export {
-  resolveWaterReview,
-  getWaterCropImage,
-  resolveClusterReview,
-  getClusterPreviewImage,
-  getClusterHighlightImage,
-  resolveIcpAdjustment,
-} from './wvImportMatchReview.js';
+import type { z } from 'zod/v4';
+import { badRequest, notFound } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportAcceptBatchSchema, wvImportAcceptMatchSchema, wvImportMarkManualFixSchema, wvImportRegionIdSchema, wvImportSelectMapImageSchema } from '../../types/index.js';
 
 // =============================================================================
 // Match review endpoints
@@ -39,8 +30,9 @@ export {
  * Get match statistics for a world view.
  * GET /api/admin/wv-import/matches/:worldViewId/stats
  */
-export async function getMatchStats(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
+export async function getMatchStats(
+  { params: { worldViewId } }: { params: z.output<typeof worldViewIdParamSchema> },
+): Promise<MatchStats> {
   console.log(`[WV Import] GET /matches/${worldViewId}/stats`);
 
   const result = await pool.query<MatchStats>(`
@@ -113,7 +105,7 @@ export async function getMatchStats(req: AuthenticatedRequest, res: Response): P
     WHERE r.world_view_id = $1
   `, [worldViewId]);
 
-  respond(res, MatchStats, result.rows[0]);
+  return result.rows[0];
 }
 
 /**
@@ -121,9 +113,10 @@ export async function getMatchStats(req: AuthenticatedRequest, res: Response): P
  * Removes the accepted suggestion and keeps needs_review if more remain.
  * POST /api/admin/wv-import/matches/:worldViewId/accept
  */
-export async function acceptMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, divisionId } = req.body;
+export async function acceptMatch(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportAcceptMatchSchema> },
+): Promise<MatchAccepted> {
+  const { regionId, divisionId } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/accept — regionId=${regionId}, divisionId=${divisionId}`);
 
   // Verify region exists and belongs to the specified world view
@@ -132,8 +125,7 @@ export async function acceptMatch(req: AuthenticatedRequest, res: Response): Pro
     [regionId, worldViewId],
   );
   if (region.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   // Create region member
@@ -162,32 +154,33 @@ export async function acceptMatch(req: AuthenticatedRequest, res: Response): Pro
     [newStatus, regionId],
   );
 
-  respond(res, MatchAccepted, { accepted: true });
+  return { accepted: true };
 }
 
 /**
  * Reject (dismiss) a single suggestion without accepting it.
  * POST /api/admin/wv-import/matches/:worldViewId/reject
  */
-export async function rejectMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, divisionId } = req.body;
+export async function rejectMatch(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportAcceptMatchSchema> },
+): Promise<SuggestionRejected> {
+  const { regionId, divisionId } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/reject — regionId=${regionId}, divisionId=${divisionId}`);
 
   if (!await rejectDivisions(worldViewId, regionId, [divisionId])) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
-  respond(res, SuggestionRejected, { rejected: true });
+  return { rejected: true };
 }
 
 /**
  * Reject all remaining suggestions for a region.
  * POST /api/admin/wv-import/matches/:worldViewId/reject-remaining
  */
-export async function rejectRemaining(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function rejectRemaining(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<RemainingRejected> {
+  const { regionId } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/reject-remaining — regionId=${regionId}`);
 
   const region = await pool.query(
@@ -195,8 +188,7 @@ export async function rejectRemaining(req: AuthenticatedRequest, res: Response):
     [regionId, worldViewId],
   );
   if (region.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   // Count non-rejected suggestions before marking them
@@ -207,8 +199,7 @@ export async function rejectRemaining(req: AuthenticatedRequest, res: Response):
   const suggestionCount = parseInt(countResult.rows[0].count as string);
 
   if (suggestionCount === 0) {
-    respond(res, RemainingRejected, { rejected: 0 });
-    return;
+    return { rejected: 0 };
   }
 
   // Mark all non-rejected suggestions as rejected
@@ -230,16 +221,17 @@ export async function rejectRemaining(req: AuthenticatedRequest, res: Response):
     [newStatus, regionId],
   );
 
-  respond(res, RemainingRejected, { rejected: suggestionCount });
+  return { rejected: suggestionCount };
 }
 
 /**
  * Remove all assigned divisions (region_members) for a region, keeping suggestions intact.
  * POST /api/admin/wv-import/matches/:worldViewId/clear-members
  */
-export async function clearMembers(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function clearMembers(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<MembersCleared> {
+  const { regionId } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/clear-members — regionId=${regionId}`);
 
   const region = await pool.query(
@@ -247,8 +239,7 @@ export async function clearMembers(req: AuthenticatedRequest, res: Response): Pr
     [regionId, worldViewId],
   );
   if (region.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   const deleted = await pool.query(
@@ -269,7 +260,7 @@ export async function clearMembers(req: AuthenticatedRequest, res: Response): Pr
     [newStatus, regionId],
   );
 
-  respond(res, MembersCleared, { cleared: deleted.rowCount ?? 0 });
+  return { cleared: deleted.rowCount ?? 0 };
 }
 
 /**
@@ -277,28 +268,27 @@ export async function clearMembers(req: AuthenticatedRequest, res: Response): Pr
  * (`acceptDivisionsRejectRest`, which the batch route shares).
  * POST /api/admin/wv-import/matches/:worldViewId/accept-and-reject
  */
-export async function acceptAndRejectRest(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, divisionId } = req.body;
+export async function acceptAndRejectRest(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportAcceptMatchSchema> },
+): Promise<MatchAcceptedRestRejected> {
+  const { regionId, divisionId } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/accept-and-reject — regionId=${regionId}, divisionId=${divisionId}`);
 
   if (!await acceptDivisionsRejectRest(worldViewId, regionId, [divisionId])) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
-  respond(res, MatchAcceptedRestRejected, { accepted: true, rejected: true });
+  return { accepted: true, rejected: true };
 }
 
 /**
  * Accept a batch of matches.
  * POST /api/admin/wv-import/matches/:worldViewId/accept-batch
  */
-export async function acceptBatchMatches(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  console.log(`[WV Import] POST /matches/${worldViewId}/accept-batch — ${req.body?.assignments?.length ?? 0} assignments`);
-  const { assignments } = req.body as {
-    assignments: Array<{ regionId: number; divisionId: number }>;
-  };
+export async function acceptBatchMatches(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportAcceptBatchSchema> },
+): Promise<MatchesAccepted> {
+  console.log(`[WV Import] POST /matches/${worldViewId}/accept-batch — ${body.assignments?.length ?? 0} assignments`);
+  const { assignments } = body;
 
   let accepted = 0;
   const client = await pool.connect();
@@ -359,15 +349,16 @@ export async function acceptBatchMatches(req: AuthenticatedRequest, res: Respons
   } finally {
     client.release();
   }
-  respond(res, MatchesAccepted, { accepted });
+  return { accepted };
 }
 
 /**
  * Get region tree with match status for hierarchical review.
  * GET /api/admin/wv-import/matches/:worldViewId/tree
  */
-export async function getMatchTree(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
+export async function getMatchTree(
+  { params: { worldViewId } }: { params: z.output<typeof worldViewIdParamSchema> },
+): Promise<MatchTree> {
   console.log(`[WV Import] GET /matches/${worldViewId}/tree`);
 
   const result = await pool.query<MatchTreeRow>(`
@@ -438,16 +429,17 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
     else roots.push(node);
   }
 
-  respond(res, MatchTree, roots);
+  return roots;
 }
 
 /**
  * Select a map image from candidates for a region.
  * POST /api/admin/wv-import/matches/:worldViewId/select-map-image
  */
-export async function selectMapImage(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, imageUrl } = req.body as { regionId: number; imageUrl: string | null };
+export async function selectMapImage(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportSelectMapImageSchema> },
+): Promise<MapImageSelected> {
+  const { regionId, imageUrl } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/select-map-image — regionId=${regionId}, imageUrl=${imageUrl ? '(url)' : 'null'}`);
 
   // Verify region exists and belongs to the specified world view
@@ -456,8 +448,7 @@ export async function selectMapImage(req: AuthenticatedRequest, res: Response): 
     [regionId, worldViewId],
   );
   if (region.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   // Validate imageUrl is in the candidates list (prevent arbitrary URL injection)
@@ -468,8 +459,7 @@ export async function selectMapImage(req: AuthenticatedRequest, res: Response): 
     );
     const candidates = candidatesResult.rows.map(r => r.image_url as string);
     if (!candidates.includes(imageUrl)) {
-      res.status(400).json({ error: 'Image URL is not in the candidates list' });
-      return;
+      throw badRequest('Image URL is not in the candidates list');
     }
   }
 
@@ -485,24 +475,24 @@ export async function selectMapImage(req: AuthenticatedRequest, res: Response): 
     );
   }
 
-  respond(res, MapImageSelected, { selected: true });
+  return { selected: true };
 }
 
 /**
  * Mark/unmark a region as needing manual fixes in WorldEditor.
  * POST /api/admin/wv-import/matches/:worldViewId/mark-manual-fix
  */
-export async function markManualFix(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, needsManualFix, fixNote } = req.body as { regionId: number; needsManualFix: boolean; fixNote?: string };
+export async function markManualFix(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportMarkManualFixSchema> },
+): Promise<ManualFixMarked> {
+  const { regionId, needsManualFix, fixNote } = body;
 
   const region = await pool.query(
     'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
     [regionId, worldViewId],
   );
   if (region.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   await pool.query(
@@ -510,18 +500,5 @@ export async function markManualFix(req: AuthenticatedRequest, res: Response): P
     [needsManualFix, needsManualFix ? (fixNote ?? null) : null, regionId],
   );
 
-  respond(res, ManualFixMarked, { updated: true });
+  return { updated: true };
 }
-
-// The division-candidate geometry endpoints live in their own module;
-// re-export so the routes and the barrel keep their import path.
-export {
-  getUnionGeometry, splitDivisionsDeeper, visionMatchDivisions,
-} from './wvImportMatchGeometryController.js';
-
-// Transfer endpoints live in their own module; re-export to keep
-// the existing import path stable for adminRoutes / worldViewImportController.
-export { acceptWithTransfer, getTransferPreview } from './wvImportMatchTransfer.js';
-
-// Re-export CV pipeline from dedicated module (keeps existing import path working)
-export { colorMatchDivisionsSSE } from './wvImportMatchPipeline.js';
