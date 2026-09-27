@@ -80,15 +80,29 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref();
 
-export function blacklistAccessToken(token: string): void {
+/** A token this server signed and that has not expired, or null. */
+function signedLivePayload(token: string): (JWTPayload & { jti?: string; exp?: number }) | null {
   try {
-    // Decode without verification to extract jti and exp
-    const decoded = jwt.decode(token) as { jti?: string; exp?: number } | null;
-    if (decoded?.jti && decoded?.exp) {
-      tokenBlacklist.set(decoded.jti, decoded.exp * 1000);
-    }
+    return jwt.verify(token, JWT_SECRET, {
+      algorithms: ['HS256'],
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    }) as unknown as JWTPayload & { jti?: string; exp?: number };
   } catch {
-    // If decode fails, nothing to blacklist
+    return null;
+  }
+}
+
+/**
+ * Ends a live token this server signed. Logout is a public route, so the token
+ * is verified before it is stored: a forged one names no session, and storing
+ * an unverified jti with any `exp` it claims would let anyone grow the
+ * blacklist without bound. An expired token needs no entry either.
+ */
+export function blacklistAccessToken(token: string): void {
+  const payload = signedLivePayload(token);
+  if (payload?.jti && payload.exp) {
+    tokenBlacklist.set(payload.jti, payload.exp * 1000);
   }
 }
 
@@ -97,22 +111,13 @@ function isBlacklisted(jti: string): boolean {
 }
 
 export function verifyAccessToken(token: string): JWTPayload | null {
-  try {
-    const payload = jwt.verify(token, JWT_SECRET, {
-      algorithms: ['HS256'],
-      issuer: JWT_ISSUER,
-      audience: JWT_AUDIENCE,
-    }) as unknown as JWTPayload & { jti?: string };
-
-    // Check blacklist (for tokens issued after this change)
-    if (payload.jti && isBlacklisted(payload.jti)) {
-      return null;
-    }
-
-    return payload;
-  } catch {
+  const payload = signedLivePayload(token);
+  if (!payload) return null;
+  // A logged-out token is refused until it expires (V7.3.5).
+  if (payload.jti && isBlacklisted(payload.jti)) {
     return null;
   }
+  return payload;
 }
 
 // =============================================================================
