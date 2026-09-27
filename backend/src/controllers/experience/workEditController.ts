@@ -28,6 +28,7 @@ import { offeredLinkSql } from '../../db/readerPredicates.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
 import { userAgent } from '../../config/userAgent.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { correctWork, lockWork } from './workWriter.js';
 
 /**
  * What a curator may claim on a work — the whole `treasures.curated_fields`
@@ -49,20 +50,21 @@ import { lockExperience } from '../../db/experienceWriter.js';
  */
 type Claim = WorkEditResult['claimed'][number];
 
+/** The fields a request sent, as the claims it makes. */
+function claimsOf(sent: { name?: unknown; artists?: unknown; year?: unknown; picture?: unknown }): Claim[] {
+  const claims: Claim[] = [];
+  if (sent.name !== undefined) claims.push('name');
+  if (sent.artists !== undefined) claims.push('artists');
+  if (sent.year !== undefined) claims.push('year');
+  if (sent.picture !== undefined) claims.push('image_url');
+  return claims;
+}
+
 /** The claims this edit adds, kept in the order the column already holds. */
 function withClaims(stored: string[], added: Claim[]): string[] {
   const next = new Set(stored);
   for (const claim of added) next.add(claim);
   return [...next];
-}
-
-/** A work as it stood before the edit — what the audit row reports as `old`. */
-interface StoredWork {
-  name: string;
-  artists: string[];
-  year: number | null;
-  image_url: string | null;
-  curated_fields: string[];
 }
 
 export async function editWork(
@@ -114,11 +116,7 @@ export async function editWork(
 
   // What this edit claims, decided once: the transaction writes it onto the row
   // and the response reports it, and the two must be the same list.
-  const claims: Claim[] = [];
-  if (name !== undefined) claims.push('name');
-  if (artists !== undefined) claims.push('artists');
-  if (year !== undefined) claims.push('year');
-  if (picture !== undefined) claims.push('image_url');
+  const claims = claimsOf({ name, artists, year, picture });
 
   // Whose photograph the new one is, asked before the transaction opens: it is
   // a request to somebody else's server, and a lock held across one is a lock
@@ -142,52 +140,24 @@ export async function editWork(
     // transaction that took the work first would hold one row and wait for the
     // other; taken in two orders, two writers on one museum close a cycle and
     // Postgres resolves it by failing one of them with a 500.
-    await lockExperience(client, experienceId);
-
-    // Everything this transaction depends on, re-read under the lock: the claim
-    // set it adds to, and the values the trail reports as `old`. The set is
-    // re-read rather than carried from the scope query because `accept-source`
-    // takes keys back off a claim set, and one landing between an unlocked read
-    // and this write would be undone by the rewrite below.
-    const locked = await client.query(
-      'SELECT name, artists, year, image_url, curated_fields FROM treasures WHERE id = $1 FOR UPDATE',
-      [treasureId],
-    );
-    const before = locked.rows[0] as StoredWork | undefined;
+    const locked = await lockExperience(client, experienceId);
     // The catch below rolls the transaction back.
-    if (!before) throw notFound('Work not found');
+    if (!locked) throw notFound('Experience not found');
 
-    await client.query(
-      `UPDATE treasures
-          SET name = COALESCE($2, name),
-              -- Not COALESCE: an empty list is a value a curator can mean — "the
-              -- source names a maker and nobody knows who made this" — and
-              -- COALESCE cannot tell it from "leave this alone". The boolean says
-              -- which of the two the request was.
-              artists = CASE WHEN $3::boolean THEN $4::varchar(500)[] ELSE artists END,
-              year = CASE WHEN $5::boolean THEN $6::integer ELSE year END,
-              image_url = CASE WHEN $8::boolean THEN $9::varchar(1000) ELSE image_url END,
-              -- The credit moves in the same statement as the photograph it
-              -- belongs to, so no moment exists in which the row holds one
-              -- picture and another photographer's name. Merged rather than
-              -- assigned: the metadata column is the run's too, and this edit
-              -- answers for one key of it.
-              metadata = CASE WHEN $8::boolean
-                              THEN COALESCE(metadata, '{}'::jsonb) || $10::jsonb
-                              ELSE metadata END,
-              curated_fields = $7::jsonb,
-              -- Stamped by hand, as every writer of this table does: there is no
-              -- trigger, and a row whose value changed without its timestamp
-              -- moving is one nothing downstream can tell has changed.
-              updated_at = NOW()
-        WHERE id = $1`,
-      [treasureId, name ?? null,
-        artists !== undefined, artists ?? [],
-        year !== undefined, year ?? null,
-        JSON.stringify(withClaims(before.curated_fields ?? [], claims)),
-        picture !== undefined, picture ?? null,
-        JSON.stringify({ imageCredit: credit })],
-    );
+    // Then the work's own row, since a work is shared by every venue that holds
+    // it and this venue's lock does not keep another venue's curator off it
+    // (`workWriter.ts`). Everything this transaction depends on is read under
+    // it: the claim set it adds to, and the values the trail reports as `old`.
+    // The set is re-read rather than carried from the scope query because
+    // `accept-source` takes keys back off a claim set, and one landing between
+    // an unlocked read and this write would be undone by the rewrite below.
+    const before = await lockWork(client, locked.lock, treasureId);
+    if (!before) throw notFound('Work not found in this experience');
+
+    await correctWork(client, locked.lock, treasureId, {
+      name, artists, year, picture, credit,
+      curatedFields: withClaims(before.curated_fields ?? [], claims),
+    });
 
     await client.query(
       `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)

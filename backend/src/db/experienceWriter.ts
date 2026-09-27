@@ -14,9 +14,10 @@
  * `LockedExperience`, which nothing outside this module produces; every write
  * made under that lock requires one, so a write issued before the lock, or on a
  * path that never took it, does not type-check. The curator's writes to the
- * object's points take it too (`controllers/experience/experienceLocationWriter.ts`),
- * so for a point "the object first" is a property of the types; a work's
- * writes do not take it yet, and for them the order is still each handler's.
+ * object's points and to its works take it too
+ * (`controllers/experience/experienceLocationWriter.ts`,
+ * `controllers/experience/workWriter.ts`), so for a point and a work alike "the
+ * object first" is a property of the types.
  *
  * A write outside the lock rule takes no token, and `db/locks.ts` names why.
  */

@@ -32,18 +32,19 @@ import type { ContentKind, ContentsByKind, ContentItemChange } from '../../servi
 // own shapes, and the audit row records the same ones (ADR-0066).
 import type { AppliedPart, PartNotFound } from '../../api/responses/curation.js';
 import { renamePoint } from './experienceLocationWriter.js';
+import { HELD_WORK_FIELDS, isHeldWorkField, writeHeldWorkFields, type HeldWorkField } from './workWriter.js';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 
 /**
  * One write the plan will make, with the part it is about: a point's held name,
- * which goes through the point writer under the object's token, or a work's
- * statement. Empty where every held field was claimed since.
+ * or a work's held fields as data. Each goes through its writer under the
+ * object's token (`experienceLocationWriter.ts`, `workWriter.ts`). Empty where
+ * every held field was claimed since.
  */
 interface PlannedWrite {
   part: AppliedPart;
   point?: { id: number; name: string | null };
-  sql: string;
-  params: unknown[];
+  work?: { id: number; fields: Array<{ field: HeldWorkField; value: unknown }> };
 }
 
 export interface HeldPartPlan {
@@ -76,7 +77,7 @@ const WRITABLE: Record<ContentKind, ReadonlySet<string>> = {
   // claim's to refuse — so a record carrying one is a shape this code has never
   // seen, and refusing it is the safety net the object's own writer has.
   locations: new Set(['name']),
-  treasures: new Set(['name', 'artists', 'year', 'image_url', 'metadata.imageCredit']),
+  treasures: HELD_WORK_FIELDS,
 };
 
 /** The claim a field answers to: the credit is the picture's, as `accept-source` releases them together. */
@@ -155,7 +156,7 @@ async function lockPart(
  */
 function writeFor(
   kind: ContentKind, rowId: number, writable: ContentItemChange['fields'],
-): { point?: { id: number; name: string | null }; sql: string; params: unknown[] } | null {
+): Pick<PlannedWrite, 'point' | 'work'> | null {
   if (writable.length === 0) return null;
 
   if (kind === 'locations') {
@@ -164,35 +165,27 @@ function writeFor(
     // the run of spaces the run saw, and publishing it verbatim would put back
     // into the column what migration 047 took out.
     const name = writable[0].new;
-    return { point: { id: rowId, name: typeof name === 'string' ? tidyLabel(name) : null }, sql: '', params: [] };
+    return { point: { id: rowId, name: typeof name === 'string' ? tidyLabel(name) : null } };
   }
 
-  const params: unknown[] = [rowId];
-  const bind = (value: unknown) => `$${params.push(value)}`;
-
-  const assignments: string[] = [];
-  for (const field of writable) {
-    if (field.field === 'metadata.imageCredit') {
-      // Absent and null are one case, as they are for the object's credit: the
-      // key goes rather than being written as a jsonb null nothing reads.
-      assignments.push(field.new == null
-        ? `metadata = COALESCE(metadata, '{}'::jsonb) - 'imageCredit'`
-        : `metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('imageCredit', ${bind(JSON.stringify(field.new))}::jsonb)`);
-    } else {
-      // name, artists, year, image_url — the column is the field's own name, and
-      // Postgres infers each parameter's type from the column it is assigned to.
-      // A title and the makers as a person would type them (`tidyNameValue`,
-      // #835), for the reason the point's name above is: a record written by a
-      // backend that did not tidy must not put a run of spaces back into the
-      // columns migration 047 cleaned.
-      assignments.push(`${field.field} = ${bind(tidyNameValue(field.field, field.new ?? null))}`);
-    }
-  }
-  // `treasures` has `updated_at` where the location table does not, and a row
-  // whose value changed without its timestamp moving is one nothing downstream
-  // can tell has changed.
-  assignments.push('updated_at = NOW()');
-  return { sql: `UPDATE treasures SET ${assignments.join(', ')} WHERE id = $1`, params };
+  // A title and the makers as a person would type them (`tidyNameValue`,
+  // #835), for the reason the point's name above is: a record written by a
+  // backend that did not tidy must not put a run of spaces back into the
+  // columns migration 047 cleaned. The credit is a value like the rest; the
+  // writer turns the list into assignments (`writeHeldWorkFields`).
+  return {
+    work: {
+      id: rowId,
+      // Every field here passed `WRITABLE`, which is the writer's own list; the
+      // guard is what tells the compiler so.
+      fields: writable.flatMap(field => (isHeldWorkField(field.field)
+        ? [{
+          field: field.field,
+          value: field.field === 'metadata.imageCredit' ? field.new ?? null : tidyNameValue(field.field, field.new ?? null),
+        }]
+        : [])),
+    },
+  };
 }
 
 /**
@@ -271,7 +264,7 @@ async function planOnePart(
   };
   const write = writeFor(kind, row.id, writable);
   return {
-    write: { part, point: write?.point, sql: write?.sql ?? '', params: write?.params ?? [] },
+    write: { part, point: write?.point, work: write?.work },
     written: writable.map(field => ({ row: partRow(kind, entry, field.field), value: field.new })),
   };
 }
@@ -366,7 +359,7 @@ export async function applyHeldPartWrites(
   const applied: AppliedPart[] = [];
   for (const write of plan.writes) {
     if (write.point) await renamePoint(client, lock, write.point.id, write.point.name);
-    else if (write.sql) await client.query(write.sql, write.params);
+    else if (write.work) await writeHeldWorkFields(client, lock, write.work.id, write.work.fields);
     applied.push(write.part);
   }
   return applied;

@@ -39,14 +39,14 @@ import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, refuseArrivalBodySchema, refuseContentsBodySchema } from '../../types/index.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
-import { offeredLinkSql } from '../../db/readerPredicates.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
-import { contentsAnswerableSql, unreadLinkSql } from './waitingCounts.js';
+import { contentsAnswerableSql } from './waitingCounts.js';
 import { lockExperience, recordDecisionOnExperience, type LockedExperience } from '../../db/experienceWriter.js';
 import { markUnreadPointsRefused, releaseDeferredWithdrawals } from './experienceLocationWriter.js';
+import { markUnreadLinksRefused } from './workWriter.js';
 
 /** The reason a curator's refusal carries, in the words the kept-out list shows. */
 export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
@@ -278,7 +278,7 @@ export async function refuseContentsUnderLock(
     }
     const locationsRefused = points.refused;
     if (treasureIds !== undefined || !anyNamed) {
-      treasureLinksRefused = await markLinksRefused(client, experienceId, treasureIds);
+      treasureLinksRefused = await markUnreadLinksRefused(client, locked.lock, treasureIds);
     }
 
     if (locationsRefused + treasureLinksRefused === 0) {
@@ -354,34 +354,4 @@ async function markPointsRefused(
   const refused = await markUnreadPointsRefused(client, lock, locationIds);
   if (refused === 0) return { refused, withdrawalsReleased: 0 };
   return { refused, withdrawalsReleased: await releaseDeferredWithdrawals(client, lock, 'refused') };
-}
-
-/**
- * The mark on the unread offered links — on the link, not the work: "not
- * this work here" is the link's axis, and the work stays askable at every
- * other venue that holds it. The join is one row per link, so the UPDATE
- * writes each link once.
- *
- * The link's own state goes to `pending` with the mark. A link is unread on
- * either axis (ADR-0025 decision 2), so one whose own state is `auto` can be
- * refused here because its *work* is pending — and the work is one row for
- * every venue, published from whichever venue passes it first. Readers hide
- * a link by `<> 'pending'` on both axes and never read the mark, so a
- * refused link left `auto` would surface the day the work is published
- * elsewhere. Pending says what is true — nobody passed this work *here* —
- * and keeps the one reader word the mark relies on.
- */
-async function markLinksRefused(
-  client: PoolClient, experienceId: number, treasureIds?: number[],
-): Promise<number> {
-  const named = treasureIds !== undefined;
-  const links = await client.query(
-    `UPDATE experience_treasures et SET refused_at = NOW(), curation_state = 'pending'
-       FROM treasures t
-      WHERE t.id = et.treasure_id AND et.experience_id = $1
-        AND ${unreadLinkSql('et', 't')} AND ${offeredLinkSql('et')}
-      ${named ? 'AND et.treasure_id = ANY($2::int[])' : ''}`,
-    named ? [experienceId, treasureIds] : [experienceId],
-  );
-  return links.rowCount ?? 0;
 }

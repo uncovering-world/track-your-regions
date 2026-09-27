@@ -140,7 +140,8 @@ describe('publishing the held fields of an object\'s parts', () => {
     await publish({ expectedSyncLogId: 64 }, client);
 
     const write = only(queries, 'UPDATE treasures SET name');
-    expect(write.params).toEqual([3122, 'St. John on Patmos (Berlin)', ['Hieronymus Bosch', 'Workshop of Bosch'], 1505]);
+    // The work, then the venue whose token the write spends (experience 5).
+    expect(write.params).toEqual([3122, 5, 'St. John on Patmos (Berlin)', ['Hieronymus Bosch', 'Workshop of Bosch'], 1505]);
   });
 
   it('writes a held work\'s attribution and picture with the credit the run fetched for it', async () => {
@@ -164,7 +165,9 @@ describe('publishing the held fields of an object\'s parts', () => {
     // the next run is not the thing publishing this one.
     expect(write.sql).toContain("'imageCredit'");
     expect(write.sql).toContain('updated_at = NOW()');
-    expect(write.params).toEqual([3102, ['Jan Vermeer van Haarlem the Elder'], NEW_FILE, JSON.stringify(NEW_CREDIT)]);
+    // And only through a link of the venue whose lock this transaction holds.
+    expect(write.sql).toContain('et.experience_id = $2');
+    expect(write.params).toEqual([3102, 5, ['Jan Vermeer van Haarlem the Elder'], NEW_FILE, JSON.stringify(NEW_CREDIT)]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{
         kind: 'treasures', name: 'The Wine Glass',
@@ -258,7 +261,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     }, client);
 
     expect(res.status).not.toHaveBeenCalledWith(409);
-    expect(only(queries, 'UPDATE treasures SET image_url').params).toEqual([3102, NEW_FILE]);
+    expect(only(queries, 'UPDATE treasures SET image_url').params).toEqual([3102, 5, NEW_FILE]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{
         kind: 'treasures', name: 'The Wine Glass',
