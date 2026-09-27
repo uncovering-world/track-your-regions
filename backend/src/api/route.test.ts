@@ -22,8 +22,8 @@ vi.mock('../db/index.js', () => ({
 
 import { verifyAccessToken } from '../services/authService.js';
 import { pool } from '../db/index.js';
-import { errorHandler } from '../middleware/errorHandler.js';
-import { defineRoute, NO_CONTENT, REDIRECT, routerOf, shadowOf, stream, whenAnswered, type Route } from './route.js';
+import { errorHandler, failure } from '../middleware/errorHandler.js';
+import { defineRoute, IMAGE, NO_CONTENT, REDIRECT, routerOf, shadowOf, stream, whenAnswered, type Route } from './route.js';
 
 const mockedVerify = verifyAccessToken as unknown as ReturnType<typeof vi.fn>;
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -111,6 +111,23 @@ const routes: Route[] = [
         await whenAnswered(res, () => setTimeout(() => res.redirect('https://example.org/later'), 5));
       }
     },
+  }),
+  defineRoute({
+    method: 'get', path: '/picture', access: 'curator', cache: { maxAge: 300 },
+    response: IMAGE,
+    handler: async () => ({ contentType: 'image/png', bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47]), crossOrigin: true }),
+  }),
+  defineRoute({
+    method: 'get', path: '/commons', access: 'curator',
+    cache: { maxAge: 86400, shared: 'the same picture for everyone who may ask' },
+    response: IMAGE,
+    handler: async () => ({ contentType: 'image/jpeg', bytes: Buffer.from('jpeg') }),
+  }),
+  defineRoute({
+    method: 'get', path: '/commons-down', access: 'curator',
+    cache: { maxAge: 86400, shared: 'the same picture for everyone who may ask' },
+    response: IMAGE,
+    handler: async () => { throw failure('Failed to fetch image', 502); },
   }),
   defineRoute({
     method: 'get', path: '/maybe', access: 'optional', cache: 'revalidate',
@@ -334,6 +351,32 @@ describe('an answer the handler writes itself', () => {
   });
 });
 
+describe('an image answer', () => {
+  it('sends the bytes under their type, drawable from another origin where the handler says so', async () => {
+    signedIn('curator');
+    const answer = await sendRaw('/picture', 't');
+    expect(answer.status).toBe(200);
+    expect(answer.headers['content-type']).toBe('image/png');
+    expect(answer.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    expect(answer.headers['cache-control']).toBe('private, max-age=300');
+    expect(answer.text).toHaveLength(4);
+  });
+
+  it('lets a shared cache keep it only where the declaration says why', async () => {
+    signedIn('curator');
+    const answer = await sendRaw('/commons', 't');
+    expect(answer.headers['cache-control']).toBe('public, max-age=86400');
+    expect(answer.headers['cross-origin-resource-policy']).toBeUndefined();
+  });
+
+  it('keeps its lifetime off a failure, which no cache may go on answering with', async () => {
+    signedIn('curator');
+    const answer = await sendRaw('/commons-down', 't');
+    expect(answer.status).toBe(502);
+    expect(answer.headers['cache-control']).toBe('private, no-store');
+  });
+});
+
 describe('the cache header each policy writes', () => {
   it.each([
     ['/public', undefined, 'public, no-cache'],
@@ -388,6 +431,11 @@ describe('what the registry refuses to build', () => {
     expect(() => routerOf([tokenRoute]))
       .toThrow('POST /login hands out an access token, and must declare the token cache policy');
     expect(() => routerOf([{ ...tokenRoute, cache: 'token' }])).not.toThrow();
+  });
+
+  it('refuses a shared max-age whose reason is empty', () => {
+    expect(() => routerOf([{ ...route('get', '/x'), cache: { maxAge: 60, shared: ' ' } }]))
+      .toThrow('GET /x lets a shared cache keep its answer without saying why');
   });
 
   it('refuses a shared cache on a route that reads a token, however the declaration was built', () => {

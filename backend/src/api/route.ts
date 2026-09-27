@@ -51,8 +51,16 @@ export type Access = 'public' | 'optional' | 'signed-in' | 'curator' | 'admin';
  * - `no-store`: kept nowhere, the browser included. The caller's own data, a
  *   write's answer.
  * - `revalidate`: stored by the caller's browser only, and revalidated on every
- *   use, so the origin re-authorizes each one. A body shaped by the caller, or
- *   public reference data behind a gate (`middleware/cacheHeaders.ts` has why).
+ *   use, so the origin re-authorizes each one. A body shaped by the caller;
+ *   public reference data behind a gate — GADM's boundary at full resolution,
+ *   Wikimedia's geoshape, the same bytes for every caller and large enough
+ *   that a `304` beats the whole body on every dialog open, while `no-cache`
+ *   keeps it from a caller who has since lost the gate; and a stream, whose
+ *   token rides in the query string, so no `Authorization` keeps a shared
+ *   cache off it (RFC 9111 § 3.5) and `private` is the whole guarantee. The
+ *   `Vary: Authorization` `requireAuth` appends stays: a stored entry is
+ *   selectable only under the token it was stored with, so the first open
+ *   after each 15-minute refresh costs the full body.
  * - `shared-revalidate`: stored by any cache, and revalidated on every use. The
  *   same body for everyone; `public` routes only.
  * - `token`: an answer that hands the caller an access token — `no-store`,
@@ -62,15 +70,39 @@ export type Access = 'public' | 'optional' | 'signed-in' | 'curator' | 'admin';
  *   is deprecated in a response (RFC 9111 § 5.4) and read by nothing here, and
  *   states the intent for an auditor. A route whose response schema declares
  *   `accessToken` must say `token`; `routerOf` refuses one that does not.
+ * - `{ maxAge }`: kept by the caller's browser for that many seconds without
+ *   asking again — an image the editor draws several times over one review.
+ *   The lifetime is written onto the answer alone; a failure says `no-store`.
+ * - `{ maxAge, shared }`: kept by any cache for that long. `shared` is the
+ *   reason the answer is the same for everyone who may ask, stated where the
+ *   route is: the one route that says it hands back a public picture unchanged.
  */
-export type CachePolicy = 'no-store' | 'revalidate' | 'shared-revalidate' | 'token';
+export type CachePolicy =
+  | 'no-store' | 'revalidate' | 'shared-revalidate' | 'token'
+  | { readonly maxAge: number; readonly shared?: string };
 
-const CACHE_HEADER: Record<CachePolicy, string> = {
+const CACHE_HEADER: Record<'no-store' | 'revalidate' | 'shared-revalidate' | 'token', string> = {
   'no-store': 'private, no-store',
   revalidate: 'private, no-cache',
   'shared-revalidate': 'public, no-cache',
   token: 'private, no-store',
 };
+
+/** The `Cache-Control` a policy writes on the answer itself. */
+function cacheHeaderOf(policy: CachePolicy): string {
+  if (typeof policy === 'string') return CACHE_HEADER[policy];
+  return `${policy.shared ? 'public' : 'private'}, max-age=${policy.maxAge}`;
+}
+
+/**
+ * The `Cache-Control` a route's failures carry. A lifetime belongs to the
+ * answer alone: a refusal or an upstream's 502 kept for a day would go on
+ * answering after the cause has passed, so until the handler has answered a
+ * `{ maxAge }` route says `no-store`.
+ */
+function failureHeaderOf(policy: CachePolicy): string {
+  return typeof policy === 'string' ? CACHE_HEADER[policy] : CACHE_HEADER['no-store'];
+}
 
 export type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -112,7 +144,24 @@ function isRedirect(response: Answer): response is RedirectAnswer {
 }
 
 /** What a route may answer with: a body's schema, a stream, or a redirect. */
-type Answer = z.ZodType | StreamAnswer<z.ZodType> | RedirectAnswer;
+/**
+ * An image, answered as its bytes: the handler returns them with their type,
+ * and says whether a page on another origin may draw them (an `<img>` whose
+ * host is not the API's).
+ */
+export const IMAGE = { image: true } as const;
+export type ImageAnswer = typeof IMAGE;
+export interface ImageBody {
+  readonly contentType: string;
+  readonly bytes: Buffer;
+  readonly crossOrigin?: boolean;
+}
+
+function isImage(response: Answer): response is ImageAnswer {
+  return 'image' in response && !('safeParse' in response);
+}
+
+type Answer = z.ZodType | StreamAnswer<z.ZodType> | RedirectAnswer | ImageAnswer;
 
 /**
  * Run `start`, which hands the response to middleware of its own (passport),
@@ -208,6 +257,8 @@ export type RouteDeclaration<
   readonly scope?: (input: RouteParts<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>>) => VisibleScope | undefined;
   readonly handler: RS extends StreamAnswer<infer E>
     ? (input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, A>, exchange: StreamExchange<z.output<E>>) => Promise<void>
+    : RS extends ImageAnswer
+    ? (input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, A>, exchange: RouteExchange) => Promise<ImageBody>
     : RS extends RedirectAnswer
     ? (input: RouteInput<OutputOf<PS>, OutputOf<QS>, OutputOf<BS>, A>, exchange: RouteExchange) => Promise<void>
     : (
@@ -276,6 +327,10 @@ async function openStream(
 ): Promise<void> {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Connection', 'keep-alive');
+  // A proxy in front must pass each event on as it is written, and the socket
+  // must not hold a small write back waiting for more.
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.socket?.setNoDelay(true);
   res.flushHeaders();
   const send = (event: unknown): void => writeEvent(res, events, event);
   try {
@@ -290,8 +345,7 @@ async function openStream(
 /** The chain one declaration builds, in the order the module comment gives; `scope` is checked after the body. */
 function chainOf(route: Route): RequestHandler[] {
   const cacheHeader: RequestHandler = (_req, res, next) => {
-    // eslint-disable-next-line no-restricted-syntax -- CACHE_HEADER's one public value is refused off a public route by routerOf and by the declaration's type
-    res.setHeader('Cache-Control', CACHE_HEADER[route.cache]);
+    res.setHeader('Cache-Control', failureHeaderOf(route.cache));
     if (route.cache === 'token') res.setHeader('Pragma', 'no-cache');
     next();
   };
@@ -317,6 +371,14 @@ function chainOf(route: Route): RequestHandler[] {
         await openStream(route.response.events, input, route, req, res);
         return;
       }
+      if (isImage(route.response)) {
+        const image = await route.handler(input, { req, res }) as ImageBody;
+        res.setHeader('Cache-Control', cacheHeaderOf(route.cache));
+        res.type(image.contentType);
+        if (image.crossOrigin) res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.end(image.bytes);
+        return;
+      }
       if (isRedirect(route.response)) {
         await route.handler(input, { req, res });
         // A caller that left before the answer settles `whenAnswered` too, with
@@ -325,6 +387,7 @@ function chainOf(route: Route): RequestHandler[] {
         return;
       }
       const body = await route.handler(input, { req, res });
+      res.setHeader('Cache-Control', cacheHeaderOf(route.cache));
       if (body === NO_CONTENT) {
         res.status(204).send();
         return;
@@ -378,6 +441,9 @@ export function routerOf(routes: readonly Route[]): Router {
     const shadow = shadowOf(routes.slice(0, i), route);
     if (shadow) {
       throw new Error(`${route.method.toUpperCase()} ${route.path} is never reached: ${shadow.path} above it answers first`);
+    }
+    if (typeof route.cache === 'object' && route.cache.shared !== undefined && route.cache.shared.trim() === '') {
+      throw new Error(`${route.method.toUpperCase()} ${route.path} lets a shared cache keep its answer without saying why`);
     }
     if (route.cache === 'shared-revalidate' && route.access !== 'public') {
       throw new Error(`${route.method.toUpperCase()} ${route.path} is ${route.access}, and its answer may not be kept by a shared cache`);
