@@ -120,6 +120,7 @@ export const experienceReadRoutes = [
   // Search experiences (full-text search)
   defineRoute({
     method: 'get', path: '/search', access: 'public', cache: 'shared-revalidate', limiter: searchLimiter,
+    summary: 'Search visible experiences by name, with the regions each one opens in',
     query: experienceSearchQuerySchema,
     response: ExperienceSearch,
     handler: searchExperiences,
@@ -127,6 +128,7 @@ export const experienceReadRoutes = [
   // List the kinds a traveller browses by (#819)
   defineRoute({
     method: 'get', path: '/kinds', access: 'public', cache: 'shared-revalidate', limiter: publicReadLimiter,
+    summary: 'List the kinds of place a traveller can browse by, each with how many it offers',
     response: ExperienceKinds,
     handler: listKinds,
   }),
@@ -141,6 +143,7 @@ export const experienceReadRoutes = [
   // widen — which is also why this read may be cached and shared.
   defineRoute({
     method: 'get', path: '/points', access: 'public', cache: 'shared-revalidate', limiter: publicReadLimiter,
+    summary: 'Get visible places worldwide as map points, optionally by kind and within a box',
     query: worldPointsQuerySchema,
     response: WorldPointsResponse,
     handler: getWorldPoints,
@@ -149,6 +152,7 @@ export const experienceReadRoutes = [
   // for the world view's own visibility, which an admin bypasses.
   defineRoute({
     method: 'get', path: '/region-counts', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'Count experiences per kind for each region at one level of a world view',
     query: experienceRegionCountsQuerySchema,
     scope: ({ query }) => ({ worldViewId: query.worldViewId }),
     response: RegionExperienceCounts,
@@ -157,6 +161,7 @@ export const experienceReadRoutes = [
   // Experiences by region (`optional`: a curator sees rejected items marked)
   defineRoute({
     method: 'get', path: '/by-region/:regionId', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List a region\'s experiences, subregions included by default; curators in scope see rejected ones',
     params: regionIdParamSchema,
     query: experiencesByRegionQuerySchema,
     scope: ({ params }) => ({ regionId: params.regionId }),
@@ -166,6 +171,7 @@ export const experienceReadRoutes = [
   // All locations for all experiences in a region (batch, eliminates N+1)
   defineRoute({
     method: 'get', path: '/by-region/:regionId/locations', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List the map points of every experience in a region, subregions included by default',
     params: regionIdParamSchema,
     query: regionLocationsQuerySchema,
     scope: ({ params }) => ({ regionId: params.regionId }),
@@ -180,6 +186,7 @@ export const experienceReadRoutes = [
   // scope reaches the object bypasses too, a manual assignment being exempt)
   defineRoute({
     method: 'get', path: '/:id', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'Get one experience and its regions; a curator in scope also gets an unread arrival',
     params: idParamSchema,
     response: ExperienceDetail,
     handler: getExperience,
@@ -188,6 +195,7 @@ export const experienceReadRoutes = [
   // about, when it names one, is held to that region's world view.
   defineRoute({
     method: 'get', path: '/:id/locations', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List an experience\'s points, marking which lie in a given region',
     params: idParamSchema,
     query: experienceLocationsQuerySchema,
     scope: ({ query }) => (query.regionId === undefined ? undefined : { regionId: query.regionId }),
@@ -199,6 +207,7 @@ export const experienceReadRoutes = [
   // see getExperienceTreasures/maySeeUnreadExperience, ADR-0025)
   defineRoute({
     method: 'get', path: '/:id/treasures', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List the works a venue holds; a curator in scope also sees unread ones',
     params: idParamSchema,
     response: ExperienceTreasuresResponse,
     handler: getExperienceTreasures,
@@ -208,6 +217,7 @@ export const experienceReadRoutes = [
   // everyone, so it is not a caller-shaped read.
   defineRoute({
     method: 'get', path: '/:id/finds', access: 'public', cache: 'shared-revalidate', limiter: publicReadLimiter,
+    summary: 'List the finds dug up at an archaeological site and the museums that show them',
     params: idParamSchema,
     response: SiteFindsResponse,
     handler: getSiteFinds,
@@ -223,6 +233,7 @@ export const experienceCurationRoutes = [
   // Create a new manual experience (Curator Picks)
   defineRoute({
     method: 'post', path: '/', access: 'curator', cache: 'no-store',
+    summary: 'Add a place by hand with one point in a region, published at once',
     status: 201,
     body: createManualExperienceBodySchema,
     response: ManualExperienceCreated,
@@ -232,6 +243,7 @@ export const experienceCurationRoutes = [
   // Reject an experience from a region
   defineRoute({
     method: 'post', path: '/:id/reject', access: 'curator', cache: 'no-store',
+    summary: 'Reject an experience from one region, hiding it there, with an optional reason',
     params: idParamSchema,
     body: rejectExperienceBodySchema,
     response: RegionMembershipResult,
@@ -241,6 +253,7 @@ export const experienceCurationRoutes = [
   // Unreject an experience from a region
   defineRoute({
     method: 'post', path: '/:id/unreject', access: 'curator', cache: 'no-store',
+    summary: 'Lift an experience\'s rejection from one region',
     params: idParamSchema,
     body: unrejectExperienceBodySchema,
     response: RegionMembershipResult,
@@ -250,6 +263,7 @@ export const experienceCurationRoutes = [
   // Manually assign an experience to a region
   defineRoute({
     method: 'post', path: '/:id/assign', access: 'curator', cache: 'no-store',
+    summary: 'Assign an experience to a region by hand, lifting any rejection there',
     params: idParamSchema,
     body: assignExperienceBodySchema,
     response: RegionMembershipResult,
@@ -259,6 +273,7 @@ export const experienceCurationRoutes = [
   // Edit an experience's fields (curator)
   defineRoute({
     method: 'patch', path: '/:id/edit', access: 'curator', cache: 'no-store',
+    summary: 'Edit an experience\'s name, text, type, tags, picture or links, kept against later syncs',
     params: idParamSchema,
     body: editExperienceBodySchema,
     response: ExperienceEditResult,
@@ -268,6 +283,7 @@ export const experienceCurationRoutes = [
   // Get curation log for an experience
   defineRoute({
     method: 'get', path: '/:id/curation-log', access: 'curator', cache: 'no-store',
+    summary: 'Get who curated an experience and how, limited to the regions the caller covers',
     params: idParamSchema,
     response: CurationLog,
     handler: getCurationLog,
@@ -294,6 +310,7 @@ export const experienceCurationRoutes = [
   // work.
   defineRoute({
     method: 'post', path: '/new-badges/seen', access: 'signed-in', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Record that the signed-in reader has seen the New chips on these experiences',
     body: newBadgesSeenBodySchema,
     response: NewBadgesSeen,
     handler: markNewBadgesSeen,
@@ -304,6 +321,7 @@ export const experienceCurationRoutes = [
   // value the source proposed should displace a curator's edit.
   defineRoute({
     method: 'get', path: '/review/queue', access: 'curator', cache: 'no-store',
+    summary: 'List the decisions sync runs left for a curator, within the caller\'s scope',
     query: reviewQueueQuerySchema,
     response: ReviewQueue,
     handler: getReviewQueue,
@@ -314,12 +332,14 @@ export const experienceCurationRoutes = [
   // be read as an id the way `/:id/state` below could otherwise mistake it for.
   defineRoute({
     method: 'put', path: '/review/set-aside/:syncLogId', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Set a sync run\'s batch of review questions aside for the calling curator',
     params: syncLogIdParamSchema,
     response: RunSetAside,
     handler: setRunAside,
   }),
   defineRoute({
     method: 'delete', path: '/review/set-aside/:syncLogId', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Bring a set-aside sync run\'s review questions back into the calling curator\'s view',
     params: syncLogIdParamSchema,
     response: RunSetAside,
     handler: bringRunBack,
@@ -332,12 +352,14 @@ export const experienceCurationRoutes = [
   // once per point. Two segments under `review/`, so `/:id/…` cannot take it.
   defineRoute({
     method: 'post', path: '/review/answer', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Give one answer (accept, reject or lost) to a selection of review rows',
     body: reviewAnswerBodySchema,
     response: ReviewAnswerResult,
     handler: answerReviewRows,
   }),
   defineRoute({
     method: 'post', path: '/:id/state', access: 'curator', cache: 'no-store',
+    summary: 'Record whether an experience is still listed and still stands, or take a verdict back',
     params: idParamSchema,
     body: lifecycleStateBodySchema,
     response: ExperienceStateResult,
@@ -356,6 +378,7 @@ export const experienceCurationRoutes = [
   // same regardless of who sends it.
   defineRoute({
     method: 'post', path: '/locations/:locationId/state', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Record whether one point the source stopped offering is former, lost or a false alarm',
     params: locationIdParamSchema,
     body: lifecycleStateBodySchema,
     response: LocationStateResult,
@@ -366,6 +389,7 @@ export const experienceCurationRoutes = [
   // experience into regions afterwards — the same shape of work as the line above.
   defineRoute({
     method: 'patch', path: '/locations/:locationId/edit', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Correct one point\'s name or coordinates, re-placing its experience in regions',
     params: locationIdParamSchema,
     body: editLocationBodySchema,
     response: LocationEditResult,
@@ -385,6 +409,7 @@ export const experienceCurationRoutes = [
   // corrected coordinate always re-places the object.
   defineRoute({
     method: 'patch', path: '/:id/works/:treasureId/edit', access: 'curator', cache: 'no-store',
+    summary: 'Correct a work\'s name, makers, year or picture, for every venue that holds it',
     params: workEditParamsSchema,
     body: editWorkBodySchema,
     response: WorkEditResult,
@@ -400,6 +425,7 @@ export const experienceCurationRoutes = [
   // criterion in `docs/tech/rate-limiting.md` § 5.
   defineRoute({
     method: 'post', path: '/:id/admission', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Confirm or override the rule that refused an experience from its kind',
     params: idParamSchema,
     body: experienceAdmissionBodySchema,
     response: AdmissionResult,
@@ -411,6 +437,7 @@ export const experienceCurationRoutes = [
   // client is released — the same post-commit sweep as the three routes above.
   defineRoute({
     method: 'post', path: '/:id/accept-source', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Accept the source\'s proposed values for fields a curator had edited, releasing the edits',
     params: idParamSchema,
     body: acceptSourceBodySchema,
     response: AcceptSourceResult,
@@ -423,6 +450,7 @@ export const experienceCurationRoutes = [
   // the experience, because the value it refuses had already won every run.
   defineRoute({
     method: 'post', path: '/:id/decline-source', access: 'curator', cache: 'no-store',
+    summary: 'Refuse the source\'s proposed values for curator-edited fields, keeping the edits',
     params: idParamSchema,
     body: declineSourceBodySchema,
     response: DeclineSourceResult,
@@ -437,6 +465,7 @@ export const experienceCurationRoutes = [
   // that could move a pin.
   defineRoute({
     method: 'post', path: '/:id/decline-held', access: 'curator', cache: 'no-store',
+    summary: 'Refuse named fields or parts of a change a gated run held back, writing none of it',
     params: idParamSchema,
     body: declineHeldBodySchema,
     response: DeclineHeldResult,
@@ -454,6 +483,7 @@ export const experienceCurationRoutes = [
   // is re-placed into every world view with geometry after the commit.
   defineRoute({
     method: 'post', path: '/:id/refuse-arrival', access: 'curator', cache: 'no-store',
+    summary: 'Keep out an unread arrival from a gated source, so readers never see it',
     params: idParamSchema,
     body: refuseArrivalBodySchema,
     response: RefuseArrivalResult,
@@ -461,6 +491,7 @@ export const experienceCurationRoutes = [
   }),
   defineRoute({
     method: 'post', path: '/:id/refuse-contents', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Turn down the unread points and works of a visible experience, named ones or all',
     params: idParamSchema,
     body: refuseContentsBodySchema,
     response: RefuseContentsResult,
@@ -475,6 +506,7 @@ export const experienceCurationRoutes = [
   // re-placed after the commit.
   defineRoute({
     method: 'post', path: '/:id/unrefuse-contents', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Return turned-down points and works of an experience to review, named ones or all',
     params: idParamSchema,
     body: refuseContentsBodySchema,
     response: UnrefuseContentsResult,
@@ -498,6 +530,7 @@ export const experienceCurationRoutes = [
   // with a parameter in the middle, and there is none.
   defineRoute({
     method: 'post', path: '/sources/:sourceId/publish-waiting', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Publish everything one source has waiting, per experience, within the caller\'s scope',
     params: sourceIdParamSchema,
     response: PublishWaitingResult,
     handler: publishWaiting,
@@ -531,6 +564,7 @@ export const experienceCurationRoutes = [
   // client without a person ever noticing it.
   defineRoute({
     method: 'post', path: '/:id/publish', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Publish one experience, its unread points and works, or its held changes, whole or in part',
     params: idParamSchema,
     body: publishExperienceBodySchema,
     response: PublishResult,
@@ -540,6 +574,7 @@ export const experienceCurationRoutes = [
   // Unassign an experience from a region (manual only)
   defineRoute({
     method: 'delete', path: '/:id/assign/:regionId', access: 'curator', cache: 'no-store',
+    summary: 'Undo a hand-made assignment of an experience to a region',
     params: idAndRegionIdParamSchema,
     response: RegionMembershipResult,
     handler: unassignExperienceFromRegion,
@@ -548,6 +583,7 @@ export const experienceCurationRoutes = [
   // Remove an experience from a region entirely (any assignment type, keeps rejection as guard)
   defineRoute({
     method: 'delete', path: '/:id/remove-from-region/:regionId', access: 'curator', cache: 'no-store',
+    summary: 'Remove an experience from a region however it was placed, keeping any rejection',
     params: idAndRegionIdParamSchema,
     response: RegionMembershipResult,
     handler: removeExperienceFromRegion,

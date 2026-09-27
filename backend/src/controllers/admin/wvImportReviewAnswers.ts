@@ -37,7 +37,7 @@ function answered(found: boolean): ReviewAnswered {
   return { ok: true };
 }
 
-/** POST /wv-import/water-review/:reviewId — approve, reject or mix water components. */
+/** Approve, reject or mix the water components a run is asking about. */
 export async function answerWaterReview(
   { params: { reviewId }, body }: { params: ReviewParams; body: z.output<typeof wvImportWaterReviewBodySchema> },
 ): Promise<ReviewAnswered> {
@@ -50,7 +50,7 @@ export async function answerWaterReview(
   return answered(resolveWaterReview(reviewId, { approvedIds, mixDecisions }));
 }
 
-/** POST /wv-import/cluster-review/:reviewId — the ordinary decisions, or a painted overlay. */
+/** Answer a cluster review: the ordinary decisions, or a painted overlay. */
 export async function answerClusterReview(
   { params: { reviewId }, body }: { params: ReviewParams; body: z.output<typeof wvImportClusterReviewAnswerSchema> },
 ): Promise<ReviewAnswered> {
@@ -74,7 +74,7 @@ export async function answerClusterReview(
   }));
 }
 
-/** POST /wv-import/icp-adjustment/:reviewId — accept or skip the ICP realignment. */
+/** Accept or skip the ICP realignment a run is asking about. */
 export async function answerIcpAdjustment(
   { params: { reviewId }, body: { action } }: {
     params: ReviewParams;
@@ -91,10 +91,7 @@ function imageOfDataUrl(dataUrl: string): ImageBody {
   return { contentType: `image/${match[1]}`, bytes: Buffer.from(match[2], 'base64'), crossOrigin: true };
 }
 
-/**
- * GET /wv-import/water-crop/:reviewId/:componentId/:subCluster — served from
- * memory so the stream is not held up by image payloads.
- */
+/** One water component's crop, served from memory so the stream is not held up by image payloads. */
 export async function waterCropImage(
   { params: { reviewId, componentId, subCluster } }: { params: z.output<typeof wvImportWaterCropParamSchema> },
 ): Promise<ImageBody> {
@@ -103,14 +100,14 @@ export async function waterCropImage(
   return imageOfDataUrl(dataUrl);
 }
 
-/** GET /wv-import/cluster-preview/:reviewId — the same pattern as a water crop. */
+/** The cluster preview a run keeps in memory, as a water crop is kept. */
 export async function clusterPreviewImage({ params: { reviewId } }: { params: ReviewParams }): Promise<ImageBody> {
   const dataUrl = getClusterPreviewImage(reviewId);
   if (!dataUrl) throw notFound('Preview not found');
   return imageOfDataUrl(dataUrl);
 }
 
-/** GET /wv-import/cluster-highlight/:reviewId/:label — the selected cluster outlined in red. */
+/** The selected cluster outlined in red. */
 export async function clusterHighlightImage(
   { params: { reviewId, label } }: { params: z.output<typeof wvImportClusterHighlightParamSchema> },
 ): Promise<ImageBody> {

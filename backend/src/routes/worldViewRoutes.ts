@@ -107,17 +107,20 @@ export const worldViewRoutes = [
   // The list is shaped by its caller: an admin's includes the hidden ones.
   defineRoute({
     method: 'get', path: '/', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List the active world views, including hidden ones for an admin',
     response: WorldViews,
     handler: getWorldViews,
   }),
   defineRoute({
     method: 'post', path: '/', access: 'admin', cache: 'no-store', status: 201,
+    summary: 'Create a world view, hidden until it is published',
     body: createWorldViewBodySchema,
     response: WorldView,
     handler: createWorldView,
   }),
   defineRoute({
     method: 'put', path: '/:worldViewId', access: 'admin', cache: 'no-store',
+    summary: 'Update the name, description, source or visibility of a world view',
     params: worldViewIdParamSchema,
     body: updateWorldViewBodySchema,
     response: WorldView,
@@ -125,12 +128,14 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'get', path: '/:worldViewId/delete-impact', access: 'admin', cache: 'no-store',
+    summary: 'Count the regions, experience assignments and visits that deleting a world view removes',
     params: worldViewIdParamSchema,
     response: DeleteImpact,
     handler: getDeleteImpact,
   }),
   defineRoute({
     method: 'delete', path: '/:worldViewId', access: 'admin', cache: 'no-store',
+    summary: 'Delete a world view with its regions and their visits; the GADM default is refused',
     params: worldViewIdParamSchema,
     response: NO_BODY,
     noContent: true,
@@ -142,6 +147,7 @@ export const worldViewRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'get', path: '/:worldViewId/regions', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List every region of a world view as one flat list, sorted by name',
     params: worldViewIdParamSchema,
     scope: ({ params }) => ({ worldViewId: params.worldViewId }),
     response: Regions,
@@ -149,6 +155,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'get', path: '/:worldViewId/regions/root', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List the top-level regions of a world view',
     params: worldViewIdParamSchema,
     scope: ({ params }) => ({ worldViewId: params.worldViewId }),
     response: Regions,
@@ -156,6 +163,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'get', path: '/:worldViewId/regions/search', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'Search the regions of a world view by name, tolerating accents and typos',
     params: worldViewIdParamSchema,
     query: regionSearchQuerySchema,
     scope: ({ params }) => ({ worldViewId: params.worldViewId }),
@@ -164,6 +172,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'post', path: '/:worldViewId/regions', access: 'admin', cache: 'no-store', status: 201,
+    summary: 'Create a region in a world view, optionally with a hand-drawn boundary',
     params: worldViewIdParamSchema,
     body: createRegionBodySchema,
     response: Region,
@@ -175,6 +184,7 @@ export const worldViewRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'post', path: '/:worldViewId/compute-geometries', access: 'admin', cache: 'no-store',
+    summary: 'Start computing the region geometries of a world view in the background',
     params: worldViewIdParamSchema,
     query: computeGeometryQuerySchema,
     response: ComputationStartResult,
@@ -182,6 +192,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'get', path: '/:worldViewId/compute-geometries/status', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'Get the progress of the background geometry computation of a world view',
     params: worldViewIdParamSchema,
     scope: ({ params }) => ({ worldViewId: params.worldViewId }),
     response: ComputationStatus,
@@ -189,6 +200,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'post', path: '/:worldViewId/compute-geometries/cancel', access: 'admin', cache: 'no-store',
+    summary: 'Ask the running geometry computation of a world view to stop',
     params: worldViewIdParamSchema,
     response: ComputationCancelled,
     handler: cancelComputation,
@@ -196,6 +208,7 @@ export const worldViewRoutes = [
   // A read sent as a POST, since the division ids it asks about can be many.
   defineRoute({
     method: 'post', path: '/:worldViewId/division-usage', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'Count how many regions of a world view hold each of the given divisions',
     params: worldViewIdParamSchema,
     body: divisionUsageBodySchema,
     scope: ({ params }) => ({ worldViewId: params.worldViewId }),
@@ -206,6 +219,7 @@ export const worldViewRoutes = [
   // Display geometry operations (for zoom-based rendering)
   defineRoute({
     method: 'get', path: '/:worldViewId/display-geometry-status', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'Count the regions of a world view that have a geometry, an anchor point and a hull',
     params: worldViewIdParamSchema,
     scope: ({ params }) => ({ worldViewId: params.worldViewId }),
     response: DisplayGeometryStatus,
@@ -213,6 +227,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'post', path: '/:worldViewId/regenerate-display-geometries', access: 'admin', cache: 'no-store',
+    summary: 'Recompute area, anchor point and map frame for the regions of a world view or one branch',
     params: worldViewIdParamSchema,
     query: regenerateDisplayQuerySchema,
     response: RegenerateDisplayGeometriesResult,
@@ -224,6 +239,7 @@ export const worldViewRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'get', path: '/regions/:regionId/ancestors', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List the ancestors of a region, from the root down to the region itself',
     params: regionIdParamSchema,
     scope: ({ params }) => ({ regionId: params.regionId }),
     response: Regions,
@@ -231,6 +247,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'get', path: '/regions/:regionId/subregions', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List the direct subregions of a region',
     params: regionIdParamSchema,
     scope: ({ params }) => ({ regionId: params.regionId }),
     response: Regions,
@@ -238,6 +255,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'put', path: '/regions/:regionId', access: 'admin', cache: 'no-store',
+    summary: 'Update the name, description, parent, color or hull choice of a region',
     params: regionIdParamSchema,
     body: updateRegionBodySchema,
     response: RegionUpdated,
@@ -245,6 +263,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'delete', path: '/regions/:regionId', access: 'admin', cache: 'no-store',
+    summary: 'Delete a region with its subregions, or move them to its parent; refused while visited',
     params: regionIdParamSchema,
     query: deleteRegionQuerySchema,
     response: NO_BODY,
@@ -257,6 +276,7 @@ export const worldViewRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'get', path: '/regions/:regionId/members', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List the members of a region: its subregions and its GADM divisions with their paths',
     params: regionIdParamSchema,
     scope: ({ params }) => ({ regionId: params.regionId }),
     response: RegionMembers,
@@ -264,6 +284,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'get', path: '/regions/:regionId/members/geometries', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'Get the outlines of the divisions in a region as GeoJSON, cut parts included',
     params: regionIdParamSchema,
     scope: ({ params }) => ({ regionId: params.regionId }),
     response: MemberGeometries,
@@ -271,6 +292,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'get', path: '/regions/:regionId/members/descendant-geometries', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'Get simplified outlines of the divisions in every subregion below a region, as GeoJSON',
     params: regionIdParamSchema,
     scope: ({ params }) => ({ regionId: params.regionId }),
     response: DescendantMemberGeometries,
@@ -278,6 +300,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'post', path: '/regions/:regionId/members', access: 'admin', cache: 'no-store', status: 201,
+    summary: 'Add GADM divisions to a region, optionally each as a new subregion',
     params: regionIdParamSchema,
     body: addDivisionsToRegionBodySchema,
     response: DivisionsAdded,
@@ -285,6 +308,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'delete', path: '/regions/:regionId/members', access: 'admin', cache: 'no-store',
+    summary: 'Remove whole divisions or individual cut parts from a region',
     params: regionIdParamSchema,
     body: removeDivisionsFromRegionBodySchema,
     response: DivisionsRemoved,
@@ -292,6 +316,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'post', path: '/regions/:regionId/members/move', access: 'admin', cache: 'no-store',
+    summary: 'Move one member of a region, a cut part with its shape, to another region',
     params: regionIdParamSchema,
     body: moveMemberBodySchema,
     response: MemberMoved,
@@ -299,6 +324,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'post', path: '/regions/:regionId/members/:divisionId/add-children', access: 'admin', cache: 'no-store', status: 201,
+    summary: 'Replace a member division of a region with its GADM subdivisions, or add them beside it when asked',
     params: regionDivisionParamSchema,
     body: addChildDivisionsBodySchema,
     response: ChildDivisionsAdded,
@@ -306,12 +332,14 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'post', path: '/regions/:parentRegionId/flatten/:subregionId', access: 'admin', cache: 'no-store',
+    summary: 'Fold a subregion and its descendants into the parent, moving their members up; refused while visited',
     params: flattenParamSchema,
     response: SubregionFlattened,
     handler: flattenSubregion,
   }),
   defineRoute({
     method: 'post', path: '/regions/:regionId/expand', access: 'admin', cache: 'no-store',
+    summary: 'Turn each member of a region into a subregion of its own holding that member',
     params: regionIdParamSchema,
     body: expandToSubregionsBodySchema,
     response: SubregionsExpanded,
@@ -323,6 +351,7 @@ export const worldViewRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'get', path: '/regions/:regionId/geometry', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'Get the stored outline of a region, or its hull; no content while none is computed',
     params: regionIdParamSchema,
     query: regionGeometryDetailQuerySchema,
     scope: ({ params }) => ({ regionId: params.regionId }),
@@ -332,6 +361,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'put', path: '/regions/:regionId/geometry', access: 'admin', cache: 'no-store',
+    summary: 'Save an outline for a region, optionally with its hull, marking whether it is hand-drawn',
     params: regionIdParamSchema,
     body: updateGeometryBodySchema,
     response: NO_BODY,
@@ -343,6 +373,7 @@ export const worldViewRoutes = [
   // request carries no Authorization for a shared cache to see.
   defineRoute({
     method: 'get', path: '/regions/:regionId/geometry/compute-stream', access: 'admin', cache: 'revalidate',
+    summary: 'Compute the outline of one region from its members, streaming progress as server-sent events',
     params: regionIdParamSchema,
     query: computeSSEQuerySchema,
     response: stream(ComputeProgressEvent),
@@ -350,6 +381,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'post', path: '/regions/:regionId/geometry/reset', access: 'admin', cache: 'no-store',
+    summary: 'Drop the hand-drawn outline and hull of a region and rebuild it from its members',
     params: regionIdParamSchema,
     response: RegionReset,
     handler: resetRegionToGADM,
@@ -358,6 +390,7 @@ export const worldViewRoutes = [
   // Hull preview and save (with custom parameters)
   defineRoute({
     method: 'post', path: '/regions/:regionId/hull/preview', access: 'admin', cache: 'no-store',
+    summary: 'Preview a hull for a region with the given parameters, without saving it',
     params: regionIdParamSchema,
     body: hullPreviewBodySchema,
     response: HullPreview,
@@ -365,6 +398,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'post', path: '/regions/:regionId/hull/save', access: 'admin', cache: 'no-store',
+    summary: 'Generate and save the hull of a region with the given parameters',
     params: regionIdParamSchema,
     body: hullSaveBodySchema,
     response: HullSaved,
@@ -372,6 +406,7 @@ export const worldViewRoutes = [
   }),
   defineRoute({
     method: 'get', path: '/regions/:regionId/hull/params', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'Get the hull parameters last saved for a region',
     params: regionIdParamSchema,
     scope: ({ params }) => ({ regionId: params.regionId }),
     response: SavedHullParams,

@@ -239,6 +239,12 @@ export type RouteDeclaration<
 > = {
   readonly method: Method;
   readonly path: P;
+  /**
+   * What the route does for its caller, in one line: the operation's summary
+   * in the OpenAPI document (ADR-0072) and the method a generated client is
+   * read by. Required, so a route with no description does not compile.
+   */
+  readonly summary: string;
   readonly access: A;
   readonly cache: A extends 'public' ? CachePolicy : Exclude<CachePolicy, 'shared-revalidate'>;
   readonly limiter?: RequestHandler;
@@ -271,6 +277,7 @@ export type RouteDeclaration<
 export interface Route {
   readonly method: Method;
   readonly path: string;
+  readonly summary: string;
   readonly access: Access;
   readonly cache: CachePolicy;
   readonly limiter?: RequestHandler;

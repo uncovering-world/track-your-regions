@@ -10,6 +10,7 @@ import { getHealth } from '../controllers/healthController.js';
 export const healthRoutes = [
   defineRoute({
     method: 'get', path: '/health', access: 'public', cache: 'no-store',
+    summary: 'Report whether the server is up and its database answering, or 503 if not',
     response: HealthStatus,
     handler: getHealth,
   }),

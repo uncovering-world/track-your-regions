@@ -62,12 +62,14 @@ export const adminDeclaredRoutes = [
   // List all experience sources
   defineRoute({
     ...ADMIN, method: 'get', path: '/sync/sources',
+    summary: 'List the active experience sources with their gate, fame line and waiting counts',
     response: ExperienceSources,
     handler: getSources,
   }),
   // Reorder experience sources (set display_priority)
   defineRoute({
     ...ADMIN, method: 'put', path: '/sync/sources/reorder',
+    summary: 'Set the order the experience sources are displayed in',
     body: reorderSourcesBodySchema,
     response: SourcesReordered,
     handler: reorderSources,
@@ -78,6 +80,7 @@ export const adminDeclaredRoutes = [
   // all is the admin's.
   defineRoute({
     ...ADMIN, method: 'put', path: '/sync/sources/:sourceId/curation-gate',
+    summary: 'Hold new and changed content from a source for curator review, or stop holding it',
     params: sourceIdParamSchema,
     body: curationGateBodySchema,
     response: CurationGateSet,
@@ -89,6 +92,7 @@ export const adminDeclaredRoutes = [
   // the gate switch sits here.
   defineRoute({
     ...ADMIN, method: 'put', path: '/sync/sources/:sourceId/line',
+    summary: 'Set how many sitelinks a place from a source needs to enter and stay in the world tier',
     params: sourceIdParamSchema,
     body: sourceLineBodySchema,
     response: SourceLineSet,
@@ -97,6 +101,7 @@ export const adminDeclaredRoutes = [
   // Start sync for a source
   defineRoute({
     ...ADMIN, method: 'post', path: '/sync/sources/:sourceId/start',
+    summary: 'Start a sync that fills the catalogue from one source, optionally as a dry run',
     params: sourceIdParamSchema,
     body: startSyncBodySchema,
     response: SyncStarted,
@@ -105,6 +110,7 @@ export const adminDeclaredRoutes = [
   // Get sync status for a source (poll this endpoint)
   defineRoute({
     ...ADMIN, method: 'get', path: '/sync/sources/:sourceId/status',
+    summary: 'Report progress of the sync or picture repair running for a source, or how the last sync ended',
     params: sourceIdParamSchema,
     response: SyncStatus,
     handler: getSyncStatus,
@@ -112,6 +118,7 @@ export const adminDeclaredRoutes = [
   // Cancel sync for a source
   defineRoute({
     ...ADMIN, method: 'post', path: '/sync/sources/:sourceId/cancel',
+    summary: 'Ask the sync or picture repair running for a source to stop, while it still can',
     params: sourceIdParamSchema,
     response: SyncCancelled,
     handler: cancelSync,
@@ -122,6 +129,7 @@ export const adminDeclaredRoutes = [
   // js/missing-rate-limiting is the same point.
   defineRoute({
     ...ADMIN, method: 'post', path: '/sync/sources/:sourceId/fix-images', limiter: expensiveAdminLimiter,
+    summary: 'Start a run that repairs missing or unshowable pictures of a source from Commons',
     params: sourceIdParamSchema,
     response: PictureRepairStarted,
     handler: fixImages,
@@ -132,12 +140,14 @@ export const adminDeclaredRoutes = [
   // "how old is this" and "ask again".
   defineRoute({
     ...ADMIN, method: 'get', path: '/sync/sources/:sourceId/cache',
+    summary: 'List what a source keeps cached between runs, per kind, with its age and expiry',
     params: sourceIdParamSchema,
     response: WikidataCache,
     handler: getWikidataCache,
   }),
   defineRoute({
     ...ADMIN, method: 'delete', path: '/sync/sources/:sourceId/cache',
+    summary: 'Clear the cached answers of a source, all kinds or one, so the next run asks again',
     params: sourceIdParamSchema,
     query: clearCacheQuerySchema,
     response: WikidataCacheCleared,
@@ -147,6 +157,7 @@ export const adminDeclaredRoutes = [
   // reader cannot disagree about when an answer stops being used.
   defineRoute({
     ...ADMIN, method: 'put', path: '/sync/sources/:sourceId/cache/:kind/ttl',
+    summary: 'Set how long one kind of cached answer stays fresh for a source, re-stamping kept ones',
     params: cacheKindParamSchema,
     body: cacheTtlBodySchema,
     response: WikidataCacheTtlSet,
@@ -155,6 +166,7 @@ export const adminDeclaredRoutes = [
   // Get sync history/logs
   defineRoute({
     ...ADMIN, method: 'get', path: '/sync/logs',
+    summary: 'List past sync runs, newest first, optionally for one source',
     query: syncLogsQuerySchema,
     response: SyncLogs,
     handler: getSyncLogs,
@@ -162,6 +174,7 @@ export const adminDeclaredRoutes = [
   // Get single sync log with error details
   defineRoute({
     ...ADMIN, method: 'get', path: '/sync/logs/:logId',
+    summary: 'Read one sync run with its counts and error details',
     params: logIdParamSchema,
     response: SyncLogDetail,
     handler: getSyncLogDetails,
@@ -169,6 +182,7 @@ export const adminDeclaredRoutes = [
   // Per-object breakdown of what a run did
   defineRoute({
     ...ADMIN, method: 'get', path: '/sync/logs/:logId/changes',
+    summary: 'List what a sync run changed, object by object, most significant first',
     params: logIdParamSchema,
     query: syncChangesQuerySchema,
     response: SyncChanges,
@@ -181,6 +195,7 @@ export const adminDeclaredRoutes = [
   // Start region assignment for a world view
   defineRoute({
     ...ADMIN, method: 'post', path: '/experiences/assign-regions',
+    summary: 'Start assigning experiences to the regions of a world view that contain them',
     body: startRegionAssignmentBodySchema,
     response: AssignmentStarted,
     handler: startRegionAssignment,
@@ -188,6 +203,7 @@ export const adminDeclaredRoutes = [
   // Get region assignment status
   defineRoute({
     ...ADMIN, method: 'get', path: '/experiences/assign-regions/status',
+    summary: 'Report the progress of the region assignment running for a world view',
     query: regionAssignmentStatusQuerySchema,
     response: AssignmentStatus,
     handler: getRegionAssignmentStatus,
@@ -195,6 +211,7 @@ export const adminDeclaredRoutes = [
   // Cancel region assignment
   defineRoute({
     ...ADMIN, method: 'post', path: '/experiences/assign-regions/cancel',
+    summary: 'Cancel the region assignment running for a world view',
     body: startRegionAssignmentBodySchema,
     response: AssignmentCancelled,
     handler: cancelRegionAssignment,
@@ -202,6 +219,7 @@ export const adminDeclaredRoutes = [
   // Get experience counts by region
   defineRoute({
     ...ADMIN, method: 'get', path: '/experiences/counts-by-region',
+    summary: 'Count the experiences placed in each region of a world view, optionally by source',
     query: experienceCountsQuerySchema,
     response: PlacementCounts,
     handler: getExperienceCounts,
@@ -216,6 +234,7 @@ export const adminDeclaredRoutes = [
   // read when a person opens the section rather than polled.
   defineRoute({
     ...ADMIN, method: 'get', path: '/data-assertions', limiter: expensiveAdminLimiter,
+    summary: 'Run every catalogue check and report what each finds and what was accepted',
     response: DataAssertionReport,
     handler: getDataAssertions,
   }),
@@ -239,6 +258,7 @@ export const adminDeclaredRoutes = [
   // of rules to answer for.
   defineRoute({
     ...ADMIN, method: 'post', path: '/data-assertions/accept', limiter: authenticatedLimiter,
+    summary: 'Accept what one catalogue check finds now as known debt, measured on the server',
     body: dataAssertionAcceptBodySchema,
     response: DataAssertion,
     handler: acceptDataAssertion,
@@ -250,12 +270,14 @@ export const adminDeclaredRoutes = [
   // List all curators with scopes
   defineRoute({
     ...ADMIN, method: 'get', path: '/curators',
+    summary: 'List the curators and admins with the scopes each one is assigned',
     response: Curators,
     handler: listCurators,
   }),
   // Create a curator assignment (promote user + assign scope)
   defineRoute({
     ...ADMIN, method: 'post', path: '/curators', status: 201,
+    summary: 'Assign a curator scope to a user, promoting them to curator if needed',
     body: createCuratorAssignmentBodySchema,
     response: CuratorAssignmentCreated,
     handler: createCuratorAssignment,
@@ -263,6 +285,7 @@ export const adminDeclaredRoutes = [
   // Revoke a curator assignment (and potentially demote role)
   defineRoute({
     ...ADMIN, method: 'delete', path: '/curators/:assignmentId',
+    summary: 'Revoke a curator assignment, demoting the user when it was their last',
     params: assignmentIdParamSchema,
     response: CuratorAssignmentRevoked,
     handler: revokeCuratorAssignment,
@@ -270,6 +293,7 @@ export const adminDeclaredRoutes = [
   // Get curator activity log
   defineRoute({
     ...ADMIN, method: 'get', path: '/curators/:userId/activity',
+    summary: 'List the curation actions one user has taken, newest first',
     params: userIdParamSchema,
     query: curatorActivityQuerySchema,
     response: CuratorActivity,
@@ -278,6 +302,7 @@ export const adminDeclaredRoutes = [
   // Find an account to promote to curator
   defineRoute({
     ...ADMIN, method: 'get', path: '/users/search',
+    summary: 'Search accounts by display name or email to find one to make a curator',
     query: adminUserSearchQuerySchema,
     response: UserSearchResults,
     handler: searchUsers,
@@ -288,11 +313,13 @@ export const adminDeclaredRoutes = [
   // ===========================================================================
   defineRoute({
     ...ADMIN, method: 'get', path: '/ai/settings',
+    summary: 'Read the AI settings and the models available with their prices',
     response: AISettings,
     handler: getAISettings,
   }),
   defineRoute({
     ...ADMIN, method: 'put', path: '/ai/settings/:key',
+    summary: 'Save the value of one AI setting by its key',
     params: aiSettingKeyParamSchema,
     body: aiSettingValueBodySchema,
     response: AISettingSaved,
@@ -300,38 +327,45 @@ export const adminDeclaredRoutes = [
   }),
   defineRoute({
     ...ADMIN, method: 'get', path: '/ai/usage',
+    summary: 'Summarise AI spending today, this month and overall, by feature and model',
     response: AIUsageSummary,
     handler: getAIUsage,
   }),
   defineRoute({
     ...ADMIN, method: 'post', path: '/ai/update-pricing',
+    summary: 'Refresh the AI model prices from the public LiteLLM price list',
     response: PricingUpdated,
     handler: updatePricing,
   }),
   defineRoute({
     ...ADMIN, method: 'get', path: '/ai/rules',
+    summary: 'List the learned AI rules alongside the built-in ones',
     response: LearnedRules,
     handler: getLearnedRules,
   }),
   defineRoute({
     ...ADMIN, method: 'post', path: '/ai/rules', status: 201,
+    summary: 'Add a learned rule that future AI prompts for a feature will include',
     body: addLearnedRuleBodySchema,
     response: LearnedRule,
     handler: addLearnedRule,
   }),
   defineRoute({
     ...ADMIN, method: 'delete', path: '/ai/rules/:id',
+    summary: 'Delete one learned AI rule',
     params: aiRuleIdParamSchema,
     response: LearnedRuleDeleted,
     handler: deleteLearnedRule,
   }),
   defineRoute({
     ...ADMIN, method: 'post', path: '/ai/rules/review',
+    summary: 'Ask the AI to find duplicate, conflicting or obsolete learned rules',
     response: RuleReviewResult,
     handler: reviewLearnedRules,
   }),
   defineRoute({
     ...ADMIN, method: 'post', path: '/ai/rules/apply-review',
+    summary: 'Apply one rule review suggestion: reword the kept rule and delete the others',
     body: applyRuleReviewBodySchema,
     response: ReviewSuggestionApplied,
     handler: applyRuleReviewSuggestion,
@@ -339,6 +373,7 @@ export const adminDeclaredRoutes = [
   // AI hierarchy review
   defineRoute({
     ...ADMIN, method: 'post', path: '/ai/hierarchy-review/:worldViewId',
+    summary: 'Ask the AI to review the region tree of a world view, or one subtree, as a travel expert',
     params: worldViewIdParamSchema,
     body: hierarchyReviewBodySchema,
     response: HierarchyReviewResult,
@@ -350,6 +385,7 @@ export const adminDeclaredRoutes = [
   // it a day, and the declaration says why.
   defineRoute({
     method: 'get', path: '/image-proxy', access: 'admin',
+    summary: 'Fetch a Wikimedia Commons picture unchanged so the editor can draw it on a canvas',
     cache: { maxAge: 86400, shared: 'a Wikimedia Commons picture, unchanged: public data with no caller in it' },
     query: imageProxyQuerySchema,
     response: IMAGE,
