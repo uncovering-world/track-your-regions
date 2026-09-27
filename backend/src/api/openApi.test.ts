@@ -35,6 +35,7 @@ const handler = async () => undefined as never;
 
 type Operation = {
   operationId: string;
+  summary?: string;
   tags: string[];
   'x-access': string;
   description?: string;
@@ -57,11 +58,13 @@ describe('an operation from a declaration', () => {
   const routes = [
     defineRoute({
       method: 'get', path: '/', access: 'public', cache: 'shared-revalidate',
+      summary: 'The GET / fixture',
       query: z.object({ near: z.string().describe('A place name.'), limit: z.coerce.number().int().optional() }),
       response: PlaceList, handler,
     }),
     defineRoute({
       method: 'put', path: '/:placeId', access: 'curator', cache: 'no-store',
+      summary: 'The PUT /:placeId fixture',
       params: z.object({ placeId: z.coerce.number().int() }), body: renamePlaceSchema,
       response: Place, noContent: true, handler,
     }),
@@ -95,6 +98,10 @@ describe('an operation from a declaration', () => {
     expect(components.schemas.Place).toMatchObject({ properties: { name: { description: 'What the place is called.' } } });
   });
 
+  it('carries the summary the declaration states', () => {
+    expect(paths['/api/places'].get.summary).toBe('The GET / fixture');
+  });
+
   it('states who may call', () => {
     expect(paths['/api/places'].get.security).toEqual([]);
     expect(paths['/api/places/{placeId}'].put.security).toEqual([{ bearer: [] }]);
@@ -110,10 +117,10 @@ describe('an operation from a declaration', () => {
 
 describe('the answers that are not a JSON body', () => {
   const { paths } = documentOf([
-    defineRoute({ method: 'get', path: '/progress', access: 'admin', cache: 'revalidate', response: stream(Progress), handler }),
-    defineRoute({ method: 'get', path: '/picture', access: 'admin', cache: { maxAge: 60 }, response: IMAGE, handler }),
-    defineRoute({ method: 'get', path: '/away', access: 'public', cache: 'no-store', response: REDIRECT, handler }),
-    defineRoute({ method: 'delete', path: '/mine', access: 'signed-in', cache: 'no-store', response: NO_BODY, handler }),
+    defineRoute({ summary: 'The GET /progress fixture', method: 'get', path: '/progress', access: 'admin', cache: 'revalidate', response: stream(Progress), handler }),
+    defineRoute({ summary: 'The GET /picture fixture', method: 'get', path: '/picture', access: 'admin', cache: { maxAge: 60 }, response: IMAGE, handler }),
+    defineRoute({ summary: 'The GET /away fixture', method: 'get', path: '/away', access: 'public', cache: 'no-store', response: REDIRECT, handler }),
+    defineRoute({ summary: 'The DELETE /mine fixture', method: 'delete', path: '/mine', access: 'signed-in', cache: 'no-store', response: NO_BODY, handler }),
   ]);
 
   it('are a stream of named events, an image, a redirect and a bare 204', () => {
@@ -130,8 +137,8 @@ describe('the answers that are not a JSON body', () => {
 
 describe('what the builder refuses', () => {
   it('two routes that would make one operation', () => {
-    const route = defineRoute({ method: 'get', path: '/a-b', access: 'public', cache: 'no-store', response: Place, handler });
-    const other = defineRoute({ method: 'get', path: '/a_b', access: 'public', cache: 'no-store', response: Place, handler });
+    const route = defineRoute({ summary: 'The GET /a-b fixture', method: 'get', path: '/a-b', access: 'public', cache: 'no-store', response: Place, handler });
+    const other = defineRoute({ summary: 'The GET /a_b fixture', method: 'get', path: '/a_b', access: 'public', cache: 'no-store', response: Place, handler });
     expect(() => documentOf([route, other])).toThrow('Two routes make the operation getPlacesAB');
   });
 
@@ -140,6 +147,7 @@ describe('what the builder refuses', () => {
     const node: z.ZodType<any> = z.lazy(() => z.object({ name: z.string(), children: z.array(node) }));
     const route = defineRoute({
       method: 'post', path: '/tree', access: 'admin', cache: 'no-store',
+      summary: 'The POST /tree fixture',
       body: z.object({ root: node }), response: Place, handler,
     });
     expect(() => documentOf([route])).toThrow('got no name of its own: give the schema one with .meta({ id })');
@@ -148,9 +156,16 @@ describe('what the builder refuses', () => {
   it('a stream whose event schema has no name, which x-event-schema could not refer to', () => {
     const route = defineRoute({
       method: 'get', path: '/ticks', access: 'admin', cache: 'revalidate',
+      summary: 'The GET /ticks fixture',
       response: stream(z.strictObject({ tick: z.number() })), handler,
     });
     expect(() => documentOf([route])).toThrow("A stream's event schema has no name");
+  });
+
+  it('two routes described alike, which a client could not tell apart', () => {
+    const one = defineRoute({ method: 'get', path: '/a', summary: 'Get the place', access: 'public', cache: 'no-store', response: Place, handler });
+    const two = defineRoute({ method: 'get', path: '/b', summary: 'Get the place', access: 'public', cache: 'no-store', response: Place, handler });
+    expect(() => documentOf([one, two])).toThrow('getPlacesB and getPlacesA have the same summary');
   });
 
   it('a path OpenAPI cannot state', () => {

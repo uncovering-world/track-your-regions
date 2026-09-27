@@ -131,6 +131,7 @@ function operationOf(
   const note = ACCESS_NOTE[route.access];
   return {
     operationId: id,
+    summary: route.summary,
     tags: [tag],
     ...(note ? { description: note } : {}),
     'x-access': route.access,
@@ -152,12 +153,18 @@ export function openApiDocumentOf(mounts: readonly Mount[], named: NamedSchemas,
   const bodies = new Map<string, z.ZodType>();
   const paths: ZodOpenApiPathsObject = {};
   const operationIds = new Set<string>();
+  // Two routes described alike are two methods a client cannot tell apart
+  // from their documentation, so a repeated summary fails the build.
+  const summaries = new Map<string, string>();
   for (const { prefix, routes } of mounts) {
     for (const route of routes) {
       const path = openApiPath(prefix, route.path);
       const id = operationIdOf(route.method, path);
       if (operationIds.has(id)) throw new Error(`Two routes make the operation ${id}; rename one of the paths`);
       operationIds.add(id);
+      const twin = summaries.get(route.summary);
+      if (twin) throw new Error(`${id} and ${twin} have the same summary: say how they differ`);
+      summaries.set(route.summary, id);
       const bodyName = route.body && bodyNames.get(route.body);
       if (route.body && bodyName) bodies.set(bodyName, route.body);
       const tag = path.split('/').find((segment) => segment !== '' && segment !== 'api') ?? '';

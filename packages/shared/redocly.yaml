@@ -4,8 +4,6 @@ extends:
   - recommended
 
 rules:
-  # A route declaration states no summary yet (#1092), so no operation has one.
-  operation-summary: off
   # Every failure answers the one error body, stated once as the `default`
   # answer, rather than a 4xx listed per operation.
   operation-4xx-response: off

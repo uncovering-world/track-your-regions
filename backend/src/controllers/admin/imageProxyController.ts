@@ -10,7 +10,7 @@ import { badRequest, failure } from '../../middleware/errorHandler.js';
 import { fetchPicture } from '../../services/pictureFetch.js';
 import type { imageProxyQuerySchema } from '../../types/index.js';
 
-/** GET /api/admin/image-proxy?url=… — the picture, unchanged. */
+/** The Commons picture `url` names, unchanged, or a refusal of anything that is not one. */
 export async function proxyImage(
   { query: { url } }: { query: z.output<typeof imageProxyQuerySchema> },
 ): Promise<ImageBody> {

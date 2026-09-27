@@ -35,12 +35,14 @@ export const authRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'post', path: '/register', access: 'public', cache: 'no-store', limiter: registerLimiter,
+    summary: 'Create an email/password account and send its verification email',
     body: registerSchema,
     response: AuthMessage,
     handler: register,
   }),
   defineRoute({
     method: 'post', path: '/login', access: 'public', cache: 'token', limiter: loginLimiter,
+    summary: 'Sign in with email and password and set the refresh-token cookie',
     body: loginSchema,
     response: SessionStarted,
     handler: login,
@@ -51,12 +53,14 @@ export const authRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'post', path: '/verify-email', access: 'public', cache: 'token', limiter: verifyEmailLimiter,
+    summary: 'Verify an email address from its link token and sign the user in',
     body: verifyEmailSchema,
     response: SessionStarted,
     handler: verifyEmail,
   }),
   defineRoute({
     method: 'post', path: '/resend-verification', access: 'public', cache: 'no-store', limiter: resendLimiter,
+    summary: 'Send a fresh verification email to an unverified account',
     body: resendVerificationSchema,
     response: AuthMessage,
     handler: resendVerification,
@@ -69,6 +73,7 @@ export const authRoutes = [
   // body), which the handler reads from the request itself.
   defineRoute({
     method: 'post', path: '/refresh', access: 'public', cache: 'token', limiter: refreshLimiter,
+    summary: 'Rotate the refresh-token cookie and issue a new access token',
     response: SessionStarted,
     handler: refresh,
   }),
@@ -76,11 +81,13 @@ export const authRoutes = [
   // header, the refresh token in the cookie — and answers the same either way.
   defineRoute({
     method: 'post', path: '/logout', access: 'public', cache: 'no-store',
+    summary: 'Sign out: revoke the tokens the request carries and clear the refresh-token cookie',
     response: LoggedOut,
     handler: logout,
   }),
   defineRoute({
     method: 'get', path: '/me', access: 'signed-in', cache: 'no-store',
+    summary: 'Get the profile of the signed-in user',
     response: PublicUser,
     handler: getProfile,
   }),
@@ -90,6 +97,7 @@ export const authRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'post', path: '/change-password', access: 'signed-in', cache: 'token',
+    summary: 'Change the password, sign out other sessions and issue new tokens',
     body: changePasswordSchema,
     response: PasswordChanged,
     handler: changePassword,
@@ -100,6 +108,7 @@ export const authRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'post', path: '/exchange-code', access: 'public', cache: 'token', limiter: exchangeCodeLimiter,
+    summary: 'Exchange a one-time sign-in code for an access token and refresh cookie',
     body: exchangeCodeSchema,
     response: CodeExchanged,
     handler: exchangeCode,
@@ -110,6 +119,7 @@ export const authRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'get', path: '/google', access: 'public', cache: 'no-store',
+    summary: 'Start Google sign-in by redirecting to Google',
     query: googleStartQuerySchema,
     response: REDIRECT,
     handler: startGoogle,
@@ -117,17 +127,20 @@ export const authRoutes = [
   // The provider's own query (the code, the state) is passport's to read.
   defineRoute({
     method: 'get', path: '/google/callback', access: 'public', cache: 'no-store',
+    summary: 'Finish Google sign-in and redirect to the web with a one-time code',
     response: REDIRECT,
     handler: finishGoogle,
   }),
   defineRoute({
     method: 'get', path: '/apple', access: 'public', cache: 'no-store',
+    summary: 'Start Sign in with Apple by redirecting to Apple',
     response: REDIRECT,
     handler: startApple,
   }),
   // Apple answers with a POST whose form body passport reads itself.
   defineRoute({
     method: 'post', path: '/apple/callback', access: 'public', cache: 'no-store',
+    summary: 'Finish Sign in with Apple and redirect to the web with a one-time code',
     response: REDIRECT,
     handler: finishApple,
   }),

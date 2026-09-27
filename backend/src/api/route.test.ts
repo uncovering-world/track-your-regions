@@ -45,6 +45,7 @@ const limiter: RequestHandler = (_req, res, next) => {
 const routes: Route[] = [
   defineRoute({
     method: 'get', path: '/public', access: 'public', cache: 'shared-revalidate', limiter,
+    summary: 'The GET /public fixture',
     query: z.object({ n: z.coerce.number().default(3) }),
     response: Count,
     handler: async ({ query }) => {
@@ -54,6 +55,7 @@ const routes: Route[] = [
   }),
   defineRoute({
     method: 'get', path: '/items/:id', access: 'curator', cache: 'no-store',
+    summary: 'The GET /items/:id fixture',
     params: idParams,
     response: Count,
     noContent: true,
@@ -64,17 +66,20 @@ const routes: Route[] = [
   }),
   defineRoute({
     method: 'post', path: '/items', access: 'signed-in', cache: 'no-store', status: 201,
+    summary: 'The POST /items fixture',
     body: z.object({ n: z.number() }),
     response: Count,
     handler: async ({ body }) => ({ n: body.n }),
   }),
   defineRoute({
     method: 'get', path: '/mine', access: 'optional', cache: 'revalidate',
+    summary: 'The GET /mine fixture',
     response: Count,
     handler: async ({ caller }) => ({ n: caller?.id ?? 0 }),
   }),
   defineRoute({
     method: 'get', path: '/regions/:regionId', access: 'optional', cache: 'revalidate',
+    summary: 'The GET /regions/:regionId fixture',
     params: z.object({ regionId: z.coerce.number().int().positive() }),
     query: z.object({ worldViewId: z.coerce.number().int().positive().optional() }),
     scope: ({ params }) => ({ regionId: params.regionId }),
@@ -86,6 +91,7 @@ const routes: Route[] = [
   }),
   defineRoute({
     method: 'get', path: '/ticks', access: 'curator', cache: 'revalidate',
+    summary: 'The GET /ticks fixture',
     query: z.object({ fail: z.enum(['true', 'false']).default('false') }),
     response: stream(z.strictObject({ tick: z.number() })),
     handler: async ({ query }, { send }) => {
@@ -96,11 +102,13 @@ const routes: Route[] = [
   }),
   defineRoute({
     method: 'post', path: '/session', access: 'public', cache: 'token',
+    summary: 'The POST /session fixture',
     response: z.strictObject({ accessToken: z.string() }),
     handler: async () => ({ accessToken: 't' }),
   }),
   defineRoute({
     method: 'get', path: '/away', access: 'public', cache: 'no-store',
+    summary: 'The GET /away fixture',
     query: z.object({ by: z.enum(['handler', 'middleware', 'nothing']).default('handler') }),
     response: REDIRECT,
     handler: async ({ query }, { res }) => {
@@ -114,23 +122,27 @@ const routes: Route[] = [
   }),
   defineRoute({
     method: 'get', path: '/picture', access: 'curator', cache: { maxAge: 300 },
+    summary: 'The GET /picture fixture',
     response: IMAGE,
     handler: async () => ({ contentType: 'image/png', bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47]), crossOrigin: true }),
   }),
   defineRoute({
     method: 'get', path: '/commons', access: 'curator',
+    summary: 'The GET /commons fixture',
     cache: { maxAge: 86400, shared: 'the same picture for everyone who may ask' },
     response: IMAGE,
     handler: async () => ({ contentType: 'image/jpeg', bytes: Buffer.from('jpeg') }),
   }),
   defineRoute({
     method: 'get', path: '/commons-down', access: 'curator',
+    summary: 'The GET /commons-down fixture',
     cache: { maxAge: 86400, shared: 'the same picture for everyone who may ask' },
     response: IMAGE,
     handler: async () => { throw failure('Failed to fetch image', 502); },
   }),
   defineRoute({
     method: 'get', path: '/maybe', access: 'optional', cache: 'revalidate',
+    summary: 'The GET /maybe fixture',
     query: z.object({ worldViewId: z.coerce.number().int().positive().optional() }),
     scope: ({ query }) => (query.worldViewId === undefined ? undefined : { worldViewId: query.worldViewId }),
     response: Count,
@@ -399,10 +411,12 @@ describe('what the compiler refuses', () => {
     const shapedByCaller = async ({ caller }: { caller: Express.User | undefined }) => ({ n: caller ? 1 : 0 });
     expect(defineRoute({
       method: 'get', path: '/shaped', access: 'optional', cache: 'revalidate', response: Count,
+      summary: 'The GET /shaped fixture',
       handler: shapedByCaller,
     }).access).toBe('optional');
     defineRoute({
       method: 'get', path: '/shaped', access: 'public', cache: 'shared-revalidate', response: Count,
+      summary: 'The GET /shaped fixture',
       // @ts-expect-error -- a public route's input has no caller
       handler: shapedByCaller,
     });
@@ -411,7 +425,8 @@ describe('what the compiler refuses', () => {
 
 describe('what the registry refuses to build', () => {
   const route = (method: Route['method'], path: string): Route => ({
-    method, path, access: 'admin', cache: 'no-store', response: Count, handler: async () => ({ n: 1 }),
+    method, path, summary: `The ${method.toUpperCase()} ${path} fixture`, access: 'admin', cache: 'no-store', response: Count,
+    handler: async () => ({ n: 1 }),
   });
 
   it('refuses a route an earlier one shadows', () => {

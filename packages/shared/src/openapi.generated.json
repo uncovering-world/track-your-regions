@@ -14,6 +14,7 @@
     "/health": {
       "get": {
         "operationId": "getHealth",
+        "summary": "Report whether the server is up and its database answering, or 503 if not",
         "tags": [
           "health"
         ],
@@ -47,6 +48,7 @@
     "/api/auth/register": {
       "post": {
         "operationId": "postAuthRegister",
+        "summary": "Create an email/password account and send its verification email",
         "tags": [
           "auth"
         ],
@@ -90,6 +92,7 @@
     "/api/auth/login": {
       "post": {
         "operationId": "postAuthLogin",
+        "summary": "Sign in with email and password and set the refresh-token cookie",
         "tags": [
           "auth"
         ],
@@ -133,6 +136,7 @@
     "/api/auth/verify-email": {
       "post": {
         "operationId": "postAuthVerifyEmail",
+        "summary": "Verify an email address from its link token and sign the user in",
         "tags": [
           "auth"
         ],
@@ -176,6 +180,7 @@
     "/api/auth/resend-verification": {
       "post": {
         "operationId": "postAuthResendVerification",
+        "summary": "Send a fresh verification email to an unverified account",
         "tags": [
           "auth"
         ],
@@ -219,6 +224,7 @@
     "/api/auth/refresh": {
       "post": {
         "operationId": "postAuthRefresh",
+        "summary": "Rotate the refresh-token cookie and issue a new access token",
         "tags": [
           "auth"
         ],
@@ -252,6 +258,7 @@
     "/api/auth/logout": {
       "post": {
         "operationId": "postAuthLogout",
+        "summary": "Sign out: revoke the tokens the request carries and clear the refresh-token cookie",
         "tags": [
           "auth"
         ],
@@ -285,6 +292,7 @@
     "/api/auth/me": {
       "get": {
         "operationId": "getAuthMe",
+        "summary": "Get the profile of the signed-in user",
         "tags": [
           "auth"
         ],
@@ -323,6 +331,7 @@
     "/api/auth/change-password": {
       "post": {
         "operationId": "postAuthChangePassword",
+        "summary": "Change the password, sign out other sessions and issue new tokens",
         "tags": [
           "auth"
         ],
@@ -371,6 +380,7 @@
     "/api/auth/exchange-code": {
       "post": {
         "operationId": "postAuthExchangeCode",
+        "summary": "Exchange a one-time sign-in code for an access token and refresh cookie",
         "tags": [
           "auth"
         ],
@@ -414,6 +424,7 @@
     "/api/auth/google": {
       "get": {
         "operationId": "getAuthGoogle",
+        "summary": "Start Google sign-in by redirecting to Google",
         "tags": [
           "auth"
         ],
@@ -449,6 +460,7 @@
     "/api/auth/google/callback": {
       "get": {
         "operationId": "getAuthGoogleCallback",
+        "summary": "Finish Google sign-in and redirect to the web with a one-time code",
         "tags": [
           "auth"
         ],
@@ -475,6 +487,7 @@
     "/api/auth/apple": {
       "get": {
         "operationId": "getAuthApple",
+        "summary": "Start Sign in with Apple by redirecting to Apple",
         "tags": [
           "auth"
         ],
@@ -501,6 +514,7 @@
     "/api/auth/apple/callback": {
       "post": {
         "operationId": "postAuthAppleCallback",
+        "summary": "Finish Sign in with Apple and redirect to the web with a one-time code",
         "tags": [
           "auth"
         ],
@@ -527,6 +541,7 @@
     "/api/divisions/root": {
       "get": {
         "operationId": "getDivisionsRoot",
+        "summary": "List the top-level GADM divisions, the ones with no parent",
         "tags": [
           "divisions"
         ],
@@ -565,6 +580,7 @@
     "/api/divisions/search": {
       "get": {
         "operationId": "getDivisionsSearch",
+        "summary": "Search GADM divisions by name, fuzzily, with their use in a world view",
         "tags": [
           "divisions"
         ],
@@ -632,6 +648,7 @@
     "/api/divisions/{divisionId}": {
       "get": {
         "operationId": "getDivisionsByDivisionId",
+        "summary": "Read one GADM division with its framing box and anchor point",
         "tags": [
           "divisions"
         ],
@@ -681,6 +698,7 @@
     "/api/divisions/{divisionId}/subdivisions": {
       "get": {
         "operationId": "getDivisionsByDivisionIdSubdivisions",
+        "summary": "List the children of a division, or all its descendants, a page at a time",
         "tags": [
           "divisions"
         ],
@@ -772,6 +790,7 @@
     "/api/divisions/{divisionId}/ancestors": {
       "get": {
         "operationId": "getDivisionsByDivisionIdAncestors",
+        "summary": "List the chain of divisions from the root down to this one",
         "tags": [
           "divisions"
         ],
@@ -821,6 +840,7 @@
     "/api/divisions/{divisionId}/siblings": {
       "get": {
         "operationId": "getDivisionsByDivisionIdSiblings",
+        "summary": "List the divisions that share the parent of this one, itself included",
         "tags": [
           "divisions"
         ],
@@ -870,6 +890,7 @@
     "/api/divisions/{divisionId}/geometry": {
       "get": {
         "operationId": "getDivisionsByDivisionIdGeometry",
+        "summary": "Read the boundary of a division as GeoJSON at a chosen level of detail",
         "tags": [
           "divisions"
         ],
@@ -935,6 +956,7 @@
     "/api/world-views": {
       "get": {
         "operationId": "getWorldViews",
+        "summary": "List the active world views, including hidden ones for an admin",
         "tags": [
           "world-views"
         ],
@@ -972,6 +994,7 @@
       },
       "post": {
         "operationId": "postWorldViews",
+        "summary": "Create a world view, hidden until it is published",
         "tags": [
           "world-views"
         ],
@@ -1020,6 +1043,7 @@
     "/api/world-views/{worldViewId}": {
       "put": {
         "operationId": "putWorldViewsByWorldViewId",
+        "summary": "Update the name, description, source or visibility of a world view",
         "tags": [
           "world-views"
         ],
@@ -1077,6 +1101,7 @@
       },
       "delete": {
         "operationId": "deleteWorldViewsByWorldViewId",
+        "summary": "Delete a world view with its regions and their visits; the GADM default is refused",
         "tags": [
           "world-views"
         ],
@@ -1119,6 +1144,7 @@
     "/api/world-views/{worldViewId}/delete-impact": {
       "get": {
         "operationId": "getWorldViewsByWorldViewIdDeleteImpact",
+        "summary": "Count the regions, experience assignments and visits that deleting a world view removes",
         "tags": [
           "world-views"
         ],
@@ -1168,6 +1194,7 @@
     "/api/world-views/{worldViewId}/regions": {
       "get": {
         "operationId": "getWorldViewsByWorldViewIdRegions",
+        "summary": "List every region of a world view as one flat list, sorted by name",
         "tags": [
           "world-views"
         ],
@@ -1216,6 +1243,7 @@
       },
       "post": {
         "operationId": "postWorldViewsByWorldViewIdRegions",
+        "summary": "Create a region in a world view, optionally with a hand-drawn boundary",
         "tags": [
           "world-views"
         ],
@@ -1275,6 +1303,7 @@
     "/api/world-views/{worldViewId}/regions/root": {
       "get": {
         "operationId": "getWorldViewsByWorldViewIdRegionsRoot",
+        "summary": "List the top-level regions of a world view",
         "tags": [
           "world-views"
         ],
@@ -1325,6 +1354,7 @@
     "/api/world-views/{worldViewId}/regions/search": {
       "get": {
         "operationId": "getWorldViewsByWorldViewIdRegionsSearch",
+        "summary": "Search the regions of a world view by name, tolerating accents and typos",
         "tags": [
           "world-views"
         ],
@@ -1395,6 +1425,7 @@
     "/api/world-views/{worldViewId}/compute-geometries": {
       "post": {
         "operationId": "postWorldViewsByWorldViewIdComputeGeometries",
+        "summary": "Start computing the region geometries of a world view in the background",
         "tags": [
           "world-views"
         ],
@@ -1468,6 +1499,7 @@
     "/api/world-views/{worldViewId}/compute-geometries/status": {
       "get": {
         "operationId": "getWorldViewsByWorldViewIdComputeGeometriesStatus",
+        "summary": "Get the progress of the background geometry computation of a world view",
         "tags": [
           "world-views"
         ],
@@ -1518,6 +1550,7 @@
     "/api/world-views/{worldViewId}/compute-geometries/cancel": {
       "post": {
         "operationId": "postWorldViewsByWorldViewIdComputeGeometriesCancel",
+        "summary": "Ask the running geometry computation of a world view to stop",
         "tags": [
           "world-views"
         ],
@@ -1567,6 +1600,7 @@
     "/api/world-views/{worldViewId}/division-usage": {
       "post": {
         "operationId": "postWorldViewsByWorldViewIdDivisionUsage",
+        "summary": "Count how many regions of a world view hold each of the given divisions",
         "tags": [
           "world-views"
         ],
@@ -1627,6 +1661,7 @@
     "/api/world-views/{worldViewId}/display-geometry-status": {
       "get": {
         "operationId": "getWorldViewsByWorldViewIdDisplayGeometryStatus",
+        "summary": "Count the regions of a world view that have a geometry, an anchor point and a hull",
         "tags": [
           "world-views"
         ],
@@ -1677,6 +1712,7 @@
     "/api/world-views/{worldViewId}/regenerate-display-geometries": {
       "post": {
         "operationId": "postWorldViewsByWorldViewIdRegenerateDisplayGeometries",
+        "summary": "Recompute area, anchor point and map frame for the regions of a world view or one branch",
         "tags": [
           "world-views"
         ],
@@ -1735,6 +1771,7 @@
     "/api/world-views/regions/{regionId}/ancestors": {
       "get": {
         "operationId": "getWorldViewsRegionsByRegionIdAncestors",
+        "summary": "List the ancestors of a region, from the root down to the region itself",
         "tags": [
           "world-views"
         ],
@@ -1785,6 +1822,7 @@
     "/api/world-views/regions/{regionId}/subregions": {
       "get": {
         "operationId": "getWorldViewsRegionsByRegionIdSubregions",
+        "summary": "List the direct subregions of a region",
         "tags": [
           "world-views"
         ],
@@ -1835,6 +1873,7 @@
     "/api/world-views/regions/{regionId}": {
       "put": {
         "operationId": "putWorldViewsRegionsByRegionId",
+        "summary": "Update the name, description, parent, color or hull choice of a region",
         "tags": [
           "world-views"
         ],
@@ -1892,6 +1931,7 @@
       },
       "delete": {
         "operationId": "deleteWorldViewsRegionsByRegionId",
+        "summary": "Delete a region with its subregions, or move them to its parent; refused while visited",
         "tags": [
           "world-views"
         ],
@@ -1946,6 +1986,7 @@
     "/api/world-views/regions/{regionId}/members": {
       "get": {
         "operationId": "getWorldViewsRegionsByRegionIdMembers",
+        "summary": "List the members of a region: its subregions and its GADM divisions with their paths",
         "tags": [
           "world-views"
         ],
@@ -1994,6 +2035,7 @@
       },
       "post": {
         "operationId": "postWorldViewsRegionsByRegionIdMembers",
+        "summary": "Add GADM divisions to a region, optionally each as a new subregion",
         "tags": [
           "world-views"
         ],
@@ -2051,6 +2093,7 @@
       },
       "delete": {
         "operationId": "deleteWorldViewsRegionsByRegionIdMembers",
+        "summary": "Remove whole divisions or individual cut parts from a region",
         "tags": [
           "world-views"
         ],
@@ -2110,6 +2153,7 @@
     "/api/world-views/regions/{regionId}/members/geometries": {
       "get": {
         "operationId": "getWorldViewsRegionsByRegionIdMembersGeometries",
+        "summary": "Get the outlines of the divisions in a region as GeoJSON, cut parts included",
         "tags": [
           "world-views"
         ],
@@ -2160,6 +2204,7 @@
     "/api/world-views/regions/{regionId}/members/descendant-geometries": {
       "get": {
         "operationId": "getWorldViewsRegionsByRegionIdMembersDescendantGeometries",
+        "summary": "Get simplified outlines of the divisions in every subregion below a region, as GeoJSON",
         "tags": [
           "world-views"
         ],
@@ -2210,6 +2255,7 @@
     "/api/world-views/regions/{regionId}/members/move": {
       "post": {
         "operationId": "postWorldViewsRegionsByRegionIdMembersMove",
+        "summary": "Move one member of a region, a cut part with its shape, to another region",
         "tags": [
           "world-views"
         ],
@@ -2269,6 +2315,7 @@
     "/api/world-views/regions/{regionId}/members/{divisionId}/add-children": {
       "post": {
         "operationId": "postWorldViewsRegionsByRegionIdMembersByDivisionIdAddChildren",
+        "summary": "Replace a member division of a region with its GADM subdivisions, or add them beside it when asked",
         "tags": [
           "world-views"
         ],
@@ -2338,6 +2385,7 @@
     "/api/world-views/regions/{parentRegionId}/flatten/{subregionId}": {
       "post": {
         "operationId": "postWorldViewsRegionsByParentRegionIdFlattenBySubregionId",
+        "summary": "Fold a subregion and its descendants into the parent, moving their members up; refused while visited",
         "tags": [
           "world-views"
         ],
@@ -2397,6 +2445,7 @@
     "/api/world-views/regions/{regionId}/expand": {
       "post": {
         "operationId": "postWorldViewsRegionsByRegionIdExpand",
+        "summary": "Turn each member of a region into a subregion of its own holding that member",
         "tags": [
           "world-views"
         ],
@@ -2456,6 +2505,7 @@
     "/api/world-views/regions/{regionId}/geometry": {
       "get": {
         "operationId": "getWorldViewsRegionsByRegionIdGeometry",
+        "summary": "Get the stored outline of a region, or its hull; no content while none is computed",
         "tags": [
           "world-views"
         ],
@@ -2518,6 +2568,7 @@
       },
       "put": {
         "operationId": "putWorldViewsRegionsByRegionIdGeometry",
+        "summary": "Save an outline for a region, optionally with its hull, marking whether it is hand-drawn",
         "tags": [
           "world-views"
         ],
@@ -2570,6 +2621,7 @@
     "/api/world-views/regions/{regionId}/geometry/compute-stream": {
       "get": {
         "operationId": "getWorldViewsRegionsByRegionIdGeometryComputeStream",
+        "summary": "Compute the outline of one region from its members, streaming progress as server-sent events",
         "tags": [
           "world-views"
         ],
@@ -2654,6 +2706,7 @@
     "/api/world-views/regions/{regionId}/geometry/reset": {
       "post": {
         "operationId": "postWorldViewsRegionsByRegionIdGeometryReset",
+        "summary": "Drop the hand-drawn outline and hull of a region and rebuild it from its members",
         "tags": [
           "world-views"
         ],
@@ -2703,6 +2756,7 @@
     "/api/world-views/regions/{regionId}/hull/preview": {
       "post": {
         "operationId": "postWorldViewsRegionsByRegionIdHullPreview",
+        "summary": "Preview a hull for a region with the given parameters, without saving it",
         "tags": [
           "world-views"
         ],
@@ -2762,6 +2816,7 @@
     "/api/world-views/regions/{regionId}/hull/save": {
       "post": {
         "operationId": "postWorldViewsRegionsByRegionIdHullSave",
+        "summary": "Generate and save the hull of a region with the given parameters",
         "tags": [
           "world-views"
         ],
@@ -2821,6 +2876,7 @@
     "/api/world-views/regions/{regionId}/hull/params": {
       "get": {
         "operationId": "getWorldViewsRegionsByRegionIdHullParams",
+        "summary": "Get the hull parameters last saved for a region",
         "tags": [
           "world-views"
         ],
@@ -2871,6 +2927,7 @@
     "/api/users/me": {
       "get": {
         "operationId": "getUsersMe",
+        "summary": "Get the signed-in account, with its curator scopes for a curator or an admin",
         "tags": [
           "users"
         ],
@@ -2909,6 +2966,7 @@
     "/api/users/me/visited-regions": {
       "get": {
         "operationId": "getUsersMeVisitedRegions",
+        "summary": "List every region the caller has marked visited, most recent first",
         "tags": [
           "users"
         ],
@@ -2947,6 +3005,7 @@
     "/api/users/me/visited-regions/by-world-view/{worldViewId}": {
       "get": {
         "operationId": "getUsersMeVisitedRegionsByWorldViewByWorldViewId",
+        "summary": "List the regions the caller has marked visited in one world view",
         "tags": [
           "users"
         ],
@@ -2996,6 +3055,7 @@
     "/api/users/me/visited-regions/{regionId}": {
       "post": {
         "operationId": "postUsersMeVisitedRegionsByRegionId",
+        "summary": "Mark a region visited, or refresh the mark and replace its notes when given",
         "tags": [
           "users"
         ],
@@ -3053,6 +3113,7 @@
       },
       "delete": {
         "operationId": "deleteUsersMeVisitedRegionsByRegionId",
+        "summary": "Remove the visited mark from a region",
         "tags": [
           "users"
         ],
@@ -3095,6 +3156,7 @@
     "/api/users/me/visited-experiences/ids": {
       "get": {
         "operationId": "getUsersMeVisitedExperiencesIds",
+        "summary": "List the ids of experiences the caller has visited, optionally of one kind",
         "tags": [
           "users"
         ],
@@ -3143,6 +3205,7 @@
     "/api/users/me/visited-experiences/{experienceId}": {
       "post": {
         "operationId": "postUsersMeVisitedExperiencesByExperienceId",
+        "summary": "Mark an experience visited, with optional notes and rating",
         "tags": [
           "users"
         ],
@@ -3200,6 +3263,7 @@
       },
       "delete": {
         "operationId": "deleteUsersMeVisitedExperiencesByExperienceId",
+        "summary": "Remove the visited mark from an experience, keeping its location visits",
         "tags": [
           "users"
         ],
@@ -3249,6 +3313,7 @@
     "/api/users/me/visited-locations/ids": {
       "get": {
         "operationId": "getUsersMeVisitedLocationsIds",
+        "summary": "List the ids of offered locations the caller has visited, grouped by experience",
         "tags": [
           "users"
         ],
@@ -3297,6 +3362,7 @@
     "/api/users/me/visited-locations/{locationId}": {
       "post": {
         "operationId": "postUsersMeVisitedLocationsByLocationId",
+        "summary": "Mark one location visited, which also marks its experience visited",
         "tags": [
           "users"
         ],
@@ -3354,6 +3420,7 @@
       },
       "delete": {
         "operationId": "deleteUsersMeVisitedLocationsByLocationId",
+        "summary": "Remove a location visit, and the experience visit when no visited location remains",
         "tags": [
           "users"
         ],
@@ -3403,6 +3470,7 @@
     "/api/users/me/experiences/{id}/visited-status": {
       "get": {
         "operationId": "getUsersMeExperiencesByIdVisitedStatus",
+        "summary": "Get how much of an experience the caller has visited, location by location",
         "tags": [
           "users"
         ],
@@ -3452,6 +3520,7 @@
     "/api/users/me/experiences/{experienceId}/mark-all-locations": {
       "post": {
         "operationId": "postUsersMeExperiencesByExperienceIdMarkAllLocations",
+        "summary": "Mark every offered location of an experience visited, or only those in one region",
         "tags": [
           "users"
         ],
@@ -3508,6 +3577,7 @@
       },
       "delete": {
         "operationId": "deleteUsersMeExperiencesByExperienceIdMarkAllLocations",
+        "summary": "Unmark every location of an experience, or only those in one region",
         "tags": [
           "users"
         ],
@@ -3566,6 +3636,7 @@
     "/api/users/me/viewed-treasures/ids": {
       "get": {
         "operationId": "getUsersMeViewedTreasuresIds",
+        "summary": "List the ids of works the caller has viewed, optionally at one venue",
         "tags": [
           "users"
         ],
@@ -3614,6 +3685,7 @@
     "/api/users/me/viewed-treasures/{treasureId}": {
       "post": {
         "operationId": "postUsersMeViewedTreasuresByTreasureId",
+        "summary": "Mark a work viewed; naming its venue also marks the venue and its locations visited",
         "tags": [
           "users"
         ],
@@ -3671,6 +3743,7 @@
       },
       "delete": {
         "operationId": "deleteUsersMeViewedTreasuresByTreasureId",
+        "summary": "Remove the viewed mark from a work; its venue stays visited",
         "tags": [
           "users"
         ],
@@ -3720,6 +3793,7 @@
     "/api/ai/status": {
       "get": {
         "operationId": "getAiStatus",
+        "summary": "Report whether AI features are configured, with the selected and available models",
         "tags": [
           "ai"
         ],
@@ -3758,6 +3832,7 @@
     "/api/ai/models": {
       "get": {
         "operationId": "getAiModels",
+        "summary": "List the available OpenAI models and the two currently selected",
         "tags": [
           "ai"
         ],
@@ -3794,6 +3869,7 @@
       },
       "post": {
         "operationId": "postAiModels",
+        "summary": "Select the OpenAI model for requests without web search, server-wide until restart",
         "tags": [
           "ai"
         ],
@@ -3842,6 +3918,7 @@
     "/api/ai/models/web-search": {
       "post": {
         "operationId": "postAiModelsWebSearch",
+        "summary": "Select the OpenAI model for web-search requests, server-wide until restart",
         "tags": [
           "ai"
         ],
@@ -3890,6 +3967,7 @@
     "/api/ai/suggest-group": {
       "post": {
         "operationId": "postAiSuggestGroup",
+        "summary": "Ask the AI model which of the given groups a single region belongs to",
         "tags": [
           "ai"
         ],
@@ -3938,6 +4016,7 @@
     "/api/ai/suggest-groups-batch": {
       "post": {
         "operationId": "postAiSuggestGroupsBatch",
+        "summary": "Ask the AI model which of the given groups each of several regions belongs to",
         "tags": [
           "ai"
         ],
@@ -3986,6 +4065,7 @@
     "/api/ai/generate-group-descriptions": {
       "post": {
         "operationId": "postAiGenerateGroupDescriptions",
+        "summary": "Have the AI model describe each group, to guide later group suggestions",
         "tags": [
           "ai"
         ],
@@ -4034,6 +4114,7 @@
     "/api/admin/sync/sources": {
       "get": {
         "operationId": "getAdminSyncSources",
+        "summary": "List the active experience sources with their gate, fame line and waiting counts",
         "tags": [
           "admin"
         ],
@@ -4072,6 +4153,7 @@
     "/api/admin/sync/sources/reorder": {
       "put": {
         "operationId": "putAdminSyncSourcesReorder",
+        "summary": "Set the order the experience sources are displayed in",
         "tags": [
           "admin"
         ],
@@ -4120,6 +4202,7 @@
     "/api/admin/sync/sources/{sourceId}/curation-gate": {
       "put": {
         "operationId": "putAdminSyncSourcesBySourceIdCurationGate",
+        "summary": "Hold new and changed content from a source for curator review, or stop holding it",
         "tags": [
           "admin"
         ],
@@ -4179,6 +4262,7 @@
     "/api/admin/sync/sources/{sourceId}/line": {
       "put": {
         "operationId": "putAdminSyncSourcesBySourceIdLine",
+        "summary": "Set how many sitelinks a place from a source needs to enter and stay in the world tier",
         "tags": [
           "admin"
         ],
@@ -4238,6 +4322,7 @@
     "/api/admin/sync/sources/{sourceId}/start": {
       "post": {
         "operationId": "postAdminSyncSourcesBySourceIdStart",
+        "summary": "Start a sync that fills the catalogue from one source, optionally as a dry run",
         "tags": [
           "admin"
         ],
@@ -4297,6 +4382,7 @@
     "/api/admin/sync/sources/{sourceId}/status": {
       "get": {
         "operationId": "getAdminSyncSourcesBySourceIdStatus",
+        "summary": "Report progress of the sync or picture repair running for a source, or how the last sync ended",
         "tags": [
           "admin"
         ],
@@ -4346,6 +4432,7 @@
     "/api/admin/sync/sources/{sourceId}/cancel": {
       "post": {
         "operationId": "postAdminSyncSourcesBySourceIdCancel",
+        "summary": "Ask the sync or picture repair running for a source to stop, while it still can",
         "tags": [
           "admin"
         ],
@@ -4395,6 +4482,7 @@
     "/api/admin/sync/sources/{sourceId}/fix-images": {
       "post": {
         "operationId": "postAdminSyncSourcesBySourceIdFixImages",
+        "summary": "Start a run that repairs missing or unshowable pictures of a source from Commons",
         "tags": [
           "admin"
         ],
@@ -4444,6 +4532,7 @@
     "/api/admin/sync/sources/{sourceId}/cache": {
       "get": {
         "operationId": "getAdminSyncSourcesBySourceIdCache",
+        "summary": "List what a source keeps cached between runs, per kind, with its age and expiry",
         "tags": [
           "admin"
         ],
@@ -4491,6 +4580,7 @@
       },
       "delete": {
         "operationId": "deleteAdminSyncSourcesBySourceIdCache",
+        "summary": "Clear the cached answers of a source, all kinds or one, so the next run asks again",
         "tags": [
           "admin"
         ],
@@ -4549,6 +4639,7 @@
     "/api/admin/sync/sources/{sourceId}/cache/{kind}/ttl": {
       "put": {
         "operationId": "putAdminSyncSourcesBySourceIdCacheByKindTtl",
+        "summary": "Set how long one kind of cached answer stays fresh for a source, re-stamping kept ones",
         "tags": [
           "admin"
         ],
@@ -4618,6 +4709,7 @@
     "/api/admin/sync/logs": {
       "get": {
         "operationId": "getAdminSyncLogs",
+        "summary": "List past sync runs, newest first, optionally for one source",
         "tags": [
           "admin"
         ],
@@ -4686,6 +4778,7 @@
     "/api/admin/sync/logs/{logId}": {
       "get": {
         "operationId": "getAdminSyncLogsByLogId",
+        "summary": "Read one sync run with its counts and error details",
         "tags": [
           "admin"
         ],
@@ -4735,6 +4828,7 @@
     "/api/admin/sync/logs/{logId}/changes": {
       "get": {
         "operationId": "getAdminSyncLogsByLogIdChanges",
+        "summary": "List what a sync run changed, object by object, most significant first",
         "tags": [
           "admin"
         ],
@@ -4844,6 +4938,7 @@
     "/api/admin/experiences/assign-regions": {
       "post": {
         "operationId": "postAdminExperiencesAssignRegions",
+        "summary": "Start assigning experiences to the regions of a world view that contain them",
         "tags": [
           "admin"
         ],
@@ -4892,6 +4987,7 @@
     "/api/admin/experiences/assign-regions/status": {
       "get": {
         "operationId": "getAdminExperiencesAssignRegionsStatus",
+        "summary": "Report the progress of the region assignment running for a world view",
         "tags": [
           "admin"
         ],
@@ -4941,6 +5037,7 @@
     "/api/admin/experiences/assign-regions/cancel": {
       "post": {
         "operationId": "postAdminExperiencesAssignRegionsCancel",
+        "summary": "Cancel the region assignment running for a world view",
         "tags": [
           "admin"
         ],
@@ -4989,6 +5086,7 @@
     "/api/admin/experiences/counts-by-region": {
       "get": {
         "operationId": "getAdminExperiencesCountsByRegion",
+        "summary": "Count the experiences placed in each region of a world view, optionally by source",
         "tags": [
           "admin"
         ],
@@ -5047,6 +5145,7 @@
     "/api/admin/data-assertions": {
       "get": {
         "operationId": "getAdminDataAssertions",
+        "summary": "Run every catalogue check and report what each finds and what was accepted",
         "tags": [
           "admin"
         ],
@@ -5085,6 +5184,7 @@
     "/api/admin/data-assertions/accept": {
       "post": {
         "operationId": "postAdminDataAssertionsAccept",
+        "summary": "Accept what one catalogue check finds now as known debt, measured on the server",
         "tags": [
           "admin"
         ],
@@ -5133,6 +5233,7 @@
     "/api/admin/curators": {
       "get": {
         "operationId": "getAdminCurators",
+        "summary": "List the curators and admins with the scopes each one is assigned",
         "tags": [
           "admin"
         ],
@@ -5169,6 +5270,7 @@
       },
       "post": {
         "operationId": "postAdminCurators",
+        "summary": "Assign a curator scope to a user, promoting them to curator if needed",
         "tags": [
           "admin"
         ],
@@ -5217,6 +5319,7 @@
     "/api/admin/curators/{assignmentId}": {
       "delete": {
         "operationId": "deleteAdminCuratorsByAssignmentId",
+        "summary": "Revoke a curator assignment, demoting the user when it was their last",
         "tags": [
           "admin"
         ],
@@ -5266,6 +5369,7 @@
     "/api/admin/curators/{userId}/activity": {
       "get": {
         "operationId": "getAdminCuratorsByUserIdActivity",
+        "summary": "List the curation actions one user has taken, newest first",
         "tags": [
           "admin"
         ],
@@ -5335,6 +5439,7 @@
     "/api/admin/users/search": {
       "get": {
         "operationId": "getAdminUsersSearch",
+        "summary": "Search accounts by display name or email to find one to make a curator",
         "tags": [
           "admin"
         ],
@@ -5384,6 +5489,7 @@
     "/api/admin/ai/settings": {
       "get": {
         "operationId": "getAdminAiSettings",
+        "summary": "Read the AI settings and the models available with their prices",
         "tags": [
           "admin"
         ],
@@ -5422,6 +5528,7 @@
     "/api/admin/ai/settings/{key}": {
       "put": {
         "operationId": "putAdminAiSettingsByKey",
+        "summary": "Save the value of one AI setting by its key",
         "tags": [
           "admin"
         ],
@@ -5481,6 +5588,7 @@
     "/api/admin/ai/usage": {
       "get": {
         "operationId": "getAdminAiUsage",
+        "summary": "Summarise AI spending today, this month and overall, by feature and model",
         "tags": [
           "admin"
         ],
@@ -5519,6 +5627,7 @@
     "/api/admin/ai/update-pricing": {
       "post": {
         "operationId": "postAdminAiUpdatePricing",
+        "summary": "Refresh the AI model prices from the public LiteLLM price list",
         "tags": [
           "admin"
         ],
@@ -5557,6 +5666,7 @@
     "/api/admin/ai/rules": {
       "get": {
         "operationId": "getAdminAiRules",
+        "summary": "List the learned AI rules alongside the built-in ones",
         "tags": [
           "admin"
         ],
@@ -5593,6 +5703,7 @@
       },
       "post": {
         "operationId": "postAdminAiRules",
+        "summary": "Add a learned rule that future AI prompts for a feature will include",
         "tags": [
           "admin"
         ],
@@ -5641,6 +5752,7 @@
     "/api/admin/ai/rules/{id}": {
       "delete": {
         "operationId": "deleteAdminAiRulesById",
+        "summary": "Delete one learned AI rule",
         "tags": [
           "admin"
         ],
@@ -5690,6 +5802,7 @@
     "/api/admin/ai/rules/review": {
       "post": {
         "operationId": "postAdminAiRulesReview",
+        "summary": "Ask the AI to find duplicate, conflicting or obsolete learned rules",
         "tags": [
           "admin"
         ],
@@ -5728,6 +5841,7 @@
     "/api/admin/ai/rules/apply-review": {
       "post": {
         "operationId": "postAdminAiRulesApplyReview",
+        "summary": "Apply one rule review suggestion: reword the kept rule and delete the others",
         "tags": [
           "admin"
         ],
@@ -5776,6 +5890,7 @@
     "/api/admin/ai/hierarchy-review/{worldViewId}": {
       "post": {
         "operationId": "postAdminAiHierarchyReviewByWorldViewId",
+        "summary": "Ask the AI to review the region tree of a world view, or one subtree, as a travel expert",
         "tags": [
           "admin"
         ],
@@ -5835,6 +5950,7 @@
     "/api/admin/image-proxy": {
       "get": {
         "operationId": "getAdminImageProxy",
+        "summary": "Fetch a Wikimedia Commons picture unchanged so the editor can draw it on a canvas",
         "tags": [
           "admin"
         ],
@@ -5878,6 +5994,7 @@
     "/api/admin/wv-extract/start": {
       "post": {
         "operationId": "postAdminWvExtractStart",
+        "summary": "Start extracting the region tree of a world view from Wikivoyage in the background",
         "tags": [
           "admin"
         ],
@@ -5926,6 +6043,7 @@
     "/api/admin/wv-extract/status": {
       "get": {
         "operationId": "getAdminWvExtractStatus",
+        "summary": "Report Wikivoyage extraction progress, pending questions, imported world views and caches",
         "tags": [
           "admin"
         ],
@@ -5964,6 +6082,7 @@
     "/api/admin/wv-extract/cancel": {
       "post": {
         "operationId": "postAdminWvExtractCancel",
+        "summary": "Cancel the running Wikivoyage extraction",
         "tags": [
           "admin"
         ],
@@ -6002,6 +6121,7 @@
     "/api/admin/wv-extract/answer": {
       "post": {
         "operationId": "postAdminWvExtractAnswer",
+        "summary": "Answer, accept or skip a question the extraction raised, or delete a learned rule",
         "tags": [
           "admin"
         ],
@@ -6050,6 +6170,7 @@
     "/api/admin/wv-extract/caches/{name}": {
       "delete": {
         "operationId": "deleteAdminWvExtractCachesByName",
+        "summary": "Delete a saved Wikivoyage page cache file",
         "tags": [
           "admin"
         ],
@@ -6099,6 +6220,7 @@
     "/api/admin/wv-import/import": {
       "post": {
         "operationId": "postAdminWvImportImport",
+        "summary": "Start importing a world view from an uploaded region tree and matching it to divisions",
         "tags": [
           "admin"
         ],
@@ -6147,6 +6269,7 @@
     "/api/admin/wv-import/base-layer": {
       "post": {
         "operationId": "postAdminWvImportBaseLayer",
+        "summary": "Start importing a world view that mirrors the administrative divisions to a given depth",
         "tags": [
           "admin"
         ],
@@ -6195,6 +6318,7 @@
     "/api/admin/wv-import/import/status": {
       "get": {
         "operationId": "getAdminWvImportImportStatus",
+        "summary": "Report import progress and list the imported world views",
         "tags": [
           "admin"
         ],
@@ -6233,6 +6357,7 @@
     "/api/admin/wv-import/import/cancel": {
       "post": {
         "operationId": "postAdminWvImportImportCancel",
+        "summary": "Cancel the running world view import",
         "tags": [
           "admin"
         ],
@@ -6271,6 +6396,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/stats": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdStats",
+        "summary": "Count the regions of a world view by match status, with what still blocks finalizing",
         "tags": [
           "admin"
         ],
@@ -6320,6 +6446,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/tree": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdTree",
+        "summary": "Get the region tree of a world view with the match status, suggestions and divisions of each region",
         "tags": [
           "admin"
         ],
@@ -6369,6 +6496,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/accept": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAccept",
+        "summary": "Accept one suggested division for a region and keep its other suggestions open",
         "tags": [
           "admin"
         ],
@@ -6428,6 +6556,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/reject": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdReject",
+        "summary": "Reject one suggested division for a region and unassign it if it was assigned",
         "tags": [
           "admin"
         ],
@@ -6487,6 +6616,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/reject-remaining": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdRejectRemaining",
+        "summary": "Reject every open suggestion of a region",
         "tags": [
           "admin"
         ],
@@ -6546,6 +6676,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/accept-and-reject": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAcceptAndReject",
+        "summary": "Accept one suggested division for a region and reject its other suggestions",
         "tags": [
           "admin"
         ],
@@ -6605,6 +6736,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/accept-batch-and-reject-rest": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAcceptBatchAndRejectRest",
+        "summary": "Accept several suggested divisions of one region and reject the rest",
         "tags": [
           "admin"
         ],
@@ -6664,6 +6796,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/reject-batch": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdRejectBatch",
+        "summary": "Reject several suggested divisions of one region at once",
         "tags": [
           "admin"
         ],
@@ -6723,6 +6856,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/clear-members": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdClearMembers",
+        "summary": "Remove every division assigned to a region and keep its suggestions",
         "tags": [
           "admin"
         ],
@@ -6782,6 +6916,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/accept-batch": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAcceptBatch",
+        "summary": "Accept a batch of suggested divisions across several regions",
         "tags": [
           "admin"
         ],
@@ -6841,6 +6976,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/accept-with-transfer": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAcceptWithTransfer",
+        "summary": "Accept divisions for a region by taking them from another region, splitting a division if needed",
         "tags": [
           "admin"
         ],
@@ -6900,6 +7036,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/transfer-preview": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdTransferPreview",
+        "summary": "Preview a transfer between regions as the donor, the moving divisions and the target outline",
         "tags": [
           "admin"
         ],
@@ -6959,6 +7096,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/union-geometry": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdUnionGeometry",
+        "summary": "Draw a set of divisions with the region already holding each, and optionally the markers of one region",
         "tags": [
           "admin"
         ],
@@ -7018,6 +7156,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/split-deeper": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdSplitDeeper",
+        "summary": "Propose the GADM children of given divisions that lie within the shape or markers of a region",
         "tags": [
           "admin"
         ],
@@ -7077,6 +7216,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/vision-match": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdVisionMatch",
+        "summary": "Ask a vision model which candidate divisions the map image of a region shows",
         "tags": [
           "admin"
         ],
@@ -7136,6 +7276,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/mapshape-match": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdMapshapeMatch",
+        "summary": "Propose divisions for the children of a region from the mapshapes on its Wikivoyage page",
         "tags": [
           "admin"
         ],
@@ -7195,6 +7336,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/ai-match": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAiMatch",
+        "summary": "Start AI matching of every unresolved leaf region in a world view",
         "tags": [
           "admin"
         ],
@@ -7244,6 +7386,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/ai-match/status": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdAiMatchStatus",
+        "summary": "Report the progress of AI matching in a world view",
         "tags": [
           "admin"
         ],
@@ -7293,6 +7436,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/ai-match/cancel": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAiMatchCancel",
+        "summary": "Cancel AI matching in a world view",
         "tags": [
           "admin"
         ],
@@ -7342,6 +7486,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/db-search-one": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdDbSearchOne",
+        "summary": "Search divisions by name for one region and store what is found as suggestions",
         "tags": [
           "admin"
         ],
@@ -7401,6 +7546,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/geocode-match": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdGeocodeMatch",
+        "summary": "Geocode one region by name and suggest the divisions that contain the point",
         "tags": [
           "admin"
         ],
@@ -7460,6 +7606,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/geoshape-match": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdGeoshapeMatch",
+        "summary": "Suggest divisions for one region by comparing them with its Wikidata shape",
         "tags": [
           "admin"
         ],
@@ -7519,6 +7666,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/point-match": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdPointMatch",
+        "summary": "Suggest divisions for one region from the Wikivoyage markers they contain",
         "tags": [
           "admin"
         ],
@@ -7578,6 +7726,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/reset-match": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdResetMatch",
+        "summary": "Clear the divisions and all suggestions of one region, rejected ones included",
         "tags": [
           "admin"
         ],
@@ -7637,6 +7786,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/ai-match-one": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAiMatchOne",
+        "summary": "Ask a model to suggest a better division match for one region",
         "tags": [
           "admin"
         ],
@@ -7696,6 +7846,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/dismiss-children": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdDismissChildren",
+        "summary": "Delete all descendants of a region and make it a leaf, with undo",
         "tags": [
           "admin"
         ],
@@ -7755,6 +7906,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/prune-to-leaves": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdPruneToLeaves",
+        "summary": "Delete the grandchildren and deeper descendants of a region, keeping its children",
         "tags": [
           "admin"
         ],
@@ -7814,6 +7966,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/collapse-to-parent": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdCollapseToParent",
+        "summary": "Clear the matches of all descendants of a region and suggest divisions for it instead",
         "tags": [
           "admin"
         ],
@@ -7873,6 +8026,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/smart-flatten": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdSmartFlatten",
+        "summary": "Auto-match the descendants of a region, move their divisions into it and delete them",
         "tags": [
           "admin"
         ],
@@ -7932,6 +8086,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/smart-flatten/preview": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdSmartFlattenPreview",
+        "summary": "Auto-match the descendants of a region and preview the shape a flatten would give",
         "tags": [
           "admin"
         ],
@@ -7991,6 +8146,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/auto-resolve-children/preview": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAutoResolveChildrenPreview",
+        "summary": "Preview how the unmatched leaf descendants of a region would be auto-resolved",
         "tags": [
           "admin"
         ],
@@ -8050,6 +8206,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/auto-resolve-children": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAutoResolveChildren",
+        "summary": "Match the unmatched leaf descendants of a region automatically, with undo",
         "tags": [
           "admin"
         ],
@@ -8109,6 +8266,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/handle-as-grouping": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdHandleAsGrouping",
+        "summary": "Treat a region as a grouping: clear its own match and match each child separately",
         "tags": [
           "admin"
         ],
@@ -8168,6 +8326,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/select-map-image": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdSelectMapImage",
+        "summary": "Pick the map image of a region from its candidates, or clear it",
         "tags": [
           "admin"
         ],
@@ -8227,6 +8386,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/mark-manual-fix": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdMarkManualFix",
+        "summary": "Flag or unflag a region as needing a manual fix, with an optional note",
         "tags": [
           "admin"
         ],
@@ -8286,6 +8446,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/merge-child": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdMergeChild",
+        "summary": "Merge the only child of a region into it",
         "tags": [
           "admin"
         ],
@@ -8345,6 +8506,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/simplify-hierarchy": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdSimplifyHierarchy",
+        "summary": "Replace complete sets of sibling divisions in a region with their parent division",
         "tags": [
           "admin"
         ],
@@ -8404,6 +8566,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/simplify-children": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdSimplifyChildren",
+        "summary": "Replace complete sets of sibling divisions with their parent in each child of a region",
         "tags": [
           "admin"
         ],
@@ -8463,6 +8626,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/smart-simplify": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdSmartSimplify",
+        "summary": "Find division moves between sibling regions that would let a parent division replace them",
         "tags": [
           "admin"
         ],
@@ -8522,6 +8686,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/smart-simplify/apply-move": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdSmartSimplifyApplyMove",
+        "summary": "Move divisions to one sibling region and simplify its divisions",
         "tags": [
           "admin"
         ],
@@ -8581,6 +8746,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/check-overlap": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdCheckOverlap",
+        "summary": "List the divisions that more than one child of a region covers",
         "tags": [
           "admin"
         ],
@@ -8640,6 +8806,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/overlap-children": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdOverlapChildren",
+        "summary": "List the GADM children of an overlapping division and the child region holding each",
         "tags": [
           "admin"
         ],
@@ -8699,6 +8866,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/resolve-overlap": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdResolveOverlap",
+        "summary": "Resolve an overlapping division by keeping it in one region or splitting it among several",
         "tags": [
           "admin"
         ],
@@ -8758,6 +8926,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/remove-region": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdRemoveRegion",
+        "summary": "Remove a region from the import, deleting or reparenting its children",
         "tags": [
           "admin"
         ],
@@ -8817,6 +8986,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/rename-region": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdRenameRegion",
+        "summary": "Rename a region and optionally update its Wikivoyage and Wikidata source",
         "tags": [
           "admin"
         ],
@@ -8876,6 +9046,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/reparent-region": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdReparentRegion",
+        "summary": "Move a region under another parent, or to the root",
         "tags": [
           "admin"
         ],
@@ -8935,6 +9106,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/undo": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdUndo",
+        "summary": "Undo the last undoable tree operation in a world view",
         "tags": [
           "admin"
         ],
@@ -8984,6 +9156,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/sync-instances": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdSyncInstances",
+        "summary": "Copy the match of a region to every other region imported from the same page",
         "tags": [
           "admin"
         ],
@@ -9043,6 +9216,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/add-child-region": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAddChildRegion",
+        "summary": "Add a new child region under a region during hierarchy review",
         "tags": [
           "admin"
         ],
@@ -9102,6 +9276,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/dismiss-hierarchy-warnings": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdDismissHierarchyWarnings",
+        "summary": "Mark the hierarchy warnings of a region as reviewed",
         "tags": [
           "admin"
         ],
@@ -9161,6 +9336,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/ai-suggest-children": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAiSuggestChildren",
+        "summary": "Ask a model to review the children of a region against its Wikivoyage page",
         "tags": [
           "admin"
         ],
@@ -9220,6 +9396,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/ai-suggest-clusters": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdAiSuggestClusters",
+        "summary": "Ask a model to match colour clusters of divisions on a map to child regions",
         "tags": [
           "admin"
         ],
@@ -9279,6 +9456,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/children-coverage": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdChildrenCoverage",
+        "summary": "Measure how much of each parent region the divisions of its children cover",
         "tags": [
           "admin"
         ],
@@ -9346,6 +9524,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/coverage-geometry/{regionId}": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdCoverageGeometryByRegionId",
+        "summary": "Draw the divisions of a region beside those of its descendants, to compare coverage",
         "tags": [
           "admin"
         ],
@@ -9405,6 +9584,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/children-geometry/{regionId}": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdChildrenGeometryByRegionId",
+        "summary": "Draw each child of a region as its own shape",
         "tags": [
           "admin"
         ],
@@ -9464,6 +9644,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/coverage-gap-analysis/{regionId}": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdCoverageGapAnalysisByRegionId",
+        "summary": "Find divisions in the gap between a region and its children and suggest a child for each",
         "tags": [
           "admin"
         ],
@@ -9523,6 +9704,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/coverage": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdCoverage",
+        "summary": "List the divisions no region of a world view covers, with a suggested home for each",
         "tags": [
           "admin"
         ],
@@ -9572,6 +9754,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/geo-suggest-gap": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdGeoSuggestGap",
+        "summary": "Suggest the nearest region for one uncovered division",
         "tags": [
           "admin"
         ],
@@ -9631,6 +9814,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/dismiss-gap": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdDismissGap",
+        "summary": "Dismiss an uncovered division so coverage checks ignore it",
         "tags": [
           "admin"
         ],
@@ -9690,6 +9874,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/undismiss-gap": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdUndismissGap",
+        "summary": "Restore a dismissed division to the coverage gaps",
         "tags": [
           "admin"
         ],
@@ -9749,6 +9934,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/approve-coverage": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdApproveCoverage",
+        "summary": "Cover a gap division by adding it to a region or to a new child region",
         "tags": [
           "admin"
         ],
@@ -9808,6 +9994,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/finalize": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdFinalize",
+        "summary": "Mark the import review of a world view done once no region needs review",
         "tags": [
           "admin"
         ],
@@ -9857,6 +10044,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/rematch": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdRematch",
+        "summary": "Clear all matches of a world view, accepted ones included, and rerun the matcher",
         "tags": [
           "admin"
         ],
@@ -9916,6 +10104,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/rematch/status": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdRematchStatus",
+        "summary": "Report the progress of a world view rematch",
         "tags": [
           "admin"
         ],
@@ -9965,6 +10154,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/color-match-stream": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdColorMatchStream",
+        "summary": "Match the map image of a region to its GADM divisions by colour, as a server-sent event stream",
         "tags": [
           "admin"
         ],
@@ -10035,6 +10225,7 @@
     "/api/admin/wv-import/water-review/{reviewId}": {
       "post": {
         "operationId": "postAdminWvImportWaterReviewByReviewId",
+        "summary": "Answer the water review a colour match waits on: which detected areas are water",
         "tags": [
           "admin"
         ],
@@ -10095,6 +10286,7 @@
     "/api/admin/wv-import/cluster-review/{reviewId}": {
       "post": {
         "operationId": "postAdminWvImportClusterReviewByReviewId",
+        "summary": "Answer the cluster review a colour match waits on: merge, split, drop, re-run or repaint",
         "tags": [
           "admin"
         ],
@@ -10155,6 +10347,7 @@
     "/api/admin/wv-import/icp-adjustment/{reviewId}": {
       "post": {
         "operationId": "postAdminWvImportIcpAdjustmentByReviewId",
+        "summary": "Answer whether a colour match should realign without the outlying divisions that inflate its frame",
         "tags": [
           "admin"
         ],
@@ -10215,6 +10408,7 @@
     "/api/admin/wv-import/water-crop/{reviewId}/{componentId}/{subCluster}": {
       "get": {
         "operationId": "getAdminWvImportWaterCropByReviewIdByComponentIdBySubCluster",
+        "summary": "Serve the image of one detected water area, or one of its parts, for the water review",
         "tags": [
           "admin"
         ],
@@ -10281,6 +10475,7 @@
     "/api/admin/wv-import/cluster-preview/{reviewId}": {
       "get": {
         "operationId": "getAdminWvImportClusterPreviewByReviewId",
+        "summary": "Serve the preview image of the colour clusters for the cluster review",
         "tags": [
           "admin"
         ],
@@ -10327,6 +10522,7 @@
     "/api/admin/wv-import/cluster-highlight/{reviewId}/{label}": {
       "get": {
         "operationId": "getAdminWvImportClusterHighlightByReviewIdByLabel",
+        "summary": "Serve an image with one colour cluster outlined, for the cluster review",
         "tags": [
           "admin"
         ],
@@ -10383,6 +10579,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/coverage-stream": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdCoverageStream",
+        "summary": "Find GADM divisions a world view leaves uncovered, with suggestions, as a server-sent event stream",
         "tags": [
           "admin"
         ],
@@ -10443,6 +10640,7 @@
     "/api/admin/wv-import/geoshape/{wikidataId}": {
       "get": {
         "operationId": "getAdminWvImportGeoshapeByWikidataId",
+        "summary": "Fetch the boundary of a Wikidata item as GeoJSON, from the local store or Wikimedia",
         "tags": [
           "admin"
         ],
@@ -10491,6 +10689,7 @@
     "/api/experiences/search": {
       "get": {
         "operationId": "getExperiencesSearch",
+        "summary": "Search visible experiences by name, with the regions each one opens in",
         "tags": [
           "experiences"
         ],
@@ -10545,6 +10744,7 @@
     "/api/experiences/kinds": {
       "get": {
         "operationId": "getExperiencesKinds",
+        "summary": "List the kinds of place a traveller can browse by, each with how many it offers",
         "tags": [
           "experiences"
         ],
@@ -10578,6 +10778,7 @@
     "/api/experiences/points": {
       "get": {
         "operationId": "getExperiencesPoints",
+        "summary": "Get visible places worldwide as map points, optionally by kind and within a box",
         "tags": [
           "experiences"
         ],
@@ -10653,6 +10854,7 @@
     "/api/experiences/region-counts": {
       "get": {
         "operationId": "getExperiencesRegionCounts",
+        "summary": "Count experiences per kind for each region at one level of a world view",
         "tags": [
           "experiences"
         ],
@@ -10712,6 +10914,7 @@
     "/api/experiences/by-region/{regionId}": {
       "get": {
         "operationId": "getExperiencesByRegionByRegionId",
+        "summary": "List a region's experiences, subregions included by default; curators in scope see rejected ones",
         "tags": [
           "experiences"
         ],
@@ -10806,6 +11009,7 @@
     "/api/experiences/by-region/{regionId}/locations": {
       "get": {
         "operationId": "getExperiencesByRegionByRegionIdLocations",
+        "summary": "List the map points of every experience in a region, subregions included by default",
         "tags": [
           "experiences"
         ],
@@ -10880,6 +11084,7 @@
     "/api/experiences/{id}": {
       "get": {
         "operationId": "getExperiencesById",
+        "summary": "Get one experience and its regions; a curator in scope also gets an unread arrival",
         "tags": [
           "experiences"
         ],
@@ -10930,6 +11135,7 @@
     "/api/experiences/{id}/locations": {
       "get": {
         "operationId": "getExperiencesByIdLocations",
+        "summary": "List an experience's points, marking which lie in a given region",
         "tags": [
           "experiences"
         ],
@@ -10989,6 +11195,7 @@
     "/api/experiences/{id}/treasures": {
       "get": {
         "operationId": "getExperiencesByIdTreasures",
+        "summary": "List the works a venue holds; a curator in scope also sees unread ones",
         "tags": [
           "experiences"
         ],
@@ -11039,6 +11246,7 @@
     "/api/experiences/{id}/finds": {
       "get": {
         "operationId": "getExperiencesByIdFinds",
+        "summary": "List the finds dug up at an archaeological site and the museums that show them",
         "tags": [
           "experiences"
         ],
@@ -11083,6 +11291,7 @@
     "/api/experiences": {
       "post": {
         "operationId": "postExperiences",
+        "summary": "Add a place by hand with one point in a region, published at once",
         "tags": [
           "experiences"
         ],
@@ -11131,6 +11340,7 @@
     "/api/experiences/{id}/reject": {
       "post": {
         "operationId": "postExperiencesByIdReject",
+        "summary": "Reject an experience from one region, hiding it there, with an optional reason",
         "tags": [
           "experiences"
         ],
@@ -11190,6 +11400,7 @@
     "/api/experiences/{id}/unreject": {
       "post": {
         "operationId": "postExperiencesByIdUnreject",
+        "summary": "Lift an experience's rejection from one region",
         "tags": [
           "experiences"
         ],
@@ -11249,6 +11460,7 @@
     "/api/experiences/{id}/assign": {
       "post": {
         "operationId": "postExperiencesByIdAssign",
+        "summary": "Assign an experience to a region by hand, lifting any rejection there",
         "tags": [
           "experiences"
         ],
@@ -11308,6 +11520,7 @@
     "/api/experiences/{id}/edit": {
       "patch": {
         "operationId": "patchExperiencesByIdEdit",
+        "summary": "Edit an experience's name, text, type, tags, picture or links, kept against later syncs",
         "tags": [
           "experiences"
         ],
@@ -11367,6 +11580,7 @@
     "/api/experiences/{id}/curation-log": {
       "get": {
         "operationId": "getExperiencesByIdCurationLog",
+        "summary": "Get who curated an experience and how, limited to the regions the caller covers",
         "tags": [
           "experiences"
         ],
@@ -11416,6 +11630,7 @@
     "/api/experiences/new-badges/seen": {
       "post": {
         "operationId": "postExperiencesNewBadgesSeen",
+        "summary": "Record that the signed-in reader has seen the New chips on these experiences",
         "tags": [
           "experiences"
         ],
@@ -11464,6 +11679,7 @@
     "/api/experiences/review/queue": {
       "get": {
         "operationId": "getExperiencesReviewQueue",
+        "summary": "List the decisions sync runs left for a curator, within the caller's scope",
         "tags": [
           "experiences"
         ],
@@ -11625,6 +11841,7 @@
     "/api/experiences/review/set-aside/{syncLogId}": {
       "put": {
         "operationId": "putExperiencesReviewSetAsideBySyncLogId",
+        "summary": "Set a sync run's batch of review questions aside for the calling curator",
         "tags": [
           "experiences"
         ],
@@ -11672,6 +11889,7 @@
       },
       "delete": {
         "operationId": "deleteExperiencesReviewSetAsideBySyncLogId",
+        "summary": "Bring a set-aside sync run's review questions back into the calling curator's view",
         "tags": [
           "experiences"
         ],
@@ -11721,6 +11939,7 @@
     "/api/experiences/review/answer": {
       "post": {
         "operationId": "postExperiencesReviewAnswer",
+        "summary": "Give one answer (accept, reject or lost) to a selection of review rows",
         "tags": [
           "experiences"
         ],
@@ -11769,6 +11988,7 @@
     "/api/experiences/{id}/state": {
       "post": {
         "operationId": "postExperiencesByIdState",
+        "summary": "Record whether an experience is still listed and still stands, or take a verdict back",
         "tags": [
           "experiences"
         ],
@@ -11828,6 +12048,7 @@
     "/api/experiences/locations/{locationId}/state": {
       "post": {
         "operationId": "postExperiencesLocationsByLocationIdState",
+        "summary": "Record whether one point the source stopped offering is former, lost or a false alarm",
         "tags": [
           "experiences"
         ],
@@ -11887,6 +12108,7 @@
     "/api/experiences/locations/{locationId}/edit": {
       "patch": {
         "operationId": "patchExperiencesLocationsByLocationIdEdit",
+        "summary": "Correct one point's name or coordinates, re-placing its experience in regions",
         "tags": [
           "experiences"
         ],
@@ -11946,6 +12168,7 @@
     "/api/experiences/{id}/works/{treasureId}/edit": {
       "patch": {
         "operationId": "patchExperiencesByIdWorksByTreasureIdEdit",
+        "summary": "Correct a work's name, makers, year or picture, for every venue that holds it",
         "tags": [
           "experiences"
         ],
@@ -12015,6 +12238,7 @@
     "/api/experiences/{id}/admission": {
       "post": {
         "operationId": "postExperiencesByIdAdmission",
+        "summary": "Confirm or override the rule that refused an experience from its kind",
         "tags": [
           "experiences"
         ],
@@ -12074,6 +12298,7 @@
     "/api/experiences/{id}/accept-source": {
       "post": {
         "operationId": "postExperiencesByIdAcceptSource",
+        "summary": "Accept the source's proposed values for fields a curator had edited, releasing the edits",
         "tags": [
           "experiences"
         ],
@@ -12133,6 +12358,7 @@
     "/api/experiences/{id}/decline-source": {
       "post": {
         "operationId": "postExperiencesByIdDeclineSource",
+        "summary": "Refuse the source's proposed values for curator-edited fields, keeping the edits",
         "tags": [
           "experiences"
         ],
@@ -12192,6 +12418,7 @@
     "/api/experiences/{id}/decline-held": {
       "post": {
         "operationId": "postExperiencesByIdDeclineHeld",
+        "summary": "Refuse named fields or parts of a change a gated run held back, writing none of it",
         "tags": [
           "experiences"
         ],
@@ -12251,6 +12478,7 @@
     "/api/experiences/{id}/refuse-arrival": {
       "post": {
         "operationId": "postExperiencesByIdRefuseArrival",
+        "summary": "Keep out an unread arrival from a gated source, so readers never see it",
         "tags": [
           "experiences"
         ],
@@ -12310,6 +12538,7 @@
     "/api/experiences/{id}/refuse-contents": {
       "post": {
         "operationId": "postExperiencesByIdRefuseContents",
+        "summary": "Turn down the unread points and works of a visible experience, named ones or all",
         "tags": [
           "experiences"
         ],
@@ -12369,6 +12598,7 @@
     "/api/experiences/{id}/unrefuse-contents": {
       "post": {
         "operationId": "postExperiencesByIdUnrefuseContents",
+        "summary": "Return turned-down points and works of an experience to review, named ones or all",
         "tags": [
           "experiences"
         ],
@@ -12428,6 +12658,7 @@
     "/api/experiences/sources/{sourceId}/publish-waiting": {
       "post": {
         "operationId": "postExperiencesSourcesBySourceIdPublishWaiting",
+        "summary": "Publish everything one source has waiting, per experience, within the caller's scope",
         "tags": [
           "experiences"
         ],
@@ -12477,6 +12708,7 @@
     "/api/experiences/{id}/publish": {
       "post": {
         "operationId": "postExperiencesByIdPublish",
+        "summary": "Publish one experience, its unread points and works, or its held changes, whole or in part",
         "tags": [
           "experiences"
         ],
@@ -12536,6 +12768,7 @@
     "/api/experiences/{id}/assign/{regionId}": {
       "delete": {
         "operationId": "deleteExperiencesByIdAssignByRegionId",
+        "summary": "Undo a hand-made assignment of an experience to a region",
         "tags": [
           "experiences"
         ],
@@ -12595,6 +12828,7 @@
     "/api/experiences/{id}/remove-from-region/{regionId}": {
       "delete": {
         "operationId": "deleteExperiencesByIdRemoveFromRegionByRegionId",
+        "summary": "Remove an experience from a region however it was placed, keeping any rejection",
         "tags": [
           "experiences"
         ],
@@ -12654,6 +12888,7 @@
     "/api/geocode/search": {
       "get": {
         "operationId": "getGeocodeSearch",
+        "summary": "Search places by name in OpenStreetMap's Nominatim, with their coordinates",
         "tags": [
           "geocode"
         ],
@@ -12708,6 +12943,7 @@
     "/api/geocode/ai": {
       "post": {
         "operationId": "postGeocodeAi",
+        "summary": "Locate a place from a free-text description with an AI model, with a confidence",
         "tags": [
           "geocode"
         ],
@@ -12756,6 +12992,7 @@
     "/api/geocode/suggest-image": {
       "get": {
         "operationId": "getGeocodeSuggestImage",
+        "summary": "Suggest a picture for a new place from Wikidata, by its item, coordinates or name",
         "tags": [
           "geocode"
         ],
