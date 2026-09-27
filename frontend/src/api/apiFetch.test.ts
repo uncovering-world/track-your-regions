@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { API_URL, apiFetch, setAccessToken } from './fetchUtils';
+import { AuthError, login } from './auth';
 import {
   getExperiencesReviewQueue, postExperiencesReviewAnswer, putExperiencesReviewSetAsideBySyncLogId,
 } from './client.generated';
@@ -73,5 +74,84 @@ describe('the generated client', () => {
       void getExperiencesReviewQueue({ sort: 'newest' });
     };
     expect(neverCalled).toBeTypeOf('function');
+  });
+});
+
+/** A structurally valid JWT, fresh for an hour, so no policy refreshes it first. */
+function freshToken(): string {
+  const b64 = (o: object) =>
+    btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ exp: Math.floor(Date.now() / 1000) + 3600 })}.sig`;
+}
+
+/**
+ * The token policies (ADR-0073 decision 2). `session` refreshes before a call
+ * and once more on a 401; the other two never refresh, because their 401 means
+ * something else or their refresh would rotate the cookie they are ending.
+ */
+describe('apiFetch token policies', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+  const paths = () => fetchSpy.mock.calls.map((call) => new URL(String(call[0])).pathname);
+  const authOf = (i: number) => new Headers((fetchSpy.mock.calls[i][1] as RequestInit).headers).get('Authorization');
+
+  beforeEach(() => {
+    fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+  });
+
+  afterEach(() => {
+    setAccessToken(null);
+    vi.unstubAllGlobals();
+  });
+
+  it('strict: a spent session sends nothing, and says so to the app', async () => {
+    // No token at all: nothing to send, and the session is over.
+    const expired = vi.fn();
+    window.addEventListener('auth:session-expired', expired);
+    await expect(apiFetch('/api/auth/change-password', { method: 'POST', tokenPolicy: 'strict' }))
+      .rejects.toThrow('Your session has expired');
+    window.removeEventListener('auth:session-expired', expired);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(expired).toHaveBeenCalledTimes(1);
+  });
+
+  it('strict: a 401 is the endpoint’s own answer, and nothing is refreshed', async () => {
+    const token = freshToken();
+    setAccessToken(token);
+    fetchSpy.mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: 'Current password is incorrect' }) });
+
+    await expect(apiFetch('/api/auth/change-password', { method: 'POST', tokenPolicy: 'strict' }))
+      .rejects.toThrow('Current password is incorrect');
+    expect(paths()).toEqual(['/api/auth/change-password']);
+    expect(authOf(0)).toBe(`Bearer ${token}`);
+  });
+
+  it('as-held: the token in hand goes as it stands, with no refresh before or after', async () => {
+    // Not a JWT, so `session` would refresh it first.
+    setAccessToken('the-session-token');
+    fetchSpy.mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: 'Invalid token' }) });
+
+    await expect(apiFetch('/api/auth/logout', { method: 'POST', tokenPolicy: 'as-held' })).rejects.toThrow('Invalid token');
+    expect(paths()).toEqual(['/api/auth/logout']);
+    expect(authOf(0)).toBe('Bearer the-session-token');
+  });
+
+  it('a caller’s own Authorization wins over the token held', async () => {
+    setAccessToken(freshToken());
+    fetchSpy.mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: 7 }) });
+
+    await apiFetch('/api/auth/me', { tokenPolicy: 'as-held', headers: { Authorization: 'Bearer the-new-token' } });
+    expect(authOf(0)).toBe('Bearer the-new-token');
+  });
+
+  it('carries the server’s code with its sentence, which login turns into an AuthError', async () => {
+    fetchSpy.mockResolvedValue({
+      ok: false, status: 403, json: async () => ({ error: 'Please verify your email first', code: 'EMAIL_NOT_VERIFIED' }),
+    });
+
+    const refused = await login({ email: 'a@b.test', password: 'x' }).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(AuthError);
+    expect(refused).toMatchObject({ message: 'Please verify your email first', code: 'EMAIL_NOT_VERIFIED' });
   });
 });
