@@ -20,7 +20,9 @@ import {
   setLastGoogleEmail,
   type ChangePasswordInput,
 } from '../api/auth';
-import { setAccessToken as setGlobalAccessToken, refreshSession, setRefreshSuccessListener } from '../api/fetchUtils';
+import {
+  getAccessToken as getGlobalAccessToken, setAccessToken as setGlobalAccessToken, refreshSession, setRefreshSuccessListener,
+} from '../api/fetchUtils';
 import { queryKeys } from '../api/queryKeys';
 
 // =============================================================================
@@ -237,6 +239,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async (): Promise<void> => {
+    // The token the server is to blacklist, taken before the state is cleared.
+    const endingToken = getGlobalAccessToken();
     // Clear local state first
     accessToken = null;
     setGlobalAccessToken(null);
@@ -247,7 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
 
     // Then notify server (fire and forget) — server clears cookie
-    await apiLogout();
+    await apiLogout(endingToken);
   }, [queryClient]);
 
   // ==========================================================================

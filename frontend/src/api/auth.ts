@@ -141,12 +141,18 @@ export async function exchangeAuthCode(code: string): Promise<CodeExchanged> {
 }
 
 /**
- * Logout (invalidate refresh token via cookie)
+ * Logout: the server revokes the refresh token the cookie carries, and
+ * blacklists the access token the request carries, so the session's token is
+ * sent as it stands - never freshened first, which would rotate the cookie
+ * being revoked (ADR-0073 decision 2, `as-held`). The caller passes it because
+ * it clears its own state before the request.
  */
-export async function logout(): Promise<void> {
+export async function logout(accessToken: string | null): Promise<void> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   await fetch(`${API_URL}/api/auth/logout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     credentials: 'include',
   }).catch(() => {
     // Ignore errors - we're logging out anyway
