@@ -57,7 +57,7 @@ export function responseSchemasOf(modules: readonly ResponseModule[]): Array<[st
   return schemas;
 }
 
-async function importResponseModules(): Promise<ResponseModule[]> {
+export async function importResponseModules(): Promise<ResponseModule[]> {
   const files = readdirSync(RESPONSES)
     .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
     .sort((a, b) => a.localeCompare(b));

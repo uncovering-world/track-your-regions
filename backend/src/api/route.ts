@@ -127,7 +127,7 @@ export function stream<E extends z.ZodType>(events: E): StreamAnswer<E> {
   return { events };
 }
 
-function isStream(response: Answer): response is StreamAnswer<z.ZodType> {
+export function isStream(response: Answer): response is StreamAnswer<z.ZodType> {
   return 'events' in response && !('safeParse' in response);
 }
 
@@ -139,7 +139,7 @@ function isStream(response: Answer): response is StreamAnswer<z.ZodType> {
 export const REDIRECT = { redirect: true } as const;
 export type RedirectAnswer = typeof REDIRECT;
 
-function isRedirect(response: Answer): response is RedirectAnswer {
+export function isRedirect(response: Answer): response is RedirectAnswer {
   return 'redirect' in response && !('safeParse' in response);
 }
 
@@ -157,7 +157,7 @@ export interface ImageBody {
   readonly crossOrigin?: boolean;
 }
 
-function isImage(response: Answer): response is ImageAnswer {
+export function isImage(response: Answer): response is ImageAnswer {
   return 'image' in response && !('safeParse' in response);
 }
 
