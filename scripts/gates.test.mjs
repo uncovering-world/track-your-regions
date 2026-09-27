@@ -313,6 +313,7 @@ describe('the CI outputs', () => {
       workflows: '.github/workflows/claude-review.yml',
       prose: '.github/ISSUE_TEMPLATE/task.yml',
       tooling: 'package.json',
+      'api-contract': 'packages/shared/src/openapi.generated.json',
     };
     // A new input class with no sample would otherwise sit untested here.
     expect(Object.keys(sample).sort()).toEqual(INPUTS.map((input) => input.id).sort());
@@ -466,11 +467,14 @@ describe('the command line', () => {
  */
 function fakeSpawn(results = []) {
   const calls = [];
-  const spawn = (command, args) => {
+  const envs = [];
+  const spawn = (command, args, options) => {
     calls.push([command, ...args].join(' '));
+    envs.push(options?.env);
     return results[calls.length - 1] ?? { status: 0 };
   };
   spawn.calls = calls;
+  spawn.envs = envs;
   return spawn;
 }
 
@@ -490,6 +494,22 @@ function capture(decision, tier, options) {
 
 describe('what the runner says it did', () => {
   const backend = () => decide({ paths: ['backend/src/a.ts'] });
+
+  it('hands a base given as --base to every gate it runs, as GATES_BASE', () => {
+    const spawn = fakeSpawn();
+    capture(backend(), 'test', { spawn, base: 'origin/release' });
+    expect(spawn.envs.map((env) => env.GATES_BASE)).toEqual(['origin/release', 'origin/release']);
+
+    const plain = fakeSpawn();
+    capture(backend(), 'test', { spawn: plain });
+    expect(plain.envs.every((env) => env === process.env)).toBe(true);
+
+    // What `parseArgs` leaves where no --base was given: CI's own GATES_BASE
+    // must reach the gate, not the text "null".
+    const unset = fakeSpawn();
+    capture(backend(), 'test', { spawn: unset, base: parseArgs(['run', 'test']).base });
+    expect(unset.envs.every((env) => env === process.env)).toBe(true);
+  });
 
   it('names the gate that failed, its code, and what never ran', () => {
     const spawn = fakeSpawn([{ status: 3 }]);
