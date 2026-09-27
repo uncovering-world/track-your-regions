@@ -423,7 +423,8 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   };
 
   const handleCreate = () => {
-    if (!newName || !coords) return;
+    // The kind is required, as the button (`canCreate`) already says.
+    if (!newName || !coords || !newKindId) return;
     createMutation.mutate({
       name: newName,
       shortDescription: newDescription || undefined,
@@ -435,7 +436,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
       imageUrl: newImageUrl || undefined,
       wikipediaUrl: newWikipediaUrl || undefined,
       websiteUrl: newWebsiteUrl || undefined,
-      kindId: newKindId || undefined,
+      kindId: newKindId,
       regionId,
     });
   };
