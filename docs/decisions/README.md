@@ -92,6 +92,7 @@ and accepted by it.
 | [0070](0070-the-database-refuses-a-curation-state-move-the-gate-does-not-allow.md) | The database refuses a curation-state move the gate does not allow | Accepted | 2026-09-26 |
 | [0071](0071-a-route-is-declared-once-and-its-middleware-follows-from-the-declaration.md) | A route is declared once, and its middleware follows from the declaration | Accepted | 2026-09-26 |
 | [0072](0072-the-openapi-document-is-generated-from-the-route-declarations-and-linted.md) | The OpenAPI document is generated from the route declarations, and linted | Accepted | 2026-09-27 |
+| [0073](0073-the-web-client-is-generated-from-the-openapi-document-by-orval.md) | The web client is generated from the OpenAPI document by Orval | Accepted | 2026-09-27 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
