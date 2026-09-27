@@ -48,7 +48,7 @@ export async function fetchExperience(id: number): Promise<ExperienceDetail> {
 
 /**
  * Get experiences by region
- * Uses authFetchJson to send auth headers when available (optionalAuth on backend).
+ * Sends the session's token when there is one (the route's access is `optional`).
  * This enables curators to see rejected items marked with is_rejected.
  */
 export async function fetchExperiencesByRegion(
