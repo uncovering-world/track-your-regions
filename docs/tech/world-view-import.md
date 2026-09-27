@@ -434,7 +434,7 @@ The endpoint is `POST /api/admin/wv-extract/answer` with `{ questionId, action: 
 
 ### Wikivoyage Extraction (`/api/admin/wv-extract/`)
 
-All require admin auth.
+All require admin auth: each route is declared `admin` in `backend/src/routes/adminDeclaredRoutes.ts` (ADR-0071).
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -463,7 +463,7 @@ What a model writes is read key by key before it is answered. A rule review's su
 
 ### WorldView Import (`/api/admin/wv-import/`)
 
-All require admin auth.
+All require admin auth. The import's start, status and cancel, and the match review's reads, decisions, per-region matchers and tree edits through `simplify-children`, are declared `admin` in `backend/src/routes/adminDeclaredRoutes.ts` (ADR-0071); the streams, the images and review callbacks, coverage, the remaining tree edits and finalize still list their middleware by hand in `backend/src/routes/adminRoutes.ts`, behind the `/api/admin` mount guard.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -604,7 +604,7 @@ backend/src/services/wikivoyageExtract/
 ├── markerParser.ts   — Pure parser for {{marker}} and {{geo}} Wikivoyage wikitext templates
 
 backend/src/controllers/admin/wikivoyageExtractController.ts — Extraction endpoints
-backend/src/controllers/admin/worldViewImportController.ts   — Import + match review endpoints
+backend/src/controllers/admin/wvImport*.ts                 — Import + match review endpoints and their helpers, one module per concern (the review callbacks in wvImportMatchReview.ts, the colour-match stream in wvImportMatchPipeline.ts); the routes import each directly
 backend/src/controllers/admin/baseLayerImportController.ts   — Base layer import start endpoint
 ```
 
