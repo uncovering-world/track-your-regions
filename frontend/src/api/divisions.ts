@@ -5,7 +5,10 @@
 import type {
   AdministrativeDivision, AdministrativeDivisions, DivisionGeometry, DivisionSearchResults,
 } from '@tyr/shared/api';
-import { API_URL, authFetchJson, authFetchOptionalJson } from './fetchUtils.js';
+import {
+  getDivisionsByDivisionId, getDivisionsByDivisionIdAncestors, getDivisionsByDivisionIdGeometry,
+  getDivisionsByDivisionIdSubdivisions, getDivisionsRoot, getDivisionsSearch,
+} from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -17,12 +20,13 @@ export type {
   AdministrativeDivisions, DivisionGeometry, DivisionSearchResult, DivisionSearchResults,
 } from '@tyr/shared/api';
 
-export async function fetchRootDivisions(worldViewId: number = 1): Promise<AdministrativeDivisions> {
-  return authFetchJson<AdministrativeDivisions>(`${API_URL}/api/divisions/root?worldViewId=${worldViewId}`);
+/** The top of GADM's tree, the same for every world view. */
+export async function fetchRootDivisions(): Promise<AdministrativeDivisions> {
+  return getDivisionsRoot();
 }
 
-export async function fetchDivision(divisionId: number, worldViewId: number = 1): Promise<AdministrativeDivision> {
-  return authFetchJson<AdministrativeDivision>(`${API_URL}/api/divisions/${divisionId}?worldViewId=${worldViewId}`);
+export async function fetchDivision(divisionId: number): Promise<AdministrativeDivision> {
+  return getDivisionsByDivisionId(divisionId);
 }
 
 export async function fetchSubdivisions(
@@ -30,35 +34,30 @@ export async function fetchSubdivisions(
   worldViewId: number = 1,
   options: { getAll?: boolean; limit?: number; offset?: number } = {}
 ): Promise<AdministrativeDivisions> {
-  const params = new URLSearchParams({
-    worldViewId: String(worldViewId),
-    getAll: String(options.getAll ?? false),
-    limit: String(options.limit ?? 1000),
-    offset: String(options.offset ?? 0),
+  return getDivisionsByDivisionIdSubdivisions(divisionId, {
+    worldViewId,
+    getAll: options.getAll ? 'true' : 'false',
+    limit: options.limit ?? 1000,
+    offset: options.offset ?? 0,
   });
-  return authFetchJson<AdministrativeDivisions>(`${API_URL}/api/divisions/${divisionId}/subdivisions?${params}`);
 }
 
-export async function fetchDivisionAncestors(divisionId: number, worldViewId: number = 1): Promise<AdministrativeDivisions> {
-  return authFetchJson<AdministrativeDivisions>(`${API_URL}/api/divisions/${divisionId}/ancestors?worldViewId=${worldViewId}`);
-}
-
-export async function fetchDivisionSiblings(divisionId: number, worldViewId: number = 1): Promise<AdministrativeDivisions> {
-  return authFetchJson<AdministrativeDivisions>(`${API_URL}/api/divisions/${divisionId}/siblings?worldViewId=${worldViewId}`);
+export async function fetchDivisionAncestors(divisionId: number): Promise<AdministrativeDivisions> {
+  return getDivisionsByDivisionIdAncestors(divisionId);
 }
 
 /**
  * A division's boundary. `detail` asks for a stored simplification — `low` or
  * `medium` for a preview — and is the full shape when left out, which the
- * cutting tools need, since they store what they cut (#1010).
+ * cutting tools need, since they store what they cut (#1010). A division with
+ * no stored outline answers 204, read here as null.
  */
 export async function fetchDivisionGeometry(
   divisionId: number,
   options: { detail?: 'low' | 'medium' | 'high' } = {}
 ): Promise<DivisionGeometry | null> {
-  const params = new URLSearchParams({ detail: options.detail ?? 'high' });
   try {
-    return await authFetchOptionalJson<DivisionGeometry>(`${API_URL}/api/divisions/${divisionId}/geometry?${params}`);
+    return (await getDivisionsByDivisionIdGeometry(divisionId, { detail: options.detail ?? 'high' })) ?? null;
   } catch {
     return null;
   }
@@ -72,10 +71,5 @@ export async function searchDivisions(
   if (!query || query.length < 2) {
     return [];
   }
-  const params = new URLSearchParams({
-    query,
-    worldViewId: String(worldViewId),
-    limit: String(limit),
-  });
-  return authFetchJson<DivisionSearchResults>(`${API_URL}/api/divisions/search?${params}`);
+  return getDivisionsSearch({ query, worldViewId, limit });
 }

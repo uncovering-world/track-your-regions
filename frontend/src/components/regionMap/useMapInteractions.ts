@@ -213,14 +213,14 @@ export function useMapInteractions({
       return;
     }
     let stale = false;
-    fetchDivision(id, selectedWorldView?.id ?? 1)
+    fetchDivision(id)
       .then(division => {
         if (!stale && division.focusBbox) fly(division.focusBbox, division.anchorPoint);
       })
       .catch(e => console.error('[RegionMapVT] Failed to read the division to frame it:', e));
     return () => { stale = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on division ID change; the box is a property of that id
-  }, [selectedDivision?.id, isCustomWorldView, mapLoaded, selectedWorldView?.id]);
+  }, [selectedDivision?.id, isCustomWorldView, mapLoaded]);
 
   // Reset to world view when navigating back to root
   const prevRegionIdRef = useRef<number | null | undefined>(undefined);
@@ -380,13 +380,13 @@ export function useMapInteractions({
     }
 
     try {
-      const parent = await fetchDivision(selectedDivision.parentId, selectedWorldView?.id ?? 1);
+      const parent = await fetchDivision(selectedDivision.parentId);
       setSelectedDivision(parent);
     } catch (e) {
       console.error('Failed to fetch parent division', e);
       setSelectedDivision(null);
     }
-  }, [selectedDivision, selectedWorldView, setSelectedDivision, isCustomWorldView, selectedRegion, setSelectedRegion, regionBreadcrumbs]);
+  }, [selectedDivision, setSelectedDivision, isCustomWorldView, selectedRegion, setSelectedRegion, regionBreadcrumbs]);
 
   // Interactive layer IDs
   const interactiveLayerIds = useMemo(() => {

@@ -29,7 +29,7 @@ async function fetchDivisionsForView(
 ): Promise<AdministrativeDivision[]> {
   if (!worldView) return [];
   if (selectedDivision) return fetchSubdivisions(selectedDivision.id, worldView.id);
-  return fetchRootDivisions(worldView.id);
+  return fetchRootDivisions();
 }
 
 function pickLoadingFlag(args: {
