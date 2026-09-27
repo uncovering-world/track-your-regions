@@ -4,7 +4,7 @@
  * GADM's administrative divisions (countries, states, cities, …), mounted at
  * /api/divisions. Every route is the editor's, so every one is `admin`.
  */
-import { defineRoute, routerOf } from '../api/route.js';
+import { defineRoute } from '../api/route.js';
 import {
   AdministrativeDivision,
   AdministrativeDivisions,
@@ -79,4 +79,3 @@ export const divisionRoutes = [
   }),
 ];
 
-export default routerOf(divisionRoutes);

@@ -3,7 +3,7 @@
  * Search is public; AI geocode requires curator/admin auth.
  */
 
-import { defineRoute, routerOf } from '../api/route.js';
+import { defineRoute } from '../api/route.js';
 import { AIGeocodeResult } from '../api/responses/ai.js';
 import { ImageSuggestion, PlaceSearch } from '../api/responses/geocode.js';
 import { searchPlaces, suggestImage } from '../controllers/geocodeController.js';
@@ -34,4 +34,3 @@ export const geocodeRoutes = [
   }),
 ];
 
-export default routerOf(geocodeRoutes);

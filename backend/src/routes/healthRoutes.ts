@@ -3,7 +3,7 @@
  * since its point is the answer now.
  */
 
-import { defineRoute, routerOf } from '../api/route.js';
+import { defineRoute } from '../api/route.js';
 import { HealthStatus } from '../api/responses/health.js';
 import { getHealth } from '../controllers/healthController.js';
 
@@ -15,4 +15,3 @@ export const healthRoutes = [
   }),
 ];
 
-export default routerOf(healthRoutes);

@@ -9,7 +9,7 @@
  * handler and passes no limiter.
  */
 
-import { defineRoute, NO_BODY, routerOf } from '../api/route.js';
+import { defineRoute, NO_BODY } from '../api/route.js';
 import { MyAccount } from '../api/responses/auth.js';
 import {
   AllLocationsMarked,
@@ -205,4 +205,3 @@ export const userRoutes = [
   }),
 ];
 
-export default routerOf(userRoutes);

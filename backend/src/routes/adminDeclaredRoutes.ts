@@ -1,11 +1,10 @@
 /**
- * Every route under `/api/admin` (ADR-0071), in a module of its own so a
- * handler's spec can answer through these routes without importing
- * `routes/adminRoutes.ts`, which builds the router. The world-view import's
- * routes live in `routes/adminImportRoutes.ts` and its review screen's in
- * `routes/adminImportReviewRoutes.ts`; both are spread in at the end. Nothing
- * here loads the OpenCV pipeline: the colour-match stream imports it when a
- * run starts.
+ * Every route under `/api/admin` (ADR-0071), mounted by `routes/mounts.ts`. A
+ * handler's spec answers through these routes without building the whole
+ * router. The world-view import's routes live in `routes/adminImportRoutes.ts`
+ * and its review screen's in `routes/adminImportReviewRoutes.ts`; both are
+ * spread in at the end. Nothing here loads the OpenCV pipeline: the
+ * colour-match stream imports it when a run starts.
  */
 
 import { defineRoute, IMAGE } from '../api/route.js';

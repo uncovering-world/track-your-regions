@@ -8,7 +8,7 @@
  * the compression filter keys on as well (`middleware/compression.ts`).
  */
 
-import { defineRoute, REDIRECT, routerOf } from '../api/route.js';
+import { defineRoute, REDIRECT } from '../api/route.js';
 import {
   AuthMessage, CodeExchanged, LoggedOut, PasswordChanged, PublicUser, SessionStarted,
 } from '../api/responses/auth.js';
@@ -133,4 +133,3 @@ export const authRoutes = [
   }),
 ];
 
-export default routerOf(authRoutes);
