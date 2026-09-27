@@ -34,6 +34,10 @@ function options(target) {
       target,
       mode: 'single',
       client: 'fetch',
+      // A path parameter is a string where the document says so (a cache's
+      // name, a review's id), and one holding `/` or `?` would otherwise break
+      // the path it is written into.
+      urlEncodeParameters: true,
       override: {
         mutator: { path: './src/api/fetchUtils.ts', name: 'apiFetch' },
         fetch: { includeHttpResponseReturnType: false },

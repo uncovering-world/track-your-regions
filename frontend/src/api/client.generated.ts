@@ -10301,7 +10301,7 @@ export const getGetDivisionsByDivisionIdUrl = (divisionId: number,) => {
 
 
 
-  return `/api/divisions/${divisionId}`
+  return `/api/divisions/${encodeURIComponent(String(divisionId))}`
 }
 
 /**
@@ -10334,7 +10334,7 @@ export const getGetDivisionsByDivisionIdSubdivisionsUrl = (divisionId: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/divisions/${divisionId}/subdivisions?${stringifiedParams}` : `/api/divisions/${divisionId}/subdivisions`
+  return stringifiedParams.length > 0 ? `/api/divisions/${encodeURIComponent(String(divisionId))}/subdivisions?${stringifiedParams}` : `/api/divisions/${encodeURIComponent(String(divisionId))}/subdivisions`
 }
 
 /**
@@ -10360,7 +10360,7 @@ export const getGetDivisionsByDivisionIdAncestorsUrl = (divisionId: number,) => 
 
 
 
-  return `/api/divisions/${divisionId}/ancestors`
+  return `/api/divisions/${encodeURIComponent(String(divisionId))}/ancestors`
 }
 
 /**
@@ -10385,7 +10385,7 @@ export const getGetDivisionsByDivisionIdSiblingsUrl = (divisionId: number,) => {
 
 
 
-  return `/api/divisions/${divisionId}/siblings`
+  return `/api/divisions/${encodeURIComponent(String(divisionId))}/siblings`
 }
 
 /**
@@ -10418,7 +10418,7 @@ export const getGetDivisionsByDivisionIdGeometryUrl = (divisionId: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/divisions/${divisionId}/geometry?${stringifiedParams}` : `/api/divisions/${divisionId}/geometry`
+  return stringifiedParams.length > 0 ? `/api/divisions/${encodeURIComponent(String(divisionId))}/geometry?${stringifiedParams}` : `/api/divisions/${encodeURIComponent(String(divisionId))}/geometry`
 }
 
 /**
@@ -10508,7 +10508,7 @@ export const getPutWorldViewsByWorldViewIdUrl = (worldViewId: number,) => {
 
 
 
-  return `/api/world-views/${worldViewId}`
+  return `/api/world-views/${encodeURIComponent(String(worldViewId))}`
 }
 
 /**
@@ -10548,7 +10548,7 @@ export const getDeleteWorldViewsByWorldViewIdUrl = (worldViewId: number,) => {
 
 
 
-  return `/api/world-views/${worldViewId}`
+  return `/api/world-views/${encodeURIComponent(String(worldViewId))}`
 }
 
 /**
@@ -10573,7 +10573,7 @@ export const getGetWorldViewsByWorldViewIdDeleteImpactUrl = (worldViewId: number
 
 
 
-  return `/api/world-views/${worldViewId}/delete-impact`
+  return `/api/world-views/${encodeURIComponent(String(worldViewId))}/delete-impact`
 }
 
 /**
@@ -10598,7 +10598,7 @@ export const getGetWorldViewsByWorldViewIdRegionsUrl = (worldViewId: number,) =>
 
 
 
-  return `/api/world-views/${worldViewId}/regions`
+  return `/api/world-views/${encodeURIComponent(String(worldViewId))}/regions`
 }
 
 /**
@@ -10623,7 +10623,7 @@ export const getPostWorldViewsByWorldViewIdRegionsUrl = (worldViewId: number,) =
 
 
 
-  return `/api/world-views/${worldViewId}/regions`
+  return `/api/world-views/${encodeURIComponent(String(worldViewId))}/regions`
 }
 
 /**
@@ -10663,7 +10663,7 @@ export const getGetWorldViewsByWorldViewIdRegionsRootUrl = (worldViewId: number,
 
 
 
-  return `/api/world-views/${worldViewId}/regions/root`
+  return `/api/world-views/${encodeURIComponent(String(worldViewId))}/regions/root`
 }
 
 /**
@@ -10696,7 +10696,7 @@ export const getGetWorldViewsByWorldViewIdRegionsSearchUrl = (worldViewId: numbe
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/world-views/${worldViewId}/regions/search?${stringifiedParams}` : `/api/world-views/${worldViewId}/regions/search`
+  return stringifiedParams.length > 0 ? `/api/world-views/${encodeURIComponent(String(worldViewId))}/regions/search?${stringifiedParams}` : `/api/world-views/${encodeURIComponent(String(worldViewId))}/regions/search`
 }
 
 /**
@@ -10730,7 +10730,7 @@ export const getPostWorldViewsByWorldViewIdComputeGeometriesUrl = (worldViewId: 
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/world-views/${worldViewId}/compute-geometries?${stringifiedParams}` : `/api/world-views/${worldViewId}/compute-geometries`
+  return stringifiedParams.length > 0 ? `/api/world-views/${encodeURIComponent(String(worldViewId))}/compute-geometries?${stringifiedParams}` : `/api/world-views/${encodeURIComponent(String(worldViewId))}/compute-geometries`
 }
 
 /**
@@ -10756,7 +10756,7 @@ export const getGetWorldViewsByWorldViewIdComputeGeometriesStatusUrl = (worldVie
 
 
 
-  return `/api/world-views/${worldViewId}/compute-geometries/status`
+  return `/api/world-views/${encodeURIComponent(String(worldViewId))}/compute-geometries/status`
 }
 
 /**
@@ -10781,7 +10781,7 @@ export const getPostWorldViewsByWorldViewIdComputeGeometriesCancelUrl = (worldVi
 
 
 
-  return `/api/world-views/${worldViewId}/compute-geometries/cancel`
+  return `/api/world-views/${encodeURIComponent(String(worldViewId))}/compute-geometries/cancel`
 }
 
 /**
@@ -10806,7 +10806,7 @@ export const getPostWorldViewsByWorldViewIdDivisionUsageUrl = (worldViewId: numb
 
 
 
-  return `/api/world-views/${worldViewId}/division-usage`
+  return `/api/world-views/${encodeURIComponent(String(worldViewId))}/division-usage`
 }
 
 /**
@@ -10846,7 +10846,7 @@ export const getGetWorldViewsByWorldViewIdDisplayGeometryStatusUrl = (worldViewI
 
 
 
-  return `/api/world-views/${worldViewId}/display-geometry-status`
+  return `/api/world-views/${encodeURIComponent(String(worldViewId))}/display-geometry-status`
 }
 
 /**
@@ -10879,7 +10879,7 @@ export const getPostWorldViewsByWorldViewIdRegenerateDisplayGeometriesUrl = (wor
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/world-views/${worldViewId}/regenerate-display-geometries?${stringifiedParams}` : `/api/world-views/${worldViewId}/regenerate-display-geometries`
+  return stringifiedParams.length > 0 ? `/api/world-views/${encodeURIComponent(String(worldViewId))}/regenerate-display-geometries?${stringifiedParams}` : `/api/world-views/${encodeURIComponent(String(worldViewId))}/regenerate-display-geometries`
 }
 
 /**
@@ -10905,7 +10905,7 @@ export const getGetWorldViewsRegionsByRegionIdAncestorsUrl = (regionId: number,)
 
 
 
-  return `/api/world-views/regions/${regionId}/ancestors`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/ancestors`
 }
 
 /**
@@ -10930,7 +10930,7 @@ export const getGetWorldViewsRegionsByRegionIdSubregionsUrl = (regionId: number,
 
 
 
-  return `/api/world-views/regions/${regionId}/subregions`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/subregions`
 }
 
 /**
@@ -10955,7 +10955,7 @@ export const getPutWorldViewsRegionsByRegionIdUrl = (regionId: number,) => {
 
 
 
-  return `/api/world-views/regions/${regionId}`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -11003,7 +11003,7 @@ export const getDeleteWorldViewsRegionsByRegionIdUrl = (regionId: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/world-views/regions/${regionId}?${stringifiedParams}` : `/api/world-views/regions/${regionId}`
+  return stringifiedParams.length > 0 ? `/api/world-views/regions/${encodeURIComponent(String(regionId))}?${stringifiedParams}` : `/api/world-views/regions/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -11029,7 +11029,7 @@ export const getGetWorldViewsRegionsByRegionIdMembersUrl = (regionId: number,) =
 
 
 
-  return `/api/world-views/regions/${regionId}/members`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/members`
 }
 
 /**
@@ -11054,7 +11054,7 @@ export const getPostWorldViewsRegionsByRegionIdMembersUrl = (regionId: number,) 
 
 
 
-  return `/api/world-views/regions/${regionId}/members`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/members`
 }
 
 /**
@@ -11094,7 +11094,7 @@ export const getDeleteWorldViewsRegionsByRegionIdMembersUrl = (regionId: number,
 
 
 
-  return `/api/world-views/regions/${regionId}/members`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/members`
 }
 
 /**
@@ -11134,7 +11134,7 @@ export const getGetWorldViewsRegionsByRegionIdMembersGeometriesUrl = (regionId: 
 
 
 
-  return `/api/world-views/regions/${regionId}/members/geometries`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/members/geometries`
 }
 
 /**
@@ -11159,7 +11159,7 @@ export const getGetWorldViewsRegionsByRegionIdMembersDescendantGeometriesUrl = (
 
 
 
-  return `/api/world-views/regions/${regionId}/members/descendant-geometries`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/members/descendant-geometries`
 }
 
 /**
@@ -11184,7 +11184,7 @@ export const getPostWorldViewsRegionsByRegionIdMembersMoveUrl = (regionId: numbe
 
 
 
-  return `/api/world-views/regions/${regionId}/members/move`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/members/move`
 }
 
 /**
@@ -11225,7 +11225,7 @@ export const getPostWorldViewsRegionsByRegionIdMembersByDivisionIdAddChildrenUrl
 
 
 
-  return `/api/world-views/regions/${regionId}/members/${divisionId}/add-children`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/members/${encodeURIComponent(String(divisionId))}/add-children`
 }
 
 /**
@@ -11267,7 +11267,7 @@ export const getPostWorldViewsRegionsByParentRegionIdFlattenBySubregionIdUrl = (
 
 
 
-  return `/api/world-views/regions/${parentRegionId}/flatten/${subregionId}`
+  return `/api/world-views/regions/${encodeURIComponent(String(parentRegionId))}/flatten/${encodeURIComponent(String(subregionId))}`
 }
 
 /**
@@ -11293,7 +11293,7 @@ export const getPostWorldViewsRegionsByRegionIdExpandUrl = (regionId: number,) =
 
 
 
-  return `/api/world-views/regions/${regionId}/expand`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/expand`
 }
 
 /**
@@ -11341,7 +11341,7 @@ export const getGetWorldViewsRegionsByRegionIdGeometryUrl = (regionId: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/world-views/regions/${regionId}/geometry?${stringifiedParams}` : `/api/world-views/regions/${regionId}/geometry`
+  return stringifiedParams.length > 0 ? `/api/world-views/regions/${encodeURIComponent(String(regionId))}/geometry?${stringifiedParams}` : `/api/world-views/regions/${encodeURIComponent(String(regionId))}/geometry`
 }
 
 /**
@@ -11367,7 +11367,7 @@ export const getPutWorldViewsRegionsByRegionIdGeometryUrl = (regionId: number,) 
 
 
 
-  return `/api/world-views/regions/${regionId}/geometry`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/geometry`
 }
 
 /**
@@ -11415,7 +11415,7 @@ export const getGetWorldViewsRegionsByRegionIdGeometryComputeStreamUrl = (region
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/world-views/regions/${regionId}/geometry/compute-stream?${stringifiedParams}` : `/api/world-views/regions/${regionId}/geometry/compute-stream`
+  return stringifiedParams.length > 0 ? `/api/world-views/regions/${encodeURIComponent(String(regionId))}/geometry/compute-stream?${stringifiedParams}` : `/api/world-views/regions/${encodeURIComponent(String(regionId))}/geometry/compute-stream`
 }
 
 /**
@@ -11441,7 +11441,7 @@ export const getPostWorldViewsRegionsByRegionIdGeometryResetUrl = (regionId: num
 
 
 
-  return `/api/world-views/regions/${regionId}/geometry/reset`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/geometry/reset`
 }
 
 /**
@@ -11466,7 +11466,7 @@ export const getPostWorldViewsRegionsByRegionIdHullPreviewUrl = (regionId: numbe
 
 
 
-  return `/api/world-views/regions/${regionId}/hull/preview`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/hull/preview`
 }
 
 /**
@@ -11506,7 +11506,7 @@ export const getPostWorldViewsRegionsByRegionIdHullSaveUrl = (regionId: number,)
 
 
 
-  return `/api/world-views/regions/${regionId}/hull/save`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/hull/save`
 }
 
 /**
@@ -11546,7 +11546,7 @@ export const getGetWorldViewsRegionsByRegionIdHullParamsUrl = (regionId: number,
 
 
 
-  return `/api/world-views/regions/${regionId}/hull/params`
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/hull/params`
 }
 
 /**
@@ -11621,7 +11621,7 @@ export const getGetUsersMeVisitedRegionsByWorldViewByWorldViewIdUrl = (worldView
 
 
 
-  return `/api/users/me/visited-regions/by-world-view/${worldViewId}`
+  return `/api/users/me/visited-regions/by-world-view/${encodeURIComponent(String(worldViewId))}`
 }
 
 /**
@@ -11646,7 +11646,7 @@ export const getPostUsersMeVisitedRegionsByRegionIdUrl = (regionId: number,) => 
 
 
 
-  return `/api/users/me/visited-regions/${regionId}`
+  return `/api/users/me/visited-regions/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -11686,7 +11686,7 @@ export const getDeleteUsersMeVisitedRegionsByRegionIdUrl = (regionId: number,) =
 
 
 
-  return `/api/users/me/visited-regions/${regionId}`
+  return `/api/users/me/visited-regions/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -11743,7 +11743,7 @@ export const getPostUsersMeVisitedExperiencesByExperienceIdUrl = (experienceId: 
 
 
 
-  return `/api/users/me/visited-experiences/${experienceId}`
+  return `/api/users/me/visited-experiences/${encodeURIComponent(String(experienceId))}`
 }
 
 /**
@@ -11783,7 +11783,7 @@ export const getDeleteUsersMeVisitedExperiencesByExperienceIdUrl = (experienceId
 
 
 
-  return `/api/users/me/visited-experiences/${experienceId}`
+  return `/api/users/me/visited-experiences/${encodeURIComponent(String(experienceId))}`
 }
 
 /**
@@ -11840,7 +11840,7 @@ export const getPostUsersMeVisitedLocationsByLocationIdUrl = (locationId: number
 
 
 
-  return `/api/users/me/visited-locations/${locationId}`
+  return `/api/users/me/visited-locations/${encodeURIComponent(String(locationId))}`
 }
 
 /**
@@ -11880,7 +11880,7 @@ export const getDeleteUsersMeVisitedLocationsByLocationIdUrl = (locationId: numb
 
 
 
-  return `/api/users/me/visited-locations/${locationId}`
+  return `/api/users/me/visited-locations/${encodeURIComponent(String(locationId))}`
 }
 
 /**
@@ -11905,7 +11905,7 @@ export const getGetUsersMeExperiencesByIdVisitedStatusUrl = (id: number,) => {
 
 
 
-  return `/api/users/me/experiences/${id}/visited-status`
+  return `/api/users/me/experiences/${encodeURIComponent(String(id))}/visited-status`
 }
 
 /**
@@ -11938,7 +11938,7 @@ export const getPostUsersMeExperiencesByExperienceIdMarkAllLocationsUrl = (exper
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/users/me/experiences/${experienceId}/mark-all-locations?${stringifiedParams}` : `/api/users/me/experiences/${experienceId}/mark-all-locations`
+  return stringifiedParams.length > 0 ? `/api/users/me/experiences/${encodeURIComponent(String(experienceId))}/mark-all-locations?${stringifiedParams}` : `/api/users/me/experiences/${encodeURIComponent(String(experienceId))}/mark-all-locations`
 }
 
 /**
@@ -11972,7 +11972,7 @@ export const getDeleteUsersMeExperiencesByExperienceIdMarkAllLocationsUrl = (exp
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/users/me/experiences/${experienceId}/mark-all-locations?${stringifiedParams}` : `/api/users/me/experiences/${experienceId}/mark-all-locations`
+  return stringifiedParams.length > 0 ? `/api/users/me/experiences/${encodeURIComponent(String(experienceId))}/mark-all-locations?${stringifiedParams}` : `/api/users/me/experiences/${encodeURIComponent(String(experienceId))}/mark-all-locations`
 }
 
 /**
@@ -12030,7 +12030,7 @@ export const getPostUsersMeViewedTreasuresByTreasureIdUrl = (treasureId: number,
 
 
 
-  return `/api/users/me/viewed-treasures/${treasureId}`
+  return `/api/users/me/viewed-treasures/${encodeURIComponent(String(treasureId))}`
 }
 
 /**
@@ -12070,7 +12070,7 @@ export const getDeleteUsersMeViewedTreasuresByTreasureIdUrl = (treasureId: numbe
 
 
 
-  return `/api/users/me/viewed-treasures/${treasureId}`
+  return `/api/users/me/viewed-treasures/${encodeURIComponent(String(treasureId))}`
 }
 
 /**
@@ -12404,7 +12404,7 @@ export const getPutAdminSyncSourcesBySourceIdCurationGateUrl = (sourceId: number
 
 
 
-  return `/api/admin/sync/sources/${sourceId}/curation-gate`
+  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/curation-gate`
 }
 
 /**
@@ -12444,7 +12444,7 @@ export const getPutAdminSyncSourcesBySourceIdLineUrl = (sourceId: number,) => {
 
 
 
-  return `/api/admin/sync/sources/${sourceId}/line`
+  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/line`
 }
 
 /**
@@ -12484,7 +12484,7 @@ export const getPostAdminSyncSourcesBySourceIdStartUrl = (sourceId: number,) => 
 
 
 
-  return `/api/admin/sync/sources/${sourceId}/start`
+  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/start`
 }
 
 /**
@@ -12524,7 +12524,7 @@ export const getGetAdminSyncSourcesBySourceIdStatusUrl = (sourceId: number,) => 
 
 
 
-  return `/api/admin/sync/sources/${sourceId}/status`
+  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/status`
 }
 
 /**
@@ -12549,7 +12549,7 @@ export const getPostAdminSyncSourcesBySourceIdCancelUrl = (sourceId: number,) =>
 
 
 
-  return `/api/admin/sync/sources/${sourceId}/cancel`
+  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/cancel`
 }
 
 /**
@@ -12574,7 +12574,7 @@ export const getPostAdminSyncSourcesBySourceIdFixImagesUrl = (sourceId: number,)
 
 
 
-  return `/api/admin/sync/sources/${sourceId}/fix-images`
+  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/fix-images`
 }
 
 /**
@@ -12599,7 +12599,7 @@ export const getGetAdminSyncSourcesBySourceIdCacheUrl = (sourceId: number,) => {
 
 
 
-  return `/api/admin/sync/sources/${sourceId}/cache`
+  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/cache`
 }
 
 /**
@@ -12632,7 +12632,7 @@ export const getDeleteAdminSyncSourcesBySourceIdCacheUrl = (sourceId: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/admin/sync/sources/${sourceId}/cache?${stringifiedParams}` : `/api/admin/sync/sources/${sourceId}/cache`
+  return stringifiedParams.length > 0 ? `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/cache?${stringifiedParams}` : `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/cache`
 }
 
 /**
@@ -12659,7 +12659,7 @@ export const getPutAdminSyncSourcesBySourceIdCacheByKindTtlUrl = (sourceId: numb
 
 
 
-  return `/api/admin/sync/sources/${sourceId}/cache/${kind}/ttl`
+  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/cache/${encodeURIComponent(String(kind))}/ttl`
 }
 
 /**
@@ -12732,7 +12732,7 @@ export const getGetAdminSyncLogsByLogIdUrl = (logId: number,) => {
 
 
 
-  return `/api/admin/sync/logs/${logId}`
+  return `/api/admin/sync/logs/${encodeURIComponent(String(logId))}`
 }
 
 /**
@@ -12765,7 +12765,7 @@ export const getGetAdminSyncLogsByLogIdChangesUrl = (logId: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/admin/sync/logs/${logId}/changes?${stringifiedParams}` : `/api/admin/sync/logs/${logId}/changes`
+  return stringifiedParams.length > 0 ? `/api/admin/sync/logs/${encodeURIComponent(String(logId))}/changes?${stringifiedParams}` : `/api/admin/sync/logs/${encodeURIComponent(String(logId))}/changes`
 }
 
 /**
@@ -13061,7 +13061,7 @@ export const getDeleteAdminCuratorsByAssignmentIdUrl = (assignmentId: number,) =
 
 
 
-  return `/api/admin/curators/${assignmentId}`
+  return `/api/admin/curators/${encodeURIComponent(String(assignmentId))}`
 }
 
 /**
@@ -13094,7 +13094,7 @@ export const getGetAdminCuratorsByUserIdActivityUrl = (userId: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/admin/curators/${userId}/activity?${stringifiedParams}` : `/api/admin/curators/${userId}/activity`
+  return stringifiedParams.length > 0 ? `/api/admin/curators/${encodeURIComponent(String(userId))}/activity?${stringifiedParams}` : `/api/admin/curators/${encodeURIComponent(String(userId))}/activity`
 }
 
 /**
@@ -13177,7 +13177,7 @@ export const getPutAdminAiSettingsByKeyUrl = (key: string,) => {
 
 
 
-  return `/api/admin/ai/settings/${key}`
+  return `/api/admin/ai/settings/${encodeURIComponent(String(key))}`
 }
 
 /**
@@ -13331,7 +13331,7 @@ export const getDeleteAdminAiRulesByIdUrl = (id: number,) => {
 
 
 
-  return `/api/admin/ai/rules/${id}`
+  return `/api/admin/ai/rules/${encodeURIComponent(String(id))}`
 }
 
 /**
@@ -13420,7 +13420,7 @@ export const getPostAdminAiHierarchyReviewByWorldViewIdUrl = (worldViewId: numbe
 
 
 
-  return `/api/admin/ai/hierarchy-review/${worldViewId}`
+  return `/api/admin/ai/hierarchy-review/${encodeURIComponent(String(worldViewId))}`
 }
 
 /**
@@ -13620,7 +13620,7 @@ export const getDeleteAdminWvExtractCachesByNameUrl = (name: string,) => {
 
 
 
-  return `/api/admin/wv-extract/caches/${name}`
+  return `/api/admin/wv-extract/caches/${encodeURIComponent(String(name))}`
 }
 
 /**
@@ -13773,7 +13773,7 @@ export const getGetAdminWvImportMatchesByWorldViewIdStatsUrl = (worldViewId: num
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/stats`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/stats`
 }
 
 /**
@@ -13798,7 +13798,7 @@ export const getGetAdminWvImportMatchesByWorldViewIdTreeUrl = (worldViewId: numb
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/tree`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/tree`
 }
 
 /**
@@ -13823,7 +13823,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAcceptUrl = (worldViewId: n
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/accept`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/accept`
 }
 
 /**
@@ -13863,7 +13863,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdRejectUrl = (worldViewId: n
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/reject`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/reject`
 }
 
 /**
@@ -13903,7 +13903,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdRejectRemainingUrl = (world
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/reject-remaining`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/reject-remaining`
 }
 
 /**
@@ -13943,7 +13943,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAcceptAndRejectUrl = (world
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/accept-and-reject`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/accept-and-reject`
 }
 
 /**
@@ -13983,7 +13983,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAcceptBatchAndRejectRestUrl
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/accept-batch-and-reject-rest`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/accept-batch-and-reject-rest`
 }
 
 /**
@@ -14023,7 +14023,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdRejectBatchUrl = (worldView
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/reject-batch`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/reject-batch`
 }
 
 /**
@@ -14063,7 +14063,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdClearMembersUrl = (worldVie
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/clear-members`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/clear-members`
 }
 
 /**
@@ -14103,7 +14103,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAcceptBatchUrl = (worldView
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/accept-batch`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/accept-batch`
 }
 
 /**
@@ -14143,7 +14143,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAcceptWithTransferUrl = (wo
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/accept-with-transfer`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/accept-with-transfer`
 }
 
 /**
@@ -14183,7 +14183,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdTransferPreviewUrl = (world
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/transfer-preview`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/transfer-preview`
 }
 
 /**
@@ -14223,7 +14223,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdUnionGeometryUrl = (worldVi
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/union-geometry`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/union-geometry`
 }
 
 /**
@@ -14263,7 +14263,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdSplitDeeperUrl = (worldView
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/split-deeper`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/split-deeper`
 }
 
 /**
@@ -14303,7 +14303,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdVisionMatchUrl = (worldView
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/vision-match`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/vision-match`
 }
 
 /**
@@ -14343,7 +14343,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdMapshapeMatchUrl = (worldVi
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/mapshape-match`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/mapshape-match`
 }
 
 /**
@@ -14383,7 +14383,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAiMatchUrl = (worldViewId: 
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/ai-match`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/ai-match`
 }
 
 /**
@@ -14408,7 +14408,7 @@ export const getGetAdminWvImportMatchesByWorldViewIdAiMatchStatusUrl = (worldVie
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/ai-match/status`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/ai-match/status`
 }
 
 /**
@@ -14433,7 +14433,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAiMatchCancelUrl = (worldVi
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/ai-match/cancel`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/ai-match/cancel`
 }
 
 /**
@@ -14458,7 +14458,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdDbSearchOneUrl = (worldView
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/db-search-one`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/db-search-one`
 }
 
 /**
@@ -14498,7 +14498,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdGeocodeMatchUrl = (worldVie
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/geocode-match`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/geocode-match`
 }
 
 /**
@@ -14538,7 +14538,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdGeoshapeMatchUrl = (worldVi
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/geoshape-match`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/geoshape-match`
 }
 
 /**
@@ -14578,7 +14578,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdPointMatchUrl = (worldViewI
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/point-match`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/point-match`
 }
 
 /**
@@ -14618,7 +14618,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdResetMatchUrl = (worldViewI
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/reset-match`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/reset-match`
 }
 
 /**
@@ -14658,7 +14658,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAiMatchOneUrl = (worldViewI
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/ai-match-one`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/ai-match-one`
 }
 
 /**
@@ -14698,7 +14698,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdDismissChildrenUrl = (world
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/dismiss-children`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/dismiss-children`
 }
 
 /**
@@ -14738,7 +14738,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdPruneToLeavesUrl = (worldVi
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/prune-to-leaves`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/prune-to-leaves`
 }
 
 /**
@@ -14778,7 +14778,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdCollapseToParentUrl = (worl
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/collapse-to-parent`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/collapse-to-parent`
 }
 
 /**
@@ -14818,7 +14818,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdSmartFlattenUrl = (worldVie
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/smart-flatten`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/smart-flatten`
 }
 
 /**
@@ -14858,7 +14858,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdSmartFlattenPreviewUrl = (w
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/smart-flatten/preview`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/smart-flatten/preview`
 }
 
 /**
@@ -14898,7 +14898,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAutoResolveChildrenPreviewU
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/auto-resolve-children/preview`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/auto-resolve-children/preview`
 }
 
 /**
@@ -14938,7 +14938,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAutoResolveChildrenUrl = (w
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/auto-resolve-children`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/auto-resolve-children`
 }
 
 /**
@@ -14978,7 +14978,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdHandleAsGroupingUrl = (worl
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/handle-as-grouping`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/handle-as-grouping`
 }
 
 /**
@@ -15018,7 +15018,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdSelectMapImageUrl = (worldV
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/select-map-image`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/select-map-image`
 }
 
 /**
@@ -15058,7 +15058,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdMarkManualFixUrl = (worldVi
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/mark-manual-fix`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/mark-manual-fix`
 }
 
 /**
@@ -15098,7 +15098,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdMergeChildUrl = (worldViewI
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/merge-child`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/merge-child`
 }
 
 /**
@@ -15138,7 +15138,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdSimplifyHierarchyUrl = (wor
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/simplify-hierarchy`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/simplify-hierarchy`
 }
 
 /**
@@ -15178,7 +15178,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdSimplifyChildrenUrl = (worl
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/simplify-children`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/simplify-children`
 }
 
 /**
@@ -15218,7 +15218,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdSmartSimplifyUrl = (worldVi
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/smart-simplify`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/smart-simplify`
 }
 
 /**
@@ -15258,7 +15258,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdSmartSimplifyApplyMoveUrl =
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/smart-simplify/apply-move`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/smart-simplify/apply-move`
 }
 
 /**
@@ -15298,7 +15298,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdCheckOverlapUrl = (worldVie
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/check-overlap`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/check-overlap`
 }
 
 /**
@@ -15338,7 +15338,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdOverlapChildrenUrl = (world
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/overlap-children`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/overlap-children`
 }
 
 /**
@@ -15378,7 +15378,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdResolveOverlapUrl = (worldV
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/resolve-overlap`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/resolve-overlap`
 }
 
 /**
@@ -15418,7 +15418,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdRemoveRegionUrl = (worldVie
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/remove-region`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/remove-region`
 }
 
 /**
@@ -15458,7 +15458,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdRenameRegionUrl = (worldVie
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/rename-region`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/rename-region`
 }
 
 /**
@@ -15498,7 +15498,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdReparentRegionUrl = (worldV
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/reparent-region`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/reparent-region`
 }
 
 /**
@@ -15538,7 +15538,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdUndoUrl = (worldViewId: num
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/undo`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/undo`
 }
 
 /**
@@ -15563,7 +15563,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdSyncInstancesUrl = (worldVi
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/sync-instances`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/sync-instances`
 }
 
 /**
@@ -15603,7 +15603,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAddChildRegionUrl = (worldV
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/add-child-region`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/add-child-region`
 }
 
 /**
@@ -15643,7 +15643,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdDismissHierarchyWarningsUrl
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/dismiss-hierarchy-warnings`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/dismiss-hierarchy-warnings`
 }
 
 /**
@@ -15683,7 +15683,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAiSuggestChildrenUrl = (wor
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/ai-suggest-children`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/ai-suggest-children`
 }
 
 /**
@@ -15723,7 +15723,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdAiSuggestClustersUrl = (wor
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/ai-suggest-clusters`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/ai-suggest-clusters`
 }
 
 /**
@@ -15771,7 +15771,7 @@ export const getGetAdminWvImportMatchesByWorldViewIdChildrenCoverageUrl = (world
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/admin/wv-import/matches/${worldViewId}/children-coverage?${stringifiedParams}` : `/api/admin/wv-import/matches/${worldViewId}/children-coverage`
+  return stringifiedParams.length > 0 ? `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/children-coverage?${stringifiedParams}` : `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/children-coverage`
 }
 
 /**
@@ -15798,7 +15798,7 @@ export const getGetAdminWvImportMatchesByWorldViewIdCoverageGeometryByRegionIdUr
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/coverage-geometry/${regionId}`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/coverage-geometry/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -15825,7 +15825,7 @@ export const getGetAdminWvImportMatchesByWorldViewIdChildrenGeometryByRegionIdUr
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/children-geometry/${regionId}`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/children-geometry/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -15852,7 +15852,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdCoverageGapAnalysisByRegion
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/coverage-gap-analysis/${regionId}`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/coverage-gap-analysis/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -15878,7 +15878,7 @@ export const getGetAdminWvImportMatchesByWorldViewIdCoverageUrl = (worldViewId: 
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/coverage`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/coverage`
 }
 
 /**
@@ -15903,7 +15903,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdGeoSuggestGapUrl = (worldVi
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/geo-suggest-gap`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/geo-suggest-gap`
 }
 
 /**
@@ -15943,7 +15943,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdDismissGapUrl = (worldViewI
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/dismiss-gap`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/dismiss-gap`
 }
 
 /**
@@ -15983,7 +15983,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdUndismissGapUrl = (worldVie
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/undismiss-gap`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/undismiss-gap`
 }
 
 /**
@@ -16023,7 +16023,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdApproveCoverageUrl = (world
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/approve-coverage`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/approve-coverage`
 }
 
 /**
@@ -16063,7 +16063,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdFinalizeUrl = (worldViewId:
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/finalize`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/finalize`
 }
 
 /**
@@ -16088,7 +16088,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdRematchUrl = (worldViewId: 
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/rematch`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/rematch`
 }
 
 /**
@@ -16128,7 +16128,7 @@ export const getGetAdminWvImportMatchesByWorldViewIdRematchStatusUrl = (worldVie
 
 
 
-  return `/api/admin/wv-import/matches/${worldViewId}/rematch/status`
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/rematch/status`
 }
 
 /**
@@ -16161,7 +16161,7 @@ export const getGetAdminWvImportMatchesByWorldViewIdColorMatchStreamUrl = (world
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/admin/wv-import/matches/${worldViewId}/color-match-stream?${stringifiedParams}` : `/api/admin/wv-import/matches/${worldViewId}/color-match-stream`
+  return stringifiedParams.length > 0 ? `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/color-match-stream?${stringifiedParams}` : `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/color-match-stream`
 }
 
 /**
@@ -16187,7 +16187,7 @@ export const getPostAdminWvImportWaterReviewByReviewIdUrl = (reviewId: string,) 
 
 
 
-  return `/api/admin/wv-import/water-review/${reviewId}`
+  return `/api/admin/wv-import/water-review/${encodeURIComponent(String(reviewId))}`
 }
 
 /**
@@ -16227,7 +16227,7 @@ export const getPostAdminWvImportClusterReviewByReviewIdUrl = (reviewId: string,
 
 
 
-  return `/api/admin/wv-import/cluster-review/${reviewId}`
+  return `/api/admin/wv-import/cluster-review/${encodeURIComponent(String(reviewId))}`
 }
 
 /**
@@ -16267,7 +16267,7 @@ export const getPostAdminWvImportIcpAdjustmentByReviewIdUrl = (reviewId: string,
 
 
 
-  return `/api/admin/wv-import/icp-adjustment/${reviewId}`
+  return `/api/admin/wv-import/icp-adjustment/${encodeURIComponent(String(reviewId))}`
 }
 
 /**
@@ -16309,7 +16309,7 @@ export const getGetAdminWvImportWaterCropByReviewIdByComponentIdBySubClusterUrl 
 
 
 
-  return `/api/admin/wv-import/water-crop/${reviewId}/${componentId}/${subCluster}`
+  return `/api/admin/wv-import/water-crop/${encodeURIComponent(String(reviewId))}/${encodeURIComponent(String(componentId))}/${encodeURIComponent(String(subCluster))}`
 }
 
 /**
@@ -16336,7 +16336,7 @@ export const getGetAdminWvImportClusterPreviewByReviewIdUrl = (reviewId: string,
 
 
 
-  return `/api/admin/wv-import/cluster-preview/${reviewId}`
+  return `/api/admin/wv-import/cluster-preview/${encodeURIComponent(String(reviewId))}`
 }
 
 /**
@@ -16362,7 +16362,7 @@ export const getGetAdminWvImportClusterHighlightByReviewIdByLabelUrl = (reviewId
 
 
 
-  return `/api/admin/wv-import/cluster-highlight/${reviewId}/${label}`
+  return `/api/admin/wv-import/cluster-highlight/${encodeURIComponent(String(reviewId))}/${encodeURIComponent(String(label))}`
 }
 
 /**
@@ -16396,7 +16396,7 @@ export const getGetAdminWvImportMatchesByWorldViewIdCoverageStreamUrl = (worldVi
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/admin/wv-import/matches/${worldViewId}/coverage-stream?${stringifiedParams}` : `/api/admin/wv-import/matches/${worldViewId}/coverage-stream`
+  return stringifiedParams.length > 0 ? `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/coverage-stream?${stringifiedParams}` : `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/coverage-stream`
 }
 
 /**
@@ -16422,7 +16422,7 @@ export const getGetAdminWvImportGeoshapeByWikidataIdUrl = (wikidataId: string,) 
 
 
 
-  return `/api/admin/wv-import/geoshape/${wikidataId}`
+  return `/api/admin/wv-import/geoshape/${encodeURIComponent(String(wikidataId))}`
 }
 
 /**
@@ -16573,7 +16573,7 @@ export const getGetExperiencesByRegionByRegionIdUrl = (regionId: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/experiences/by-region/${regionId}?${stringifiedParams}` : `/api/experiences/by-region/${regionId}`
+  return stringifiedParams.length > 0 ? `/api/experiences/by-region/${encodeURIComponent(String(regionId))}?${stringifiedParams}` : `/api/experiences/by-region/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -16607,7 +16607,7 @@ export const getGetExperiencesByRegionByRegionIdLocationsUrl = (regionId: number
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/experiences/by-region/${regionId}/locations?${stringifiedParams}` : `/api/experiences/by-region/${regionId}/locations`
+  return stringifiedParams.length > 0 ? `/api/experiences/by-region/${encodeURIComponent(String(regionId))}/locations?${stringifiedParams}` : `/api/experiences/by-region/${encodeURIComponent(String(regionId))}/locations`
 }
 
 /**
@@ -16633,7 +16633,7 @@ export const getGetExperiencesByIdUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}`
+  return `/api/experiences/${encodeURIComponent(String(id))}`
 }
 
 /**
@@ -16666,7 +16666,7 @@ export const getGetExperiencesByIdLocationsUrl = (id: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/experiences/${id}/locations?${stringifiedParams}` : `/api/experiences/${id}/locations`
+  return stringifiedParams.length > 0 ? `/api/experiences/${encodeURIComponent(String(id))}/locations?${stringifiedParams}` : `/api/experiences/${encodeURIComponent(String(id))}/locations`
 }
 
 /**
@@ -16692,7 +16692,7 @@ export const getGetExperiencesByIdTreasuresUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/treasures`
+  return `/api/experiences/${encodeURIComponent(String(id))}/treasures`
 }
 
 /**
@@ -16717,7 +16717,7 @@ export const getGetExperiencesByIdFindsUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/finds`
+  return `/api/experiences/${encodeURIComponent(String(id))}/finds`
 }
 
 /**
@@ -16780,7 +16780,7 @@ export const getPostExperiencesByIdRejectUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/reject`
+  return `/api/experiences/${encodeURIComponent(String(id))}/reject`
 }
 
 /**
@@ -16820,7 +16820,7 @@ export const getPostExperiencesByIdUnrejectUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/unreject`
+  return `/api/experiences/${encodeURIComponent(String(id))}/unreject`
 }
 
 /**
@@ -16860,7 +16860,7 @@ export const getPostExperiencesByIdAssignUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/assign`
+  return `/api/experiences/${encodeURIComponent(String(id))}/assign`
 }
 
 /**
@@ -16900,7 +16900,7 @@ export const getPatchExperiencesByIdEditUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/edit`
+  return `/api/experiences/${encodeURIComponent(String(id))}/edit`
 }
 
 /**
@@ -16940,7 +16940,7 @@ export const getGetExperiencesByIdCurationLogUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/curation-log`
+  return `/api/experiences/${encodeURIComponent(String(id))}/curation-log`
 }
 
 /**
@@ -17036,7 +17036,7 @@ export const getPutExperiencesReviewSetAsideBySyncLogIdUrl = (syncLogId: number,
 
 
 
-  return `/api/experiences/review/set-aside/${syncLogId}`
+  return `/api/experiences/review/set-aside/${encodeURIComponent(String(syncLogId))}`
 }
 
 /**
@@ -17061,7 +17061,7 @@ export const getDeleteExperiencesReviewSetAsideBySyncLogIdUrl = (syncLogId: numb
 
 
 
-  return `/api/experiences/review/set-aside/${syncLogId}`
+  return `/api/experiences/review/set-aside/${encodeURIComponent(String(syncLogId))}`
 }
 
 /**
@@ -17125,7 +17125,7 @@ export const getPostExperiencesByIdStateUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/state`
+  return `/api/experiences/${encodeURIComponent(String(id))}/state`
 }
 
 /**
@@ -17165,7 +17165,7 @@ export const getPostExperiencesLocationsByLocationIdStateUrl = (locationId: numb
 
 
 
-  return `/api/experiences/locations/${locationId}/state`
+  return `/api/experiences/locations/${encodeURIComponent(String(locationId))}/state`
 }
 
 /**
@@ -17205,7 +17205,7 @@ export const getPatchExperiencesLocationsByLocationIdEditUrl = (locationId: numb
 
 
 
-  return `/api/experiences/locations/${locationId}/edit`
+  return `/api/experiences/locations/${encodeURIComponent(String(locationId))}/edit`
 }
 
 /**
@@ -17246,7 +17246,7 @@ export const getPatchExperiencesByIdWorksByTreasureIdEditUrl = (id: number,
 
 
 
-  return `/api/experiences/${id}/works/${treasureId}/edit`
+  return `/api/experiences/${encodeURIComponent(String(id))}/works/${encodeURIComponent(String(treasureId))}/edit`
 }
 
 /**
@@ -17287,7 +17287,7 @@ export const getPostExperiencesByIdAdmissionUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/admission`
+  return `/api/experiences/${encodeURIComponent(String(id))}/admission`
 }
 
 /**
@@ -17327,7 +17327,7 @@ export const getPostExperiencesByIdAcceptSourceUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/accept-source`
+  return `/api/experiences/${encodeURIComponent(String(id))}/accept-source`
 }
 
 /**
@@ -17367,7 +17367,7 @@ export const getPostExperiencesByIdDeclineSourceUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/decline-source`
+  return `/api/experiences/${encodeURIComponent(String(id))}/decline-source`
 }
 
 /**
@@ -17407,7 +17407,7 @@ export const getPostExperiencesByIdDeclineHeldUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/decline-held`
+  return `/api/experiences/${encodeURIComponent(String(id))}/decline-held`
 }
 
 /**
@@ -17447,7 +17447,7 @@ export const getPostExperiencesByIdRefuseArrivalUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/refuse-arrival`
+  return `/api/experiences/${encodeURIComponent(String(id))}/refuse-arrival`
 }
 
 /**
@@ -17487,7 +17487,7 @@ export const getPostExperiencesByIdRefuseContentsUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/refuse-contents`
+  return `/api/experiences/${encodeURIComponent(String(id))}/refuse-contents`
 }
 
 /**
@@ -17527,7 +17527,7 @@ export const getPostExperiencesByIdUnrefuseContentsUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/unrefuse-contents`
+  return `/api/experiences/${encodeURIComponent(String(id))}/unrefuse-contents`
 }
 
 /**
@@ -17567,7 +17567,7 @@ export const getPostExperiencesSourcesBySourceIdPublishWaitingUrl = (sourceId: n
 
 
 
-  return `/api/experiences/sources/${sourceId}/publish-waiting`
+  return `/api/experiences/sources/${encodeURIComponent(String(sourceId))}/publish-waiting`
 }
 
 /**
@@ -17592,7 +17592,7 @@ export const getPostExperiencesByIdPublishUrl = (id: number,) => {
 
 
 
-  return `/api/experiences/${id}/publish`
+  return `/api/experiences/${encodeURIComponent(String(id))}/publish`
 }
 
 /**
@@ -17633,7 +17633,7 @@ export const getDeleteExperiencesByIdAssignByRegionIdUrl = (id: number,
 
 
 
-  return `/api/experiences/${id}/assign/${regionId}`
+  return `/api/experiences/${encodeURIComponent(String(id))}/assign/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -17660,7 +17660,7 @@ export const getDeleteExperiencesByIdRemoveFromRegionByRegionIdUrl = (id: number
 
 
 
-  return `/api/experiences/${id}/remove-from-region/${regionId}`
+  return `/api/experiences/${encodeURIComponent(String(id))}/remove-from-region/${encodeURIComponent(String(regionId))}`
 }
 
 /**
