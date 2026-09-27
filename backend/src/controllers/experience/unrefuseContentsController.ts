@@ -40,7 +40,6 @@
  * route, for the same reason the refusal carries it.
  */
 
-import type { PoolClient } from 'pg';
 import type { z } from 'zod/v4';
 import type { UnrefuseContentsResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
@@ -53,6 +52,7 @@ import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 import { restoreRefusedPoints } from './experienceLocationWriter.js';
+import { restoreRefusedLinks } from './workWriter.js';
 
 /**
  * Ask again about points and works this object's curator had turned down — the
@@ -141,7 +141,7 @@ export async function unrefuseContentsUnderLock(
       restoredPoints = await restoreRefusedPoints(client, locked.lock, locationIds);
     }
     if (treasureIds !== undefined || !anyNamed) {
-      restoredLinks = await restoreLinks(client, experienceId, treasureIds);
+      restoredLinks = await restoreRefusedLinks(client, locked.lock, treasureIds);
     }
 
     if (restoredPoints.length + restoredLinks.length === 0) {
@@ -194,28 +194,4 @@ export async function unrefuseContentsUnderLock(
     treasureIds: restoredLinks,
     ...placementReport(placementFailures),
   } };
-}
-
-/**
- * Clear the mark on the turned-down work links, and say which works.
- *
- * The mark alone, for the reason the points' writer above gives: a withdrawn
- * link has no card of its own either, so an offered term would strand it.
- *
- * `curation_state` is deliberately not written: the refusal set the link
- * `pending` and that is what "nobody passed this work here" means. The work's
- * own axis is not this act's to decide — see the module docblock.
- */
-async function restoreLinks(
-  client: PoolClient, experienceId: number, treasureIds?: number[],
-): Promise<number[]> {
-  const named = treasureIds !== undefined;
-  const links = await client.query<{ treasure_id: number }>(
-    `UPDATE experience_treasures et SET refused_at = NULL
-      WHERE et.experience_id = $1 AND et.refused_at IS NOT NULL
-      ${named ? 'AND et.treasure_id = ANY($2::int[])' : ''}
-      RETURNING et.treasure_id`,
-    named ? [experienceId, treasureIds] : [experienceId],
-  );
-  return links.rows.map(row => row.treasure_id);
 }

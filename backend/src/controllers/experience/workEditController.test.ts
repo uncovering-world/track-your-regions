@@ -77,6 +77,8 @@ function makeClient(stored: Record<string, unknown> = {}) {
     client: {
       query: vi.fn(async (sql: string, params?: unknown[]) => {
         queries.push({ sql, params: params ?? [] });
+        // The museum's lock: the object is there to lock.
+        if (sql.includes('FOR NO KEY UPDATE')) return { rows: [{ id: params?.[0] }] };
         if (sql.includes('FOR UPDATE')) {
           return {
             rows: stored.missing === true ? [] : [{

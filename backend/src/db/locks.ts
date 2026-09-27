@@ -95,6 +95,7 @@
  * In `db/` because the sync services take it too, and a service may not import
  * a controller module. The statements that take it are `lockExperience` and
  * `lockSourcedExperience` (`db/experienceWriter.ts`, ADR-0069), whose token a
- * write under the lock requires.
+ * write under the lock requires: the object's, its points' and its works'
+ * alike, so the order above is one the curator's writes cannot break.
  */
 export const OBJECT_LOCK = 'FOR NO KEY UPDATE';
