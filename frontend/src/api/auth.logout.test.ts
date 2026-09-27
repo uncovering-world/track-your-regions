@@ -29,7 +29,7 @@ describe('logout', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(new URL(url).pathname).toBe('/api/auth/logout');
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer the-session-token');
+    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer the-session-token');
     expect(init.credentials).toBe('include');
   });
 
@@ -37,7 +37,7 @@ describe('logout', () => {
     await logout(null);
 
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect(init.headers as Record<string, string>).not.toHaveProperty('Authorization');
+    expect(new Headers(init.headers).get('Authorization')).toBeNull();
   });
 
   it('does not throw when the request fails', async () => {
