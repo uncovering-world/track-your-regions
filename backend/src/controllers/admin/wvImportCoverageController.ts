@@ -6,14 +6,11 @@
  * See ADR-0009 for the domain-split rationale.
  */
 
-import { Response } from 'express';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { StreamExchange } from '../../api/route.js';
 import { syncImportMatchStatus } from '../worldView/helpers.js';
-import { markStreamBody } from '../../middleware/cacheHeaders.js';
-import { writeEvent } from '../../api/respond.js';
 import {
-  CoverageEvent,
+  type CoverageEvent,
   type CoverageApproved, type CoverageResult, type GapDismissed, type GapUndismissed, type GeoSuggestResult,
   type CoverageSuggestion, type DismissedGap, type GapSubtreeNode, type RegionContextNode,
 } from '../../api/responses/wvImportCoverage.js';
@@ -296,22 +293,17 @@ export async function getCoverage({ params: { worldViewId } }: { params: WorldVi
   return composeCoverageResponse(data, suggestionByGapId);
 }
 
-function startCoverageSSE(res: Response, worldViewId: number) {
-  // CORS is already handled by the app-level cors() middleware
-  // (origin: FRONTEND_ORIGIN, credentials: true); setting
-  // Access-Control-Allow-Origin: * here would BOTH widen the policy AND
-  // break credentialed SSE (browsers reject '*' with credentials).
-  res.setHeader('Content-Type', 'text/event-stream');
-  markStreamBody(res);
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
+/**
+ * The stream's writers, over the `send` the registry opened it with (ADR-0071):
+ * each event is held to the stream's schema, as a body is (ADR-0066). CORS is
+ * the global middleware's (credentialed, one origin), so the stream sets no
+ * header of its own.
+ */
+function startCoverageSSE(sendEvent: (event: CoverageEvent) => void, worldViewId: number) {
   const startTime = Date.now();
-  // ADR-0066: every event is held to the stream's schema, as respond() holds a body.
-  const sendEvent = (event: CoverageEvent) => writeEvent(res, CoverageEvent, event);
   const logStep = (step: string) => {
     const elapsed = (Date.now() - startTime) / 1000;
-    console.log(`[Coverage SSE] WorldView ${worldViewId}: ${step} (${elapsed.toFixed(1)}s)`);
+    console.log('[Coverage SSE] WorldView %d: %s (%ss)', worldViewId, step, elapsed.toFixed(1));
     sendEvent({ type: 'progress', step, elapsed });
   };
   const elapsed = () => (Date.now() - startTime) / 1000;
@@ -325,11 +317,13 @@ function startCoverageSSE(res: Response, worldViewId: number) {
  * Pure integer joins, no geometry queries.
  * GET /api/admin/wv-import/matches/:worldViewId/coverage-stream
  */
-export async function getCoverageSSE(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  console.log(`[WV Import] GET /matches/${worldViewId}/coverage-stream (SSE)`);
+export async function getCoverageSSE(
+  { params: { worldViewId } }: { params: z.output<typeof worldViewIdParamSchema> },
+  { send }: StreamExchange<CoverageEvent>,
+): Promise<void> {
+  console.log('[WV Import] GET /matches/%d/coverage-stream (SSE)', worldViewId);
 
-  const { sendEvent, logStep, elapsed } = startCoverageSSE(res, worldViewId);
+  const { sendEvent, logStep, elapsed } = startCoverageSSE(send, worldViewId);
 
   try {
     logStep('Finding coverage gaps...');
@@ -354,12 +348,9 @@ export async function getCoverageSSE(req: AuthenticatedRequest, res: Response): 
       data: composeCoverageResponse(data, suggestionByGapId),
     });
   } catch (err) {
-    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- worldViewId is a number
-    console.error(`[Coverage SSE] Error for worldView ${worldViewId}:`, err);
+    console.error('[Coverage SSE] Error for worldView %d:', worldViewId, err);
     sendEvent({ type: 'error', message: 'The coverage check failed; the server log has the cause.', elapsed: elapsed() });
   }
-
-  res.end();
 }
 
 // =============================================================================

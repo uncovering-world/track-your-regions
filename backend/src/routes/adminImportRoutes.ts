@@ -2,8 +2,7 @@
  * The declared routes of the world-view import and the Wikivoyage extraction
  * under `/api/admin` (ADR-0071), kept apart from `routes/adminDeclaredRoutes.ts`
  * for size; that list spreads these into its own, so `routerOf` still builds
- * one list. Every route is the admin's, as the mount guard in front of the
- * whole router says too, until the last hand-written route is declared.
+ * one list. Every route is the admin's.
  */
 
 import { defineRoute } from '../api/route.js';

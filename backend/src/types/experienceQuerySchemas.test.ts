@@ -1,11 +1,11 @@
 /**
  * Guards the gap that made a whole feature dead in the running app.
  *
- * `validate()` replaces `req[source]` with the parsed object, and a Zod object
+ * A handler receives the object its route's schema parsed, and a Zod object
  * strips what it does not name. A parameter the controller reads but the schema
  * omits therefore never arrives — while every test that calls the controller
- * directly keeps passing, because those hand it a query object the middleware
- * never touched.
+ * directly keeps passing, because those hand it a query object no schema
+ * touched.
  *
  * So the assertion has to be made here, on the schema, not there.
  */

@@ -68,7 +68,7 @@ export const divisionRoutes = [
   // for France at full resolution. Admin-gated because only the editor asks for
   // it, not because it is anyone's own, so the browser keeps it and
   // revalidates rather than fetching it whole on every dialog open
-  // (`middleware/cacheHeaders.ts` has the rule).
+  // (`revalidate` in `api/route.ts` has the rule).
   defineRoute({
     method: 'get', path: '/:divisionId/geometry', access: 'admin', cache: 'revalidate',
     params: divisionIdParamSchema,

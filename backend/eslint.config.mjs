@@ -21,63 +21,12 @@ const PINNED_TRANSACTION = "pool.query() does not pin a connection. Open the tra
  */
 const TX_VERBS = '(BEGIN|START TRANSACTION|COMMIT|END|ROLLBACK|ABORT|SAVEPOINT|RELEASE)';
 
-/** What the cache rule says when a response may be stored by a shared cache. */
-const PRIVATE_CACHE_CONTROL = [
-  'This Cache-Control drops `private`. A response behind requireAuth or optionalAuth that a shared cache may store is one an',
-  'EventSource or <img src> caller cannot protect any other way, since its token rides in the query string and RFC 9111 § 3.5',
-  'excludes nothing for it. Write `private, …`, or suppress this line with the reason the body is public (as the admin image',
-  'proxy does). A value this rule cannot find `private` in is reported the same way — a name, a call, a template whose text',
-  'is all holes — since it cannot be checked here; a template whose literal part already says `private` is not, because the',
-  'header carries it whatever the hole evaluates to.',
-].join(' ');
-
 /**
- * The Cache-Control and pinned-transaction entries of `no-restricted-syntax`,
- * named so the block that adds the response-shape entries can repeat them: a
- * later block's options replace an earlier one's, never merge with them.
+ * The pinned-transaction entries of `no-restricted-syntax`, named so the block
+ * that adds the response-shape entries can repeat them: a later block's
+ * options replace an earlier one's, never merge with them.
  */
-const QUERY_AND_HEADER_RULES = [
-  {
-    // Every Cache-Control a handler writes says `private`. requireAuth
-    // marks its responses `private, no-store` and optionalAuth
-    // `private, no-cache` (#597, #710); a handler that needs another
-    // value replaces the whole header, and that is how `private` gets
-    // lost — the three SSE streams said a bare `no-cache` until #710,
-    // the value every SSE snippet on the web carries. It matters most
-    // where RFC 9111 § 3.5 does not help: EventSource and the admin
-    // `<img src>` endpoints take the token as `?token=`, so their
-    // requests carry no Authorization and `private` is the whole of the
-    // guarantee. A value this rule cannot find `private` in is reported
-    // too, since it cannot be checked here; a template whose literal
-    // part already says it passes, because the header carries it
-    // whatever the hole evaluates to.
-    // `:matches` on both sides because `[x.value=…]` reads a property
-    // only a Literal carries: written in backticks the header name is a
-    // TemplateLiteral, whose text sits in `quasis.0.value.cooked`, and
-    // the rule would pass over it entirely. The value is read the same
-    // way, so a template that does say `private` is not a false report;
-    // one with a hole in it has no `cooked` and is reported, which is
-    // the runtime case this cannot check.
-    selector: "CallExpression[callee.property.name=/^(setHeader|set|header|append)$/]"
-      + ":matches([arguments.0.value=/^cache-control$/i], [arguments.0.quasis.0.value.cooked=/^cache-control$/i])"
-      + ":not([arguments.1.value=/private/i]):not([arguments.1.quasis.0.value.cooked=/private/i])",
-    message: PRIVATE_CACHE_CONTROL,
-  },
-  {
-    // The same value written as an object entry — the shape `writeHead`
-    // and `res.set({…})` take. Keyed on the method, like its sibling
-    // above, rather than on a receiver named `res`: that covers a chain
-    // (`res.status(200).set({…})`) and a response parameter named
-    // anything else, both of which a receiver-keyed selector walks past.
-    // It still excludes an outbound `fetch(url, { headers })`, whose
-    // callee is a bare identifier with no property to match — a
-    // `Cache-Control` there is a request header this rule has nothing to
-    // say about.
-    selector: "CallExpression[callee.property.name=/^(writeHead|set|header|append)$/] > ObjectExpression > Property"
-      + ":matches([key.value=/^cache-control$/i], [key.quasis.0.value.cooked=/^cache-control$/i])"
-      + ":not([value.value=/private/i]):not([value.quasis.0.value.cooked=/private/i])",
-    message: PRIVATE_CACHE_CONTROL,
-  },
+const TRANSACTION_RULES = [
   {
     // A transaction has to be pinned to one client. `pool.query('BEGIN')`
     // checks out an arbitrary idle client, runs BEGIN on it and releases
@@ -96,6 +45,35 @@ const QUERY_AND_HEADER_RULES = [
     // transaction it never opened.
     selector: `CallExpression[callee.object.name='pool'][callee.property.name='query'] > TemplateLiteral > TemplateElement:first-child[value.raw=/^\\s*${TX_VERBS}\\b/i]`,
     message: PINNED_TRANSACTION,
+  },
+];
+
+/**
+ * A route added to a router by hand rather than declared (#793, ADR-0071).
+ * A declaration is what states a route's access, cache policy, limiter and
+ * schemas, and `routerOf` builds its middleware from them in one order; a
+ * `router.get(…)` written beside it states none of that and is checked by
+ * nothing. Keyed on the call's shape rather than the receiver's name, since a
+ * router can be called anything: a route method handed a path (a string
+ * starting with `/`, or a template) and something after it, or a path handed
+ * to `route()`, which chains the methods on. A Map's `get` takes one key, and
+ * an outbound call goes through `fetch`. `routerOf` itself adds each route
+ * through a computed method, which this does not match. A path read from a
+ * variable is beyond a selector, which cannot tell `router.get(PATH, handler)`
+ * from any two-argument `get`; review holds that case.
+ */
+const OWN_ROUTE = 'Declare the route with defineRoute (src/api/route.ts) and build its router with routerOf: the declaration '
+  + 'states its access, cache policy, limiter and schemas (ADR-0071, #793).';
+const ROUTE_REGISTRY_RULES = [
+  {
+    selector: "CallExpression[callee.computed=false][callee.property.name=/^(get|post|put|patch|delete|all)$/][arguments.1]"
+      + ":matches([arguments.0.value=/^\\//], [arguments.0.type='TemplateLiteral'])",
+    message: OWN_ROUTE,
+  },
+  {
+    selector: "CallExpression[callee.computed=false][callee.property.name='route']"
+      + ":matches([arguments.0.value=/^\\//], [arguments.0.type='TemplateLiteral'])",
+    message: OWN_ROUTE,
   },
 ];
 
@@ -270,25 +248,26 @@ export default [
       // is a file to split first. The one relaxation is the generated schema
       // below, whose length is the schema's.
       'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
-      // Two rules, each documented at its own entries in
-      // QUERY_AND_HEADER_RULES above; a third joins them for everything but
-      // the specs, in the block below.
-      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES],
+      // The pinned-transaction rule, documented at its entries in
+      // TRANSACTION_RULES above; the rest join it for everything but the
+      // specs, in the block below.
+      'no-restricted-syntax': ['error', ...TRANSACTION_RULES],
       // SonarJS: disable genuine false positives only
       'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses (e.g., jitter)
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
     },
   },
   // Every answer a handler sends is one a schema declares (ADR-0066, #993),
-  // and none carries an error's own text (#1021).
+  // none carries an error's own text (#1021), and every route is declared
+  // (ADR-0071).
   // The specs are left out, since a fixture app's handler is not an endpoint,
   // and so is respond.ts, which is where the body is finally written.
   {
     files: ['src/**/*.ts'],
     ignores: ['src/**/*.test.ts', 'src/api/respond.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES],
+      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
     },
   },
   // The two modules the reader predicates are spelled in (#791): every entry
@@ -296,8 +275,8 @@ export default [
   {
     files: ['src/db/readerPredicates.ts', 'src/db/membership.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES],
+      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
     },
   },
   // The modules that write `experiences` (ADR-0069): every entry above but
@@ -310,8 +289,8 @@ export default [
       'src/services/sync/pictureRepair.ts',
     ],
     rules: {
-      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES],
+      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
     },
   },
   // The modules that write `experience_locations` (ADR-0069), the same way.
@@ -321,16 +300,16 @@ export default [
       'src/services/sync/locationWriter.ts',
     ],
     rules: {
-      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES],
+      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
     },
   },
   // The seed writes both tables, as the fixture it is.
   {
     files: ['src/db/seed/**/*.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...QUERY_AND_HEADER_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES],
+      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...READER_PREDICATE_RULES, ...ROUTE_REGISTRY_RULES],
     },
   },
   // The one file nobody writes: `schema.generated.ts` is the schema's

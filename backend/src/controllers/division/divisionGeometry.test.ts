@@ -19,31 +19,33 @@ import { errorHandler } from '../../middleware/errorHandler.js';
 import { divisionRoutes } from '../../routes/divisionRoutes.js';
 import { getGeometryQuerySchema } from '../../types/index.js';
 import { getGeometry } from './divisionGeometry.js';
+import { routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
 import { getGeoshape } from '../admin/wvImportLifecycleController.js';
+import { ReaderFacingError } from '../../api/readerFacingError.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedVerify = verifyAccessToken as unknown as ReturnType<typeof vi.fn>;
 
-function makeRes() {
-  const res = { setHeader: vi.fn(), json: vi.fn(), status: vi.fn(), send: vi.fn() };
-  res.status.mockReturnValue(res);
-  return res;
-}
-
 describe('the geoshape proxy answers the same way', () => {
   // Wikimedia's boundary for a Wikidata id is the same bytes for every caller,
   // admin-gated because the editor is the one that asks — the sibling case to
-  // the one above, and the one the first round of this rule missed.
-  beforeEach(() => {
-    mockedQuery.mockReset();
+  // the division geometry below, and declared with the same policy.
+  it('is declared revalidate, which writes private, no-cache', () => {
+    expect(routeAt(adminDeclaredRoutes, '/wv-import/geoshape/:wikidataId').cache).toBe('revalidate');
   });
 
-  it('marks a cached geoshape private, no-cache', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ geometry: { type: 'Polygon', coordinates: [] } }] });
-    const res = makeRes();
-    await getGeoshape({ params: { wikidataId: 'Q142' } } as never, res as never);
-
-    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
+  it("passes Wikimedia's failure on under its status, in a sentence production still shows", async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('', { status: 503, statusText: 'Service Unavailable' }));
+    try {
+      const refused = await getGeoshape({ params: { wikidataId: 'Q64' } }).catch((err: unknown) => err);
+      expect(refused).toBeInstanceOf(ReaderFacingError);
+      expect(refused).toMatchObject({ statusCode: 503, message: 'Geoshape fetch failed: Service Unavailable' });
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
 

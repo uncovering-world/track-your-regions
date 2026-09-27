@@ -2,7 +2,7 @@
  * Whether a geometry writer can be told not to snap, asked of the schemas
  * rather than of the handlers.
  *
- * `validate()` replaces `req[source]` with the parsed object and a Zod object
+ * A handler receives the object its route's schema parsed, and a Zod object
  * strips what it does not name, so a parameter the schema omits never reaches
  * the controller — and an endpoint with no query schema at all supplies no
  * default, which is how an absent `skipSnapping` came to mean *snap* on the

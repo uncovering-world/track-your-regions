@@ -5,7 +5,7 @@
  * `experience_locations` are written only by their writer modules.
  *
  * Asserted against the repo's own `eslint.config.mjs`, as
- * `cacheControlLint.test.ts` asserts its rule, and in both directions: the code
+ * `api/routeRegistryLint.test.ts` asserts its rule, and in both directions: the code
  * base passes both rules today, so a selector that reports nothing and one that
  * works look the same to CI. The rows worth having are the file each snippet is
  * linted *as* — the same text is a copy in a controller and the definition in

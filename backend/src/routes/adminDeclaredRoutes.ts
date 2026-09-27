@@ -1,13 +1,14 @@
 /**
- * The declared half of `/api/admin` (ADR-0071), in a module of its own so a
+ * Every route under `/api/admin` (ADR-0071), in a module of its own so a
  * handler's spec can answer through these routes without importing
- * `routes/adminRoutes.ts`, whose hand-written import routes pull in the OpenCV
- * pipeline. `routes/adminRoutes.ts` builds its router from this list and adds
- * the hand-written routes below it. The import's declared routes live in
- * `routes/adminImportRoutes.ts` and are spread in at the end.
+ * `routes/adminRoutes.ts`, which builds the router. The world-view import's
+ * routes live in `routes/adminImportRoutes.ts` and its review screen's in
+ * `routes/adminImportReviewRoutes.ts`; both are spread in at the end. Nothing
+ * here loads the OpenCV pipeline: the colour-match stream imports it when a
+ * run starts.
  */
 
-import { defineRoute } from '../api/route.js';
+import { defineRoute, IMAGE } from '../api/route.js';
 import {
   AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorAssignmentCreated,
   CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, PictureRepairStarted, PlacementCounts,
@@ -47,11 +48,12 @@ import {
   syncLogsQuerySchema, userIdParamSchema, worldViewIdParamSchema,
 } from '../types/index.js';
 import { adminImportRoutes } from './adminImportRoutes.js';
+import { adminImportReviewRoutes } from './adminImportReviewRoutes.js';
+import { proxyImage } from '../controllers/admin/imageProxyController.js';
+import { imageProxyQuerySchema } from '../types/index.js';
 
-// Every route here is the admin's. The `/api/admin` mount in `routes/index.ts`
-// also puts `requireAuth, requireAdmin` in front of the whole router, for the
-// hand-written routes below; a declared route establishes its caller itself,
-// so for these the token is checked twice until the last of them is declared.
+// Every route here is the admin's, and each establishes its caller itself: the
+// `/api/admin` mount in `routes/index.ts` puts no guard of its own in front.
 const ADMIN = { access: 'admin', cache: 'no-store' } as const;
 
 export const adminDeclaredRoutes = [
@@ -343,6 +345,19 @@ export const adminDeclaredRoutes = [
     response: HierarchyReviewResult,
     handler: hierarchyReview,
   }),
-  // The import's routes (`routes/adminImportRoutes.ts`).
+  // A Wikimedia Commons picture the editor draws as a map overlay, fetched
+  // through the backend for the headers a canvas needs. What it returns is
+  // the picture unchanged — the same bytes whoever asks — so any cache may keep
+  // it a day, and the declaration says why.
+  defineRoute({
+    method: 'get', path: '/image-proxy', access: 'admin',
+    cache: { maxAge: 86400, shared: 'a Wikimedia Commons picture, unchanged: public data with no caller in it' },
+    query: imageProxyQuerySchema,
+    response: IMAGE,
+    handler: proxyImage,
+  }),
+  // The import's routes (`routes/adminImportRoutes.ts`) and its review
+  // screen's (`routes/adminImportReviewRoutes.ts`).
   ...adminImportRoutes,
+  ...adminImportReviewRoutes,
 ];
