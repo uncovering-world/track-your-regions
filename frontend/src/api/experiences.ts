@@ -12,7 +12,11 @@ import type {
   ExperienceTreasuresResponse, NewBadgesSeen, RegionExperienceCounts, RegionExperienceLocationsResponse,
   SiteFindsResponse,
 } from '@tyr/shared/api';
-import { API_URL, fetchJson, authFetchJson } from './fetchUtils';
+import {
+  getExperiencesById, getExperiencesByIdFinds, getExperiencesByIdLocations, getExperiencesByIdTreasures,
+  getExperiencesByRegionByRegionId, getExperiencesByRegionByRegionIdLocations, getExperiencesKinds,
+  getExperiencesRegionCounts, getExperiencesSearch, postExperiencesNewBadgesSeen,
+} from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -39,7 +43,7 @@ export async function fetchExperience(id: number): Promise<ExperienceDetail> {
   // experience assigned only to hidden world views comes back with an empty
   // region list rather than an incomplete one, and the documented admin bypass
   // is nominal.
-  return authFetchJson<ExperienceDetail>(`${API_URL}/api/experiences/${id}`);
+  return getExperiencesById(id);
 }
 
 /**
@@ -57,17 +61,13 @@ export async function fetchExperiencesByRegion(
     includeLost?: boolean;
   }
 ): Promise<ExperiencesByRegionResponse> {
-  const params = new URLSearchParams();
-  if (options?.includeChildren === false) params.set('includeChildren', 'false');
-  if (options?.limit) params.set('limit', String(options.limit));
-  if (options?.offset) params.set('offset', String(options.offset));
-  if (options?.includeLost) params.set('includeLost', 'true');
-
-  const query = params.toString();
-  const querySuffix = query ? `?${query}` : '';
-  return authFetchJson<ExperiencesByRegionResponse>(
-    `${API_URL}/api/experiences/by-region/${regionId}${querySuffix}`
-  );
+  // Each is sent only when it moves off the route's default.
+  return getExperiencesByRegionByRegionId(regionId, {
+    includeChildren: options?.includeChildren === false ? 'false' : undefined,
+    limit: options?.limit || undefined,
+    offset: options?.offset || undefined,
+    includeLost: options?.includeLost ? 'true' : undefined,
+  });
 }
 
 /**
@@ -81,14 +81,14 @@ export async function searchExperiences(
   query: string,
   limit = 20
 ): Promise<ExperienceSearch> {
-  return fetchJson(`${API_URL}/api/experiences/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+  return getExperiencesSearch({ q: query, limit });
 }
 
 /**
  * List the kinds a traveller browses by (#819)
  */
 export async function fetchExperienceKinds(): Promise<ExperienceKinds> {
-  return fetchJson<ExperienceKinds>(`${API_URL}/api/experiences/kinds`);
+  return getExperiencesKinds();
 }
 
 /**
@@ -99,13 +99,12 @@ export async function fetchExperienceLocations(
   experienceId: number,
   regionId?: number
 ): Promise<ExperienceLocationsResponse> {
-  const params = regionId ? `?regionId=${regionId}` : '';
   // Guarded on `regionId` like the batch below, but conditionally: the guard
   // engages only when one is passed and waves the request through when it is
   // absent. No call site passes one today — both callers want an experience's
   // locations, which is the only way to get them — so the header keeps this
   // route correct if a caller starts rather than covering one that exists.
-  return authFetchJson<ExperienceLocationsResponse>(`${API_URL}/api/experiences/${experienceId}/locations${params}`);
+  return getExperiencesByIdLocations(experienceId, regionId ? { regionId } : undefined);
 }
 
 /**
@@ -116,29 +115,25 @@ export async function fetchRegionExperienceLocations(
   regionId: number,
   options?: { includeChildren?: boolean; includeLost?: boolean }
 ): Promise<RegionExperienceLocationsResponse> {
-  const params = new URLSearchParams();
-  if (options?.includeChildren === false) params.set('includeChildren', 'false');
-  // Has to follow the list. A row the list is showing but this batch is not
+  // `includeLost` has to follow the list. A row the list is showing but this batch is not
   // arrives with no markers and a confident "0/N in region" — the denominator
   // comes from the experience, the numerator from here.
-  if (options?.includeLost) params.set('includeLost', 'true');
-  const query = params.toString();
-  const querySuffix = query ? `?${query}` : '';
   // Authenticated for the same reason as fetchExperiencesByRegion, plus a
   // sharper one: the route names its region's world view as its `scope`, and a
   // hidden world view answers an anonymous caller with 404. Sent unauthenticated, the batch
   // failed for every experience in the region at once, and each row rendered the
   // absence as `0/N in region` — the count comes from this response while the
   // total falls back to `experience.location_count`.
-  return authFetchJson<RegionExperienceLocationsResponse>(
-    `${API_URL}/api/experiences/by-region/${regionId}/locations${querySuffix}`
-  );
+  return getExperiencesByRegionByRegionIdLocations(regionId, {
+    includeChildren: options?.includeChildren === false ? 'false' : undefined,
+    includeLost: options?.includeLost ? 'true' : undefined,
+  });
 }
 
 /**
  * Get treasures (artworks, artifacts) for an experience
  *
- * Authenticated, not `fetchJson`: `/:id/treasures` widens three
+ * It must carry the session's token: `/:id/treasures` widens three
  * `curation_state` predicates (`$2::boolean OR …`) for a curator or admin
  * whose scope reaches the experience (`maySeeUnreadExperience`), and an
  * unauthenticated request cannot carry that scope at all — the boolean is
@@ -149,7 +144,7 @@ export async function fetchRegionExperienceLocations(
 export async function fetchExperienceTreasures(
   experienceId: number
 ): Promise<ExperienceTreasuresResponse> {
-  return authFetchJson<ExperienceTreasuresResponse>(`${API_URL}/api/experiences/${experienceId}/treasures`);
+  return getExperiencesByIdTreasures(experienceId);
 }
 
 /**
@@ -159,7 +154,7 @@ export async function fetchExperienceTreasures(
  * draw the list.
  */
 export async function fetchSiteFinds(experienceId: number): Promise<SiteFindsResponse> {
-  return authFetchJson<SiteFindsResponse>(`${API_URL}/api/experiences/${experienceId}/finds`);
+  return getExperiencesByIdFinds(experienceId);
 }
 
 /**
@@ -170,12 +165,10 @@ export async function fetchExperienceRegionCounts(
   worldViewId: number,
   parentRegionId?: number
 ): Promise<RegionExperienceCounts> {
-  const params = new URLSearchParams({ worldViewId: String(worldViewId) });
-  if (parentRegionId) params.set('parentRegionId', String(parentRegionId));
   // `worldViewId` is mandatory on this route and the visibility guard reads it,
   // so on a hidden world view every anonymous call 404s and the Discover tree
   // renders counts it never received.
-  return authFetchJson<RegionExperienceCounts>(`${API_URL}/api/experiences/region-counts?${params}`);
+  return getExperiencesRegionCounts({ worldViewId, parentRegionId: parentRegionId || undefined });
 }
 
 /**
@@ -186,8 +179,5 @@ export async function fetchExperienceRegionCounts(
  * impression. Only the first is kept server-side.
  */
 export async function markNewBadgesSeen(experienceIds: number[]): Promise<NewBadgesSeen> {
-  return authFetchJson(`${API_URL}/api/experiences/new-badges/seen`, {
-    method: 'POST',
-    body: JSON.stringify({ experienceIds }),
-  });
+  return postExperiencesNewBadgesSeen({ experienceIds });
 }
