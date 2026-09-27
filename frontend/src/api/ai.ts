@@ -6,7 +6,10 @@ import type {
   AIModels, AIStatus, BatchSuggestions, EscalationLevel, GroupDescriptions, GroupSuggestion, ModelSet,
   WebSearchModelSet,
 } from '@tyr/shared/api';
-import { authFetchJson, API_URL } from './fetchUtils.js';
+import {
+  getAiModels, getAiStatus, postAiGenerateGroupDescriptions, postAiModels, postAiModelsWebSearch,
+  postAiSuggestGroup, postAiSuggestGroupsBatch,
+} from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -20,34 +23,28 @@ export type {
  * Check if AI features are available
  */
 export async function checkAIStatus(): Promise<AIStatus> {
-  return authFetchJson<AIStatus>(`${API_URL}/api/ai/status`);
+  return getAiStatus();
 }
 
 /**
  * Get available models
  */
 export async function getAIModels(): Promise<AIModels> {
-  return authFetchJson<AIModels>(`${API_URL}/api/ai/models`);
+  return getAiModels();
 }
 
 /**
  * Set the current AI model
  */
 export async function setAIModel(modelId: string): Promise<ModelSet> {
-  return authFetchJson<ModelSet>(`${API_URL}/api/ai/models`, {
-    method: 'POST',
-    body: JSON.stringify({ modelId }),
-  });
+  return postAiModels({ modelId });
 }
 
 /**
  * Set the web search AI model
  */
 export async function setWebSearchModel(modelId: string): Promise<WebSearchModelSet> {
-  return authFetchJson<WebSearchModelSet>(`${API_URL}/api/ai/models/web-search`, {
-    method: 'POST',
-    body: JSON.stringify({ modelId }),
-  });
+  return postAiModelsWebSearch({ modelId });
 }
 
 /**
@@ -63,18 +60,15 @@ export async function suggestGroupForRegion(
   worldViewSource?: string,
   escalationLevel?: EscalationLevel
 ): Promise<GroupSuggestion> {
-  return authFetchJson<GroupSuggestion>(`${API_URL}/api/ai/suggest-group`, {
-    method: 'POST',
-    body: JSON.stringify({
-      regionPath,
-      regionName,
-      availableGroups,
-      parentRegion,
-      groupDescriptions,
-      useWebSearch,
-      worldViewSource,
-      escalationLevel,
-    }),
+  return postAiSuggestGroup({
+    regionPath,
+    regionName,
+    availableGroups,
+    parentRegion,
+    groupDescriptions,
+    useWebSearch,
+    worldViewSource,
+    escalationLevel,
   });
 }
 
@@ -90,17 +84,14 @@ export async function suggestGroupsForMultipleRegions(
   useWebSearch?: boolean,
   groupDescriptions?: Record<string, string>
 ): Promise<BatchSuggestions> {
-  return authFetchJson<BatchSuggestions>(`${API_URL}/api/ai/suggest-groups-batch`, {
-    method: 'POST',
-    body: JSON.stringify({
-      regions,
-      availableGroups,
-      parentRegion,
-      worldViewDescription,
-      worldViewSource,
-      useWebSearch,
-      groupDescriptions,
-    }),
+  return postAiSuggestGroupsBatch({
+    regions,
+    availableGroups,
+    parentRegion,
+    worldViewDescription,
+    worldViewSource,
+    useWebSearch,
+    groupDescriptions,
   });
 }
 
@@ -114,14 +105,11 @@ export async function generateGroupDescriptions(
   worldViewSource?: string,
   useWebSearch?: boolean
 ): Promise<GroupDescriptions> {
-  return authFetchJson<GroupDescriptions>(`${API_URL}/api/ai/generate-group-descriptions`, {
-    method: 'POST',
-    body: JSON.stringify({
-      groups,
-      parentRegion,
-      worldViewDescription,
-      worldViewSource,
-      useWebSearch,
-    }),
+  return postAiGenerateGroupDescriptions({
+    groups,
+    parentRegion,
+    worldViewDescription,
+    worldViewSource,
+    useWebSearch,
   });
 }
