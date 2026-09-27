@@ -29,6 +29,7 @@ npm run db:shell           # Open psql shell to active database
 npm run db:migrate         # Apply pending db/migrations/ files and record them (db:migrate:status to look first)
 npm run db:types           # Regenerate backend/src/db/schema.generated.ts from the schema (db:types:check is the gate)
 npm --prefix backend run api:types  # Regenerate packages/shared/src/api.generated.ts from the response schemas (backend/src/api/apiTypes.test.ts is the check)
+npm --prefix backend run api:openapi  # Regenerate packages/shared/src/openapi.generated.json, the OpenAPI 3.1 document, from the route declarations (backend/src/api/openApi.test.ts is the check; npm run lint:openapi lints it, ADR-0072)
 npm run help               # Full command reference (all other scripts: package.json)
 ```
 
@@ -65,7 +66,7 @@ Every open issue belongs on the org project board — https://github.com/orgs/un
 ## Architecture
 
 ### Stack
-Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile server. TypeScript everywhere. Raw `pool` with parameterized SQL for every query, row types generated from the schema in `backend/src/db/schema.generated.ts` (ADR-0064). An endpoint's success body is a Zod schema in `backend/src/api/responses/`, sent through `respond()`, and the web's types are generated from it into `@tyr/shared/api` (ADR-0066).
+Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile server. TypeScript everywhere. Raw `pool` with parameterized SQL for every query, row types generated from the schema in `backend/src/db/schema.generated.ts` (ADR-0064). An endpoint's success body is a Zod schema in `backend/src/api/responses/`, sent through `respond()`, and the web's types are generated from it into `@tyr/shared/api` (ADR-0066). Every route is a declaration (`defineRoute`, ADR-0071), mounted from `backend/src/routes/mounts.ts`, and the OpenAPI 3.1 document a native client is generated from is computed from those declarations into `packages/shared/src/openapi.generated.json`.
 
 ### Database
 - **Name**: `track_regions` (NOT `track_your_regions`)
