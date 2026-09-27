@@ -5,7 +5,7 @@
  * User visited endpoints are in userRoutes.ts
  */
 
-import { defineRoute, routerOf } from '../api/route.js';
+import { defineRoute } from '../api/route.js';
 import {
   AcceptSourceResult,
   AdmissionResult,
@@ -553,8 +553,3 @@ export const experienceCurationRoutes = [
     handler: removeExperienceFromRegion,
   }),
 ];
-
-// The reads first: none of them is a route of a method and a shape a curation
-// route below shares, and `routerOf` refuses any order in which one would
-// answer for another.
-export default routerOf([...experienceReadRoutes, ...experienceCurationRoutes]);

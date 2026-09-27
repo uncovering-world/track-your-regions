@@ -4,7 +4,7 @@
  * Every route is the editor's: `admin`, `no-store`.
  */
 
-import { defineRoute, routerOf } from '../api/route.js';
+import { defineRoute } from '../api/route.js';
 import {
   AIModels,
   AIStatus,
@@ -75,4 +75,3 @@ export const aiRoutes = [
   }),
 ];
 
-export default routerOf(aiRoutes);

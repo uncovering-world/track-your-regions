@@ -5,7 +5,7 @@
  * else gets 404, which each read that names one says in its `scope`. Every
  * write is `admin`.
  */
-import { defineRoute, NO_BODY, routerOf, stream } from '../api/route.js';
+import { defineRoute, NO_BODY, stream } from '../api/route.js';
 import {
   ComputationCancelled,
   ComputationStartResult,
@@ -379,4 +379,3 @@ export const worldViewRoutes = [
   }),
 ];
 
-export default routerOf(worldViewRoutes);
