@@ -6,10 +6,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * A wrong *current password* answers 401 and so does an expired access token,
  * and the right response to each is the opposite of the other: the first must
  * leave the session alone, the second must end it. That is the whole reason
- * this one function builds its request by hand instead of going through
- * `authFetchJson`, whose 401 handling assumes the second reading — and it is a
- * property nothing else records, so "simplifying" it back would pass every
- * other test in the repository.
+ * this call's token policy is `strict` (ADR-0073 decision 2) rather than the
+ * default `session`, whose 401 handling assumes the second reading — and it is
+ * a property nothing else in this module records, so "simplifying" the call
+ * back to the default fails here.
  *
  * The dead-session case is not hypothetical here: changing the password on one
  * device revokes every refresh token the account has, which is precisely what
