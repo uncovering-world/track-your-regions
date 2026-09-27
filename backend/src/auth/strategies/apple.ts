@@ -1,4 +1,5 @@
 import passport from 'passport';
+import { markConfigured } from './configured.js';
 // @ts-expect-error - passport-apple types may not be complete
 import AppleStrategy from 'passport-apple';
 import { findUserByEmail, findUserByProvider, createUser } from '../../services/authService.js';
@@ -128,4 +129,5 @@ export function configureAppleStrategy(): void {
       }
     )
   );
+  markConfigured('apple');
 }

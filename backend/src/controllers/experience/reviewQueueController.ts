@@ -35,19 +35,13 @@ import {
 } from './reviewQueuePredicates.js';
 import { heldFieldAnsweredSql } from './heldDecisions.js';
 import { withDangerFields } from './experienceDanger.js';
+import { PG_INTEGER_MAX } from '../../types/rowId.js';
 
 /** The request as `reviewQueueQuerySchema` leaves it. */
 type ReviewQueueQuery = z.output<typeof reviewQueueQuerySchema>;
 
 /** The words a `kind` chip may carry: the five classes and the three sub-kinds. */
 const KIND_WORDS = new Set<string>([...QUEUE_KINDS, ...WAITING_SUBS]);
-
-/**
- * The largest `experience_sources.id` there can be: the column is SERIAL, so
- * a bigger number names no source and, bound into an `int[]`, would be an error
- * from Postgres rather than a filter that matches nothing.
- */
-const MAX_SOURCE_ID = 2147483647;
 
 /**
  * The request's controls as the keys phase reads them.
@@ -68,7 +62,7 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
     q: query.q,
     sourceIds: query.source === undefined
       ? undefined
-      : words(query.source).map(Number).filter(id => id >= 1 && id <= MAX_SOURCE_ID),
+      : words(query.source).map(Number).filter(id => id >= 1 && id <= PG_INTEGER_MAX),
     kinds: words(query.kind).filter((k): k is QueueKind | WaitingSub => KIND_WORDS.has(k)),
     regionId: query.region,
     runId: query.run,

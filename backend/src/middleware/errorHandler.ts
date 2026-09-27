@@ -107,6 +107,24 @@ export function errorHandler(
     return;
   }
 
+  // A submitted number past its column's range (22003, numeric_value_out_of_range),
+  // or a character the database cannot store: a NUL byte in text (22021,
+  // character_not_in_repertoire). Both answer 400, as a value too long does
+  // above. Only the 22003 that quotes the value it refused is the request's:
+  // Postgres words a bound parameter's overflow `value "…" is out of range`,
+  // while an overflow of the query's own arithmetic, a `SUM(…)::int` past its
+  // type, says `integer out of range` and is the server's to answer as a 500.
+  // The ids are bounded at the boundary (`types/rowId.ts`), so reaching this
+  // branch for a number means a bound is missing.
+  if ('code' in err && err.code === '22003' && /^value ".*" is out of range/.test(err.message)) {
+    res.status(400).json({ error: 'A submitted number is outside the range this field allows.' });
+    return;
+  }
+  if ('code' in err && err.code === '22021') {
+    res.status(400).json({ error: 'A submitted value holds a character that cannot be stored, such as a NUL byte.' });
+    return;
+  }
+
   // A delete that would take a traveller's visit with it (#764). The foreign
   // key refuses it for every region writer; a writer that ran in one
   // transaction has rolled back, so the answer can say the edit was not made.

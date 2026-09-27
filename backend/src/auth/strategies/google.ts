@@ -1,4 +1,5 @@
 import passport from 'passport';
+import { markConfigured } from './configured.js';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { findUserByEmail, findUserByProvider, createUser } from '../../services/authService.js';
 import { maybePromoteToAdmin } from '../../services/adminBootstrap.js';
@@ -105,4 +106,5 @@ export function configureGoogleStrategy(): void {
       }
     )
   );
+  markConfigured('google');
 }

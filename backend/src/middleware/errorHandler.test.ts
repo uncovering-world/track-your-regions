@@ -124,6 +124,33 @@ describe('errorHandler', () => {
     expect(sent.body?.error).toBe('A submitted value is longer than this field allows.');
   });
 
+  it('answers a number past its column\'s range with 400, not the driver\'s text', () => {
+    // As the driver raises it for an id bound as a parameter past a Postgres
+    // integer, e.g. GET /api/experiences/9007199254740990 without the bound.
+    const err = Object.assign(new Error('value "9007199254740990" is out of range for type integer'), { code: '22003' });
+
+    const sent = handle(err);
+
+    expect(sent.status).toBe(400);
+    expect(sent.body?.error).toBe('A submitted number is outside the range this field allows.');
+  });
+
+  it('leaves an overflow of the query\'s own arithmetic a 500, since the caller sent nothing out of range', () => {
+    // As Postgres words it for SUM(…)::int past an integer.
+    const err = Object.assign(new Error('integer out of range'), { code: '22003' });
+
+    expect(handle(err).status).toBe(500);
+  });
+
+  it('answers a NUL byte in text with 400, not the driver\'s text', () => {
+    const err = Object.assign(new Error('invalid byte sequence for encoding "UTF8": 0x00'), { code: '22021' });
+
+    const sent = handle(err);
+
+    expect(sent.status).toBe(400);
+    expect(sent.body?.error).toContain('NUL');
+  });
+
   it('answers a delete that would take a traveller\'s visit with 409 and no driver text', () => {
     // As the driver raises it: code, the constraint's name, and a message that
     // names the tables — which the answer must not repeat (#764).
