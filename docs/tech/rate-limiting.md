@@ -60,7 +60,7 @@ Routes behind `requireAuth` + `requireAdmin` or `requireCurator` are **not** rat
 - Admin operations include long-running batch tasks (geometry computation, sync) where rate limiting could cause failures
 - The attack surface is negligible (requires compromised admin credentials)
 
-**Exempt by default:** `adminRoutes.ts`, `adminDeclaredRoutes.ts` and `adminImportRoutes.ts` (every route `admin`, declared or behind the mount guard), `divisionRoutes.ts` and `aiRoutes.ts` (every route declared `admin`), `viewRoutes.ts`, plus write operations in `worldViewRoutes.ts` and `experienceRoutes.ts` curation routes.
+**Exempt by default:** `adminDeclaredRoutes.ts`, `adminImportRoutes.ts`, `adminImportReviewRoutes.ts`, `divisionRoutes.ts` and `aiRoutes.ts` (every route declared `admin`), `viewRoutes.ts`, plus write operations in `worldViewRoutes.ts` and `experienceRoutes.ts` curation routes.
 
 The exemption is about the *attack* surface, and it stops applying when a request
 is expensive to the system regardless of who sends it. The exceptions are named here, and the
@@ -264,7 +264,7 @@ object after its commit exactly as its opposite does.
 
 CodeQL raises `js/missing-rate-limiting` on every route this section exempts, on
 either router — the curator ones in `experienceRoutes.ts` and the admin ones in
-`adminRoutes.ts`, `adminDeclaredRoutes.ts` and `adminImportRoutes.ts` — and each such alert is dismissed against this section. The
+`adminDeclaredRoutes.ts`, `adminImportRoutes.ts` and `adminImportReviewRoutes.ts` — and each such alert is dismissed against this section. The
 count is deliberately not written down, because it has already been wrong twice:
 once when a route was added to a row of this table, and once when this sentence
 outlived the route it counted.
@@ -296,19 +296,13 @@ at 60/min and leave the human alone, unless a single call is expensive on its ow
 (a re-match is 20–130s and discards its predecessor's output; a publish is one
 transaction). § 5 above records which routes this has been applied to and why.
 
-**Important:** A rate limiter runs **before** anything else a route does. A declared route (ADR-0071) names it in its declaration, and the registry puts it first in the chain:
+**Important:** A rate limiter runs **before** anything else a route does. A route (ADR-0071) names it in its declaration, and the registry puts it first in the chain:
 
 ```typescript
 defineRoute({
   method: 'get', path: '/example', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
   query: schema, response: Answer, handler,
 });
-```
-
-A route file not yet declared places it as the first middleware argument:
-
-```typescript
-router.get('/example', publicReadLimiter, validate(schema, 'query'), optionalAuth, handler);
 ```
 
 ## Technical details

@@ -47,7 +47,7 @@ For each rule (or the specific rule from $ARGUMENTS):
 - For password/crypto alerts: verify the actual algorithm and parameters used
 
 #### c. Check existing mitigations
-- Is there middleware that already addresses this? (e.g., `requireAuth`, `requireAdmin`, `validate()`)
+- Is there middleware that already addresses this? (e.g., a route declaration's `access` and schemas — `backend/src/api/route.ts`, ADR-0071 — or `requireAuth`)
 - Is the input already sanitized upstream?
 - Is the flagged code unreachable from user input?
 
