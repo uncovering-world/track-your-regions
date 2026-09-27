@@ -175,6 +175,13 @@ describe('renderApiTypes', () => {
         .toThrow(/tuple with a rest element/);
     });
 
+    it('renders a nullable primitive, which Zod emits as one schema of two types, and an array of it', () => {
+      const Names = z.strictObject({ name: z.string().nullable(), aliases: z.array(z.string().nullable()) });
+      expect(body(viaZod({ Names }))).toBe(
+        ['export interface Names {', '  name: string | null;', '  aliases: (string | null)[];', '}'].join('\n'),
+      );
+    });
+
     it('refuses a plain z.object, whose parse would strip an undeclared key and pass', () => {
       expect(() => renderApiTypes(viaZod({ Loose: z.object({ a: z.string() }) })))
         .toThrow(/Loose admits keys it does not declare/);
