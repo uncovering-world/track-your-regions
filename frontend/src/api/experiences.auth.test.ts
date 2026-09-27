@@ -5,8 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  *
  * The world view visibility check — a route's declared `scope` — answers 404,
  * not 401, when a world view has `is_public = false` and the caller is not an
- * admin. A read sent through the
- * unauthenticated `fetchJson` is therefore indistinguishable from a missing
+ * admin. A read sent without the token is therefore indistinguishable from a missing
  * region, and react-query stores the rejection as `data: undefined` rather than
  * surfacing it. The batch that fell into this returned nothing for every
  * experience in the region, and `ExperienceExpandedDetails` reported `0/N in
@@ -23,7 +22,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * `GET /api/experiences/:id` is public by design and does the filtering inline
  * — it returns every region assignment only to an admin — so it fails the same
  * way while never appearing in a search for the check. It is also the one most
- * likely to be undone, because dropping `authFetchJson` there reads as a
+ * likely to be undone, because sending it without the token reads as a
  * cleanup of a plainly public route, passes, and silently restores an empty
  * `regions[]`.
  */
@@ -39,7 +38,7 @@ import {
 } from './experiences';
 
 /**
- * A structurally valid JWT with a far-off `exp`. `authFetchJson` runs
+ * A structurally valid JWT with a far-off `exp`. `apiFetch` runs
  * `ensureFreshToken()` first, which decodes the token — an opaque string would
  * send it down the refresh path and the assertion would be about the refresh
  * call rather than about the request under test.
@@ -139,7 +138,7 @@ describe('the locations batch follows what the list is showing', () => {
 
   beforeEach(() => {
     // `makeToken()`, not an opaque string: an undecodable token sends
-    // `authFetchJson` down the refresh path, the shared mock answers the
+    // `apiFetch` down the refresh path, the shared mock answers the
     // refresh with this same body, and the request under test then goes out
     // with no Authorization header at all — inside the one file whose subject
     // is that header.
@@ -179,7 +178,7 @@ describe('the locations batch follows what the list is showing', () => {
  * experience — a different reason from the world-view-visibility group
  * above, so its own block rather than one more case in that one.
  *
- * Sent through the unauthenticated `fetchJson`, that boolean is always
+ * Sent without the token, that boolean is always
  * `false`: a curator opening a museum from its own "unread contents" card
  * saw exactly the published works an anonymous reader sees, with nothing on
  * screen to say the relaxation existed at all.
@@ -209,7 +208,7 @@ describe('the curator relaxation on gated treasures', () => {
   });
 
   it('leaves an anonymous reader\'s request unchanged: no token, no header', async () => {
-    // authFetchJson sends no Authorization header when there is no token —
+    // apiFetch sends no Authorization header when there is no token —
     // this is the regression to guard against, not just the fix above.
     await fetchExperienceTreasures(552);
 
