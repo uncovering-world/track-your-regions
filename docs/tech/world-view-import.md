@@ -463,7 +463,7 @@ What a model writes is read key by key before it is answered. A rule review's su
 
 ### WorldView Import (`/api/admin/wv-import/`)
 
-All require admin auth. Every route that answers with a JSON body — the import's start, status and cancel, and the match review's reads, decisions, per-region matchers, tree edits, coverage, finalize and rematch — is declared `admin` in `backend/src/routes/adminImportRoutes.ts` (ADR-0071), with the limiter it had: `expensiveAdminLimiter` on `rematch`, none on the rest. The colour-match and coverage streams, the cluster and water-crop images, the review callbacks and the geoshape proxy still list their middleware by hand in `backend/src/routes/adminRoutes.ts`, behind the `/api/admin` mount guard.
+All require admin auth. Every route that answers with a JSON body — the import's start, status and cancel, and the match review's reads, decisions, per-region matchers, tree edits, coverage, finalize and rematch — is declared `admin` in `backend/src/routes/adminImportRoutes.ts` (ADR-0071), with the limiter it had: `expensiveAdminLimiter` on `rematch`, none on the rest. The colour-match and coverage streams, the cluster and water-crop images, the review answers and the geoshape proxy are declared `admin` in `backend/src/routes/adminImportReviewRoutes.ts`, with no limiter: the streams and the geoshape say `private, no-cache` (`revalidate`), and the images `private, max-age=300`, since the editor draws one several times over a review.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -571,7 +571,7 @@ The edits that propose or reshape more at once answer through the same module:
 
 A verdict on suggestions has one writer per rule, whether it is given for one division or for a selection: `acceptDivisionsRejectRest` and `rejectDivisions` (`controllers/admin/wvImportMatchDecisions.ts`), each in one transaction. The single routes (`accept-and-reject`, `reject`) pass one division, and the batch routes pass the selection. After a rejection the region's status follows what is left: open suggestions make it `needs_review`, members `manual_matched`, and nothing `no_candidates`.
 
-**Every path the admin client calls is a route `adminRoutes.ts` registers.** `backend/src/routes/adminClientPaths.test.ts` reads each `/api/admin/…` path the modules in `frontend/src/api/admin/` spell, with its method, and fails on one the router does not register. A drifted path answers a 404 only when somebody presses its button, so nothing else notices it. The route declarations of #793 will give the paths one owner and retire the spec.
+**Every path the admin client calls is a declared route.** `backend/src/routes/adminClientPaths.test.ts` reads each `/api/admin/…` path the modules in `frontend/src/api/admin/` spell, with its method, and fails on one no route in `adminDeclaredRoutes` matches. A drifted path answers a 404 only when somebody presses its button, so nothing else notices it. The server side has one owner now (ADR-0071); the client still spells its paths by hand, which is what the spec is for.
 
 ## Backend Structure
 
