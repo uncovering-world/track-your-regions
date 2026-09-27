@@ -153,18 +153,40 @@ export async function requireFreshToken(): Promise<string | null> {
   return tokenNotExpired(accessToken) ? accessToken : null;
 }
 
-function buildJsonHeaders(options?: RequestInit): Headers {
+/**
+ * A request's headers, with the token given. A caller's own `Authorization`
+ * wins: `getCurrentUser` sends the token the OAuth flow has just received,
+ * before it is the in-memory one (ADR-0073 decision 2).
+ */
+function buildJsonHeaders(options?: RequestInit, token: string | null = accessToken): Headers {
   const headers = new Headers(options?.headers);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
   return headers;
+}
+
+/**
+ * A refused request: its message is the server's sentence where it sent one,
+ * and `code` the machine-readable reason some answers carry
+ * (`EMAIL_NOT_VERIFIED`).
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    /** The server's own sentence, absent where the answer carried none. */
+    readonly sentence: string | undefined,
+    readonly code: string | undefined,
+  ) {
+    super(message);
+  }
 }
 
 async function parseJsonResponse<T>(response: Response, noContent: () => T): Promise<T> {
   if (response.status === 204) return noContent();
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
+    const error: { error?: string; code?: string } = await response.json().catch(() => ({}));
+    throw new ApiError(error.error || `HTTP ${response.status}`, response.status, error.error, error.code);
   }
   return response.json();
 }
@@ -199,17 +221,53 @@ async function authFetchParsed<T>(url: string, options: RequestInit | undefined,
 }
 
 /**
+ * How a call carries the session's token, before the request and on a 401
+ * (ADR-0073 decision 2):
+ * - `session`, the default: refreshed before the call when it is about to
+ *   expire, and refreshed once more and retried on a 401;
+ * - `strict`: `requireFreshToken()` before the call, and a spent token ends the
+ *   session without sending anything; a 401 is the endpoint's own answer
+ *   (`changePassword`, whose 401 means a wrong current password);
+ * - `as-held`: the token in hand, or none, never freshened and never refreshed
+ *   (the calls that need no session, and logout, which must not rotate the
+ *   cookie it revokes).
+ */
+export type TokenPolicy = 'session' | 'strict' | 'as-held';
+
+/** What the generated client passes on: a request, and the call's token policy. */
+export interface ApiRequestInit extends RequestInit {
+  tokenPolicy?: TokenPolicy;
+}
+
+const SESSION_EXPIRED = 'Your session has expired. Please sign in again.';
+
+/**
  * The one fetch the generated client calls for every request (ADR-0073).
  *
  * Orval passes the path the OpenAPI document names, with its query string, and
- * the method, headers and body; this adds the origin and does what
- * `authFetchJson` does - the in-memory token, a refresh before a call and once
- * more on a 401, the server's error sentence - so a call moved to the generated
- * client behaves as it did. A 204 is `undefined`, which the generated types
- * already allow wherever the document says the route may answer one.
+ * the method, headers and body; this adds the origin, the cookies and the
+ * token by the call's policy, and throws an `ApiError` with the server's
+ * sentence. A 204 is `undefined`, which the generated types already allow
+ * wherever the document says the route may answer one. The refresh cookie is
+ * scoped to `/api/auth`, so `credentials: 'include'` sends it there alone.
  */
-export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  return authFetchParsed<T>(`${API_URL}${path}`, options, () => undefined as T);
+export async function apiFetch<T>(path: string, options: ApiRequestInit = {}): Promise<T> {
+  const { tokenPolicy = 'session', ...init } = options;
+  const url = `${API_URL}${path}`;
+  const request: RequestInit = { ...init, credentials: 'include' };
+  const noContent = () => undefined as T;
+  if (tokenPolicy === 'session') return authFetchParsed<T>(url, request, noContent);
+  if (tokenPolicy === 'strict') {
+    const token = await requireFreshToken();
+    if (!token) {
+      // The event authFetchJson fires on a dead session, so the app leaves the
+      // signed-in state once rather than sitting in a phantom one.
+      window.dispatchEvent(new CustomEvent('auth:session-expired'));
+      throw new Error(SESSION_EXPIRED);
+    }
+    return parseJsonResponse<T>(await fetch(url, { ...request, headers: buildJsonHeaders(init, token) }), noContent);
+  }
+  return parseJsonResponse<T>(await fetch(url, { ...request, headers: buildJsonHeaders(init) }), noContent);
 }
 
 /**
