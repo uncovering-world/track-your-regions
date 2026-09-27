@@ -153,29 +153,6 @@ export async function requireFreshToken(): Promise<string | null> {
   return tokenNotExpired(accessToken) ? accessToken : null;
 }
 
-/**
- * Basic fetch without auth
- */
-export async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    ...options,
-  });
-
-  if (response.status === 204) {
-    return [] as unknown as T;
-  }
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
-  }
-
-  return response.json();
-}
-
 function buildJsonHeaders(options?: RequestInit): Headers {
   const headers = new Headers(options?.headers);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
@@ -199,17 +176,6 @@ async function parseJsonResponse<T>(response: Response, noContent: () => T): Pro
 export async function authFetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   // A 204 reads as an empty list: what the list reads answer when they have nothing.
   return authFetchParsed<T>(url, options, () => [] as unknown as T);
-}
-
-/**
- * An authenticated read whose endpoint answers 204 when there is nothing to
- * send, as the geometry reads do for a region or a division with no stored
- * outline. The 204 reads as null here, never as the empty array
- * `authFetchJson` makes of it, which is truthy and has none of the answer's
- * keys.
- */
-export async function authFetchOptionalJson<T>(url: string, options?: RequestInit): Promise<T | null> {
-  return authFetchParsed<T | null>(url, options, () => null);
 }
 
 async function authFetchParsed<T>(url: string, options: RequestInit | undefined, noContent: () => T): Promise<T> {
