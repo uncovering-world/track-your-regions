@@ -2331,7 +2331,10 @@ export interface CreateManualExperienceBody {
   name: string;
   /** @maxLength 1000 */
   shortDescription?: string;
-  /** @maxLength 100 */
+  /**
+     * The type within the kind the place is created under, never the kind itself, which is `kindId`.
+     * @maxLength 100
+     */
   type?: string;
   /**
      * @minimum -180
