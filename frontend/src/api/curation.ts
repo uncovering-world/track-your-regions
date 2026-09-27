@@ -13,8 +13,17 @@ import type {
   LocationStateResult, ManualExperienceCreated, PublishResult, RefuseArrivalResult,
   RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from '@tyr/shared/api';
-import { API_URL, authFetchJson } from './fetchUtils';
-import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
+import {
+  deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
+  getExperiencesByIdCurationLog, patchExperiencesByIdEdit, patchExperiencesByIdWorksByTreasureIdEdit,
+  patchExperiencesLocationsByLocationIdEdit, postExperiences, postExperiencesByIdAcceptSource,
+  postExperiencesByIdAdmission, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
+  postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
+  postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
+  postExperiencesByIdUnrefuseContents, postExperiencesByIdUnreject, postExperiencesLocationsByLocationIdState,
+  type CreateManualExperienceBody, type DeclineHeldBody, type EditExperienceBody, type EditLocationBody,
+  type EditWorkBody, type ExperienceAdmissionBody, type LifecycleStateBody, type RefuseContentsBody,
+} from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -35,10 +44,7 @@ export async function rejectExperience(
   regionId: number,
   reason?: string,
 ): Promise<RegionMembershipResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/reject`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId, reason }),
-  });
+  return postExperiencesByIdReject(experienceId, { regionId, reason });
 }
 
 /**
@@ -49,23 +55,13 @@ export async function rejectExperience(
  */
 export async function setExperienceState(
   experienceId: number,
-  decision: {
-    membership?: SourceMembership;
-    existence?: Existence;
-    note?: string;
-    /**
-     * The row as the card showed it, flag included. Compared under the write
-     * lock: a run that re-lists the object clears the flag without touching
-     * either axis, so the axes alone cannot tell a live question from a
-     * withdrawn one.
-     */
-    expected: { membership: SourceMembership; existence: Existence; flagged: boolean };
-  },
+  // `expected` is the row as the card showed it, flag included. Compared under
+  // the write lock: a run that re-lists the object clears the flag without
+  // touching either axis, so the axes alone cannot tell a live question from a
+  // withdrawn one.
+  decision: LifecycleStateBody,
 ): Promise<ExperienceStateResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/state`, {
-    method: 'POST',
-    body: JSON.stringify(decision),
-  });
+  return postExperiencesByIdState(experienceId, decision);
 }
 
 /**
@@ -82,17 +78,9 @@ export async function setExperienceState(
  */
 export async function setLocationState(
   locationId: number,
-  decision: {
-    membership?: SourceMembership;
-    existence?: Existence;
-    note?: string;
-    expected: { membership: SourceMembership; existence: Existence; flagged: boolean };
-  },
+  decision: LifecycleStateBody,
 ): Promise<LocationStateResult> {
-  return authFetchJson(`${API_URL}/api/experiences/locations/${locationId}/state`, {
-    method: 'POST',
-    body: JSON.stringify(decision),
-  });
+  return postExperiencesLocationsByLocationIdState(locationId, decision);
 }
 
 /**
@@ -107,12 +95,9 @@ export async function setLocationState(
  */
 export async function editLocation(
   locationId: number,
-  correction: { name?: string; latitude?: number; longitude?: number },
+  correction: EditLocationBody,
 ): Promise<LocationEditResult> {
-  return authFetchJson(`${API_URL}/api/experiences/locations/${locationId}/edit`, {
-    method: 'PATCH',
-    body: JSON.stringify(correction),
-  });
+  return patchExperiencesLocationsByLocationIdEdit(locationId, correction);
 }
 
 /**
@@ -144,12 +129,9 @@ export async function editLocation(
 export async function editWork(
   experienceId: number,
   treasureId: number,
-  correction: { name?: string; artists?: string[]; year?: number | null; imageUrl?: string },
+  correction: EditWorkBody,
 ): Promise<WorkEditResult> {
-  return authFetchJson(
-    `${API_URL}/api/experiences/${experienceId}/works/${treasureId}/edit`,
-    { method: 'PATCH', body: JSON.stringify(correction) },
-  );
+  return patchExperiencesByIdWorksByTreasureIdEdit(experienceId, treasureId, correction);
 }
 
 /**
@@ -169,12 +151,9 @@ export async function editWork(
  */
 export async function setExperienceAdmission(
   experienceId: number,
-  decision: { decision: 'confirm' | 'override'; note?: string },
+  decision: ExperienceAdmissionBody,
 ): Promise<AdmissionResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/admission`, {
-    method: 'POST',
-    body: JSON.stringify(decision),
-  });
+  return postExperiencesByIdAdmission(experienceId, decision);
 }
 
 /**
@@ -185,10 +164,7 @@ export async function acceptSourceValue(
   fields: string[],
   expectedSyncLogId: number,
 ): Promise<AcceptSourceResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/accept-source`, {
-    method: 'POST',
-    body: JSON.stringify({ fields, expectedSyncLogId }),
-  });
+  return postExperiencesByIdAcceptSource(experienceId, { fields, expectedSyncLogId });
 }
 
 /**
@@ -204,10 +180,7 @@ export async function declineSourceValue(
   fields: string[],
   expectedSyncLogId: number,
 ): Promise<DeclineSourceResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/decline-source`, {
-    method: 'POST',
-    body: JSON.stringify({ fields, expectedSyncLogId }),
-  });
+  return postExperiencesByIdDeclineSource(experienceId, { fields, expectedSyncLogId });
 }
 
 /**
@@ -226,13 +199,10 @@ export async function declineSourceValue(
  */
 export async function declineHeld(
   experienceId: number,
-  selection: { fields?: string[]; parts?: HeldSelectionPart[] },
+  selection: Omit<DeclineHeldBody, 'expectedSyncLogId'>,
   expectedSyncLogId: number,
 ): Promise<DeclineHeldResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/decline-held`, {
-    method: 'POST',
-    body: JSON.stringify({ ...selection, expectedSyncLogId }),
-  });
+  return postExperiencesByIdDeclineHeld(experienceId, { ...selection, expectedSyncLogId });
 }
 
 /**
@@ -252,6 +222,10 @@ export async function declineHeld(
  * Exported so the screens share it instead of each narrowing a local copy: a
  * component-local union agrees with the server until the day the server gains a
  * shape, and then agrees with nothing.
+ *
+ * Narrower than the document's `PublishExperienceBody`, which cannot say which
+ * fields go together; the generated call below holds this union assignable to
+ * it, so the two cannot drift apart.
  */
 export type PublishRequest =
   /** The object: its held fields, its own state, and every unread row under it. */
@@ -326,10 +300,7 @@ export async function publishExperience(
   experienceId: number,
   body: PublishRequest = {},
 ): Promise<PublishResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/publish`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return postExperiencesByIdPublish(experienceId, body);
 }
 
 /**
@@ -340,10 +311,7 @@ export async function refuseArrival(
   experienceId: number,
   note?: string,
 ): Promise<RefuseArrivalResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/refuse-arrival`, {
-    method: 'POST',
-    body: JSON.stringify({ note }),
-  });
+  return postExperiencesByIdRefuseArrival(experienceId, { note });
 }
 
 /**
@@ -352,12 +320,9 @@ export async function refuseArrival(
  */
 export async function refuseContents(
   experienceId: number,
-  body: { locationIds?: number[]; treasureIds?: number[]; note?: string } = {},
+  body: RefuseContentsBody = {},
 ): Promise<RefuseContentsResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/refuse-contents`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return postExperiencesByIdRefuseContents(experienceId, body);
 }
 
 /**
@@ -370,12 +335,9 @@ export async function refuseContents(
  */
 export async function unrefuseContents(
   experienceId: number,
-  body: { locationIds?: number[]; treasureIds?: number[]; note?: string } = {},
+  body: RefuseContentsBody = {},
 ): Promise<UnrefuseContentsResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/unrefuse-contents`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return postExperiencesByIdUnrefuseContents(experienceId, body);
 }
 
 /**
@@ -385,10 +347,7 @@ export async function unrejectExperience(
   experienceId: number,
   regionId: number,
 ): Promise<RegionMembershipResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/unreject`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId }),
-  });
+  return postExperiencesByIdUnreject(experienceId, { regionId });
 }
 
 /**
@@ -398,35 +357,14 @@ export async function assignExperienceToRegion(
   experienceId: number,
   regionId: number,
 ): Promise<RegionMembershipResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/assign`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId }),
-  });
+  return postExperiencesByIdAssign(experienceId, { regionId });
 }
 
 /**
  * Create a new manual experience under a chosen source
  */
-export async function createManualExperience(data: {
-  name: string;
-  shortDescription?: string;
-  /** The type within the kind the row is created under — never the kind itself, which is `kindId`. */
-  type?: string;
-  longitude: number;
-  latitude: number;
-  imageUrl?: string;
-  tags?: string[];
-  countryCode?: string;
-  countryName?: string;
-  regionId: number;
-  kindId?: number;
-  websiteUrl?: string;
-  wikipediaUrl?: string;
-}): Promise<ManualExperienceCreated> {
-  return authFetchJson(`${API_URL}/api/experiences`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
+export async function createManualExperience(data: CreateManualExperienceBody): Promise<ManualExperienceCreated> {
+  return postExperiences(data);
 }
 
 /**
@@ -434,21 +372,9 @@ export async function createManualExperience(data: {
  */
 export async function editExperience(
   experienceId: number,
-  data: {
-    name?: string;
-    shortDescription?: string;
-    description?: string;
-    type?: string;
-    imageUrl?: string;
-    tags?: string[];
-    websiteUrl?: string;
-    wikipediaUrl?: string;
-  },
+  data: EditExperienceBody,
 ): Promise<ExperienceEditResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/edit`, {
-    method: 'PATCH',
-    body: JSON.stringify(data),
-  });
+  return patchExperiencesByIdEdit(experienceId, data);
 }
 
 /**
@@ -457,7 +383,7 @@ export async function editExperience(
 export async function fetchCurationLog(
   experienceId: number,
 ): Promise<CurationLog> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/curation-log`);
+  return getExperiencesByIdCurationLog(experienceId);
 }
 
 /**
@@ -467,9 +393,7 @@ export async function unassignExperienceFromRegion(
   experienceId: number,
   regionId: number,
 ): Promise<RegionMembershipResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/assign/${regionId}`, {
-    method: 'DELETE',
-  });
+  return deleteExperiencesByIdAssignByRegionId(experienceId, regionId);
 }
 
 /**
@@ -481,7 +405,5 @@ export async function removeExperienceFromRegion(
   experienceId: number,
   regionId: number,
 ): Promise<RegionMembershipResult> {
-  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/remove-from-region/${regionId}`, {
-    method: 'DELETE',
-  });
+  return deleteExperiencesByIdRemoveFromRegionByRegionId(experienceId, regionId);
 }
