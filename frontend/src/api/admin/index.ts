@@ -13,6 +13,7 @@ import type {
 import {
   deleteAdminCuratorsByAssignmentId, deleteAdminSyncSourcesBySourceIdCache, getAdminCurators,
   getAdminCuratorsByUserIdActivity, getAdminExperiencesAssignRegionsStatus, getAdminExperiencesCountsByRegion,
+  getAdminImageProxy,
   getAdminSyncLogs, getAdminSyncLogsByLogId, getAdminSyncLogsByLogIdChanges, getAdminSyncSources,
   getAdminSyncSourcesBySourceIdCache, getAdminSyncSourcesBySourceIdStatus, getAdminUsersSearch, postAdminCurators,
   postAdminExperiencesAssignRegions, postAdminExperiencesAssignRegionsCancel, postAdminSyncSourcesBySourceIdCancel,
@@ -307,4 +308,16 @@ export async function searchUsers(
   query: string,
 ): Promise<UserSearchResults> {
   return getAdminUsersSearch({ q: query });
+}
+
+// =============================================================================
+// Image Proxy
+// =============================================================================
+
+/**
+ * A picture fetched through the backend, so a canvas can read its pixels: a
+ * Wikimedia file drawn straight from its host taints the canvas (CORS).
+ */
+export async function fetchImageViaProxy(url: string): Promise<Blob> {
+  return getAdminImageProxy({ url });
 }

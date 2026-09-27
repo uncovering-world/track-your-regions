@@ -188,6 +188,8 @@ async function parseJsonResponse<T>(response: Response, noContent: () => T): Pro
     const error: { error?: string; code?: string } = await response.json().catch(() => ({}));
     throw new ApiError(error.error || `HTTP ${response.status}`, response.status, error.error, error.code);
   }
+  // An image route answers a picture, which the generated types call a Blob.
+  if (response.headers?.get('Content-Type')?.startsWith('image/')) return response.blob() as Promise<T>;
   return response.json();
 }
 

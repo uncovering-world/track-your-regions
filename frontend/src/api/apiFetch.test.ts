@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { API_URL, apiFetch, setAccessToken } from './fetchUtils';
 import { AuthError, login } from './auth';
+import { fetchImageViaProxy } from './admin';
 import {
   getExperiencesReviewQueue, postExperiencesReviewAnswer, putExperiencesReviewSetAsideBySyncLogId,
 } from './client.generated';
@@ -153,5 +154,30 @@ describe('apiFetch token policies', () => {
     const refused = await login({ email: 'a@b.test', password: 'x' }).catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(AuthError);
     expect(refused).toMatchObject({ message: 'Please verify your email first', code: 'EMAIL_NOT_VERIFIED' });
+  });
+});
+
+/**
+ * An image route answers a picture, not JSON. The editor's canvas reads its
+ * pixels through the proxy, so `apiFetch` hands the Blob back as it came.
+ */
+describe('apiFetch on an image answer', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reads an image/* answer as a Blob, with the source URL in the query', async () => {
+    const picture = new Blob(['png-bytes'], { type: 'image/png' });
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true, status: 200, headers: new Headers({ 'Content-Type': 'image/png' }), blob: async () => picture,
+      json: async () => { throw new Error('not JSON'); },
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const source = 'https://upload.wikimedia.org/wikipedia/commons/a/a1/Map of Europe.png';
+    await expect(fetchImageViaProxy(source)).resolves.toBe(picture);
+    const url = new URL(String(fetchSpy.mock.calls[0][0]));
+    expect(url.pathname).toBe('/api/admin/image-proxy');
+    expect(url.searchParams.get('url')).toBe(source);
   });
 });
