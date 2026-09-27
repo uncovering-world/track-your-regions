@@ -5,7 +5,10 @@
 import type {
   ExtractionAnswer, ExtractionCancelled, ExtractionStarted, ExtractionStatus, WikivoyageCacheDeleted,
 } from '@tyr/shared/api';
-import { authFetchJson } from '../fetchUtils';
+import {
+  deleteAdminWvExtractCachesByName, getAdminWvExtractStatus, postAdminWvExtractAnswer, postAdminWvExtractCancel,
+  postAdminWvExtractStart,
+} from '../client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -14,8 +17,6 @@ export type {
   ExtractionAnswer, ExtractionCancelled, ExtractionStarted, ExtractionStatus, ImportedWorldView, InterviewQuestion,
   PendingQuestion, RegionPreview, WikivoyageCache, WikivoyageCacheDeleted,
 } from '@tyr/shared/api';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // =============================================================================
 // API calls
@@ -29,22 +30,17 @@ export async function startWikivoyageExtraction(
   name: string,
   cacheFile?: string | null,
 ): Promise<ExtractionStarted> {
-  return authFetchJson<ExtractionStarted>(`${API_URL}/api/admin/wv-extract/start`, {
-    method: 'POST',
-    body: JSON.stringify({ name, cacheFile }),
-  });
+  return postAdminWvExtractStart({ name, cacheFile });
 }
 
 /** Poll extraction status */
 export async function getExtractionStatus(): Promise<ExtractionStatus> {
-  return authFetchJson<ExtractionStatus>(`${API_URL}/api/admin/wv-extract/status`);
+  return getAdminWvExtractStatus();
 }
 
 /** Cancel a running extraction */
 export async function cancelExtraction(): Promise<ExtractionCancelled> {
-  return authFetchJson<ExtractionCancelled>(`${API_URL}/api/admin/wv-extract/cancel`, {
-    method: 'POST',
-  });
+  return postAdminWvExtractCancel();
 }
 
 /**
@@ -61,15 +57,10 @@ export async function answerExtractionQuestion(
   answer?: string,
   ruleId?: number,
 ): Promise<ExtractionAnswer> {
-  return authFetchJson<ExtractionAnswer>(`${API_URL}/api/admin/wv-extract/answer`, {
-    method: 'POST',
-    body: JSON.stringify({ questionId, action, answer, ruleId }),
-  });
+  return postAdminWvExtractAnswer({ questionId, action, answer, ruleId });
 }
 
 /** Delete a cache file */
 export async function deleteCacheFile(name: string): Promise<WikivoyageCacheDeleted> {
-  return authFetchJson<WikivoyageCacheDeleted>(`${API_URL}/api/admin/wv-extract/caches/${encodeURIComponent(name)}`, {
-    method: 'DELETE',
-  });
+  return deleteAdminWvExtractCachesByName(name);
 }

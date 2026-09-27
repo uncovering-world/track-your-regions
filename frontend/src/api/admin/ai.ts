@@ -1,8 +1,12 @@
 import type {
-  AISettings, AISettingSaved, AIUsageSummary, HierarchyReviewResult, LearnedRule, LearnedRuleDeleted, LearnedRules,
-  PricingUpdated, ReviewSuggestion, ReviewSuggestionApplied, RuleReviewResult,
+  AISettings, AIUsageSummary, HierarchyReviewResult, LearnedRule, LearnedRules, PricingUpdated, ReviewSuggestion,
+  ReviewSuggestionApplied, RuleReviewResult,
 } from '@tyr/shared/api';
-import { authFetchJson } from '../fetchUtils';
+import {
+  deleteAdminAiRulesById, getAdminAiRules, getAdminAiSettings, getAdminAiUsage, postAdminAiHierarchyReviewByWorldViewId,
+  postAdminAiRules, postAdminAiRulesApplyReview, postAdminAiRulesReview, postAdminAiUpdatePricing,
+  putAdminAiSettingsByKey,
+} from '../client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -13,51 +17,40 @@ export type {
   ReviewSuggestion, ReviewSuggestionApplied, RuleReviewResult,
 } from '@tyr/shared/api';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
-
 export async function getAISettings(): Promise<AISettings> {
-  return authFetchJson<AISettings>(`${API_URL}/api/admin/ai/settings`);
+  return getAdminAiSettings();
 }
 
 export async function updateAISetting(key: string, value: string): Promise<void> {
-  await authFetchJson<AISettingSaved>(`${API_URL}/api/admin/ai/settings/${encodeURIComponent(key)}`, {
-    method: 'PUT',
-    body: JSON.stringify({ value }),
-  });
+  await putAdminAiSettingsByKey(key, { value });
 }
 
 export async function getAIUsage(): Promise<AIUsageSummary> {
-  return authFetchJson<AIUsageSummary>(`${API_URL}/api/admin/ai/usage`);
+  return getAdminAiUsage();
 }
 
 export async function updatePricing(): Promise<PricingUpdated> {
-  return authFetchJson<PricingUpdated>(`${API_URL}/api/admin/ai/update-pricing`, { method: 'POST' });
+  return postAdminAiUpdatePricing();
 }
 
 export async function getLearnedRules(): Promise<LearnedRules> {
-  return authFetchJson<LearnedRules>(`${API_URL}/api/admin/ai/rules`);
+  return getAdminAiRules();
 }
 
 export async function addLearnedRule(feature: string, ruleText: string, context?: string): Promise<LearnedRule> {
-  return authFetchJson<LearnedRule>(`${API_URL}/api/admin/ai/rules`, {
-    method: 'POST',
-    body: JSON.stringify({ feature, ruleText, context }),
-  });
+  return postAdminAiRules({ feature, ruleText, context });
 }
 
 export async function deleteLearnedRule(id: number): Promise<void> {
-  await authFetchJson<LearnedRuleDeleted>(`${API_URL}/api/admin/ai/rules/${id}`, { method: 'DELETE' });
+  await deleteAdminAiRulesById(id);
 }
 
 export async function reviewLearnedRules(): Promise<RuleReviewResult> {
-  return authFetchJson<RuleReviewResult>(`${API_URL}/api/admin/ai/rules/review`, { method: 'POST' });
+  return postAdminAiRulesReview();
 }
 
 export async function applyRuleReviewSuggestion(suggestion: ReviewSuggestion): Promise<ReviewSuggestionApplied> {
-  return authFetchJson<ReviewSuggestionApplied>(`${API_URL}/api/admin/ai/rules/apply-review`, {
-    method: 'POST',
-    body: JSON.stringify(suggestion),
-  });
+  return postAdminAiRulesApplyReview(suggestion);
 }
 
 // =============================================================================
@@ -68,8 +61,5 @@ export async function runHierarchyReview(
   worldViewId: number,
   regionId?: number,
 ): Promise<HierarchyReviewResult> {
-  return authFetchJson<HierarchyReviewResult>(`${API_URL}/api/admin/ai/hierarchy-review/${worldViewId}`, {
-    method: 'POST',
-    body: JSON.stringify(regionId != null ? { regionId } : {}),
-  });
+  return postAdminAiHierarchyReviewByWorldViewId(worldViewId, regionId != null ? { regionId } : {});
 }
