@@ -21,7 +21,6 @@ export {
   fetchDivision,
   fetchSubdivisions,
   fetchDivisionAncestors,
-  fetchDivisionSiblings,
   fetchDivisionGeometry,
   searchDivisions,
 } from './divisions.js';

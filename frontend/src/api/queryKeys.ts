@@ -55,7 +55,7 @@ export const queryKeys = {
   divisions: {
     children: (worldViewId: Id, divisionId: Id) => ['divisions', worldViewId, divisionId] as const,
     metadata: (parentId: number | 'root' | null | undefined) => ['divisionMetadata', parentId] as const,
-    ancestors: (divisionId: Id, worldViewId: Id) => ['divisionAncestors', divisionId, worldViewId] as const,
+    ancestors: (divisionId: Id) => ['divisionAncestors', divisionId] as const,
   },
 
   search: {

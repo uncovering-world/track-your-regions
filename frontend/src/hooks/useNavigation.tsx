@@ -150,8 +150,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   // Update breadcrumbs when division changes (only for GADM hierarchy)
   const { data: ancestorData } = useQuery({
-    queryKey: queryKeys.divisions.ancestors(selectedDivision?.id, selectedWorldView?.id),
-    queryFn: () => fetchDivisionAncestors(selectedDivision!.id, selectedWorldView!.id),
+    queryKey: queryKeys.divisions.ancestors(selectedDivision?.id),
+    queryFn: () => fetchDivisionAncestors(selectedDivision!.id),
     enabled: !!selectedDivision && !!selectedWorldView && !isCustomWorldView,
   });
 
