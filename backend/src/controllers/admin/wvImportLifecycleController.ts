@@ -5,15 +5,11 @@
  * See ADR-0009 for the domain-split rationale.
  */
 
-import { Response } from 'express';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { respond } from '../../api/respond.js';
-import { Geoshape, type ImportCancelled, type ImportStarted, type ImportStatus } from '../../api/responses/worldViewImport.js';
+import type { Geoshape, ImportCancelled, ImportStarted, ImportStatus } from '../../api/responses/worldViewImport.js';
 import type { z } from 'zod/v4';
-import { badRequest, createError } from '../../middleware/errorHandler.js';
-import type { wvImportBodySchema } from '../../types/index.js';
-import { markPublicReferenceBody } from '../../middleware/cacheHeaders.js';
+import { badRequest, createError, failure } from '../../middleware/errorHandler.js';
+import type { wikidataIdParamSchema, wvImportBodySchema } from '../../types/index.js';
 import { geoshapeOf } from './wvImportAnswerRows.js';
 import {
   startImport,
@@ -34,15 +30,10 @@ import { userAgent } from '../../config/userAgent.js';
  * The maps.wikimedia.org endpoint requires User-Agent + Referer headers
  * that browsers won't send cross-origin, so we proxy through the backend.
  */
-export async function getGeoshape(req: AuthenticatedRequest, res: Response): Promise<void> {
-  // Wikimedia's boundary for a Wikidata id: the same bytes for every caller,
-  // admin-gated because the editor is the one that asks (see
-  // `middleware/cacheHeaders.ts`). The dialog re-requests it on every open.
-  markPublicReferenceBody(res);
-
-  const wikidataId = String(req.params.wikidataId);
-
-  let body: Geoshape;
+export async function getGeoshape(
+  { params: { wikidataId } }: { params: z.output<typeof wikidataIdParamSchema> },
+): Promise<Geoshape> {
+  let response: globalThis.Response;
   try {
     // Check local cache first (includes composite geoshapes built from children)
     const cached = await pool.query<{ geometry: unknown }>(
@@ -52,34 +43,29 @@ export async function getGeoshape(req: AuthenticatedRequest, res: Response): Pro
       [wikidataId],
     );
     if (cached.rows.length > 0 && cached.rows[0].geometry) {
-      body = geoshapeOf(wikidataId, [{ geometry: cached.rows[0].geometry }]);
-    } else {
-      // Fall back to Wikimedia
-      const url = `https://maps.wikimedia.org/geoshape?getgeojson=1&ids=${wikidataId}`;
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': userAgent(),
-          'Referer': 'https://en.wikivoyage.org/',
-        },
-      });
+      return geoshapeOf(wikidataId, [{ geometry: cached.rows[0].geometry }]);
+    }
+    // Fall back to Wikimedia
+    const url = `https://maps.wikimedia.org/geoshape?getgeojson=1&ids=${wikidataId}`;
+    response = await fetch(url, {
+      headers: {
+        'User-Agent': userAgent(),
+        'Referer': 'https://en.wikivoyage.org/',
+      },
+    });
 
-      if (!response.ok) {
-        res.status(response.status).json({ error: `Geoshape fetch failed: ${response.statusText}` });
-        return;
-      }
-
+    if (response.ok) {
       const geojson: unknown = await response.json();
       const features = typeof geojson === 'object' && geojson !== null && Array.isArray((geojson as { features?: unknown }).features)
         ? (geojson as { features: unknown[] }).features
         : [];
-      body = geoshapeOf(wikidataId, features);
+      return geoshapeOf(wikidataId, features);
     }
   } catch (err) {
     console.error('[WV Import] Geoshape fetch error for %s:', wikidataId, err);
-    res.status(502).json({ error: 'Failed to fetch geoshape from Wikimedia' });
-    return;
+    throw failure('Failed to fetch geoshape from Wikimedia', 502);
   }
-  respond(res, Geoshape, body);
+  throw failure(`Geoshape fetch failed: ${response.statusText}`, response.status);
 }
 
 // =============================================================================

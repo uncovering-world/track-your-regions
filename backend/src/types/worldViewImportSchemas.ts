@@ -197,6 +197,17 @@ export const wvImportManualClusterReviewBodySchema = z.object({
   palette: z.array(clusterPaletteEntrySchema).min(1).max(MAX_PALETTE_ENTRIES),
 });
 
+/**
+ * `POST /wv-import/cluster-review/:reviewId`: a painted overlay that replaces
+ * the automated clustering, or the ordinary decisions. The ordinary shape
+ * carries no `type`, so a `manual_clusters` body that fails its own schema is
+ * refused rather than read as an empty set of decisions.
+ */
+export const wvImportClusterReviewAnswerSchema = z.union([
+  wvImportManualClusterReviewBodySchema,
+  wvImportClusterReviewBodySchema.extend({ type: z.never().optional() }),
+]);
+
 export const wvImportGeoshapeMatchSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   scopeAncestorId: z.coerce.number().int().positive().optional(),

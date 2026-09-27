@@ -41,24 +41,16 @@ export interface AuthenticatedRequest extends Request {
  * Not everything behind this middleware is. Some of it is public reference
  * data that happens to be admin-gated — GADM's boundaries at full resolution
  * and Wikimedia's geoshape for a Wikidata id, gated because the editor is the
- * only caller rather than because the answer is anyone's own. Those reads say
- * `private, no-cache` back: a declared route by its `revalidate` policy
- * (`api/route.ts`, ADR-0071), the rest through `markPublicReferenceBody`
- * (`middleware/cacheHeaders.ts`), which is where that rule and its reasons
- * live. That is the shape every exception takes — set after the middleware,
- * where `setHeader` replaces: those, the streams' `private, no-cache`
- * (a declared stream's `revalidate` policy, the rest through
- * `markStreamBody`), the admin images' `max-age`. All but one
- * keep `private` deliberately, since replacing the value drops it along with
- * the `no-store`; the exception is the admin image proxy, which answers
- * `public, max-age=86400` because what it returns is a Wikimedia Commons
- * picture unchanged, with the reason on its own line. That division is
- * enforced rather than described: `no-restricted-syntax` in
- * `backend/eslint.config.mjs` fails any `Cache-Control` written here that
- * drops `private`, or that it cannot find `private` in at all, and
- * `middleware/cacheOverrides.test.ts`
- * holds the half a linter cannot — that the handlers which answer with
- * something other than `no-store` still say so.
+ * only caller rather than because the answer is anyone's own. Every route
+ * states its own policy (`api/route.ts`, ADR-0071), and the registry sets it
+ * after this middleware, where `setHeader` replaces: those reads and the
+ * streams say `private, no-cache` (`revalidate`), the admin images
+ * `private, max-age` (`{ maxAge }`). `shared-revalidate` belongs to `public`
+ * routes alone, and a gated route lets a shared cache keep its answer only
+ * by writing down why (`{ maxAge, shared: reason }`) — the admin image proxy,
+ * `public, max-age=86400`, because what it returns is a Wikimedia Commons
+ * picture unchanged. `routerOf` refuses the rest, and a route written around
+ * the registry with its path spelled out fails the backend's lint.
  * The header itself goes on ahead of the token check, so every
  * answer out of here carries it, the 401s included (#710, the `requireAuth`
  * half of #597's rule).

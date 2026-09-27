@@ -9,9 +9,9 @@
  * `" javascript:…"` reached `experiences.image_url` (#693), and how
  * `"java\tscript:…"` reached it past the trimmed spelling next door as well.
  *
- * The assertions sit on the schemas, not on a controller. `validate()` is what
- * every route runs and what replaces `req.body`, so a test that hands a
- * controller a hand-made body never touches the rule at all.
+ * The assertions sit on the schemas, not on a controller. The schema is what
+ * every route parses its body with, so a test that hands a controller a
+ * hand-made body never touches the rule at all.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -338,7 +338,7 @@ describe('a picture the server fetches for itself', () => {
     // The two readers are named rather than found, since a fetch of a stored
     // picture added elsewhere is a reader this list has to grow by. Neither
     // calls `fetch` itself: both go through `fetchPicture`.
-    for (const reader of ['routes/adminRoutes.ts', 'controllers/admin/wvImportMatchPipeline.ts']) {
+    for (const reader of ['controllers/admin/imageProxyController.ts', 'controllers/admin/wvImportMatchPipeline.ts']) {
       const text = read(reader);
       expect(fetchSites(text), `${reader} calls fetch itself`).toBe(0);
       expect(text.includes('fetchPicture('), `${reader} fetches through fetchPicture`).toBe(true);

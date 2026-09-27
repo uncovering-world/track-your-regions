@@ -25,8 +25,8 @@ import {
  * of the two widths instead.
  *
  * The value is judged, then rewritten to the form the parser read, and that is
- * what gets stored: `validate()` puts the parsed object back on the request, so
- * no consumer downstream sees a spelling this rule did not read. The width is
+ * what gets stored: the handler receives the object the schema parsed, so no
+ * consumer downstream sees a spelling this rule did not read. The width is
  * measured last, on that stored form, because percent-encoding can make it
  * longer than what arrived.
  */

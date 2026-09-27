@@ -132,19 +132,3 @@ function ordinaryAnswer(err: Error | ApiError, statusCode: number): Record<strin
     ...(err instanceof ReaderFacingError && 'code' in err && typeof err.code === 'string' ? { code: err.code } : {}),
   };
 }
-
-// Validation middleware factory
-export function validate(schema: z.ZodType, source: 'body' | 'query' | 'params' = 'body') {
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    const data = req[source];
-    const result = schema.safeParse(data);
-
-    if (!result.success) {
-      throw result.error;
-    }
-
-    // Replace with parsed data (includes defaults and transformations)
-    req[source] = result.data;
-    next();
-  };
-}

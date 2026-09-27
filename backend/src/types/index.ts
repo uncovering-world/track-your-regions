@@ -9,6 +9,7 @@ import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { foldLabel, tidyLabel } from '@tyr/shared/labels';
 import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
+import { pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE } from './urlSafety.js';
 import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.js';
 
 // The world-view import's request schemas live in their own module (#933) and
@@ -61,7 +62,7 @@ export const searchQuerySchema = z.object({
  * Tidied before it is judged — the edges trimmed, a run of whitespace inside
  * collapsed to one space (`tidyLabel`, the rule every importer's writer applies)
  * — so a title of nothing but spaces is refused as empty rather than stored,
- * and what `validate()` puts back on the request is what the row will hold. The
+ * and what the route's schema parses is what the row will hold. The
  * width is measured on the tidied form, which is never longer. Case, dashes and
  * accents are the curator's own and pass untouched.
  */
@@ -214,8 +215,8 @@ export const experienceSearchQuerySchema = z.object({
  * because the interesting half of a box is the antimeridian rule rather than
  * its syntax, and that rule already has an owner.
  *
- * `detail` and `folded` are named rather than inferred: `validate()` replaces
- * req.query with what Zod parsed and strips whatever it does not name, so a
+ * `detail` and `folded` are named rather than inferred: the handler receives
+ * what Zod parsed, which strips whatever it does not name, so a
  * parameter missing here is a parameter the handler never sees — which is the
  * note `experiencesByRegionQuerySchema` below carries for `includeLost`, and
  * the same mistake would silently pin this endpoint to its overview tier.
@@ -1169,3 +1170,15 @@ export const generateDescriptionsBodySchema = z.object({
 export type GetSubdivisionsQuery = z.infer<typeof getSubdivisionsQuerySchema>;
 export type GetGeometryQuery = z.infer<typeof getGeometryQuerySchema>;
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
+
+/**
+ * `GET /api/admin/image-proxy`: the picture to fetch. The proxy fetches on an
+ * admin's word from a query string, so the host rule is the one every
+ * server-side picture fetch shares (`pictureFetchUrl`, #706): the two Commons
+ * hosts, matched exactly — a suffix match would admit any `*.wikimedia.org` /
+ * `*.wikipedia.org` host. A refused first address is a 400; `fetchPicture`
+ * holds every hop after it.
+ */
+export const imageProxyQuerySchema = z.object({
+  url: z.string().refine((value) => pictureFetchUrl(value) !== null, { message: PICTURE_FETCH_URL_MESSAGE }),
+});

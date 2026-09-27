@@ -6,8 +6,9 @@
  * by folded label, so a stored list never names one person twice, and an edit
  * that could would put "Edward Savage and Edward Savage" on a card (#720).
  *
- * The bounds are here rather than in the controller because `validate()` is what
- * the route runs, and a value that reaches the controller has already passed.
+ * The bounds are here rather than in the controller because the route parses
+ * its body with this schema, and a value that reaches the controller has
+ * already passed.
  */
 
 import { describe, it, expect } from 'vitest';

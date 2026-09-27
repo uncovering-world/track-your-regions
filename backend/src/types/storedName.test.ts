@@ -5,8 +5,8 @@
  * its makers, a place's, a point's, and the one a created place starts with —
  * and each tidies it rather than taking the string as typed. Every
  * importer's writer tidies by `tidyLabel`; the schemas are the other door to
- * the same columns, and what `validate()` puts back on the request is what the
- * controller writes.
+ * the same columns, and what the route's schema parses is what the controller
+ * writes.
  */
 
 import { describe, it, expect } from 'vitest';

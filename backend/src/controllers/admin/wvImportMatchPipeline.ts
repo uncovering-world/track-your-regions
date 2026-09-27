@@ -11,9 +11,11 @@
  * file owns the stream, the working dimensions and the dispatch.
  */
 
-import { Response } from 'express';
+import type { Response } from 'express';
+import type { z } from 'zod/v4';
 import sharp from 'sharp';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { StreamExchange } from '../../api/route.js';
+import type { worldViewIdParamSchema, wvImportColorMatchSchema } from '../../types/index.js';
 import {
   loadRegionAndMap, loadKnownDivisionIds, resolveCountryIds, countChildRegions,
   loadAllDivisionIds, loadAssignedMap, loadCentroids, loadDivPathsAndBorders,
@@ -26,9 +28,8 @@ import { runJavaScriptPipeline } from './wvImportMatchJsBranch.js';
 import type {
   SendEvent, LogStep, PushDebugImage, ImageDims,
 } from './wvImportMatchContext.js';
-import { markStreamBody } from '../../middleware/cacheHeaders.js';
-import { ResponseShapeError, writeEvent } from '../../api/respond.js';
-import { ColorMatchEvent } from '../../api/responses/wvImportCvMatch.js';
+import { ResponseShapeError } from '../../api/respond.js';
+import type { ColorMatchEvent } from '../../api/responses/wvImportCvMatch.js';
 import { fetchPicture } from '../../services/pictureFetch.js';
 
 // =============================================================================
@@ -36,25 +37,20 @@ import { fetchPicture } from '../../services/pictureFetch.js';
 // =============================================================================
 
 /** Configure SSE response headers and return the raw sendEvent + logStep helpers. */
-function createSseHelpers(res: Response, startTime: number): { sendEvent: SendEvent; logStep: LogStep } {
-  res.setHeader('Content-Type', 'text/event-stream');
-  markStreamBody(res);
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  // CORS is handled globally by the cors() middleware (origin: FRONTEND_ORIGIN,
-  // credentials: true). Setting Access-Control-Allow-Origin: * here would both
-  // widen the policy AND break credentialed SSE (browsers reject '*' with
-  // credentials). The same-origin admin frontend uses ?token=… so we don't
-  // need a custom CORS header here.
-  res.flushHeaders();
-  res.socket?.setNoDelay(true);
-
+/**
+ * The stream's writers, over the `send` the registry opened it with (ADR-0071).
+ * CORS is the global middleware's (credentialed, one origin), so the stream
+ * sets no header of its own.
+ */
+function createSseHelpers(
+  send: (event: ColorMatchEvent) => void, res: Response, startTime: number,
+): { sendEvent: SendEvent; logStep: LogStep } {
   // A write to a stream the reviewer closed fails and is dropped; an event
   // that breaks its schema throws, outside production, like `respond()`.
   const sendEvent: SendEvent = (event) => {
     if (res.destroyed) return;
     try {
-      writeEvent(res, ColorMatchEvent, event);
+      send(event);
     } catch (err) {
       if (err instanceof ResponseShapeError) throw err;
     }
@@ -188,12 +184,15 @@ async function runSourceMapPipeline(p: SourceMapPipelineParams, res: Response): 
 // colorMatchDivisionsSSE — SSE-streaming CV pipeline orchestrator
 // =============================================================================
 
-export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const regionId = parseInt(String(req.query.regionId));
-
+export async function colorMatchDivisionsSSE(
+  { params: { worldViewId }, query: { regionId } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    query: z.output<typeof wvImportColorMatchSchema>;
+  },
+  { res, send }: StreamExchange<ColorMatchEvent>,
+): Promise<void> {
   const startTime = Date.now();
-  const { sendEvent, logStep } = createSseHelpers(res, startTime);
+  const { sendEvent, logStep } = createSseHelpers(send, res, startTime);
 
   // 1. Load region name + map URL
   const regionInfo = await loadRegionAndMap(regionId, worldViewId, sendEvent, res);
