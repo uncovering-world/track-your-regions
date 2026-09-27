@@ -255,6 +255,10 @@ export const GATES = [
   // need a database. They run inside the same isolated stack the smoke lane
   // stands up, so they hang off that job and share its inputs.
   { id: 'test:db', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'test:db'], job: 'smoke', setup: 'docker' },
+  // The API contract lane (#1091): Schemathesis against the backend of that
+  // same stack, as each of the fixture's accounts, reads only. It hangs off
+  // the smoke job for the stack it stands up, as the database lane does.
+  { id: 'test:api', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'test:api'], job: 'smoke', setup: 'docker' },
   { id: 'perf', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'perf:local'], job: 'perf', setup: 'docker' },
 ];
 
@@ -388,6 +392,8 @@ export function githubOutputs(decision) {
     // a smoke gate narrowed on its own would strand the step in a skipped job
     // that reports Success.
     job_test_db: hasGate('test:db'),
+    // The API contract lane, a step of the same job in the same shape.
+    job_test_api: hasGate('test:api'),
     job_perf: hasJob('perf'),
   };
   return [

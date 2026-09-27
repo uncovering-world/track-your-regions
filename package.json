@@ -52,6 +52,7 @@
     "test:coverage": "node scripts/test-report.mjs coverage",
     "test:e2e:smoke": "node scripts/test-report.mjs e2e-smoke",
     "test:db": "node scripts/test-report.mjs backend-db",
+    "test:api": "./scripts/test-stack.sh run-api-contract",
     "db:types": "./scripts/db-types.sh",
     "db:types:check": "./scripts/db-types.sh --check",
     "test:e2e:full": "node scripts/test-report.mjs e2e-full",

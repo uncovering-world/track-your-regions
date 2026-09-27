@@ -166,6 +166,7 @@ everything or the base was simply unknown.
 | `build` | stack | `app` | `npm run build && npm --prefix frontend run size` | build |
 | `test:e2e:smoke` | stack | `app` | `npm run test:e2e:smoke` | smoke |
 | `test:db` | stack | `app` | `npm run test:db` | smoke |
+| `test:api` | stack | `app` | `npm run test:api` | smoke |
 | `perf` | stack | `app` | `npm run perf:local` | perf |
 
 ## What the backend suite reads across the repository
@@ -268,12 +269,15 @@ rule packs that carry Python rules, so `cv-python/` is one of its inputs and a
 cv-python change pays for both. `trivy-image` no longer waits for `build`: it
 builds the image it scans, and a cv-python-only change asks for no build at all.
 
-The `e2e-smoke` job runs two lanes, because it is the one job in CI with a
+The `e2e-smoke` job runs three lanes, because it is the one job in CI with a
 database. The smoke step keeps the stack up when it is done
 (`TEST_REPORT_KEEP_ENV=1`), and the step after it runs `npm run test:db` — the
 database-backed backend specs (#522; which specs those are is
 `docs/tech/development-guide.md` § Tests that need a database) — against that
-same stack, then tears it down. The step reads `job_test_db`, a key of its own
+same stack, keeping it up too. The third runs `npm run test:api`, the API
+contract lane (§ The API contract), against the same backend; it reads
+`job_test_api` and is `continue-on-error` until #1099 decides the one kind of
+finding its first run left. The database step reads `job_test_db`, a key of its own
 in the shape of the `Semgrep SAST (Node)` and `Semgrep SAST (Python)` steps.
 Today it always equals `job_smoke`, since both gates read `app`; what
 `scripts/gates.test.mjs` pins is the containment, not the equality — a smoke
@@ -349,6 +353,41 @@ things:
 - a path kept and marked deprecated beside its replacement until the clients that call it are
   gone;
 - a pull request that says in its description which client versions the break strands.
+
+### The running API against the document
+
+`npm run test:api` (`scripts/test-stack.sh run-api-contract`, `scripts/api-contract.mjs`, #1091)
+holds the running backend to the document. Schemathesis, pinned by digest, generates requests from
+the document, valid ones and deliberately invalid ones, and fails on:
+- an undocumented 500;
+- a response that does not match its schema, or a content type the document does not name;
+- a valid request refused, or an invalid one accepted;
+- a route that answers without the token its access declares.
+
+It runs against the isolated test stack's backend and refuses any other address, the dev
+backend's port included:
+- **Four callers.** It runs once anonymously over the `public` and `optional` routes, then as the
+  fixture's traveller, curator and admin over `signed-in`, `curator` and `admin`. The fixture seeds
+  those accounts only into a database whose name says `test`, and their credentials are read from
+  the fixture module rather than restated.
+- **Reads only.** The stack is shared with the smoke and database lanes, and a write would change
+  what they read. The GET routes that start long work or call a service outside the stack (OAuth
+  redirects, Nominatim, Wikidata, Wikimedia, OpenAI, the geometry and colour-match streams, the
+  catalogue checks) are left out by name, each with its reason, in `EXCLUDED`.
+  `scripts/api-contract.test.mjs` fails on a name the document no longer has.
+- **One check left out.** `unsupported_method` expects 405 for a method a path does not declare.
+  Express answers 404, and a 405 with its `Allow` header is a behaviour to decide on its own.
+
+What the lane holds the API to includes three answers that are not a 500:
+- an id past a Postgres `integer` is refused at the boundary, every id being bounded in
+  `types/rowId.ts`;
+- a NUL byte in text is a 400;
+- Sign in with a provider the server has no credentials for is a 404.
+
+The traveller's run keeps under `authenticatedLimiter`, which, unlike the read limits, the
+environment cannot raise, so its probes meet the 401 they look for rather than a 429. One kind of
+finding is a policy rather than a defect: a query parameter a route does not declare is ignored
+rather than refused (#1099). Until that is decided, the lane's step in CI is `continue-on-error`.
 
 ## What the map does not reach
 
