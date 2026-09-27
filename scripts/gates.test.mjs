@@ -82,6 +82,7 @@ describe('what a change asks for', () => {
       'knip:shared',
       'lint:circular',
       'lint:openapi',
+      'api:client',
       'lint:pointers',
       'test:backend',
       'test:frontend',

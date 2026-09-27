@@ -226,6 +226,10 @@ export const GATES = [
   // while no native client exists, a failure once one does
   // (`scripts/openapi-breaking.mjs` holds the policy).
   { id: 'api:breaking', tier: 'check', inputs: ['api-contract'], command: ['npm', 'run', 'api:breaking'], job: 'check', setup: 'docker' },
+  // Orval regenerates the web client from the OpenAPI document and compares
+  // it with the committed one (ADR-0073): a document, a mutator or an Orval
+  // version changed without `npm --prefix frontend run api:client` fails here.
+  { id: 'api:client', tier: 'check', inputs: ['api-contract', 'app', 'node-deps'], command: ['npm', '--prefix', 'frontend', 'run', 'api:client:check'], job: 'check', setup: 'node' },
   // A line pointer — a file name with a line number after it — is refused
   // wherever living prose lives: a Markdown page, a code comment, a workflow's
   // `#` line. Its input is the `prose` class, which is the pass's own
