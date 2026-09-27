@@ -21,7 +21,7 @@ vi.mock('../../services/authService.js', () => ({
 }));
 
 import { pool, rollbackQuietly } from '../index.js';
-import { E2E_CURATOR, E2E_REGION_ID, E2E_WORLD_VIEW_ID, seedE2eFixture } from './e2eFixture.js';
+import { E2E_ADMIN, E2E_CURATOR, E2E_REGION_ID, E2E_TRAVELLER, E2E_WORLD_VIEW_ID, seedE2eFixture } from './e2eFixture.js';
 
 const mockedPoolQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -85,14 +85,14 @@ describe('seedE2eFixture', () => {
 
     const deleteExperiences = indexOf(client, /^DELETE FROM experiences WHERE id = ANY\(\$1::int\[\]\)/);
     const deleteWorldView = indexOf(client, /^DELETE FROM world_views WHERE id = \$1/);
-    const deleteCurator = indexOf(client, /^DELETE FROM users WHERE email = \$1/);
+    const deleteCurator = indexOf(client, /^DELETE FROM users WHERE email = ANY\(\$1::text\[\]\)/);
     const insertRegion = indexOf(client, /INSERT INTO regions \(id, world_view_id, name\)/);
     const regionGeom = indexOf(client, /UPDATE regions SET geom = ST_GeomFromText\(\$1, 4326\)/);
     const firstPlace = indexOf(client, /INSERT INTO experiences \(/);
 
     expect(calls(client)[deleteExperiences][1]).toEqual([[9001, 9002, 9003, 9004, 9005]]);
     expect(calls(client)[deleteWorldView][1]).toEqual([E2E_WORLD_VIEW_ID]);
-    expect(calls(client)[deleteCurator][1]).toEqual([E2E_CURATOR.email]);
+    expect(calls(client)[deleteCurator][1]).toEqual([[E2E_CURATOR.email, E2E_TRAVELLER.email, E2E_ADMIN.email]]);
     expect(Math.max(deleteExperiences, deleteWorldView, deleteCurator)).toBeLessThan(insertRegion);
     expect(insertRegion).toBeLessThan(regionGeom);
     expect(regionGeom).toBeLessThan(firstPlace);

@@ -69,6 +69,7 @@ jobs:
       job_trivy: ${{ steps.gates.outputs.job_trivy }}
       job_smoke: ${{ steps.gates.outputs.job_smoke }}
       job_test_db: ${{ steps.gates.outputs.job_test_db }}
+      job_test_api: ${{ steps.gates.outputs.job_test_api }}
       job_perf: ${{ steps.gates.outputs.job_perf }}
     steps:
       - uses: actions/checkout@v4
@@ -431,13 +432,13 @@ jobs:
       # service under test installs its own dependencies inside its own
       # container image (backend/Dockerfile, frontend/Dockerfile). Host
       # node_modules are never read on this path.
-      # TEST_REPORT_KEEP_ENV=1 leaves the stack up for the step below, which
+      # TEST_REPORT_KEEP_ENV=1 leaves the stack up for the steps below, which
       # would otherwise pay for a `down -v` and a cold `up` — a Postgres
       # re-initialised from the schema, two readiness waits and a re-seed — to
-      # reach a database this step has just finished with. The database lane's
-      # own run tears the stack down. When this step fails, the next is skipped
-      # and nothing runs that `down`; that costs nothing here, because the
-      # runner is thrown away with the containers on it.
+      # reach a database this step has just finished with. The API contract
+      # lane, the last step to read the stack, takes it down after itself;
+      # where that step is skipped, the runner is thrown away with the
+      # containers on it.
       - name: Run E2E smoke suite
         run: TEST_REPORT_KEEP_ENV=1 npm run test:e2e:smoke
 
@@ -452,7 +453,19 @@ jobs:
       # scripts/gates.test.mjs pins that the second never holds without the first.
       - name: Run the database-backed backend specs
         if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_db == 'true' }}
-        run: npm run test:db
+        # The stack stays up for the API contract lane after it, which takes
+        # it down.
+        run: TEST_REPORT_KEEP_ENV=1 npm run test:db
+
+      # The API contract lane (#1091): Schemathesis against this stack's
+      # backend, as each of the fixture's accounts, reads only. Reported but not
+      # yet blocking: its first run left one finding that is a policy rather
+      # than a defect, whether a query parameter a route does not declare is
+      # refused (#1099). With that decided, `continue-on-error` goes.
+      - name: Run the API contract lane
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_api == 'true' }}
+        continue-on-error: true
+        run: npm run test:api
 
       # `always()`, not `failure()`: a spec that passes on retry is flaky and
       # no longer fails the job (#447), so on a `failure()` condition the one

@@ -89,6 +89,7 @@ describe('what a change asks for', () => {
       'build',
       'test:e2e:smoke',
       'test:db',
+      'test:api',
       'perf',
     ]);
 
@@ -276,11 +277,12 @@ describe('the CI outputs', () => {
     'job_trivy',
     'job_smoke',
     'job_test_db',
+    'job_test_api',
     'job_perf',
     'reason',
   ];
 
-  it('prints the same fifteen lines in the same order, whatever changed', () => {
+  it('prints the same sixteen lines in the same order, whatever changed', () => {
     // CI reads these by name from a job-level `if:`. A key that appears only
     // sometimes is an `if:` that silently reads the empty string as false.
     const keysOf = (paths) =>
@@ -332,6 +334,9 @@ describe('the CI outputs', () => {
       // nothing, which is the failure this whole map exists to prevent.
       if (out.job_test_db === 'true') {
         expect(out.job_smoke, `${id} asks for test:db inside a smoke job it does not start`).toBe('true');
+      }
+      if (out.job_test_api === 'true') {
+        expect(out.job_smoke, `${id} asks for test:api inside a smoke job it does not start`).toBe('true');
       }
     }
   });

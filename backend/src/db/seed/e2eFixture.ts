@@ -40,6 +40,15 @@ export const E2E_REGION_NAME = 'Testland';
 // eslint-disable-next-line sonarjs/no-hardcoded-passwords -- a fixture credential for the isolated test stack, seeded only into a database whose name says `test`; the lane signs in through the dialog with it
 export const E2E_CURATOR = { email: 'curator@e2e.test', password: 'e2e-curator-password' };
 
+/**
+ * A traveller and an admin, for the API contract lane (#1091): it signs in as
+ * each role to reach the routes that role may read. Same terms as the curator.
+ */
+// eslint-disable-next-line sonarjs/no-hardcoded-passwords -- a fixture credential for the isolated test stack, seeded only into a database whose name says `test`
+export const E2E_TRAVELLER = { email: 'traveller@e2e.test', password: 'e2e-traveller-password' };
+// eslint-disable-next-line sonarjs/no-hardcoded-passwords -- a fixture credential for the isolated test stack, seeded only into a database whose name says `test`
+export const E2E_ADMIN = { email: 'admin@e2e.test', password: 'e2e-admin-password' };
+
 /** UNESCO World Heritage Sites — seeded by db/init/01-schema.sql. */
 const UNESCO_SOURCE_NAME = 'UNESCO World Heritage Sites';
 /** The gated source `01-schema.sql` seeds (ADR-0052): its arrivals wait for a curator. */
@@ -195,6 +204,20 @@ async function seedCurator(client: PoolClient): Promise<void> {
   );
 }
 
+/** The traveller and the admin: local, verified accounts with no assignment of their own. */
+async function seedSignedInAccounts(client: PoolClient): Promise<void> {
+  for (const [account, name, role] of [
+    [E2E_TRAVELLER, 'E2E Traveller', 'user'],
+    [E2E_ADMIN, 'E2E Admin', 'admin'],
+  ] as const) {
+    await client.query(
+      `INSERT INTO users (uuid, email, password_hash, display_name, auth_provider, email_verified, role)
+       VALUES (gen_random_uuid()::text, $1, $2, $3, 'local', true, $4)`,
+      [account.email, await hashPassword(account.password), name, role],
+    );
+  }
+}
+
 /** Every row of the fixture, inside the one transaction `seedE2eFixture` opened. */
 async function seedRows(client: PoolClient): Promise<void> {
   // Idempotent: drop our own rows first. Cascades clear the links, the
@@ -204,7 +227,7 @@ async function seedRows(client: PoolClient): Promise<void> {
     [[...EXPERIENCES, ...ARRIVALS].map((e) => e.id)],
   );
   await client.query('DELETE FROM world_views WHERE id = $1', [E2E_WORLD_VIEW_ID]);
-  await client.query('DELETE FROM users WHERE email = $1', [E2E_CURATOR.email]);
+  await client.query('DELETE FROM users WHERE email = ANY($1::text[])', [[E2E_CURATOR.email, E2E_TRAVELLER.email, E2E_ADMIN.email]]);
 
   const unesco = await sourceNamed(client, UNESCO_SOURCE_NAME);
   const worship = await sourceNamed(client, WORSHIP_SOURCE_NAME);
@@ -234,6 +257,7 @@ async function seedRows(client: PoolClient): Promise<void> {
   for (const exp of ARRIVALS) await seedPlace(client, exp, worship, 'pending');
   await seedRefusedPoint(client, REFUSED_POINT);
   await seedCurator(client);
+  await seedSignedInAccounts(client);
 
   // Explicit ids do not advance the sequences; application writes would
   // otherwise collide with the fixture.

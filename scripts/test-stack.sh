@@ -472,6 +472,24 @@ cmd_full() {
   npm run test:e2e:full
 }
 
+# The API contract lane (#1091): Schemathesis against the backend, as each of
+# the fixture's accounts. The accounts are read from the fixture module in the
+# backend container, so their credentials are stated once, where they are
+# seeded; scripts/api-contract.mjs signs in with them and runs Schemathesis.
+# Like the lanes test-report.mjs runs, it tears the stack down however it
+# ends - a startup, the seed or the accounts failing under `set -e` included -
+# unless TEST_REPORT_KEEP_ENV=1 keeps it for a later lane; an EXIT trap keeps
+# the lane's own exit status.
+run_api_contract() {
+  if [ "${TEST_REPORT_KEEP_ENV:-0}" != "1" ]; then
+    trap cmd_down EXIT
+  fi
+  ensure_up
+  local accounts
+  accounts="$(compose exec -T backend npx tsx -e "import('./src/db/seed/e2eFixture.ts').then((m) => console.log(JSON.stringify({ traveller: m.E2E_TRAVELLER, curator: m.E2E_CURATOR, admin: m.E2E_ADMIN })))" | tail -n 1)"
+  node scripts/api-contract.mjs --url "http://localhost:${BACKEND_PORT}" --accounts "$accounts"
+}
+
 cmd_help() {
   cat <<EOF
 Usage: scripts/test-stack.sh <command>
@@ -490,6 +508,7 @@ Commands:
   run-e2e-smoke           Internal: run smoke E2E tests
   run-e2e-full            Internal: run full E2E tests
   run-perf                Internal: run the Lighthouse lane against the production build
+  run-api-contract        Run Schemathesis against the backend, as each fixture account (reads only)
   help                    Show this help
 
 Environment overrides:
@@ -542,6 +561,9 @@ case "${1:-help}" in
   run-perf)
     require_output_path "${2:-}"
     run_perf "$2"
+    ;;
+  run-api-contract)
+    run_api_contract
     ;;
   help|--help|-h) cmd_help ;;
   *)
