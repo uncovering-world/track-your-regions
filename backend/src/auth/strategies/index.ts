@@ -46,3 +46,4 @@
 export { configureLocalStrategy } from './local.js';
 export { configureGoogleStrategy } from './google.js';
 export { configureAppleStrategy } from './apple.js';
+export { isConfigured, type OAuthProvider } from './configured.js';

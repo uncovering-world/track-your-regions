@@ -10,12 +10,25 @@ import type { z } from 'zod/v4';
 import { whenAnswered, type RouteExchange } from '../../api/route.js';
 import { findUserById, generateTokenPair } from '../../services/authService.js';
 import { oauthRefusal } from '../../auth/strategies/oauthRefusals.js';
+import { isConfigured, type OAuthProvider } from '../../auth/strategies/index.js';
+import { failure } from '../../middleware/errorHandler.js';
 import type { googleStartQuerySchema } from '../../types/auth.js';
 import { createAuthCode } from './sessionTokens.js';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-type Provider = 'google' | 'apple';
+type Provider = OAuthProvider;
+
+/**
+ * A provider this server has no credentials for has no strategy registered,
+ * and passport would throw "Unknown authentication strategy" — a 500 for what
+ * is a feature this deployment does not offer. Refused as that instead.
+ */
+function requireProvider(provider: Provider): void {
+  if (!isConfigured(provider)) {
+    throw failure(`Sign in with ${provider === 'google' ? 'Google' : 'Apple'} is not enabled on this server`, 404);
+  }
+}
 
 /**
  * GET /api/auth/google
@@ -26,6 +39,7 @@ export async function startGoogle(
   { query: { login_hint: loginHint } }: { query: z.output<typeof googleStartQuerySchema> },
   { req, res }: RouteExchange,
 ): Promise<void> {
+  requireProvider('google');
   const authOptions: passport.AuthenticateOptions = {
     session: false,
     scope: ['profile', 'email'],
@@ -47,6 +61,7 @@ export async function startGoogle(
  * The route follows the same pattern as Google.
  */
 export async function startApple(_input: unknown, { req, res }: RouteExchange): Promise<void> {
+  requireProvider('apple');
   await whenAnswered(res, next => passport.authenticate('apple', { session: false })(req, res, next));
 }
 
@@ -56,6 +71,7 @@ export async function startApple(_input: unknown, { req, res }: RouteExchange): 
  * tokens themselves in the address, or a refusal.
  */
 function finishWith(provider: Provider, { req, res }: RouteExchange): Promise<void> {
+  requireProvider(provider);
   const label = provider === 'google' ? 'Google' : 'Apple';
   return whenAnswered(res, next => passport.authenticate(provider, { session: false }, async (
     err: Error | null, user: Express.User | false, info: { message: string } | undefined,

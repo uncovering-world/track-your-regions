@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod/v4';
+import { bodyRowIdSchema, rowIdSchema } from './rowId.js';
 import { parseBbox } from '../db/bboxEnvelopes.js';
 import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { foldLabel, tidyLabel } from '@tyr/shared/labels';
@@ -20,9 +21,9 @@ export * from './worldViewImportSchemas.js';
 // API query params
 // =============================================================================
 
-export const worldViewIdSchema = z.coerce.number().int().positive().default(1);
-export const divisionIdSchema = z.coerce.number().int().positive();
-export const regionIdSchema = z.coerce.number().int().positive();
+export const worldViewIdSchema = rowIdSchema.default(1);
+export const divisionIdSchema = rowIdSchema;
+export const regionIdSchema = rowIdSchema;
 // How much of a division's boundary to send: the stored simplifications for a
 // preview, the full shape by default, since the cutting tools store what they
 // cut from it (#1010).
@@ -74,7 +75,7 @@ const storedName = (max: number) =>
 // =============================================================================
 
 export const idParamSchema = z.object({
-  id: z.coerce.number().int().positive(),
+  id: rowIdSchema,
 });
 
 /** `/api/divisions/:divisionId…` — a GADM division's id. */
@@ -83,42 +84,39 @@ export const divisionIdParamSchema = z.object({
 });
 
 export const regionIdParamSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
+  regionId: rowIdSchema,
 });
 
 export const worldViewIdParamSchema = z.object({
-  worldViewId: z.coerce.number().int().positive(),
+  worldViewId: rowIdSchema,
 });
 
 /** `/regions/:regionId/members/:divisionId/…` — a region, and a GADM division among its members. */
 export const regionDivisionParamSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
-  divisionId: z.coerce.number().int().positive(),
+  regionId: rowIdSchema,
+  divisionId: rowIdSchema,
 });
 
 /** `/regions/:parentRegionId/flatten/:subregionId` — a region, and the child folded into it. */
 export const flattenParamSchema = z.object({
-  parentRegionId: z.coerce.number().int().positive(),
-  subregionId: z.coerce.number().int().positive(),
+  parentRegionId: rowIdSchema,
+  subregionId: rowIdSchema,
 });
 
 export const experienceIdParamSchema = z.object({
-  experienceId: z.coerce.number().int().positive(),
+  experienceId: rowIdSchema,
 });
 
 export const locationIdParamSchema = z.object({
-  locationId: z.coerce.number().int().positive(),
+  locationId: rowIdSchema,
 });
 
 export const treasureIdParamSchema = z.object({
-  treasureId: z.coerce.number().int().positive(),
+  treasureId: rowIdSchema,
 });
 
-// Bounded to int4 like `reviewQueueQuerySchema`'s own `run`: `experience_sync_logs.id`
-// is SERIAL, and a larger value would reach Postgres and error there rather than
-// answering 400.
 export const syncLogIdParamSchema = z.object({
-  syncLogId: z.coerce.number().int().positive().max(2147483647),
+  syncLogId: rowIdSchema,
 });
 
 /**
@@ -142,8 +140,8 @@ export const editLocationBodySchema = z.object({
 
 /** One work of one experience: the museum a curator is acting from, and the work in it. */
 export const workEditParamsSchema = z.object({
-  id: z.coerce.number().int().positive(),
-  treasureId: z.coerce.number().int().positive(),
+  id: rowIdSchema,
+  treasureId: rowIdSchema,
 });
 
 /**
@@ -196,7 +194,7 @@ function hasRepeatedLabel(values: readonly string[]): boolean {
 }
 
 export const markTreasureViewedBodySchema = z.object({
-  experienceId: z.number().int().positive().optional(),
+  experienceId: bodyRowIdSchema.optional(),
 });
 
 // =============================================================================
@@ -222,15 +220,7 @@ export const experienceSearchQuerySchema = z.object({
  * the same mistake would silently pin this endpoint to its overview tier.
  */
 export const worldPointsQuerySchema = z.object({
-  // Bounded to int4 like `reviewQueueQuerySchema`'s ids above, and measured
-  // rather than assumed: `experience_kinds.id` is an integer column, so
-  // `?kindId=99999999999` is a perfectly good positive integer to Zod and an
-  // out-of-range error from Postgres, which this endpoint then answered as a
-  // 500 carrying the database's own message. A kind id that cannot exist is a
-  // bad request, and the 400 is also what stops the message getting out. The
-  // same shape a tile function had to catch as `numeric_value_out_of_range`
-  // (#918); here the schema is the guard.
-  kindId: z.coerce.number().int().positive().max(2147483647).optional(),
+  kindId: rowIdSchema.optional(),
   // west,south,east,north. Refused rather than dropped when it is not that:
   // the map's read is a viewport, and a box nobody can parse must not quietly
   // widen it to the whole catalogue — the argument the tile source made for a
@@ -260,12 +250,12 @@ export const experiencesByRegionQuerySchema = z.object({
 });
 
 export const experienceRegionCountsQuerySchema = z.object({
-  worldViewId: z.coerce.number().int().positive(),
-  parentRegionId: z.coerce.number().int().positive().optional(),
+  worldViewId: rowIdSchema,
+  parentRegionId: rowIdSchema.optional(),
 });
 
 export const experienceLocationsQuerySchema = z.object({
-  regionId: z.coerce.number().int().positive().optional(),
+  regionId: rowIdSchema.optional(),
 });
 
 export const regionLocationsQuerySchema = z.object({
@@ -276,16 +266,16 @@ export const regionLocationsQuerySchema = z.object({
 
 // Curation schemas
 export const rejectExperienceBodySchema = z.object({
-  regionId: z.number().int().positive(),
+  regionId: bodyRowIdSchema,
   reason: z.string().max(1000).optional(),
 });
 
 export const unrejectExperienceBodySchema = z.object({
-  regionId: z.number().int().positive(),
+  regionId: bodyRowIdSchema,
 });
 
 export const assignExperienceBodySchema = z.object({
-  regionId: z.number().int().positive(),
+  regionId: bodyRowIdSchema,
 });
 
 export const editExperienceBodySchema = z.object({
@@ -312,16 +302,16 @@ export const createManualExperienceBodySchema = z.object({
   // One element each of the two VARCHAR arrays; the width is the element's.
   countryCode: z.string().max(COLUMN_WIDTHS.experiences.country_codes).optional(),
   countryName: z.string().max(COLUMN_WIDTHS.experiences.country_names).optional(),
-  regionId: z.number().int().positive(),
+  regionId: bodyRowIdSchema,
   /** The kind the curator files the place under; its source is the kind's own (#819). */
-  kindId: z.number().int().positive(),
+  kindId: bodyRowIdSchema,
   websiteUrl: safeUrlSchema,
   wikipediaUrl: safeUrlSchema,
 });
 
 export const idAndRegionIdParamSchema = z.object({
-  id: z.coerce.number().int().positive(),
-  regionId: z.coerce.number().int().positive(),
+  id: rowIdSchema,
+  regionId: rowIdSchema,
 });
 
 // =============================================================================
@@ -338,19 +328,19 @@ export const markLocationVisitedBodySchema = z.object({
 });
 
 export const visitedIdsQuerySchema = z.object({
-  kindId: z.coerce.number().int().positive().optional(),
+  kindId: rowIdSchema.optional(),
 });
 
 export const visitedLocationIdsQuerySchema = z.object({
-  experienceId: z.coerce.number().int().positive().optional(),
+  experienceId: rowIdSchema.optional(),
 });
 
 export const viewedTreasureIdsQuerySchema = z.object({
-  experienceId: z.coerce.number().int().positive().optional(),
+  experienceId: rowIdSchema.optional(),
 });
 
 export const markAllLocationsQuerySchema = z.object({
-  regionId: z.coerce.number().int().positive().optional(),
+  regionId: rowIdSchema.optional(),
 });
 
 export const visitedRegionBodySchema = z.object({
@@ -362,19 +352,19 @@ export const visitedRegionBodySchema = z.object({
 // =============================================================================
 
 export const sourceIdParamSchema = z.object({
-  sourceId: z.coerce.number().int().positive(),
+  sourceId: rowIdSchema,
 });
 
 export const logIdParamSchema = z.object({
-  logId: z.coerce.number().int().positive(),
+  logId: rowIdSchema,
 });
 
 export const assignmentIdParamSchema = z.object({
-  assignmentId: z.coerce.number().int().positive(),
+  assignmentId: rowIdSchema,
 });
 
 export const userIdParamSchema = z.object({
-  userId: z.coerce.number().int().positive(),
+  userId: rowIdSchema,
 });
 
 export const startSyncBodySchema = z.object({
@@ -407,7 +397,7 @@ export const clearCacheQuerySchema = z.object({
  * declared route's `params` must name every `:name` in its path (ADR-0071).
  */
 export const cacheKindParamSchema = z.object({
-  sourceId: z.coerce.number().int().positive(),
+  sourceId: rowIdSchema,
   kind: z.string().min(1).max(40),
 });
 
@@ -451,10 +441,8 @@ export const reviewQueueQuerySchema = z.object({
   // `kind` word it does not know is dropped.
   source: z.string().max(200).regex(/^\d+(,\d+)*$/).optional(),
   kind: z.string().regex(/^[a-z]+(,[a-z]+)*$/).optional(),
-  // Bounded to int4 like every other id here: `regions.id` is SERIAL, and a
-  // larger value would reach Postgres and error there rather than answering 400.
-  region: z.union([z.literal('none'), z.coerce.number().int().positive().max(2147483647)]).optional(),
-  run: z.coerce.number().int().positive().max(2147483647).optional(),
+  region: z.union([z.literal('none'), rowIdSchema]).optional(),
+  run: rowIdSchema.optional(),
   aside: z.enum(['show']).optional(),
   sort: z.enum(['date', 'question']).default('date'),
   cursor: z.string().max(200).optional(),
@@ -529,8 +517,8 @@ export const experienceAdmissionBodySchema = z.object({
 export const reviewAnswerBodySchema = z.object({
   rows: z.array(z.object({
     kind: z.enum(['conflict', 'waiting', 'withdrawn', 'refused', 'missing']),
-    id: z.number().int().positive().max(2147483647),
-    runId: z.number().int().positive().max(2147483647).nullable().optional(),
+    id: bodyRowIdSchema,
+    runId: bodyRowIdSchema.nullable().optional(),
   })).min(1).max(100),
   answer: z.enum(['accept', 'reject', 'lost']),
 });
@@ -547,15 +535,15 @@ export const refuseArrivalBodySchema = z.object({
  * them, since this answers the same card the other way.
  */
 export const refuseContentsBodySchema = z.object({
-  locationIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(2000).optional(),
-  treasureIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(2000).optional(),
+  locationIds: z.array(bodyRowIdSchema).min(1).max(2000).optional(),
+  treasureIds: z.array(bodyRowIdSchema).min(1).max(2000).optional(),
   note: z.string().max(1000).optional(),
 });
 
 export const newBadgesSeenBodySchema = z.object({
   // Bounded because a page is bounded: the region read caps at 5000 rows, and
   // an unbounded array here would be an invitation to send something else.
-  experienceIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(5000),
+  experienceIds: z.array(bodyRowIdSchema).min(1).max(5000),
 });
 
 export const acceptSourceBodySchema = z.object({
@@ -565,7 +553,7 @@ export const acceptSourceBodySchema = z.object({
    * re-resolves the newest proposal at click time, so without this a run
    * landing in between would substitute values the curator never saw.
    */
-  expectedSyncLogId: z.number().int().positive().max(2147483647),
+  expectedSyncLogId: bodyRowIdSchema,
 });
 
 /**
@@ -578,7 +566,7 @@ export const acceptSourceBodySchema = z.object({
  */
 export const declineSourceBodySchema = z.object({
   fields: z.array(z.string().min(1)).min(1).max(20),
-  expectedSyncLogId: z.number().int().positive().max(2147483647),
+  expectedSyncLogId: bodyRowIdSchema,
 });
 
 
@@ -622,7 +610,7 @@ const heldPartSelectionSchema = z.object({
 export const declineHeldBodySchema = z.object({
   fields: z.array(z.string().min(1).max(100)).min(1).max(50).optional(),
   parts: z.array(heldPartSelectionSchema).min(1).max(50).optional(),
-  expectedSyncLogId: z.number().int().positive().max(2147483647),
+  expectedSyncLogId: bodyRowIdSchema,
 }).refine(
   b => b.fields !== undefined || b.parts !== undefined,
   { message: 'name at least one held field or part to refuse' },
@@ -644,14 +632,14 @@ export const publishExperienceBodySchema = z.object({
    * on one UNESCO nomination — because a request answers a card, not an
    * arbitrary list, and the ids go into an `= ANY($n::int[])`.
    */
-  locationIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(2000).optional(),
+  locationIds: z.array(bodyRowIdSchema).min(1).max(2000).optional(),
   /**
    * Treasure ids, not link ids: that is what the queue counts
    * (`COUNT(DISTINCT et.treasure_id)`) and what a card can therefore name, and
    * a work is passed once globally while its link is passed as being *here* —
    * two states this endpoint writes together from one id.
    */
-  treasureIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(2000).optional(),
+  treasureIds: z.array(bodyRowIdSchema).min(1).max(2000).optional(),
   /**
    * "Every pending content row, and nothing about the experience's own state"
    * — the shape for a card that names no ids at all, because it reports
@@ -757,7 +745,7 @@ export const publishExperienceBodySchema = z.object({
    * Meaningless for any contents publish — named or bare — which is why the
    * `.refine` below forbids sending it alongside either.
    */
-  expectedSyncLogId: z.number().int().positive().max(2147483647).optional(),
+  expectedSyncLogId: bodyRowIdSchema.optional(),
 }).refine(
   b => !((b.heldFields !== undefined || b.heldParts !== undefined)
     && (b.contentsOnly === true || b.locationIds !== undefined || b.treasureIds !== undefined)),
@@ -821,7 +809,7 @@ export const syncChangesQuerySchema = z.object({
 });
 
 export const reorderSourcesBodySchema = z.object({
-  sourceIds: z.array(z.number().int().positive()).min(1),
+  sourceIds: z.array(bodyRowIdSchema).min(1),
 });
 
 /**
@@ -886,30 +874,30 @@ export const dataAssertionAcceptBodySchema = z.object({
 });
 
 export const startRegionAssignmentBodySchema = z.object({
-  worldViewId: z.coerce.number().int().positive(),
-  sourceId: z.coerce.number().int().positive().optional(),
+  worldViewId: bodyRowIdSchema,
+  sourceId: bodyRowIdSchema.optional(),
 });
 
 export const regionAssignmentStatusQuerySchema = z.object({
-  worldViewId: z.coerce.number().int().positive(),
+  worldViewId: rowIdSchema,
 });
 
 export const experienceCountsQuerySchema = z.object({
-  worldViewId: z.coerce.number().int().positive(),
-  sourceId: z.coerce.number().int().positive().optional(),
+  worldViewId: rowIdSchema,
+  sourceId: rowIdSchema.optional(),
 });
 
 export const syncLogsQuerySchema = z.object({
-  sourceId: z.coerce.number().int().positive().optional(),
+  sourceId: rowIdSchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
 export const createCuratorAssignmentBodySchema = z.object({
-  userId: z.number().int().positive(),
+  userId: bodyRowIdSchema,
   scopeType: z.enum(CHECK_VALUES.curator_assignments.scope_type),
-  regionId: z.number().int().positive().optional(),
-  sourceId: z.number().int().positive().optional(),
+  regionId: bodyRowIdSchema.optional(),
+  sourceId: bodyRowIdSchema.optional(),
   notes: z.string().max(1000).optional(),
 });
 
@@ -948,7 +936,7 @@ export const updateWorldViewBodySchema = z.object({
 export const createRegionBodySchema = z.object({
   name: z.string().min(1).max(COLUMN_WIDTHS.regions.name),
   description: z.string().max(COLUMN_WIDTHS.regions.description).optional(),
-  parentRegionId: z.number().int().positive().optional(),
+  parentRegionId: bodyRowIdSchema.optional(),
   // `#rrggbb`, the one shape the editor's <input type="color"> produces and
   // the only one regions.color has room for.
   color: z.string().max(COLUMN_WIDTHS.regions.color).optional(),
@@ -958,7 +946,7 @@ export const createRegionBodySchema = z.object({
 export const updateRegionBodySchema = z.object({
   name: z.string().min(1).max(COLUMN_WIDTHS.regions.name).optional(),
   description: z.string().max(COLUMN_WIDTHS.regions.description).optional(),
-  parentRegionId: z.number().int().positive().nullable().optional(),
+  parentRegionId: bodyRowIdSchema.nullable().optional(),
   color: z.string().max(COLUMN_WIDTHS.regions.color).nullable().optional(),
   usesHull: z.boolean().optional(),
 });
@@ -973,11 +961,11 @@ export const regionSearchQuerySchema = z.object({
 });
 
 export const addDivisionsToRegionBodySchema = z.object({
-  divisionIds: z.array(z.number().int().positive()).optional(),
+  divisionIds: z.array(bodyRowIdSchema).optional(),
   createAsSubregions: z.boolean().optional(),
   includeChildren: z.boolean().optional(),
   inheritColor: z.boolean().default(true),
-  childIds: z.array(z.number().int().positive()).optional(),
+  childIds: z.array(bodyRowIdSchema).optional(),
   // Names the subregion this call creates (regions.name) and the
   // region_members.custom_name recorded beside it, so the bound is whichever
   // column is narrower.
@@ -986,24 +974,24 @@ export const addDivisionsToRegionBodySchema = z.object({
 });
 
 export const removeDivisionsFromRegionBodySchema = z.object({
-  divisionIds: z.array(z.number().int().positive()).optional(),
-  memberRowIds: z.array(z.number().int().positive()).optional(),
+  divisionIds: z.array(bodyRowIdSchema).optional(),
+  memberRowIds: z.array(bodyRowIdSchema).optional(),
 });
 
 export const moveMemberBodySchema = z.object({
-  memberRowId: z.number().int().positive(),
-  toRegionId: z.number().int().positive(),
+  memberRowId: bodyRowIdSchema,
+  toRegionId: bodyRowIdSchema,
 });
 
 export const addChildDivisionsBodySchema = z.object({
-  childIds: z.array(z.number().int().positive()).optional(),
+  childIds: z.array(bodyRowIdSchema).optional(),
   removeOriginal: z.boolean().default(true),
   inheritColor: z.boolean().default(true),
   createAsSubregions: z.boolean().default(true),
   /** Explicit GADM child → existing region assignments (skips name-match, skips create) */
   assignments: z.array(z.object({
-    gadmChildId: z.number().int().positive(),
-    existingRegionId: z.number().int().positive(),
+    gadmChildId: bodyRowIdSchema,
+    existingRegionId: bodyRowIdSchema,
   })).optional(),
 });
 
@@ -1012,7 +1000,7 @@ export const expandToSubregionsBodySchema = z.object({
 });
 
 export const divisionUsageBodySchema = z.object({
-  divisionIds: z.array(z.number().int().positive()).optional(),
+  divisionIds: z.array(bodyRowIdSchema).optional(),
 });
 
 export const hullPreviewBodySchema = z.object({
@@ -1062,7 +1050,7 @@ export const coverageSSEQuerySchema = z.object({
 });
 
 export const regenerateDisplayQuerySchema = z.object({
-  regionId: z.coerce.number().int().positive().optional(),
+  regionId: rowIdSchema.optional(),
 });
 
 export const regionGeometryDetailQuerySchema = z.object({
@@ -1116,19 +1104,19 @@ export const addLearnedRuleBodySchema = z.object({
 
 /** `DELETE /api/admin/ai/rules/:id` — a learned rule's id. */
 export const aiRuleIdParamSchema = z.object({
-  id: z.coerce.number().int().positive(),
+  id: rowIdSchema,
 });
 
 /** `POST /api/admin/ai/rules/apply-review` — one suggestion of a rule review, as the panel sends it back. */
 export const applyRuleReviewBodySchema = z.object({
-  keepId: z.number().int().positive(),
-  deleteIds: z.array(z.number().int().positive()),
+  keepId: bodyRowIdSchema,
+  deleteIds: z.array(bodyRowIdSchema),
   replacementText: z.string().nullable().optional(),
 });
 
 /** `POST /api/admin/ai/hierarchy-review/:worldViewId` — the subtree to review, or none for the whole tree. */
 export const hierarchyReviewBodySchema = z.object({
-  regionId: z.number().int().positive().optional(),
+  regionId: bodyRowIdSchema.optional(),
 });
 
 export const suggestGroupBodySchema = z.object({

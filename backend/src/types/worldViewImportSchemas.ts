@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import { bodyRowIdSchema, rowIdSchema } from './rowId.js';
 import { COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE } from './urlSafety.js';
 import { optionalSafeUrlSchema, requiredSafeUrlSchema, safeUrlSchema } from './urlSchemas.js';
@@ -36,12 +37,12 @@ export const wvCacheNameParamSchema = z.object({
 });
 
 export const wvExtractAnswerSchema = z.object({
-  questionId: z.number().int().positive(),
+  questionId: bodyRowIdSchema,
   action: z.enum(['accept', 'skip', 'answer', 'delete_rule']),
   /** Selected option value or custom text (for 'answer' action) */
   answer: z.string().max(10000).optional(),
   /** Rule ID to delete (for 'delete_rule' action) */
-  ruleId: z.number().int().positive().optional(),
+  ruleId: bodyRowIdSchema.optional(),
 }).refine(
   data => data.action !== 'answer' || data.answer !== undefined,
   { message: "answer is required when action is 'answer'", path: ['answer'] },
@@ -99,14 +100,14 @@ export const baseLayerImportBodySchema = z.object({
 });
 
 export const wvImportAcceptMatchSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
-  divisionId: z.coerce.number().int().positive(),
+  regionId: bodyRowIdSchema,
+  divisionId: bodyRowIdSchema,
 });
 
 export const wvImportAcceptBatchSchema = z.object({
   assignments: z.array(z.object({
-    regionId: z.coerce.number().int().positive(),
-    divisionId: z.coerce.number().int().positive(),
+    regionId: bodyRowIdSchema,
+    divisionId: bodyRowIdSchema,
   })).min(1).max(1000),
 });
 
@@ -117,13 +118,13 @@ export const wvImportAcceptBatchSchema = z.object({
  */
 export const wvImportAiSuggestClustersSchema = z.object({
   clusters: z.array(z.object({
-    clusterId: z.coerce.number().int(),
+    clusterId: z.number().int(),
     color: z.string().max(64),
     pixelShare: z.number().min(0).max(1),
     divisionNames: z.array(z.string().max(500)).max(5000),
   })).min(1).max(200),
   childRegions: z.array(z.object({
-    id: z.coerce.number().int().positive(),
+    id: bodyRowIdSchema,
     name: z.string().max(500),
   })).max(1000),
   model: z.string().max(100).optional(),
@@ -131,12 +132,12 @@ export const wvImportAiSuggestClustersSchema = z.object({
 
 /** A verdict on a selection of a region's suggestions (`wvImportMatchDecisions.ts`). */
 export const wvImportDecideBatchSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
-  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(1000),
+  regionId: bodyRowIdSchema,
+  divisionIds: z.array(bodyRowIdSchema).min(1).max(1000),
 });
 
 export const wvImportRegionIdSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
+  regionId: bodyRowIdSchema,
 });
 
 /**
@@ -175,21 +176,21 @@ const MAX_PALETTE_ENTRIES = 256;
 export const wvImportClusterReviewBodySchema = z.object({
   merges: z.record(
     z.string().regex(/^\d+$/),
-    z.coerce.number().int().min(0).max(255),
+    z.number().int().min(0).max(255),
   ).optional(),
-  excludes: z.array(z.coerce.number().int().min(0).max(255)).max(MAX_PALETTE_ENTRIES).optional(),
-  split: z.array(z.coerce.number().int().min(0).max(255)).max(MAX_PALETTE_ENTRIES).optional(),
+  excludes: z.array(z.number().int().min(0).max(255)).max(MAX_PALETTE_ENTRIES).optional(),
+  split: z.array(z.number().int().min(0).max(255)).max(MAX_PALETTE_ENTRIES).optional(),
   recluster: z.object({
     preset: clusterReclusterPresetSchema,
   }).optional(),
 });
 
 const clusterPaletteEntrySchema = z.object({
-  label: z.coerce.number().int().min(0).max(255),
+  label: z.number().int().min(0).max(255),
   color: z.tuple([
-    z.coerce.number().int().min(0).max(255),
-    z.coerce.number().int().min(0).max(255),
-    z.coerce.number().int().min(0).max(255),
+    z.number().int().min(0).max(255),
+    z.number().int().min(0).max(255),
+    z.number().int().min(0).max(255),
   ]),
 });
 
@@ -213,32 +214,32 @@ export const wvImportClusterReviewAnswerSchema = z.union([
 ]);
 
 export const wvImportGeoshapeMatchSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
-  scopeAncestorId: z.coerce.number().int().positive().optional(),
+  regionId: bodyRowIdSchema,
+  scopeAncestorId: bodyRowIdSchema.optional(),
 });
 
 export const wvImportAcceptTransferSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
-  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(100),
-  donorRegionId: z.coerce.number().int().positive(),
-  donorDivisionId: z.coerce.number().int().positive(),
+  regionId: bodyRowIdSchema,
+  divisionIds: z.array(bodyRowIdSchema).min(1).max(100),
+  donorRegionId: bodyRowIdSchema,
+  donorDivisionId: bodyRowIdSchema,
   transferType: z.enum(['direct', 'split']),
 });
 
 export const wvImportTransferPreviewSchema = z.object({
-  donorDivisionId: z.coerce.number().int().positive(),
-  movingDivisionIds: z.array(z.coerce.number().int().positive()).min(1).max(100),
+  donorDivisionId: bodyRowIdSchema,
+  movingDivisionIds: z.array(bodyRowIdSchema).min(1).max(100),
   wikidataId: z.string().regex(/^Q\d+$/),
 });
 
 export const wvImportMarkManualFixSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
+  regionId: bodyRowIdSchema,
   needsManualFix: z.boolean(),
   fixNote: z.string().max(500).optional(),
 });
 
 export const wvImportSelectMapImageSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
+  regionId: bodyRowIdSchema,
   // Judged by the same rule as the candidates it picks among, but not
   // rewritten: the controller keeps a pick only where it equals a stored
   // candidate, and a candidate stored before the rule may carry a non-ASCII
@@ -250,7 +251,7 @@ export const wvImportSelectMapImageSchema = z.object({
 });
 
 export const wvImportAddChildSchema = z.object({
-  parentRegionId: z.coerce.number().int().positive(),
+  parentRegionId: bodyRowIdSchema,
   // Inserted verbatim as the new child's regions.name.
   name: z.string().min(1).max(COLUMN_WIDTHS.regions.name),
   sourceUrl: optionalSafeUrlSchema,
@@ -258,13 +259,13 @@ export const wvImportAddChildSchema = z.object({
 });
 
 export const wvImportRemoveRegionSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
+  regionId: bodyRowIdSchema,
   reparentChildren: z.boolean(),
   reparentDivisions: z.boolean().optional(),
 });
 
 export const wvImportRenameRegionSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
+  regionId: bodyRowIdSchema,
   // Written straight into regions.name.
   name: z.string().min(1).max(COLUMN_WIDTHS.regions.name),
   sourceUrl: optionalSafeUrlSchema,
@@ -276,30 +277,30 @@ export const wikidataIdParamSchema = z.object({
 });
 
 export const divisionIdBodySchema = z.object({
-  divisionId: z.coerce.number().int().positive(),
+  divisionId: bodyRowIdSchema,
 });
 
 export const wvImportApproveCoverageSchema = z.object({
-  divisionId: z.coerce.number().int().positive(),
-  regionId: z.coerce.number().int().positive(),
+  divisionId: bodyRowIdSchema,
+  regionId: bodyRowIdSchema,
   action: z.enum(['add_member', 'create_region']),
   // The region `create_region` makes is named by it.
   gapName: z.string().max(COLUMN_WIDTHS.regions.name).optional(),
 });
 
 export const wvImportSmartSimplifySchema = z.object({
-  parentRegionId: z.coerce.number().int().positive(),
+  parentRegionId: bodyRowIdSchema,
 });
 
 export const wvImportSmartSimplifyApplySchema = z.object({
-  parentRegionId: z.coerce.number().int().positive(),
-  ownerRegionId: z.coerce.number().int().positive(),
-  memberRowIds: z.array(z.number().int().positive()).min(1),
+  parentRegionId: bodyRowIdSchema,
+  ownerRegionId: bodyRowIdSchema,
+  memberRowIds: z.array(bodyRowIdSchema).min(1),
 });
 
 export const worldViewRegionIdParamSchema = z.object({
-  worldViewId: z.coerce.number().int().positive(),
-  regionId: z.coerce.number().int().positive(),
+  worldViewId: rowIdSchema,
+  regionId: rowIdSchema,
 });
 
 // ---------------------------------------------------------------------------
@@ -313,10 +314,10 @@ export const wvImportWaterCropParamSchema = z.object({
 });
 
 export const wvImportWaterReviewBodySchema = z.object({
-  approvedIds: z.array(z.coerce.number().int()).max(1000).default([]),
+  approvedIds: z.array(z.number().int()).max(1000).default([]),
   mixDecisions: z.array(z.object({
-    componentId: z.coerce.number().int(),
-    approvedSubClusters: z.array(z.coerce.number().int()).max(256).default([]),
+    componentId: z.number().int(),
+    approvedSubClusters: z.array(z.number().int()).max(256).default([]),
   })).max(1000).default([]),
 });
 
@@ -325,25 +326,25 @@ export const wvImportWaterReviewBodySchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const wvImportColorMatchSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
+  regionId: rowIdSchema,
   token: z.string().optional(),
 });
 
 export const wvImportUnionGeometrySchema = z.object({
-  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(500),
-  regionId: z.coerce.number().int().positive().optional(),
+  divisionIds: z.array(bodyRowIdSchema).min(1).max(500),
+  regionId: bodyRowIdSchema.optional(),
 });
 
 export const wvImportSplitDeeperSchema = z.object({
-  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(500),
+  divisionIds: z.array(bodyRowIdSchema).min(1).max(500),
   wikidataId: z.string().regex(/^Q\d+$/),
-  regionId: z.coerce.number().int().positive(),
+  regionId: bodyRowIdSchema,
   source: z.enum(['geoshape', 'points', 'image']).optional(),
 });
 
 export const wvImportVisionMatchSchema = z.object({
-  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(200),
-  regionId: z.coerce.number().int().positive(),
+  divisionIds: z.array(bodyRowIdSchema).min(1).max(200),
+  regionId: bodyRowIdSchema,
   // The region's map, handed to a vision model to look at: the same rule as
   // the field it was read from.
   imageUrl: requiredSafeUrlSchema,
@@ -354,13 +355,13 @@ export const wvImportVisionMatchSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const wvImportReparentRegionSchema = z.object({
-  regionId: z.coerce.number().int().positive(),
-  newParentId: z.coerce.number().int().positive().nullable(),
+  regionId: bodyRowIdSchema,
+  newParentId: bodyRowIdSchema.nullable(),
 });
 
 export const wvImportOverlapChildrenSchema = z.object({
-  divisionId: z.coerce.number().int().positive(),
-  childRegionIds: z.array(z.number().int().positive()).min(1),
+  divisionId: bodyRowIdSchema,
+  childRegionIds: z.array(bodyRowIdSchema).min(1),
 });
 
 // Each action names what it needs, so a keep without the regions to remove
@@ -369,17 +370,17 @@ export const wvImportOverlapChildrenSchema = z.object({
 export const wvImportResolveOverlapSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('keep'),
-    divisionId: z.coerce.number().int().positive(),
-    keepInRegionId: z.coerce.number().int().positive().optional(),
-    removeFromRegionIds: z.array(z.number().int().positive()),
+    divisionId: bodyRowIdSchema,
+    keepInRegionId: bodyRowIdSchema.optional(),
+    removeFromRegionIds: z.array(bodyRowIdSchema),
   }),
   z.object({
     action: z.literal('split'),
-    divisionId: z.coerce.number().int().positive(),
-    splitRegionId: z.coerce.number().int().positive(),
+    divisionId: bodyRowIdSchema,
+    splitRegionId: bodyRowIdSchema,
     assignments: z.array(z.object({
-      gadmChildId: z.number().int().positive(),
-      targetRegionId: z.number().int().positive(),
+      gadmChildId: bodyRowIdSchema,
+      targetRegionId: bodyRowIdSchema,
     })),
   }),
 ]);
@@ -389,6 +390,6 @@ export const wvImportResolveOverlapSchema = z.discriminatedUnion('action', [
 // ---------------------------------------------------------------------------
 
 export const childrenCoverageQuerySchema = z.object({
-  regionId: z.coerce.number().int().positive().optional(),
-  onlyId: z.coerce.number().int().positive().optional(),
+  regionId: rowIdSchema.optional(),
+  onlyId: rowIdSchema.optional(),
 });
