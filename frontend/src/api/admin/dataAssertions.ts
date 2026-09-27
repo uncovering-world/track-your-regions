@@ -7,7 +7,7 @@
  */
 
 import type { DataAssertion, DataAssertionReport } from '@tyr/shared/api';
-import { authFetchJson } from '../fetchUtils';
+import { getAdminDataAssertions, postAdminDataAssertionsAccept } from '../client.generated';
 
 // What the calls here answer is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -16,11 +16,9 @@ export type {
   AssertionArea, AssertionKind, AssertionStatus, DataAssertion, DataAssertionReport,
 } from '@tyr/shared/api';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
 /** A statement per assertion over the whole catalogue — about eleven seconds. */
 export async function getDataAssertions(): Promise<DataAssertionReport> {
-  return authFetchJson<DataAssertionReport>(`${API_URL}/api/admin/data-assertions`);
+  return getAdminDataAssertions();
 }
 
 /**
@@ -32,9 +30,5 @@ export async function getDataAssertions(): Promise<DataAssertionReport> {
  * measurement.
  */
 export async function acceptDataAssertion(assertionId: string): Promise<DataAssertion> {
-  return authFetchJson<DataAssertion>(`${API_URL}/api/admin/data-assertions/accept`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ assertionId }),
-  });
+  return postAdminDataAssertionsAccept({ assertionId });
 }
