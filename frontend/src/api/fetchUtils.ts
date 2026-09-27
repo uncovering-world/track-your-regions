@@ -233,6 +233,20 @@ async function authFetchParsed<T>(url: string, options: RequestInit | undefined,
 }
 
 /**
+ * The one fetch the generated client calls for every request (ADR-0073).
+ *
+ * Orval passes the path the OpenAPI document names, with its query string, and
+ * the method, headers and body; this adds the origin and does what
+ * `authFetchJson` does - the in-memory token, a refresh before a call and once
+ * more on a 401, the server's error sentence - so a call moved to the generated
+ * client behaves as it did. A 204 is `undefined`, which the generated types
+ * already allow wherever the document says the route may answer one.
+ */
+export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  return authFetchParsed<T>(`${API_URL}${path}`, options, () => undefined as T);
+}
+
+/**
  * Authenticated fetch returning a Blob (for image/binary endpoints).
  * Mirrors authFetchJson but returns response.blob() instead of response.json().
  */
