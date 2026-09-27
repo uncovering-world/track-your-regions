@@ -209,6 +209,10 @@ export const GATES = [
   { id: 'lint:actions', tier: 'check', inputs: ['workflows'], command: ['npm', 'run', 'lint:actions'], job: 'check', setup: 'docker' },
   { id: 'lint:md', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:md'], job: 'check', setup: 'docs' },
   { id: 'lint:links', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:links'], job: 'check', setup: 'docker' },
+  // Redocly over the OpenAPI document (ADR-0072). The document is generated
+  // from the route declarations into packages/shared/src, so a change to the
+  // app is what can change it; the rules are in packages/shared/redocly.yaml.
+  { id: 'lint:openapi', tier: 'check', inputs: ['app'], command: ['npm', 'run', 'lint:openapi'], job: 'check', setup: 'docker' },
   // A line pointer — a file name with a line number after it — is refused
   // wherever living prose lives: a Markdown page, a code comment, a workflow's
   // `#` line. Its input is the `prose` class, which is the pass's own
