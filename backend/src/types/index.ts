@@ -294,7 +294,8 @@ export const createManualExperienceBodySchema = z.object({
   // bound is whichever column is narrower.
   name: storedName(Math.min(COLUMN_WIDTHS.experiences.name, COLUMN_WIDTHS.experience_locations.name)),
   shortDescription: z.string().max(1000).optional(),
-  type: z.string().max(COLUMN_WIDTHS.experiences.type).optional(),
+  type: z.string().max(COLUMN_WIDTHS.experiences.type).optional()
+    .describe('The type within the kind the place is created under, never the kind itself, which is `kindId`.'),
   longitude: z.number().min(-180).max(180),
   latitude: z.number().min(-90).max(90),
   imageUrl: safeImageUrlSchema,
