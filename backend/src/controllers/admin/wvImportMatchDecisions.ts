@@ -11,12 +11,12 @@
  * its status computed for a state that never existed.
  */
 
-import type { Response } from 'express';
 import type { PoolClient } from 'pg';
-import { respond } from '../../api/respond.js';
 import { SelectionAccepted, SelectionRejected } from '../../api/responses/wvImportTreeOps.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import type { z } from 'zod/v4';
+import { notFound } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportDecideBatchSchema } from '../../types/index.js';
 
 /** Runs `write` in a transaction; null when the region is not in the world view. */
 async function inRegionTransaction<T>(
@@ -121,28 +121,28 @@ export function rejectDivisions(
  * Accept the selected suggestions of a region and reject the rest.
  * POST /api/admin/wv-import/matches/:worldViewId/accept-batch-and-reject-rest
  */
-export async function acceptBatchAndRejectRest(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, divisionIds } = req.body as { regionId: number; divisionIds: number[] };
+export async function acceptBatchAndRejectRest(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportDecideBatchSchema> },
+): Promise<SelectionAccepted> {
+  const { regionId, divisionIds } = body;
   const outcome = await acceptDivisionsRejectRest(worldViewId, regionId, divisionIds);
   if (!outcome) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
-  respond(res, SelectionAccepted, { accepted: divisionIds.length, rejected: outcome.rejected });
+  return { accepted: divisionIds.length, rejected: outcome.rejected };
 }
 
 /**
  * Reject the selected suggestions of a region.
  * POST /api/admin/wv-import/matches/:worldViewId/reject-batch
  */
-export async function rejectBatchSuggestions(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, divisionIds } = req.body as { regionId: number; divisionIds: number[] };
+export async function rejectBatchSuggestions(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportDecideBatchSchema> },
+): Promise<SelectionRejected> {
+  const { regionId, divisionIds } = body;
   const outcome = await rejectDivisions(worldViewId, regionId, divisionIds);
   if (!outcome) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
-  respond(res, SelectionRejected, { rejected: outcome.rejected });
+  return { rejected: outcome.rejected };
 }

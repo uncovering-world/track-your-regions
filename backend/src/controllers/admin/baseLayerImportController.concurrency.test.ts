@@ -21,8 +21,12 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
 }));
 
-import { startBaseLayerImportEndpoint } from './baseLayerImportController.js';
 import { importTree } from '../../services/worldViewImport/importer.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared routes these specs answer through (ADR-0071). */
+const startBaseLayerImportEndpointRoute = routeAt(adminDeclaredRoutes, '/wv-import/base-layer', 'post');
 
 const mockedImport = importTree as unknown as ReturnType<typeof vi.fn>;
 
@@ -50,8 +54,8 @@ describe('startBaseLayerImportEndpoint — concurrent starts (regression)', () =
     // until after that tree build resolves, so this second call's
     // getLatestImportStatus() check sees nothing running and also proceeds —
     // two imports, one stray world view.
-    const p1 = startBaseLayerImportEndpoint(makeReq('First'), res1 as never);
-    const p2 = startBaseLayerImportEndpoint(makeReq('Second'), res2 as never);
+    const p1 = answerRoute(startBaseLayerImportEndpointRoute, makeReq('First'), res1 as never);
+    const p2 = answerRoute(startBaseLayerImportEndpointRoute, makeReq('Second'), res2 as never);
     await Promise.all([p1, p2]);
 
     const rejected = [res1, res2].filter(

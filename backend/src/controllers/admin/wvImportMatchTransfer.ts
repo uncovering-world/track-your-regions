@@ -6,13 +6,13 @@
  * 3-layer GeoJSON preview that backs the admin UI.
  */
 
-import { Response } from 'express';
 import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { respond } from '../../api/respond.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import { TransferAccepted, TransferPreview } from '../../api/responses/worldViewImport.js';
+import type { z } from 'zod/v4';
+import { createError, notFound } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportAcceptTransferSchema, wvImportTransferPreviewSchema } from '../../types/index.js';
 
 interface TransferRequestBody {
   regionId: number;
@@ -122,9 +122,10 @@ async function recomputeDonorMatchStatus(
  *
  * POST /api/admin/wv-import/matches/:worldViewId/accept-with-transfer
  */
-export async function acceptWithTransfer(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const body = req.body as TransferRequestBody;
+export async function acceptWithTransfer(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportAcceptTransferSchema> },
+): Promise<TransferAccepted> {
+  const body = input as TransferRequestBody;
   const { regionId, divisionIds, donorRegionId, transferType } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/accept-with-transfer — target=${regionId} donor=${donorRegionId} type=${transferType} divisions=${divisionIds.join(',')}`);
 
@@ -137,16 +138,12 @@ export async function acceptWithTransfer(req: AuthenticatedRequest, res: Respons
       [[regionId, donorRegionId], worldViewId],
     );
     if (regionCheck.rows.length < 2) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Region or donor region not found in this world view' });
-      return;
+      throw notFound('Region or donor region not found in this world view');
     }
 
     const ownershipError = await verifyTransferOwnership(client, body);
     if (ownershipError) {
-      await client.query('ROLLBACK');
-      res.status(ownershipError.status).json({ error: ownershipError.error });
-      return;
+      throw createError(ownershipError.error, ownershipError.status);
     }
 
     await executeTransferStep(client, body, new Set(divisionIds));
@@ -188,7 +185,7 @@ export async function acceptWithTransfer(req: AuthenticatedRequest, res: Respons
   // Both regions' geometry was cleared inside the transaction, by the member
   // trigger on the rows that moved (ADR-0068), so nothing can fail after it.
 
-  respond(res, TransferAccepted, { transferred: divisionIds.length, transferType });
+  return { transferred: divisionIds.length, transferType };
 }
 
 /**
@@ -198,10 +195,10 @@ export async function acceptWithTransfer(req: AuthenticatedRequest, res: Respons
  *
  * POST /api/admin/wv-import/matches/:worldViewId/transfer-preview
  */
-export async function getTransferPreview(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const { donorDivisionId, movingDivisionIds, wikidataId } = req.body as {
-    donorDivisionId: number; movingDivisionIds: number[]; wikidataId: string;
-  };
+export async function getTransferPreview(
+  { params: _params, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportTransferPreviewSchema> },
+): Promise<TransferPreview> {
+  const { donorDivisionId, movingDivisionIds, wikidataId } = body;
 
   const result = await pool.query(`
     WITH donor AS (
@@ -232,5 +229,5 @@ export async function getTransferPreview(req: AuthenticatedRequest, res: Respons
       geometry: r.geometry as AreaGeometry,
     }));
 
-  respond(res, TransferPreview, { type: 'FeatureCollection', features });
+  return { type: 'FeatureCollection', features };
 }

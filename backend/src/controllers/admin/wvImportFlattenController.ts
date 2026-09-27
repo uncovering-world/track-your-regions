@@ -32,6 +32,9 @@ import {
   ChildrenCollapsed, ChildrenGrouped, FlattenPreviewResult, SmartFlattenResult,
   type FlattenDone, type FlattenPreview,
 } from '../../api/responses/wvImportTreeOps.js';
+import type { z } from 'zod/v4';
+import { badRequest, createError, failure, notFound } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportRegionIdSchema } from '../../types/index.js';
 
 // =============================================================================
 // Flatten and grouping endpoints
@@ -42,9 +45,10 @@ import {
  * and generate suggestions for the parent region instead.
  * POST /api/admin/wv-import/matches/:worldViewId/collapse-to-parent
  */
-export async function collapseToParent(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function collapseToParent(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<ChildrenCollapsed> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/collapse-to-parent — regionId=${regionId}`);
 
   let body: ChildrenCollapsed;
@@ -58,9 +62,7 @@ export async function collapseToParent(req: AuthenticatedRequest, res: Response)
       [regionId, worldViewId],
     );
     if (region.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
+      throw notFound('Region not found in this world view');
     }
 
     // Get all descendant region IDs (recursive)
@@ -74,9 +76,7 @@ export async function collapseToParent(req: AuthenticatedRequest, res: Response)
     `, [regionId]);
 
     if (descendants.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(400).json({ error: 'Region has no children to collapse' });
-      return;
+      throw badRequest('Region has no children to collapse');
     }
 
     const descendantIds = descendants.rows.map(r => r.id as number);
@@ -183,7 +183,7 @@ export async function collapseToParent(req: AuthenticatedRequest, res: Response)
   } finally {
     client.release();
   }
-  respond(res, ChildrenCollapsed, body);
+  return body;
 }
 
 /** A descendant region by id and name. */
@@ -399,9 +399,10 @@ async function absorbDescendants(worldViewId: number, regionId: number, descenda
  * Smart flatten preview: auto-match children, then return unified geometry for confirmation dialog.
  * POST /api/admin/wv-import/matches/:worldViewId/smart-flatten/preview
  */
-export async function smartFlattenPreview(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function smartFlattenPreview(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<FlattenPreviewResult> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/smart-flatten/preview — regionId=${regionId}`);
 
   let body: FlattenPreviewResult;
@@ -412,8 +413,7 @@ export async function smartFlattenPreview(req: AuthenticatedRequest, res: Respon
       [regionId, worldViewId],
     );
     if (region.rows.length === 0) {
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
+      throw notFound('Region not found in this world view');
     }
 
     // Get all descendant region IDs (recursive)
@@ -427,8 +427,7 @@ export async function smartFlattenPreview(req: AuthenticatedRequest, res: Respon
     `, [regionId]);
 
     if (descendants.rows.length === 0) {
-      res.status(400).json({ error: 'Region has no children to flatten' });
-      return;
+      throw badRequest('Region has no children to flatten');
     }
 
     const descendantIds = descendants.rows.map(r => r.id);
@@ -438,20 +437,21 @@ export async function smartFlattenPreview(req: AuthenticatedRequest, res: Respon
       ? { blocked: true, unmatched: stillUnmatched }
       : await flattenPreviewOf(regionId, descendantIds);
   } catch (err) {
+    if (typeof (err as { statusCode?: unknown }).statusCode === 'number') throw err;
     console.error(`[WV Import] Smart flatten preview failed:`, err);
-    res.status(500).json({ error: 'Smart flatten preview failed' });
-    return;
+    throw failure('Smart flatten preview failed', 500);
   }
-  respond(res, FlattenPreviewResult, body);
+  return body;
 }
 
 /**
  * Smart flatten: auto-match children -> absorb all descendant divisions into parent -> delete descendants.
  * POST /api/admin/wv-import/matches/:worldViewId/smart-flatten
  */
-export async function smartFlatten(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function smartFlatten(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<SmartFlattenResult> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/smart-flatten — regionId=${regionId}`);
 
   let body: SmartFlattenResult;
@@ -462,8 +462,7 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
       [regionId, worldViewId],
     );
     if (region.rows.length === 0) {
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
+      throw notFound('Region not found in this world view');
     }
 
     // Get all descendant region IDs (recursive)
@@ -477,8 +476,7 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
     `, [regionId]);
 
     if (descendants.rows.length === 0) {
-      res.status(400).json({ error: 'Region has no children to flatten' });
-      return;
+      throw badRequest('Region has no children to flatten');
     }
 
     const descendantIds = descendants.rows.map(r => r.id);
@@ -488,8 +486,7 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
     // matches standing (#764).
     const visits = await visitsOn(descendantIds);
     if (visits > 0) {
-      res.status(409).json({ error: visitedRegionRefusal(visits) });
-      return;
+      throw createError(visitedRegionRefusal(visits), 409);
     }
 
     const stillUnmatched = await autoMatchDescendants(descendants.rows);
@@ -500,11 +497,13 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
     // absorbDescendants has rolled back; a visited descendant is errorHandler's
     // 409, not this handler's 500 with the driver's text (#764).
     if (isVisitedRegionDelete(err)) throw err;
+    // Its own refusals (a missing region, no children, a visited descendant)
+    // carry their status; only an unexpected failure becomes the 500.
+    if (typeof (err as { statusCode?: unknown }).statusCode === 'number') throw err;
     console.error(`[WV Import] Smart flatten failed:`, err);
-    res.status(500).json({ error: 'Smart flatten failed' });
-    return;
+    throw failure('Smart flatten failed', 500);
   }
-  respond(res, SmartFlattenResult, body);
+  return body;
 }
 
 /**
@@ -629,9 +628,10 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
  * country-level matching on each child.
  * POST /api/admin/wv-import/matches/:worldViewId/handle-as-grouping
  */
-export async function handleAsGrouping(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function handleAsGrouping(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<ChildrenGrouped> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/handle-as-grouping — regionId=${regionId}`);
 
   // Verify region exists and belongs to this world view
@@ -640,8 +640,7 @@ export async function handleAsGrouping(req: AuthenticatedRequest, res: Response)
     [regionId, worldViewId],
   );
   if (region.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   // Verify it has children
@@ -650,8 +649,7 @@ export async function handleAsGrouping(req: AuthenticatedRequest, res: Response)
     [regionId, worldViewId],
   );
   if (parseInt(childCount.rows[0].count as string) === 0) {
-    res.status(400).json({ error: 'Region has no children to match as countries' });
-    return;
+    throw badRequest('Region has no children to match as countries');
   }
 
   let body: ChildrenGrouped;
@@ -729,8 +727,7 @@ export async function handleAsGrouping(req: AuthenticatedRequest, res: Response)
     body = { matched: result.matched, total: result.total, undoAvailable: true };
   } catch (err) {
     console.error(`[WV Import] handle-as-grouping failed:`, err);
-    res.status(500).json({ error: 'Matching failed' });
-    return;
+    throw failure('Matching failed', 500);
   }
-  respond(res, ChildrenGrouped, body);
+  return body;
 }

@@ -6,13 +6,10 @@
  * color-coded region assignments.
  */
 
-import { Response } from 'express';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { pool } from '../../db/index.js';
 import { parseMapshapes } from '../../services/wikivoyageExtract/parser.js';
 import { getOrFetchGeoshape, getOrFetchCommonsMapGeoshape } from '../../services/worldViewImport/geoshapeCache.js';
 import { userAgent } from '../../config/userAgent.js';
-import { respond } from '../../api/respond.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import {
   MapshapeMatchResult,
@@ -22,6 +19,9 @@ import {
   type MapshapesFound,
   type WikivoyageShapeFeature,
 } from '../../api/responses/wvImportCvMatch.js';
+import type { z } from 'zod/v4';
+import { notFound } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportRegionIdSchema } from '../../types/index.js';
 
 const WV_API_URL = 'https://en.wikivoyage.org/w/api.php';
 // This controller's own fetch of one page carries no bot marker. The import
@@ -517,9 +517,10 @@ async function buildWikivoyagePreview(
  * Parses {{mapshape}} templates from a region's Wikivoyage page,
  * resolves Wikidata geoshapes, and finds matching GADM divisions.
  */
-export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body as { regionId: number };
+export async function mapshapeMatchDivisions(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<MapshapeMatchResult> {
+  const { regionId } = body;
 
   // 1. Get region info
   const regionResult = await pool.query(
@@ -531,34 +532,29 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
   );
 
   if (regionResult.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found' });
-    return;
+    throw notFound('Region not found');
   }
 
   const sourceUrl = regionResult.rows[0].source_url as string | null;
   if (!sourceUrl) {
-    respond(res, MapshapeMatchResult, { found: false, message: 'Region has no Wikivoyage source URL' });
-    return;
+    return { found: false, message: 'Region has no Wikivoyage source URL' };
   }
 
   // 2. Fetch wikitext
   const pageTitle = pageNameFromUrl(sourceUrl);
   if (!pageTitle) {
-    respond(res, MapshapeMatchResult, { found: false, message: 'Cannot extract page title from source URL' });
-    return;
+    return { found: false, message: 'Cannot extract page title from source URL' };
   }
 
   const wikitext = await fetchWikitext(pageTitle);
   if (!wikitext) {
-    respond(res, MapshapeMatchResult, { found: false, message: 'Could not fetch Wikivoyage page wikitext' });
-    return;
+    return { found: false, message: 'Could not fetch Wikivoyage page wikitext' };
   }
 
   // 3. Parse mapshape templates
   const mapshapes = parseMapshapes(wikitext);
   if (mapshapes.length === 0) {
-    respond(res, MapshapeMatchResult, { found: false, message: 'No {{mapshape}} templates found on this page' });
-    return;
+    return { found: false, message: 'No {{mapshape}} templates found on this page' };
   }
 
   // 3b. Process Commons map data mapshapes
@@ -567,8 +563,7 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
   // Filter out entries that couldn't be resolved
   const resolvedMapshapes = mapshapes.filter(ms => ms.wikidataIds.length > 0 && ms.title);
   if (resolvedMapshapes.length === 0) {
-    respond(res, MapshapeMatchResult, { found: false, message: 'Mapshape templates found but no geoshapes could be resolved' });
-    return;
+    return { found: false, message: 'Mapshape templates found but no geoshapes could be resolved' };
   }
 
   console.log(`[Mapshape Match] Found ${resolvedMapshapes.length} mapshapes for region ${regionId} (${pageTitle})`);
@@ -576,8 +571,7 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
   // 4. Get scope: parent region's GADM divisions, walking up if needed
   const scopeDivisionIds = await determineScopeDivisionIds(regionId);
   if (scopeDivisionIds.length === 0) {
-    respond(res, MapshapeMatchResult, { found: false, message: 'No GADM divisions in scope for this region' });
-    return;
+    return { found: false, message: 'No GADM divisions in scope for this region' };
   }
 
   // 5. Ensure all mapshape geoshapes are cached and filter to available ones
@@ -652,7 +646,7 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
 
   console.log(`[Mapshape Match] Result: ${resolvedMapshapes.length} mapshapes → ${groupedMapshapes.length} color groups, ${allDivisionIds.length} divisions matched`);
 
-  respond(res, MapshapeMatchResult, {
+  return {
     found: true,
     mapshapes: groupedMapshapes,
     childRegions: childRegions.map(({ id, name }) => ({ id, name })),
@@ -663,5 +657,5 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
       matchedMapshapes: groupedMapshapes.filter(r => r.matchedRegion).length,
       totalDivisions: allDivisionIds.length,
     },
-  });
+  };
 }

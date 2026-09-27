@@ -46,6 +46,9 @@ import type { WikiSection } from '../../services/wikivoyageExtract/types.js';
 import { geoshapeMatchRegion } from '../../services/worldViewImport/geoshapeCoverage.js';
 import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
 import { computeGeoSimilarityIfNeeded } from './wvImportUtils.js';
+import type { z } from 'zod/v4';
+import { createError, failure, notFound } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportGeoshapeMatchSchema, wvImportRegionIdSchema } from '../../types/index.js';
 
 /** What the shape and marker matchers found, key by key. */
 function coveringMatchOf(result: {
@@ -109,53 +112,54 @@ function aiMatchStatusOf(progress: AIMatchProgress): AIMatchStatus {
  * Start AI-assisted re-matching for unresolved leaves.
  * POST /api/admin/wv-import/matches/:worldViewId/ai-match
  */
-export async function startAIMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
+export async function startAIMatch(
+  { params: { worldViewId } }: { params: z.output<typeof worldViewIdParamSchema> },
+): Promise<AIMatchStarted> {
   console.log(`[WV Import] POST /matches/${worldViewId}/ai-match`);
 
   if (!isOpenAIAvailable()) {
-    res.status(503).json({ error: 'OpenAI API is not configured' });
-    return;
+    throw failure('OpenAI API is not configured', 503);
   }
 
   // Check no AI match is already running for this world view
   const existing = getAIMatchProgress(worldViewId);
   if (existing && existing.status === 'running') {
-    res.status(409).json({ error: 'AI matching is already running for this world view' });
-    return;
+    throw createError('AI matching is already running for this world view', 409);
   }
 
   const progress = startAIMatching(worldViewId);
-  respond(res, AIMatchStarted, { started: true, ...aiMatchStatusOf(progress) });
+  return { started: true, ...aiMatchStatusOf(progress) };
 }
 
 /**
  * Get AI matching progress.
  * GET /api/admin/wv-import/matches/:worldViewId/ai-match/status
  */
-export function getAIMatchStatus(req: AuthenticatedRequest, res: Response): void {
-  const worldViewId = parseInt(String(req.params.worldViewId));
+export async function getAIMatchStatus(
+  { params: { worldViewId } }: { params: z.output<typeof worldViewIdParamSchema> },
+): Promise<AIMatchStatus> {
   const progress = getAIMatchProgress(worldViewId);
-  respond(res, AIMatchStatus, progress ? aiMatchStatusOf(progress) : { status: 'idle' });
+  return progress ? aiMatchStatusOf(progress) : { status: 'idle' };
 }
 
 /**
  * Cancel AI matching.
  * POST /api/admin/wv-import/matches/:worldViewId/ai-match/cancel
  */
-export function cancelAIMatchEndpoint(req: AuthenticatedRequest, res: Response): void {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const cancelled = cancelAIMatch(worldViewId);
-  respond(res, AIMatchCancelled, { cancelled });
+export async function cancelAIMatchEndpoint(
+  { params: { worldViewId } }: { params: z.output<typeof worldViewIdParamSchema> },
+): Promise<AIMatchCancelled> {
+  return { cancelled: cancelAIMatch(worldViewId) };
 }
 
 /**
  * DB search a single region using trigram similarity.
  * POST /api/admin/wv-import/matches/:worldViewId/db-search-one
  */
-export async function dbSearchOneRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function dbSearchOneRegion(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<DbSearchResult> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/db-search-one — regionId=${regionId}`);
 
   let body: DbSearchResult;
@@ -168,19 +172,19 @@ export async function dbSearchOneRegion(req: AuthenticatedRequest, res: Response
     body = { found: result.found, suggestions: result.suggestions.map(foundSuggestionOf) };
   } catch (err) {
     console.error(`[WV Import] DB search one failed:`, err);
-    res.status(500).json({ error: 'DB search failed' });
-    return;
+    throw failure('DB search failed', 500);
   }
-  respond(res, DbSearchResult, body);
+  return body;
 }
 
 /**
  * Geocode-match a single region: name -> Nominatim coordinates -> ST_Contains on GADM.
  * POST /api/admin/wv-import/matches/:worldViewId/geocode-match
  */
-export async function geocodeMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function geocodeMatch(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<GeocodeMatchResult> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/geocode-match — regionId=${regionId}`);
 
   let body: GeocodeMatchResult;
@@ -198,10 +202,9 @@ export async function geocodeMatch(req: AuthenticatedRequest, res: Response): Pr
     };
   } catch (err) {
     console.error(`[WV Import] Geocode match failed:`, err);
-    res.status(500).json({ error: 'Geocode match failed' });
-    return;
+    throw failure('Geocode match failed', 500);
   }
-  respond(res, GeocodeMatchResult, body);
+  return body;
 }
 
 /**
@@ -209,9 +212,10 @@ export async function geocodeMatch(req: AuthenticatedRequest, res: Response): Pr
  * Scopes search to the relevant GADM subtree for performance.
  * POST /api/admin/wv-import/matches/:worldViewId/geoshape-match
  */
-export async function geoshapeMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, scopeAncestorId } = req.body;
+export async function geoshapeMatch(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportGeoshapeMatchSchema> },
+): Promise<CoveringMatchResult> {
+  const { regionId, scopeAncestorId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/geoshape-match — regionId=${regionId}${formatScopeSuffix(scopeAncestorId)}`);
 
   let body: CoveringMatchResult;
@@ -224,19 +228,19 @@ export async function geoshapeMatch(req: AuthenticatedRequest, res: Response): P
     body = coveringMatchOf(result);
   } catch (err) {
     console.error(`[WV Import] Geoshape match failed:`, err);
-    res.status(500).json({ error: 'Geoshape match failed' });
-    return;
+    throw failure('Geoshape match failed', 500);
   }
-  respond(res, CoveringMatchResult, body);
+  return body;
 }
 
 /**
  * Match a region using Wikivoyage marker coordinates → GADM point containment.
  * POST /api/admin/wv-import/matches/:worldViewId/point-match
  */
-export async function pointMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, scopeAncestorId } = req.body;
+export async function pointMatch(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportGeoshapeMatchSchema> },
+): Promise<CoveringMatchResult> {
+  const { regionId, scopeAncestorId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/point-match — regionId=${regionId}${formatScopeSuffix(scopeAncestorId)}`);
 
   let body: CoveringMatchResult;
@@ -248,19 +252,19 @@ export async function pointMatch(req: AuthenticatedRequest, res: Response): Prom
     body = coveringMatchOf(result);
   } catch (err) {
     console.error(`[WV Import] Point match failed:`, err);
-    res.status(500).json({ error: 'Point match failed' });
-    return;
+    throw failure('Point match failed', 500);
   }
-  respond(res, CoveringMatchResult, body);
+  return body;
 }
 
 /**
  * Reset match state for a single region (clear suggestions, rejections, status).
  * POST /api/admin/wv-import/matches/:worldViewId/reset-match
  */
-export async function resetMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function resetMatch(
+  { params: { worldViewId }, body }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<MatchReset> {
+  const { regionId } = body;
   console.log(`[WV Import] POST /matches/${worldViewId}/reset-match — regionId=${regionId}`);
 
   // Verify region belongs to this world view (read-only, no transaction needed)
@@ -269,8 +273,7 @@ export async function resetMatch(req: AuthenticatedRequest, res: Response): Prom
     [regionId, worldViewId],
   );
   if (region.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   // The three writes must succeed or fail together. Without a transaction,
@@ -299,26 +302,25 @@ export async function resetMatch(req: AuthenticatedRequest, res: Response): Prom
       try { await client.query('ROLLBACK'); } catch { /* connection dead; PG auto-rolls back */ }
     }
     console.error(`[WV Import] Reset match failed:`, err);
-    res.status(500).json({ error: 'Reset match failed' });
-    return;
+    throw failure('Reset match failed', 500);
   } finally {
     client?.release();
   }
-  respond(res, MatchReset, { reset: true });
+  return { reset: true };
 }
 
 /**
  * AI-match a single region.
  * POST /api/admin/wv-import/matches/:worldViewId/ai-match-one
  */
-export async function aiMatchOneRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function aiMatchOneRegion(
+  { params: { worldViewId }, body: input }: { params: z.output<typeof worldViewIdParamSchema>; body: z.output<typeof wvImportRegionIdSchema> },
+): Promise<AIMatchOneResult> {
+  const { regionId } = input;
   console.log(`[WV Import] POST /matches/${worldViewId}/ai-match-one — regionId=${regionId}`);
 
   if (!isOpenAIAvailable()) {
-    res.status(503).json({ error: 'OpenAI API is not configured' });
-    return;
+    throw failure('OpenAI API is not configured', 503);
   }
 
   let body: AIMatchOneResult;
@@ -334,10 +336,9 @@ export async function aiMatchOneRegion(req: AuthenticatedRequest, res: Response)
     };
   } catch (err) {
     console.error(`[WV Import] AI match one failed:`, err);
-    res.status(500).json({ error: 'AI matching failed' });
-    return;
+    throw failure('AI matching failed', 500);
   }
-  respond(res, AIMatchOneResult, body);
+  return body;
 }
 
 /**

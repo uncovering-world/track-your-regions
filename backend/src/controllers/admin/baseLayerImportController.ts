@@ -7,10 +7,10 @@
  * review endpoints).
  */
 
-import type { Response } from 'express';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { respond } from '../../api/respond.js';
-import { ImportStarted } from '../../api/responses/worldViewImport.js';
+import type { z } from 'zod/v4';
+import type { ImportStarted } from '../../api/responses/worldViewImport.js';
+import { createError } from '../../middleware/errorHandler.js';
+import type { baseLayerImportBodySchema } from '../../types/index.js';
 import { startBaseLayerImport, getLatestImportStatus } from '../../services/worldViewImport/index.js';
 
 /**
@@ -18,18 +18,14 @@ import { startBaseLayerImport, getLatestImportStatus } from '../../services/worl
  * POST /api/admin/wv-import/base-layer
  */
 export async function startBaseLayerImportEndpoint(
-  req: AuthenticatedRequest,
-  res: Response,
-): Promise<void> {
-  const { name, providerLabel, maxDepth } = req.body;
-
+  { body: { name, providerLabel, maxDepth } }: { body: z.output<typeof baseLayerImportBodySchema> },
+): Promise<ImportStarted> {
   const existing = getLatestImportStatus();
   if (existing && (existing.progress.status === 'importing' || existing.progress.status === 'matching')) {
-    res.status(409).json({ error: 'An import is already running' });
-    return;
+    throw createError('An import is already running', 409);
   }
 
   const operationId = await startBaseLayerImport({ name, providerLabel, maxDepth });
-  console.log(`[Base Layer Import] POST /base-layer — started opId=${operationId}`);
-  respond(res, ImportStarted, { started: true, operationId });
+  console.log('[Base Layer Import] POST /base-layer — started opId=%s', operationId);
+  return { started: true, operationId };
 }
