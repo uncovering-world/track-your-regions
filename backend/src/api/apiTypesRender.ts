@@ -106,6 +106,12 @@ function renderType(schema: JsonSchema, where: string, known: ReadonlySet<string
   if (Array.isArray(members)) {
     return members.map((member, i) => renderType(member as JsonSchema, `${where}|${i}`, known, indent)).join(' | ');
   }
+  // A nullable primitive is one schema with two types, `["string", "null"]`,
+  // where anything else nullable is an `anyOf`: each type renders as that
+  // member would, in the order given.
+  if (Array.isArray(schema.type)) {
+    return (schema.type as unknown[]).map((type, i) => renderType({ ...schema, type }, `${where}|${i}`, known, indent)).join(' | ');
+  }
   switch (schema.type) {
     case 'string': return 'string';
     case 'number':
@@ -134,12 +140,14 @@ function renderArray(schema: JsonSchema, where: string, known: ReadonlySet<strin
 }
 
 /**
- * A `z.tuple`: one schema per position, which Zod emits as `prefixItems` and
- * nothing else. A rest element would come as `items` beside them, and no answer
- * has one yet.
+ * A `z.tuple`: one schema per position, which Zod emits as `prefixItems`, with
+ * `items: false` beside them to close the tuple (JSON Schema 2020-12). A rest
+ * element would come as `items` holding a schema, and no answer has one yet.
  */
 function renderTuple(schema: JsonSchema, where: string, known: ReadonlySet<string>, indent: string): string {
-  if (schema.items !== undefined) throw new RenderError(where, 'is a tuple with a rest element, which this renderer does not render');
+  if (schema.items !== undefined && schema.items !== false) {
+    throw new RenderError(where, 'is a tuple with a rest element, which this renderer does not render');
+  }
   const positions = (schema.prefixItems as JsonSchema[]).map((item, i) => renderType(item, `${where}[${i}]`, known, indent));
   return `[${positions.join(', ')}]`;
 }
@@ -148,7 +156,9 @@ function renderTuple(schema: JsonSchema, where: string, known: ReadonlySet<strin
 function isUnion(schema: JsonSchema): boolean {
   const members = schema.anyOf ?? schema.oneOf;
   if (typeof schema.$ref === 'string') return false;
-  return (Array.isArray(members) && members.length > 1) || (Array.isArray(schema.enum) && schema.enum.length > 1);
+  return (Array.isArray(members) && members.length > 1)
+    || (Array.isArray(schema.enum) && schema.enum.length > 1)
+    || (Array.isArray(schema.type) && schema.type.length > 1);
 }
 
 function renderObjectType(schema: JsonSchema, where: string, known: ReadonlySet<string>, indent: string): string {
