@@ -128,6 +128,22 @@ const EXPERIENCE_LOCATION_WRITE_RULES = [
   { selector: `Literal[value=${EXPERIENCE_LOCATION_WRITE_TEXT}]`, message: EXPERIENCE_LOCATION_WRITE },
 ];
 
+/**
+ * A write to `treasures` or `experience_treasures` — a venue's works and their
+ * links — outside the modules that write them (ADR-0069, #1072): the curator's
+ * writes in `src/controllers/experience/workWriter.ts`, every one of them under
+ * the venue's `LockedExperience` token; the run's treasure writer and link
+ * reconciliation (`src/services/sync/museum/treasureWriter.ts`,
+ * `src/services/sync/museum/linkWithdrawal.ts`); and the seed.
+ */
+const WORK_WRITE = 'treasures and experience_treasures are written by their writer modules only (ADR-0069): add a named '
+  + 'write to src/controllers/experience/workWriter.ts, taking the venue\'s LockedExperience token.';
+const WORK_WRITE_TEXT = '/\\b(INSERT\\s+INTO|UPDATE)\\s+(experience_)?treasures(?!\\w)/i';
+const WORK_WRITE_RULES = [
+  { selector: `TemplateElement[value.raw=${WORK_WRITE_TEXT}]`, message: WORK_WRITE },
+  { selector: `Literal[value=${WORK_WRITE_TEXT}]`, message: WORK_WRITE },
+];
+
 /** What the response-shape rule says. */
 const RESPONSE_SHAPE = [
   'A success body is sent through respond(res, Schema, body) from src/api/respond.ts, with its schema in src/api/responses/,',
@@ -267,7 +283,8 @@ export default [
     ignores: ['src/**/*.test.ts', 'src/api/respond.ts'],
     rules: {
       'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
+        ...ROUTE_REGISTRY_RULES],
     },
   },
   // The two modules the reader predicates are spelled in (#791): every entry
@@ -276,7 +293,8 @@ export default [
     files: ['src/db/readerPredicates.ts', 'src/db/membership.ts'],
     rules: {
       'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+        ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
+        ...ROUTE_REGISTRY_RULES],
     },
   },
   // The modules that write `experiences` (ADR-0069): every entry above but
@@ -290,7 +308,8 @@ export default [
     ],
     rules: {
       'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
+        ...ROUTE_REGISTRY_RULES],
     },
   },
   // The modules that write `experience_locations` (ADR-0069), the same way.
@@ -301,10 +320,23 @@ export default [
     ],
     rules: {
       'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...WORK_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
     },
   },
-  // The seed writes both tables, as the fixture it is.
+  // The modules that write `treasures` and `experience_treasures` (ADR-0069,
+  // #1072), the same way.
+  {
+    files: [
+      'src/controllers/experience/workWriter.ts',
+      'src/services/sync/museum/treasureWriter.ts',
+      'src/services/sync/museum/linkWithdrawal.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+    },
+  },
+  // The seed writes the catalogue's tables, as the fixture it is.
   {
     files: ['src/db/seed/**/*.ts'],
     rules: {
