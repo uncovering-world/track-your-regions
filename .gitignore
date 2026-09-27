@@ -124,3 +124,7 @@ ds-bundle/
 
 # Superpowers skill working directory
 .superpowers/
+
+# The api:client check's scratch output (frontend/scripts/api-client.mjs), left behind
+# only when a check is interrupted.
+frontend/src/api/client.check.generated.ts

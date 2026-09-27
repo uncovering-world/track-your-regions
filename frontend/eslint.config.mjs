@@ -29,7 +29,8 @@ const QUERY_KEY_SELECTORS = KEY_WRAPPERS.flatMap(wrappers => {
 
 export default [
   {
-    ignores: ['dist/', 'node_modules/'],
+    // Orval's output (ADR-0073) is generated, and api:client holds it to the document.
+    ignores: ['dist/', 'node_modules/', 'src/**/*.generated.ts'],
   },
   // TypeScript recommended rules
   ...tseslint.configs['flat/recommended'],
