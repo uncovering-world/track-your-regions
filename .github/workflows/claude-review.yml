@@ -217,8 +217,8 @@ jobs:
                missing", check upstream (middleware, wrappers, project
                conventions in CLAUDE.md / dev-guide) and downstream (is the
                supposed gap actually reachable?). If verification shows it's
-               handled elsewhere — Zod `validate()` at the route layer,
-               `requireAuth` middleware, generic error handler — DON'T flag.
+               handled elsewhere — a route declaration's schemas and
+               `access` (ADR-0071), generic error handler — DON'T flag.
                False positives waste reviewer attention.
             4. **Pre-existing ≠ skip, and pre-existing ≠ inline.** Latent
                bugs in moved/refactored code STILL get reported, with a

@@ -42,8 +42,10 @@ review in the set.
    tenth of the lines under `docs/` open with one of the two, and dropping them
    would quietly undo the weight #869 is here to defend.
 2. **Generated output counts nothing.** `package-lock.json`, `*.snap`, `*.lock`,
-   and a `*.generated.ts` source file such as `backend/src/db/schema.generated.ts`
-   (ADR-0064), which a generator writes and a gate holds to its input.
+   a `*.generated.ts` source file such as `backend/src/db/schema.generated.ts`
+   (ADR-0064), and a `*.generated.json` document such as
+   `packages/shared/src/openapi.generated.json` (ADR-0072), which a generator writes
+   and a gate holds to its input.
 3. **Moved lines cancel.** An added line whose exact text is also deleted
    somewhere on the branch is a move, and both sides drop out. The pairing is
    branch-wide on purpose: a file split deletes a function in one file and adds
