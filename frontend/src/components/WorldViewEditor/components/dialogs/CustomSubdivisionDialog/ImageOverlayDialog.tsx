@@ -31,7 +31,7 @@ import { isWebGLAvailable } from '../../../../../utils/webgl';
 import type * as maplibregl from 'maplibre-gl';
 import { MAP_STYLE } from '../../../../../constants/mapStyles';
 import { CalibrationView } from './CalibrationView';
-import { API_URL, getAccessToken } from '../../../../../api/fetchUtils';
+import { fetchImageViaProxy } from '../../../../../api/admin';
 
 // Component that renders image overlay and updates coordinates in real-time
 function ImageOverlaySource({
@@ -250,13 +250,7 @@ export function ImageOverlayDialog({
   // Fetch image through backend proxy to bypass CORS (for Wikimedia URLs)
   const loadViaProxy = useCallback(async (url: string, name: string) => {
     try {
-      const proxyUrl = `${API_URL}/api/admin/image-proxy?url=${encodeURIComponent(url)}`;
-      const token = getAccessToken();
-      const response = await fetch(proxyUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!response.ok) throw new Error(`Proxy returned ${response.status}`);
-      const blob = await response.blob();
+      const blob = await fetchImageViaProxy(url);
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;

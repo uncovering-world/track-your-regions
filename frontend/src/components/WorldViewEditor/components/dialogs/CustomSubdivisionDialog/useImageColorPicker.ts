@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { API_URL, getAccessToken } from '../../../../../api/fetchUtils';
+import { fetchImageViaProxy } from '../../../../../api/admin';
 import type { SubdivisionGroup } from './types';
 import type { ImageOverlaySettings } from './ImageOverlayDialog';
 
@@ -65,15 +65,7 @@ export function useImageColorPicker({
       drawToCanvas(url);
     } else {
       // Fetch through proxy to get a CORS-safe blob URL
-      const proxyUrl = `${API_URL}/api/admin/image-proxy?url=${encodeURIComponent(url)}`;
-      const token = getAccessToken();
-      fetch(proxyUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
-        .then(r => {
-          if (!r.ok) throw new Error(`Proxy ${r.status}`);
-          return r.blob();
-        })
+      fetchImageViaProxy(url)
         .then(blob => {
           if (cancelled) return;
           const blobUrl = URL.createObjectURL(blob);
