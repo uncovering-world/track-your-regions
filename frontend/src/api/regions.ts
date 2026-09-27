@@ -7,7 +7,17 @@ import type {
   MemberMoved, Region, RegionGeometry, RegionMembers, Regions, RegionSearchResults, RegionUpdated, SubregionFlattened,
   SubregionsExpanded,
 } from '@tyr/shared/api';
-import { API_URL, authFetchJson, authFetchOptionalJson } from './fetchUtils.js';
+import {
+  deleteWorldViewsRegionsByRegionId, deleteWorldViewsRegionsByRegionIdMembers, getWorldViewsByWorldViewIdRegions,
+  getWorldViewsByWorldViewIdRegionsRoot, getWorldViewsByWorldViewIdRegionsSearch,
+  getWorldViewsRegionsByRegionIdAncestors, getWorldViewsRegionsByRegionIdGeometry, getWorldViewsRegionsByRegionIdMembers,
+  getWorldViewsRegionsByRegionIdMembersDescendantGeometries, getWorldViewsRegionsByRegionIdMembersGeometries,
+  getWorldViewsRegionsByRegionIdSubregions, postWorldViewsByWorldViewIdDivisionUsage, postWorldViewsByWorldViewIdRegions,
+  postWorldViewsRegionsByParentRegionIdFlattenBySubregionId, postWorldViewsRegionsByRegionIdExpand,
+  postWorldViewsRegionsByRegionIdMembers, postWorldViewsRegionsByRegionIdMembersByDivisionIdAddChildren,
+  postWorldViewsRegionsByRegionIdMembersMove, putWorldViewsRegionsByRegionId, putWorldViewsRegionsByRegionIdGeometry,
+  type AddChildDivisionsBody, type AddDivisionsToRegionBody, type CreateRegionBody, type UpdateRegionBody,
+} from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
 // and generated into `@tyr/shared/api`. Passed on from here, so a component
@@ -30,65 +40,37 @@ export async function searchRegions(
   if (!query || query.length < 2) {
     return [];
   }
-  const params = new URLSearchParams({
-    query,
-    limit: String(limit),
-  });
-  return authFetchJson<RegionSearchResults>(`${API_URL}/api/world-views/${worldViewId}/regions/search?${params}`);
+  return getWorldViewsByWorldViewIdRegionsSearch(worldViewId, { query, limit });
 }
 
 export async function fetchRegions(worldViewId: number): Promise<Regions> {
-  return authFetchJson<Regions>(`${API_URL}/api/world-views/${worldViewId}/regions`);
+  return getWorldViewsByWorldViewIdRegions(worldViewId);
 }
 
 export async function fetchRootRegions(worldViewId: number): Promise<Regions> {
-  return authFetchJson<Regions>(`${API_URL}/api/world-views/${worldViewId}/regions/root`);
+  return getWorldViewsByWorldViewIdRegionsRoot(worldViewId);
 }
 
 export async function fetchSubregions(regionId: number): Promise<Regions> {
-  return authFetchJson<Regions>(`${API_URL}/api/world-views/regions/${regionId}/subregions`);
+  return getWorldViewsRegionsByRegionIdSubregions(regionId);
 }
 
 export async function fetchRegionAncestors(regionId: number): Promise<Regions> {
-  return authFetchJson<Regions>(`${API_URL}/api/world-views/regions/${regionId}/ancestors`);
+  return getWorldViewsRegionsByRegionIdAncestors(regionId);
 }
 
 export async function createRegion(
   worldViewId: number,
-  data: {
-    name: string;
-    description?: string;
-    parentRegionId?: number;
-    color?: string;
-    customGeometry?: GeoJSON.Polygon | GeoJSON.MultiPolygon;
-  }
+  data: CreateRegionBody,
 ): Promise<Region> {
-  return authFetchJson<Region>(`${API_URL}/api/world-views/${worldViewId}/regions`, {
-    method: 'POST',
-    body: JSON.stringify({
-      name: data.name,
-      description: data.description,
-      parentRegionId: data.parentRegionId,
-      color: data.color,
-      customGeometry: data.customGeometry,
-    }),
-  });
+  return postWorldViewsByWorldViewIdRegions(worldViewId, data);
 }
 
 export async function updateRegion(
   regionId: number,
-  data: { name?: string; description?: string; color?: string; parentRegionId?: number | null; usesHull?: boolean }
+  data: UpdateRegionBody,
 ): Promise<RegionUpdated> {
-  return authFetchJson<RegionUpdated>(`${API_URL}/api/world-views/regions/${regionId}`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      name: data.name,
-      description: data.description,
-      color: data.color,
-      parentRegionId: data.parentRegionId,
-      usesHull: data.usesHull,
-    }),
-  });
+  return putWorldViewsRegionsByRegionId(regionId, data);
 }
 
 export async function updateRegionGeometry(
@@ -97,24 +79,20 @@ export async function updateRegionGeometry(
   isCustomBoundary: boolean = true,
   hullGeometry?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null
 ): Promise<void> {
-  await authFetchJson<void>(`${API_URL}/api/world-views/regions/${regionId}/geometry`, {
-    method: 'PUT',
-    body: JSON.stringify({ geometry, isCustomBoundary, hullGeometry }),
-  });
+  await putWorldViewsRegionsByRegionIdGeometry(regionId, { geometry, isCustomBoundary, hullGeometry });
 }
 
 export async function deleteRegion(regionId: number, options?: { moveChildrenToParent?: boolean }): Promise<void> {
-  const params = options?.moveChildrenToParent ? '?moveChildrenToParent=true' : '';
-  await authFetchJson<void>(`${API_URL}/api/world-views/regions/${regionId}${params}`, {
-    method: 'DELETE',
-  });
+  await deleteWorldViewsRegionsByRegionId(
+    regionId, options?.moveChildrenToParent ? { moveChildrenToParent: 'true' } : undefined,
+  );
 }
 
 /** A region's stored outline, or its hull; null where it has none computed yet. */
 export async function fetchRegionGeometry(regionId: number, detail?: 'high' | 'hull'): Promise<RegionGeometry | null> {
   try {
-    const params = detail ? `?detail=${detail}` : '';
-    return await authFetchOptionalJson<RegionGeometry>(`${API_URL}/api/world-views/regions/${regionId}/geometry${params}`);
+    // A region with no outline computed yet answers 204, read as undefined.
+    return (await getWorldViewsRegionsByRegionIdGeometry(regionId, detail ? { detail } : undefined)) ?? null;
   } catch {
     return null;
   }
@@ -125,12 +103,12 @@ export async function fetchRegionGeometry(regionId: number, detail?: 'high' | 'h
 // =============================================================================
 
 export async function fetchRegionMembers(regionId: number): Promise<RegionMembers> {
-  return authFetchJson<RegionMembers>(`${API_URL}/api/world-views/regions/${regionId}/members`);
+  return getWorldViewsRegionsByRegionIdMembers(regionId);
 }
 
 export async function fetchRegionMemberGeometries(regionId: number): Promise<MemberGeometries | null> {
   try {
-    return await authFetchOptionalJson<MemberGeometries>(`${API_URL}/api/world-views/regions/${regionId}/members/geometries`);
+    return await getWorldViewsRegionsByRegionIdMembersGeometries(regionId);
   } catch {
     return null;
   }
@@ -138,7 +116,7 @@ export async function fetchRegionMemberGeometries(regionId: number): Promise<Mem
 
 export async function fetchDescendantMemberGeometries(regionId: number): Promise<DescendantMemberGeometries | null> {
   try {
-    return await authFetchOptionalJson<DescendantMemberGeometries>(`${API_URL}/api/world-views/regions/${regionId}/members/descendant-geometries`);
+    return await getWorldViewsRegionsByRegionIdMembersDescendantGeometries(regionId);
   } catch {
     return null;
   }
@@ -147,30 +125,9 @@ export async function fetchDescendantMemberGeometries(regionId: number): Promise
 export async function addDivisionsToRegion(
   regionId: number,
   divisionIds: number[],
-  options?: {
-    createAsSubregions?: boolean;
-    includeChildren?: boolean;
-    inheritColor?: boolean;
-    childIds?: number[];
-    customName?: string;
-    customGeometry?: GeoJSON.Polygon | GeoJSON.MultiPolygon;
-  }
+  options?: Omit<AddDivisionsToRegionBody, 'divisionIds'>,
 ): Promise<DivisionsAdded> {
-  return authFetchJson<DivisionsAdded>(
-    `${API_URL}/api/world-views/regions/${regionId}/members`,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        divisionIds: divisionIds,
-        createAsSubregions: options?.createAsSubregions,
-        includeChildren: options?.includeChildren,
-        inheritColor: options?.inheritColor,
-        childIds: options?.childIds,
-        customName: options?.customName,
-        customGeometry: options?.customGeometry,
-      }),
-    }
-  );
+  return postWorldViewsRegionsByRegionIdMembers(regionId, { divisionIds, ...options });
 }
 
 export async function removeDivisionsFromRegion(
@@ -178,13 +135,7 @@ export async function removeDivisionsFromRegion(
   divisionIds?: number[],
   memberRowIds?: number[]
 ): Promise<DivisionsRemoved> {
-  return authFetchJson<DivisionsRemoved>(`${API_URL}/api/world-views/regions/${regionId}/members`, {
-    method: 'DELETE',
-    body: JSON.stringify({
-      divisionIds: divisionIds,
-      memberRowIds: memberRowIds,
-    }),
-  });
+  return deleteWorldViewsRegionsByRegionIdMembers(regionId, { divisionIds, memberRowIds });
 }
 
 export async function moveMemberToRegion(
@@ -192,40 +143,15 @@ export async function moveMemberToRegion(
   memberRowId: number,
   toRegionId: number
 ): Promise<MemberMoved> {
-  return authFetchJson<MemberMoved>(`${API_URL}/api/world-views/regions/${fromRegionId}/members/move`, {
-    method: 'POST',
-    body: JSON.stringify({
-      memberRowId,
-      toRegionId,
-    }),
-  });
+  return postWorldViewsRegionsByRegionIdMembersMove(fromRegionId, { memberRowId, toRegionId });
 }
 
 export async function addChildDivisionsAsSubregions(
   regionId: number,
   divisionId: number,
-  options?: {
-    childIds?: number[];
-    removeOriginal?: boolean;
-    inheritColor?: boolean;
-    createAsSubregions?: boolean;
-    assignments?: Array<{ gadmChildId: number; existingRegionId: number }>;
-  }
+  options: AddChildDivisionsBody = {},
 ): Promise<ChildDivisionsAdded> {
-  return authFetchJson<ChildDivisionsAdded>(
-    `${API_URL}/api/world-views/regions/${regionId}/members/${divisionId}/add-children`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        childIds: options?.childIds,
-        removeOriginal: options?.removeOriginal,
-        inheritColor: options?.inheritColor,
-        createAsSubregions: options?.createAsSubregions,
-        assignments: options?.assignments,
-      }),
-    }
-  );
+  return postWorldViewsRegionsByRegionIdMembersByDivisionIdAddChildren(regionId, divisionId, options);
 }
 
 /** Flatten a subregion - moves all divisions from subregion to parent and deletes subregion */
@@ -233,13 +159,7 @@ export async function flattenSubregion(
   parentRegionId: number,
   subregionId: number
 ): Promise<SubregionFlattened> {
-  return authFetchJson<SubregionFlattened>(
-    `${API_URL}/api/world-views/regions/${parentRegionId}/flatten/${subregionId}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    }
-  );
+  return postWorldViewsRegionsByParentRegionIdFlattenBySubregionId(parentRegionId, subregionId);
 }
 
 /** Expand division members to subregions (opposite of flatten) */
@@ -247,14 +167,7 @@ export async function expandToSubregions(
   regionId: number,
   options?: { inheritColor?: boolean }
 ): Promise<SubregionsExpanded> {
-  return authFetchJson<SubregionsExpanded>(
-    `${API_URL}/api/world-views/regions/${regionId}/expand`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(options || {}),
-    }
-  );
+  return postWorldViewsRegionsByRegionIdExpand(regionId, options || {});
 }
 
 /** Get usage counts for divisions within a world view */
@@ -263,12 +176,5 @@ export async function fetchDivisionUsageCounts(
   divisionIds: number[]
 ): Promise<DivisionUsageCounts> {
   if (divisionIds.length === 0) return {};
-  return authFetchJson<DivisionUsageCounts>(
-    `${API_URL}/api/world-views/${worldViewId}/division-usage`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ divisionIds: divisionIds }),
-    }
-  );
+  return postWorldViewsByWorldViewIdDivisionUsage(worldViewId, { divisionIds });
 }
