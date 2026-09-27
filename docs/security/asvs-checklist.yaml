@@ -283,7 +283,7 @@ chapters:
       desc: "Logout invalidates tokens"
       level: 1
       status: pass
-      notes: "Logout revokes refresh token AND blacklists access token JTI (in-memory, auto-cleaned). Token immediately rejected by verifyAccessToken(). Fixed 2026-02-10"
+      notes: "Logout revokes refresh token AND blacklists access token JTI (in-memory, auto-cleaned). Token immediately rejected by verifyAccessToken(). Fixed 2026-02-10. The web client did not send the access token on logout, so the blacklist never ran for it, until 2026-09-27 (#1110): useAuth takes the token before clearing state and logout() sends it"
     V7.3.6:
       desc: "Concurrent session limits"
       level: 2
