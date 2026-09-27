@@ -57,7 +57,8 @@ describe('what counts as a line', () => {
   });
 
   it('does not count generated output at all', () => {
-    const generated = ['package-lock.json', 'frontend/src/__snapshots__/x.snap', 'poetry.lock', 'backend/src/db/schema.generated.ts'];
+    const generated = ['package-lock.json', 'frontend/src/__snapshots__/x.snap', 'poetry.lock', 'backend/src/db/schema.generated.ts',
+      'packages/shared/src/openapi.generated.json'];
     for (const path of generated) {
       const measured = measureSurface(diff(fileDiff(path, [{ added: ['"resolved": "https://x"'] }])));
       expect(measured.surface, path).toBe(0);
