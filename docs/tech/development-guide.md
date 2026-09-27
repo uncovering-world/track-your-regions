@@ -941,8 +941,8 @@ every one), `npm run gates -- run test` (the unit lanes it asks for;
 the pull request opens, and again on the head the maintainer is asked to merge
 when a review wave since then touched their inputs: `npm run security:all` (the
 fast gates plus the slow Semgrep and Trivy scans the change asks for) and, when
-`npm run gates` lists them, `npm run test:e2e:smoke`, `npm run test:db` and
-`npm run perf:local` — a review-wave push owes the per-commit tier alone, and CI
+`npm run gates` lists them, `npm run test:e2e:smoke`, `npm run test:db`, `npm run test:api`
+and `npm run perf:local` — a review-wave push owes the per-commit tier alone, and CI
 answers for the slow lanes on the pushed head (`/commit` § 8 holds the rule,
 #920). A gate the map
 skips was not run and did not need to be; a gate the host cannot run (the Python tooling
@@ -984,6 +984,7 @@ lists those lanes rather than running them:
 npm run security:all   # the fast gates, then the slow Semgrep and Trivy scans the change asks for
 npm run test:e2e:smoke # isolated test stack, seeded fixture, Playwright smoke
 npm run test:db        # the database-backed backend specs, inside the same stack (a real Postgres, not the mocked pool)
+npm run test:api       # Schemathesis against the same stack's backend, as each fixture account, reads only
 npm run perf:local     # the production build on the dev stack's own data: size, Lighthouse, the probe
 ```
 
