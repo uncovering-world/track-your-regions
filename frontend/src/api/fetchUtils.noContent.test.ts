@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { authFetchJson, authFetchOptionalJson, setAccessToken } from './fetchUtils';
+import { authFetchJson, setAccessToken } from './fetchUtils';
+import { fetchDivisionGeometry } from './divisions';
+import { fetchRegionGeometry } from './regions';
 
 /**
  * What a 204 reads as. A list read answers 204 for "nothing", and its callers
@@ -7,8 +9,8 @@ import { authFetchJson, authFetchOptionalJson, setAccessToken } from './fetchUti
  * geometry read answers 204 for "this region has no outline yet" (Europe in the
  * development data, whose union times out), and its callers test the answer
  * and then read its keys: an empty array passes that test and has none of
- * them, so `answer.properties.crossesDateline` threw. That read goes through
- * `authFetchOptionalJson`, and gets null.
+ * them, so `answer.properties.crossesDateline` threw. Those reads go through
+ * the generated client, which reads a 204 as `undefined`, and answer null.
  */
 describe('a 204 with no content', () => {
   beforeEach(() => {
@@ -24,7 +26,11 @@ describe('a 204 with no content', () => {
     await expect(authFetchJson<string[]>('/api/list')).resolves.toEqual([]);
   });
 
-  it('reads as null through authFetchOptionalJson', async () => {
-    await expect(authFetchOptionalJson<{ properties: object }>('/api/world-views/regions/6737/geometry')).resolves.toBeNull();
+  it('reads as null for a region with no outline', async () => {
+    await expect(fetchRegionGeometry(6737)).resolves.toBeNull();
+  });
+
+  it('reads as null for a division with no outline', async () => {
+    await expect(fetchDivisionGeometry(42)).resolves.toBeNull();
   });
 });
