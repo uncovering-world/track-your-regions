@@ -5,12 +5,9 @@
  * AI suggest children.
  */
 
-import { Response } from 'express';
 import OpenAI from 'openai';
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { respond } from '../../api/respond.js';
 import {
   AIMatchCancelled,
   AIMatchOneResult,
@@ -22,8 +19,8 @@ import {
   MatchReset,
 } from '../../api/responses/worldViewImport.js';
 import { foundSuggestionOf } from './wvImportAnswerRows.js';
-import { ClusterRegionSuggestions } from '../../api/responses/wvImportCvMatch.js';
-import { ChildrenReviewed } from '../../api/responses/wvImportTreeOps.js';
+import type { ClusterRegionSuggestions } from '../../api/responses/wvImportCvMatch.js';
+import type { ChildrenReviewed } from '../../api/responses/wvImportTreeOps.js';
 import { auditOf, enrichmentsOf, type Enrichment, type NormalizedAction } from './wvImportChildReviewRows.js';
 import { clusterRegionMatchesOf } from './wvImportCvAnswerRows.js';
 import {
@@ -47,8 +44,10 @@ import { geoshapeMatchRegion } from '../../services/worldViewImport/geoshapeCove
 import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
 import { computeGeoSimilarityIfNeeded } from './wvImportUtils.js';
 import type { z } from 'zod/v4';
-import { createError, failure, notFound } from '../../middleware/errorHandler.js';
-import type { worldViewIdParamSchema, wvImportGeoshapeMatchSchema, wvImportRegionIdSchema } from '../../types/index.js';
+import { badRequest, createError, failure, notFound } from '../../middleware/errorHandler.js';
+import type {
+  worldViewIdParamSchema, wvImportAiSuggestClustersSchema, wvImportGeoshapeMatchSchema, wvImportRegionIdSchema,
+} from '../../types/index.js';
 
 /** What the shape and marker matchers found, key by key. */
 function coveringMatchOf(result: {
@@ -383,12 +382,8 @@ function wikivoyagePageUrl(title: string): string {
   return `https://en.wikivoyage.org/wiki/${encodedTitle}`;
 }
 
-/** Load the region's name, source URL, and existing children; sends a 4xx response on failure. */
-async function fetchRegionContext(
-  worldViewId: number,
-  regionId: number,
-  res: Response,
-): Promise<RegionContext | null> {
+/** Load the region's name, source URL, and existing children; throws the 4xx a missing one answers. */
+async function fetchRegionContext(worldViewId: number, regionId: number): Promise<RegionContext> {
   const regionResult = await pool.query(
     `SELECT r.id, r.name, ris.source_url
      FROM regions r
@@ -397,19 +392,16 @@ async function fetchRegionContext(
     [regionId, worldViewId],
   );
   if (regionResult.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return null;
+    throw notFound('Region not found in this world view');
   }
   const { name: regionName, source_url: sourceUrl } = regionResult.rows[0];
   if (!sourceUrl) {
-    res.status(400).json({ error: 'Region has no source URL' });
-    return null;
+    throw badRequest('Region has no source URL');
   }
 
   const pathPart = new URL(sourceUrl).pathname.split('/wiki/')[1];
   if (!pathPart) {
-    res.status(400).json({ error: 'Cannot extract page title from source URL' });
-    return null;
+    throw badRequest('Cannot extract page title from source URL');
   }
   const pageTitle = decodeURIComponent(pathPart);
 
@@ -649,13 +641,11 @@ function buildEnrichedActions(
 
 /**
  * A model's review of a region's children against its Wikivoyage page's
- * region list, or undefined where the answer was already an error: the region
- * or its page not found, or no model configured.
+ * region list. Throws the refusal where the region or its page is not found,
+ * or no model is configured.
  */
-async function reviewRegionChildren(worldViewId: number, regionId: number, res: Response): Promise<ChildrenReviewed | undefined> {
-  const context = await fetchRegionContext(worldViewId, regionId, res);
-  if (!context) return undefined;
-  const { regionName, pageTitle, existingChildren } = context;
+async function reviewRegionChildren(worldViewId: number, regionId: number): Promise<ChildrenReviewed> {
+  const { regionName, pageTitle, existingChildren } = await fetchRegionContext(worldViewId, regionId);
 
   const fetcher = new WikivoyageFetcher('data/cache/wikivoyage-cache.json', buildFetcherProgress());
 
@@ -665,8 +655,7 @@ async function reviewRegionChildren(worldViewId: number, regionId: number, res: 
   }
 
   if (!isOpenAIAvailable()) {
-    res.status(503).json({ error: 'OpenAI API is not configured' });
-    return undefined;
+    throw failure('OpenAI API is not configured', 503);
   }
 
   // 4. AI Call 1 — Audit
@@ -813,20 +802,23 @@ function buildExtraEnrichActions(
   });
 }
 
-export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
+export async function aiSuggestChildren(
+  { params: { worldViewId }, body: { regionId } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof wvImportRegionIdSchema>;
+  },
+): Promise<ChildrenReviewed> {
   console.log(`[WV Import] POST /matches/${worldViewId}/ai-review-children — regionId=${regionId}`);
 
-  let body: ChildrenReviewed | undefined;
   try {
-    body = await reviewRegionChildren(worldViewId, regionId, res);
+    return await reviewRegionChildren(worldViewId, regionId);
   } catch (err) {
-    console.error(`[WV Import] AI review children failed:`, err);
-    res.status(500).json({ error: 'AI review children failed' });
-    return;
+    // A refusal the review decided on (the region, its page, no model) is
+    // answered as itself; anything else is the product's own 500.
+    if (typeof (err as { statusCode?: unknown }).statusCode === 'number') throw err;
+    console.error('[WV Import] AI review children failed:', err);
+    throw failure('AI review children failed', 500);
   }
-  if (body) respond(res, ChildrenReviewed, body);
 }
 
 /**
@@ -834,18 +826,16 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
  * Given K-means color clusters (each containing GADM division names) and a list
  * of child region names, asks the AI to match each cluster to a region.
  */
-export async function aiSuggestClusterRegions(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { clusters, childRegions, model: modelOverride } = req.body as {
-    clusters: Array<{ clusterId: number; color: string; pixelShare: number; divisionNames: string[] }>;
-    childRegions: Array<{ id: number; name: string }>;
-    model?: string;
-  };
+export async function aiSuggestClusterRegions(
+  { params: { worldViewId }, body: { clusters, childRegions, model: modelOverride } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof wvImportAiSuggestClustersSchema>;
+  },
+): Promise<ClusterRegionSuggestions> {
   console.log(`[WV Import] POST /matches/${worldViewId}/ai-suggest-clusters — ${clusters.length} clusters, ${childRegions.length} regions${formatModelOverrideSuffix(modelOverride)}`);
 
   if (!isOpenAIAvailable()) {
-    res.status(503).json({ error: 'OpenAI API not configured' });
-    return;
+    throw failure('OpenAI API not configured', 503);
   }
 
   const startMs = Date.now();
@@ -878,7 +868,6 @@ ${clusterDescriptions}
 Return JSON: { "matches": [{ "clusterId": <number>, "regionName": <string|null> }] }
 Match each cluster to the best Wikivoyage region name, or null if no match.`;
 
-  let body: ClusterRegionSuggestions;
   try {
     const response = await chatCompletion(client, {
       model,
@@ -914,14 +903,12 @@ Match each cluster to the best Wikivoyage region name, or null if no match.`;
 
     console.log(`  [AI Suggest Clusters] model=${model} ${promptTokens} in, ${completionTokens} out, cost=$${costResult.totalCost.toFixed(4)}, ${durationMs}ms, matched=${result.filter(r => r.regionId).length}/${clusters.length}`);
 
-    body = {
+    return {
       matches: result,
       stats: { model, promptTokens, completionTokens, cost: costResult.totalCost, durationMs },
     };
   } catch (err) {
     console.error('[AI Suggest Clusters] Error:', err);
-    res.status(500).json({ error: 'AI suggestion failed' });
-    return;
+    throw failure('AI suggestion failed', 500);
   }
-  respond(res, ClusterRegionSuggestions, body);
 }

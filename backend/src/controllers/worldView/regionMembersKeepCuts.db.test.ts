@@ -1,7 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { removeRegionFromImport } from '../admin/wvImportTreeOpsController.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
@@ -9,6 +8,7 @@ import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
 
 /** The declared routes these specs answer through (ADR-0071). */
 const mergeChildIntoParentRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/merge-child', 'post');
+const removeRegionRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/remove-region', 'post');
 const expandToSubregionsRoute = routeAt(worldViewRoutes, '/regions/:regionId/expand', 'post');
 const deleteRegionRoute = routeAt(worldViewRoutes, '/regions/:regionId', 'delete');
 const flattenSubregionRoute = routeAt(worldViewRoutes, '/regions/:parentRegionId/flatten/:subregionId', 'post');
@@ -184,7 +184,7 @@ describe('the import review (#384, #1004)', () => {
       params: { worldViewId: String(WORLD_VIEW_ID) },
       body: { regionId: EASTERN_ID, reparentChildren: true, reparentDivisions: true },
     } as unknown as AuthenticatedRequest;
-    await removeRegionFromImport(req, answer());
+    await answerRoute(removeRegionRoute, req, answer());
 
     expect(sorted(await members())).toEqual(sorted([
       { region_id: EUROPE_ID, division_id: RUSSIA_DIV, custom_name: 'Russia west of the Urals', part: 'west' },

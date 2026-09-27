@@ -348,17 +348,26 @@ export const wvImportOverlapChildrenSchema = z.object({
   childRegionIds: z.array(z.number().int().positive()).min(1),
 });
 
-export const wvImportResolveOverlapSchema = z.object({
-  action: z.enum(['keep', 'split']),
-  divisionId: z.coerce.number().int().positive(),
-  keepInRegionId: z.coerce.number().int().positive().optional(),
-  removeFromRegionIds: z.array(z.number().int().positive()).optional(),
-  splitRegionId: z.coerce.number().int().positive().optional(),
-  assignments: z.array(z.object({
-    gadmChildId: z.number().int().positive(),
-    targetRegionId: z.number().int().positive(),
-  })).optional(),
-});
+// Each action names what it needs, so a keep without the regions to remove
+// the division from, or a split without the region and its assignments, is
+// refused here rather than by the handler.
+export const wvImportResolveOverlapSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('keep'),
+    divisionId: z.coerce.number().int().positive(),
+    keepInRegionId: z.coerce.number().int().positive().optional(),
+    removeFromRegionIds: z.array(z.number().int().positive()),
+  }),
+  z.object({
+    action: z.literal('split'),
+    divisionId: z.coerce.number().int().positive(),
+    splitRegionId: z.coerce.number().int().positive(),
+    assignments: z.array(z.object({
+      gadmChildId: z.number().int().positive(),
+      targetRegionId: z.number().int().positive(),
+    })),
+  }),
+]);
 
 // ---------------------------------------------------------------------------
 // Coverage comparison

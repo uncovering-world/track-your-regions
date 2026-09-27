@@ -4,10 +4,8 @@
  * Undo operations and auto-resolve children matching with geo-similarity validation.
  */
 
-import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import {
   trigramSearch,
 } from '../../services/worldViewImport/aiMatcher.js';
@@ -20,10 +18,9 @@ import {
   type SuggestionSnapshot,
   undoEntries,
 } from './wvImportUtils.js';
-import { respond } from '../../api/respond.js';
-import { AutoResolvePreview, ChildrenAutoResolved, OperationUndone } from '../../api/responses/wvImportTreeOps.js';
+import type { AutoResolvePreview, ChildrenAutoResolved, OperationUndone } from '../../api/responses/wvImportTreeOps.js';
 import type { z } from 'zod/v4';
-import { Refusal } from '../../middleware/errorHandler.js';
+import { notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { worldViewIdParamSchema, wvImportRegionIdSchema } from '../../types/index.js';
 
 // =============================================================================
@@ -248,17 +245,14 @@ async function dispatchUndo(client: DbClient, entry: UndoEntry): Promise<void> {
  *
  * POST /api/admin/wv-import/matches/:worldViewId/undo
  */
-export async function undoLastOperation(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
+export async function undoLastOperation(
+  { params: { worldViewId } }: { params: z.output<typeof worldViewIdParamSchema> },
+): Promise<OperationUndone> {
   console.log(`[WV Import] POST /matches/${worldViewId}/undo`);
 
   const entry = undoEntries.get(worldViewId);
-  if (!entry) {
-    res.status(404).json({ error: 'No undo available' });
-    return;
-  }
+  if (!entry) throw notFound('No undo available');
 
-  let body: OperationUndone;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -268,14 +262,13 @@ export async function undoLastOperation(req: AuthenticatedRequest, res: Response
     // Remove undo entry after successful undo
     undoEntries.delete(worldViewId);
     console.log(`[WV Import] Undo ${entry.operation} for region ${entry.regionId} successful`);
-    body = { undone: true, operation: entry.operation };
+    return { undone: true, operation: entry.operation };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
-  respond(res, OperationUndone, body);
 }
 
 // =============================================================================

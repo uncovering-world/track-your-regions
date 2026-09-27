@@ -1,8 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Response } from 'express';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { geoSuggestGap } from './wvImportCoverageController.js';
+import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
+import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
+
+/** The declared route these specs answer through (ADR-0071). */
+const geoSuggestGapRoute = routeAt(adminDeclaredRoutes, '/wv-import/matches/:worldViewId/geo-suggest-gap', 'post');
 
 /**
  * A coverage gap over the dateline is placed where it is (#1029), executed
@@ -77,8 +80,9 @@ afterAll(async () => {
 describe('geo-suggest for a gap over the dateline (#1029)', () => {
   it('places the gap at its anchor point and suggests the region beside it, not one on the far side of the world', async () => {
     const res = answer();
-    await geoSuggestGap(
-      { params: { worldViewId: String(WORLD_VIEW_ID) }, body: { divisionId: CHUKOT_DIV } } as unknown as AuthenticatedRequest,
+    await answerRoute(
+      geoSuggestGapRoute,
+      { params: { worldViewId: String(WORLD_VIEW_ID) }, body: { divisionId: CHUKOT_DIV } },
       res,
     );
     const body = res.body as { suggestion: { targetRegionId: number }; gapCenter: [number, number]; distanceKm: number };
@@ -116,8 +120,9 @@ describe('geo-suggest for a gap over the dateline (#1029)', () => {
     );
 
     const res = answer();
-    await geoSuggestGap(
-      { params: { worldViewId: String(WORLD_VIEW_ID) }, body: { divisionId: CHUKOT_DIV } } as unknown as AuthenticatedRequest,
+    await answerRoute(
+      geoSuggestGapRoute,
+      { params: { worldViewId: String(WORLD_VIEW_ID) }, body: { divisionId: CHUKOT_DIV } },
       res,
     );
     const body = res.body as { suggestion: { targetRegionId: number }; distanceKm: number };

@@ -5,16 +5,20 @@
  * gap analysis, and per-child region geometry.
  */
 
-import { Response } from 'express';
+import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { computeMultiDivisionCoverage } from '../../services/worldViewImport/geoshapeCoverage.js';
-import { respond } from '../../api/respond.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
-import {
+import type {
   ChildRegionGeometries, ChildrenCoverage, CoverageGapAnalysis, CoverageGeometry,
-  type SiblingRegionGeometry, type CoverageGapDivision,
+  SiblingRegionGeometry, CoverageGapDivision,
 } from '../../api/responses/wvImportCoverage.js';
+import { failure } from '../../middleware/errorHandler.js';
+import type {
+  childrenCoverageQuerySchema, worldViewIdParamSchema, worldViewRegionIdParamSchema,
+} from '../../types/index.js';
+
+type WorldViewRegionParams = z.output<typeof worldViewRegionIdParamSchema>;
 
 const CONCURRENCY = 10;
 
@@ -385,12 +389,15 @@ function logLowCoverage(
  * Without ?regionId: computes for ALL container nodes (initial load).
  * With ?regionId=X: computes only for ancestors of region X (fast incremental update).
  */
-export async function getChildrenCoverage(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const targetRegionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
-  const onlyId = req.query.onlyId ? parseInt(String(req.query.onlyId)) : null;
+export async function getChildrenCoverage(
+  { params: { worldViewId }, query }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    query: z.output<typeof childrenCoverageQuerySchema>;
+  },
+): Promise<ChildrenCoverage> {
+  const targetRegionId = query.regionId ?? null;
+  const onlyId = query.onlyId ?? null;
 
-  let body: ChildrenCoverage;
   try {
     const topology = await loadRegionTopology(worldViewId);
     const targetAncestorIds = computeTargetAncestors(onlyId, targetRegionId, topology.parentOf);
@@ -415,13 +422,11 @@ export async function getChildrenCoverage(req: AuthenticatedRequest, res: Respon
       (onlyId ? ` (onlyId=${onlyId})` : ''));
     logLowCoverage(coverage, topology, descendantDivsByContainer);
 
-    body = { coverage, geoshapeCoverage };
+    return { coverage, geoshapeCoverage };
   } catch (err) {
     console.error('[WV Import] Children coverage failed:', err);
-    res.status(500).json({ error: 'Children coverage failed' });
-    return;
+    throw failure('Children coverage failed', 500);
   }
-  respond(res, ChildrenCoverage, body);
 }
 
 /**
@@ -462,11 +467,9 @@ async function loadParentDivIdsWithFallback(worldViewId: number, regionId: numbe
  *   childrenGeometry = union of all descendant regions' divisions
  * GET /api/admin/wv-import/matches/:worldViewId/coverage-geometry/:regionId
  */
-export async function getCoverageGeometry(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const regionId = parseInt(String(req.params.regionId));
-
-  let body: CoverageGeometry;
+export async function getCoverageGeometry(
+  { params: { worldViewId, regionId } }: { params: WorldViewRegionParams },
+): Promise<CoverageGeometry> {
   try {
     const parentDivIds = await loadParentDivIdsWithFallback(worldViewId, regionId);
 
@@ -524,13 +527,11 @@ export async function getCoverageGeometry(req: AuthenticatedRequest, res: Respon
       ? JSON.parse(geoshapeGeo.rows[0].geojson as string) as AreaGeometry
       : null;
 
-    body = { parentGeometry, childrenGeometry, geoshapeGeometry };
+    return { parentGeometry, childrenGeometry, geoshapeGeometry };
   } catch (err) {
     console.error('[WV Import] Coverage geometry failed:', err);
-    res.status(500).json({ error: 'Coverage geometry failed' });
-    return;
+    throw failure('Coverage geometry failed', 500);
   }
-  respond(res, CoverageGeometry, body);
 }
 
 /** Aggregate all descendant division IDs for a region. */
@@ -849,20 +850,17 @@ async function coverageGapAnalysisOf(worldViewId: number, regionId: number): Pro
  * For each gap division, suggest the nearest child region to assign it to.
  * POST /api/admin/wv-import/matches/:worldViewId/coverage-gap-analysis/:regionId
  */
-export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const regionId = parseInt(String(req.params.regionId));
+export async function analyzeCoverageGaps(
+  { params: { worldViewId, regionId } }: { params: WorldViewRegionParams },
+): Promise<CoverageGapAnalysis> {
   console.log(`[WV Import] POST /matches/${worldViewId}/coverage-gap-analysis/${regionId}`);
 
-  let body: CoverageGapAnalysis;
   try {
-    body = await coverageGapAnalysisOf(worldViewId, regionId);
+    return await coverageGapAnalysisOf(worldViewId, regionId);
   } catch (err) {
     console.error('[WV Import] Coverage gap analysis failed:', err);
-    res.status(500).json({ error: 'Coverage gap analysis failed' });
-    return;
+    throw failure('Coverage gap analysis failed', 500);
   }
-  respond(res, CoverageGapAnalysis, body);
 }
 
 /**
@@ -870,29 +868,23 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
  * Used to drill down into sibling regions on the gap context map.
  * GET /api/admin/wv-import/matches/:worldViewId/children-geometry/:regionId
  */
-export async function getChildrenRegionGeometry(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const regionId = parseInt(String(req.params.regionId));
-
-  let body: ChildRegionGeometries;
+export async function getChildrenRegionGeometry(
+  { params: { worldViewId, regionId } }: { params: WorldViewRegionParams },
+): Promise<ChildRegionGeometries> {
   try {
     const childrenResult = await pool.query(
       'SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2 ORDER BY name',
       [regionId, worldViewId],
     );
-    if (childrenResult.rows.length === 0) {
-      body = { childRegions: [] };
-    } else {
-      const childRegionDivIds = await loadChildRegionDivIds(worldViewId, regionId);
-      const childNames = new Map(
-        childrenResult.rows.map(r => [r.id as number, r.name as string]),
-      );
-      body = { childRegions: await buildChildRegionGeometries(childRegionDivIds, childNames) };
-    }
+    if (childrenResult.rows.length === 0) return { childRegions: [] };
+
+    const childRegionDivIds = await loadChildRegionDivIds(worldViewId, regionId);
+    const childNames = new Map(
+      childrenResult.rows.map(r => [r.id as number, r.name as string]),
+    );
+    return { childRegions: await buildChildRegionGeometries(childRegionDivIds, childNames) };
   } catch (err) {
     console.error('[WV Import] Children region geometry failed:', err);
-    res.status(500).json({ error: 'Children region geometry failed' });
-    return;
+    throw failure('Children region geometry failed', 500);
   }
-  respond(res, ChildRegionGeometries, body);
 }

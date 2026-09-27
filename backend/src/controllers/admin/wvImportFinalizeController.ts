@@ -5,13 +5,15 @@
  * dismissHierarchyWarnings.
  */
 
-import { Response } from 'express';
+import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { IMPORT_SOURCE_TYPES } from '../../services/worldViewImport/sourceTypes.js';
-import { respond } from '../../api/respond.js';
-import { ChildRegionAdded, HierarchyWarningsDismissed } from '../../api/responses/wvImportTreeOps.js';
-import { ReviewFinalized } from '../../api/responses/wvImportCoverage.js';
+import type { ChildRegionAdded, HierarchyWarningsDismissed } from '../../api/responses/wvImportTreeOps.js';
+import type { ReviewFinalized } from '../../api/responses/wvImportCoverage.js';
+import { badRequest, notFound } from '../../middleware/errorHandler.js';
+import type { worldViewIdParamSchema, wvImportAddChildSchema, wvImportRegionIdSchema } from '../../types/index.js';
+
+type WorldViewParams = z.output<typeof worldViewIdParamSchema>;
 
 /**
  * Finalize review -- mark the world view as done.
@@ -19,8 +21,9 @@ import { ReviewFinalized } from '../../api/responses/wvImportCoverage.js';
  * The world view remains editable from the WorldView Editor.
  * POST /api/admin/wv-import/matches/:worldViewId/finalize
  */
-export async function finalizeReview(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
+export async function finalizeReview(
+  { params: { worldViewId } }: { params: WorldViewParams },
+): Promise<ReviewFinalized> {
   console.log(`[WV Import] POST /matches/${worldViewId}/finalize`);
 
   // Check for unmatched regions
@@ -77,10 +80,7 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
   const needsReview = parseInt(unmatchedResult.rows[0].needs_review as string);
   const noCandidates = parseInt(unmatchedResult.rows[0].no_candidates as string);
   if (needsReview > 0 || noCandidates > 0) {
-    res.status(400).json({
-      error: `Cannot finalize: ${needsReview} regions need review, ${noCandidates} have no candidates`,
-    });
-    return;
+    throw badRequest(`Cannot finalize: ${needsReview} regions need review, ${noCandidates} have no candidates`);
   }
 
   // Derive finalized source_type from current (e.g. 'wikivoyage' -> 'wikivoyage_done')
@@ -92,29 +92,25 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
   );
 
   if (result.rows.length === 0) {
-    res.status(404).json({ error: 'World view not found or already finalized' });
-    return;
+    throw notFound('World view not found or already finalized');
   }
 
   console.log(`[WV Import] Finalized review for worldView ${worldViewId}`);
-  respond(res, ReviewFinalized, { finalized: true, worldViewId });
+  return { finalized: true, worldViewId };
 }
 
 /**
  * Add a child region under a parent during hierarchy review.
  * POST /api/admin/wv-import/matches/:worldViewId/add-child-region
  */
-export async function addChildRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { parentRegionId, name, sourceUrl, sourceExternalId } = req.body as {
-    parentRegionId: number;
-    name: string;
-    sourceUrl?: string;
-    sourceExternalId?: string;
-  };
+export async function addChildRegion(
+  { params: { worldViewId }, body: { parentRegionId, name, sourceUrl, sourceExternalId } }: {
+    params: WorldViewParams;
+    body: z.output<typeof wvImportAddChildSchema>;
+  },
+): Promise<ChildRegionAdded> {
   console.log(`[WV Import] POST /matches/${worldViewId}/add-child-region — parent=${parentRegionId}, name="${name}"`);
 
-  let body: ChildRegionAdded;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -125,9 +121,7 @@ export async function addChildRegion(req: AuthenticatedRequest, res: Response): 
       [parentRegionId, worldViewId],
     );
     if (parent.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Parent region not found in this world view' });
-      return;
+      throw notFound('Parent region not found in this world view');
     }
 
     // Get import_run_id from parent's import state
@@ -153,23 +147,25 @@ export async function addChildRegion(req: AuthenticatedRequest, res: Response): 
     );
 
     await client.query('COMMIT');
-    body = { created: true, regionId };
+    return { created: true, regionId };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
-  respond(res, ChildRegionAdded, body);
 }
 
 /**
  * Dismiss hierarchy warnings for a region (mark as reviewed).
  * POST /api/admin/wv-import/matches/:worldViewId/dismiss-hierarchy-warnings
  */
-export async function dismissHierarchyWarnings(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body as { regionId: number };
+export async function dismissHierarchyWarnings(
+  { params: { worldViewId }, body: { regionId } }: {
+    params: WorldViewParams;
+    body: z.output<typeof wvImportRegionIdSchema>;
+  },
+): Promise<HierarchyWarningsDismissed> {
   console.log(`[WV Import] POST /matches/${worldViewId}/dismiss-hierarchy-warnings — regionId=${regionId}`);
 
   // Verify region belongs to world view
@@ -178,8 +174,7 @@ export async function dismissHierarchyWarnings(req: AuthenticatedRequest, res: R
     [regionId, worldViewId],
   );
   if (region.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
+    throw notFound('Region not found in this world view');
   }
 
   await pool.query(
@@ -187,5 +182,5 @@ export async function dismissHierarchyWarnings(req: AuthenticatedRequest, res: R
     [regionId],
   );
 
-  respond(res, HierarchyWarningsDismissed, { dismissed: true });
+  return { dismissed: true };
 }

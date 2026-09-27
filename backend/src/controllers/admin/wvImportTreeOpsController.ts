@@ -4,15 +4,12 @@
  * Tree structure manipulation: merge single-child into parent, remove regions,
  * dismiss children, prune to leaves, simplify hierarchy.
  *
- * Smart-simplify detection/apply lives in `./wvImportSmartSimplifyController.ts`.
- * Division-overlap detection/resolution lives in `./wvImportOverlapController.ts`.
- * Both are re-exported from this module for backwards compatibility.
+ * Smart-simplify detection/apply lives in `./wvImportSmartSimplifyController.ts`,
+ * division-overlap detection/resolution in `./wvImportOverlapController.ts`.
  */
 
-import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
-import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import {
   type UndoEntry,
   type ImportStateSnapshot,
@@ -21,17 +18,12 @@ import {
 } from './wvImportUtils.js';
 import { invalidateRegionGeometry, moveMembersToRegion, syncImportMatchStatus } from '../worldView/helpers.js';
 import { runSimplifyHierarchy } from './wvImportSimplifyShared.js';
-import { respond } from '../../api/respond.js';
-import {
+import type {
   ChildMerged, ChildrenDismissed, ChildrenSimplified, DescendantsPruned, HierarchySimplified, RegionRemoved,
 } from '../../api/responses/wvImportTreeOps.js';
 import type { z } from 'zod/v4';
 import { badRequest, notFound } from '../../middleware/errorHandler.js';
-import type { worldViewIdParamSchema, wvImportRegionIdSchema } from '../../types/index.js';
-
-// Re-export smart-simplify and overlap handlers (callers import from this module)
-export { detectSmartSimplify, applySmartSimplifyMove } from './wvImportSmartSimplifyController.js';
-export { checkDivisionOverlap, getOverlapDivisionChildren, resolveOverlap } from './wvImportOverlapController.js';
+import type { worldViewIdParamSchema, wvImportRegionIdSchema, wvImportRemoveRegionSchema } from '../../types/index.js';
 
 // =============================================================================
 // Tree structure manipulation endpoints
@@ -209,12 +201,14 @@ export async function mergeChildIntoParent(
  * If reparentChildren=true, children are moved to the removed region's parent.
  * If reparentChildren=false, the entire branch (all descendants) is deleted.
  */
-export async function removeRegionFromImport(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, reparentChildren, reparentDivisions } = req.body;
+export async function removeRegionFromImport(
+  { params: { worldViewId }, body: { regionId, reparentChildren, reparentDivisions } }: {
+    params: z.output<typeof worldViewIdParamSchema>;
+    body: z.output<typeof wvImportRemoveRegionSchema>;
+  },
+): Promise<RegionRemoved> {
   console.log(`[WV Import] POST /matches/${worldViewId}/remove-region — regionId=${regionId}, reparentChildren=${reparentChildren}, reparentDivisions=${reparentDivisions ?? false}`);
 
-  let body: RegionRemoved;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -225,9 +219,7 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
       [regionId, worldViewId],
     );
     if (region.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
+      throw notFound('Region not found in this world view');
     }
 
     const regionName = region.rows[0].name as string;
@@ -259,46 +251,45 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
       await client.query('COMMIT');
 
       console.log(`[WV Import] Removed region "${regionName}" (${regionId}), reparented ${reparented.rowCount} children, ${divisionsReparented} divisions`);
-      body = { removed: true, regionName, childrenReparented: reparented.rowCount ?? 0, divisionsReparented };
-    } else {
-      // Delete entire branch: all descendants first (depth-ordered), then the region
-      const descendants = await client.query(`
-        WITH RECURSIVE desc_regions AS (
-          SELECT id, 1 AS depth FROM regions WHERE parent_region_id = $1
-          UNION ALL
-          SELECT r.id, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
-        )
-        SELECT id FROM desc_regions ORDER BY depth DESC
-      `, [regionId]);
-
-      const descendantIds = descendants.rows.map(r => r.id as number);
-
-      if (descendantIds.length > 0) {
-        // Delete descendants deepest-first (CASCADE handles related tables)
-        await client.query(
-          'DELETE FROM regions WHERE id = ANY($1)',
-          [descendantIds],
-        );
-      }
-
-      // Delete the region itself
-      await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
-
-      // The whole branch is gone, so the parent covers less than it did.
-      if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId, client);
-
-      await client.query('COMMIT');
-
-      console.log(`[WV Import] Removed region "${regionName}" (${regionId}) and ${descendantIds.length} descendant(s)`);
-      body = { removed: true, regionName, descendantsRemoved: descendantIds.length };
+      return { removed: true, regionName, childrenReparented: reparented.rowCount ?? 0, divisionsReparented };
     }
+
+    // Delete entire branch: all descendants first (depth-ordered), then the region
+    const descendants = await client.query(`
+      WITH RECURSIVE desc_regions AS (
+        SELECT id, 1 AS depth FROM regions WHERE parent_region_id = $1
+        UNION ALL
+        SELECT r.id, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
+      )
+      SELECT id FROM desc_regions ORDER BY depth DESC
+    `, [regionId]);
+
+    const descendantIds = descendants.rows.map(r => r.id as number);
+
+    if (descendantIds.length > 0) {
+      // Delete descendants deepest-first (CASCADE handles related tables)
+      await client.query(
+        'DELETE FROM regions WHERE id = ANY($1)',
+        [descendantIds],
+      );
+    }
+
+    // Delete the region itself
+    await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
+
+    // The whole branch is gone, so the parent covers less than it did.
+    if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId, client);
+
+    await client.query('COMMIT');
+
+    console.log(`[WV Import] Removed region "${regionName}" (${regionId}) and ${descendantIds.length} descendant(s)`);
+    return { removed: true, regionName, descendantsRemoved: descendantIds.length };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
-  respond(res, RegionRemoved, body);
 }
 
 /**

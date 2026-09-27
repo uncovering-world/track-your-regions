@@ -9,7 +9,7 @@
  *
  * Its own file beside `wvImportMatchController.ts`, which holds the review's
  * other endpoints; the declared routes import these handlers from here
- * directly (`routes/adminDeclaredRoutes.ts`).
+ * directly (`routes/adminImportRoutes.ts`).
  */
 
 import sharp from 'sharp';
