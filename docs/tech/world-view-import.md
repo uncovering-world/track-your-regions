@@ -434,7 +434,7 @@ The endpoint is `POST /api/admin/wv-extract/answer` with `{ questionId, action: 
 
 ### Wikivoyage Extraction (`/api/admin/wv-extract/`)
 
-All require admin auth: each route is declared `admin` in `backend/src/routes/adminDeclaredRoutes.ts` (ADR-0071).
+All require admin auth: each route is declared `admin` in `backend/src/routes/adminImportRoutes.ts` (ADR-0071).
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -463,7 +463,7 @@ What a model writes is read key by key before it is answered. A rule review's su
 
 ### WorldView Import (`/api/admin/wv-import/`)
 
-All require admin auth. The import's start, status and cancel, and the match review's reads, decisions, per-region matchers and tree edits through `simplify-children`, are declared `admin` in `backend/src/routes/adminDeclaredRoutes.ts` (ADR-0071); the streams, the images and review callbacks, coverage, the remaining tree edits and finalize still list their middleware by hand in `backend/src/routes/adminRoutes.ts`, behind the `/api/admin` mount guard.
+All require admin auth. Every route that answers with a JSON body — the import's start, status and cancel, and the match review's reads, decisions, per-region matchers, tree edits, coverage, finalize and rematch — is declared `admin` in `backend/src/routes/adminImportRoutes.ts` (ADR-0071), with the limiter it had: `expensiveAdminLimiter` on `rematch`, none on the rest. The colour-match and coverage streams, the cluster and water-crop images, the review callbacks and the geoshape proxy still list their middleware by hand in `backend/src/routes/adminRoutes.ts`, behind the `/api/admin` mount guard.
 
 | Method | Path | Purpose |
 |--------|------|---------|
