@@ -15,7 +15,7 @@
  */
 
 import type { PointsDetail, WorldPointsResponse } from '@tyr/shared/api';
-import { API_URL, fetchJson } from './fetchUtils';
+import { getExperiencesPoints, type GetExperiencesPointsParams } from './client.generated';
 
 // What the call answers is declared once, as a backend schema (ADR-0066), and
 // generated into `@tyr/shared/api`. Passed on from here.
@@ -78,19 +78,20 @@ export function isAnswerablePin(
   return properties?.experienceId != null;
 }
 
-export function worldPointsUrl(query: WorldPointsQuery): string {
-  const params = new URLSearchParams({ detail: query.detail });
-  if (query.kindId !== null) params.set('kindId', String(query.kindId));
-  if (query.folded) params.set('folded', 'true');
-  if (query.box) {
-    const { west, south, east, north } = query.box;
-    params.set('bbox', [west, south, east, north].join(','));
-  }
-  return `${API_URL}/api/experiences/points?${params}`;
+export function worldPointsParams(query: WorldPointsQuery): GetExperiencesPointsParams {
+  // In this order, and a default left out: the generated call writes the
+  // entries as they stand and skips an undefined one.
+  const box = query.box;
+  return {
+    detail: query.detail,
+    kindId: query.kindId ?? undefined,
+    folded: query.folded ? 'true' : undefined,
+    bbox: box ? [box.west, box.south, box.east, box.north].join(',') : undefined,
+  };
 }
 
 export async function fetchWorldPoints(query: WorldPointsQuery): Promise<WorldPointsResponse> {
-  return fetchJson<WorldPointsResponse>(worldPointsUrl(query));
+  return getExperiencesPoints(worldPointsParams(query));
 }
 
 /**

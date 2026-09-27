@@ -20,12 +20,13 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  isAnswerablePin, worldPointsCollection, worldPointsUrl,
+  isAnswerablePin, worldPointsCollection, worldPointsParams,
   type WorldPointsQuery, type WorldPointsResponse,
 } from './worldPoints';
 // The two consumers' own source, read through Vite's `?raw` rather than
 // `node:fs`: this package's tsconfig carries no Node types, and a build-time
 // import needs none.
+import { getGetExperiencesPointsUrl } from './client.generated';
 import mapInteractionsSource from '../components/regionMap/useMapInteractions.ts?raw';
 import worldPointInteractionsSource from '../components/experienceMarkers/useWorldPointInteractions.ts?raw';
 
@@ -125,9 +126,11 @@ describe('the identity agreement has one home', () => {
   }
 });
 
-describe('worldPointsUrl', () => {
+describe('the points request', () => {
   const query: WorldPointsQuery = { kindId: null, detail: 'overview', folded: false, box: null };
-  const paramsOf = (q: WorldPointsQuery) => new URL(worldPointsUrl(q)).searchParams;
+  // The URL the generated call sends, built by its own builder.
+  const urlOf = (q: WorldPointsQuery) => `http://api${getGetExperiencesPointsUrl(worldPointsParams(q))}`;
+  const paramsOf = (q: WorldPointsQuery) => new URL(urlOf(q)).searchParams;
 
   it('asks for the overview of every kind with nothing else said', () => {
     // Every default left out: the first screen's URL is also its cache key, and
@@ -159,6 +162,6 @@ describe('worldPointsUrl', () => {
   });
 
   it('points at the endpoint itself', () => {
-    expect(worldPointsUrl(query)).toContain('/api/experiences/points?');
+    expect(urlOf(query)).toContain('/api/experiences/points?');
   });
 });
