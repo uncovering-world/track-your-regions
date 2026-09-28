@@ -244,16 +244,17 @@ Three things about that line are load-bearing.
 - **`!cancelled()` removes the implicit `success()`.** A `Changes` job that
   *fails* therefore skips nothing: every job runs, which is the map's own rule
   for an unknown change set applied one level up. Without it a broken decision
-  would skip the required contexts — `Lint & Type Check`, `Security Scan` and
-  `Unit Tests` — each would report Success, and the pull request would be
-  mergeable with nothing run on it.
+  would skip the required contexts — `Lint & Type Check`, `Security Scan`,
+  `Unit Tests`, `E2E Smoke` and `Performance (Lighthouse)`, the last two
+  required since #1099 made the API contract lane in `E2E Smoke` blocking —
+  each would report Success, and the pull request would be mergeable with
+  nothing run on it.
 - **`Build`, `E2E Smoke` and `Performance (Lighthouse)` add
   `needs.check.result == 'success'`.** That ordering existed before and had to be
   restated, because `!cancelled()` is what removed it.
 - **The filter is on the jobs and never on `on:`.** A workflow skipped by a
-  `paths:` filter never reports its checks, so `Lint & Type Check`,
-  `Security Scan` and `Unit Tests` would stay Pending and the merge button would
-  never light up. A job skipped by its own `if:` reports Success and satisfies
+  `paths:` filter never reports its checks, so the required ones would stay
+  Pending and the merge button would never light up. A job skipped by its own `if:` reports Success and satisfies
   the same required check (ADR-0062 decision 2).
 
 Inside the `check` job the setup steps have keys of their own: the root `npm ci`
@@ -278,8 +279,7 @@ database-backed backend specs (#522; which specs those are is
 `docs/tech/development-guide.md` § Tests that need a database) — against that
 same stack, keeping it up too. The third runs `npm run test:api`, the API
 contract lane (§ The API contract), against the same backend; it reads
-`job_test_api` and is `continue-on-error` until #1099 decides the one kind of
-finding its first run left. The database step reads `job_test_db`, a key of its own
+`job_test_api` and fails the job like the others. The database step reads `job_test_db`, a key of its own
 in the shape of the `Semgrep SAST (Node)` and `Semgrep SAST (Python)` steps.
 Today it always equals `job_smoke`, since both gates read `app`; what
 `scripts/gates.test.mjs` pins is the containment, not the equality — a smoke
@@ -403,9 +403,9 @@ What the lane holds the API to includes three answers that are not a 500:
 - Sign in with a provider the server has no credentials for is a 404.
 
 The traveller's run keeps under `authenticatedLimiter`, which, unlike the read limits, the
-environment cannot raise, so its probes meet the 401 they look for rather than a 429. One kind of
-finding is a policy rather than a defect: a query parameter a route does not declare is ignored
-rather than refused (#1099). Until that is decided, the lane's step in CI is `continue-on-error`.
+environment cannot raise, so its probes meet the 401 they look for rather than a 429. A query
+parameter a route does not declare is refused with 400 (#1099, `development-guide.md` § API Layer),
+so the lane's findings are defects and its step fails the job.
 
 ## What the map does not reach
 
