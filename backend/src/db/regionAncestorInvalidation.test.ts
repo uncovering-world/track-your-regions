@@ -203,18 +203,6 @@ describe('the rule has one implementation, and no way round it', () => {
     }
   });
 
-  it('lets no read path write a region geometry', () => {
-    // Two public GETs cached what they merged on the fly, fire-and-forget: a
-    // bare union with none of the pipeline's work, and storing it took the
-    // region out of the run's closure so the good geometry was never computed
-    // (#667's shape, from an anonymous request). Under the trigger it would
-    // blank a continent for every visitor as well (#680).
-    const read = collapse(readFileSync(
-      join(backendSrc, 'controllers', 'worldView', 'geometryRead.ts'), 'utf8',
-    ));
-    expect(read).not.toMatch(/UPDATE regions SET geom/);
-  });
-
   it('is never switched off for a bulk load', () => {
     // db/init-db.py disables three triggers on administrative_divisions while it
     // loads GADM and computes their columns in one pass afterwards. Doing that

@@ -144,6 +144,23 @@ const WORK_WRITE_RULES = [
   { selector: `Literal[value=${WORK_WRITE_TEXT}]`, message: WORK_WRITE },
 ];
 
+/**
+ * A write to `regions` outside the modules that write it (ADR-0069 applied to
+ * regions, #1073): the editor's and the import review's writes in
+ * `src/db/regionWriter.ts`; the geometry computations, each writing the outline
+ * its own pipeline made in a statement the pipeline's guards read
+ * (`geometryCompute.ts`, `geometryComputeSSE.ts`, `geometryComputeSingle.ts`,
+ * `computeSingleMemberFastPath.ts`); the hull generator; and the seed. A delete
+ * is a write here too: it changes a parent's union and its tiles.
+ */
+const REGION_WRITE = 'regions is written by its writer modules only (ADR-0069): add a named write to src/db/regionWriter.ts, '
+  + 'taking the caller\'s connection.';
+const REGION_WRITE_TEXT = '/\\b(INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+regions(?!\\w)/i';
+const REGION_WRITE_RULES = [
+  { selector: `TemplateElement[value.raw=${REGION_WRITE_TEXT}]`, message: REGION_WRITE },
+  { selector: `Literal[value=${REGION_WRITE_TEXT}]`, message: REGION_WRITE },
+];
+
 /** What the response-shape rule says. */
 const RESPONSE_SHAPE = [
   'A success body is sent through respond(res, Schema, body) from src/api/respond.ts, with its schema in src/api/responses/,',
@@ -284,7 +301,7 @@ export default [
     rules: {
       'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
         ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
-        ...ROUTE_REGISTRY_RULES],
+        ...REGION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
     },
   },
   // The two modules the reader predicates are spelled in (#791): every entry
@@ -294,7 +311,7 @@ export default [
     rules: {
       'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
         ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
-        ...ROUTE_REGISTRY_RULES],
+        ...REGION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
     },
   },
   // The modules that write `experiences` (ADR-0069): every entry above but
@@ -309,7 +326,7 @@ export default [
     rules: {
       'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
         ...READER_PREDICATE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
-        ...ROUTE_REGISTRY_RULES],
+        ...REGION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
     },
   },
   // The modules that write `experience_locations` (ADR-0069), the same way.
@@ -320,7 +337,7 @@ export default [
     ],
     rules: {
       'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...WORK_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...WORK_WRITE_RULES, ...REGION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
     },
   },
   // The modules that write `treasures` and `experience_treasures` (ADR-0069,
@@ -333,7 +350,23 @@ export default [
     ],
     rules: {
       'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...REGION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+    },
+  },
+  // The modules that write `regions` (ADR-0069, #1073), the same way.
+  {
+    files: [
+      'src/db/regionWriter.ts',
+      'src/controllers/worldView/geometryCompute.ts',
+      'src/controllers/worldView/geometryComputeSSE.ts',
+      'src/controllers/worldView/geometryComputeSingle.ts',
+      'src/controllers/worldView/computeSingleMemberFastPath.ts',
+      'src/services/hull/generator.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
+        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
+        ...ROUTE_REGISTRY_RULES],
     },
   },
   // The seed writes the catalogue's tables, as the fixture it is.
