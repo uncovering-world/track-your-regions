@@ -27,18 +27,18 @@ import { repoFile } from './repo-root.mjs';
  * skips the job on that same failure, because a job that failed wrote no output
  * and `B` compares the empty string. A spec that asked only whether each clause
  * appeared would call the second one fine (#954). So the
- * expected string is built per job from the map — the output key it publishes,
- * and whether the job waits behind `check` — and compared after runs of
- * whitespace are collapsed, since YAML may fold a long condition across lines.
+ * expected string is built per job from the map — the output key it publishes
+ * — and compared after runs of whitespace are collapsed, since YAML may fold a
+ * long condition across lines.
  *
  * It reads in both directions, because one of them alone is no check at all: a
  * job whose clauses are checked is a job that is still in the file, so the map
  * is also asked for every job it names. What the loops could otherwise pass
  * over is pinned three ways, each at the altitude it belongs to — the number of
- * jobs is derived from `GATES`, so it needs no number here; the jobs that wait
- * behind `check` are a named list with the reason they are those three; and
- * only the guarded steps are a bare count, because nothing in the map says how
- * many steps of a job ask for a toolchain.
+ * jobs is derived from `GATES`, so it needs no number here; that no job waits
+ * on `check` is pinned with the measurement that took the waits out; and only
+ * the guarded steps are a bare count, because nothing in the map says how many
+ * steps of a job ask for a toolchain.
  */
 
 const WORKFLOW = repoFile('.github', 'workflows', 'ci.yml');
@@ -47,15 +47,14 @@ const WORKFLOW = repoFile('.github', 'workflows', 'ci.yml');
 const DETECTION = 'changes';
 const FAIL_SAFE = '!cancelled()';
 const ESCAPE = `needs.${DETECTION}.result != 'success' ||`;
-const ORDER = "needs.check.result == 'success'";
 
 /**
  * The expression a job's `if:` is, and the one a guarded step's `if:` is.
  *
  * Assembled from the clauses above in the order and the grouping the workflow
- * writes them in, with the output key left to the caller. Everything here is a
- * decision the map already took — which key a job reads, whether it waits
- * behind `check` — so the expected string is derived and not transcribed.
+ * writes them in, with the output key left to the caller. Which key a job reads
+ * is a decision the map already took, so the expected string is derived and not
+ * transcribed.
  *
  * These two builders are where the workflow's *phrasing* is pinned, not only
  * its meaning, so rephrasing a condition on purpose is a change to them as much
@@ -67,9 +66,8 @@ const ORDER = "needs.check.result == 'success'";
  * each is a decision to take here as well, and the alternative — a spec that
  * accepts any phrasing — is what let the clauses drift into the wrong places.
  */
-const jobCondition = (key, behindCheck) =>
-  `\${{ ${FAIL_SAFE} && ${behindCheck ? `${ORDER} && ` : ''}`
-  + `(${ESCAPE} needs.${DETECTION}.outputs.${key} == 'true') }}`;
+const jobCondition = (key) =>
+  `\${{ ${FAIL_SAFE} && (${ESCAPE} needs.${DETECTION}.outputs.${key} == 'true') }}`;
 
 const stepCondition = (key) =>
   `\${{ ${ESCAPE} needs.${DETECTION}.outputs.${key} == 'true' }}`;
@@ -78,17 +76,14 @@ const stepCondition = (key) =>
 const normalise = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
 
 /**
- * The jobs that wait behind `check`, named rather than merely counted.
- *
- * These three are the lanes there is no point judging before lint and typecheck
- * have passed: a branch that does not compile should fail in four minutes with
- * a tsc error instead of burning a build, a seeded smoke run and a Lighthouse
- * pass. `!cancelled()` removes the implicit `success()` that would otherwise
- * enforce that order, so the workflow states it — and a tidy-up that drops the clause
- * and `check` from the same job's `needs` is self-consistent, which is why the
- * list is pinned here and not only held against `needs` further down.
+ * The job no other job waits on. A wait on it holds back the smoke lane, which
+ * ends nearly every run, so it lengthens every run and pays off only on a red
+ * check, which the lint gates run before every commit make rare. A wait comes
+ * back only with a measurement of its own in docs/tech/gates.md § The job graph
+ * (#965); put back without one, it would lengthen every run with nothing in the
+ * diff to say so.
  */
-const BEHIND_CHECK = ['build', 'e2e-smoke', 'perf'];
+const LINT_JOB = 'check';
 
 /**
  * How many steps read a map output. The nine are the check job's five setup
@@ -215,7 +210,6 @@ describe('the CI fail-safe clause', () => {
   it('is, for every job, the whole expression and not a bag of clauses', () => {
     for (const [id, job] of downstream) {
       const key = keyOf(mapJobFor(id));
-      const behindCheck = needsOf(job).includes('check');
       expect(
         normalise(job.if),
         `${id}'s if: is not the expression this workflow runs a job by, and the expression is `
@@ -223,10 +217,9 @@ describe('the CI fail-safe clause', () => {
         + `failed ${DETECTION} job skips nothing; the escape runs every gate when the decision `
         + 'is unknown; the output comparison sits inside that escape, because a failed job '
         + 'writes no output and a comparison joined on from outside is false on exactly the '
-        + `failure the fail-safe is for; and "${ORDER}" belongs to the jobs that wait behind `
-        + 'check. Whichever of those has moved, the cost is one thing — a required context '
+        + 'failure the fail-safe is for. Whichever of those has moved, the cost is one thing — a required context '
         + 'reporting Success with nothing run on it — and the diff below says which it was',
-      ).toBe(normalise(jobCondition(key, behindCheck)));
+      ).toBe(normalise(jobCondition(key)));
     }
   });
 
@@ -260,18 +253,17 @@ describe('the CI fail-safe clause', () => {
     }
   });
 
-  it('keeps the build, the smoke lane and Lighthouse behind check', () => {
-    const behindCheck = downstream
-      .filter(([, job]) => (job.if ?? '').includes(ORDER))
-      .map(([id]) => id)
-      .sort();
+  it('makes no job wait on the lint job', () => {
+    const waiting = downstream
+      .filter(([, job]) => needsOf(job).includes(LINT_JOB) || (job.if ?? '').includes(`needs.${LINT_JOB}.`))
+      .map(([id]) => id);
     expect(
-      behindCheck,
-      `${BEHIND_CHECK.join(', ')} are the jobs there is no point judging before lint and `
-      + 'typecheck have passed, and the ones #952 names. A job that loses the clause and its '
-      + 'wait on check together loses that order without any other line of this workflow — or '
-      + 'of this spec — saying so, so the list is pinned rather than only held against needs',
-    ).toEqual([...BEHIND_CHECK].sort());
+      waiting,
+      `a job waits on ${LINT_JOB}, and #965 measured that wait as cost with no saving: ${LINT_JOB} `
+      + 'was red on none of a week\'s pull-request runs, while the wait held back the job that ends '
+      + 'nearly every run. A wait comes back with a measurement of its own in docs/tech/gates.md '
+      + '§ The job graph, and this list with it',
+    ).toEqual([]);
   });
 
   it('is the whole expression on every step that reads a map output too', () => {
@@ -330,7 +322,8 @@ describe('the CI fail-safe clause', () => {
     expect(
       filters(triggers, 'on'),
       'the workflow itself is filtered by paths. A workflow skipped that way never reports its '
-      + 'checks at all, so the required contexts — Lint & Type Check, Security Scan, Unit Tests — '
+      + 'checks at all, so the required contexts — Lint & Type Check, Security Scan, Unit Tests, '
+      + 'E2E Smoke and Performance (Lighthouse) — '
       + 'stay Pending for ever and the merge button never lights up. The filter belongs on the '
       + 'jobs, where a skipped job reports Success and satisfies the same required check '
       + '(ADR-0062 decision 2)',
