@@ -11,12 +11,12 @@ import { deleteRegions, inRegionTransaction, lockSubtree, restoreRegions, setReg
  * Paphos and Polis, and East with nothing under it. Deleted before and after.
  */
 
-const WORLD_VIEW_ID = 9700;
-const CYPRUS = 9701;
-const WEST = 9702;
-const EAST = 9703;
-const PAPHOS = 9704;
-const POLIS = 9705;
+const WORLD_VIEW_ID = 9900;
+const CYPRUS = 9901;
+const WEST = 9902;
+const EAST = 9903;
+const PAPHOS = 9904;
+const POLIS = 9905;
 
 async function clear(): Promise<void> {
   await pool.query('DELETE FROM world_views WHERE id = $1', [WORLD_VIEW_ID]);
@@ -90,22 +90,22 @@ describe('inRegionTransaction', () => {
 
 describe('restoreRegions', () => {
   it('puts back a branch whose child carries the lower id, under the real foreign key', async () => {
-    // Paphos (9704) moved under a district the review added later (9710):
+    // Paphos (9904) moved under a district the review added later (9910):
     // restored by id, Paphos would name a parent not yet there.
     const snapshot = [
-      { id: PAPHOS, name: 'Paphos', parent_region_id: 9710, is_leaf: true, world_view_id: WORLD_VIEW_ID },
-      { id: 9710, name: 'Pafos District', parent_region_id: WEST, is_leaf: false, world_view_id: WORLD_VIEW_ID },
+      { id: PAPHOS, name: 'Paphos', parent_region_id: 9910, is_leaf: true, world_view_id: WORLD_VIEW_ID },
+      { id: 9910, name: 'Pafos District', parent_region_id: WEST, is_leaf: false, world_view_id: WORLD_VIEW_ID },
     ];
     await inRegionTransaction((tx) => deleteRegions(tx, [PAPHOS]));
 
     await inRegionTransaction((tx) => restoreRegions(tx, snapshot));
 
     const restored = await pool.query<{ id: number; parent_region_id: number }>(
-      'SELECT id, parent_region_id FROM regions WHERE id = ANY($1::int[]) ORDER BY id', [[PAPHOS, 9710]],
+      'SELECT id, parent_region_id FROM regions WHERE id = ANY($1::int[]) ORDER BY id', [[PAPHOS, 9910]],
     );
     expect(restored.rows).toEqual([
-      { id: PAPHOS, parent_region_id: 9710 },
-      { id: 9710, parent_region_id: WEST },
+      { id: PAPHOS, parent_region_id: 9910 },
+      { id: 9910, parent_region_id: WEST },
     ]);
   });
 });
