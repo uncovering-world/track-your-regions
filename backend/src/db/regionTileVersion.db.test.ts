@@ -12,11 +12,11 @@ import { pool } from './index.js';
  * and after.
  */
 
-const WORLD_VIEW_ID = 9600;
-const OTHER_WORLD_VIEW_ID = 9610;
-const EUROPE = 9601;
-const IBERIA = 9602;
-const FRANCE = 9603;
+const WORLD_VIEW_ID = 9800;
+const OTHER_WORLD_VIEW_ID = 9810;
+const EUROPE = 9801;
+const IBERIA = 9802;
+const FRANCE = 9803;
 
 const SQUARE = (x: number) => `MULTIPOLYGON(((${x} 40, ${x + 5} 40, ${x + 5} 45, ${x} 45, ${x} 40)))`;
 
