@@ -39,7 +39,7 @@ function wrapper({ children }: { children: ReactNode }) {
  * The world view list is not the same for everyone: `getWorldViews` filters on
  * `is_public` unless the caller is an admin. Asking before the session is
  * restored gets the anonymous answer — and, crucially, gets it as a **200 with a
- * shorter list** rather than a 401, so `authFetchJson`'s only recovery path (its
+ * shorter list** rather than a 401, so `apiFetch`'s only recovery path (its
  * 401 retry) never runs and `staleTime: Infinity` then freezes that answer for
  * the rest of the session. The observed symptom was an admin whose world view
  * picker offered only the one published world view, with the hidden base-layer

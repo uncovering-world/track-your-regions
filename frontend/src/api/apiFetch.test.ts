@@ -8,7 +8,7 @@ import {
 
 /**
  * `apiFetch` is the one fetch the generated client calls (ADR-0073). A call
- * moved to it behaves as it did through `authFetchJson`: the origin in front of
+ * moved to it behaves as it did before it moved: the origin in front of
  * the document's path, the session's token, one refresh and retry on a 401.
  * Only a 204 reads differently, as `undefined`, which is what the generated
  * types say such a route may answer.

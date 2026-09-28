@@ -354,7 +354,7 @@ export {
   // CV Match
   mapshapeMatch,
   clusterPreviewUrl,
-  clusterHighlightUrl,
+  fetchClusterHighlight,
   respondToClusterReview,
   waterCropUrl,
   respondToWaterReview,

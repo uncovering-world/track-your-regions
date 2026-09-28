@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { authFetchBlob } from '../../api/fetchUtils';
+import { API_URL, apiFetch } from '../../api/fetchUtils';
+
+/**
+ * A picture our API serves behind its auth, read through `apiFetch` with the
+ * session's token; a `data:` URL is the picture already, and is only decoded.
+ */
+function readPicture(src: string): Promise<Blob> {
+  if (src.startsWith(API_URL)) return apiFetch<Blob>(src.slice(API_URL.length));
+  return fetch(src).then((response) => response.blob());
+}
 
 interface AuthImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   src: string | null | undefined;
@@ -22,7 +31,7 @@ export function useAuthBlobUrl(src: string | null | undefined): string | null {
     let cancelled = false;
     let currentUrl: string | null = null;
 
-    authFetchBlob(src)
+    readPicture(src)
       .then(blob => {
         if (cancelled) return;
         currentUrl = URL.createObjectURL(blob);
