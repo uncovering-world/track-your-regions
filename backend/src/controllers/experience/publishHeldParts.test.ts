@@ -156,9 +156,17 @@ describe('publishing the held fields of an object\'s parts', () => {
 
     // Through this experience's own link, so a record naming a work another
     // venue holds writes nothing here.
-    const lock = only(queries, 'FROM treasures t');
+    const lock = only(queries, 'AS artists_curated');
     expect(lock.sql).toContain('et.experience_id = $1');
     expect(lock.sql).toContain('FOR UPDATE');
+    // Every work the publish writes was taken first, ascending, in one
+    // statement, so two venues sharing works meet them in one order (#1095).
+    // The first ordered lock names the held work beside the pending ones; the
+    // one publishContents takes after it finds those rows already held.
+    const ordered = queries.find((q) => q.sql.includes('ORDER BY t.id'));
+    expect(ordered?.sql).toContain('FOR UPDATE');
+    expect(ordered?.params).toContainEqual(['Q782639']);
+    expect(queries.indexOf(ordered!)).toBeLessThan(queries.indexOf(lock));
     const write = only(queries, 'UPDATE treasures SET artists');
     expect(write.sql).toContain('image_url = $');
     // The credit rides with the picture: a hosted picture carries a credit, and
