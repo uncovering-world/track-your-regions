@@ -1,7 +1,7 @@
 # ADR-0066: An endpoint's answer is a backend schema, and the client's type is generated from it
 
 **Date:** 2026-09-22
-**Status:** Accepted
+**Status:** Accepted — decisions 3 and 7 narrowed by ADR-0073
 
 ---
 

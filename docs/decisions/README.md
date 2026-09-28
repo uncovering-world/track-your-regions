@@ -85,14 +85,15 @@ and accepted by it.
 | [0063](0063-sql-whose-correctness-is-a-row-set-is-tested-on-postgres.md) | SQL whose correctness is a row set is tested on PostgreSQL | Accepted | 2026-09-21 |
 | [0064](0064-row-types-are-generated-from-the-schema-and-queries-stay-sql.md) | Row types are generated from the schema, and queries stay SQL | Accepted | 2026-09-21 |
 | [0065](0065-a-rule-both-sides-apply-lives-in-one-package-both-import.md) | A rule both sides apply lives in one package both import | Accepted | 2026-09-21 |
-| [0066](0066-an-endpoints-answer-is-a-backend-schema-and-the-clients-type-is-generated-from-it.md) | An endpoint's answer is a backend schema, and the client's type is generated from it | Accepted | 2026-09-22 |
+| [0066](0066-an-endpoints-answer-is-a-backend-schema-and-the-clients-type-is-generated-from-it.md) | An endpoint's answer is a backend schema, and the client's type is generated from it | Accepted — decisions 3 and 7 narrowed by ADR-0073 | 2026-09-22 |
 | [0067](0067-accepting-a-refusal-keeps-it-and-a-batch-answer-pins-nothing.md) | Accepting a refusal keeps it, and a batch answer pins nothing | Accepted | 2026-09-24 |
 | [0068](0068-a-member-change-invalidates-its-region-in-the-database.md) | A member change invalidates its region in the database | Accepted | 2026-09-25 |
 | [0069](0069-a-catalogue-tables-writers-are-a-closed-list-and-a-locked-write-takes-the-lock.md) | A catalogue table's writers are a closed list, and a locked write takes the lock | Accepted | 2026-09-25 |
 | [0070](0070-the-database-refuses-a-curation-state-move-the-gate-does-not-allow.md) | The database refuses a curation-state move the gate does not allow | Accepted | 2026-09-26 |
 | [0071](0071-a-route-is-declared-once-and-its-middleware-follows-from-the-declaration.md) | A route is declared once, and its middleware follows from the declaration | Accepted | 2026-09-26 |
 | [0072](0072-the-openapi-document-is-generated-from-the-route-declarations-and-linted.md) | The OpenAPI document is generated from the route declarations, and linted | Accepted | 2026-09-27 |
-| [0073](0073-the-web-client-is-generated-from-the-openapi-document-by-orval.md) | The web client is generated from the OpenAPI document by Orval | Accepted | 2026-09-27 |
+| [0073](0073-the-web-client-is-generated-from-the-openapi-document-by-orval.md) | The web client is generated from the OpenAPI document by Orval | Accepted — decisions 4 and 5 narrowed by ADR-0074 | 2026-09-27 |
+| [0074](0074-a-type-no-route-answers-is-derived-and-no-image-url-carries-a-token.md) | A type no route answers is derived from the generated ones, and no image URL carries a token | Accepted | 2026-09-28 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

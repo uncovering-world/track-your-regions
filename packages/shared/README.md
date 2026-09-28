@@ -12,13 +12,7 @@ Where the schema is a third statement of a rule (a `CHECK` list, an enum), the s
 
 ## The generated files
 
-`src/api.generated.ts`, imported as `@tyr/shared/api`, is not written by hand. It holds the web's types for the backend's success bodies. `npm --prefix backend run api:types` renders them from the Zod schemas in `backend/src/api/responses/` (ADR-0066).
-
-The module holds types only and imports nothing. Every import of it is erased, so neither consumer ever loads it at run time. That also means a container whose baked `package.json` predates its export never has to resolve it.
-
-`backend/src/api/apiTypes.test.ts` fails while the file is not what the schemas render to. To change a response shape, change its schema, never this file. The eslint config lifts `max-lines` for `src/*.generated.ts`, because the file's length is the API's.
-
-`src/openapi.generated.json` is the API's OpenAPI 3.1 document, the contract a native client is generated from. `npm --prefix backend run api:openapi` renders it from the route declarations and the same schemas (ADR-0072), and `backend/src/api/openApi.test.ts` fails while it lags them. `npm run lint:openapi` lints it with the rules in `redocly.yaml`. No module imports it.
+`src/openapi.generated.json`, exported as `@tyr/shared/openapi`, is the API's OpenAPI 3.1 document, the contract every client is generated from: the web's (`frontend/src/api/client.generated.ts`, ADR-0073) and a native one. `npm --prefix backend run api:openapi` renders it from the route declarations and the response schemas in `backend/src/api/responses/` (ADR-0072), and `backend/src/api/openApi.test.ts` fails while it lags them. `npm run lint:openapi` lints it with the rules in `redocly.yaml`. It is not written by hand: to change a response shape, change its schema. No module imports it.
 
 ## How it is consumed
 
