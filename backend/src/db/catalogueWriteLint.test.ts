@@ -1,8 +1,9 @@
 /**
  * The lint rules that hold the catalogue's reads and writes to their one
  * spelling (#791, ADR-0069): a reader predicate is composed from
- * `db/readerPredicates.ts` or `db/membership.ts`, and `experiences` and
- * `experience_locations` are written only by their writer modules.
+ * `db/readerPredicates.ts` or `db/membership.ts`, and `experiences`,
+ * `experience_locations`, a venue's works and `regions` are written only by
+ * their writer modules.
  *
  * Asserted against the repo's own `eslint.config.mjs`, as
  * `api/routeRegistryLint.test.ts` asserts its rule, and in both directions: the code
@@ -29,6 +30,7 @@ const PREDICATE = /reader predicate is composed/;
 const WRITE = /^experiences is written by its writer modules only/;
 const POINT_WRITE = /^experience_locations is written by its writer modules only/;
 const WORK_WRITE = /^treasures and experience_treasures are written by their writer modules only/;
+const REGION_WRITE = /^regions is written by its writer modules only/;
 
 describe('the catalogue lint rules', () => {
   // The first lint in a worker loads the whole config and its plugins; pay it
@@ -103,5 +105,25 @@ describe('the catalogue lint rules', () => {
     ['the seed', 'export const q = `INSERT INTO treasures (name) VALUES ($1)`;\n', 'src/db/seed/lint-fixture.ts'],
   ])('lets a work write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => WORK_WRITE.test(m))).toBe(false);
+  });
+
+  it.each([
+    ['an update in a controller', 'export const q = `UPDATE regions SET name = $2 WHERE id = $1`;\n', 'src/controllers/worldView/lint-fixture.ts'],
+    ['a delete in an import controller', "export const q = 'DELETE FROM regions WHERE id = $1';\n", 'src/controllers/admin/lint-fixture.ts'],
+    ['a lower-case insert in a service', 'export const q = "insert into regions (name) values ($1)";\n', 'src/services/worldViewImport/lint-fixture.ts'],
+    ['an aliased update', 'export const q = `UPDATE regions r SET geom = NULL FROM x WHERE r.id = x.id`;\n', 'src/controllers/lint-fixture.ts'],
+  ])('refuses a write to regions outside its writers: %s', async (_, code, file) => {
+    expect((await reported(code, file)).some(m => REGION_WRITE.test(m))).toBe(true);
+  });
+
+  it.each([
+    ['another table whose name starts the same', 'export const q = `DELETE FROM region_members WHERE region_id = $1`;\n', 'src/controllers/lint-fixture.ts'],
+    ['a read', 'export const q = `SELECT id FROM regions WHERE parent_region_id = $1`;\n', 'src/controllers/lint-fixture.ts'],
+    ['the writer module', 'export const q = `UPDATE regions SET name = $1 WHERE id = $2`;\n', 'src/db/regionWriter.ts'],
+    ['a geometry computation', 'export const q = `UPDATE regions SET geom = $2 WHERE id = $1`;\n', 'src/controllers/worldView/geometryComputeSingle.ts'],
+    ['the hull generator', 'export const q = `UPDATE regions SET hull_geom = $2 WHERE id = $1`;\n', 'src/services/hull/generator.ts'],
+    ['the seed', 'export const q = `INSERT INTO regions (name) VALUES ($1)`;\n', 'src/db/seed/lint-fixture.ts'],
+  ])('lets a region write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
+    expect((await reported(code, file)).some(m => REGION_WRITE.test(m))).toBe(false);
   });
 });

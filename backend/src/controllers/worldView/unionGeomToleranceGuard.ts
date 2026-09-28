@@ -97,10 +97,10 @@ export const UNION_SHAPE = {
  */
 function unionStatements(calls: Array<[unknown, unknown[]?]>) {
   const find = (needle: string) => calls.find((c) => String(c[0]).includes(needle));
-  const write = calls.find(
-    (c) => String(c[0]).includes('UPDATE regions')
-      && String(c[0]).includes('SET geom = validate_multipolygon($2)'),
-  );
+  // The write is told by its SET: this module reads statements rather than
+  // issuing them, and the lint keeps a write's text to the writers (#1073).
+  const write = calls.find((c) => /\bregions\b/.test(String(c[0]))
+    && String(c[0]).includes('SET geom = validate_multipolygon($2)'));
   const collect = find('direct_member_geoms');
   return {
     /** The hole/sliver cleaning step, whose output is written to `geom`. */
