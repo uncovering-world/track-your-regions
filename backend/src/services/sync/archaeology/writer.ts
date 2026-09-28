@@ -26,6 +26,7 @@ import { upsertVenueTreasures } from '../museum/treasureWriter.js';
 import { creditToWrite, type ImageCredit, type StoredCredit } from '../imageCredit.js';
 import type { CollectedArchaeologyItem, CollectedArchaeologyMuseum } from './pipeline.js';
 import type { CollectedArchaeologySite } from './proposal.js';
+import type { OsmReaderName } from '../osm/readOsmObjects.js';
 
 const ARCHAEOLOGY_SOURCE_ID = 5;
 
@@ -80,6 +81,15 @@ let placedThisRun = new Map<string, Set<string>>();
 let findsLine: LinePair | undefined;
 
 /**
+ * The door this run read OpenStreetMap through — the mirror, or Overpass on
+ * the day the mirror failed (`osm/oneDoorPerRun.ts`) — stamped on every site's
+ * `metadata.osm`, so a curator reading an extent can tell which of the two drew
+ * it (ADR-0059 decision 2 names where a fact came from). One door a run, so one
+ * value for every site the run writes.
+ */
+let osmDoor: OsmReaderName | undefined;
+
+/**
  * That line, or the run's own mistake said out loud.
  *
  * Never a default: the art museums' 22/18 is a *different* catalogue's line,
@@ -108,6 +118,14 @@ function placedElsewhereFor(museumQid: string): string[] {
   return elsewhere;
 }
 
+/** The door, or the run's own mistake said out loud — `theFindsLine`'s rule. */
+function theOsmDoor(): OsmReaderName {
+  if (!osmDoor) {
+    throw new Error(`${LOG_PREFIX} the OpenStreetMap door was never named: fetchItems runs before any write`);
+  }
+  return osmDoor;
+}
+
 /** This run's credit, or the one already stored. The rule lives in `imageCredit.ts`. */
 function creditPatch(externalId: string, imageUrl: string | null): { imageCredit?: ImageCredit | null } {
   return creditToWrite(
@@ -120,11 +138,11 @@ function creditPatch(externalId: string, imageUrl: string | null): { imageCredit
 /**
  * What the collection learned, handed to the writers once per run.
  *
- * One call rather than five exported setters: these five facts are read
- * together, in one place, at one moment — after the collection and before the
- * first write — and a writer that saw four of them updated and the fifth stale
- * would badge a find at the wrong line or credit a photograph to the wrong
- * photographer.
+ * One call rather than a setter per fact: these facts are read together, in
+ * one place, at one moment — after the collection and before the first write
+ * — and a writer that saw some of them updated and one stale would badge a find
+ * at the wrong line, credit a photograph to the wrong photographer or name the
+ * wrong door on an extent.
  */
 export function rememberRun(facts: {
   imageCredits: Map<string, ImageCredit>;
@@ -132,12 +150,14 @@ export function rememberRun(facts: {
   storedTreasureCredits: Map<string, StoredCredit>;
   placedThisRun: Map<string, Set<string>>;
   findsLine: LinePair;
+  osmDoor: OsmReaderName;
 }): void {
   imageCredits = facts.imageCredits;
   storedCredits = facts.storedCredits;
   storedTreasureCredits = facts.storedTreasureCredits;
   placedThisRun = facts.placedThisRun;
   findsLine = facts.findsLine;
+  osmDoor = facts.osmDoor;
 }
 
 /**
@@ -286,9 +306,9 @@ async function processSite(
     sitelinksCount: item.sitelinks,
     website: item.website,
     wikipediaUrl: item.articleUrl || null,
-    // Kept separable, with the object, the tag and the date beside the value
-    // (ADR-0059 decision 2). Nothing else on this row comes from OSM.
-    osm: item.osm,
+    // Kept separable, with the object, the tag, the date and the door beside
+    // the value (ADR-0059 decision 2). Nothing else on this row comes from OSM.
+    osm: { ...item.osm, door: theOsmDoor() },
     // The question a row the tree did not vouch for asks a curator (#895),
     // under the museum row's key so the card reads both the same way — and
     // null, never absent, on a row with none: the upsert's held arm merges

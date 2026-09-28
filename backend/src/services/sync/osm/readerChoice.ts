@@ -1,14 +1,15 @@
 /**
- * Which door a run reads OpenStreetMap through, by the name an operator
+ * Which door a run reads OpenStreetMap through first, by the name an operator
  * writes in `OSM_READER`.
  *
  * The mirror unless told otherwise, because it is the door the site rule was
- * measured on and the one whose answers the catalogue's extents came from;
- * Overpass when the mirror is gone. The choice is configuration rather than
- * a fallback the run takes on its own, since a run that quietly switched
- * doors mid-outage would write a day's extents from two sources under one
- * provenance and nobody would know which — ADR-0059 decision 2 is a promise
- * about naming what a fact came from.
+ * measured on and the one whose answers the catalogue's extents came from.
+ * The name is a preference, not the whole choice: a run that prefers the
+ * mirror reads the whole map again through Overpass when the mirror fails,
+ * from the first question, so every fact of the run still comes from one door
+ * and names it (ADR-0059 decision 2, `oneDoorPerRun.ts`). `overpass` pins the
+ * public instances with no way back to the mirror — an operator who chose the
+ * door with the stricter manners chose it.
  *
  * An unknown name is refused rather than read as the default: an operator
  * who wrote `overpas` in the middle of an outage should learn it at boot and
