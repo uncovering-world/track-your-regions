@@ -31,7 +31,7 @@ import {
 export type {
   ChildRegionGeometries, ChildrenCoverage, CoverageApproved, CoverageComplete, CoverageEvent, CoverageFailed,
   CoverageGap, CoverageGapAnalysis, CoverageGapDivision, CoverageGeometry, CoverageProgress, CoverageResult,
-  CoverageSuggestion, DismissedGap, DivisionPreview, DivisionShapeFeature, GapDismissed, GapSubtreeNode,
+  CoverageSuggestion, DismissedGap, DivisionPreview, DivisionShapeFeature, GapChild, GapDismissed,
   GapUndismissed, GeoSuggestResult, MarkerPointFeature, RegionContextNode, ReviewFinalized, SiblingRegionGeometry,
   SplitDeeperResult, UnionGeometryResult, VisionMatchResult,
 } from '../client.generated';

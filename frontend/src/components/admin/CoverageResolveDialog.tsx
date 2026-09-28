@@ -51,7 +51,9 @@ import {
   findSubtreeNode,
   collectSubtreeIds,
   allLeavesApplied,
+  gapTree,
 } from './coverageResolveUtils';
+import { useGapChildren } from './useGapChildren';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { queryKeys } from '../../api/queryKeys';
 
@@ -88,6 +90,13 @@ export function CoverageResolveDialog({
 
   // Currently selected node for map preview
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+
+  // The levels of the gap trees read so far, beyond the one the answer carries
+  const { loaded: loadedChildren, failed: failedChildren, ensureLoaded } = useGapChildren();
+  const treeOf = useCallback(
+    (gap: CoverageGap) => gapTree(gap.children, loadedChildren, failedChildren),
+    [loadedChildren, failedChildren],
+  );
 
   // Expanded gap groups and subtree nodes
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -140,7 +149,7 @@ export function CoverageResolveDialog({
     for (const s of shadowInsertions) {
       keepIds.add(s.gapDivisionId);
       const gap = coverageData?.gaps.find(g => g.id === s.gapDivisionId);
-      if (gap?.subtree) collectSubtreeIds(gap.subtree, keepIds);
+      if (gap) collectSubtreeIds(treeOf(gap), keepIds);
     }
     setAppliedNodes(prev => {
       const next = new Set<number>();
@@ -150,7 +159,7 @@ export function CoverageResolveDialog({
       if (next.size === prev.size) return prev; // no change -- avoid re-render
       return next;
     });
-  }, [shadowInsertions, coverageData]);
+  }, [shadowInsertions, coverageData, treeOf]);
 
   // Get the effective suggestion for a node, considering manual override
   const getNodeSuggestion = useCallback((divisionId: number, treeSuggestion: CoverageGap['suggestion'] | null) => {
@@ -289,15 +298,18 @@ export function CoverageResolveDialog({
     });
   }, []);
 
-  // Toggle subtree node expansion
+  // Toggle subtree node expansion. A gap's first level came with the answer;
+  // a node under it has its own read the first time it is opened.
   const toggleNode = useCallback((nodeId: number) => {
+    const expanding = !expandedNodes.has(nodeId);
     setExpandedNodes(prev => {
       const next = new Set(prev);
       if (next.has(nodeId)) next.delete(nodeId);
       else next.add(nodeId);
       return next;
     });
-  }, []);
+    if (expanding && !coverageData?.gaps.some(g => g.id === nodeId)) ensureLoaded(nodeId);
+  }, [coverageData, ensureLoaded, expandedNodes]);
 
   // Group coverage gaps by parent for display
   const groupedGaps = useMemo(() => {
@@ -322,11 +334,11 @@ export function CoverageResolveDialog({
     if (!coverageData?.gaps.length) return 0;
     return coverageData.gaps.filter(g => {
       if (appliedNodes.has(g.id)) return false;
-      if (g.subtree?.length && allLeavesApplied(g.subtree, appliedNodes)) return false;
+      if (g.children?.length && allLeavesApplied(treeOf(g), appliedNodes)) return false;
       const effective = getNodeSuggestion(g.id, g.suggestion);
       return effective != null;
     }).length;
-  }, [coverageData, getNodeSuggestion, appliedNodes]);
+  }, [coverageData, getNodeSuggestion, appliedNodes, treeOf]);
 
   // Handle "Apply all to tree" (skips applied and children-resolved gaps)
   const handleApplyToTree = useCallback(() => {
@@ -334,7 +346,7 @@ export function CoverageResolveDialog({
     const insertions: ShadowInsertion[] = [];
     for (const gap of coverageData.gaps) {
       if (appliedNodes.has(gap.id)) continue;
-      if (gap.subtree?.length && allLeavesApplied(gap.subtree, appliedNodes)) continue;
+      if (gap.children?.length && allLeavesApplied(treeOf(gap), appliedNodes)) continue;
       const effective = getNodeSuggestion(gap.id, gap.suggestion);
       if (effective) {
         insertions.push({
@@ -347,7 +359,7 @@ export function CoverageResolveDialog({
     }
     onApplyToTree(insertions);
     onClose();
-  }, [coverageData, getNodeSuggestion, appliedNodes, onApplyToTree, onClose]);
+  }, [coverageData, getNodeSuggestion, appliedNodes, onApplyToTree, onClose, treeOf]);
 
   // Handle "Apply single gap to tree"
   const handleApplySingle = useCallback((divisionId: number, divisionName: string) => {
@@ -364,10 +376,10 @@ export function CoverageResolveDialog({
     setAppliedNodes(prev => {
       const next = new Set(prev);
       next.add(divisionId);
-      if (gap?.subtree) collectSubtreeIds(gap.subtree, next);
+      if (gap) collectSubtreeIds(treeOf(gap), next);
       return next;
     });
-  }, [coverageData, getNodeSuggestion, onApplyToTree]);
+  }, [coverageData, getNodeSuggestion, onApplyToTree, treeOf]);
 
   // Undo a per-node apply (visual only -- shadow stays in tree for separate rejection)
   const handleUnapplySingle = useCallback((divisionId: number) => {
@@ -376,14 +388,14 @@ export function CoverageResolveDialog({
       const next = new Set(prev);
       next.delete(divisionId);
       // Also unapply all subtree descendants
-      if (gap?.subtree) {
+      if (gap) {
         const descendantIds = new Set<number>();
-        collectSubtreeIds(gap.subtree, descendantIds);
+        collectSubtreeIds(treeOf(gap), descendantIds);
         for (const id of descendantIds) next.delete(id);
       }
       return next;
     });
-  }, [coverageData]);
+  }, [coverageData, treeOf]);
 
   // Build GeoJSON for map
   const gapFC: GeoJSON.FeatureCollection = gapGeom
@@ -429,29 +441,27 @@ export function CoverageResolveDialog({
         name: gap.name,
         isGapRoot: true,
         parentName: gap.parentName,
-        hasChildren: !!gap.subtree?.length,
+        hasChildren: !!gap.children?.length,
         suggestion: getNodeSuggestion(gap.id, gap.suggestion),
       };
     }
 
     // Check subtree nodes
     for (const g of coverageData.gaps) {
-      if (g.subtree) {
-        const found = findSubtreeNode(g.subtree, selectedNodeId);
-        if (found) {
-          return {
-            divisionId: selectedNodeId,
-            name: found.name,
-            isGapRoot: false,
-            parentName: g.name,
-            hasChildren: found.children.length > 0,
-            suggestion: getNodeSuggestion(selectedNodeId, null),
-          };
-        }
+      const found = findSubtreeNode(treeOf(g), selectedNodeId);
+      if (found) {
+        return {
+          divisionId: selectedNodeId,
+          name: found.name,
+          isGapRoot: false,
+          parentName: g.name,
+          hasChildren: found.hasChildren,
+          suggestion: getNodeSuggestion(selectedNodeId, null),
+        };
       }
     }
     return null;
-  }, [selectedNodeId, coverageData, getNodeSuggestion]);
+  }, [selectedNodeId, coverageData, getNodeSuggestion, treeOf]);
 
   const coverageChecking = coverageProgress.running;
 
@@ -568,6 +578,7 @@ export function CoverageResolveDialog({
                         <GapNodeRow
                           key={gap.id}
                           gap={gap}
+                          tree={treeOf(gap)}
                           depth={1}
                           selectedNodeId={selectedNodeId}
                           expandedNodes={expandedNodes}
@@ -576,6 +587,7 @@ export function CoverageResolveDialog({
                           getNodeSuggestion={getNodeSuggestion}
                           onSelect={handleSelectNode}
                           onToggleExpand={toggleNode}
+                          onRetryLoad={ensureLoaded}
                           onGeoSuggest={(id, name) => geoSuggestMutation.mutate({ divisionId: id, name })}
                           onDismiss={(id) => dismissGapMutation.mutate(id)}
                           onApplySingle={handleApplySingle}
