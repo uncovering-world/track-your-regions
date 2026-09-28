@@ -25,12 +25,11 @@ export interface AuthenticatedRequest extends Request {
  * V14.2.1 classifies as sensitive. A shared cache is already kept out of most
  * of it by RFC 9111 § 3.5, which excludes the answer to a request that carried
  * `Authorization` — though not from everything this middleware fronts: it
- * takes the token from the query string too (below), and two kinds of caller
- * use that branch because they cannot send a header at all — the streams
- * `EventSource` opens, and the three admin images loaded as `<img src>`
- * through `withTokenQuery`. Their requests carry no `Authorization`, so
- * `private` rather than § 3.5 is what forbids the shared cache there, and the
- * `Vary` appended below selects nothing for them. The browser's private cache is not
+ * takes the token from the query string too (below), for the one caller that
+ * cannot send a header at all — the streams `EventSource` opens. Their
+ * requests carry no `Authorization`, so `private` rather than § 3.5 is what
+ * forbids the shared cache there, and the `Vary` appended below selects
+ * nothing for them. The browser's private cache is not
  * kept out by either, and with Express's defaults — an ETag, no freshness —
  * it stores the body and serves it back on `304` after sign-out, on whatever
  * machine the traveller signed in from. `no-store` where `optionalAuth` says

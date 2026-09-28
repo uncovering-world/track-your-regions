@@ -60,9 +60,8 @@ export const adminImportReviewRoutes = [
     handler: answerIcpAdjustment,
   }),
   // The review screen's images, served from memory so the stream is not held
-  // up by their payloads. They are loaded as <img src> through the token in
-  // the query (EventSource and <img> send no header), kept five minutes by the
-  // reviewer's browser, and drawable by the web on its own origin.
+  // up by their payloads. The web fetches them with the session's token in
+  // its header, and the reviewer's browser keeps them five minutes.
   defineRoute({
     method: 'get', path: '/wv-import/water-crop/:reviewId/:componentId/:subCluster', access: 'admin', cache: { maxAge: 300 },
     summary: 'Serve the image of one detected water area, or one of its parts, for the water review',
