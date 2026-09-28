@@ -412,7 +412,7 @@ export const adminImportRoutes = [
   }),
   defineRoute({
     ...ADMIN, method: 'post', path: '/wv-import/matches/:worldViewId/smart-flatten/preview',
-    summary: 'Auto-match the descendants of a region and preview the shape a flatten would give',
+    summary: 'Preview the shape a flatten of a region would give, with the matches it would make for its descendants, storing nothing',
     params: worldViewIdParamSchema,
     body: wvImportRegionIdSchema,
     response: FlattenPreviewResult,

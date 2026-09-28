@@ -186,12 +186,21 @@ export async function collapseToParent(
 /** A descendant region by id and name. */
 type DescendantRow = { id: number; name: string };
 
+/** The division an unmatched descendant's name found, which the flatten absorbs with the rest. */
+interface DescendantMatch { regionId: number; divisionId: number }
+
 /**
- * Match each descendant that has no members to its one clear GADM candidate by
- * name, and answer the ones still unmatched. The preview and the flatten both
- * run it, so the matches a preview makes are already there when the flatten runs.
+ * Find a division for each descendant that has none, and store nothing
+ * (#1097). The preview draws the shape with these divisions, and the flatten
+ * absorbs them into the region with the descendants' members. They are never
+ * written onto the descendants, which the flatten deletes, so a preview, a
+ * blocked flatten and an undone one all leave the tree as it was. A descendant
+ * matches where a single candidate is strong enough, or the top one clearly
+ * beats the runner-up.
  */
-async function autoMatchDescendants(descendants: DescendantRow[]): Promise<DescendantRow[]> {
+async function planDescendantMatches(
+  descendants: DescendantRow[],
+): Promise<{ matches: DescendantMatch[]; stillUnmatched: DescendantRow[] }> {
   const descendantIds = descendants.map(d => d.id);
   const membersCheck = await pool.query(
     `SELECT DISTINCT region_id FROM region_members WHERE region_id = ANY($1)`,
@@ -202,47 +211,40 @@ async function autoMatchDescendants(descendants: DescendantRow[]): Promise<Desce
 
   // Searched inside the matched region above, never worldwide (#1035).
   const scopes = await descendantSearchScopes(unmatchedDescendants.map(d => d.id));
+  const matches: DescendantMatch[] = [];
   const stillUnmatched: DescendantRow[] = [];
   for (const desc of unmatchedDescendants) {
-    const descId = desc.id;
-    const descName = desc.name;
-    const candidates = await trigramSearch(descName, 3, scopes.get(descId));
-
-    // Auto-match if a single candidate is strong enough, OR the top candidate
-    // clearly beats the runner-up. Both paths take the same action, so they
-    // collapse into one boolean expression (avoids sonarjs/no-duplicated-branches).
+    const candidates = await trigramSearch(desc.name, 3, scopes.get(desc.id));
+    // Both paths take the same action, so they collapse into one boolean
+    // expression (avoids sonarjs/no-duplicated-branches).
     const autoMatched = (candidates.length === 1 && candidates[0].similarity >= 0.5)
       || (candidates.length > 1 && candidates[0].similarity >= 0.7
           && candidates[0].similarity - candidates[1].similarity >= 0.15);
-
-    if (autoMatched) {
-      await pool.query(
-        `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [descId, candidates[0].divisionId],
-      );
-      await pool.query(
-        `INSERT INTO region_import_state (region_id, match_status)
-         VALUES ($1, 'auto_matched')
-         ON CONFLICT (region_id) DO UPDATE SET match_status = 'auto_matched'`,
-        [descId],
-      );
-    } else {
-      stillUnmatched.push({ id: descId, name: descName });
-    }
+    if (autoMatched) matches.push({ regionId: desc.id, divisionId: candidates[0].divisionId });
+    else stillUnmatched.push({ id: desc.id, name: desc.name });
   }
-
-  return stillUnmatched;
+  return { matches, stillUnmatched };
 }
 
-/** What a flatten would leave the region: its descendants' divisions unified, beside its source map. */
-async function flattenPreviewOf(regionId: number, descendantIds: number[]): Promise<FlattenPreview> {
+/**
+ * What a flatten would leave the region: its descendants' divisions, with the
+ * ones the flatten would match them to, unified beside its source map.
+ */
+async function flattenPreviewOf(
+  regionId: number, descendantIds: number[], matches: readonly DescendantMatch[],
+): Promise<FlattenPreview> {
+  const plannedDivisionIds = matches.map(m => m.divisionId);
   // Compute unified geometry of all descendant divisions (simplified for preview)
   const geomResult = await pool.query(`
+    WITH divisions AS (
+      SELECT division_id FROM region_members WHERE region_id = ANY($1)
+      UNION
+      SELECT unnest($2::int[])
+    )
     SELECT ST_AsGeoJSON(ST_Union(ad.geom_simplified_medium)) AS geojson
-    FROM region_members rm
-    JOIN administrative_divisions ad ON ad.id = rm.division_id
-    WHERE rm.region_id = ANY($1)
-  `, [descendantIds]);
+    FROM divisions d
+    JOIN administrative_divisions ad ON ad.id = d.division_id
+  `, [descendantIds, plannedDivisionIds]);
 
   const geojsonStr = geomResult.rows[0]?.geojson as string | null;
   const geometry = geojsonStr ? JSON.parse(geojsonStr) as AreaGeometry : null;
@@ -256,8 +258,12 @@ async function flattenPreviewOf(regionId: number, descendantIds: number[]): Prom
 
   // Count unique divisions
   const divCountResult = await pool.query(
-    'SELECT COUNT(DISTINCT division_id) AS cnt FROM region_members WHERE region_id = ANY($1)',
-    [descendantIds],
+    `SELECT COUNT(*) AS cnt FROM (
+       SELECT division_id FROM region_members WHERE region_id = ANY($1)
+       UNION
+       SELECT unnest($2::int[])
+     ) d`,
+    [descendantIds, plannedDivisionIds],
   );
   const divisionCount = parseInt(divCountResult.rows[0]?.cnt as string) || 0;
 
@@ -275,7 +281,9 @@ async function flattenPreviewOf(regionId: number, descendantIds: number[]): Prom
  * Absorb every descendant's divisions into the region and delete the
  * descendants, in one transaction, keeping an undo entry.
  */
-async function absorbDescendants(worldViewId: number, regionId: number, descendantIds: number[]): Promise<FlattenDone> {
+async function absorbDescendants(
+  worldViewId: number, regionId: number, descendantIds: number[], matches: readonly DescendantMatch[],
+): Promise<FlattenDone> {
   const client = await pool.connect();
   let unusable: Error | undefined;
   try {
@@ -327,8 +335,12 @@ async function absorbDescendants(worldViewId: number, regionId: number, descenda
       [descendantIds],
     );
 
-    // Absorb: collect all descendant division IDs -> assign to parent
-    const allDescDivisionIds = descMembersResult.rows.map(r => r.division_id as number);
+    // Absorb: every descendant's divisions, with the ones the plan matched to
+    // descendants that had none, go to the region
+    const allDescDivisionIds = [
+      ...descMembersResult.rows.map(r => r.division_id as number),
+      ...matches.map(m => m.divisionId),
+    ];
     const uniqueDivisionIds = [...new Set(allDescDivisionIds)];
     for (const divId of uniqueDivisionIds) {
       await client.query(
@@ -396,7 +408,8 @@ async function absorbDescendants(worldViewId: number, regionId: number, descenda
 }
 
 /**
- * Smart flatten preview: auto-match children, then return unified geometry for confirmation dialog.
+ * Smart flatten preview: the shape a flatten would give, with the divisions it would match the
+ * region's unmatched descendants to, for the confirmation dialog. It writes nothing.
  * POST /api/admin/wv-import/matches/:worldViewId/smart-flatten/preview
  */
 export async function smartFlattenPreview(
@@ -432,10 +445,11 @@ export async function smartFlattenPreview(
 
     const descendantIds = descendants.rows.map(r => r.id);
 
-    const stillUnmatched = await autoMatchDescendants(descendants.rows);
+    // A preview reads: the matches it would make are shown, not stored (#1097).
+    const { matches, stillUnmatched } = await planDescendantMatches(descendants.rows);
     body = stillUnmatched.length > 0
       ? { blocked: true, unmatched: stillUnmatched }
-      : await flattenPreviewOf(regionId, descendantIds);
+      : await flattenPreviewOf(regionId, descendantIds, matches);
   } catch (err) {
     if (typeof (err as { statusCode?: unknown }).statusCode === 'number') throw err;
     console.error(`[WV Import] Smart flatten preview failed:`, err);
@@ -445,7 +459,8 @@ export async function smartFlattenPreview(
 }
 
 /**
- * Smart flatten: auto-match children -> absorb all descendant divisions into parent -> delete descendants.
+ * Smart flatten: match the unmatched descendants by name, absorb every descendant division into
+ * the region, delete the descendants.
  * POST /api/admin/wv-import/matches/:worldViewId/smart-flatten
  */
 export async function smartFlatten(
@@ -481,18 +496,19 @@ export async function smartFlatten(
 
     const descendantIds = descendants.rows.map(r => r.id);
 
-    // Before the first write: auto-matching writes outside the transaction
-    // absorbDescendants opens, so a refusal at its delete would leave the
-    // matches standing (#764).
+    // Before the name search, which is the slow part: a visited descendant
+    // refuses the flatten whatever it would match (#764).
     const visits = await visitsOn(descendantIds);
     if (visits > 0) {
       throw createError(visitedRegionRefusal(visits), 409);
     }
 
-    const stillUnmatched = await autoMatchDescendants(descendants.rows);
+    // The matched divisions are absorbed by the transaction that deletes the
+    // descendants, so a flatten that is blocked or fails writes none (#1097).
+    const { matches, stillUnmatched } = await planDescendantMatches(descendants.rows);
     body = stillUnmatched.length > 0
       ? { blocked: true, unmatched: stillUnmatched }
-      : await absorbDescendants(worldViewId, regionId, descendantIds);
+      : await absorbDescendants(worldViewId, regionId, descendantIds, matches);
   } catch (err) {
     // absorbDescendants has rolled back; a visited descendant is errorHandler's
     // 409, not this handler's 500 with the driver's text (#764).

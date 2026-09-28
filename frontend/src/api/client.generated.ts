@@ -14810,7 +14810,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdSmartFlattenPreviewUrl = (w
 
 /**
  * Requires an admin.
- * @summary Auto-match the descendants of a region and preview the shape a flatten would give
+ * @summary Preview the shape a flatten of a region would give, with the matches it would make for its descendants, storing nothing
  */
 export const postAdminWvImportMatchesByWorldViewIdSmartFlattenPreview = async (worldViewId: number,
     wvImportRegionIdBody: WvImportRegionIdBody, options?: Parameters<typeof apiFetch>[1]): Promise<FlattenPreviewResult> => {
