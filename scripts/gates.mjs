@@ -173,6 +173,9 @@ export const INPUTS = [
       'scripts/scan-image.sh',
       '.semgrepignore',
       '.markdownlint-cli2.jsonc',
+      // lint:circular's own settings: a module a generated client depends on
+      // may take a type from that client, which madge would count as a cycle.
+      '.madgerc',
       'docs/tech/gates.md',
     ],
     note:
