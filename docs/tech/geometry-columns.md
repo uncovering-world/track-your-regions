@@ -45,6 +45,17 @@ This document describes the geometry pipeline: columns, rules, functions, trigge
 
 ---
 
+## Who writes `regions`
+
+The table's writers are a closed list (ADR-0069 applied to regions, #1073), which the backend lint holds (`REGION_WRITE_RULES` in `backend/eslint.config.mjs`, with rows in `backend/src/db/catalogueWriteLint.test.ts`). An `INSERT INTO`, `UPDATE` or `DELETE FROM regions` anywhere else fails `lint:backend`. A delete is on the list because it changes a parent's union and its tiles.
+
+- **`backend/src/db/regionWriter.ts`** — every write that is not a geometry computation, as a named function taking the caller's connection: the World View Editor's create, edit, reparent and delete; its drawn outline; the find-or-create of a subregion, which the import's tree insert uses too; the import review's rename, reparent, merge, remove, dismiss, prune, smart flatten, added child, coverage region and undo; and `invalidateRegionGeometry`, the structural clearing.
+- **The geometry computations**, each writing the outline its own pipeline made, in the statement the pipeline's tolerance and member guards read: `controllers/worldView/geometryCompute.ts` (reset, the focus refresh, `recomputeRegionGeometry`), `geometryComputeSSE.ts`, `geometryComputeSingle.ts` and `computeSingleMemberFastPath.ts`.
+- **The hull generator** (`services/hull/generator.ts`), which stores the hull it made.
+- **The seed** (`db/seed/`).
+
+What a write changes on a tile is not the writer's to track: the table bumps the world view's tile version (§ Tile cache busting).
+
 ## `regions` table geometry columns
 
 ### Source geometries (SRID 4326 — WGS84 lat/lon)
