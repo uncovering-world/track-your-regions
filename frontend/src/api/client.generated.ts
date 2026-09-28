@@ -1991,12 +1991,6 @@ export interface ComputeResult {
   /** The region's frame as the computed outline left it. */
   focusBbox?: FocusBbox | null;
   anchorPoint?: AnchorPoint | null;
-  /**
-     * The world view's tile version after the run bumped it.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  tileVersion?: number;
 }
 
 export interface ComputeComplete {
@@ -6712,54 +6706,6 @@ export interface RegionSearchResult {
 export type RegionSearchResults = RegionSearchResult[];
 
 /**
- * A region as an edit left it.
- */
-export interface RegionUpdated {
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  id: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  worldViewId: number;
-  name: string;
-  /** @nullable */
-  description: string | null;
-  parentRegionId: number | null;
-  /** @nullable */
-  color: string | null;
-  /** Its outline was drawn by hand rather than made of its members. */
-  isCustomBoundary: boolean;
-  /** Drawn as the hull around its members, as for an archipelago. */
-  usesHull: boolean;
-  /** Null while the region has no geometry. */
-  focusBbox: FocusBbox | null;
-  anchorPoint: AnchorPoint | null;
-  hasSubregions: boolean;
-  /** At least one of its subregions is drawn as a hull. */
-  hasHullChildren: boolean;
-  /**
-     * The page the region was imported from, where it was imported.
-     * @nullable
-     */
-  sourceUrl: string | null;
-  /**
-     * The map image that import read, where it read one.
-     * @nullable
-     */
-  regionMapUrl: string | null;
-  /**
-     * The world view's new tile version, sent when the edit changed what its tiles draw (a hull flip).
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  tileVersion?: number;
-}
-
-/**
  * Regions, by name; or a region's ancestors, from the root to the region itself.
  */
 export type Regions = Region[];
@@ -10963,7 +10909,7 @@ export const getPutWorldViewsRegionsByRegionIdUrl = (regionId: number,) => {
  * @summary Update the name, description, parent, color or hull choice of a region
  */
 export const putWorldViewsRegionsByRegionId = async (regionId: number,
-    updateRegionBody: UpdateRegionBody, options?: Parameters<typeof apiFetch>[1]): Promise<RegionUpdated> => {
+    updateRegionBody: UpdateRegionBody, options?: Parameters<typeof apiFetch>[1]): Promise<Region> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -10979,7 +10925,7 @@ export const putWorldViewsRegionsByRegionId = async (regionId: number,
     }
     return headers;
   };
-return apiFetch<RegionUpdated>(getPutWorldViewsRegionsByRegionIdUrl(regionId),
+return apiFetch<Region>(getPutWorldViewsRegionsByRegionIdUrl(regionId),
   {
     ...options,
     method: 'PUT',

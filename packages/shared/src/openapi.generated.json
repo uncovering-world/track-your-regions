@@ -1912,7 +1912,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RegionUpdated"
+                  "$ref": "#/components/schemas/Region"
                 }
               }
             }
@@ -16064,12 +16064,6 @@
                 "type": "null"
               }
             ]
-          },
-          "tileVersion": {
-            "description": "The world view's tile version after the run bumped it.",
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
           }
         },
         "required": [
@@ -25584,122 +25578,6 @@
           "$ref": "#/components/schemas/RegionSearchResult"
         },
         "description": "The best matches, at most as many as asked for."
-      },
-      "RegionUpdated": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "worldViewId": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "parentRegionId": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "color": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "isCustomBoundary": {
-            "type": "boolean",
-            "description": "Its outline was drawn by hand rather than made of its members."
-          },
-          "usesHull": {
-            "type": "boolean",
-            "description": "Drawn as the hull around its members, as for an archipelago."
-          },
-          "focusBbox": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FocusBbox"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Null while the region has no geometry."
-          },
-          "anchorPoint": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AnchorPoint"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "hasSubregions": {
-            "type": "boolean"
-          },
-          "hasHullChildren": {
-            "type": "boolean",
-            "description": "At least one of its subregions is drawn as a hull."
-          },
-          "sourceUrl": {
-            "description": "The page the region was imported from, where it was imported.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "regionMapUrl": {
-            "description": "The map image that import read, where it read one.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "tileVersion": {
-            "description": "The world view's new tile version, sent when the edit changed what its tiles draw (a hull flip).",
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": [
-          "id",
-          "worldViewId",
-          "name",
-          "description",
-          "parentRegionId",
-          "color",
-          "isCustomBoundary",
-          "usesHull",
-          "focusBbox",
-          "anchorPoint",
-          "hasSubregions",
-          "hasHullChildren",
-          "sourceUrl",
-          "regionMapUrl"
-        ],
-        "additionalProperties": false,
-        "description": "A region as an edit left it."
       },
       "Regions": {
         "type": "array",

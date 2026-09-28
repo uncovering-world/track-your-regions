@@ -46,12 +46,6 @@ export type Region = z.infer<typeof Region>;
 export const Regions = z.array(Region).describe('Regions, by name; or a region\'s ancestors, from the root to the region itself.');
 export type Regions = z.infer<typeof Regions>;
 
-export const RegionUpdated = Region.extend({
-  tileVersion: z.number().int().optional()
-    .describe('The world view\'s new tile version, sent when the edit changed what its tiles draw (a hull flip).'),
-}).describe('A region as an edit left it.');
-export type RegionUpdated = z.infer<typeof RegionUpdated>;
-
 export const RegionSearchResult = z.strictObject({
   id: z.number().int(),
   name: z.string(),

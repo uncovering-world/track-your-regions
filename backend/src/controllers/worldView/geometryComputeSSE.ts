@@ -306,7 +306,7 @@ async function applyHullPostStep(
 async function applyCoverageAndFetchFocus(
   regionId: number,
   logStep: LogStep,
-): Promise<{ focusBbox: FocusBbox | null; anchorPoint: AnchorPoint | null; tileVersion: number }> {
+): Promise<{ focusBbox: FocusBbox | null; anchorPoint: AnchorPoint | null }> {
   const parentResult = await pool.query(
     'SELECT parent_region_id FROM regions WHERE id = $1',
     [regionId],
@@ -330,30 +330,20 @@ async function applyCoverageAndFetchFocus(
     // (#667).
   }
 
-  const focusResult = await pool.query<{ focus_bbox: FocusBbox | null; anchor_point: AnchorPoint | null; world_view_id: number }>(`
+  const focusResult = await pool.query<{ focus_bbox: FocusBbox | null; anchor_point: AnchorPoint | null }>(`
     SELECT
       focus_bbox,
       CASE WHEN anchor_point IS NOT NULL
         THEN json_build_array(ST_X(anchor_point), ST_Y(anchor_point))
         ELSE NULL
-      END as anchor_point,
-      world_view_id
+      END as anchor_point
     FROM regions WHERE id = $1
   `, [regionId]);
 
   const focusBbox = focusResult.rows[0]?.focus_bbox ?? null;
   const anchorPoint = focusResult.rows[0]?.anchor_point ?? null;
 
-  let tileVersion = 0;
-  const worldViewId = focusResult.rows[0]?.world_view_id;
-  if (worldViewId) {
-    const tvResult = await pool.query(
-      'UPDATE world_views SET tile_version = COALESCE(tile_version, 0) + 1 WHERE id = $1 RETURNING tile_version',
-      [worldViewId],
-    );
-    tileVersion = tvResult.rows[0]?.tile_version ?? 0;
-  }
-  return { focusBbox, anchorPoint, tileVersion };
+  return { focusBbox, anchorPoint };
 }
 
 interface UnionPipelineResult {
@@ -533,7 +523,6 @@ export async function computeSingleRegionGeometrySSE(
         numHoles,
         focusBbox: focusData.focusBbox,
         anchorPoint: focusData.anchorPoint,
-        tileVersion: focusData.tileVersion,
       },
     });
 

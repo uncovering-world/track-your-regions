@@ -31,7 +31,6 @@ import {
   RegionMembers,
   Regions,
   RegionSearchResults,
-  RegionUpdated,
   SubregionFlattened,
   SubregionsExpanded,
 } from '../api/responses/regions.js';
@@ -258,7 +257,7 @@ export const worldViewRoutes = [
     summary: 'Update the name, description, parent, color or hull choice of a region',
     params: regionIdParamSchema,
     body: updateRegionBodySchema,
-    response: RegionUpdated,
+    response: Region,
     handler: updateRegion,
   }),
   defineRoute({
