@@ -8,13 +8,14 @@
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
+import type { AdministrativeDivisionsRow } from '../../db/schema.generated.js';
 import { inRegionTransaction, insertRegion } from '../../db/regionWriter.js';
 import type { StreamExchange } from '../../api/route.js';
 import { syncImportMatchStatus } from '../worldView/helpers.js';
 import {
   type CoverageEvent,
   type CoverageApproved, type CoverageResult, type GapDismissed, type GapUndismissed, type GeoSuggestResult,
-  type CoverageSuggestion, type DismissedGap, type GapSubtreeNode, type RegionContextNode,
+  type CoverageSuggestion, type DismissedGap, type GapChild, type RegionContextNode,
 } from '../../api/responses/wvImportCoverage.js';
 import type { z } from 'zod/v4';
 import { notFound } from '../../middleware/errorHandler.js';
@@ -24,60 +25,34 @@ type WorldViewParams = z.output<typeof worldViewIdParamSchema>;
 type GapBody = z.output<typeof divisionIdBodySchema>;
 
 // =============================================================================
-// Coverage gap subtree helper
+// Coverage gap children
 // =============================================================================
 
 /**
- * For non-leaf coverage gaps, fetch the full GADM descendant subtree.
- * Returns a map from gap division ID to its children tree.
- * Single batch recursive CTE — no per-gap queries.
+ * The GADM divisions directly under each non-leaf gap, by name, in one query.
+ * One level only: every gap's whole subtree runs to megabytes on a large
+ * import, most of it under gaps nobody expands, so a deeper level is read when
+ * the reviewer expands a node (#1030).
  */
-async function fetchGapSubtrees(nonLeafGapIds: number[]): Promise<Map<number, GapSubtreeNode[]>> {
-  const result = new Map<number, GapSubtreeNode[]>();
+async function fetchGapChildren(nonLeafGapIds: number[]): Promise<Map<number, GapChild[]>> {
+  const result = new Map<number, GapChild[]>();
   if (nonLeafGapIds.length === 0) return result;
 
-  // Recursive CTE: walk down from each non-leaf gap, collecting descendants
-  const treeResult = await pool.query(`
-    WITH RECURSIVE tree AS (
-      SELECT id, name, parent_id
-      FROM administrative_divisions
-      WHERE parent_id = ANY($1)
-      UNION ALL
-      SELECT ad.id, ad.name, ad.parent_id
-      FROM tree t
-      JOIN administrative_divisions ad ON ad.parent_id = t.id
-    )
-    SELECT id, name, parent_id FROM tree ORDER BY parent_id, name
+  const children = await pool.query<Pick<AdministrativeDivisionsRow, 'id' | 'name' | 'parent_id' | 'has_children'>>(`
+    SELECT id, name, parent_id, has_children
+    FROM administrative_divisions
+    WHERE parent_id = ANY($1)
+    ORDER BY parent_id, name
   `, [nonLeafGapIds]);
 
-  // Build parent → children map
-  const childrenOf = new Map<number, Array<{ id: number; name: string }>>();
-  for (const row of treeResult.rows) {
+  for (const row of children.rows) {
+    // Never null: the query asks for rows under the gaps.
     const parentId = row.parent_id as number;
-    const child = { id: row.id as number, name: row.name as string };
-    const arr = childrenOf.get(parentId);
-    if (arr) arr.push(child);
-    else childrenOf.set(parentId, [child]);
+    const child = { id: row.id, name: row.name, hasChildren: row.has_children };
+    const siblings = result.get(parentId);
+    if (siblings) siblings.push(child);
+    else result.set(parentId, [child]);
   }
-
-  // Recursively build tree structure
-  function buildTree(parentId: number): GapSubtreeNode[] {
-    const children = childrenOf.get(parentId);
-    if (!children) return [];
-    return children.map(c => ({
-      id: c.id,
-      name: c.name,
-      children: buildTree(c.id),
-    }));
-  }
-
-  for (const gapId of nonLeafGapIds) {
-    const tree = buildTree(gapId);
-    if (tree.length > 0) {
-      result.set(gapId, tree);
-    }
-  }
-
   return result;
 }
 
@@ -96,7 +71,7 @@ interface ActiveGap {
 interface CoverageData {
   activeGaps: ActiveGap[];
   dismissedGaps: DismissedGap[];
-  subtreeByGapId: Map<number, GapSubtreeNode[]>;
+  childrenByGapId: Map<number, GapChild[]>;
 }
 
 const COVERAGE_GAPS_SQL = `
@@ -168,8 +143,8 @@ async function loadCoverageData(worldViewId: number): Promise<CoverageData> {
   }
 
   const nonLeafGapIds = activeGaps.filter(g => g.hasChildren).map(g => g.id);
-  const subtreeByGapId = await fetchGapSubtrees(nonLeafGapIds);
-  return { activeGaps, dismissedGaps, subtreeByGapId };
+  const childrenByGapId = await fetchGapChildren(nonLeafGapIds);
+  return { activeGaps, dismissedGaps, childrenByGapId };
 }
 
 async function findSiblingSuggestions(
@@ -267,7 +242,7 @@ function composeCoverageResponse(
       name: g.name,
       parentName: g.parentName,
       suggestion: suggestionByGapId.get(g.id) ?? null,
-      ...(data.subtreeByGapId.has(g.id) ? { subtree: data.subtreeByGapId.get(g.id) } : {}),
+      ...(data.childrenByGapId.has(g.id) ? { children: data.childrenByGapId.get(g.id) } : {}),
     })),
     dismissedCount: data.dismissedGaps.length,
     dismissedGaps: data.dismissedGaps,

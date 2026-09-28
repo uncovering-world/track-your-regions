@@ -2105,16 +2105,17 @@ export interface CoverageSuggestion {
 }
 
 /**
- * A GADM division under a gap, with its own.
+ * A GADM division directly under a gap.
  */
-export interface GapSubtreeNode {
+export interface GapChild {
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
   id: number;
   name: string;
-  children: GapSubtreeNode[];
+  /** GADM divisions lie under it, fetched when the reviewer expands it (`GET /api/divisions/:divisionId/subdivisions`). */
+  hasChildren: boolean;
 }
 
 /**
@@ -2132,8 +2133,8 @@ export interface CoverageGap {
   parentName: string | null;
   /** From a sibling division a region holds, else from the nearest covered cousin; null where neither exists. */
   suggestion: CoverageSuggestion | null;
-  /** Sent for a gap with GADM divisions under it, by name. */
-  subtree?: GapSubtreeNode[];
+  /** Sent for a gap with GADM divisions under it: the first level, by name. A deeper level is fetched when it is expanded. */
+  children?: GapChild[];
 }
 
 /**

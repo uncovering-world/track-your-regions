@@ -16263,11 +16263,11 @@
             ],
             "description": "From a sibling division a region holds, else from the nearest covered cousin; null where neither exists."
           },
-          "subtree": {
-            "description": "Sent for a gap with GADM divisions under it, by name.",
+          "children": {
+            "description": "Sent for a gap with GADM divisions under it: the first level, by name. A deeper level is fetched when it is expanded.",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/GapSubtreeNode"
+              "$ref": "#/components/schemas/GapChild"
             }
           }
         },
@@ -20298,6 +20298,30 @@
         "additionalProperties": false,
         "description": "A division a matcher just offered as a region's match; the tree carries it from now on."
       },
+      "GapChild": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "hasChildren": {
+            "type": "boolean",
+            "description": "GADM divisions lie under it, fetched when the reviewer expands it (`GET /api/divisions/:divisionId/subdivisions`)."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "hasChildren"
+        ],
+        "additionalProperties": false,
+        "description": "A GADM division directly under a gap."
+      },
       "GapDismissed": {
         "type": "object",
         "properties": {
@@ -20311,32 +20335,6 @@
         ],
         "additionalProperties": false,
         "description": "A gap dismissed: coverage stops counting it until a re-match."
-      },
-      "GapSubtreeNode": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "name": {
-            "type": "string"
-          },
-          "children": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/GapSubtreeNode"
-            }
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "children"
-        ],
-        "additionalProperties": false,
-        "description": "A GADM division under a gap, with its own."
       },
       "GapUndismissed": {
         "type": "object",
