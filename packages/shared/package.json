@@ -6,7 +6,6 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    "./api": "./src/api.generated.ts",
     "./auth": "./src/auth.ts",
     "./catalogue": "./src/catalogue.ts",
     "./curationLog": "./src/curationLog.ts",
@@ -15,6 +14,7 @@
     "./labels": "./src/labels.ts",
     "./lifecycle": "./src/lifecycle.ts",
     "./moves": "./src/moves.ts",
+    "./openapi": "./src/openapi.generated.json",
     "./pictures": "./src/pictures.ts",
     "./runStatuses": "./src/runStatuses.ts"
   },

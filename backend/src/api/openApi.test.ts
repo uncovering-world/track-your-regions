@@ -4,7 +4,7 @@
  * A native client is generated from `packages/shared/src/openapi.generated.json`,
  * so a route or a schema changed without regenerating leaves that client
  * calling an API the backend no longer serves. The first spec is where that
- * fails, the way `apiTypes.test.ts` holds the web's types; the rest pin what
+ * fails, and the web's client after it (`api:client`); the rest pin what
  * the builder makes of a declaration.
  */
 

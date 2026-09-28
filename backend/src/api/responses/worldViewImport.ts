@@ -6,7 +6,7 @@
  * a reviewer's decisions on a region's suggestions, a division moved from the
  * region that held it, a Wikidata item's shape, and a re-match.
  *
- * Each exported schema is the type of the same name in `@tyr/shared/api`, and
+ * Each exported schema is the type of the same name in the web's generated client, and
  * the handler sends its body through `respond()`, which holds it to the schema.
  * Imports are held to the list in the header of `curation.ts` beside this file,
  * which also says why.
