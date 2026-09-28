@@ -1,7 +1,7 @@
 ---
 slug: openstreetmap-overpass
 name: OpenStreetMap through the public Overpass API
-publisher: OpenStreetMap contributors (data); the overpass-api.de operators (the endpoint)
+publisher: OpenStreetMap contributors (data); the operators of overpass-api.de (FOSSGIS), maps.mail.ru (VK Maps) and overpass.private.coffee (the endpoints)
 urls:
   home: https://www.openstreetmap.org/
   dataset: https://overpass-api.de/
@@ -27,7 +27,7 @@ access:
   format: "Overpass QL, JSON"
   cadence: continuous
   volume: "as the reader: 253 objects, 740 kB, for 94 of 100 admitted site items in one query (2026-09-14); as the enumerator: Paris 146, Florence 110, Berlin 247, Kraków 89, Lima 109 (box), Tbilisi 43, Tallinn 67, Estonia 350; as the site pool's second entrance: eight questions a run, tags only — the same list asked as one question was 43,759 elements and 16 MB (2026-09-15)"
-  rate: "overpass-api.de's own guidance, quoted below: about 10,000 queries and 1 GB a day for a one-off, a hundredth of that for regular use; two slots per address, 429 when both are taken, 504 when the declared run time and memory would take more than half of what is left; no parallel scripts; a 30 s pause after a 429. This connector sends one batch of 100 items at a time, never two at once, five seconds apart, declares a 120 s timeout, fetches a geometry only for a ruin or a protected area, and caches every answer for a day; the site pool's enumeration is eight exact-match questions a run, one at a time with the same pause, each declaring 600 s and fetching no geometry, cached the same day"
+  rate: "overpass-api.de's own guidance, quoted below: about 10,000 queries and 1 GB a day for a one-off, a hundredth of that for regular use; two slots per address, 429 when both are taken, 504 when the declared run time and memory would take more than half of what is left; no parallel scripts; a 30 s pause after a 429. This connector sends one batch of 100 items at a time, never two at once, five seconds apart, declares a 120 s timeout, fetches a geometry only for a ruin or a protected area, and caches every answer for a day; the site pool's enumeration is eight exact-match questions a run, one at a time with the same pause, each declaring 600 s and fetching no geometry, cached the same day; one instance at a time, in order — overpass-api.de, then maps.mail.ru, then overpass.private.coffee — moving on only when one is closed to the run, under the main instance's manners on each"
 scorecard:
   date: 2026-09-14
   completeness: 2
@@ -42,7 +42,7 @@ scorecard:
   verdict: adoptable
 status: adopted
 issue: 895
-looked_at: 2026-09-15
+looked_at: 2026-09-29
 ---
 
 # OpenStreetMap through Overpass
@@ -98,8 +98,9 @@ measurement above has changed.
 
 ## The fallback reader (2026-09-14, #893)
 
-The site door reads OpenStreetMap through one interface and two adapters, and an operator names
-the one a run uses (`OSM_READER`, `qlever` unless set). This section is what ADR-0059 decision 4
+The site door reads OpenStreetMap through one interface and two adapters. The mirror is read
+first and this door when the mirror fails, the whole read again from its first question (#908);
+an operator who sets `OSM_READER=overpass` pins this door with no fallback. This section is what ADR-0059 decision 4
 asks a connector to have read before it exists: the usage policy of the instance it will send to,
 quoted and dated, and the manners that follow from it. The ODbL text, the OSMF guidelines and
 the tagging documentation of the keys read are the same for both adapters and are quoted once,
@@ -140,8 +141,9 @@ words: "Nowadays this server is overloaded - be mindful of that, do not overcons
 not expect high reliability. Use alternatives if possible." The page's warning box above the table:
 "Free public servers are designed for small projects and can often become overloaded. Consider
 deploying your own server or using a commercial provider." The table names other public instances
-with global coverage (maps.mail.ru, overpass.private.coffee, and several behind an API key); this
-connector sends to overpass-api.de, the instance whose policy is quoted here, and to no other.
+with global coverage (maps.mail.ru, overpass.private.coffee, and several behind an API key); until
+#908 this connector sent to overpass-api.de alone, and the two free ones are quoted below, in
+§ The other public instances, before they were named in configuration.
 
 ### What was measured (2026-09-14)
 
@@ -176,7 +178,7 @@ only:
   The site pool's enumeration (#895, below) does not fit that line: eight more questions, still
   under the hundred, but about 16 MB of tags between them, so a run through this door is some
   17.7 MB on the day it asks — past the wiki's regular-use figure. What makes that acceptable is
-  that this door is the configured fallback and not the default (ADR-0059 decision 4: the mirror
+  that this door is the fallback and not the default (ADR-0059 decision 4: the mirror
   answers the same list in seconds and a few megabytes), every answer is cached a day, and the
   one-off allowance the wiki states is a gigabyte.
 
@@ -206,7 +208,8 @@ kind as the mirror's (`osm`, ADR-0030), so the object-share floor of the site do
 **Signal 2** where the enumerator scored 0: read at a known item, the tags are the same measured
 statement about what stands there that the mirror's record scores 2 for, and the whole reason the
 door reads OSM. The total is 14, the verdict `adoptable`, and the status `adopted` — as the fallback
-reader of the Archaeology site door, chosen by configuration, adopted by #893 and reading through
+reader of the Archaeology site door, taken by the run when the mirror fails (#908) or pinned by
+configuration, adopted by #893 and reading through
 the same `experience_sources` row (id 5) the kind's run writes from. The enumerator reading is
 unchanged: a source of *rows* for no kind, and the yardstick § 7.4 describes.
 
@@ -234,3 +237,60 @@ carrying an item; 124 only the mirror, 97 with an item), the same selector rule 
 fold. Through the mirror the same
 enumeration is one question answered in seconds; this door is the fallback the record promises
 and pays for it in minutes.
+
+## The other public instances (2026-09-29, #908)
+
+A public Overpass instance is one server among several serving the same planet, and the main one
+says in its operators' words that it is overloaded. So the door reads an ordered list rather than
+one endpoint (`OVERPASS_INSTANCES` in `backend/src/services/sync/osm/overpassOsm.ts`), and this
+section is the policy of each free instance on it, quoted and dated before it was named there, as
+ADR-0059 decision 4 asks.
+
+**What was read on 2026-09-29.** The OSM wiki's table
+(<https://wiki.openstreetmap.org/wiki/Overpass_API> § *Public Overpass API instances* →
+*Instances with global data coverage*, page last modified 2026-09-28), read as its source text.
+The warning box above the table: "Free public servers are designed for small projects and can
+often become overloaded. Consider deploying your own server or using a commercial provider. Or
+download the regional dumps and filter it using osmium". The rows after the main instance's
+(quoted in § What was read on 2026-09-14, and unchanged but for one added sentence: "Do not use
+platforms for fast-deployment of AI-generated apps like lovable.app or netlify.app"):
+
+- **VK Maps Overpass API instance (Russia)**, `https://maps.mail.ru/osm/tools/overpass/api/interpreter`,
+  version 0.7.62.4, "2 servers with 56 physical cores, 384Gb RAM, SSD each". Usage policy: "Feel
+  free to use our services in any project. There are currently no requests limitations and we
+  will try to keep this approach in the future."
+- **Private.coffee Overpass Instance**, `https://overpass.private.coffee/api/interpreter`, version
+  0.7.62.11, "4 servers with 20 cores, 256GB RAM, SSD each". Usage policy: "Previously known as
+  overpass.kumi.systems. Feel free to use our service in any project, there is no rate limit in
+  place. Please notify us in advance if you intend to use our service in a large scale project."
+- Geofabrik, FairwayMapper, Tracestrack and Overspan answer only behind an API key ("Payment
+  required", or a free tier for active OpenStreetMap contributors behind a sign-up). None is on
+  the list: no key is configured, and a keyed instance is named only where one is.
+
+**What was measured (2026-09-29).** One question in the connector's shape
+(`nwr["wikidata"="Q22647"]`, `out tags`, the declared `[timeout:]` and `[maxsize:]`, the
+project's bot `User-Agent`) sent once to each instance, five seconds apart: all three answered
+200 with Troy's `way/423938794`. overpass-api.de in 0.3 s and maps.mail.ru in 0.3 s, both
+reporting data as of 2026-09-28T22:55Z; overpass.private.coffee in 25 s, reporting data as of
+**2026-05-31** — four months behind the other two. The last instance on the list is a stale copy
+of the same planet: it answers what OpenStreetMap held at the end of May, which is still
+OpenStreetMap's word about a site and still named as such, and it is asked only once both others
+have turned the run away.
+
+**The order and the manners.** The main instance first, because its operators publish the numbers
+this connector was measured against; then the two that state no limit — VK Maps, current with the
+main instance on the day it was measured, before Private.coffee, which was four months behind.
+Each is asked under the main instance's manners — one request at a time, the five-second pause,
+the declared `[timeout:]` and `[maxsize:]`, the thirty seconds after a 429 — so no instance is
+asked harder than the one that publishes a number. What the operators ask of a client that knows
+several of them is that it does not spread load across them, and the door never does: it asks
+one instance, moves to the next only when that one is *closed to the run* — a 429 or a 5xx that
+outlasted the retries and the run's wait budget, a runtime error it kept reporting, a dropped
+connection, a body that is not an answer — and never goes back. A 400 does not move, since every
+instance runs the same engine and would refuse the question as asked. A fallback run is a few
+dozen questions and some 18 MB on the day it runs (§ What was measured), short of the
+"large scale project" Private.coffee asks to hear about in advance.
+
+**Provenance.** The instances serve one dataset, so the instance that answered changes the run
+log's line and not what the row names: `metadata.osm.door` is `overpass` whichever instance drew
+the extent, as ADR-0059 decision 2 names the source — OpenStreetMap — rather than a host.
