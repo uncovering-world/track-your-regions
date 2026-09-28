@@ -99,12 +99,12 @@ controllers/
 │   ├── regionMemberMutations.ts
 │   ├── regionMemberOperations.ts
 │   ├── geometryRead.ts
-│   ├── geometryCompute.ts            ← CRUD: update, reset, regenerate
+│   ├── geometryCompute.ts            ← drawn save, reset, regenerate, recompute
 │   ├── geometryComputeSingle.ts      ← computation: core algorithm + HTTP handler
 │   ├── geometryComputeSSE.ts         ← SSE streaming for single region compute
 │   ├── computationProgress.ts        ← batch computation with progress tracking
 │   ├── hullOperations.ts
-│   ├── helpers.ts                    ← invalidate/recompute region geometry
+│   ├── helpers.ts                    ← member moves, import match status
 │   └── types.ts
 ├── division/
 └── sync/
