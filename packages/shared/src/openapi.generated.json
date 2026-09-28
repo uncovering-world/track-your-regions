@@ -24859,7 +24859,7 @@
                 "type": "null"
               }
             ],
-            "description": "Null while the region has no geometry."
+            "description": "Null while the region has neither a geometry nor a hull. A region drawn as a hull keeps its frame while its geometry waits to be recomputed."
           },
           "anchorPoint": {
             "anyOf": [
