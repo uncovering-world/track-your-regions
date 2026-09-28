@@ -9,7 +9,7 @@
 
 import type {
   ReviewAnswer, ReviewAnswerResult, ReviewQueue, RunSetAside,
-} from '@tyr/shared/api';
+} from './client.generated';
 import {
   deleteExperiencesReviewSetAsideBySyncLogId, getExperiencesReviewQueue, postExperiencesReviewAnswer,
   putExperiencesReviewSetAsideBySyncLogId,
@@ -18,13 +18,13 @@ import {
 import type { ReviewAddress } from '../utils/appUrl';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
   AnsweredPoint, ChangedField, CountedWork, EarlierAnswer, FieldClaim, HeldPart, PendingPoint, PendingWork,
   ProposedField, QueueFacets, QueueKind, QueueOrderEntry, RefusedPoint, RefusedWork, ReviewAnswer,
   ReviewAnswerDid, ReviewAnswerResult, ReviewQueue, ReviewQueueItem, RunSetAside, WaitingSub, WithdrawnPoint,
-} from '@tyr/shared/api';
+} from './client.generated';
 
 /**
  * The three answered lists that still page by their own offset, outside the

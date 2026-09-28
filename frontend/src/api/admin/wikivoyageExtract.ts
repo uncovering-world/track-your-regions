@@ -4,19 +4,19 @@
 
 import type {
   ExtractionAnswer, ExtractionCancelled, ExtractionStarted, ExtractionStatus, WikivoyageCacheDeleted,
-} from '@tyr/shared/api';
+} from '../client.generated';
 import {
   deleteAdminWvExtractCachesByName, getAdminWvExtractStatus, postAdminWvExtractAnswer, postAdminWvExtractCancel,
   postAdminWvExtractStart,
 } from '../client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
   ExtractionAnswer, ExtractionCancelled, ExtractionStarted, ExtractionStatus, ImportedWorldView, InterviewQuestion,
   PendingQuestion, RegionPreview, WikivoyageCache, WikivoyageCacheDeleted,
-} from '@tyr/shared/api';
+} from '../client.generated';
 
 // =============================================================================
 // API calls

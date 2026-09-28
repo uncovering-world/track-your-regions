@@ -10,7 +10,7 @@ import type {
   AllLocationsMarked, AllLocationsUnmarked, ExperienceVisitedStatusResponse, ExperienceVisitMarked,
   ExperienceVisitUnmarked, LocationVisitMarked, LocationVisitUnmarked, TreasureViewMarked, TreasureViewUnmarked,
   ViewedTreasureIds, VisitedExperienceIds, VisitedLocationIds, VisitedRegion, VisitedRegions,
-} from '@tyr/shared/api';
+} from './client.generated';
 import {
   deleteUsersMeExperiencesByExperienceIdMarkAllLocations, deleteUsersMeViewedTreasuresByTreasureId,
   deleteUsersMeVisitedExperiencesByExperienceId, deleteUsersMeVisitedLocationsByLocationId,
@@ -22,14 +22,14 @@ import {
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
   AllLocationsMarked, AllLocationsUnmarked, ExperienceVisitedStatusResponse, ExperienceVisitMarked,
   ExperienceVisitUnmarked, LocationVisitMarked, LocationVisitUnmarked, LocationWithVisitedStatus,
   TreasureViewMarked, TreasureViewUnmarked, ViewedTreasureIds, VisitedExperienceIds, VisitedLocationIds,
   VisitedRegion, VisitedRegions, VisitedStatus,
-} from '@tyr/shared/api';
+} from './client.generated';
 
 // =============================================================================
 // Regions

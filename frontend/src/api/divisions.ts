@@ -4,21 +4,21 @@
 
 import type {
   AdministrativeDivision, AdministrativeDivisions, DivisionGeometry, DivisionSearchResults,
-} from '@tyr/shared/api';
+} from './client.generated';
 import {
   getDivisionsByDivisionId, getDivisionsByDivisionIdAncestors, getDivisionsByDivisionIdGeometry,
   getDivisionsByDivisionIdSubdivisions, getDivisionsRoot, getDivisionsSearch,
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call. `AdministrativeDivision`
 // itself is held by the client in the looser shape `types/index.ts` derives
 // from it, as a region is, since a selection made on the map starts from what a
 // tile knows.
 export type {
   AdministrativeDivisions, DivisionGeometry, DivisionSearchResult, DivisionSearchResults,
-} from '@tyr/shared/api';
+} from './client.generated';
 
 /** The top of GADM's tree, the same for every world view. */
 export async function fetchRootDivisions(): Promise<AdministrativeDivisions> {

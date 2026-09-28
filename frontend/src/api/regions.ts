@@ -6,7 +6,7 @@ import type {
   ChildDivisionsAdded, DescendantMemberGeometries, DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, MemberGeometries,
   MemberMoved, Region, RegionGeometry, RegionMembers, Regions, RegionSearchResults, RegionUpdated, SubregionFlattened,
   SubregionsExpanded,
-} from '@tyr/shared/api';
+} from './client.generated';
 import {
   deleteWorldViewsRegionsByRegionId, deleteWorldViewsRegionsByRegionIdMembers, getWorldViewsByWorldViewIdRegions,
   getWorldViewsByWorldViewIdRegionsRoot, getWorldViewsByWorldViewIdRegionsSearch,
@@ -20,7 +20,7 @@ import {
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call. `Region` itself is the
 // one exception: the client holds a region in the looser shape `types/index.ts`
 // derives from it, since a selection made on the map starts from what a tile
@@ -30,7 +30,7 @@ export type {
   DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, FocusBbox, MemberGeometries, MemberGeometry, MemberMoved,
   RegionGeometry, RegionGeometryProperties, RegionMember, RegionMembers, RegionMemberType, Regions, RegionSearchResult,
   RegionSearchResults, RegionUpdated, SubregionFlattened, SubregionsExpanded,
-} from '@tyr/shared/api';
+} from './client.generated';
 
 export async function searchRegions(
   worldViewId: number,

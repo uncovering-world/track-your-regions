@@ -13,7 +13,7 @@ import type {
   ImportStarted, ImportStatus, InstancesSynced, MatchAccepted, MatchAcceptedRestRejected, MatchesAccepted,
   MatchReset, MatchStats, MatchTree, RematchStarted, RematchStatus, RemainingRejected, SuggestionRejected,
   TransferAccepted, TransferPreview,
-} from '@tyr/shared/api';
+} from '../client.generated';
 import {
   getAdminWvImportGeoshapeByWikidataId, getAdminWvImportImportStatus,
   getAdminWvImportMatchesByWorldViewIdRematchStatus, getAdminWvImportMatchesByWorldViewIdStats,
@@ -31,7 +31,7 @@ import {
 } from '../client.generated';
 
 // What the migrated calls here answer is declared once, as a backend schema
-// (ADR-0066), and generated into `@tyr/shared/api`. Passed on from here, so a
+// (ADR-0066), and generated into `client.generated.ts`. Passed on from here, so a
 // component imports a call's answer from the module of the call.
 export type {
   AIMatchOneResult, AssignedDivision, CoveringMatchResult, DbSearchResult, FoundSuggestion, GeocodeMatchResult,
@@ -39,7 +39,7 @@ export type {
   MatchAcceptedRestRejected, MatchesAccepted, MatchReset, MatchStats, MatchStatus, MatchSuggestion, MatchTree,
   MatchTreeNode, RematchStarted, RematchStatus, RemainingRejected, SuggestionConflict, SuggestionRejected,
   TransferAccepted, TransferPreview,
-} from '@tyr/shared/api';
+} from '../client.generated';
 
 
 // =============================================================================

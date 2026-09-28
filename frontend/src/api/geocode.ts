@@ -2,13 +2,13 @@
  * Geocode API client — place search (Nominatim) and AI geocoding.
  */
 
-import type { AIGeocodeResult, ImageSuggestion, PlaceResult } from '@tyr/shared/api';
+import type { AIGeocodeResult, ImageSuggestion, PlaceResult } from './client.generated';
 import { getGeocodeSearch, getGeocodeSuggestImage, postGeocodeAi } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
-export type { AIGeocodeResult, ImageSuggestion, PlaceResult, PlaceSearch } from '@tyr/shared/api';
+export type { AIGeocodeResult, ImageSuggestion, PlaceResult, PlaceSearch } from './client.generated';
 
 /** Search places by name via Nominatim proxy */
 export async function searchPlaces(query: string, limit = 5): Promise<PlaceResult[]> {

@@ -2,16 +2,16 @@
  * World Views API
  */
 
-import type { DeleteImpact, WorldView, WorldViews } from '@tyr/shared/api';
+import type { DeleteImpact, WorldView, WorldViews } from './client.generated';
 import {
   deleteWorldViewsByWorldViewId, getWorldViews, getWorldViewsByWorldViewIdDeleteImpact, postWorldViews,
   putWorldViewsByWorldViewId, type CreateWorldViewBody, type UpdateWorldViewBody,
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
-export type { DeleteImpact, WorldView, WorldViews } from '@tyr/shared/api';
+export type { DeleteImpact, WorldView, WorldViews } from './client.generated';
 
 /**
  * Longest description the server keeps: `world_views.description` is

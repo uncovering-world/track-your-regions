@@ -6,15 +6,15 @@
  * what the database holds right now, whoever put it there and whenever.
  */
 
-import type { DataAssertion, DataAssertionReport } from '@tyr/shared/api';
+import type { DataAssertion, DataAssertionReport } from '../client.generated';
 import { getAdminDataAssertions, postAdminDataAssertionsAccept } from '../client.generated';
 
 // What the calls here answer is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
   AssertionArea, AssertionKind, AssertionStatus, DataAssertion, DataAssertionReport,
-} from '@tyr/shared/api';
+} from '../client.generated';
 
 /** A statement per assertion over the whole catalogue — about eleven seconds. */
 export async function getDataAssertions(): Promise<DataAssertionReport> {

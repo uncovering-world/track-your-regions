@@ -14,12 +14,12 @@
  * whole collection on the GPU thread for nothing.
  */
 
-import type { PointsDetail, WorldPointsResponse } from '@tyr/shared/api';
+import type { PointsDetail, WorldPointsResponse } from './client.generated';
 import { getExperiencesPoints, type GetExperiencesPointsParams } from './client.generated';
 
 // What the call answers is declared once, as a backend schema (ADR-0066), and
-// generated into `@tyr/shared/api`. Passed on from here.
-export type { PointsDetail, WorldPointsResponse } from '@tyr/shared/api';
+// generated into `client.generated.ts`. Passed on from here.
+export type { PointsDetail, WorldPointsResponse } from './client.generated';
 
 /** A box as the endpoint spells it. */
 export interface PointsBox {

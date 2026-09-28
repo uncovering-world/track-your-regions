@@ -8,7 +8,7 @@
 
 import type {
   ClusterRegionSuggestions, ColorMatchEvent, ColorMatchResult, MapshapeMatchResult,
-} from '@tyr/shared/api';
+} from '../client.generated';
 import { API_URL, ensureFreshToken, getAccessToken } from '../fetchUtils';
 import {
   postAdminWvImportClusterReviewByReviewId, postAdminWvImportIcpAdjustmentByReviewId,
@@ -26,7 +26,7 @@ import {
 
 // What the calls here answer, and every event of the colour-match stream, is
 // declared once, as a backend schema (ADR-0066), and generated into
-// `@tyr/shared/api`. Passed on from here, so a component imports a call's
+// `client.generated.ts`. Passed on from here, so a component imports a call's
 // answer from the module of the call.
 export type {
   AdjacencyEdge, BorderPath, ChildRegionRef, ClusterGeoInfo, ClusterRegionMatch, ClusterRegionSuggestions,
@@ -35,7 +35,7 @@ export type {
   IcpAdjustmentOffered, MapshapeDivision, MapshapeGroup, MapshapeMatchResult, MapshapePreviewFeature,
   MapshapesFound, MapshapesNotFound, NamedDivision, ReviewAnswered, WaterComponent, WaterReviewRequested,
   WikivoyageShapeFeature,
-} from '@tyr/shared/api';
+} from '../client.generated';
 
 
 // =============================================================================

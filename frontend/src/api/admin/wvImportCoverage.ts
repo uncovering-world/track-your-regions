@@ -9,7 +9,7 @@ import type {
   ChildRegionGeometries, ChildrenCoverage, CoverageApproved, CoverageEvent, CoverageGapAnalysis, CoverageGeometry,
   CoverageResult, GapDismissed, GapUndismissed, GeoSuggestResult, ReviewFinalized, SplitDeeperResult,
   UnionGeometryResult, VisionMatchResult,
-} from '@tyr/shared/api';
+} from '../client.generated';
 import { API_URL, ensureFreshToken } from '../fetchUtils';
 import {
   getAdminWvImportMatchesByWorldViewIdChildrenGeometryByRegionId, getAdminWvImportMatchesByWorldViewIdCoverage,
@@ -26,7 +26,7 @@ import {
 
 // What the calls here answer, and every event of the coverage stream, is
 // declared once, as a backend schema (ADR-0066), and generated into
-// `@tyr/shared/api`. Passed on from here, so a component imports a call's answer
+// `client.generated.ts`. Passed on from here, so a component imports a call's answer
 // from the module of the call.
 export type {
   ChildRegionGeometries, ChildrenCoverage, CoverageApproved, CoverageComplete, CoverageEvent, CoverageFailed,
@@ -34,7 +34,7 @@ export type {
   CoverageSuggestion, DismissedGap, DivisionPreview, DivisionShapeFeature, GapDismissed, GapSubtreeNode,
   GapUndismissed, GeoSuggestResult, MarkerPointFeature, RegionContextNode, ReviewFinalized, SiblingRegionGeometry,
   SplitDeeperResult, UnionGeometryResult, VisionMatchResult,
-} from '@tyr/shared/api';
+} from '../client.generated';
 
 
 // =============================================================================

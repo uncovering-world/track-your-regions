@@ -9,7 +9,7 @@ import type {
   CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, PictureRepairStarted, PlacementCounts,
   PublishWaitingResult, SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs,
   SyncStarted, SyncStatus, UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
-} from '@tyr/shared/api';
+} from '../client.generated';
 import {
   deleteAdminCuratorsByAssignmentId, deleteAdminSyncSourcesBySourceIdCache, getAdminCurators,
   getAdminCuratorsByUserIdActivity, getAdminExperiencesAssignRegionsStatus, getAdminExperiencesCountsByRegion,
@@ -24,7 +24,7 @@ import {
 } from '../client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
   AssignmentCancelled, AssignmentStarted, AssignmentStatus, ChangedField, CuratorActivity, CuratorActivityEntry,
@@ -34,7 +34,7 @@ export type {
   SyncCancelled, SyncChange, SyncChanges, SyncContentItem, SyncContentsDelta, SyncErrorDetail, SyncLog,
   SyncLogDetail, SyncLogs, SyncStarted, SyncStatus, UserSearchResult, UserSearchResults, WaitingCounts,
   WikidataCache, WikidataCacheCleared, WikidataCacheKind, WikidataCacheTtlSet,
-} from '@tyr/shared/api';
+} from '../client.generated';
 
 // =============================================================================
 // Types
