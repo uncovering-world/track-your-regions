@@ -230,8 +230,11 @@ If vector tiles show stale geometries (different from GeoJSON mode):
 #### 1. Force browser cache refresh
 
 The frontend uses cache-busting parameters (`_v` and `_k`) in tile URLs.
-Call `invalidateTileCache()` from `useNavigation` hook to increment the version
-and force MapLibre to reload tiles.
+Every write to `regions` that changes a tile bumps the world view's `tile_version`
+at commit (ADR-0075). `invalidateTileCache()` from the `useNavigation` hook
+re-reads the world view list and takes that version, so MapLibre reloads the
+tiles the edit changed; it steps the version locally only when the list cannot
+be read.
 
 #### 2. Restart Martin (nuclear option)
 
