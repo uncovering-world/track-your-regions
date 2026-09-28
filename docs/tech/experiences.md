@@ -3738,9 +3738,15 @@ the Rijksmuseum's token cannot correct a work only the Mauritshuis holds. For th
 the venue lock does not serialise two curators correcting one work from two venues, so the work
 row takes a lock of its own, after the venue: `lockWork` for a correction, and `lockPart` for a
 held field. Every such transaction takes a venue first and its works second, so two that each
-touch one work cannot wait for each other in opposite orders. A publish touches several, in the
-record's order and then the scan's, so two venues sharing two works and publishing at the same
-moment can still deadlock, and Postgres fails one publish; the fixed order is #1095. The tables' writers are a closed list the backend lint names
+touch one work cannot wait for each other in opposite orders. A publish touches several — the
+held works of its record and the venue's pending ones — so it takes every one of them in a single
+statement, `lockWorksToPublish`, in ascending id, before it plans or writes any (#1095).
+`publishContents` takes the pending works so for every caller, the override that puts a refused
+arrival back included, and `publishUnderLock` takes them together with the held works first: two venues
+sharing two works and publishing at the same moment then meet the first shared work in the same
+order, and the second waits for the first instead of holding a work the first needs.
+`publishSharedWorks.db.test.ts` holds that against PostgreSQL, with the two records listing the works
+in opposite orders. The tables' writers are a closed list the backend lint names
 (`WORK_WRITE_RULES`): that module; the run's `museum/treasureWriter.ts` and
 `museum/linkWithdrawal.ts`; and the seed.
 
