@@ -177,7 +177,6 @@ interface UseImportTreeDialogsDeps {
     hasDivisions: boolean;
   } | null>>;
   setUndoSnackbar: (value: { open: boolean; message: string; worldViewId: number } | null) => void;
-  invalidateTree: () => void;
 }
 
 export function useImportTreeDialogs(
@@ -185,7 +184,7 @@ export function useImportTreeDialogs(
   tree: MatchTreeNode[] | undefined,
   deps: UseImportTreeDialogsDeps,
 ): UseImportTreeDialogsResult {
-  const { renameMutation, reparentMutation, setRemoveDialogState, setUndoSnackbar, invalidateTree } = deps;
+  const { renameMutation, reparentMutation, setRemoveDialogState, setUndoSnackbar } = deps;
 
   // ── Rename ─────────────────────────────────────────────────────────────────
   const [renameDialog, setRenameDialog] = useState<RenameDialogState | null>(null);
@@ -335,7 +334,6 @@ export function useImportTreeDialogs(
           message: `Cannot flatten: ${data.unmatched.length} unmatched: ${names}`,
           worldViewId,
         });
-        invalidateTree();
         return;
       }
       setFlattenPreview({
@@ -356,7 +354,7 @@ export function useImportTreeDialogs(
     } finally {
       setFlattenPreviewLoading(null);
     }
-  }, [tree, worldViewId, invalidateTree, setUndoSnackbar]);
+  }, [tree, worldViewId, setUndoSnackbar]);
 
   // ── Smart Simplify ─────────────────────────────────────────────────────────
   const [smartSimplifyDialog, setSmartSimplifyDialog] = useState<SmartSimplifyState | null>(null);
