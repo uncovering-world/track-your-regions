@@ -6,7 +6,7 @@ import type { z } from 'zod/v4';
 import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { generateSingleHull } from '../../services/hull/index.js';
-import { recomputeRegionGeometry } from './helpers.js';
+import { recomputeRegionGeometry } from './geometryCompute.js';
 import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
 import { collectUnionInputs, CollectedUnionInputs } from './collectUnionInputs.js';
 import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';

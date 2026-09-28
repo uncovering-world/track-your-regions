@@ -8,6 +8,7 @@ import type { z } from 'zod/v4';
 import type { DivisionsAdded, DivisionsRemoved, MemberMoved, CreatedSubregion } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import type { RegionMembersRow } from '../../db/schema.generated.js';
+import { ensureChildRegion } from '../../db/regionWriter.js';
 import { ensureRegionMember, syncImportMatchStatus } from './helpers.js';
 import { badRequest, notFound } from '../../middleware/errorHandler.js';
 import type {
@@ -31,21 +32,8 @@ interface AddDivisionsCtx {
 
 
 /**
- * Find-or-create a region by (worldViewId, parentRegionId, name). Race-safe:
- * leans on the partial unique index `idx_regions_unique_subregion_name` (added
- * by migration 004) so concurrent callers either insert a new row or surface
- * the existing one — Postgres resolves the conflict deterministically, no
- * application-level lock needed.
- *
- * `(xmax = 0)` distinguishes a freshly inserted row from one returned by the
- * conflict path (xmax is the deleting transaction id; on a brand-new row it's
- * always 0, on a row returned because of ON CONFLICT it's set). This lets us
- * keep the existing `createdEntry` semantics — non-null only on real creates.
- *
- * The `DO UPDATE SET name = regions.name` is a no-op write whose only purpose
- * is to make Postgres return the conflicting row via `RETURNING`. `DO NOTHING`
- * would leave RETURNING empty in the conflict case, forcing an extra round
- * trip to fetch the existing id.
+ * Find-or-create the subregion a division is added as (`ensureChildRegion`),
+ * with `createdEntry` non-null only on a real create.
  */
 async function ensureSubregion(
   worldViewId: number,
@@ -53,15 +41,7 @@ async function ensureSubregion(
   name: string,
   color: string,
 ): Promise<{ id: number; createdEntry: { id: number; name: string } | null }> {
-  const result = await pool.query(
-    `INSERT INTO regions (world_view_id, name, parent_region_id, color)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (world_view_id, parent_region_id, name) WHERE parent_region_id IS NOT NULL
-     DO UPDATE SET name = regions.name
-     RETURNING id, name, (xmax = 0) AS inserted`,
-    [worldViewId, name, parentRegionId, color],
-  );
-  const row = result.rows[0];
+  const row = await ensureChildRegion(pool, { worldViewId, parentRegionId, name, color });
   return {
     id: row.id,
     createdEntry: row.inserted ? { id: row.id, name: row.name } : null,

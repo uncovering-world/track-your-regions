@@ -7,6 +7,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
+import { ensureChildRegion } from '../../db/regionWriter.js';
 import type { ImportTreeNode, ImportProgress } from './types.js';
 
 /** Count total nodes in a tree (for progress tracking) */
@@ -199,17 +200,9 @@ export async function insertRegion(
 ): Promise<void> {
   if (progress.cancel) return;
 
-  // `inserted` (xmax = 0) is true only for a freshly created row.
-  const result = await client.query(
-    `INSERT INTO regions (world_view_id, name, parent_region_id)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (world_view_id, parent_region_id, name) WHERE parent_region_id IS NOT NULL
-     DO UPDATE SET name = regions.name
-     RETURNING id, (xmax = 0) AS inserted`,
-    [worldViewId, node.name, parentRegionId],
-  );
-  const regionId = result.rows[0].id as number;
-  const inserted = result.rows[0].inserted as boolean;
+  const { id: regionId, inserted } = await ensureChildRegion(client, {
+    worldViewId, parentRegionId, name: node.name, color: null,
+  });
 
   if (inserted) {
     const sourceUrl = node.sourceUrl ?? null;

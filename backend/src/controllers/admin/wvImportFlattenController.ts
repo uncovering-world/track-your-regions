@@ -23,7 +23,7 @@ import {
   undoEntries,
   computeGeoSimilarityIfNeeded,
 } from './wvImportUtils.js';
-import { invalidateRegionGeometry } from '../worldView/helpers.js';
+import { deleteDescendants, invalidateRegionGeometry } from '../../db/regionWriter.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import {
   ChildrenCollapsed, ChildrenGrouped, FlattenPreviewResult, SmartFlattenResult,
@@ -333,15 +333,8 @@ async function absorbDescendants(worldViewId: number, regionId: number, descenda
       [descendantIds],
     );
 
-    // Delete descendants (deepest-first via CTE)
-    await client.query(`
-      WITH RECURSIVE desc_regions AS (
-        SELECT id, 1 AS depth FROM regions WHERE parent_region_id = $1
-        UNION ALL
-        SELECT r.id, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
-      )
-      DELETE FROM regions WHERE id IN (SELECT id FROM desc_regions ORDER BY depth DESC)
-    `, [regionId]);
+    // Delete every descendant
+    await deleteDescendants(client, [regionId]);
 
     // Update parent status
     await client.query(

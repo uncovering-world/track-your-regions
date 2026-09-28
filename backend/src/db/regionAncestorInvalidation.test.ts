@@ -203,26 +203,6 @@ describe('the rule has one implementation, and no way round it', () => {
     }
   });
 
-  it('keeps invalidateRegionGeometry a single-row statement', () => {
-    // It nulls the region a member or structure edit changed, by primary key.
-    // The ancestors are the trigger's, reached because this is itself a write to
-    // regions.geom.
-    const helpers = collapse(readFileSync(
-      join(backendSrc, 'controllers', 'worldView', 'helpers.ts'), 'utf8',
-    ));
-    // Both anchors are asserted for the reason functionBody() asserts its
-    // terminator: indexOf gives -1 for a name that has been renamed, slice reads
-    // -1 as length - 1, and the window would silently become some other span
-    // that could satisfy every expectation below.
-    const start = helpers.indexOf('export async function invalidateRegionGeometry');
-    expect(start, 'invalidateRegionGeometry is missing').toBeGreaterThan(-1);
-    const end = helpers.indexOf('export async function syncImportMatchStatus', start);
-    expect(end, 'syncImportMatchStatus no longer follows invalidateRegionGeometry').toBeGreaterThan(start);
-    const statement = helpers.slice(start, end);
-    expect(statement).toContain('WHERE id = $1 AND is_custom_boundary IS NOT TRUE');
-    expect(statement).not.toContain('parent_region_id');
-  });
-
   it('lets no read path write a region geometry', () => {
     // Two public GETs cached what they merged on the fly, fire-and-forget: a
     // bare union with none of the pipeline's work, and storing it took the

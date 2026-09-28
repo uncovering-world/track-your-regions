@@ -75,4 +75,4 @@ export type { ComputationProgress } from './types.js';
 export { runningComputations } from './types.js';
 
 // Helpers (for advanced use cases)
-export { invalidateRegionGeometry, recomputeRegionGeometry } from './helpers.js';
+export { recomputeRegionGeometry } from './geometryCompute.js';

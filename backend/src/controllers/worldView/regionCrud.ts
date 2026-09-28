@@ -9,7 +9,8 @@ import { pool } from '../../db/index.js';
 import type { RegionsRow } from '../../db/schema.generated.js';
 import { visitedRegionRefusal, visitsUnder } from '../../db/regionVisits.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
-import { invalidateRegionGeometry, moveMembersToRegion } from './helpers.js';
+import { deleteDescendants, deleteRegions, insertDrawnRegion, insertRegion, invalidateRegionGeometry, moveChildRegions, updateRegionFields } from '../../db/regionWriter.js';
+import { moveMembersToRegion } from './helpers.js';
 import { REGION_SELECT_SQL, regionOf, regionSearchResultOf, type RegionRow, type RegionSearchRow } from './regionAnswerRows.js';
 import type {
   createRegionBodySchema, deleteRegionQuerySchema, regionIdParamSchema, regionSearchQuerySchema,
@@ -244,67 +245,33 @@ export async function createRegion(
 
   console.log(`[CreateRegion] name=${name}, hasCustomGeometry=${!!customGeometry}, customGeometryType=${customGeometry?.type}`);
 
+  const region = {
+    worldViewId, name, description: description || null, parentRegionId: parentId || null, color: color || '#3388ff',
+  };
   let createdId: number;
 
   if (customGeometry) {
     // If custom geometry is provided, store it directly and mark as custom boundary
-    const geomJson = JSON.stringify(customGeometry);
-    console.log(`[CreateRegion] Saving custom geometry with ${geomJson.length} chars, first 200: ${geomJson.substring(0, 200)}`);
+    const geometryJson = JSON.stringify(customGeometry);
+    console.log(`[CreateRegion] Saving custom geometry with ${geometryJson.length} chars, first 200: ${geometryJson.substring(0, 200)}`);
 
     try {
-      const inserted = await pool.query<Pick<RegionsRow, 'id'> & { has_geom: boolean; geom_points: number | null }>(`
-        INSERT INTO regions (world_view_id, name, description, parent_region_id, color, geom, is_custom_boundary)
-        VALUES ($1, $2, $3, $4, $5, validate_multipolygon(ST_GeomFromGeoJSON($6)), true)
-        RETURNING id, geom IS NOT NULL AS has_geom, ST_NPoints(geom) AS geom_points
-      `, [worldViewId, name, description || null, parentId || null, color || '#3388ff', geomJson]);
-      createdId = inserted.rows[0].id;
+      const inserted = await insertDrawnRegion(pool, { ...region, geometryJson });
+      createdId = inserted.id;
 
-      console.log(`[CreateRegion] Result: id=${createdId}, hasGeom=${inserted.rows[0].has_geom}, geomPoints=${inserted.rows[0].geom_points}`);
+      console.log(`[CreateRegion] Result: id=${createdId}, hasGeom=${inserted.hasGeom}, geomPoints=${inserted.geomPoints}`);
     } catch (err) {
       console.error(`[CreateRegion] SQL Error:`, err);
       throw err;
     }
   } else {
-    const inserted = await pool.query<Pick<RegionsRow, 'id'>>(`
-      INSERT INTO regions (world_view_id, name, description, parent_region_id, color)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id
-    `, [worldViewId, name, description || null, parentId || null, color || '#3388ff']);
-    createdId = inserted.rows[0].id;
+    createdId = (await insertRegion(pool, region)).id;
   }
 
   return readRegion(createdId);
 }
 
 type UpdateRegionBody = z.output<typeof updateRegionBodySchema>;
-
-type ScalarValue = string | number | boolean | null;
-
-interface UpdateClauses {
-  setClauses: string[];
-  values: ScalarValue[];
-}
-
-function buildRegionUpdateClauses(body: UpdateRegionBody): UpdateClauses {
-  const setClauses: string[] = [];
-  const values: ScalarValue[] = [];
-  const fieldMap: Array<[keyof UpdateRegionBody, string]> = [
-    ['name', 'name'],
-    ['description', 'description'],
-    ['parentRegionId', 'parent_region_id'],
-    ['color', 'color'],
-    ['usesHull', 'uses_hull'],
-  ];
-  let paramIndex = 1;
-  for (const [bodyKey, column] of fieldMap) {
-    const value = body[bodyKey];
-    if (value !== undefined) {
-      setClauses.push(`${column} = $${paramIndex++}`);
-      values.push(value as ScalarValue);
-    }
-  }
-  return { setClauses, values };
-}
 
 async function moveDivisionMembershipsForParentChange(
   oldParentId: number | null,
@@ -365,18 +332,8 @@ export async function updateRegion(
   const oldParentId = currentRegion.rows[0].parent_region_id;
   const regionName = currentRegion.rows[0].name;
 
-  const { setClauses, values } = buildRegionUpdateClauses(body);
-  if (setClauses.length === 0) return readRegion(regionId);
-
-  const idIdx = values.length + 1;
-  values.push(regionId);
-  const result = await pool.query<Pick<RegionsRow, 'id'>>(`
-    UPDATE regions
-    SET ${setClauses.join(', ')}
-    WHERE id = $${idIdx}
-    RETURNING id
-  `, values);
-  if (result.rows.length === 0) {
+  const { name, description, parentRegionId, color, usesHull } = body;
+  if (!await updateRegionFields(pool, regionId, { name, description, parentRegionId, color, usesHull })) {
     throw notFound(`Region ${regionId} not found`);
   }
 
@@ -432,10 +389,7 @@ export async function deleteRegion(
 
   if (moveChildrenToParent) {
     // Move all subregions to this region's parent (or to root if no parent)
-    await pool.query(
-      'UPDATE regions SET parent_region_id = $1 WHERE parent_region_id = $2',
-      [parentRegionId, regionId]
-    );
+    await moveChildRegions(pool, regionId, parentRegionId);
 
     // The region's members move to the parent (if there is one) row by row,
     // a cut part with its geometry (#384).
@@ -445,18 +399,10 @@ export async function deleteRegion(
   } else {
     // Delete all descendants first (since ON DELETE SET NULL won't cascade)
     // This recursively deletes all subregions, grandchildren, etc.
-    await pool.query(`
-      WITH RECURSIVE descendants AS (
-        SELECT id FROM regions WHERE parent_region_id = $1
-        UNION ALL
-        SELECT cg.id FROM regions cg
-        JOIN descendants d ON cg.parent_region_id = d.id
-      )
-      DELETE FROM regions WHERE id IN (SELECT id FROM descendants)
-    `, [regionId]);
+    await deleteDescendants(pool, [regionId]);
   }
 
-  await pool.query('DELETE FROM regions WHERE id = $1', [regionId]);
+  await deleteRegions(pool, [regionId]);
 
   // Invalidate parent's geometry (and its ancestors)
   if (parentRegionId) {

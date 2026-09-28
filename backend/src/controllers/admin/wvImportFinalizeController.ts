@@ -7,6 +7,7 @@
 
 import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
+import { insertRegion } from '../../db/regionWriter.js';
 import { IMPORT_SOURCE_TYPES } from '../../services/worldViewImport/sourceTypes.js';
 import type { ChildRegionAdded, HierarchyWarningsDismissed } from '../../api/responses/wvImportTreeOps.js';
 import type { ReviewFinalized } from '../../api/responses/wvImportCoverage.js';
@@ -132,12 +133,7 @@ export async function addChildRegion(
     const importRunId = parentState.rows[0]?.import_run_id ?? null;
 
     // Create child region
-    const result = await client.query(
-      `INSERT INTO regions (world_view_id, name, parent_region_id)
-       VALUES ($1, $2, $3) RETURNING id`,
-      [worldViewId, name, parentRegionId],
-    );
-    const regionId = result.rows[0].id as number;
+    const regionId = (await insertRegion(client, { worldViewId, name, parentRegionId, color: null })).id;
 
     // Create region_import_state
     await client.query(

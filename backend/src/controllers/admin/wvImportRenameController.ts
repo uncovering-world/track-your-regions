@@ -7,7 +7,7 @@
 
 import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
-import { invalidateRegionGeometry } from '../worldView/helpers.js';
+import { invalidateRegionGeometry, setRegionName, setRegionParent } from '../../db/regionWriter.js';
 import type { RegionRenamed, RegionReparented } from '../../api/responses/wvImportTreeOps.js';
 import { badRequest, notFound } from '../../middleware/errorHandler.js';
 import type {
@@ -40,10 +40,7 @@ export async function renameRegion(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(
-      'UPDATE regions SET name = $1 WHERE id = $2',
-      [name.trim(), regionId],
-    );
+    await setRegionName(client, regionId, name.trim());
 
     if (sourceUrl !== undefined || sourceExternalId !== undefined) {
       const setClauses: string[] = [];
@@ -131,10 +128,7 @@ export async function reparentRegion(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(
-      'UPDATE regions SET parent_region_id = $1 WHERE id = $2',
-      [newParentId, regionId],
-    );
+    await setRegionParent(client, regionId, newParentId);
 
     // Both parents are named, because a structural move writes no geometry for
     // trg_regions_geom_invalidates_parent to see while changing what two unions

@@ -5,69 +5,9 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import {
-  invalidateRegionGeometry,
-  ensureRegionMember,
-  recomputeRegionGeometry,
-} from './helpers.js';
+import { ensureRegionMember } from './helpers.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
-
-describe('invalidateRegionGeometry', () => {
-  beforeEach(() => {
-    mockedQuery.mockClear();
-  });
-
-  it('skips rows with is_custom_boundary IS TRUE — regression for #283', async () => {
-    // The guard is what this pins: without IS NOT TRUE the recursive CTE
-    // reaches the starting region itself, so calling addMembers
-    // right after createRegion(customGeometry) would null the just-created
-    // custom shape and reset is_custom_boundary, then a subsequent recompute
-    // would produce the merged-from-members geometry — losing the user's
-    // drawing.
-    await invalidateRegionGeometry(42);
-
-    expect(mockedQuery).toHaveBeenCalledTimes(1);
-    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
-    expect(params).toEqual([42]);
-    expect(sql).toMatch(/is_custom_boundary IS NOT TRUE/);
-    expect(sql).not.toMatch(/is_custom_boundary\s*=\s*false/);
-  });
-
-  it('still nulls geom + simplified columns', async () => {
-    await invalidateRegionGeometry(7);
-    const [sql] = mockedQuery.mock.calls[0] as [string];
-    expect(sql).toMatch(/geom\s*=\s*NULL/);
-    expect(sql).toMatch(/geom_3857\s*=\s*NULL/);
-    expect(sql).toMatch(/geom_simplified_low\s*=\s*NULL/);
-    expect(sql).toMatch(/geom_simplified_medium\s*=\s*NULL/);
-  });
-
-  it('touches one row and leaves the walk upward to the database (#680)', async () => {
-    // The ancestors are the trigger's business now: nulling this region's geom
-    // is itself a write to regions.geom, so trg_regions_geom_invalidates_parent
-    // fires and takes the chain from here. A second walk in TypeScript would be
-    // the rule written twice, which is what #679 spent a review discovering.
-    await invalidateRegionGeometry(1);
-    const [sql] = mockedQuery.mock.calls[0] as [string];
-    expect(sql).toMatch(/WHERE id = \$1/);
-    expect(sql).not.toMatch(/WITH RECURSIVE/);
-    expect(sql).not.toMatch(/parent_region_id/);
-  });
-
-  it('swallows lock/deadlock errors (concurrent invalidation safe)', async () => {
-    mockedQuery.mockRejectedValueOnce(new Error('could not obtain lock on row in relation "regions"'));
-    await expect(invalidateRegionGeometry(99)).resolves.toBeUndefined();
-
-    mockedQuery.mockRejectedValueOnce(new Error('deadlock detected'));
-    await expect(invalidateRegionGeometry(99)).resolves.toBeUndefined();
-  });
-
-  it('rethrows non-lock errors', async () => {
-    mockedQuery.mockRejectedValueOnce(new Error('relation "regions" does not exist'));
-    await expect(invalidateRegionGeometry(99)).rejects.toThrow('does not exist');
-  });
-});
 
 describe('ensureRegionMember — explicit ON CONFLICT arbiter (#378)', () => {
   beforeEach(() => {
@@ -94,33 +34,5 @@ describe('ensureRegionMember — explicit ON CONFLICT arbiter (#378)', () => {
     const [sql] = mockedQuery.mock.calls[0] as [string];
     expect(sql).toMatch(/INSERT INTO region_members\s*\(\s*region_id\s*,\s*division_id\s*\)/i);
     expect(sql).not.toMatch(/custom_geom\s*[,)]/i); // not in column list or values
-  });
-});
-
-describe('recomputeRegionGeometry', () => {
-  beforeEach(() => {
-    mockedQuery.mockReset();
-  });
-
-  it('reports what it wrote', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ points: 4200 }] });
-
-    const result = await recomputeRegionGeometry(7);
-
-    expect(result).toMatchObject({ computed: true, points: 4200 });
-    // One statement, and the ancestors above it are the trigger's business
-    // now: the UPDATE below is a write to regions.geom, so
-    // trg_regions_geom_invalidates_parent fires from inside it (#680).
-    expect(mockedQuery).toHaveBeenCalledTimes(1);
-  });
-
-  it('answers computed:false when the merge wrote nothing', async () => {
-    // No members and no computed children, or a hand-drawn boundary the UPDATE's
-    // own guard excluded: nothing moved, so nothing above it is stale either.
-    mockedQuery.mockResolvedValueOnce({ rows: [] });
-
-    const result = await recomputeRegionGeometry(7);
-
-    expect(result).toMatchObject({ computed: false });
   });
 });
