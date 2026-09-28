@@ -14,7 +14,7 @@
 import type { Response } from 'express';
 import type { z } from 'zod/v4';
 import type { Method, Route } from './route.js';
-import { NO_CONTENT } from './route.js';
+import { NO_CONTENT, strictQueryOf } from './route.js';
 import { respond } from './respond.js';
 import { errorHandler } from '../middleware/errorHandler.js';
 
@@ -33,6 +33,13 @@ export function routeAt(routes: readonly Route[], path: string, method: Method =
   return route;
 }
 
+/** The query as the registry would hand it over: held to the strict schema, and undefined where the route declares none. */
+function parsedQueryOf(route: Route, query: Record<string, unknown>): unknown {
+  const schema = strictQueryOf(route);
+  const parsed = schema ? schema.parse(query) : undefined;
+  return route.query ? parsed : undefined;
+}
+
 /** Answer `req` on `route` into `res`, which needs `status` and `json`. */
 export async function answer(route: Route, req: SpecRequest, res: unknown): Promise<void> {
   if ('events' in route.response && !('safeParse' in route.response)) {
@@ -47,7 +54,9 @@ export async function answer(route: Route, req: SpecRequest, res: unknown): Prom
   const out = res as Response;
   const parts = {
     params: route.params ? route.params.parse(req.params ?? {}) : undefined,
-    query: route.query ? route.query.parse(req.query ?? {}) : undefined,
+    // The registry's rule, so a spec refuses the undeclared parameter the router
+    // refuses (#1099).
+    query: parsedQueryOf(route, req.query ?? {}),
     body: route.body ? route.body.parse(req.body ?? {}) : undefined,
   };
   let body: unknown;
