@@ -11,7 +11,6 @@
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "typecheck": "tsc --noEmit",
-    "api:types": "tsx src/api/generateApiTypes.ts",
     "api:openapi": "tsx src/api/generateOpenApi.ts",
     "test": "node ../scripts/test-report.mjs backend-unit",
     "test:watch": "vitest",

@@ -8,7 +8,7 @@
  * between siblings, a model's review of a region's children), a region's review
  * state, and the batch verdicts on a region's suggestions.
  *
- * Each exported schema is the type of the same name in `@tyr/shared/api`, and
+ * Each exported schema is the type of the same name in the web's generated client, and
  * the handler sends its body through `respond()`, which holds it to the schema.
  * Imports are held to the list in the header of `curation.ts` beside this file,
  * which also says why.

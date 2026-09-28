@@ -1,26 +1,17 @@
 /**
- * Render the response schemas into the web's types (ADR-0066).
- *
- *   npm --prefix backend run api:types     write packages/shared/src/api.generated.ts
+ * The response schemas, by the names they are exported under (ADR-0066).
  *
  * Every module in `responses/` is imported, in sorted order, and every schema
- * it exports is registered under its export name. `z.toJSONSchema` turns the
- * registry into JSON Schema 2020-12, with a `$ref` wherever one exported schema
- * holds another, and `apiTypesRender.ts` renders that. `input` mode is what
- * makes a plain `z.object` visible: output mode would give it the
- * `additionalProperties: false` of a strict one, although its parse strips an
- * undeclared key and passes.
- *
- * The file is written where `@tyr/shared/api` resolves, so the generator and
- * every consumer agree on which file that is. `apiTypes.test.ts` renders the
- * same way and fails while the committed file differs.
+ * it exports is registered under its export name for the OpenAPI document
+ * (`generateOpenApi.ts`, ADR-0072), which the web's client is generated from
+ * (ADR-0073). So a schema a route answers with is a type of that name on every
+ * client; one no route references is pruned from the document.
  */
 
-import { readdirSync, writeFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod/v4';
-import { REF_PREFIX, renderApiTypes, type JsonSchema } from './apiTypesRender.js';
 
 const RESPONSES = join(dirname(fileURLToPath(import.meta.url)), 'responses');
 
@@ -66,26 +57,4 @@ export async function importResponseModules(): Promise<ResponseModule[]> {
     modules.push([file, (await import(pathToFileURL(join(RESPONSES, file)).href)) as Record<string, unknown>]);
   }
   return modules;
-}
-
-/** The text of `api.generated.ts`, from the schemas as they stand. */
-export async function renderResponseTypes(): Promise<string> {
-  const registry = z.registry<{ id: string }>();
-  for (const [name, schema] of responseSchemasOf(await importResponseModules())) registry.add(schema, { id: name });
-  const { schemas } = z.toJSONSchema(registry, { io: 'input', uri: (id) => `${REF_PREFIX}${id}` });
-  return renderApiTypes(schemas as Record<string, JsonSchema>);
-}
-
-async function main(): Promise<void> {
-  const output = fileURLToPath(import.meta.resolve('@tyr/shared/api'));
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- where the package's own export resolves
-  writeFileSync(output, await renderResponseTypes());
-  console.log(`Wrote ${output}.`);
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error: unknown) => {
-    console.error(error);
-    process.exit(1);
-  });
 }

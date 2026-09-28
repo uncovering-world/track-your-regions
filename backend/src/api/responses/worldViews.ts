@@ -4,7 +4,7 @@
  * the list of world views a caller may see, one created or edited, and what
  * deleting one would destroy.
  *
- * Each exported schema is the type of the same name in `@tyr/shared/api`, and
+ * Each exported schema is the type of the same name in the web's generated client, and
  * the handler sends its body through `respond()`, which holds it to the schema.
  * Imports are held to the list in the header of `curation.ts` beside this file,
  * which also says why.

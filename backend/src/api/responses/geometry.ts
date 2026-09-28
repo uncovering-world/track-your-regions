@@ -5,7 +5,7 @@
  * its status, the frame metadata a run leaves, a region reset to its members,
  * and the hull editor's preview, save and saved parameters.
  *
- * Each exported schema is the type of the same name in `@tyr/shared/api`. A
+ * Each exported schema is the type of the same name in the web's generated client. A
  * handler sends a body through `respond()` and a stream's events through
  * `writeEvent()`, which hold them to the schema. Imports are held to the list
  * in the header of `curation.ts` beside this file, which also says why.

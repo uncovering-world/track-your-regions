@@ -4,7 +4,7 @@
  * reader's visited regions, objects and places, the works they have seen, and
  * how far through an object they are.
  *
- * Each exported schema is the type of the same name in `@tyr/shared/api`, and
+ * Each exported schema is the type of the same name in the web's generated client, and
  * the handler sends its body through `respond()`, which holds it to the schema.
  * Imports are held to the list in the header of `curation.ts` beside this file,
  * which also says why.

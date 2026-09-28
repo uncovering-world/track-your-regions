@@ -4,7 +4,7 @@
  *   npm --prefix backend run api:openapi     write packages/shared/src/openapi.generated.json
  *
  * The routes come from `routes/mounts.ts`, the response components from
- * `responses/` as `api:types` reads them, and the request bodies' names from
+ * `responses/` (`responseModules.ts`), and the request bodies' names from
  * what the modules in `types/` export. `openApi.test.ts` renders the same way and
  * fails while the committed document differs.
  */
@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod/v4';
 import { MOUNTS } from '../routes/mounts.js';
-import { importResponseModules, responseSchemasOf, type ResponseModule } from './generateApiTypes.js';
+import { importResponseModules, responseSchemasOf, type ResponseModule } from './responseModules.js';
 import { openApiDocumentOf } from './openApi.js';
 
 const BACKEND = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -51,11 +51,11 @@ async function importTypeModules(): Promise<ResponseModule[]> {
 }
 
 /**
- * Where the document is committed: beside the web's generated types, found the
- * way `api:types` finds them, so the generator and the container lane, which
- * mounts that directory, agree on the file.
+ * Where the document is committed: where `@tyr/shared/openapi` resolves, so the
+ * generator and the container lane, which mounts that directory, agree on the
+ * file.
  */
-const OPENAPI_FILE = join(dirname(fileURLToPath(import.meta.resolve('@tyr/shared/api'))), 'openapi.generated.json');
+const OPENAPI_FILE = fileURLToPath(import.meta.resolve('@tyr/shared/openapi'));
 
 /** The text of `openapi.generated.json`, from the declarations as they stand. */
 export async function renderOpenApi(): Promise<string> {
