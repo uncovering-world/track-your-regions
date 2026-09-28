@@ -249,6 +249,13 @@ export type RouteDeclaration<
   readonly cache: A extends 'public' ? CachePolicy : Exclude<CachePolicy, 'shared-revalidate'>;
   readonly limiter?: RequestHandler;
   readonly query?: QS;
+  /**
+   * Why this route's query is written by a third party rather than a client of
+   * the API — an OAuth provider's redirect — so the registry holds it to no
+   * schema and does not refuse the parameters the provider adds (#1099). A
+   * route that says so declares no `query`; `routerOf` refuses an empty reason.
+   */
+  readonly foreignQuery?: QS extends undefined ? string : never;
   readonly body?: BS;
   readonly response: RS;
   /** A success status other than 200, for a create. */
@@ -283,6 +290,7 @@ export interface Route {
   readonly limiter?: RequestHandler;
   readonly params?: z.ZodType;
   readonly query?: z.ZodType;
+  readonly foreignQuery?: string;
   readonly body?: z.ZodType;
   readonly response: Answer;
   readonly status?: number;
@@ -349,8 +357,42 @@ async function openStream(
   }
 }
 
+/**
+ * The query schema a request is held to: the declared one, strict, or an empty
+ * strict one where the route declares none (#1099). A parameter a route does
+ * not declare is refused with 400, as any other request that does not fit its
+ * schema, rather than answered as if it were absent: a client that misspells
+ * `worldViewId` gets an error, not the default world view's answer. A stream's
+ * `token` is declared by its schema like any other parameter. The one
+ * exception is a query a third party writes (`foreignQuery`), held to nothing:
+ * Google's redirect carries what Google puts there. Every query schema is an
+ * object, and one that is not is refused when the router is built, since it
+ * would have no keys to be strict about. The spec harness reads the same rule.
+ */
+export function strictQueryOf(route: Route): z.ZodType | undefined {
+  if (route.foreignQuery !== undefined) return undefined;
+  if (!route.query) return z.strictObject({});
+  if (!(route.query instanceof z.ZodObject)) {
+    throw new Error(`${route.method.toUpperCase()} ${route.path}: a query schema must be an object`);
+  }
+  return route.query.strict();
+}
+
+/**
+ * The request's params, query and body, each held to its schema. The query is
+ * parsed whether or not the route declares one, so an undeclared parameter is
+ * refused on a route that takes none.
+ */
+function partsOf(route: Route, query: z.ZodType | undefined, req: Request): { params: unknown; query: unknown; body: unknown } {
+  // In the module comment's order: params, then query, then body.
+  const params = parsed(route.params, req.params);
+  const parsedQuery = parsed(query, req.query);
+  return { params, query: route.query ? parsedQuery : undefined, body: parsed(route.body, req.body) };
+}
+
 /** The chain one declaration builds, in the order the module comment gives; `scope` is checked after the body. */
 function chainOf(route: Route): RequestHandler[] {
+  const query = strictQueryOf(route);
   const cacheHeader: RequestHandler = (_req, res, next) => {
     res.setHeader('Cache-Control', failureHeaderOf(route.cache));
     if (route.cache === 'token') res.setHeader('Pragma', 'no-cache');
@@ -361,11 +403,7 @@ function chainOf(route: Route): RequestHandler[] {
   // to `express-async-errors`, which only a server that imports it has.
   const handle = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const parts = {
-        params: parsed(route.params, req.params),
-        query: parsed(route.query, req.query),
-        body: parsed(route.body, req.body),
-      };
+      const parts = partsOf(route, query, req);
       const caller = route.access === 'public' ? undefined : (req as AuthenticatedRequest).user;
       const scope = route.scope?.(parts);
       // A missing row and a hidden world view answer the same 404, which
@@ -454,6 +492,9 @@ export function routerOf(routes: readonly Route[]): Router {
     }
     if (route.cache === 'shared-revalidate' && route.access !== 'public') {
       throw new Error(`${route.method.toUpperCase()} ${route.path} is ${route.access}, and its answer may not be kept by a shared cache`);
+    }
+    if (route.foreignQuery !== undefined && (route.foreignQuery.trim() === '' || route.query)) {
+      throw new Error(`${route.method.toUpperCase()} ${route.path} takes a third party's query without saying why, or declares a query besides`);
     }
     if (declaresAccessToken(route.response) && route.cache !== 'token') {
       throw new Error(`${route.method.toUpperCase()} ${route.path} hands out an access token, and must declare the token cache policy`);

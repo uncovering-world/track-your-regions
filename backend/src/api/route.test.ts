@@ -271,6 +271,80 @@ describe('what the handler receives and answers', () => {
   });
 });
 
+/**
+ * A query parameter the route does not declare is refused (#1099), where it
+ * used to be dropped and the request answered as if it were absent: a client
+ * that misspells a parameter is told, not answered a different question.
+ */
+describe('a query parameter the route does not declare', () => {
+  it('is refused with 400 where the route declares a query, and the handler never runs', async () => {
+    const answer = await send('GET', '/public?n=4&worldviewId=5');
+    expect(answer.status).toBe(400);
+    expect(JSON.stringify(answer.body)).toContain('worldviewId');
+    expect(handled).not.toHaveBeenCalled();
+  });
+
+  it('is refused with 400 where the route declares none', async () => {
+    signedIn('curator');
+    const answer = await send('GET', '/items/12?x-unknown=42', { token: 't' });
+    expect(answer.status).toBe(400);
+    expect(handled).not.toHaveBeenCalled();
+  });
+
+  it('leaves the declared ones answered as before', async () => {
+    expect((await send('GET', '/public?n=4')).body).toEqual({ n: 4 });
+  });
+
+  it('lets a third party\'s query through where the route says whose it is', async () => {
+    const provider = defineRoute({
+      method: 'get', path: '/provider/callback', access: 'public', cache: 'no-store',
+      summary: 'The GET /provider/callback fixture',
+      foreignQuery: 'The provider writes this query on its redirect',
+      response: Count,
+      handler: async ({ query }) => ({ n: query === undefined ? 1 : 0 }),
+    });
+    const app = express();
+    app.use('/api', routerOf([provider]));
+    app.use(errorHandler);
+    const server = app.listen(0);
+    try {
+      const { port } = server.address() as AddressInfo;
+      const body = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        request({ port, path: '/api/provider/callback?code=x&state=y&scope=z', method: 'GET' }, (res) => {
+          let text = '';
+          res.on('data', (chunk) => { text += chunk; });
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body: text }));
+        }).on('error', reject).end();
+      });
+      expect(body.status).toBe(200);
+      expect(JSON.parse(body.body)).toEqual({ n: 1 });
+    } finally {
+      server.close();
+    }
+  });
+
+  it('refuses a third party\'s query taken without a reason, or beside a declared one', () => {
+    const base = {
+      method: 'get', path: '/provider/callback', access: 'public', cache: 'no-store',
+      summary: 'The GET /provider/callback fixture', response: Count, handler: async () => ({ n: 1 }),
+    } as const;
+    expect(() => routerOf([defineRoute({ ...base, foreignQuery: ' ' })])).toThrow('without saying why');
+    const both = { ...defineRoute({ ...base, foreignQuery: 'The provider writes it' }), query: z.object({ a: z.string() }) };
+    expect(() => routerOf([both])).toThrow('declares a query besides');
+  });
+
+  it('refuses at build time a query schema that is not an object, which would have no keys to hold', () => {
+    const route = defineRoute({
+      method: 'get', path: '/union', access: 'public', cache: 'shared-revalidate',
+      summary: 'The GET /union fixture',
+      query: z.union([z.object({ a: z.string() }), z.object({ b: z.string() })]) as unknown as z.ZodObject,
+      response: Count,
+      handler: async () => ({ n: 1 }),
+    });
+    expect(() => routerOf([route])).toThrow('a query schema must be an object');
+  });
+});
+
 describe('the world view a route names in scope', () => {
   const visible = (isPublic: boolean) => mockedQuery.mockResolvedValueOnce({ rows: [{ is_public: isPublic }] });
 

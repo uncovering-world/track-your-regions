@@ -124,10 +124,10 @@ export const authRoutes = [
     response: REDIRECT,
     handler: startGoogle,
   }),
-  // The provider's own query (the code, the state) is passport's to read.
   defineRoute({
     method: 'get', path: '/google/callback', access: 'public', cache: 'no-store',
     summary: 'Finish Google sign-in and redirect to the web with a one-time code',
+    foreignQuery: 'Google writes this query on its redirect (the code, the state, the scope and whatever it adds), and passport reads it',
     response: REDIRECT,
     handler: finishGoogle,
   }),
