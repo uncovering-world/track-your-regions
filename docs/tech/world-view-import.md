@@ -571,7 +571,7 @@ The edits that propose or reshape more at once answer through the same module:
 
 A verdict on suggestions has one writer per rule, whether it is given for one division or for a selection: `acceptDivisionsRejectRest` and `rejectDivisions` (`controllers/admin/wvImportMatchDecisions.ts`), each in one transaction. The single routes (`accept-and-reject`, `reject`) pass one division, and the batch routes pass the selection. After a rejection the region's status follows what is left: open suggestions make it `needs_review`, members `manual_matched`, and nothing `no_candidates`.
 
-**Every path the admin client calls is a declared route.** `backend/src/routes/adminClientPaths.test.ts` reads each `/api/admin/…` path the modules in `frontend/src/api/admin/` spell, with its method, and fails on one no route in `adminDeclaredRoutes` matches. A drifted path answers a 404 only when somebody presses its button, so nothing else notices it. The server side has one owner now (ADR-0071); the client still spells its paths by hand, which is what the spec is for.
+**Every path the admin client calls is a declared route.** The modules in `frontend/src/api/admin/` call the client generated from the OpenAPI document (ADR-0073), which the route declarations produce (ADR-0071, ADR-0072). So a drifted path, a wrong parameter or a wrong body field fails the frontend's typecheck instead of answering a 404 only when somebody presses its button.
 
 ## Backend Structure
 
