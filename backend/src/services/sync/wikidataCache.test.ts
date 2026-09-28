@@ -23,7 +23,9 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { withCache, setCacheTtl, CACHED_KINDS_BY_SOURCE, DEFAULT_TTL_MS } from './wikidataCache.js';
+import {
+  withCache, setCacheTtl, forgetCached, CACHED_KINDS_BY_SOURCE, DEFAULT_TTL_MS,
+} from './wikidataCache.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -241,5 +243,30 @@ describe('the OSM answers of the Archaeology run', () => {
       if (sourceId === '5') continue;
       expect(kinds).not.toContain('osm');
     }
+  });
+});
+
+describe('forgetCached', () => {
+  beforeEach(() => { mockedQuery.mockReset(); });
+
+  it('drops exactly the named questions of one source, keyed as a read is', async () => {
+    mockedQuery.mockResolvedValue({ rowCount: 2 });
+    const dropped = await forgetCached(5, ['q1', 'q2', 'q1']);
+
+    expect(dropped).toBe(2);
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, [number, string[]]];
+    expect(sql).toContain('source_id = $1 AND query_hash = ANY($2::text[])');
+    expect(params[0]).toBe(5);
+    // One hash per question, asked once, and the source is part of the key
+    // (ADR-0047): the same words under another source hash differently.
+    expect(params[1]).toHaveLength(2);
+    await forgetCached(4, ['q1']);
+    const other = (mockedQuery.mock.calls[1] as [string, [number, string[]]])[1][1][0];
+    expect(params[1]).not.toContain(other);
+  });
+
+  it('sends nothing when there is nothing to forget', async () => {
+    expect(await forgetCached(5, [])).toBe(0);
+    expect(mockedQuery).not.toHaveBeenCalled();
   });
 });

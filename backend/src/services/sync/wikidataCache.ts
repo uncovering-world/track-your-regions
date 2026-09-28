@@ -393,6 +393,23 @@ export async function cacheSummary(sourceId: number): Promise<CacheKindSummary[]
 }
 
 /**
+ * Drop the answers to these questions of one source, and no others.
+ *
+ * What a run does when a door it read through turned out to be failing: the
+ * answers it touched on the way are in the cache for a day, and the next run
+ * must not read them back (`osm/oneDoorPerRun.ts`). Keyed exactly as a read is,
+ * so a row another source keeps for the same words is left alone (ADR-0047).
+ */
+export async function forgetCached(sourceId: number, queries: readonly string[]): Promise<number> {
+  if (queries.length === 0) return 0;
+  const result = await pool.query(
+    'DELETE FROM wikidata_query_cache WHERE source_id = $1 AND query_hash = ANY($2::text[])',
+    [sourceId, [...new Set(queries)].map((query) => hashOf(sourceId, query))],
+  );
+  return result.rowCount ?? 0;
+}
+
+/**
  * Drop everything, or one kind of it.
  *
  * Deliberately a delete rather than an expiry stamp: an admin pressing this is
