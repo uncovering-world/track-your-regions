@@ -30,21 +30,20 @@ export const CoverageSuggestion = z.strictObject({
 }).describe('Where a coverage gap could go.');
 export type CoverageSuggestion = z.infer<typeof CoverageSuggestion>;
 
-export const GapSubtreeNode = z.strictObject({
+export const GapChild = z.strictObject({
   id: z.number().int(),
   name: z.string(),
-  get children(): z.ZodArray<typeof GapSubtreeNode> {
-    return z.array(GapSubtreeNode);
-  },
-}).describe('A GADM division under a gap, with its own.');
-export type GapSubtreeNode = z.infer<typeof GapSubtreeNode>;
+  hasChildren: z.boolean().describe('GADM divisions lie under it, fetched when the reviewer expands it (`GET /api/divisions/:divisionId/subdivisions`).'),
+}).describe('A GADM division directly under a gap.');
+export type GapChild = z.infer<typeof GapChild>;
 
 export const CoverageGap = z.strictObject({
   id: z.number().int().describe('The uncovered GADM division.'),
   name: z.string(),
   parentName: z.string().nullable(),
   suggestion: CoverageSuggestion.nullable().describe('From a sibling division a region holds, else from the nearest covered cousin; null where neither exists.'),
-  subtree: z.array(GapSubtreeNode).optional().describe('Sent for a gap with GADM divisions under it, by name.'),
+  children: z.array(GapChild).optional()
+    .describe('Sent for a gap with GADM divisions under it: the first level, by name. A deeper level is fetched when it is expanded.'),
 }).describe('A GADM division no region covers, whose parent is covered or is a root.');
 export type CoverageGap = z.infer<typeof CoverageGap>;
 
