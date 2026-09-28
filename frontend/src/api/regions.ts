@@ -4,7 +4,7 @@
 
 import type {
   ChildDivisionsAdded, DescendantMemberGeometries, DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, MemberGeometries,
-  MemberMoved, Region, RegionGeometry, RegionMembers, Regions, RegionSearchResults, RegionUpdated, SubregionFlattened,
+  MemberMoved, Region, RegionGeometry, RegionMembers, Regions, RegionSearchResults, SubregionFlattened,
   SubregionsExpanded,
 } from './client.generated';
 import {
@@ -29,7 +29,7 @@ export type {
   AnchorPoint, AreaGeometry, ChildDivisionsAdded, CreatedSubregion, DescendantMemberGeometries, DescendantMemberGeometry,
   DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, FocusBbox, MemberGeometries, MemberGeometry, MemberMoved,
   RegionGeometry, RegionGeometryProperties, RegionMember, RegionMembers, RegionMemberType, Regions, RegionSearchResult,
-  RegionSearchResults, RegionUpdated, SubregionFlattened, SubregionsExpanded,
+  RegionSearchResults, SubregionFlattened, SubregionsExpanded,
 } from './client.generated';
 
 export async function searchRegions(
@@ -69,7 +69,7 @@ export async function createRegion(
 export async function updateRegion(
   regionId: number,
   data: UpdateRegionBody,
-): Promise<RegionUpdated> {
+): Promise<Region> {
   return putWorldViewsRegionsByRegionId(regionId, data);
 }
 

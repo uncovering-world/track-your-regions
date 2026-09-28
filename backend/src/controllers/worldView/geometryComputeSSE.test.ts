@@ -39,7 +39,7 @@ function respondPool(sql: string) {
     return { rows: [] };
   }
   if (s.includes('focus_bbox')) {
-    return { rows: [{ focus_bbox: null, anchor_point: null, world_view_id: null }] };
+    return { rows: [{ focus_bbox: null, anchor_point: null }] };
   }
   if (s.includes('parent_region_id FROM regions')) {
     return { rows: [{ parent_region_id: null }] };

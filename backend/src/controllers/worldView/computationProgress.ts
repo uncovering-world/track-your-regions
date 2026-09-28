@@ -246,12 +246,6 @@ async function finalizeComputation(
     return;
   }
 
-  if (progressState.computed > 0) {
-    await pool.query(
-      'UPDATE world_views SET tile_version = COALESCE(tile_version, 0) + 1 WHERE id = $1',
-      [worldViewId],
-    );
-  }
   progressState.status = 'Complete';
   progressState.currentGroup = '';
   console.log(`[Geometry] Computation complete for hierarchy ${worldViewId}: computed=${progressState.computed}, skipped=${progressState.skipped}, errors=${progressState.errors}`);

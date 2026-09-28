@@ -29,7 +29,6 @@ export const ComputeResult = z.strictObject({
   numHoles: z.number().int().optional(),
   focusBbox: FocusBbox.nullable().optional().describe('The region\'s frame as the computed outline left it.'),
   anchorPoint: AnchorPoint.nullable().optional(),
-  tileVersion: z.number().int().optional().describe('The world view\'s tile version after the run bumped it.'),
 }).describe('What a finished computation of one region left.');
 export type ComputeResult = z.infer<typeof ComputeResult>;
 

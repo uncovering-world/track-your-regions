@@ -4,7 +4,7 @@
 
 import type { z } from 'zod/v4';
 import { NO_CONTENT } from '../../api/route.js';
-import type { Region, Regions, RegionSearchResults, RegionUpdated } from '../../api/responses/regions.js';
+import type { Region, Regions, RegionSearchResults } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import type { RegionsRow } from '../../db/schema.generated.js';
 import { visitedRegionRefusal, visitsUnder } from '../../db/regionVisits.js';
@@ -352,11 +352,11 @@ async function moveDivisionMembershipsForParentChange(
  */
 export async function updateRegion(
   { params: { regionId }, body }: { params: RegionParams; body: UpdateRegionBody },
-): Promise<RegionUpdated> {
+): Promise<Region> {
   const newParentId = body.parentRegionId;
 
-  const currentRegion = await pool.query<Pick<RegionsRow, 'name' | 'parent_region_id' | 'uses_hull'>>(`
-    SELECT name, parent_region_id, uses_hull
+  const currentRegion = await pool.query<Pick<RegionsRow, 'name' | 'parent_region_id'>>(`
+    SELECT name, parent_region_id
     FROM regions WHERE id = $1
   `, [regionId]);
   if (currentRegion.rows.length === 0) {
@@ -364,18 +364,17 @@ export async function updateRegion(
   }
   const oldParentId = currentRegion.rows[0].parent_region_id;
   const regionName = currentRegion.rows[0].name;
-  const oldUsesHull = Boolean(currentRegion.rows[0].uses_hull);
 
   const { setClauses, values } = buildRegionUpdateClauses(body);
   if (setClauses.length === 0) return readRegion(regionId);
 
   const idIdx = values.length + 1;
   values.push(regionId);
-  const result = await pool.query<Pick<RegionsRow, 'world_view_id'>>(`
+  const result = await pool.query<Pick<RegionsRow, 'id'>>(`
     UPDATE regions
     SET ${setClauses.join(', ')}
     WHERE id = $${idIdx}
-    RETURNING world_view_id
+    RETURNING id
   `, values);
   if (result.rows.length === 0) {
     throw notFound(`Region ${regionId} not found`);
@@ -401,31 +400,6 @@ export async function updateRegion(
     await invalidateRegionGeometry(regionId);
     if (oldParentId) await invalidateRegionGeometry(oldParentId);
     if (newParentId) await invalidateRegionGeometry(newParentId);
-  }
-
-  // A uses_hull flip is a geometry write: the flag chooses what the four derived
-  // rungs are made of, and trg_regions_geom_3857 rebuilds them on it (rule 19).
-  // So it bumps, for the reason migration 037 states: the tiles are built from
-  // different geometry at unchanged URLs, and without the bump a reader gets the
-  // old shapes back out of Martin's cache, at cache speed, which reads as the
-  // change having landed. Bumping is not a rule the writers of geom and hull_geom
-  // follow as a class: the two compute paths and the batch progress handler do,
-  // and the editing endpoints -- updateRegionGeometry, resetRegionToGADM,
-  // saveHullGeometry, createRegion with a drawn boundary -- do not. Which of them
-  // should has not been audited; that is #688, and this comment records the gap
-  // rather than claiming to close it. Compared against the old value rather
-  // than fired on the flag's mere presence, or a form saved unchanged would bust
-  // every tile URL of the world view -- and that comparison is against a value
-  // read by an earlier statement, so an overlapping request can make it stale.
-  // The handler's statements are not in one transaction, which is #689: the
-  // membership move above has its own, for the same failure class, and commits
-  // independently of the invalidations that follow it.
-  if (body.usesHull !== undefined && Boolean(body.usesHull) !== oldUsesHull) {
-    const bumped = await pool.query<{ tile_version: number }>(
-      'UPDATE world_views SET tile_version = COALESCE(tile_version, 0) + 1 WHERE id = $1 RETURNING tile_version',
-      [result.rows[0].world_view_id],
-    );
-    return { ...await readRegion(regionId), tileVersion: bumped.rows[0].tile_version };
   }
 
   return readRegion(regionId);
