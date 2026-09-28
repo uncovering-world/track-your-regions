@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
-  OVERPASS_ENDPOINT, OVERPASS_PAUSE_MS, OVERPASS_RATE_LIMIT_PAUSE_MS, OVERPASS_QUERY_MAXSIZE_B,
+  OVERPASS_INSTANCES, OVERPASS_PAUSE_MS, OVERPASS_RATE_LIMIT_PAUSE_MS, OVERPASS_QUERY_MAXSIZE_B,
   OVERPASS_QUERY_TIMEOUT_S, OVERPASS_ENUMERATION_TIMEOUT_S, declaredTimeoutMs, overpassBatchQuery, overpassDigsQueries,
   overpassOsmDoor, rowsOf,
 } from './overpassOsm.js';
@@ -157,7 +157,7 @@ describe('overpassOsmDoor', () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(OVERPASS_ENDPOINT);
+    expect(url).toBe('https://overpass-api.de/api/interpreter');
     expect(init.method).toBe('POST');
     const headers = init.headers as Record<string, string>;
     expect(headers.Accept).toBe('application/json');
@@ -272,18 +272,92 @@ describe('overpassOsmDoor', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('gives up loudly on a refusal it may not retry', async () => {
+  it('gives up loudly on a question refused as asked, and carries it to no other instance', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => refusal(400));
     const door = overpassOsmDoor(progress(), new WaitBudget(60000), '[T]', { fetchImpl });
-    await expect(door.send('q')).rejects.toThrow(/OpenStreetMap .*400/);
+    await expect(door.send('q')).rejects.toThrow(/OpenStreetMap refused the question \(400\)/);
+    // Every instance runs the same engine: the next one would refuse it too.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('gives up loudly on an answer with no elements in it', async () => {
+  it('gives up loudly on an answer with no elements in it from every instance', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => ({
       ok: true, json: async () => ({ version: 0.6 }),
     }) as unknown as Response);
     const door = overpassOsmDoor(progress(), new WaitBudget(60000), '[T]', { fetchImpl });
     await expect(door.send('q')).rejects.toThrow(/without any elements/);
+  });
+
+  describe('when an instance is closed to the run', () => {
+    const urlOf = (fetchImpl: ReturnType<typeof vi.fn<typeof fetch>>, call: number) =>
+      (fetchImpl.mock.calls[call] as [string, RequestInit])[0];
+    const [MAIN, SECOND, THIRD] = OVERPASS_INSTANCES.map((instance) => instance.endpoint);
+
+    it('asks them in order: the main instance, then the free global instances the record quotes', () => {
+      expect(OVERPASS_INSTANCES.map((instance) => instance.endpoint)).toEqual([
+        'https://overpass-api.de/api/interpreter',
+        'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+        'https://overpass.private.coffee/api/interpreter',
+      ]);
+    });
+
+    it('hands the same question to the next instance when a 429 outlasts the budget, and stays there', async () => {
+      vi.useFakeTimers();
+      const fetchImpl = vi.fn<typeof fetch>(async (url) => (
+        url === MAIN ? refusal(429) : answer([ATHENS_NODE])
+      ));
+      const shown = progress();
+      // Spent: the 429's thirty seconds do not fit, so the main instance is closed.
+      const door = overpassOsmDoor(shown, new WaitBudget(0), '[T]', { fetchImpl });
+
+      const rows = await runWithTimers(door.send('batch 1'));
+      expect(rows).toHaveLength(1);
+      expect([urlOf(fetchImpl, 0), urlOf(fetchImpl, 1)]).toEqual([MAIN, SECOND]);
+      expect(shown.statusMessage).toContain('asking maps.mail.ru');
+
+      // The next question goes straight to the instance that answered.
+      await runWithTimers(door.send('batch 2'));
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+      expect(urlOf(fetchImpl, 2)).toBe(SECOND);
+      expect(String((fetchImpl.mock.calls[2] as [string, RequestInit])[1].body)).toBe('data=batch+2');
+    });
+
+    it('moves on after a dropped connection it could not wait out', async () => {
+      vi.useFakeTimers();
+      const fetchImpl = vi.fn<typeof fetch>(async (url) => {
+        if (url === MAIN) throw new TypeError('fetch failed');
+        return answer([TROY_WAY]);
+      });
+      const door = overpassOsmDoor(progress(), new WaitBudget(0), '[T]', { fetchImpl });
+      const rows = await runWithTimers(door.send('q'));
+      expect(rows).toHaveLength(1);
+      expect(urlOf(fetchImpl, 1)).toBe(SECOND);
+    });
+
+    it('fails once the last instance closes, naming each and why it left', async () => {
+      vi.useFakeTimers();
+      const fetchImpl = vi.fn<typeof fetch>(async (url) => (url === THIRD ? refusal(403) : refusal(504)));
+      const door = overpassOsmDoor(progress(), new WaitBudget(0), '[T]', { fetchImpl });
+      const failed = runWithTimers(door.send('q'));
+      await expect(failed).rejects.toThrow(
+        /Every public Overpass instance is closed to this run — overpass-api\.de: Overpass 504.*; maps\.mail\.ru: Overpass 504.*; overpass\.private\.coffee: OpenStreetMap answered 403/,
+      );
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+      // And a question after that is refused by name, sending nothing.
+      await expect(runWithTimers(door.send('q2'))).rejects.toThrow(/Every public Overpass instance is closed/);
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+    });
+
+    it('stops rather than moving on when the run is cancelled', async () => {
+      const shown = progress();
+      const fetchImpl = vi.fn<typeof fetch>(async () => {
+        shown.cancel = true;
+        throw new TypeError('fetch failed');
+      });
+      const door = overpassOsmDoor(shown, new WaitBudget(60000), '[T]', { fetchImpl });
+      await expect(door.send('q')).rejects.toThrow(/Sync cancelled/);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
