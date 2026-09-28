@@ -178,13 +178,14 @@ once (ADR-0065), which is why that directory is in the class too: a change to
 a shared rule is a change to both sides, and both typechecks read its source
 through the link.
 
-The package also carries the web's types for the backend's response schemas,
-generated into `api.generated.ts` (ADR-0066). Two gates follow from that for an
-endpoint whose answer a schema declares:
+The package also carries the OpenAPI document the web's client is generated
+from (ADR-0072, ADR-0073). Three gates follow from that for an endpoint whose
+answer a schema declares:
 
-- the frontend's typecheck sees a change to that answer;
-- `backend/src/api/apiTypes.test.ts`, in the backend unit lane, fails while the
-  generated file lags the schemas.
+- `backend/src/api/openApi.test.ts`, in the backend unit lane, fails while the
+  document lags the schemas;
+- `api:client` fails while the web's client lags the document;
+- the frontend's typecheck sees a change to that answer.
 
 A success body sent around `respond()`, and so declared by no schema, fails
 `lint`: `RESPONSE_SHAPE_RULES` in `backend/eslint.config.mjs`. The endpoints it
@@ -204,7 +205,7 @@ reached on 2026-09-22:
 | `frontend/src` as a whole tree | `types/urlSafety.test.ts` and `db/regionFocusAntimeridian.test.ts` scan it for a second decision made anywhere in the client (#672, #674) |
 | `db/` and `scripts/` as whole trees, beside the backend's own `src/` | `db/regionAncestorInvalidation.test.ts` and `db/regionGeomPieces.test.ts` scan every `.sql`, `.py`, `.ts` and `.sh` under them for anything that switches the region geometry triggers off — by name or wholesale — and `db/renderedRungTopology.test.ts` scans `db/` for a simplifier put into a query |
 | `martin/config.yaml`, `martin/README.md` | the tile sources a spec asserts on, and the document that lists them |
-| `packages/shared/src/api.generated.ts` | `api/apiTypes.test.ts` holds the web's response types to what the backend's schemas render to (ADR-0066) |
+| `packages/shared/src/openapi.generated.json` | `api/openApi.test.ts` holds the OpenAPI document to what the route declarations render to (ADR-0072) |
 | `scripts/db-migrate.sh` | the migration runner's own behaviour |
 | `docs/tech/gates.md` | `scripts/gates.test.mjs` holds the tables above against `--table`, so the map is written once |
 | `.github/workflows/ci.yml` | `scripts/ci-failsafe.test.mjs` holds every job's condition against the map (#952) |

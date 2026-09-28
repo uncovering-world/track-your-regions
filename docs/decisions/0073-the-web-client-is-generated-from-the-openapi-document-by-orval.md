@@ -1,7 +1,7 @@
 # ADR-0073: The web client is generated from the OpenAPI document by Orval
 
 **Date:** 2026-09-27
-**Status:** Accepted
+**Status:** Accepted — decisions 4 and 5 narrowed by ADR-0074
 **Issue:** [#1101](https://github.com/uncovering-world/track-your-regions/issues/1101), a slice of [#1089](https://github.com/uncovering-world/track-your-regions/issues/1089)
 
 ---
