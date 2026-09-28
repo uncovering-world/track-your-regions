@@ -249,9 +249,9 @@ Three things about that line are load-bearing.
   required since #1099 made the API contract lane in `E2E Smoke` blocking —
   each would report Success, and the pull request would be mergeable with
   nothing run on it.
-- **`Build`, `E2E Smoke` and `Performance (Lighthouse)` add
-  `needs.check.result == 'success'`.** That ordering existed before and had to be
-  restated, because `!cancelled()` is what removed it.
+- **No job waits on another but `Changes`.** The build, the smoke lane and
+  Lighthouse used to wait on `Lint & Type Check`. The waits came out when they
+  were measured (§ The job graph).
 - **The filter is on the jobs and never on `on:`.** A workflow skipped by a
   `paths:` filter never reports its checks, so the required ones would stay
   Pending and the merge button would never light up. A job skipped by its own `if:` reports Success and satisfies
@@ -307,9 +307,8 @@ The fail-safe invariant itself is pinned by `scripts/ci-failsafe.test.mjs`, whic
 parses the workflow and holds it against the map (#952). Every job but `Changes`
 has to wait on it, and its `if:` has to be the whole expression — the clauses in
 the order and the grouping above, built from the `job_*` output the map
-publishes for that job, with `needs.check.result == 'success'` in its place for
-the three jobs that wait behind `check` (`Build`, `E2E Smoke` and
-`Performance (Lighthouse)`). The parts are not enough: an expression that names
+publishes for that job. No job may wait on `check`, and the spec names the
+measurement that took the waits out. The parts are not enough: an expression that names
 every clause but puts the output comparison in an `&&` term of its own skips the
 job on exactly the failure the fail-safe is for. Each guarded step's condition is
 pinned whole the same way; `Changes` has to declare every `job_*` key the map
@@ -323,6 +322,93 @@ Success with nothing run on it — because that is the part a reader of the diff
 cannot see. The spec runs in the backend's vitest lane, on the host and in the
 container, which mounts that one workflow file read-only beside the repository
 files the suite already reads.
+
+### The job graph
+
+Every job starts when `Changes` has decided whether it runs. No job waits on
+another one, because a wait costs every run its length, and it pays off only on
+a run where the job waited on would have failed (#965). The rule for putting a
+wait back is the same as for taking one out: a measurement, recorded here, or
+an artifact the waiting job consumes.
+
+The measurement is `node scripts/ci-graph-measure.mjs`. It reads every
+`pull_request` run of `ci.yml` in a window, with its jobs, through `gh api`,
+and keeps what it read in `data/cache/ci-graph/`. Runner-minutes are the sum of
+the jobs' own durations, not GitHub's billing, which rounds each job up to a
+minute. The window below opens at the merge of #920, which made a push
+cancel the run it superseded.
+
+**Baseline — 2026-09-28**, with `Build`, `E2E Smoke` and
+`Performance (Lighthouse)` still waiting on `Lint & Type Check`.
+`node scripts/ci-graph-measure.mjs --since 2026-09-21T14:05:00Z --until 2026-09-28T20:00:00Z`
+read 278 runs over 102 pull requests, 26 of them cancelled.
+
+| Job | ran | skipped | failed (of ran) | start offset p50 / p90 min | duration p50 / p90 min |
+|-----|-----|---------|-----------------|---------------------------|------------------------|
+| Build | 241 | 4.4% | 0 (0.0%) | 2.8 / 5.5 | 1.1 / 1.3 |
+| Changes | 252 | 0.0% | 0 (0.0%) | 0.1 / 0.1 | 0.1 / 0.2 |
+| E2E Smoke | 241 | 4.4% | 0 (0.0%) | 2.8 / 5.4 | 3.7 / 9.6 |
+| Lint & Type Check | 252 | 0.0% | 0 (0.0%) | 0.3 / 0.4 | 2.5 / 5.0 |
+| Performance (Lighthouse) | 241 | 4.4% | 1 (0.4%) | 2.8 / 5.4 | 3.4 / 8.1 |
+| Python Tests (cv-python + GADM loader) | 45 | 82.1% | 0 (0.0%) | 0.3 / 0.6 | 1.8 / 2.2 |
+| Security Scan | 241 | 4.4% | 1 (0.4%) | 0.3 / 0.7 | 1.3 / 1.5 |
+| Trivy Image Scan (cv-python) | 45 | 82.1% | 0 (0.0%) | 0.3 / 0.8 | 2.5 / 3.3 |
+| Unit Tests | 241 | 4.4% | 0 (0.0%) | 0.3 / 0.5 | 3.4 / 3.8 |
+
+| Per run (completed) | p50 | p90 |
+|---------------------|-----|-----|
+| critical path, min | 6.5 | 13.0 |
+| runner-minutes | 15.4 | 26.9 |
+
+| Per pull request (102) | p50 | p90 |
+|----------------------|-----|-----|
+| runs | 2.0 | 4.0 |
+| cancelled runs | 0.0 | 1.0 |
+| runner-minutes | 42.3 | 77.9 |
+
+| After Changes (waited on Lint & Type Check until #965) | ran | start lag p50 / p90 min | last to finish | red-gate runs, at most | saved per red gate, min |
+|------|-----|---------------------------|----------------|--------------------------|-------------------------|
+| Build | 241 | 2.6 / 5.2 | 0 | 0 | 1.1 |
+| E2E Smoke | 241 | 2.6 / 5.1 | 189 | 0 | 3.7 |
+| Performance (Lighthouse) | 241 | 2.6 / 5.2 | 52 | 0 | 3.4 |
+
+The last table decided it. `Lint & Type Check` failed on none of the 252
+completed runs: the lint and type gates run before every commit
+(`npm run check`), so a branch reaches CI already past them. On a red check,
+the waits would have saved about 8 runner-minutes, the three jobs' median
+durations together. They saved them on no run. The red-gate column is an upper
+bound, since the change map may have skipped a job on such a run anyway, and
+the jobs API does not carry the map's verdict. Here it is zero either way.
+
+Meanwhile, the smoke lane or Lighthouse finished last on all 241 runs that ran
+them. They started 2.6 minutes after `Changes` (5.2 at p90). That lag is the
+lint job's own run plus the runners' queueing. An ungated job starts 0.3
+minutes into the run, which is the queueing alone. So the wait added close to
+the lint job's duration to the critical path of every one of those runs; the
+measurement observes the lag rather than proving the counterfactual.
+
+`Build` never finished last, so its wait cost nothing and saved nothing. It came
+out with the others, because the rule is about what an edge buys, and this one
+bought nothing.
+
+A branch that does not compile still reads its tsc error in
+`Lint & Type Check`, which reports well before the smoke lane. It now also
+spends the smoke lane's and Lighthouse's minutes, a cost the window above
+never incurred.
+
+**The frontend is built twice per run, and stays that way.** `Build` runs
+`vite build` on the runner: its *Build frontend* step took 11–16 s across 12
+green runs on 2026-09-28. `Performance (Lighthouse)` runs `vite build` again,
+inside the stack's frontend container in preview mode. In one run that day,
+the container started and the frontend answered 22 s later, while Lighthouse
+itself ran for 5.7 minutes. `E2E Smoke` browses the dev server and builds no
+bundle. The two bundles are not the same file: `VITE_API_URL` and
+`VITE_MARTIN_URL` are read at build time, and the one Lighthouse measures
+carries the test stack's in-network hostnames. Sharing a build would mean
+building it once with the stack's environment and mounting it into the preview
+container. That couples a runner job to the stack's addresses to save about
+fifteen seconds in a job that runs for eight minutes, so each lane keeps
+building its own.
 
 ## The API contract
 
