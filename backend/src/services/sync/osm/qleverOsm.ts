@@ -18,7 +18,8 @@
  *
  * What the mirror answers is read by `readOsmObjects`, which is also where a
  * lost answer is kept from becoming a fact; the second door (`overpassOsm.ts`)
- * is the same shape on the public Overpass API.
+ * is the same shape on the public Overpass instances, and the one a run reads
+ * the whole map through again when this one fails (`oneDoorPerRun.ts`).
  */
 
 import { withRetries, abortOn, WaitBudget, type SourceWait } from '../sourceRetry.js';

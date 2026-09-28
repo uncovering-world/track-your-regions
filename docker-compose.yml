@@ -64,8 +64,10 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       # The contact outbound requests publish; empty means this project's own.
       USER_AGENT_CONTACT: ${USER_AGENT_CONTACT:-}
-      # The door the Archaeology run reads OpenStreetMap through; empty means
-      # the QLever mirror, `overpass` the public Overpass API (#893).
+      # The door the Archaeology run reads OpenStreetMap through first; empty
+      # means the QLever mirror, with the whole read done again through
+      # Overpass when it fails (#908), and `overpass` pins the public Overpass
+      # instances with no fallback (#893).
       OSM_READER: ${OSM_READER:-}
       BIND_ADDR: 0.0.0.0
       # Development-only: read a sync source from local JSON instead of the live

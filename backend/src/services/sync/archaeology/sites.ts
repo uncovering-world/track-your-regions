@@ -322,7 +322,8 @@ const OSM_ANSWER_FLOOR = 0.5;
 
 /**
  * The per-item read that came back too empty to judge anything by — the shape
- * of `OsmEmptyAnswerError` the run's boundary drops the cached answers on.
+ * of `OsmEmptyAnswerError` on which the run drops the door's cached answers
+ * and, on the mirror, reads the map again through Overpass (`oneDoorPerRun.ts`).
  *
  * `measured` is the share the floor is read over: every candidate asked about
  * except those the enumeration reached through an article alone, whose silence

@@ -30,7 +30,7 @@ vi.mock('./syncUtils.js', () => ({
 }));
 vi.mock('./wikidataCache.js', () => ({
   withCache: vi.fn((door: unknown) => door),
-  clearCache: vi.fn().mockResolvedValue(0),
+  forgetCached: vi.fn().mockResolvedValue(0),
 }));
 vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
 vi.mock('./archaeology/pipeline.js', () => ({ collectArchaeology: vi.fn() }));
@@ -95,12 +95,13 @@ import type { CollectedArchaeologySite } from './archaeology/proposal.js';
 import { qleverOsmDoor } from './osm/qleverOsm.js';
 import { overpassOsmDoor } from './osm/overpassOsm.js';
 import { readOsmObjects } from './osm/readOsmObjects.js';
-import { clearCache, withCache } from './wikidataCache.js';
+import { forgetCached, withCache } from './wikidataCache.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
 import { NATURE_CATEGORY } from './archaeology/classes.js';
 import { OsmAnswerFloorError } from './archaeology/sites.js';
-import { OsmEmptyEnumerationError } from './osm/readOsmObjects.js';
+import { OsmDoorFailedError, OsmEmptyEnumerationError } from './osm/readOsmObjects.js';
+import { OsmBothDoorsFailedError } from './osm/oneDoorPerRun.js';
 import { upsertVenueTreasures } from './museum/treasureWriter.js';
 import { syncArchaeology } from './archaeologySyncService.js';
 import type { ProcessedContent, SyncProgress } from './types.js';
@@ -118,7 +119,7 @@ const mockedOsmDoor = qleverOsmDoor as unknown as ReturnType<typeof vi.fn>;
 const mockedOverpassDoor = overpassOsmDoor as unknown as ReturnType<typeof vi.fn>;
 const mockedReadOsm = readOsmObjects as unknown as ReturnType<typeof vi.fn>;
 const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;
-const mockedClearCache = clearCache as unknown as ReturnType<typeof vi.fn>;
+const mockedForget = forgetCached as unknown as ReturnType<typeof vi.fn>;
 
 /** The British Museum, which Wikidata types no archaeology and Wikipedia files as it. */
 const BRITISH_MUSEUM = 'Q6373';
@@ -412,9 +413,12 @@ describe('what the archaeology run fetches', () => {
     // a door that chose its own would have the mirror send the administrative
     // outline of every city in the pool.
     expect(mockedReadOsm).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'qlever', send: cached }),
-      [TROY], keep, run,
+      expect.objectContaining({ name: 'qlever' }), [TROY], keep, run,
     );
+    const handed = mockedReadOsm.mock.calls[0][0] as { send: (q: string, d: unknown) => Promise<unknown> };
+    const descriptor = { kind: 'osm', label: 'OSM objects of 1 item' };
+    await handed.send('the batch', descriptor);
+    expect(cached).toHaveBeenCalledWith('the batch', descriptor);
   });
 
   it('lets a batch OpenStreetMap could not answer end the run', async () => {
@@ -473,8 +477,11 @@ describe('what the archaeology run fetches', () => {
         door.send, expect.objectContaining({ sourceId: 5, enabled: true }),
       );
       expect(mockedReadOsm).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'overpass', send: cached }), [TROY], keep, run,
+        expect.objectContaining({ name: 'overpass' }), [TROY], keep, run,
       );
+      const handed = mockedReadOsm.mock.calls[0][0] as { send: (q: string) => Promise<unknown> };
+      await handed.send('the batch');
+      expect(cached).toHaveBeenCalledWith('the batch', undefined);
       expect(log).toHaveBeenCalledWith(
         '[Archaeology Sync] OpenStreetMap is read through the public Overpass API (overpass)',
       );
@@ -545,40 +552,77 @@ describe('what the archaeology run fetches', () => {
     expect(result.withdrawalSkippedReason).toBeNull();
   });
 
-  it('drops the cached OSM answers when the mirror answered about almost nothing', async () => {
-    // The site door fails the run rather than reading an empty answer as "no
-    // ruin is mapped here" — and the answers are kept for a day, so a run that
-    // did not forget them would fail again tomorrow morning for a reason that
-    // had already gone away. Only the `osm` kind: what Wikidata said is still
-    // true.
-    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
-    mockedClearCache.mockClear();
-    mockedCollect.mockRejectedValueOnce(new OsmAnswerFloorError(1126, 3));
+  describe('when the mirror fails', () => {
+    afterEach(() => { vi.unstubAllEnvs(); });
 
-    await expect((await configOf()).fetchItems(progress(), []))
-      .rejects.toThrow(OsmAnswerFloorError);
-    expect(mockedClearCache).toHaveBeenCalledWith(5, 'osm');
+    it('reads the map again through Overpass, forgets the mirror\'s answers, and names the door on every site', async () => {
+      // The site door fails a pass rather than reading an empty answer as "no
+      // ruin is mapped here", and the answers are kept for a day, so the
+      // mirror's are dropped before Overpass is asked — and what Wikidata said
+      // is still true, so nothing else is.
+      vi.stubEnv('OSM_READER', '');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+      mockedCollect.mockRejectedValueOnce(new OsmAnswerFloorError(1126, 3));
+      collected([site()]);
+      const shown = progress();
+
+      const config = await configOf();
+      const result = await config.fetchItems(shown, []);
+
+      expect(result.items).toHaveLength(1);
+      // Two passes, the second through Overpass: one door for the whole run.
+      expect(mockedCollect).toHaveBeenCalledTimes(2);
+      expect(mockedOsmDoor).toHaveBeenCalledTimes(1);
+      expect(mockedOverpassDoor).toHaveBeenCalledTimes(1);
+      expect(mockedForget).toHaveBeenCalledTimes(1);
+      expect(mockedForget).toHaveBeenCalledWith(5, []);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(
+        'The mirror failed (OpenStreetMap answered for 3 of 1126',
+      ));
+
+      // And the row says which door drew its extent.
+      wrote();
+      await config.processItem(site(), progress(), writing());
+      expect(mockedUpsert.mock.calls[0][0].metadata.osm).toEqual({ ...site().osm, door: 'overpass' });
+      warn.mockRestore();
+    });
+
+    it('ends the run with both failures when Overpass fails too', async () => {
+      vi.stubEnv('OSM_READER', '');
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+      mockedCollect
+        .mockRejectedValueOnce(new OsmEmptyEnumerationError())
+        .mockRejectedValueOnce(new OsmDoorFailedError('overpass', new Error('Overpass 504')));
+
+      await expect((await configOf()).fetchItems(progress(), []))
+        .rejects.toThrow(OsmBothDoorsFailedError);
+      // The mirror's answers dropped; Overpass wrote nothing for the question it lost.
+      expect(mockedForget).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fall back from Overpass when an operator pinned it, and forgets an empty answer', async () => {
+      vi.stubEnv('OSM_READER', 'overpass');
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+      mockedCollect.mockRejectedValueOnce(new OsmEmptyEnumerationError());
+
+      await expect((await configOf()).fetchItems(progress(), []))
+        .rejects.toThrow(OsmEmptyEnumerationError);
+      expect(mockedCollect).toHaveBeenCalledTimes(1);
+      expect(mockedOsmDoor).not.toHaveBeenCalled();
+      expect(mockedForget).toHaveBeenCalledTimes(1);
+    });
   });
 
-  it('drops the cached OSM answers when the enumeration of digs came back empty', async () => {
-    // The empty enumeration is cached like any other answer, so without this
-    // the site door would re-read the silence and fail again for a day.
+  it('keeps the cache, and asks no second door, when the run fails for any other reason', async () => {
     mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
-    mockedClearCache.mockClear();
-    mockedCollect.mockRejectedValueOnce(new OsmEmptyEnumerationError());
+    mockedCollect.mockRejectedValueOnce(new Error('Wikidata 500, and the wait is spent'));
 
-    await expect((await configOf()).fetchItems(progress(), []))
-      .rejects.toThrow(OsmEmptyEnumerationError);
-    expect(mockedClearCache).toHaveBeenCalledWith(5, 'osm');
-  });
-
-  it('keeps the cache when the run fails for any other reason', async () => {
-    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
-    mockedClearCache.mockClear();
-    mockedCollect.mockRejectedValueOnce(new Error('Sync cancelled'));
-
-    await expect((await configOf()).fetchItems(progress(), [])).rejects.toThrow('Sync cancelled');
-    expect(mockedClearCache).not.toHaveBeenCalled();
+    await expect((await configOf()).fetchItems(progress(), [])).rejects.toThrow('Wikidata 500');
+    expect(mockedForget).not.toHaveBeenCalled();
+    expect(mockedCollect).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -637,10 +681,10 @@ describe('what the archaeology run writes', () => {
       // (ADR-0058 decision 4).
       admittedFor: null,
     });
-    // The reading kept whole and separable, the object and the tag beside the
-    // verdict, so what the run read off somebody else's map stays nameable
-    // (ADR-0059 decision 2).
-    expect(params.metadata.osm).toEqual(site().osm);
+    // The reading kept whole and separable, the object, the tag and the door
+    // beside the verdict, so what the run read off somebody else's map stays
+    // nameable (ADR-0059 decision 2).
+    expect(params.metadata.osm).toEqual({ ...site().osm, door: 'qlever' });
     expect(params.metadata).toMatchObject({
       wikidataQid: TROY,
       wikidataClasses: ['Q839954'],
