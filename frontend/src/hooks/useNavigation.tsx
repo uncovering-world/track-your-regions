@@ -36,7 +36,7 @@ interface NavigationContextType {
 
   // Tile cache busting - increment to force tile reload
   tileVersion: number;
-  invalidateTileCache: () => void;
+  invalidateTileCache: () => Promise<void>;
 
   // Loading states
   isLoading: boolean;
@@ -70,11 +70,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const [divisionBreadcrumbs, setDivisionBreadcrumbs] = useState<AdministrativeDivision[]>([]);
   const [tileVersion, setTileVersion] = useState(0);
 
-  // Increment tile version to force MapLibre to reload tiles
-  const invalidateTileCache = useCallback(() => {
-    setTileVersion(v => v + 1);
-  }, []);
-
   // The world view the address names, known before anything has loaded. Null
   // off the map too — the account and admin pages carry no place.
   const urlWorldViewId = address?.worldViewId ?? null;
@@ -106,6 +101,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     isLoading: worldViewsQueryLoading,
     isSuccess: worldViewsLoaded,
     isFetching: worldViewsFetching,
+    refetch: refetchWorldViews,
   } = useQuery({
     // Keyed by who is asking, because that is what the answer depends on. One
     // shared key made the anonymous list and the admin list compete for the same
@@ -123,6 +119,18 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // A disabled query reports isLoading false, which would read as "loaded, and
   // there are none". The wait is part of loading from the UI's point of view.
   const worldViewsLoading = authLoading || worldViewsQueryLoading;
+
+  // After an edit, take the tile version the database now holds (ADR-0075):
+  // every write that changed a tile bumped it there, once per transaction. A
+  // local +1 would name a version the database had already given to an earlier
+  // write, whose tiles Martin may hold for another reader, drawn before the
+  // later edits. Where the list cannot be read, the local step is what is left.
+  const invalidateTileCache = useCallback(async () => {
+    const { data, isError } = await refetchWorldViews();
+    const current = isError ? undefined : data?.find((w: WorldView) => w.id === selectedWorldViewId);
+    if (current) setTileVersion(current.tileVersion);
+    else setTileVersion(v => v + 1);
+  }, [refetchWorldViews, selectedWorldViewId]);
 
   // Keyed on the ids rather than the array: the query returns a new array on
   // every fetch, and length alone would miss a same-size list with different

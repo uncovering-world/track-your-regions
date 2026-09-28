@@ -670,3 +670,38 @@ describe('useNavigation world view fetching', () => {
     await waitFor(() => expect(mockFetchWorldViews).toHaveBeenCalled());
   });
 });
+
+/**
+ * Closing the editor takes the tile version the database now holds (ADR-0075):
+ * every edit that changed a tile bumped it there, once per transaction. A local
+ * +1 on the version read at load would name one the database had already given
+ * to an earlier write, whose tiles Martin may hold drawn before the later edits.
+ */
+describe('invalidateTileCache', () => {
+  beforeEach(() => {
+    mockFetchWorldViews.mockReset();
+    authState.isLoading = false;
+    authState.isAdmin = true;
+    authState.user = { id: 1 };
+  });
+
+  it('takes the tile version the world view now holds', async () => {
+    mockFetchWorldViews.mockResolvedValue([{ ...HIDDEN_WV, tileVersion: 3 }]);
+    const { result } = renderHook(() => useNavigation(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.tileVersion).toBe(3));
+
+    mockFetchWorldViews.mockResolvedValue([{ ...HIDDEN_WV, tileVersion: 8 }]);
+    await act(() => result.current.invalidateTileCache());
+    await waitFor(() => expect(result.current.tileVersion).toBe(8));
+  });
+
+  it('steps the version locally when the list cannot be read', async () => {
+    mockFetchWorldViews.mockResolvedValue([{ ...HIDDEN_WV, tileVersion: 3 }]);
+    const { result } = renderHook(() => useNavigation(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.tileVersion).toBe(3));
+
+    mockFetchWorldViews.mockRejectedValue(new Error('offline'));
+    await act(() => result.current.invalidateTileCache());
+    await waitFor(() => expect(result.current.tileVersion).toBe(4));
+  });
+});
