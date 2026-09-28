@@ -36,8 +36,8 @@ Two shapes are worth reading twice. `reparent-region` names two rows where the
 World View Editor's `updateRegion` names three, because the editor's reparent
 also carries a division membership between the two parents while this one writes
 `parent_region_id` and nothing else. `prune-to-leaves` names the direct children
-that actually lost descendants — carried out of its recursive CTE as
-`root_child` — rather than the region asked about, and rather than every direct
+that actually lost descendants — the `root` each locked row hangs under, as
+`lockSubtree` answers it — rather than the region asked about, and rather than every direct
 child: it is their unions that lost something, a child that was already a leaf
 draws exactly what it drew, and clearing a child is a geometry write, so the
 news reaches the region above through the trigger. The walk stops at a
@@ -46,7 +46,10 @@ not move it (#283).
 
 The call is made **inside the transaction**, on its client, before the `COMMIT`
 — `reparent-region`, `merge-child`, `remove-region`, `dismiss-children`,
-`prune-to-leaves` and `smart-flatten` (#1026, ADR-0068). A failed clearing then
+`prune-to-leaves` and `smart-flatten` (#1026, ADR-0068). `dismiss-children`,
+`prune-to-leaves`, `remove-region` and `smart-flatten` lock the branch they
+delete (`lockSubtree`) and delete exactly those ids, so the undo snapshot, the
+members deleted and the regions deleted are one set of rows (#689). A failed clearing then
 rolls the whole operation back, so the handler answers an error for an operation
 that did not happen, never 500 for one that did; the undo entry, stored after
 the `COMMIT`, is not written for an operation that rolled back.

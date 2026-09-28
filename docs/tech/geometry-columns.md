@@ -54,6 +54,14 @@ The table's writers are a closed list (ADR-0069 applied to regions, #1073), whic
 - **The hull generator** (`services/hull/generator.ts`), which stores the hull it made.
 - **The seed** (`db/seed/`).
 
+**Every write runs in a transaction (#689).** Each writer function takes a `RegionTx`, which only `beginRegionTransaction(client)` (for a handler that runs its own transaction) and `inRegionTransaction(work)` produce, after `BEGIN` has run on that connection, so a write outside one does not compile. A handler's statements then commit together or not at all:
+
+- a reparent never lands without the invalidation of both parents;
+- a delete, a flatten or an expand never leaves the children or members it moved moved;
+- the visit count that refuses a delete (#764) is taken inside the transaction, under the region's lock.
+
+Where a handler decides on what it read of a region, it reads it with `lockRegion` (`SELECT … FOR UPDATE`). A handler that moves or deletes a branch reads it with `lockSubtree`, and then acts on exactly the ids it locked: a branch read in one statement and deleted by walking it again in another can lose a region moved out in between, with its members deleted and the region itself kept. The walk runs before the locks are granted, so `lockSubtree` walks again once they are, until two walks agree; locked, no row can be moved or deleted, and no region moved under one, until the commit. Smart flatten reads its branch before auto-matching, outside the transaction, and refuses with 409 when the branch it locks is no longer that set. `backend/src/db/regionWriter.db.test.ts` holds the lock, the rollback and the restore order against PostgreSQL.
+
 What a write changes on a tile is not the writer's to track: the table bumps the world view's tile version (§ Tile cache busting).
 
 ## `regions` table geometry columns
@@ -673,10 +681,11 @@ A region's *own* clearing is the database's too for a member change: a write to
 `invalidateRegionGeometry`, which a writer calls when a region changes parents
 or a branch is deleted — nothing wrote a geometry or a member, but a parent's
 union changed. It nulls that one region by primary key, and since that is itself
-a write to `regions.geom`, the trigger takes it upward from there. A writer with
-a transaction passes its client, so the clearing commits or rolls back with the
-edit (#1026); on the pool a lock or deadlock is swallowed, a tolerance carried
-over from #283, with `parent-short-of-its-children` watching.
+a write to `regions.geom`, the trigger takes it upward from there. It runs in the
+transaction of the edit it answers for, so the clearing commits or rolls back
+with the edit (#1026, #689), and a lock timeout or a deadlock fails the edit
+whole rather than committing it with a parent left outside the next run's
+closure.
 
 **A structural change names its rows itself, because the trigger cannot see
 one.** No geometry is written, and the unions change all the same:
@@ -721,7 +730,7 @@ difference is not an omission: the editor's reparent also carries a division
 membership between the two parents, so the moved region's own union changes,
 while the import statement writes `parent_region_id` and nothing else.
 `pruneToLeaves` names the direct children that actually lost descendants —
-carried out of its recursive CTE as `root_child` — and not every direct child,
+the `root` each locked row hangs under, as `lockSubtree` answers it — and not every direct child,
 since one that was already a leaf draws exactly what it drew. `#496`'s own list
 had five handlers; `smartFlatten` was the sixth, found by reading every
 statement that deletes a region rather than by trusting the list — an inventory
