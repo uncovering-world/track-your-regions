@@ -139,9 +139,8 @@ describe('optionalAuth on the wire', () => {
  * email, an admin's or a curator's screen — which `docs/security/asvs-checklist.yaml`
  * V14.2.1 classifies as sensitive. A shared cache is kept out of most of it by
  * RFC 9111 § 3.5, since the access token travels in `Authorization` — but not
- * of the callers that cannot send a header — the streams `EventSource` opens
- * and the three admin images loaded as `<img src>` — whose token rides in the
- * query string instead; `private` is what forbids it there. The browser's own cache is kept out by
+ * of the one caller that cannot send a header — the streams `EventSource`
+ * opens — whose token rides in the query string instead; `private` is what forbids it there. The browser's own cache is kept out by
  * neither, and with Express's defaults — an ETag and no freshness —
  * it stores the body and serves it back on `304` after sign-out, on whatever
  * machine the traveller signed in from. `no-store` is what keeps it out.

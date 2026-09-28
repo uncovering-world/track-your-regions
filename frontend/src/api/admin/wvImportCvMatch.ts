@@ -9,7 +9,7 @@
 import type {
   ClusterRegionSuggestions, ColorMatchEvent, ColorMatchResult, MapshapeMatchResult,
 } from '../client.generated';
-import { API_URL, ensureFreshToken, getAccessToken } from '../fetchUtils';
+import { API_URL, ensureFreshToken } from '../fetchUtils';
 import {
   postAdminWvImportClusterReviewByReviewId, postAdminWvImportIcpAdjustmentByReviewId,
   postAdminWvImportMatchesByWorldViewIdAiSuggestClusters, postAdminWvImportMatchesByWorldViewIdMapshapeMatch,
@@ -89,17 +89,14 @@ export async function aiSuggestClusterRegions(
 // Cluster / Water Preview URLs & Review Responses
 // =============================================================================
 
-// These URLs are used as `<img src>` (and also passed to `new Image().src` in the
-// canvas editor), where browsers will not attach the `Authorization` header.
-// `requireAuth` accepts `?token=` as a fallback for exactly this case.
-function withTokenQuery(path: string): string {
-  const token = getAccessToken();
-  return token ? `${path}?token=${token}` : path;
-}
+// The preview and water-crop URLs are read by `AuthImage`, which fetches them
+// through `apiFetch` with the session's token in its header and refreshes it on
+// a 401. So they carry no `?token=`: a token in a URL would outlast a refresh,
+// since `requireAuth` prefers it, and would land in access logs.
 
 /** URL for cluster preview image served from backend memory */
 export function clusterPreviewUrl(reviewId: string): string {
-  return withTokenQuery(API_URL + getGetAdminWvImportClusterPreviewByReviewIdUrl(reviewId));
+  return API_URL + getGetAdminWvImportClusterPreviewByReviewIdUrl(reviewId);
 }
 
 /** The per-cluster highlight image (red-outline overlay for the selected cluster), read with the session's token. */
@@ -117,7 +114,7 @@ export async function respondToClusterReview(
 
 /** URL for water crop image during water review (served from backend memory) */
 export function waterCropUrl(reviewId: string, componentId: number, subCluster: number): string {
-  return withTokenQuery(API_URL + getGetAdminWvImportWaterCropByReviewIdByComponentIdBySubClusterUrl(reviewId, componentId, subCluster));
+  return API_URL + getGetAdminWvImportWaterCropByReviewIdByComponentIdBySubClusterUrl(reviewId, componentId, subCluster);
 }
 
 /** Respond to a per-component water review during CV match */
