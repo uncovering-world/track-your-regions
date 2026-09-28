@@ -14,7 +14,21 @@ import type {
   MatchReset, MatchStats, MatchTree, RematchStarted, RematchStatus, RemainingRejected, SuggestionRejected,
   TransferAccepted, TransferPreview,
 } from '@tyr/shared/api';
-import { authFetchJson } from '../fetchUtils';
+import {
+  getAdminWvImportGeoshapeByWikidataId, getAdminWvImportImportStatus,
+  getAdminWvImportMatchesByWorldViewIdRematchStatus, getAdminWvImportMatchesByWorldViewIdStats,
+  getAdminWvImportMatchesByWorldViewIdTree, postAdminWvImportBaseLayer, postAdminWvImportImport,
+  postAdminWvImportImportCancel, postAdminWvImportMatchesByWorldViewIdAccept,
+  postAdminWvImportMatchesByWorldViewIdAcceptAndReject, postAdminWvImportMatchesByWorldViewIdAcceptBatch,
+  postAdminWvImportMatchesByWorldViewIdAcceptWithTransfer, postAdminWvImportMatchesByWorldViewIdAiMatchOne,
+  postAdminWvImportMatchesByWorldViewIdDbSearchOne, postAdminWvImportMatchesByWorldViewIdGeocodeMatch,
+  postAdminWvImportMatchesByWorldViewIdGeoshapeMatch, postAdminWvImportMatchesByWorldViewIdPointMatch,
+  postAdminWvImportMatchesByWorldViewIdReject, postAdminWvImportMatchesByWorldViewIdRejectRemaining,
+  postAdminWvImportMatchesByWorldViewIdRematch, postAdminWvImportMatchesByWorldViewIdResetMatch,
+  postAdminWvImportMatchesByWorldViewIdSyncInstances, postAdminWvImportMatchesByWorldViewIdTransferPreview,
+  type ImportTreeNode,
+  type BaseLayerImportBody,
+} from '../client.generated';
 
 // What the migrated calls here answer is declared once, as a backend schema
 // (ADR-0066), and generated into `@tyr/shared/api`. Passed on from here, so a
@@ -27,7 +41,6 @@ export type {
   TransferAccepted, TransferPreview,
 } from '@tyr/shared/api';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // =============================================================================
 // Import Lifecycle
@@ -38,17 +51,12 @@ export async function startWorldViewImport(
   tree: unknown,
   matchingPolicy: 'country-based' | 'none' = 'country-based',
 ): Promise<ImportStarted> {
-  return authFetchJson<ImportStarted>(`${API_URL}/api/admin/wv-import/import`, {
-    method: 'POST',
-    body: JSON.stringify({ name, tree, matchingPolicy }),
-  });
+  // The tree is a file the admin uploaded, whose shape the server checks; it is
+  // passed on as the document's type without being checked here.
+  return postAdminWvImportImport({ name, tree: tree as ImportTreeNode, matchingPolicy });
 }
 
-export interface BaseLayerImportRequest {
-  name: string;
-  providerLabel: string;
-  maxDepth: number;
-}
+export type BaseLayerImportRequest = BaseLayerImportBody;
 
 /**
  * Start an import mirroring the administrative base layer.
@@ -57,20 +65,15 @@ export interface BaseLayerImportRequest {
 export async function startBaseLayerImport(
   request: BaseLayerImportRequest,
 ): Promise<ImportStarted> {
-  return authFetchJson<ImportStarted>(`${API_URL}/api/admin/wv-import/base-layer`, {
-    method: 'POST',
-    body: JSON.stringify(request),
-  });
+  return postAdminWvImportBaseLayer(request);
 }
 
 export async function getImportStatus(): Promise<ImportStatus> {
-  return authFetchJson<ImportStatus>(`${API_URL}/api/admin/wv-import/import/status`);
+  return getAdminWvImportImportStatus();
 }
 
 export async function cancelImport(): Promise<ImportCancelled> {
-  return authFetchJson<ImportCancelled>(`${API_URL}/api/admin/wv-import/import/cancel`, {
-    method: 'POST',
-  });
+  return postAdminWvImportImportCancel();
 }
 
 // =============================================================================
@@ -78,7 +81,7 @@ export async function cancelImport(): Promise<ImportCancelled> {
 // =============================================================================
 
 export async function getMatchStats(worldViewId: number): Promise<MatchStats> {
-  return authFetchJson<MatchStats>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/stats`);
+  return getAdminWvImportMatchesByWorldViewIdStats(worldViewId);
 }
 
 export async function acceptMatch(
@@ -86,10 +89,7 @@ export async function acceptMatch(
   regionId: number,
   divisionId: number,
 ): Promise<MatchAccepted> {
-  return authFetchJson<MatchAccepted>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/accept`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId, divisionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdAccept(worldViewId, { regionId, divisionId });
 }
 
 export async function rejectSuggestion(
@@ -97,44 +97,32 @@ export async function rejectSuggestion(
   regionId: number,
   divisionId: number,
 ): Promise<SuggestionRejected> {
-  return authFetchJson<SuggestionRejected>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/reject`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId, divisionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdReject(worldViewId, { regionId, divisionId });
 }
 
 export async function acceptBatchMatches(
   worldViewId: number,
   assignments: Array<{ regionId: number; divisionId: number }>,
 ): Promise<MatchesAccepted> {
-  return authFetchJson<MatchesAccepted>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/accept-batch`, {
-    method: 'POST',
-    body: JSON.stringify({ assignments }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdAcceptBatch(worldViewId, { assignments });
 }
 
 export async function getMatchTree(worldViewId: number): Promise<MatchTree> {
-  return authFetchJson<MatchTree>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/tree`);
+  return getAdminWvImportMatchesByWorldViewIdTree(worldViewId);
 }
 
 export async function syncInstances(
   worldViewId: number,
   regionId: number,
 ): Promise<InstancesSynced> {
-  return authFetchJson<InstancesSynced>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/sync-instances`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdSyncInstances(worldViewId, { regionId });
 }
 
 export async function geocodeMatchRegion(
   worldViewId: number,
   regionId: number,
 ): Promise<GeocodeMatchResult> {
-  return authFetchJson<GeocodeMatchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geocode-match`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdGeocodeMatch(worldViewId, { regionId });
 }
 
 export async function geoshapeMatchRegion(
@@ -142,10 +130,7 @@ export async function geoshapeMatchRegion(
   regionId: number,
   scopeAncestorId?: number,
 ): Promise<CoveringMatchResult> {
-  return authFetchJson<CoveringMatchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geoshape-match`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId, ...(scopeAncestorId != null ? { scopeAncestorId } : {}) }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdGeoshapeMatch(worldViewId, { regionId, ...(scopeAncestorId != null ? { scopeAncestorId } : {}) });
 }
 
 export async function pointMatchRegion(
@@ -153,10 +138,7 @@ export async function pointMatchRegion(
   regionId: number,
   scopeAncestorId?: number,
 ): Promise<CoveringMatchResult> {
-  return authFetchJson<CoveringMatchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/point-match`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId, ...(scopeAncestorId != null ? { scopeAncestorId } : {}) }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdPointMatch(worldViewId, { regionId, ...(scopeAncestorId != null ? { scopeAncestorId } : {}) });
 }
 
 export async function acceptAndRejectRest(
@@ -164,50 +146,35 @@ export async function acceptAndRejectRest(
   regionId: number,
   divisionId: number,
 ): Promise<MatchAcceptedRestRejected> {
-  return authFetchJson<MatchAcceptedRestRejected>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/accept-and-reject`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId, divisionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdAcceptAndReject(worldViewId, { regionId, divisionId });
 }
 
 export async function rejectRemaining(
   worldViewId: number,
   regionId: number,
 ): Promise<RemainingRejected> {
-  return authFetchJson<RemainingRejected>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/reject-remaining`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdRejectRemaining(worldViewId, { regionId });
 }
 
 export async function resetMatchRegion(
   worldViewId: number,
   regionId: number,
 ): Promise<MatchReset> {
-  return authFetchJson<MatchReset>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/reset-match`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdResetMatch(worldViewId, { regionId });
 }
 
 export async function dbSearchOneRegion(
   worldViewId: number,
   regionId: number,
 ): Promise<DbSearchResult> {
-  return authFetchJson<DbSearchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/db-search-one`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdDbSearchOne(worldViewId, { regionId });
 }
 
 export async function aiMatchOneRegion(
   worldViewId: number,
   regionId: number,
 ): Promise<AIMatchOneResult> {
-  return authFetchJson<AIMatchOneResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-match-one`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdAiMatchOne(worldViewId, { regionId });
 }
 
 // =============================================================================
@@ -215,7 +182,7 @@ export async function aiMatchOneRegion(
 // =============================================================================
 
 export async function fetchGeoshape(wikidataId: string): Promise<Geoshape> {
-  return authFetchJson<Geoshape>(`${API_URL}/api/admin/wv-import/geoshape/${wikidataId}`);
+  return getAdminWvImportGeoshapeByWikidataId(wikidataId);
 }
 
 // =============================================================================
@@ -225,13 +192,11 @@ export async function fetchGeoshape(wikidataId: string): Promise<Geoshape> {
 export async function startRematch(
   worldViewId: number,
 ): Promise<RematchStarted> {
-  return authFetchJson<RematchStarted>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/rematch`, {
-    method: 'POST',
-  });
+  return postAdminWvImportMatchesByWorldViewIdRematch(worldViewId, {});
 }
 
 export async function getRematchStatus(worldViewId: number): Promise<RematchStatus> {
-  return authFetchJson<RematchStatus>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/rematch/status`);
+  return getAdminWvImportMatchesByWorldViewIdRematchStatus(worldViewId);
 }
 
 // =============================================================================
@@ -246,10 +211,7 @@ export async function acceptWithTransfer(
   donorDivisionId: number,
   transferType: 'direct' | 'split',
 ): Promise<TransferAccepted> {
-  return authFetchJson<TransferAccepted>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/accept-with-transfer`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId, divisionIds, donorRegionId, donorDivisionId, transferType }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdAcceptWithTransfer(worldViewId, { regionId, divisionIds, donorRegionId, donorDivisionId, transferType });
 }
 
 export async function getTransferPreview(
@@ -258,10 +220,7 @@ export async function getTransferPreview(
   movingDivisionIds: number[],
   wikidataId: string,
 ): Promise<TransferPreview> {
-  return authFetchJson<TransferPreview>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/transfer-preview`, {
-    method: 'POST',
-    body: JSON.stringify({ donorDivisionId, movingDivisionIds, wikidataId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdTransferPreview(worldViewId, { donorDivisionId, movingDivisionIds, wikidataId });
 }
 
 // =============================================================================

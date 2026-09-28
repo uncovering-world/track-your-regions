@@ -7,9 +7,22 @@
  */
 
 import type {
-  ClusterRegionSuggestions, ColorMatchEvent, ColorMatchResult, MapshapeMatchResult, ReviewAnswered,
+  ClusterRegionSuggestions, ColorMatchEvent, ColorMatchResult, MapshapeMatchResult,
 } from '@tyr/shared/api';
-import { authFetchJson, ensureFreshToken, getAccessToken } from '../fetchUtils';
+import { API_URL, ensureFreshToken, getAccessToken } from '../fetchUtils';
+import {
+  postAdminWvImportClusterReviewByReviewId, postAdminWvImportIcpAdjustmentByReviewId,
+  postAdminWvImportMatchesByWorldViewIdAiSuggestClusters, postAdminWvImportMatchesByWorldViewIdMapshapeMatch,
+  postAdminWvImportWaterReviewByReviewId,
+  type WvImportAiSuggestClustersBodyClustersItem,
+  type WvImportClusterReviewAnswerBody,
+  type WvImportIcpAdjustmentBody,
+  type WvImportWaterReviewBody,
+  getGetAdminWvImportClusterHighlightByReviewIdByLabelUrl,
+  getGetAdminWvImportClusterPreviewByReviewIdUrl,
+  getGetAdminWvImportMatchesByWorldViewIdColorMatchStreamUrl,
+  getGetAdminWvImportWaterCropByReviewIdByComponentIdBySubClusterUrl,
+} from '../client.generated';
 
 // What the calls here answer, and every event of the colour-match stream, is
 // declared once, as a backend schema (ADR-0066), and generated into
@@ -24,34 +37,22 @@ export type {
   WikivoyageShapeFeature,
 } from '@tyr/shared/api';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // =============================================================================
 // Water Review Types
 // =============================================================================
 
-export interface WaterReviewDecision {
-  approvedIds: number[];
-  mixDecisions: Array<{ componentId: number; approvedSubClusters: number[] }>;
-}
+export type WaterReviewDecision = WvImportWaterReviewBody;
 
 // =============================================================================
 // Cluster Review Types
 // =============================================================================
 
-/** Normal cluster review decision — merges, excludes, recluster, or split */
-export interface ClusterReviewDecision {
-  merges: Record<number, number>;
-  excludes?: number[];
-  recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' | 'remove_roads' | 'fill_holes' | 'clean_light' | 'clean_heavy' };
-  split?: number[];
-}
+/** The painted-overlay answer: the admin's canvas-edited clusters, before ICP alignment. */
+export type ManualClusterResponse = Extract<WvImportClusterReviewAnswerBody, { type: 'manual_clusters' }>;
 
-export interface ManualClusterResponse {
-  type: 'manual_clusters';
-  overlayPng: string;
-  palette: Array<{ label: number; color: [number, number, number] }>;
-}
+/** Normal cluster review decision — merges, excludes, recluster, or split */
+export type ClusterReviewDecision = Exclude<WvImportClusterReviewAnswerBody, ManualClusterResponse>;
 
 // =============================================================================
 // Mapshape Match
@@ -61,10 +62,7 @@ export async function mapshapeMatch(
   worldViewId: number,
   regionId: number,
 ): Promise<MapshapeMatchResult> {
-  return authFetchJson<MapshapeMatchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/mapshape-match`, {
-    method: 'POST',
-    body: JSON.stringify({ regionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdMapshapeMatch(worldViewId, { regionId });
 }
 
 // =============================================================================
@@ -72,13 +70,7 @@ export async function mapshapeMatch(
 // =============================================================================
 
 /** Per-cluster info supplied to the AI for region matching */
-export interface AISuggestClusterRegionsCluster {
-  clusterId: number;
-  color: string;
-  pixelShare: number;
-  /** Flattened list of GADM division names already associated with the cluster */
-  divisionNames: string[];
-}
+export type AISuggestClusterRegionsCluster = WvImportAiSuggestClustersBodyClustersItem;
 
 /**
  * Ask the AI to assign each CV cluster to one of the given child regions
@@ -90,10 +82,7 @@ export async function aiSuggestClusterRegions(
   childRegions: Array<{ id: number; name: string }>,
   modelOverride?: string,
 ): Promise<ClusterRegionSuggestions> {
-  return authFetchJson<ClusterRegionSuggestions>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-suggest-clusters`, {
-    method: 'POST',
-    body: JSON.stringify({ clusters, childRegions, model: modelOverride }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdAiSuggestClusters(worldViewId, { clusters, childRegions, model: modelOverride });
 }
 
 // =============================================================================
@@ -110,12 +99,12 @@ function withTokenQuery(path: string): string {
 
 /** URL for cluster preview image served from backend memory */
 export function clusterPreviewUrl(reviewId: string): string {
-  return withTokenQuery(`${API_URL}/api/admin/wv-import/cluster-preview/${reviewId}`);
+  return withTokenQuery(API_URL + getGetAdminWvImportClusterPreviewByReviewIdUrl(reviewId));
 }
 
 /** URL for per-cluster highlight image (red-outline overlay for selected cluster) */
 export function clusterHighlightUrl(reviewId: string, label: number): string {
-  return withTokenQuery(`${API_URL}/api/admin/wv-import/cluster-highlight/${reviewId}/${label}`);
+  return withTokenQuery(API_URL + getGetAdminWvImportClusterHighlightByReviewIdByLabelUrl(reviewId, label));
 }
 
 /** Respond to cluster review during CV match */
@@ -123,34 +112,24 @@ export async function respondToClusterReview(
   reviewId: string,
   decision: ClusterReviewDecision,
 ): Promise<void> {
-  await authFetchJson<ReviewAnswered>(`${API_URL}/api/admin/wv-import/cluster-review/${reviewId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(decision),
-  });
+  await postAdminWvImportClusterReviewByReviewId(reviewId, decision);
 }
 
 /** URL for water crop image during water review (served from backend memory) */
 export function waterCropUrl(reviewId: string, componentId: number, subCluster: number): string {
-  return withTokenQuery(`${API_URL}/api/admin/wv-import/water-crop/${reviewId}/${componentId}/${subCluster}`);
+  return withTokenQuery(API_URL + getGetAdminWvImportWaterCropByReviewIdByComponentIdBySubClusterUrl(reviewId, componentId, subCluster));
 }
 
 /** Respond to a per-component water review during CV match */
 export async function respondToWaterReview(reviewId: string, decision: WaterReviewDecision): Promise<void> {
-  await authFetchJson<ReviewAnswered>(`${API_URL}/api/admin/wv-import/water-review/${reviewId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(decision),
-  });
+  await postAdminWvImportWaterReviewByReviewId(reviewId, decision);
 }
 
 // =============================================================================
 // ICP Adaptive Alignment (ADR-0011)
 // =============================================================================
 
-export interface IcpAdjustmentDecision {
-  action: 'adjust' | 'continue';
-}
+export type IcpAdjustmentDecision = WvImportIcpAdjustmentBody;
 
 /**
  * Respond to an ICP adjustment suggestion during CV match.
@@ -161,11 +140,7 @@ export async function respondToIcpAdjustment(
   reviewId: string,
   decision: IcpAdjustmentDecision,
 ): Promise<void> {
-  await authFetchJson<ReviewAnswered>(`${API_URL}/api/admin/wv-import/icp-adjustment/${reviewId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(decision),
-  });
+  await postAdminWvImportIcpAdjustmentByReviewId(reviewId, decision);
 }
 
 // =============================================================================
@@ -184,9 +159,11 @@ export function colorMatchWithProgress(
 ): Promise<ColorMatchResult> {
   return new Promise((resolve, reject) => {
     ensureFreshToken().then(token => {
-      const params = new URLSearchParams({ regionId: String(regionId) });
-      if (token) params.append('token', token);
-      const url = `${API_URL}/api/admin/wv-import/matches/${worldViewId}/color-match-stream?${params}`;
+      // EventSource sends no headers, so the token rides in the query, on the
+      // path the generated builder gives (ADR-0073 decision 5).
+      const url = API_URL + getGetAdminWvImportMatchesByWorldViewIdColorMatchStreamUrl(
+        worldViewId, { regionId, token: token ?? undefined },
+      );
 
       if (signal?.aborted) {
         reject(new DOMException('Aborted', 'AbortError'));

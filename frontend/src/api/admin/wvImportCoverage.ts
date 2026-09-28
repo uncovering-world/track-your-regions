@@ -10,7 +10,19 @@ import type {
   CoverageResult, GapDismissed, GapUndismissed, GeoSuggestResult, ReviewFinalized, SplitDeeperResult,
   UnionGeometryResult, VisionMatchResult,
 } from '@tyr/shared/api';
-import { authFetchJson, ensureFreshToken } from '../fetchUtils';
+import { API_URL, ensureFreshToken } from '../fetchUtils';
+import {
+  getAdminWvImportMatchesByWorldViewIdChildrenGeometryByRegionId, getAdminWvImportMatchesByWorldViewIdCoverage,
+  getAdminWvImportMatchesByWorldViewIdCoverageGeometryByRegionId,
+  postAdminWvImportMatchesByWorldViewIdApproveCoverage,
+  postAdminWvImportMatchesByWorldViewIdCoverageGapAnalysisByRegionId,
+  postAdminWvImportMatchesByWorldViewIdDismissGap, postAdminWvImportMatchesByWorldViewIdFinalize,
+  postAdminWvImportMatchesByWorldViewIdGeoSuggestGap, postAdminWvImportMatchesByWorldViewIdSplitDeeper,
+  postAdminWvImportMatchesByWorldViewIdUndismissGap, postAdminWvImportMatchesByWorldViewIdUnionGeometry,
+  postAdminWvImportMatchesByWorldViewIdVisionMatch,
+  getAdminWvImportMatchesByWorldViewIdChildrenCoverage,
+  getGetAdminWvImportMatchesByWorldViewIdCoverageStreamUrl,
+} from '../client.generated';
 
 // What the calls here answer, and every event of the coverage stream, is
 // declared once, as a backend schema (ADR-0066), and generated into
@@ -24,7 +36,6 @@ export type {
   SplitDeeperResult, UnionGeometryResult, VisionMatchResult,
 } from '@tyr/shared/api';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // =============================================================================
 // Coverage Types
@@ -35,7 +46,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 // =============================================================================
 
 export async function getCoverage(worldViewId: number): Promise<CoverageResult> {
-  return authFetchJson<CoverageResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/coverage`);
+  return getAdminWvImportMatchesByWorldViewIdCoverage(worldViewId);
 }
 
 /**
@@ -48,10 +59,11 @@ export function getCoverageWithProgress(
 ): Promise<CoverageResult> {
   return new Promise((resolve, reject) => {
     ensureFreshToken().then(token => {
-      const params = new URLSearchParams();
-      if (token) params.append('token', token);
-      const query = params.toString();
-      const url = `${API_URL}/api/admin/wv-import/matches/${worldViewId}/coverage-stream${query ? '?' + query : ''}`;
+      // EventSource sends no headers, so the token rides in the query, on the
+      // path the generated builder gives (ADR-0073 decision 5).
+      const url = API_URL + getGetAdminWvImportMatchesByWorldViewIdCoverageStreamUrl(
+        worldViewId, token ? { token } : undefined,
+      );
 
       const eventSource = new EventSource(url);
 
@@ -88,20 +100,14 @@ export async function geoSuggestGap(
   worldViewId: number,
   divisionId: number,
 ): Promise<GeoSuggestResult> {
-  return authFetchJson<GeoSuggestResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geo-suggest-gap`, {
-    method: 'POST',
-    body: JSON.stringify({ divisionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdGeoSuggestGap(worldViewId, { divisionId });
 }
 
 export async function dismissCoverageGap(
   worldViewId: number,
   divisionId: number,
 ): Promise<GapDismissed> {
-  return authFetchJson<GapDismissed>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/dismiss-gap`, {
-    method: 'POST',
-    body: JSON.stringify({ divisionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdDismissGap(worldViewId, { divisionId });
 }
 
 export async function approveCoverageSuggestion(
@@ -111,28 +117,20 @@ export async function approveCoverageSuggestion(
   action: 'add_member' | 'create_region',
   gapName?: string,
 ): Promise<CoverageApproved> {
-  return authFetchJson<CoverageApproved>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/approve-coverage`, {
-    method: 'POST',
-    body: JSON.stringify({ divisionId, regionId, action, gapName }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdApproveCoverage(worldViewId, { divisionId, regionId, action, gapName });
 }
 
 export async function undismissCoverageGap(
   worldViewId: number,
   divisionId: number,
 ): Promise<GapUndismissed> {
-  return authFetchJson<GapUndismissed>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/undismiss-gap`, {
-    method: 'POST',
-    body: JSON.stringify({ divisionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdUndismissGap(worldViewId, { divisionId });
 }
 
 export async function finalizeReview(
   worldViewId: number,
 ): Promise<ReviewFinalized> {
-  return authFetchJson<ReviewFinalized>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/finalize`, {
-    method: 'POST',
-  });
+  return postAdminWvImportMatchesByWorldViewIdFinalize(worldViewId);
 }
 
 /** Get per-child region geometries for drill-down on the gap context map */
@@ -140,7 +138,7 @@ export async function getChildrenRegionGeometry(
   worldViewId: number,
   regionId: number,
 ): Promise<ChildRegionGeometries> {
-  return authFetchJson<ChildRegionGeometries>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/children-geometry/${regionId}`);
+  return getAdminWvImportMatchesByWorldViewIdChildrenGeometryByRegionId(worldViewId, regionId);
 }
 
 // =============================================================================
@@ -165,12 +163,7 @@ export async function getChildrenCoverage(
   regionId?: number,
   ancestorId?: number,
 ): Promise<ChildrenCoverage> {
-  const params = new URLSearchParams();
-  if (regionId != null) params.set('regionId', String(regionId));
-  if (ancestorId != null) params.set('onlyId', String(ancestorId));
-  const query = params.toString();
-  const url = `${API_URL}/api/admin/wv-import/matches/${worldViewId}/children-coverage${query ? '?' + query : ''}`;
-  return authFetchJson<ChildrenCoverage>(url);
+  return getAdminWvImportMatchesByWorldViewIdChildrenCoverage(worldViewId, { regionId, onlyId: ancestorId });
 }
 
 // =============================================================================
@@ -181,16 +174,14 @@ export async function getCoverageGeometry(
   worldViewId: number,
   regionId: number,
 ): Promise<CoverageGeometry> {
-  return authFetchJson<CoverageGeometry>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/coverage-geometry/${regionId}`);
+  return getAdminWvImportMatchesByWorldViewIdCoverageGeometryByRegionId(worldViewId, regionId);
 }
 
 export async function analyzeCoverageGaps(
   worldViewId: number,
   regionId: number,
 ): Promise<CoverageGapAnalysis> {
-  return authFetchJson<CoverageGapAnalysis>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/coverage-gap-analysis/${regionId}`, {
-    method: 'POST',
-  });
+  return postAdminWvImportMatchesByWorldViewIdCoverageGapAnalysisByRegionId(worldViewId, regionId);
 }
 
 // =============================================================================
@@ -202,10 +193,7 @@ export async function getUnionGeometry(
   divisionIds: number[],
   regionId?: number,
 ): Promise<UnionGeometryResult> {
-  return authFetchJson<UnionGeometryResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/union-geometry`, {
-    method: 'POST',
-    body: JSON.stringify({ divisionIds, regionId }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdUnionGeometry(worldViewId, { divisionIds, regionId });
 }
 
 export async function splitDivisionsDeeper(
@@ -215,10 +203,7 @@ export async function splitDivisionsDeeper(
   regionId: number,
   source?: 'geoshape' | 'points' | 'image',
 ): Promise<SplitDeeperResult> {
-  return authFetchJson<SplitDeeperResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/split-deeper`, {
-    method: 'POST',
-    body: JSON.stringify({ divisionIds, wikidataId, regionId, source }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdSplitDeeper(worldViewId, { divisionIds, wikidataId, regionId, source });
 }
 
 export async function visionMatchDivisions(
@@ -227,8 +212,5 @@ export async function visionMatchDivisions(
   regionId: number,
   regionMapUrl: string,
 ): Promise<VisionMatchResult> {
-  return authFetchJson<VisionMatchResult>(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/vision-match`, {
-    method: 'POST',
-    body: JSON.stringify({ divisionIds, regionId, imageUrl: regionMapUrl }),
-  });
+  return postAdminWvImportMatchesByWorldViewIdVisionMatch(worldViewId, { divisionIds, regionId, imageUrl: regionMapUrl });
 }
