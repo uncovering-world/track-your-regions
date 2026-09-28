@@ -331,7 +331,7 @@ export type {
   CoverageSuggestion,
   DismissedGap,
   GapDismissed,
-  GapSubtreeNode,
+  GapChild,
   GapUndismissed,
   GeoSuggestResult,
   RegionContextNode,

@@ -13,6 +13,7 @@ import {
   Chip,
   Collapse,
   Stack,
+  Button,
 } from '@mui/material';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import ExpandMore from '@mui/icons-material/ExpandMore';
@@ -22,11 +23,10 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import Undo from '@mui/icons-material/Undo';
 import type {
   CoverageGap,
-  GapSubtreeNode,
   GeoSuggestResult,
   RegionContextNode,
 } from '../../api/admin/worldViewImport';
-import { allLeavesApplied } from './coverageResolveUtils';
+import { allLeavesApplied, type GapTreeNode } from './coverageResolveUtils';
 
 // =============================================================================
 // Helpers
@@ -50,6 +50,8 @@ function buildSuggestionChipLabel(
 
 interface GapNodeRowProps {
   gap: CoverageGap;
+  /** The divisions under the gap, as far as they have been read. */
+  tree: GapTreeNode[];
   depth: number;
   selectedNodeId: number | null;
   expandedNodes: Set<number>;
@@ -58,6 +60,8 @@ interface GapNodeRowProps {
   getNodeSuggestion: (id: number, treeSugg: CoverageGap['suggestion'] | null) => CoverageGap['suggestion'] | null;
   onSelect: (id: number) => void;
   onToggleExpand: (id: number) => void;
+  /** Ask again for the level under a node whose read failed. */
+  onRetryLoad: (id: number) => void;
   onGeoSuggest: (id: number, name: string) => void;
   onDismiss: (id: number) => void;
   onApplySingle: (id: number, name: string) => void;
@@ -68,6 +72,7 @@ interface GapNodeRowProps {
 
 export function GapNodeRow({
   gap,
+  tree,
   depth,
   selectedNodeId,
   expandedNodes,
@@ -76,6 +81,7 @@ export function GapNodeRow({
   getNodeSuggestion,
   onSelect,
   onToggleExpand,
+  onRetryLoad,
   onGeoSuggest,
   onDismiss,
   onApplySingle,
@@ -83,10 +89,10 @@ export function GapNodeRow({
   geoSuggestPending,
   dismissPending,
 }: GapNodeRowProps) {
-  const hasSubtree = gap.subtree && gap.subtree.length > 0;
+  const hasSubtree = tree.length > 0;
   const directlyApplied = appliedNodes.has(gap.id);
   // Parent is effectively applied if all its subtree leaves are applied
-  const childrenResolved = hasSubtree && allLeavesApplied(gap.subtree!, appliedNodes);
+  const childrenResolved = hasSubtree && allLeavesApplied(tree, appliedNodes);
   const isApplied = directlyApplied || childrenResolved;
   const isExpanded = expandedNodes.has(gap.id) && !isApplied;
   const isSelected = selectedNodeId === gap.id;
@@ -195,7 +201,7 @@ export function GapNodeRow({
       {/* Subtree children */}
       {hasSubtree && (
         <Collapse in={isExpanded} unmountOnExit>
-          {gap.subtree!.map((child) => (
+          {tree.map((child) => (
             <SubtreeNodeRow
               key={child.id}
               node={child}
@@ -207,6 +213,7 @@ export function GapNodeRow({
               getNodeSuggestion={getNodeSuggestion}
               onSelect={onSelect}
               onToggleExpand={onToggleExpand}
+              onRetryLoad={onRetryLoad}
               onGeoSuggest={onGeoSuggest}
               onApplySingle={onApplySingle}
               onUnapply={onUnapply}
@@ -224,7 +231,7 @@ export function GapNodeRow({
 // =============================================================================
 
 interface SubtreeNodeRowProps {
-  node: GapSubtreeNode;
+  node: GapTreeNode;
   depth: number;
   selectedNodeId: number | null;
   expandedNodes: Set<number>;
@@ -233,6 +240,7 @@ interface SubtreeNodeRowProps {
   getNodeSuggestion: (id: number, treeSugg: CoverageGap['suggestion'] | null) => CoverageGap['suggestion'] | null;
   onSelect: (id: number) => void;
   onToggleExpand: (id: number) => void;
+  onRetryLoad: (id: number) => void;
   onGeoSuggest: (id: number, name: string) => void;
   onApplySingle: (id: number, name: string) => void;
   onUnapply: (id: number) => void;
@@ -249,12 +257,13 @@ function SubtreeNodeRow({
   getNodeSuggestion,
   onSelect,
   onToggleExpand,
+  onRetryLoad,
   onGeoSuggest,
   onApplySingle,
   onUnapply,
   geoSuggestPending,
 }: SubtreeNodeRowProps) {
-  const hasChildren = node.children.length > 0;
+  const { hasChildren } = node;
   const isExpanded = expandedNodes.has(node.id) && !appliedNodes.has(node.id);
   const isSelected = selectedNodeId === node.id;
   const isApplied = appliedNodes.has(node.id);
@@ -347,7 +356,18 @@ function SubtreeNodeRow({
 
       {hasChildren && (
         <Collapse in={isExpanded} unmountOnExit>
-          {node.children.map((child) => (
+          {node.children === undefined && !node.loadFailed && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pl: (depth + 1) * 2.5, py: 0.25 }}>
+              Loading…
+            </Typography>
+          )}
+          {node.children === undefined && node.loadFailed && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: (depth + 1) * 2.5, py: 0.25 }}>
+              <Typography variant="caption" color="error">Couldn't read the divisions under it.</Typography>
+              <Button size="small" onClick={() => onRetryLoad(node.id)} sx={{ py: 0, minWidth: 0 }}>Retry</Button>
+            </Box>
+          )}
+          {(node.children ?? []).map((child) => (
             <SubtreeNodeRow
               key={child.id}
               node={child}
@@ -359,6 +379,7 @@ function SubtreeNodeRow({
               getNodeSuggestion={getNodeSuggestion}
               onSelect={onSelect}
               onToggleExpand={onToggleExpand}
+              onRetryLoad={onRetryLoad}
               onGeoSuggest={onGeoSuggest}
               onApplySingle={onApplySingle}
               onUnapply={onUnapply}
