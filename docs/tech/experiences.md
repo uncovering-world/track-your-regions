@@ -1808,17 +1808,35 @@ mean *ruin* is the kind's to say (`archaeology/classes.ts`). It asks in batches 
 between them, and files every answer under one cache kind — and it does so through **one of two
 doors** (`OsmDoor`: a name, the question for one batch in the endpoint's own language, and the
 send), because the first is a third-party mirror that has moved host once and ADR-0059 asks the
-connector for a fallback (#893). **Which door a run opens is the operator's choice, by name**:
-`OSM_READER` unset or blank is the QLever osm-planet mirror (`osm/qleverOsm.ts`), `overpass` is
-the public Overpass API (`osm/overpassOsm.ts`), and any other value is refused — at boot in
-production and as a warning in development, the treatment `validateEnv` gives every insecure
-value, and in any case where the door is built, before a question is sent — a typo read as the
-default would be a run that failed on the mirror an hour later, in the middle of the outage the
-operator was working around (`osm/readerChoice.ts`). A choice rather than a fallback the run takes
-on its own, since a run that switched doors mid-outage would write a day's extents from two
-sources under one provenance, and ADR-0059 decision 2 is a promise about naming where a fact came
-from. The run log names the door it opened. Both doors carry the project's bot `User-Agent`
-(ADR-0043's rule), retry on the run's shared wait budget — this run waits on Wikidata, Wikipedia and the
+connector for a fallback (#893). **`OSM_READER` names the door a run opens first**: unset or
+blank is the QLever osm-planet mirror (`osm/qleverOsm.ts`), `overpass` is the public Overpass
+instances (`osm/overpassOsm.ts`), and any other value is refused — at boot in production and as a
+warning in development, the treatment `validateEnv` gives every insecure value, and in any case
+before a question is sent — a typo read as the default would be a run that failed on the mirror
+an hour later, in the middle of the outage the operator was working around
+(`osm/readerChoice.ts`).
+
+**One run, one door** (`osm/oneDoorPerRun.ts`, #908). ADR-0059 decision 2 promises that an OSM
+fact names where it came from, so a run never switches doors in the middle of a read — a day's
+extents half from the mirror and half from Overpass would carry one provenance for two sources.
+The fallback is taken at the level of that promise, **the run, not the batch**: when the mirror
+fails — a question it could not answer once the retries and the wait budget were spent
+(`OsmDoorFailedError`, raised where both reads meet the door), or an answer too empty to judge by
+(the enumeration's emptiness, the answer-share floor below) — the run drops the cached answers the
+mirror gave it this run, read or written (`forgetCached`), and does **the whole collection again
+through Overpass**, from its first question; nothing the mirror answered reaches a verdict. Each
+pass is complete, its own doors and its own wait budget (`archaeology/runDoors.ts`,
+`doorsForAPass`), so the second is not handicapped by the patience the first spent on a mirror
+that was never going to answer; Wikidata's answers come from the day's cache the first pass
+filled, unless the run was started without it. `OSM_READER=overpass` pins the public instances
+with no fallback to the mirror — an operator who chose the door with the stricter manners chose
+it — and a fallback that fails too ends the run by name with both failures
+(`OsmBothDoorsFailedError`). A failure that is not about the map — a Wikidata batch lost, a
+Wikipedia category unreadable, a cancel — ends the run, with no second pass. The run
+log names the door it opened and, where it fell back, why, and **every site's `metadata.osm`
+carries `door`** (`qlever` or `overpass`), so a curator reading an extent can tell which door drew
+it. Both doors carry the project's bot `User-Agent`
+(ADR-0043's rule), retry on the pass's shared wait budget — a pass waits on Wikidata, Wikipedia and the
 OpenStreetMap door, and a budget per door would let it wait three times over (#886) — and keep the same promise: **the
 geometry crosses the wire only for a ruin object or a protected area**, a city's administrative
 outline is never fetched, and each door spells that rule in its own query (`BIND(IF(…))` in the
@@ -1826,8 +1844,17 @@ SPARQL, `out geom` on the `drawn` set alone in the Overpass QL), where a test re
 
 **The mirror door** POSTs one SPARQL query per batch and times out at 120 s; osm2rdf has built the
 polygons already, so the WKT arrives finished. **The Overpass door** is held to the stricter
-manners the instance publishes and the register record quotes
-([`openstreetmap-overpass`](../sources/global/openstreetmap-overpass.md) § The fallback reader):
+manners the main instance publishes and the register record quotes
+([`openstreetmap-overpass`](../sources/global/openstreetmap-overpass.md) § The fallback reader),
+and it reads **an ordered list of instances** rather than one endpoint (`OVERPASS_INSTANCES`):
+`overpass-api.de` first, then the two free global instances whose policies the record quotes,
+`maps.mail.ru` and `overpass.private.coffee`, each asked under the main instance's manners. An
+instance *closed to the run* — a 429 or a 5xx that outlasted the retries and the budget, a runtime
+error it kept reporting, a dropped connection, a body that is not an answer — hands the same
+question to the next one, and the run continues there and never goes back; a 400 does not move
+(`OsmQuestionRefusedError`: every instance runs the same engine and would refuse the question
+too), and the door fails once the last instance closes, naming each. The instances serve one
+dataset, so the move changes the log line and never the provenance. The manners:
 one request at a time and never two, a five-second pause measured from the end of the last
 exchange, a `[timeout:120]` on a batch and a `[timeout:600]` on each of the enumeration's eight
 questions, and a `[maxsize:]` of 64 MiB declared in every query — both halves
@@ -1849,20 +1876,20 @@ agree to within a tenth of a percent, the Nazca zone and the Acropolis to the fo
 
 Answers from either door are cached per source under the kind `osm` for a day (ADR-0030,
 ADR-0047) — keyed by the query text, so the two doors never read each other's rows — and `Sync
-without cache` bypasses it as it does for Wikidata. A batch that cannot be read **ends the run**
+without cache` bypasses it as it does for Wikidata. A batch that cannot be read **ends the pass**
 whichever door it went through: read as silence it would say "no OSM object carries this item"
 for every site in it, which refuses precisely the sites the rule exists to admit. **And so does
 an endpoint that answers about almost nothing**, which no transport error reports: a rebuilt
 dataset, a renamed `osmkey:` IRI or the host moving again answers HTTP 200 with no bindings, and
 every candidate reads as unmapped. So the site door counts the share that came back with an
-object and fails the run by name below a floor of half (`OSM_ANSWER_FLOOR`; the measurement is
+object and fails the pass by name below a floor of half (`OSM_ANSWER_FLOOR`; the measurement is
 885 of 1,126, or 79%) **before a single verdict is taken**. The share is read over the
 candidates the read can answer about: a row the enumeration reached through an article alone
 carries no `wikidata` tag on any dig, so the read may legitimately have nothing to say about it
 and it is counted on neither side (`byArticleOnly`, #895) — the exclusion narrows what the floor
 is measured over, never what it catches — and the run drops the
-`osm` cache on the way out, since otherwise the same emptiness would be read out of our own table
-until it expired. Both register records were written before their code, as ADR-0059 decision 4
+answers that door gave it this run, since otherwise the same emptiness would be read out of our
+own table until it expired; on the mirror it then reads the map again through Overpass (above). Both register records were written before their code, as ADR-0059 decision 4
 requires: [`openstreetmap-qlever`](../sources/global/openstreetmap-qlever.md) and
 [`openstreetmap-overpass`](../sources/global/openstreetmap-overpass.md).
 
@@ -1905,7 +1932,7 @@ each under a budget of its own on either door (nine minutes for the mirror's que
 its own deadline; a declared 600 s per Overpass selector), since a planet-wide tag read does
 not fit a batch's two minutes on a slow afternoon and a value regex is a scan of every
 `historic` object (dry runs 134 and 135) —
-(`readOsmDigs`, tags only, never a geometry; an answer with no dig at all ends the run and drops the cached OSM answers, as the per-item floor does), plus the 2,027 such objects carrying a
+(`readOsmDigs`, tags only, never a geometry; an answer with no dig at all ends the pass and drops the door's cached answers, as the per-item floor does), plus the 2,027 such objects carrying a
 `wikipedia` tag and no item (1,532 articles), resolved to their items through the wiki each
 tag names (`wikipediaArticles.ts`: Nemrut's tumulus is `tr:Nemrut Dağı`; a tag naming a section,
 `es:Antuco#Historia` on a fort's node, is left out — a section is a part of what the article
@@ -2606,7 +2633,7 @@ that each list holds what its name says, which the nature rule secures.
 
 - Every outbound call says who is calling through `userAgent()` (`backend/src/config/userAgent.ts`), which is the one place the header is built. The shape is the one Wikimedia's User-Agent policy states — `<client>/<version> (<contact information>)` — the version comes from `backend/package.json`, and a run asks for the `bot` marker the policy wants for automated agents, which a curator's own lookup does not carry — the marker names the traffic, not who set it going. The contact is a website and a mailbox that answer; `USER_AGENT_CONTACT` lets a deployment that is not this one publish its own. It matters more than politeness: the policy answers a caller without a working contact by blocking it "without notice", and the OSM Foundation's Nominatim policy refuses a stock agent outright, so the header is a dependency of filling the catalogue. It used to be written at each call site, which drifted into six spellings naming a repository, an account and a domain that do not exist (#864); `userAgentOneSource.test.ts` fails the gate if a second home appears
 - The source rows carry no header of their own: `experience_sources.api_config` held a `userAgent` key nothing read, and migration 053 removed it
-- The Archaeology run's door to OpenStreetMap is the operator's choice by name — `OSM_READER` unset for the QLever mirror, `overpass` for the public Overpass API, anything else refused at boot in production, warned about in development, and in any case before a question is sent (`osm/readerChoice.ts`, § Archaeology) — and the run log names the one it opened
+- The Archaeology run reads OpenStreetMap through one door per run — `OSM_READER` names the one it opens first: unset for the QLever mirror, with the whole read done again through Overpass when the mirror fails; `overpass` for the public Overpass instances, with no fallback; anything else refused at boot in production, warned about in development, and in any case before a question is sent (`osm/readerChoice.ts`, `osm/oneDoorPerRun.ts`, § Archaeology) — and the run log and each site's `metadata.osm` name the one that answered
 - SPARQL retries with exponential backoff bounded by a fifteen-minute wait budget shared across a phase (`WaitBudget`) — a collection's queries share one, and the credit pass after it gets its own, 429 + `Retry-After` header handling, 55s server-side + 70s client-side timeouts, an optional `isCancelled` hook that wakes the backoff and aborts the request in flight, and an optional `onWait` reporter so a run can say on screen that it is waiting for the source rather than looking hung (all in `sparqlQuery()`)
 - 1.5s delay between image downloads
 - `curated_fields` JSONB on `experiences` protects curator edits during sync upserts — each field is checked individually in the `ON CONFLICT` clause (implemented in `upsertExperienceRecord()`)

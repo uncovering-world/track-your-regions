@@ -159,10 +159,10 @@ ten-minute deadline so the cut stays ours — declared on the question's first l
 the mirror ignores (`questionBudgetMs`), and a body that deadline cuts mid-stream is retried as a timeout
 rather than read as an answer that is not JSON — what the afternoon of 2026-09-15 (a probe of
 three items in 213 s) would otherwise have made of it. The answer is cached a day under the run's
-`osm` kind like every batch, and one that comes back with no dig at all ends the run
-(`readOsmDigs`) and drops that day's cached OSM answers, for the reason an empty batch does —
-the emptiness is filed by the time it is read, and a run that kept it would fail the same way
-until the row expired.
+`osm` kind like every batch, and one that comes back with no dig at all ends the pass
+(`readOsmDigs`) and drops the answers the mirror gave the run, for the reason an empty batch
+does — the emptiness is filed by the time it is read, and a run that kept it would fail the same
+way until the row expired — before the run reads the map again through Overpass (below).
 
 ## How the scorecard was read
 
@@ -177,13 +177,16 @@ enumerating anything.
 ## The risk this connector carries
 
 QLever is a third-party mirror and has moved host once already, from `qlever.cs.uni-freiburg.de`
-to `qlever.dev`. So: the run **fails loudly** when the endpoint is gone rather than reading its
+to `qlever.dev`. So: the mirror's pass **fails loudly** when the endpoint is gone rather than reading its
 silence as "no OSM object carries this item" — which would turn every site into a refusal — and
 the day-long cache carries the last answers through a short outage. Overpass is the fallback
 ([`openstreetmap-overpass`](openstreetmap-overpass.md) § The fallback reader), one door behind the
-same interface since #893, opened by an operator who sets `OSM_READER=overpass` — a choice by name
-rather than a switch the run makes on its own, so a day's extents never come from two sources
-under one provenance.
+same interface since #893. **This mirror is read first, and Overpass when it fails** (#908): a
+question the mirror could not answer once the retries and the wait budget were spent, or an
+answer too empty to judge by, and the run drops what the mirror answered it and does the whole
+read again through Overpass from the first question — one door a run, so a day's extents never
+come from two sources under one provenance. An operator who sets `OSM_READER=overpass` pins
+Overpass instead, with no way back to the mirror.
 
 ## The runs that adopted it
 
