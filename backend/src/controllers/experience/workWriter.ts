@@ -21,11 +21,14 @@
  * `lockWork` for a correction, `lockPart` (`publishHeldParts.ts`) for a held
  * field. Every such transaction takes a venue first and its works second, so a
  * transaction on one work cannot wait for another in the opposite order. A
- * publish touches several: it locks each held work in the record's order, then
- * `publishUnreadWorks` locks the pending ones in the order the scan meets them.
- * Two venues sharing two works and publishing at once can take them in
- * opposite orders, and Postgres then fails one of the two, which the curator
- * sees as a failed publish to repeat. The order is not fixed yet (#1095).
+ * publish touches several, and a work is one row for every venue that holds it,
+ * so two venues sharing two works could take them in opposite orders and
+ * deadlock. So a publish takes every work it will write in one statement,
+ * `lockWorksToPublish`, in ascending id, before it writes or locks any of them
+ * one by one (#1095): whichever publish reaches a shared work first holds it,
+ * and the other waits instead of holding the next. `publishContents` takes the
+ * pending works so, for every caller; `publishUnderLock` takes them together
+ * with the held works first, since it locks those one by one before.
  *
  * The statements and the reasoning that belongs to them live here; whether to
  * issue them — the verdict, the publication, the correction — stays with the
@@ -40,6 +43,54 @@ import { linkNotRefusedSql, unreadLinkSql } from './waitingCounts.js';
 /** `AND <column> = ANY($2)` where the caller named works, nothing where it meant all of them. */
 function namedWorks(column: string, treasureIds: readonly number[] | undefined): { sql: string; params: unknown[] } {
   return treasureIds === undefined ? { sql: '', params: [] } : { sql: `AND ${column} = ANY($2::int[])`, params: [treasureIds] };
+}
+
+/** The works a publish at the venue will write, for `lockWorksToPublish`. */
+export interface WorksToPublish {
+  /** The `external_id`s of the works the held record changes. */
+  heldRefs: readonly string[];
+  /** The pending works behind the venue's offered links — the named ones, or all — or null where this publish leaves them. */
+  pending: { treasureIds?: readonly number[] } | null;
+}
+
+/**
+ * Lock every work a publish at the venue will write, in ascending id, in one
+ * statement, before any of them is written (#1095).
+ *
+ * The set is the held works and the pending works together, since a publish
+ * writes both: a held work may also be pending, and two venues' publishes must
+ * meet their shared works in the same order whichever pass writes them. The
+ * held works' own `FOR UPDATE` in `lockPart` and the pending ones' UPDATE then
+ * find the rows already this transaction's.
+ */
+export async function lockWorksToPublish(
+  client: PoolClient, lock: LockedExperience, works: WorksToPublish,
+): Promise<void> {
+  if (works.heldRefs.length === 0 && works.pending === null) return;
+  const params: unknown[] = [lock.id, works.heldRefs];
+  let pendingSql = 'false';
+  if (works.pending !== null) {
+    let named = '';
+    if (works.pending.treasureIds !== undefined) {
+      params.push(works.pending.treasureIds);
+      named = `AND et.treasure_id = ANY($${params.length}::int[])`;
+    }
+    pendingSql = `t.curation_state = 'pending' AND EXISTS (
+          SELECT 1 FROM experience_treasures et
+           WHERE et.treasure_id = t.id AND et.experience_id = $1
+             AND ${offeredLinkSql('et')} AND ${linkNotRefusedSql('et')}
+             ${named}
+        )`;
+  }
+  await client.query(
+    `SELECT t.id FROM treasures t
+      WHERE (t.external_id = ANY($2::text[])
+             AND EXISTS (SELECT 1 FROM experience_treasures et WHERE et.treasure_id = t.id AND et.experience_id = $1))
+         OR (${pendingSql})
+      ORDER BY t.id
+      FOR UPDATE`,
+    params,
+  );
 }
 
 /**

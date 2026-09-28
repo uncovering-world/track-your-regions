@@ -41,15 +41,16 @@ import type { CheckValue } from '../../db/schema.generated.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, publishExperienceBodySchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { publishContents, placeAfterRelease } from './publishContents.js';
+import { publishContents, placeAfterRelease, worksPublished } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { heldFieldWrites, publicationAssignments, type HeldFieldWrites } from './publishHeldFields.js';
 import {
-  applyHeldPartWrites, planHeldPartWrites, type HeldPartPlan,
+  applyHeldPartWrites, heldWorkRefs, planHeldPartWrites, type HeldPartPlan,
 } from './publishHeldParts.js';
 import { recordHeldAnswers } from './heldDecisions.js';
 import type { HeldSelection, SelectedPart } from './heldSelection.js';
-import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
+import { lockExperience, updateExperienceColumns, type LockedExperience } from '../../db/experienceWriter.js';
+import { lockWorksToPublish, type WorksToPublish } from './workWriter.js';
 
 /**
  * What the curator asked to be published.
@@ -294,7 +295,8 @@ function staleProposalRefusal(
  */
 async function planHeldAnswer(
   client: PoolClient,
-  experienceId: number,
+  lock: LockedExperience,
+  pendingWorks: WorksToPublish['pending'],
   pointer: number | null,
   before: { metadata?: unknown; image_url?: unknown; name_local?: unknown },
   claimed: string[],
@@ -305,7 +307,13 @@ async function planHeldAnswer(
   write: HeldFieldWrites;
   parts: HeldPartPlan;
 }> {
+  const experienceId = lock.id;
   const write = await heldFieldWrites(client, experienceId, pointer, before, claimed, selection);
+  // Every work this publish will write, locked ascending before the parts'
+  // half locks any of them (#1095).
+  await lockWorksToPublish(client, lock, {
+    heldRefs: heldWorkRefs(write.contents, write.answered, selection), pending: pendingWorks,
+  });
   // The parts' half of the same proposal (ADR-0037): resolved and locked now,
   // written after the object by the caller. It takes the answers the object's
   // half already read — one query, one lock, and no chance of the two halves
@@ -415,6 +423,10 @@ export async function publishUnderLock(
   // differ only in whether the experience's own row — its held fields, its
   // state, its pointer — is part of what is answered.
   const contentsOnly = bareContentsOnly === true || locationIds !== undefined || treasureIds !== undefined;
+  // The pending works `publishContents` will publish, as it decides them
+  // (`worksPublished`): none on a fields publish.
+  const pendingWorks: WorksToPublish['pending'] =
+    !fieldsOnly && worksPublished(locationIds, treasureIds) ? { treasureIds } : null;
 
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -527,7 +539,7 @@ export async function publishUnderLock(
       // curator already claimed writes nothing, and per ADR-0025 § 4.4 there is
       // nothing for such a call to be stale about.
       const held = await planHeldAnswer(
-        client, experienceId, pointer, before, claimed, selection, expectedSyncLogId,
+        client, locked.lock, pendingWorks, pointer, before, claimed, selection, expectedSyncLogId,
       );
       if (held.refusal) return await refuse(409, held.refusal, pointer);
       const { write, parts } = held;

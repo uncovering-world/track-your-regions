@@ -295,6 +295,24 @@ function unmatchedParts(selection: HeldSelection | null, reached: ReadonlySet<st
   return unmatched;
 }
 
+/**
+ * The works this call answers held fields of, by `external_id`: the set a
+ * publish locks, ascending, before it plans any of them (`lockWorksToPublish`,
+ * #1095). Narrowed by the selection exactly as `planHeldPartWrites` narrows
+ * what it locks, since a lock on a work the call does not answer would hold its
+ * row for the length of an unrelated write.
+ */
+export function heldWorkRefs(
+  contents: ContentsByKind | null,
+  answered: ReadonlyMap<string, HeldAnswer>,
+  selection: HeldSelection | null,
+): string[] {
+  const names = selectedFilter(selection);
+  return heldEntries(contents, 'treasures', answered)
+    .filter(entry => entry.item.ref !== null && splitBySelection('treasures', entry, names).selected.length > 0)
+    .map(entry => entry.item.ref as string);
+}
+
 /** Every held, unanswered entry of the record, paired with the kind it was filed under. */
 function heldEntriesByKind(
   contents: ContentsByKind | null, answered: ReadonlyMap<string, HeldAnswer>,

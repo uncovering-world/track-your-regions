@@ -17,8 +17,19 @@ import {
   assignRegionsForExperiences, worldViewsWithGeometry,
 } from '../../services/sync/regionAssignmentService.js';
 import { publishUnreadPoints, releaseDeferredWithdrawals } from './experienceLocationWriter.js';
-import { publishUnreadLinks, publishUnreadWorks } from './workWriter.js';
+import { lockWorksToPublish, publishUnreadLinks, publishUnreadWorks } from './workWriter.js';
 import type { LockedExperience } from '../../db/experienceWriter.js';
+
+/**
+ * Whether a publish naming these ids publishes the venue's pending works: when
+ * it names works, or names nothing at all. Naming only points leaves every
+ * work where it is. `publishContents` decides by it, and a caller that locks
+ * the works ahead of it (`publishUnderLock`) asks the same question here
+ * rather than restating it.
+ */
+export function worksPublished(locationIds?: number[], treasureIds?: number[]): boolean {
+  return treasureIds !== undefined || locationIds === undefined;
+}
 
 /**
  * Publish the unread points and works — the named ones, or all of them.
@@ -70,7 +81,11 @@ export async function publishContents(
 
   let treasureLinksPublished = 0;
   let treasuresPublished = 0;
-  if (treasureIds !== undefined || !anyNamed) {
+  if (worksPublished(locationIds, treasureIds)) {
+    // The works this writes, locked ascending in one statement before the
+    // UPDATE takes them in scan order (#1095); where the caller already took
+    // them, with the held works, the rows are this transaction's already.
+    await lockWorksToPublish(client, lock, { heldRefs: [], pending: { treasureIds } });
     // Two states from one id, because they are two facts: the link says this
     // work has been passed as being *here*, the work says it has been passed at
     // all — "checked once, globally" (ADR-0025 decision 2). A reader's treasure
