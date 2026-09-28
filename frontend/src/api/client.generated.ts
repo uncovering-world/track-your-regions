@@ -6392,7 +6392,7 @@ export interface Region {
   isCustomBoundary: boolean;
   /** Drawn as the hull around its members, as for an archipelago. */
   usesHull: boolean;
-  /** Null while the region has no geometry. */
+  /** Null while the region has neither a geometry nor a hull. A region drawn as a hull keeps its frame while its geometry waits to be recomputed. */
   focusBbox: FocusBbox | null;
   anchorPoint: AnchorPoint | null;
   hasSubregions: boolean;

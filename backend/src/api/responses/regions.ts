@@ -34,7 +34,7 @@ export const Region = z.strictObject({
   color: z.string().nullable(),
   isCustomBoundary: z.boolean().describe('Its outline was drawn by hand rather than made of its members.'),
   usesHull: z.boolean().describe('Drawn as the hull around its members, as for an archipelago.'),
-  focusBbox: FocusBbox.nullable().describe('Null while the region has no geometry.'),
+  focusBbox: FocusBbox.nullable().describe('Null while the region has neither a geometry nor a hull. A region drawn as a hull keeps its frame while its geometry waits to be recomputed.'),
   anchorPoint: AnchorPoint.nullable(),
   hasSubregions: z.boolean(),
   hasHullChildren: z.boolean().describe('At least one of its subregions is drawn as a hull.'),
