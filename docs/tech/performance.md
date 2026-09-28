@@ -242,6 +242,23 @@ view comes from the flag (`{port}` in the local budgets' URLs). The switch
 touches only the frontend container (`--no-deps`) and waits for the
 backend's `/health` before anything is measured.
 
+The probe checks its own precondition the same way (#834). Before
+measuring, it reads the world view's root regions
+(`/api/world-views/<id>/regions/root`), as a visitor would. It fails naming
+every root whose `focusBbox` is null, and the focus trigger clears that
+column exactly when the region has neither a geometry nor a hull. A region
+in that state is a derived ancestor that ADR-0035 blanked when a
+descendant's geometry was written, and it stays blank until the world
+view's next run rebuilds it. Until then, a root-regions tile that region
+reaches draws less of the world than the baseline did, and a tile that only
+that region reaches answers 204. A root drawn as a hull is the one blank
+root the read cannot see: invalidation clears its geometry and keeps its
+hull, and with the hull its frame. Its tiles still fail, reported as an
+empty tile, just without a region's name. The probe still measures every row
+and prints the table, so the other endpoints' numbers stay readable. Below
+the table it lists each endpoint that failed with its reason — *an empty
+tile (204)*, *no answer* or *answered N*.
+
 What the local run cannot yet see is the interactions where the data cost
 actually lives — clicking Europe, opening a card. Both are addresses now
 (#644), so a selected region and an open card *can* be audited as page
