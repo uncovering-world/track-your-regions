@@ -176,7 +176,6 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     reparentMutation,
     setRemoveDialogState,
     setUndoSnackbar,
-    invalidateTree,
   });
 
   const cvPipeline = useCvMatchPipeline(worldViewId, tree, dialogs.handleSmartSimplify);
