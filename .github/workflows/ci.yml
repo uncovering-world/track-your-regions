@@ -458,13 +458,11 @@ jobs:
         run: TEST_REPORT_KEEP_ENV=1 npm run test:db
 
       # The API contract lane (#1091): Schemathesis against this stack's
-      # backend, as each of the fixture's accounts, reads only. Reported but not
-      # yet blocking: its first run left one finding that is a policy rather
-      # than a defect, whether a query parameter a route does not declare is
-      # refused (#1099). With that decided, `continue-on-error` goes.
+      # backend, as each of the fixture's accounts, reads only. It fails the
+      # job: a query parameter a route does not declare is refused (#1099), so
+      # the lane's findings are defects, not a policy left open.
       - name: Run the API contract lane
         if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_api == 'true' }}
-        continue-on-error: true
         run: npm run test:api
 
       # `always()`, not `failure()`: a spec that passes on retry is flaky and
