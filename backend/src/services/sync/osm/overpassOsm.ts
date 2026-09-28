@@ -1,12 +1,13 @@
 /**
- * The second door to OpenStreetMap: the public Overpass API, asked in Overpass
- * QL — one batch of Wikidata items at a time for the per-item read, and the
- * planet's digs as eight exact-match questions for the enumeration (#895),
- * since this instance cannot answer that list whole.
+ * The second door to OpenStreetMap: the public Overpass instances, asked in
+ * Overpass QL — one batch of Wikidata items at a time for the per-item read,
+ * and the planet's digs as eight exact-match questions for the enumeration
+ * (#895), since an instance cannot answer that list whole.
  *
- * The fallback the QLever record names and ADR-0059 asks for: a mirror can
- * move house, and a run that read its silence as "no ruin is mapped here"
- * would refuse the sites the rule exists to admit. This door answers the same
+ * The fallback the QLever record names and ADR-0059 asks for, taken by the run
+ * on its own when the mirror fails (`oneDoorPerRun.ts`): a mirror can move
+ * house, and a run that read its silence as "no ruin is mapped here" would
+ * refuse the sites the rule exists to admit. This door answers the same
  * questions in the same shapes — rows `foldOsmRows` reads for the per-item
  * answer, rows `foldOsmDigRows` reads for the enumeration, the article-only
  * ones included — so nothing above `readOsmObjects` learns which door it went
@@ -15,8 +16,8 @@
  *
  * The manners are the register record's
  * (`docs/sources/global/openstreetmap-overpass.md` § The fallback reader) and
- * are stricter than the mirror's, because the instance publishes its limits
- * and says in its own words that it is overloaded: one request at a time and
+ * are stricter than the mirror's, because the main instance publishes its
+ * limits and says in its own words that it is overloaded: one request at a time and
  * never two, a pause between them, a `[timeout:]` declared in every query so
  * the server can plan around it, the thirty seconds the wiki asks for after a
  * 429, the project's own `User-Agent` with the bot marker (ADR-0043's rule,
@@ -35,11 +36,35 @@ import { userAgent } from '../../../config/userAgent.js';
 import { geometryOf, type OverpassElement } from './overpassGeometry.js';
 import type { OsmDoor } from './readOsmObjects.js';
 import {
-  classifyOsmError, OSM_BACKOFF_CEILING_MS, OSM_MAX_RETRIES, refuseOrRetry,
+  classifyOsmError, OSM_BACKOFF_CEILING_MS, OSM_MAX_RETRIES, OsmQuestionRefusedError, refuseOrRetry,
 } from './retry.js';
 import { assertTagValues, OSM_TAG_KEYS, type DigTags, type KeepWkt } from './types.js';
 
-export const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
+/**
+ * The public instances this door may ask, in the order it asks them.
+ *
+ * One dataset behind several servers: every instance serves the OpenStreetMap
+ * planet, so the instance that answered changes the log line and never the
+ * provenance (ADR-0059 decision 2 names OpenStreetMap, not a host). The main
+ * instance first, because it is the one whose usage page quotes its limits and
+ * whose operators the register record answered to first; then the two free
+ * global instances whose policy the same record quotes, dated
+ * (`docs/sources/global/openstreetmap-overpass.md` § The other public
+ * instances) — the one whose data was current with the main instance's before
+ * the one that was months behind. An instance behind a key or a payment is not on the list: none
+ * is configured, and a keyed one is named only where a key is.
+ *
+ * Sequence, never parallel — the operators' one request of a client that knows
+ * several of them is that it does not spread load across them — and each
+ * instance is asked under the same manners, the strictest of the three
+ * policies (the main instance's), so no instance is asked harder than the one
+ * that publishes a number.
+ */
+export const OVERPASS_INSTANCES: readonly { name: string; endpoint: string }[] = [
+  { name: 'overpass-api.de', endpoint: 'https://overpass-api.de/api/interpreter' },
+  { name: 'maps.mail.ru', endpoint: 'https://maps.mail.ru/osm/tools/overpass/api/interpreter' },
+  { name: 'overpass.private.coffee', endpoint: 'https://overpass.private.coffee/api/interpreter' },
+];
 
 /** What every Overpass read tells the instance it is. Built once (#864), never spelled at a call site. */
 const OVERPASS_USER_AGENT = userAgent({ bot: true });
@@ -237,13 +262,14 @@ function overpassBackoff(status: number, retryAfterSeconds: number, attempt: num
 }
 
 async function askOverpass(
+  endpoint: string,
   query: string,
   options: { userAgent: string; isCancelled?: () => boolean; fetchImpl?: typeof fetch },
   attempt: number,
 ): Promise<SparqlBinding[]> {
   const { signal, release } = abortOn(declaredTimeoutMs(query), options.isCancelled);
   try {
-    const response = await (options.fetchImpl ?? fetch)(OVERPASS_ENDPOINT, {
+    const response = await (options.fetchImpl ?? fetch)(endpoint, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -281,13 +307,27 @@ async function askOverpass(
 }
 
 /**
- * A run's door to the public instance: paced, interruptible, and able to say
+ * A run's door to the public instances: paced, interruptible, and able to say
  * it is waiting — the mirror door's shape, with the pause the policy asks for
  * kept here, since it is this endpoint's manner and not the read's.
  *
+ * **An instance closed to this run hands the same question to the next one**
+ * (`OVERPASS_INSTANCES`). Closed means the question could not be answered
+ * there once the retries and the run's wait budget were spent — a 429 or a
+ * 5xx that outlasted them, a runtime error the instance kept reporting, a
+ * dropped connection, a body that is not an answer — and the run continues on
+ * the next instance from that question, and stays there: an instance that
+ * turned this run away is not asked again by it, so the run never goes back
+ * and forth between two servers. A 400 is not a closure: the question was
+ * refused as asked, every instance runs the same engine, and the next one
+ * would refuse it too (`OsmQuestionRefusedError`). When the last instance
+ * closes the door fails, naming every instance and why it left each.
+ *
  * The budget is the *run's*, handed in rather than minted here, for the
- * reason the mirror's is (#886). `now` is the clock, replaceable by a test
- * that must not wait five seconds to see the pause.
+ * reason the mirror's is (#886); an instance entered after the budget is spent
+ * still gets its first attempt, which is what makes the move worth anything.
+ * `now` is the clock, replaceable by a test that must not wait five seconds to
+ * see the pause.
  */
 export function overpassOsmDoor(
   progress: { cancel: boolean; statusMessage: string },
@@ -297,7 +337,50 @@ export function overpassOsmDoor(
 ): OsmDoor {
   const now = options.now ?? Date.now;
   let lastAnsweredAt: number | null = null;
+  let current = 0;
+  const closures: string[] = [];
   const isCancelled = () => progress.cancel;
+
+  const askInstance = (endpoint: string, query: string) => withRetries(
+    (attempt) => askOverpass(endpoint, query, {
+      userAgent: OVERPASS_USER_AGENT, isCancelled, fetchImpl: options.fetchImpl,
+    }, attempt),
+    {
+      logPrefix,
+      retries: OSM_MAX_RETRIES,
+      budget,
+      isCancelled,
+      onWait: (wait: SourceWait) => {
+        progress.statusMessage = waitMessage('OpenStreetMap', wait, budget);
+      },
+      classify: (error, attempt, retries) => classifyOsmError(error, attempt, retries, RETRY_LABEL),
+    },
+  );
+
+  /** The instance turned the run away: note why, and move to the next one for good. */
+  const close = (instance: { name: string }, error: unknown): void => {
+    const why = error instanceof Error ? error.message : String(error);
+    closures.push(`${instance.name}: ${why}`);
+    console.warn(`${logPrefix} Overpass instance ${instance.name} is closed to this run: ${why}`);
+    current += 1;
+    const next = OVERPASS_INSTANCES[current]?.name;
+    if (!next) return;
+    console.log(`${logPrefix} Asking the same question of the next Overpass instance, ${next}`);
+    progress.statusMessage = `Overpass instance ${instance.name} is not answering; asking ${next}...`;
+  };
+
+  /** The question, of the instance the run is on and then of each after it. */
+  const askInOrder = async (query: string): Promise<SparqlBinding[]> => {
+    for (let instance = OVERPASS_INSTANCES[current]; instance; instance = OVERPASS_INSTANCES[current]) {
+      try {
+        return await askInstance(instance.endpoint, query);
+      } catch (error) {
+        if (isCancelled() || error instanceof OsmQuestionRefusedError) throw error;
+        close(instance, error);
+      }
+    }
+    throw new Error(`Every public Overpass instance is closed to this run — ${closures.join('; ')}`);
+  };
 
   const send = async (query: string): Promise<SparqlBinding[]> => {
     if (lastAnsweredAt !== null) {
@@ -305,21 +388,7 @@ export function overpassOsmDoor(
       if (due > 0) await interruptibleDelay(due, isCancelled);
     }
     try {
-      return await withRetries(
-        (attempt) => askOverpass(query, {
-          userAgent: OVERPASS_USER_AGENT, isCancelled, fetchImpl: options.fetchImpl,
-        }, attempt),
-        {
-          logPrefix,
-          retries: OSM_MAX_RETRIES,
-          budget,
-          isCancelled,
-          onWait: (wait: SourceWait) => {
-            progress.statusMessage = waitMessage('OpenStreetMap', wait, budget);
-          },
-          classify: (error, attempt, retries) => classifyOsmError(error, attempt, retries, RETRY_LABEL),
-        },
-      );
+      return await askInOrder(query);
     } finally {
       // Measured from the end of the exchange, answered or not: a refusal held
       // a slot for as long as an answer did.
