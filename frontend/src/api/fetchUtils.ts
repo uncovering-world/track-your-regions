@@ -12,12 +12,12 @@ export const MARTIN_URL = import.meta.env.VITE_MARTIN_URL || 'http://localhost:3
 let accessToken: string | null = null;
 
 // Deduplicates concurrent refresh calls — only one refresh request at a time.
-// Shared across authFetchJson and useAuth to prevent token rotation race conditions.
+// Shared across apiFetch and useAuth to prevent token rotation race conditions.
 let pendingRefresh: Promise<SessionStarted | null> | null = null;
 
 // Listener notified after every successful refresh — useAuth registers here
 // so its local tokenExpiresAt + user state stays in sync when refreshSession
-// is invoked from outside the hook (e.g. ensureFreshToken / authFetchJson 401
+// is invoked from outside the hook (e.g. ensureFreshToken / apiFetch's 401
 // retry). Without this, useAuth.isTokenExpired() would still see the old
 // expiry and trigger a redundant refresh on the next request.
 type RefreshSuccessListener = (data: SessionStarted) => void;
@@ -37,7 +37,7 @@ export function getAccessToken(): string | null {
 
 /**
  * Centralized token refresh — deduplicates concurrent calls across the entire app.
- * Both authFetchJson and useAuth must use this to prevent token rotation race conditions
+ * Both apiFetch and useAuth must use this to prevent token rotation race conditions
  * (concurrent refreshes trigger reuse detection which revokes the entire token family).
  */
 export async function refreshSession(): Promise<SessionStarted | null> {
@@ -193,15 +193,6 @@ async function parseJsonResponse<T>(response: Response, noContent: () => T): Pro
   return response.json();
 }
 
-/**
- * Authenticated fetch - automatically adds Bearer token.
- * On 401, attempts a silent refresh via httpOnly cookie then retries.
- */
-export async function authFetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  // A 204 reads as an empty list: what the list reads answer when they have nothing.
-  return authFetchParsed<T>(url, options, () => [] as unknown as T);
-}
-
 async function authFetchParsed<T>(url: string, options: RequestInit | undefined, noContent: () => T): Promise<T> {
   // Proactively refresh token before it expires (prevents 401 round-trip)
   await ensureFreshToken();
@@ -262,7 +253,7 @@ export async function apiFetch<T>(path: string, options: ApiRequestInit = {}): P
   if (tokenPolicy === 'strict') {
     const token = await requireFreshToken();
     if (!token) {
-      // The event authFetchJson fires on a dead session, so the app leaves the
+      // The event the session policy fires on a dead session, so the app leaves the
       // signed-in state once rather than sitting in a phantom one.
       window.dispatchEvent(new CustomEvent('auth:session-expired'));
       throw new Error(SESSION_EXPIRED);
@@ -270,36 +261,4 @@ export async function apiFetch<T>(path: string, options: ApiRequestInit = {}): P
     return parseJsonResponse<T>(await fetch(url, { ...request, headers: buildJsonHeaders(init, token) }), noContent);
   }
   return parseJsonResponse<T>(await fetch(url, { ...request, headers: buildJsonHeaders(init) }), noContent);
-}
-
-/**
- * Authenticated fetch returning a Blob (for image/binary endpoints).
- * Mirrors authFetchJson but returns response.blob() instead of response.json().
- */
-export async function authFetchBlob(url: string, options?: RequestInit): Promise<Blob> {
-  await ensureFreshToken();
-
-  const buildHeaders = (): Headers => {
-    const h = new Headers(options?.headers);
-    h.delete('Content-Type');
-    if (accessToken) h.set('Authorization', `Bearer ${accessToken}`);
-    return h;
-  };
-
-  let response = await fetch(url, { ...options, headers: buildHeaders() });
-
-  if (response.status === 401) {
-    const result = await refreshSession();
-    if (result) {
-      response = await fetch(url, { ...options, headers: buildHeaders() });
-    } else {
-      window.dispatchEvent(new CustomEvent('auth:session-expired'));
-    }
-  }
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-
-  return response.blob();
 }

@@ -100,7 +100,7 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
       {thumbnail && (
         // A plain <img>, like every other place that shows an experience's picture
         // (`ExperienceExpandedDetails`, `ArtworksList`). Not `AuthImage`: that fetches
-        // through `authFetchBlob`, which attaches an Authorization header, and a header
+        // through `apiFetch`, which attaches an Authorization header, and a header
         // makes the browser send a preflight — which Wikimedia answers with a redirect,
         // and a redirected preflight is refused outright. Museums carry remote Wikimedia
         // URLs (`docs/tech/experiences.md`), so that route failed twice per image and

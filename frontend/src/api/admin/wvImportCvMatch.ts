@@ -18,7 +18,7 @@ import {
   type WvImportClusterReviewAnswerBody,
   type WvImportIcpAdjustmentBody,
   type WvImportWaterReviewBody,
-  getGetAdminWvImportClusterHighlightByReviewIdByLabelUrl,
+  getAdminWvImportClusterHighlightByReviewIdByLabel,
   getGetAdminWvImportClusterPreviewByReviewIdUrl,
   getGetAdminWvImportMatchesByWorldViewIdColorMatchStreamUrl,
   getGetAdminWvImportWaterCropByReviewIdByComponentIdBySubClusterUrl,
@@ -102,9 +102,9 @@ export function clusterPreviewUrl(reviewId: string): string {
   return withTokenQuery(API_URL + getGetAdminWvImportClusterPreviewByReviewIdUrl(reviewId));
 }
 
-/** URL for per-cluster highlight image (red-outline overlay for selected cluster) */
-export function clusterHighlightUrl(reviewId: string, label: number): string {
-  return withTokenQuery(API_URL + getGetAdminWvImportClusterHighlightByReviewIdByLabelUrl(reviewId, label));
+/** The per-cluster highlight image (red-outline overlay for the selected cluster), read with the session's token. */
+export async function fetchClusterHighlight(reviewId: string, label: number): Promise<Blob> {
+  return getAdminWvImportClusterHighlightByReviewIdByLabel(reviewId, label);
 }
 
 /** Respond to cluster review during CV match */

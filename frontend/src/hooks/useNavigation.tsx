@@ -94,7 +94,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // depends on who is asking: an admin also sees the unpublished ones. Asking
   // before `initAuth` has restored the session sends no token and gets the
   // anonymous list — and gets it as a 200 with fewer rows rather than a 401, so
-  // `authFetchJson`'s 401 retry never runs and `staleTime: Infinity` then holds
+  // `apiFetch`'s 401 retry never runs and `staleTime: Infinity` then holds
   // that answer for the rest of the session. The symptom was an admin whose
   // picker offered only the published world view, the hidden base-layer mirror
   // missing until a manual reload happened to win the race.

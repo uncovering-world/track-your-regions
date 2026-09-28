@@ -20,9 +20,8 @@ import {
 } from '@mui/icons-material';
 import {
   respondToClusterReview,
-  clusterHighlightUrl,
+  fetchClusterHighlight,
 } from '../../api/admin/worldViewImport';
-import { authFetchBlob } from '../../api/fetchUtils';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 import { AuthImage } from '../shared/AuthImage';
 import type { CvMatchDialogState } from './useCvMatchPipeline';
@@ -38,8 +37,7 @@ function loadClusterHighlight(
   label: number,
   setCVMatchDialog: React.Dispatch<React.SetStateAction<CvMatchDialogState | null>>,
 ): void {
-  const hlUrl = clusterHighlightUrl(reviewId, label);
-  authFetchBlob(hlUrl)
+  fetchClusterHighlight(reviewId, label)
     .then((blob) => {
       const objUrl = URL.createObjectURL(blob);
       setCVMatchDialog((prev) =>

@@ -36,7 +36,7 @@ vi.mock('../api', () => ({
 }));
 // The hook imports from '../api/experiences', not the barrel — vitest matches on
 // the resolved path, so mocking '../api' alone would leave these on the real
-// authFetchJson.
+// apiFetch.
 vi.mock('../api/experiences', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/experiences')>();
   return {

@@ -35,7 +35,6 @@ vi.mock('./api/fetchUtils', () => ({
   setAccessToken: vi.fn(),
   refreshSession: vi.fn().mockResolvedValue(null),
   setRefreshSuccessListener: vi.fn(),
-  authFetchJson: vi.fn().mockResolvedValue(null),
 }));
 
 import App from './App';

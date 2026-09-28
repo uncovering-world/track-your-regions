@@ -93,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ==========================================================================
 
   const silentRefresh = useCallback(async (): Promise<boolean> => {
-    // Uses centralized refreshSession() to share deduplication with authFetchJson,
+    // Uses centralized refreshSession() to share deduplication with apiFetch,
     // preventing token rotation race conditions that would revoke the entire family.
     const result = await refreshSession();
     if (!result) {
@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth();
   }, [silentRefresh]);
 
-  // Clear auth state when session expires (fired by authFetchJson when refresh fails)
+  // Clear auth state when session expires (fired by apiFetch when refresh fails)
   useEffect(() => {
     const handleExpired = () => {
       accessToken = null;
@@ -156,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   // Keep useAuth's local tokenExpiresAt + user state in sync with refreshes
-  // triggered from outside the hook (ensureFreshToken before SSE, authFetchJson
+  // triggered from outside the hook (ensureFreshToken before SSE, apiFetch
   // 401 retry). Without this, authFetch would still see the old expiry and
   // burn an extra /api/auth/refresh round-trip per token lifecycle.
   useEffect(() => {
