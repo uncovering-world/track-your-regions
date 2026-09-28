@@ -36,7 +36,8 @@ jobs:
   #
   # The filter sits on the jobs and never on `on:`. A workflow skipped by a
   # `paths:` filter never reports its checks at all, so the contexts required
-  # by branch protection — Lint & Type Check, Security Scan, Unit Tests — stay
+  # by branch protection — Lint & Type Check, Security Scan, Unit Tests,
+  # E2E Smoke and Performance (Lighthouse) — stay
   # Pending for ever and the merge button never lights up. A job skipped by its
   # own `if:` reports Success and satisfies the same required check. That one
   # asymmetry is the whole reason this job exists.
@@ -279,14 +280,12 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    # `changes` for the verdict, `check` for the order. `!cancelled()` removes
-    # the implicit `success()` the ordering would otherwise rest on, so
-    # `needs.check.result == 'success'` states it instead: a red — or skipped —
-    # `check` keeps this job from starting. A skipped `check` cannot strand a
-    # build that should have run: every input that asks for a build asks for
-    # the lint gates too.
-    needs: [changes, check]
-    if: ${{ !cancelled() && needs.check.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.job_build == 'true') }}
+    # Starts beside `check` rather than after it, like every job here: a job
+    # waits on another only when a measurement or an artifact says it must, and
+    # the wait on `check` was measured as cost with no saving (#965,
+    # docs/tech/gates.md § The job graph).
+    needs: [changes]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_build == 'true') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -391,17 +390,16 @@ jobs:
           ignore-unfixed: true
 
   e2e-smoke:
-    # Not yet in branch-protection required checks: promote it to a required
-    # check once it has proven stable across PRs. Revisit around 2026-08-09
-    # (two weeks after the 2026-07-26 run this landed on).
+    # A required check (docs/tech/gates.md § How CI applies the map). It starts
+    # beside `check`, not after it: this job ends the run more often than any
+    # other, so a wait on `check` lengthened nearly every run, while `check` was
+    # red on none in the window measured (#965, docs/tech/gates.md § The job
+    # graph). A branch that does not compile still reads its tsc error in
+    # `Lint & Type Check`, which reports first.
     name: E2E Smoke
     runs-on: ubuntu-latest
-    # Gated on lint+typecheck so a PR that does not compile fails in 4 min
-    # with a tsc error instead of burning a full smoke run and surfacing the
-    # same error buried in `docker compose build` output. Costs ~12s on the
-    # green path: the critical path is already check -> build.
-    needs: [changes, check]
-    if: ${{ !cancelled() && needs.check.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.job_smoke == 'true') }}
+    needs: [changes]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_smoke == 'true') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -486,10 +484,14 @@ jobs:
     # Chromium. Budgets live in frontend/perf/lighthouse-budgets.json; the
     # numbers they were set from, and the rule for moving them, in
     # docs/tech/performance.md. Same command as `npm run perf` locally.
+    # Starts beside `check`, as `E2E Smoke` does and for the same measured
+    # reason (#965). It builds its own bundle inside the stack, with the
+    # stack's VITE_* baked in, rather than taking `Build`'s: see
+    # docs/tech/gates.md § The job graph.
     name: Performance (Lighthouse)
     runs-on: ubuntu-latest
-    needs: [changes, check]
-    if: ${{ !cancelled() && needs.check.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.job_perf == 'true') }}
+    needs: [changes]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_perf == 'true') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
