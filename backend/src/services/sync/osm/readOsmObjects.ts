@@ -23,9 +23,11 @@
  * mean it. The whole point of asking OSM is to tell a ruin from a living town, so a
  * batch that came back empty because the endpoint moved house would turn every
  * site in it into "no OSM object carries this item" and refuse the ones the
- * rule is there to admit. A batch that cannot be *read* throws in the door —
- * the run fails and nothing is written, the shape the Wikipedia category
- * readers took for the same reason (#887). But an endpoint can also answer
+ * rule is there to admit. A batch that cannot be *read* throws in the door,
+ * named after it here (`OsmDoorFailedError`) — the pass fails and nothing is
+ * written, the shape the Wikipedia category readers took for the same reason
+ * (#887), and on the mirror the run reads the map again through Overpass
+ * (`oneDoorPerRun.ts`). But an endpoint can also answer
  * HTTP 200 with nothing in it, which no door can tell from a genuine "nothing
  * is mapped there": a renamed `osmkey:` IRI, a rebuilt dataset, the host
  * moving again. The enumeration answers that for itself — a planet that maps
@@ -81,15 +83,49 @@ export interface OsmDoor {
  * An answer from OpenStreetMap too empty to judge anything by.
  *
  * Its own class so the run can tell it from a transport failure and do the one
- * thing a transport failure does not need: forget what it just cached. The
- * empty answer is in the cache by the time this is thrown — `withCache` files
- * a zero-row answer like any other, for a day — and a run that kept it would
- * re-read the silence and fail the same way until the row expired, long after
- * the map had recovered. `archaeologySyncService.ts` drops the `osm` kind on
- * it; the per-item read's floor (`OsmAnswerFloorError`) and the enumeration's
- * emptiness (`OsmEmptyEnumerationError`) are its two shapes.
+ * thing a transport failure on Overpass does not need: forget what the door
+ * answered. The empty answer is in the cache by the time this is thrown —
+ * `withCache` files a zero-row answer like any other, for a day — and a run
+ * that kept it would re-read the silence and fail the same way until the row
+ * expired, long after the map had recovered. `oneDoorPerRun.ts` drops the
+ * answers the failing door gave the run on it, and on the mirror reads the map
+ * again through Overpass; the per-item read's floor (`OsmAnswerFloorError`)
+ * and the enumeration's emptiness (`OsmEmptyEnumerationError`) are its two
+ * shapes.
  */
 export class OsmEmptyAnswerError extends Error {}
+
+/**
+ * A question a door could not get answered: the transport failed once the
+ * door's retries and the run's wait budget were spent, or the endpoint refused.
+ *
+ * Its own class, carrying the door's name, so the run can tell "this door is
+ * failing" from every other way a collection ends — a Wikidata batch lost, a
+ * cancel — and answer the mirror's failure by reading the map again through
+ * Overpass (`osm/oneDoorPerRun.ts`). Raised here, where both reads meet the
+ * door, rather than in each adapter, so no door can forget to.
+ */
+export class OsmDoorFailedError extends Error {
+  constructor(public readonly door: OsmReaderName, cause: unknown) {
+    super(
+      `OpenStreetMap could not be read through ${door}: `
+      + `${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+    this.name = 'OsmDoorFailedError';
+  }
+}
+
+/** One question through the door, its failure named after the door. */
+async function ask(
+  door: OsmDoor, query: string, descriptor: Parameters<SparqlFn>[1],
+): Promise<SparqlBinding[]> {
+  try {
+    return await door.send(query, descriptor);
+  } catch (error) {
+    throw new OsmDoorFailedError(door.name, error);
+  }
+}
 
 /** The enumeration of digs with nothing in it (`readOsmDigs`). */
 export class OsmEmptyEnumerationError extends OsmEmptyAnswerError {
@@ -124,7 +160,7 @@ export async function readOsmDigs(
   for (let i = 0; i < questions.length; i++) {
     run.phase(`Asking OpenStreetMap for every dig and ruin it maps (question ${i + 1}/${questions.length})...`);
     await run.step();
-    const answer = await door.send(questions[i], {
+    const answer = await ask(door, questions[i], {
       kind: 'osm',
       label: `every OSM object tagged as a dig or as ruins (${i + 1}/${questions.length})`,
     });
@@ -164,7 +200,7 @@ export async function readOsmObjects(
   for (let i = 0; i < batches.length; i++) {
     run.phase(`Asking OpenStreetMap what it maps at each site (batch ${i + 1}/${batches.length})...`);
     await run.step();
-    const rows = await door.send(door.question(batches[i], keep), {
+    const rows = await ask(door, door.question(batches[i], keep), {
       kind: 'osm',
       label: `OSM objects of ${batches[i].length} item${batches[i].length === 1 ? '' : 's'}`,
     });
