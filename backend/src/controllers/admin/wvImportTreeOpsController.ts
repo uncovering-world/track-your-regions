@@ -16,7 +16,8 @@ import {
   type SuggestionSnapshot,
   undoEntries,
 } from './wvImportUtils.js';
-import { invalidateRegionGeometry, moveMembersToRegion, syncImportMatchStatus } from '../worldView/helpers.js';
+import { deleteDescendants, deleteRegions, invalidateRegionGeometry, moveChildRegions } from '../../db/regionWriter.js';
+import { moveMembersToRegion, syncImportMatchStatus } from '../worldView/helpers.js';
 import { runSimplifyHierarchy } from './wvImportSimplifyShared.js';
 import type {
   ChildMerged, ChildrenDismissed, ChildrenSimplified, DescendantsPruned, HierarchySimplified, RegionRemoved,
@@ -63,10 +64,7 @@ type TreeDbClient = PoolClient;
 
 async function moveChildDataToParent(client: TreeDbClient, parentId: number, childId: number): Promise<void> {
   // Reparent grandchildren
-  await client.query(
-    'UPDATE regions SET parent_region_id = $1 WHERE parent_region_id = $2',
-    [parentId, childId],
-  );
+  await moveChildRegions(client, childId, parentId);
 
   // Move the child's members as rows, a cut part with its geometry, and
   // keep every row the parent already holds (#1004).
@@ -174,7 +172,7 @@ export async function mergeChildIntoParent(
     await copyChildImportStateToParent(client, regionId, childId);
 
     // Delete the child (CASCADE handles region_import_state, suggestions, map_images)
-    await client.query('DELETE FROM regions WHERE id = $1', [childId]);
+    await deleteRegions(client, [childId]);
 
     // The parent absorbed the child's members and grandchildren. The
     // grandchildren changed parents but kept every member they had, so their
@@ -234,13 +232,10 @@ export async function removeRegionFromImport(
 
     if (reparentChildren) {
       // Move children up to this region's parent
-      const reparented = await client.query(
-        'UPDATE regions SET parent_region_id = $1 WHERE parent_region_id = $2 AND world_view_id = $3',
-        [parentRegionId, regionId, worldViewId],
-      );
+      const childrenReparented = await moveChildRegions(client, regionId, parentRegionId, worldViewId);
 
       // Delete the region itself (CASCADE cleans up region_import_state, suggestions, map_images, members)
-      await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
+      await deleteRegions(client, [regionId]);
 
       // The parent lost a child and gained its children, and may have gained
       // its divisions as well. The children that moved up kept their own
@@ -250,8 +245,8 @@ export async function removeRegionFromImport(
 
       await client.query('COMMIT');
 
-      console.log(`[WV Import] Removed region "${regionName}" (${regionId}), reparented ${reparented.rowCount} children, ${divisionsReparented} divisions`);
-      return { removed: true, regionName, childrenReparented: reparented.rowCount ?? 0, divisionsReparented };
+      console.log(`[WV Import] Removed region "${regionName}" (${regionId}), reparented ${childrenReparented} children, ${divisionsReparented} divisions`);
+      return { removed: true, regionName, childrenReparented, divisionsReparented };
     }
 
     // Delete entire branch: all descendants first (depth-ordered), then the region
@@ -267,15 +262,12 @@ export async function removeRegionFromImport(
     const descendantIds = descendants.rows.map(r => r.id as number);
 
     if (descendantIds.length > 0) {
-      // Delete descendants deepest-first (CASCADE handles related tables)
-      await client.query(
-        'DELETE FROM regions WHERE id = ANY($1)',
-        [descendantIds],
-      );
+      // Delete descendants (CASCADE handles related tables)
+      await deleteRegions(client, descendantIds);
     }
 
     // Delete the region itself
-    await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
+    await deleteRegions(client, [regionId]);
 
     // The whole branch is gone, so the parent covers less than it did.
     if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId, client);
@@ -374,16 +366,9 @@ export async function dismissChildren(
       [descendantIds],
     );
 
-    // Delete descendant regions (children first due to FK — recursive CTE already gives us all)
+    // Delete every descendant region
     // CASCADE deletes region_import_state, region_match_suggestions, region_map_images
-    await client.query(`
-      WITH RECURSIVE desc_regions AS (
-        SELECT id, 1 AS depth FROM regions WHERE parent_region_id = $1
-        UNION ALL
-        SELECT r.id, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
-      )
-      DELETE FROM regions WHERE id IN (SELECT id FROM desc_regions ORDER BY depth DESC)
-    `, [regionId]);
+    await deleteDescendants(client, [regionId]);
 
     // Update parent: if it has its own divisions, keep them and mark as matched;
     // otherwise clear to no_candidates so the user can re-match at this level.
@@ -520,15 +505,8 @@ export async function pruneToLeaves(
       [grandDescIds],
     );
 
-    // Delete grandchildren+ regions (deepest-first via recursive CTE)
-    await client.query(`
-      WITH RECURSIVE desc_regions AS (
-        SELECT id, 1 AS depth FROM regions WHERE parent_region_id = ANY($1)
-        UNION ALL
-        SELECT r.id, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
-      )
-      DELETE FROM regions WHERE id IN (SELECT id FROM desc_regions ORDER BY depth DESC)
-    `, [childIds]);
+    // Delete the grandchildren and everything below them
+    await deleteDescendants(client, childIds);
 
     // The children that lost descendants, and only those: it is their unions
     // that changed rather than the pruned region's own -- and clearing a child

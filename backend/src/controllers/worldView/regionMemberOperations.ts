@@ -15,7 +15,8 @@ import type {
   addChildDivisionsBodySchema, divisionUsageBodySchema, expandToSubregionsBodySchema, flattenParamSchema,
   regionDivisionParamSchema, regionIdParamSchema, worldViewIdParamSchema,
 } from '../../types/index.js';
-import { ensureRegionMember, invalidateRegionGeometry, moveMembersToRegion, syncImportMatchStatus } from './helpers.js';
+import { deleteRegions, insertRegion, invalidateRegionGeometry } from '../../db/regionWriter.js';
+import { ensureRegionMember, moveMembersToRegion, syncImportMatchStatus } from './helpers.js';
 
 interface ChildRow { id: number; name: string }
 
@@ -74,18 +75,11 @@ async function resolveChildSubregion(
   );
   if (existing.rows.length > 0) return existing.rows[0].id;
 
-  const newRegion = await pool.query(
-    `INSERT INTO regions (world_view_id, name, parent_region_id, color)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, name`,
-    [ctx.worldViewId, child.name, ctx.userRegionId, ctx.colorToUse],
-  );
-  ctx.createdRegions.push({
-    id: newRegion.rows[0].id,
-    name: newRegion.rows[0].name,
-    divisionId: child.id,
+  const newRegion = await insertRegion(pool, {
+    worldViewId: ctx.worldViewId, name: child.name, parentRegionId: ctx.userRegionId, color: ctx.colorToUse,
   });
-  return newRegion.rows[0].id;
+  ctx.createdRegions.push({ id: newRegion.id, name: newRegion.name, divisionId: child.id });
+  return newRegion.id;
 }
 
 /** Place each child in its subregion; answers how many were placed. */
@@ -268,7 +262,7 @@ export async function flattenSubregion(
     }
 
     // Delete the region itself
-    await pool.query('DELETE FROM regions WHERE id = $1', [regionId]);
+    await deleteRegions(pool, [regionId]);
   };
 
   await deleteRegionRecursive(subregionId);
@@ -327,14 +321,13 @@ export async function expandToSubregions(
 
   for (const member of members.rows) {
     // Create a subregion for this division
-    const newRegion = await pool.query(`
-      INSERT INTO regions (world_view_id, name, parent_region_id, color)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id, name
-    `, [region.world_view_id, member.name, regionId, inheritColor ? region.color : '#3388ff']);
+    const newRegion = await insertRegion(pool, {
+      worldViewId: region.world_view_id, name: member.name, parentRegionId: regionId,
+      color: inheritColor ? region.color : '#3388ff',
+    });
 
-    const newRegionId = newRegion.rows[0].id;
-    createdRegions.push({ id: newRegionId, name: newRegion.rows[0].name, divisionId: member.division_id });
+    const newRegionId = newRegion.id;
+    createdRegions.push({ id: newRegionId, name: newRegion.name, divisionId: member.division_id });
 
     // Move the row itself, so a cut keeps its geometry and a division held as
     // two parts stays two parts (#1004).

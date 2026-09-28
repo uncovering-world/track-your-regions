@@ -6,6 +6,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
+import { restoreRegions } from '../../db/regionWriter.js';
 import {
   trigramSearch,
 } from '../../services/worldViewImport/aiMatcher.js';
@@ -28,21 +29,6 @@ import type { worldViewIdParamSchema, wvImportRegionIdSchema } from '../../types
 // =============================================================================
 
 type DbClient = PoolClient;
-
-async function restoreDescendantRegions(
-  client: DbClient,
-  regions: UndoEntry['descendantRegions'],
-): Promise<void> {
-  const sorted = [...regions].sort((a, b) => a.id - b.id);
-  for (const region of sorted) {
-    await client.query(
-      `INSERT INTO regions (id, name, parent_region_id, is_leaf, world_view_id)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (id) DO NOTHING`,
-      [region.id, region.name, region.parent_region_id, region.is_leaf, region.world_view_id],
-    );
-  }
-}
 
 async function insertImportStatesIfMissing(
   client: DbClient,
@@ -159,7 +145,7 @@ async function undoDescendantRestoration(
   client: DbClient,
   entry: UndoEntry,
 ): Promise<void> {
-  await restoreDescendantRegions(client, entry.descendantRegions);
+  await restoreRegions(client, entry.descendantRegions);
   await insertImportStatesIfMissing(client, entry.descendantImportStates);
   await insertSuggestionsForRegionField(client, entry.descendantSuggestions);
   await insertMembersIgnoreConflict(client, entry.descendantMembers);
@@ -167,7 +153,7 @@ async function undoDescendantRestoration(
 }
 
 async function undoSmartFlatten(client: DbClient, entry: UndoEntry): Promise<void> {
-  await restoreDescendantRegions(client, entry.descendantRegions);
+  await restoreRegions(client, entry.descendantRegions);
   await insertImportStatesIfMissing(client, entry.descendantImportStates);
   await insertSuggestionsForRegionField(client, entry.descendantSuggestions);
   await insertMembersIgnoreConflict(client, entry.descendantMembers);

@@ -20,8 +20,11 @@ vi.mock('../../db/index.js', () => ({
 }));
 vi.mock('./helpers.js', () => ({
   ensureRegionMember: vi.fn(),
-  invalidateRegionGeometry,
   syncImportMatchStatus: vi.fn(),
+}));
+vi.mock('../../db/regionWriter.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../db/regionWriter.js')>(),
+  invalidateRegionGeometry,
 }));
 
 

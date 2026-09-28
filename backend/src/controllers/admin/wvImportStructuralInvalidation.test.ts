@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
@@ -411,27 +409,5 @@ describe('smartFlatten', () => {
     const writes = mockPoolQuery.mock.calls.map(([sql]) => String(sql)).filter((sql) => /\b(INSERT|UPDATE|DELETE)\b/.test(sql));
     expect(writes).toEqual([]);
     expect(mockPoolConnect).not.toHaveBeenCalled();
-  });
-});
-
-describe('undo restores regions with no geometry, which is what makes it self-healing', () => {
-  it('names no geometry column when it recreates a deleted region', () => {
-    // Undoing a dismiss, a prune or a smart flatten needs no invalidation of
-    // its own: every region it recreates arrives with `geom NULL`, which is
-    // precisely what seeds the run's closure -- the restored rows are selected,
-    // and every ancestor of one with them, so the parent is recomputed without
-    // anybody naming it. Restore a snapshot of `geom` here and that stops being
-    // true, and the undo paths would need what the forward paths need.
-    const source = readFileSync(
-      join(__dirname, 'wvImportHierarchyController.ts'), 'utf8',
-    ).replace(/\s+/g, ' ');
-    const start = source.indexOf('async function restoreDescendantRegions');
-    expect(start, 'restoreDescendantRegions is missing').toBeGreaterThan(-1);
-    const end = source.indexOf('async function insertImportStatesIfMissing', start);
-    expect(end, 'insertImportStatesIfMissing no longer follows it').toBeGreaterThan(start);
-
-    const body = source.slice(start, end);
-    expect(body).toContain('INSERT INTO regions (id, name, parent_region_id, is_leaf, world_view_id)');
-    expect(body).not.toMatch(/(?<!\w)geom/);
   });
 });

@@ -10,6 +10,7 @@ import type {
   regenerateDisplayQuerySchema, regionIdParamSchema, updateGeometryBodySchema, worldViewIdParamSchema,
 } from '../../types/index.js';
 import { pool } from '../../db/index.js';
+import { saveDrawnOutline } from '../../db/regionWriter.js';
 
 /**
  * The regions in scope, deepest first.
@@ -159,23 +160,11 @@ export async function updateRegionGeometry(
 ): Promise<typeof NO_CONTENT> {
   if (!geometry) throw badRequest('Geometry is required');
 
-  // Build the update query dynamically based on whether hullGeometry is provided
-  if (hullGeometry) {
-    await pool.query(`
-      UPDATE regions
-      SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1)),
-          is_custom_boundary = $2,
-          hull_geom = validate_multipolygon(ST_GeomFromGeoJSON($3))
-      WHERE id = $4
-    `, [JSON.stringify(geometry), isCustomBoundary, JSON.stringify(hullGeometry), regionId]);
-  } else {
-    await pool.query(`
-      UPDATE regions
-      SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1)),
-          is_custom_boundary = $2
-      WHERE id = $3
-    `, [JSON.stringify(geometry), isCustomBoundary, regionId]);
-  }
+  await saveDrawnOutline(pool, regionId, {
+    geometryJson: JSON.stringify(geometry),
+    isCustomBoundary,
+    hullJson: hullGeometry ? JSON.stringify(hullGeometry) : undefined,
+  });
 
   return NO_CONTENT;
 }
@@ -248,5 +237,54 @@ export async function resetRegionToGADM(
     reset: true,
     points,
     message: 'Region reset to GADM boundaries',
+  };
+}
+
+/**
+ * Recompute geometry for a single region from its members and children.
+ *
+ * Recomputes exactly one region -- it does not walk down to descendants that
+ * have none -- but it does mark the tree above the region stale once it has
+ * written, the way every other writer of `regions.geom` does (#667). A caller
+ * reaching for this expecting a purely local effect will find the branch above
+ * the target blank until the next world-view run recomputes it bottom-up.
+ *
+ * Skips regions with is_custom_boundary = true.
+ * Also updates 3857 projections and simplified versions for vector tiles.
+ */
+export async function recomputeRegionGeometry(regionId: number): Promise<{ computed: boolean; points?: number }> {
+  const result = await pool.query(`
+    WITH direct_member_geoms AS (
+      SELECT ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)) as geom
+      FROM region_members rm
+      JOIN administrative_divisions ad ON rm.division_id = ad.id
+      WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
+    ),
+    child_region_geoms AS (
+      SELECT ST_MakeValid(geom) as geom
+      FROM regions
+      WHERE parent_region_id = $1 AND geom IS NOT NULL
+    ),
+    all_geoms AS (
+      SELECT geom FROM direct_member_geoms WHERE geom IS NOT NULL
+      UNION ALL
+      SELECT geom FROM child_region_geoms WHERE geom IS NOT NULL
+    ),
+    merged AS (
+      SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Union(geom)), 3)) as merged_geom
+      FROM all_geoms
+    )
+    UPDATE regions r
+    SET geom = validate_multipolygon(m.merged_geom)
+    FROM merged m
+    WHERE r.id = $1
+      AND r.is_custom_boundary IS NOT TRUE
+      AND m.merged_geom IS NOT NULL
+    RETURNING ST_NPoints(r.geom) as points
+  `, [regionId]);
+
+  return {
+    computed: result.rows.length > 0,
+    points: result.rows[0]?.points,
   };
 }

@@ -7,6 +7,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { insertRegion } from '../../db/regionWriter.js';
 import type { StreamExchange } from '../../api/route.js';
 import { syncImportMatchStatus } from '../worldView/helpers.js';
 import {
@@ -602,12 +603,7 @@ export async function approveCoverageSuggestion(
       regionName = (divResult.rows[0]?.name as string) ?? `Region ${divisionId}`;
     }
 
-    const newRegion = await pool.query(
-      `INSERT INTO regions (world_view_id, name, parent_region_id)
-       VALUES ($1, $2, $3) RETURNING id`,
-      [worldViewId, regionName, regionId],
-    );
-    targetRegionId = newRegion.rows[0].id as number;
+    targetRegionId = (await insertRegion(pool, { worldViewId, name: regionName, parentRegionId: regionId, color: null })).id;
 
     // Create import state for the new region
     await pool.query(
