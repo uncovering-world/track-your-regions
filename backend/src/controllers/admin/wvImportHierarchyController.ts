@@ -5,8 +5,8 @@
  */
 
 import type { PoolClient } from 'pg';
-import { pool } from '../../db/index.js';
-import { restoreRegions } from '../../db/regionWriter.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
+import { beginRegionTransaction, restoreRegions, type RegionTx } from '../../db/regionWriter.js';
 import {
   trigramSearch,
 } from '../../services/worldViewImport/aiMatcher.js';
@@ -28,7 +28,7 @@ import type { worldViewIdParamSchema, wvImportRegionIdSchema } from '../../types
 // Undo helpers
 // =============================================================================
 
-type DbClient = PoolClient;
+type DbClient = Pick<PoolClient, 'query'>;
 
 async function insertImportStatesIfMissing(
   client: DbClient,
@@ -142,23 +142,23 @@ async function restoreChildSnapshot(
 }
 
 async function undoDescendantRestoration(
-  client: DbClient,
+  tx: RegionTx,
   entry: UndoEntry,
 ): Promise<void> {
-  await restoreRegions(client, entry.descendantRegions);
-  await insertImportStatesIfMissing(client, entry.descendantImportStates);
-  await insertSuggestionsForRegionField(client, entry.descendantSuggestions);
-  await insertMembersIgnoreConflict(client, entry.descendantMembers);
-  await restoreParentImportState(client, entry.regionId, entry.parentImportState);
+  await restoreRegions(tx, entry.descendantRegions);
+  await insertImportStatesIfMissing(tx, entry.descendantImportStates);
+  await insertSuggestionsForRegionField(tx, entry.descendantSuggestions);
+  await insertMembersIgnoreConflict(tx, entry.descendantMembers);
+  await restoreParentImportState(tx, entry.regionId, entry.parentImportState);
 }
 
-async function undoSmartFlatten(client: DbClient, entry: UndoEntry): Promise<void> {
-  await restoreRegions(client, entry.descendantRegions);
-  await insertImportStatesIfMissing(client, entry.descendantImportStates);
-  await insertSuggestionsForRegionField(client, entry.descendantSuggestions);
-  await insertMembersIgnoreConflict(client, entry.descendantMembers);
-  await restoreParentMembers(client, entry.regionId, entry.parentMembers);
-  await restoreParentImportState(client, entry.regionId, entry.parentImportState);
+async function undoSmartFlatten(tx: RegionTx, entry: UndoEntry): Promise<void> {
+  await restoreRegions(tx, entry.descendantRegions);
+  await insertImportStatesIfMissing(tx, entry.descendantImportStates);
+  await insertSuggestionsForRegionField(tx, entry.descendantSuggestions);
+  await insertMembersIgnoreConflict(tx, entry.descendantMembers);
+  await restoreParentMembers(tx, entry.regionId, entry.parentMembers);
+  await restoreParentImportState(tx, entry.regionId, entry.parentImportState);
 }
 
 async function undoHandleAsGrouping(client: DbClient, entry: UndoEntry): Promise<void> {
@@ -196,7 +196,7 @@ async function undoCollapseToParent(client: DbClient, entry: UndoEntry): Promise
   await restoreParentImportState(client, entry.regionId, entry.parentImportState);
 }
 
-async function dispatchUndo(client: DbClient, entry: UndoEntry): Promise<void> {
+async function dispatchUndo(client: RegionTx, entry: UndoEntry): Promise<void> {
   switch (entry.operation) {
     case 'dismiss-children':
     case 'prune-to-leaves':
@@ -240,9 +240,10 @@ export async function undoLastOperation(
   if (!entry) throw notFound('No undo available');
 
   const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    await client.query('BEGIN');
-    await dispatchUndo(client, entry);
+    const tx = await beginRegionTransaction(client);
+    await dispatchUndo(tx, entry);
     await client.query('COMMIT');
 
     // Remove undo entry after successful undo
@@ -250,10 +251,10 @@ export async function undoLastOperation(
     console.log(`[WV Import] Undo ${entry.operation} for region ${entry.regionId} successful`);
     return { undone: true, operation: entry.operation };
   } catch (err) {
-    await client.query('ROLLBACK');
+    unusable = await rollbackQuietly(client);
     throw err;
   } finally {
-    client.release();
+    client.release(unusable);
   }
 }
 

@@ -8,15 +8,16 @@
  * division-overlap detection/resolution in `./wvImportOverlapController.ts`.
  */
 
-import type { PoolClient } from 'pg';
-import { pool } from '../../db/index.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
 import {
   type UndoEntry,
   type ImportStateSnapshot,
   type SuggestionSnapshot,
   undoEntries,
 } from './wvImportUtils.js';
-import { deleteDescendants, deleteRegions, invalidateRegionGeometry, moveChildRegions } from '../../db/regionWriter.js';
+import {
+  beginRegionTransaction, deleteRegions, invalidateRegionGeometry, lockSubtree, moveChildRegions, type RegionTx,
+} from '../../db/regionWriter.js';
 import { moveMembersToRegion, syncImportMatchStatus } from '../worldView/helpers.js';
 import { runSimplifyHierarchy } from './wvImportSimplifyShared.js';
 import type {
@@ -60,7 +61,7 @@ import type { worldViewIdParamSchema, wvImportRegionIdSchema, wvImportRemoveRegi
  * Reparents grandchildren, moves members/suggestions/images, copies import state, deletes the child.
  * POST /api/admin/wv-import/matches/:worldViewId/merge-child
  */
-type TreeDbClient = PoolClient;
+type TreeDbClient = RegionTx;
 
 async function moveChildDataToParent(client: TreeDbClient, parentId: number, childId: number): Promise<void> {
   // Reparent grandchildren
@@ -144,8 +145,9 @@ export async function mergeChildIntoParent(
 
   let body: ChildMerged;
   const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    await client.query('BEGIN');
+    const tx = await beginRegionTransaction(client);
 
     // Verify region belongs to this world view
     const region = await client.query(
@@ -168,26 +170,26 @@ export async function mergeChildIntoParent(
     const childId = children.rows[0].id as number;
     const childName = children.rows[0].name as string;
 
-    await moveChildDataToParent(client, regionId, childId);
-    await copyChildImportStateToParent(client, regionId, childId);
+    await moveChildDataToParent(tx, regionId, childId);
+    await copyChildImportStateToParent(tx, regionId, childId);
 
     // Delete the child (CASCADE handles region_import_state, suggestions, map_images)
-    await deleteRegions(client, [childId]);
+    await deleteRegions(tx, [childId]);
 
     // The parent absorbed the child's members and grandchildren. The
     // grandchildren changed parents but kept every member they had, so their
     // own outlines still hold; the child no longer exists.
-    await invalidateRegionGeometry(regionId, client);
+    await invalidateRegionGeometry(tx, regionId);
 
     await client.query('COMMIT');
 
     console.log(`[WV Import] Merged child "${childName}" (${childId}) into parent ${regionId}`);
     body = { merged: true, childId, childName };
   } catch (err) {
-    await client.query('ROLLBACK');
+    unusable = await rollbackQuietly(client);
     throw err;
   } finally {
-    client.release();
+    client.release(unusable);
   }
   return body;
 }
@@ -208,8 +210,9 @@ export async function removeRegionFromImport(
   console.log(`[WV Import] POST /matches/${worldViewId}/remove-region — regionId=${regionId}, reparentChildren=${reparentChildren}, reparentDivisions=${reparentDivisions ?? false}`);
 
   const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    await client.query('BEGIN');
+    const tx = await beginRegionTransaction(client);
 
     // Verify region belongs to this world view
     const region = await client.query(
@@ -232,16 +235,16 @@ export async function removeRegionFromImport(
 
     if (reparentChildren) {
       // Move children up to this region's parent
-      const childrenReparented = await moveChildRegions(client, regionId, parentRegionId, worldViewId);
+      const childrenReparented = await moveChildRegions(tx, regionId, parentRegionId, worldViewId);
 
       // Delete the region itself (CASCADE cleans up region_import_state, suggestions, map_images, members)
-      await deleteRegions(client, [regionId]);
+      await deleteRegions(tx, [regionId]);
 
       // The parent lost a child and gained its children, and may have gained
       // its divisions as well. The children that moved up kept their own
       // members, so only the parent's union changed. A removed root has no
       // parent to go stale.
-      if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId, client);
+      if (parentRegionId != null) await invalidateRegionGeometry(tx, parentRegionId);
 
       await client.query('COMMIT');
 
@@ -249,38 +252,29 @@ export async function removeRegionFromImport(
       return { removed: true, regionName, childrenReparented, divisionsReparented };
     }
 
-    // Delete entire branch: all descendants first (depth-ordered), then the region
-    const descendants = await client.query(`
-      WITH RECURSIVE desc_regions AS (
-        SELECT id, 1 AS depth FROM regions WHERE parent_region_id = $1
-        UNION ALL
-        SELECT r.id, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
-      )
-      SELECT id FROM desc_regions ORDER BY depth DESC
-    `, [regionId]);
-
-    const descendantIds = descendants.rows.map(r => r.id as number);
+    // Delete the entire branch, locked first so it is the branch that goes
+    const descendantIds = (await lockSubtree(tx, [regionId], false)).map((row) => row.id);
 
     if (descendantIds.length > 0) {
       // Delete descendants (CASCADE handles related tables)
-      await deleteRegions(client, descendantIds);
+      await deleteRegions(tx, descendantIds);
     }
 
     // Delete the region itself
-    await deleteRegions(client, [regionId]);
+    await deleteRegions(tx, [regionId]);
 
     // The whole branch is gone, so the parent covers less than it did.
-    if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId, client);
+    if (parentRegionId != null) await invalidateRegionGeometry(tx, parentRegionId);
 
     await client.query('COMMIT');
 
     console.log(`[WV Import] Removed region "${regionName}" (${regionId}) and ${descendantIds.length} descendant(s)`);
     return { removed: true, regionName, descendantsRemoved: descendantIds.length };
   } catch (err) {
-    await client.query('ROLLBACK');
+    unusable = await rollbackQuietly(client);
     throw err;
   } finally {
-    client.release();
+    client.release(unusable);
   }
 }
 
@@ -296,8 +290,9 @@ export async function dismissChildren(
 
   let body: ChildrenDismissed;
   const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    await client.query('BEGIN');
+    const tx = await beginRegionTransaction(client);
 
     // Verify region belongs to this world view
     const region = await client.query(
@@ -308,21 +303,12 @@ export async function dismissChildren(
       throw notFound('Region not found in this world view');
     }
 
-    // Get all descendant region IDs (recursive)
-    const descendants = await client.query(`
-      WITH RECURSIVE desc_regions AS (
-        SELECT id FROM regions WHERE parent_region_id = $1
-        UNION ALL
-        SELECT r.id FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
-      )
-      SELECT id FROM desc_regions
-    `, [regionId]);
-
-    if (descendants.rows.length === 0) {
+    // Every descendant, locked: the snapshot for undo, the members deleted
+    // and the regions deleted are then one set of rows (#689)
+    const descendantIds = (await lockSubtree(tx, [regionId], false)).map((row) => row.id);
+    if (descendantIds.length === 0) {
       throw badRequest('Region has no children to dismiss');
     }
-
-    const descendantIds = descendants.rows.map(r => r.id as number);
 
     // Snapshot for undo: parent import state + members, all descendant regions + import state + suggestions + members
     const parentImportStateResult = await client.query(
@@ -368,7 +354,7 @@ export async function dismissChildren(
 
     // Delete every descendant region
     // CASCADE deletes region_import_state, region_match_suggestions, region_map_images
-    await deleteDescendants(client, [regionId]);
+    await deleteRegions(tx, descendantIds);
 
     // Update parent: if it has its own divisions, keep them and mark as matched;
     // otherwise clear to no_candidates so the user can re-match at this level.
@@ -393,7 +379,7 @@ export async function dismissChildren(
 
     // The descendants are deleted outright and nothing moves up, so the region
     // they were part of now covers only its own members.
-    await invalidateRegionGeometry(regionId, client);
+    await invalidateRegionGeometry(tx, regionId);
 
     await client.query('COMMIT');
 
@@ -414,10 +400,10 @@ export async function dismissChildren(
     console.log(`[WV Import] Dismissed ${descendantIds.length} descendants of region ${regionId}`);
     body = { dismissed: descendantIds.length, undoAvailable: true };
   } catch (err) {
-    await client.query('ROLLBACK');
+    unusable = await rollbackQuietly(client);
     throw err;
   } finally {
-    client.release();
+    client.release(unusable);
   }
   return body;
 }
@@ -435,8 +421,9 @@ export async function pruneToLeaves(
 
   let body: DescendantsPruned;
   const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    await client.query('BEGIN');
+    const tx = await beginRegionTransaction(client);
 
     // Verify region belongs to this world view
     const region = await client.query(
@@ -461,20 +448,15 @@ export async function pruneToLeaves(
     // Each row carries the direct child it hangs under, so the invalidation
     // below names only the children that actually lose something: a direct
     // child with no descendants of its own draws exactly what it drew before.
-    const grandDescendants = await client.query(`
-      WITH RECURSIVE desc_regions AS (
-        SELECT id, parent_region_id AS root_child, 1 AS depth FROM regions WHERE parent_region_id = ANY($1)
-        UNION ALL
-        SELECT r.id, d.root_child, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
-      )
-      SELECT id, root_child FROM desc_regions
-    `, [childIds]);
+    // Locked, so the snapshot, the members deleted and the regions deleted are
+    // one set of rows (#689).
+    const grandDescendants = await lockSubtree(tx, childIds, false);
 
-    if (grandDescendants.rows.length === 0) {
+    if (grandDescendants.length === 0) {
       throw badRequest('Direct children have no descendants to prune');
     }
 
-    const grandDescIds = grandDescendants.rows.map(r => r.id as number);
+    const grandDescIds = grandDescendants.map(r => r.id);
 
     // Snapshot for undo
     const descRegionsResult = await client.query(
@@ -506,7 +488,7 @@ export async function pruneToLeaves(
     );
 
     // Delete the grandchildren and everything below them
-    await deleteDescendants(client, childIds);
+    await deleteRegions(tx, grandDescIds);
 
     // The children that lost descendants, and only those: it is their unions
     // that changed rather than the pruned region's own -- and clearing a child
@@ -514,9 +496,9 @@ export async function pruneToLeaves(
     // with a hand-drawn boundary is skipped by the helper and stops the walk,
     // which is right: its outline is drawn rather than unioned, so deleting what
     // was under it does not move it, and nothing above it moved either (#283).
-    const prunedChildIds = [...new Set(grandDescendants.rows.map(r => r.root_child as number))];
+    const prunedChildIds = [...new Set(grandDescendants.map(r => r.root))];
     for (const childId of prunedChildIds) {
-      await invalidateRegionGeometry(childId, client);
+      await invalidateRegionGeometry(tx, childId);
     }
 
     await client.query('COMMIT');
@@ -538,10 +520,10 @@ export async function pruneToLeaves(
     console.log(`[WV Import] Pruned ${grandDescIds.length} grandchildren+ from region ${regionId} (kept ${childIds.length} direct children)`);
     body = { pruned: grandDescIds.length, undoAvailable: true };
   } catch (err) {
-    await client.query('ROLLBACK');
+    unusable = await rollbackQuietly(client);
     throw err;
   } finally {
-    client.release();
+    client.release(unusable);
   }
   return body;
 }

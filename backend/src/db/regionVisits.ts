@@ -20,6 +20,7 @@
  * counts them and the admin confirms.
  */
 
+import type { PoolClient } from 'pg';
 import { pool } from './index.js';
 
 /** The foreign key a visited region's delete violates; its name is the schema's. */
@@ -40,8 +41,12 @@ export function isVisitedRegionDelete(err: unknown): boolean {
  * The visits recorded on a region, and on every region under it when the
  * edit takes its descendants too.
  */
-export async function visitsUnder(regionId: number, withDescendants: boolean): Promise<number> {
-  const result = await pool.query<{ visits: number }>(
+export async function visitsUnder(
+  regionId: number,
+  withDescendants: boolean,
+  db: Pick<PoolClient, 'query'> = pool,
+): Promise<number> {
+  const result = await db.query<{ visits: number }>(
     withDescendants
       ? `WITH RECURSIVE subtree AS (
            SELECT id FROM regions WHERE id = $1

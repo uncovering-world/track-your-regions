@@ -11,13 +11,17 @@ import type { PoolClient } from 'pg';
  * on the partial unique index `idx_region_members_unique_no_custom`
  * (see db/init/01-schema.sql) so concurrent callers can't double-insert.
  */
-export async function ensureRegionMember(regionId: number, divisionId: number): Promise<void> {
+export async function ensureRegionMember(
+  regionId: number,
+  divisionId: number,
+  db: Pick<PoolClient, 'query'> = pool,
+): Promise<void> {
   // Explicit arbiter pins the dedupe to the partial unique index. A bare
   // `ON CONFLICT DO NOTHING` works today, but only because the partial index
   // happens to be the only unique constraint on this table; pinning the
   // arbiter prevents a future unique constraint from silently changing what
   // counts as a duplicate.
-  await pool.query(
+  await db.query(
     `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)
      ON CONFLICT (region_id, division_id) WHERE custom_geom IS NULL DO NOTHING`,
     [regionId, divisionId],
@@ -70,9 +74,12 @@ export async function moveMembersToRegion(
  *
  * No-op for non-imported regions (no row in region_import_state).
  */
-export async function syncImportMatchStatus(regionId: number): Promise<void> {
+export async function syncImportMatchStatus(
+  regionId: number,
+  db: Pick<PoolClient, 'query'> = pool,
+): Promise<void> {
   // Check if this is an imported region
-  const risResult = await pool.query(
+  const risResult = await db.query(
     `SELECT match_status FROM region_import_state WHERE region_id = $1`,
     [regionId]
   );
@@ -80,7 +87,7 @@ export async function syncImportMatchStatus(regionId: number): Promise<void> {
 
   const currentStatus = risResult.rows[0].match_status as string;
 
-  const countResult = await pool.query(
+  const countResult = await db.query(
     'SELECT COUNT(*) FROM region_members WHERE region_id = $1',
     [regionId]
   );
@@ -90,7 +97,7 @@ export async function syncImportMatchStatus(regionId: number): Promise<void> {
   if (memberCount > 0) {
     newStatus = 'manual_matched';
   } else {
-    const suggestionCount = await pool.query(
+    const suggestionCount = await db.query(
       'SELECT COUNT(*) FROM region_match_suggestions WHERE region_id = $1 AND rejected = false',
       [regionId]
     );
@@ -99,7 +106,7 @@ export async function syncImportMatchStatus(regionId: number): Promise<void> {
   }
 
   if (currentStatus !== newStatus) {
-    await pool.query(
+    await db.query(
       `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
       [newStatus, regionId]
     );

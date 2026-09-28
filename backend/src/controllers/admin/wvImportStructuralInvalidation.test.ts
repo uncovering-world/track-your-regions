@@ -40,6 +40,11 @@ const { mockPoolQuery, mockClientQuery, mockClientRelease, mockPoolConnect } = v
 
 vi.mock('../../db/index.js', () => ({
   pool: { query: mockPoolQuery, connect: mockPoolConnect },
+  // The rollback a failed transaction sends, on the client it ran on.
+  rollbackQuietly: async (client: { query: (sql: string) => Promise<unknown> }) => {
+    await client.query('ROLLBACK');
+    return undefined;
+  },
 }));
 
 // Heavy imports the three controllers pull in but no case below reaches.
@@ -277,7 +282,7 @@ describe('dismissChildren', () => {
     // union that changes is the one they were part of.
     mockClientQuery.mockImplementation(answering([
       [/SELECT id, name FROM regions WHERE id = \$1 AND world_view_id/, [{ id: 100, name: 'Parent' }]],
-      [/WITH RECURSIVE[\s\S]*SELECT id FROM desc_regions/, [{ id: 201 }, { id: 202 }]],
+      [/FOR UPDATE OF r|SELECT id, root FROM subtree/, [{ id: 201, root: 100 }, { id: 202, root: 100 }]],
     ]));
 
     const res = makeRes();
@@ -310,9 +315,9 @@ describe('pruneToLeaves', () => {
     mockClientQuery.mockImplementation(answering([
       [/SELECT id, name FROM regions WHERE id = \$1 AND world_view_id/, [{ id: 100, name: 'Parent' }]],
       [/SELECT id FROM regions WHERE parent_region_id = \$1/, [{ id: 201 }, { id: 202 }]],
-      [/WITH RECURSIVE[\s\S]*SELECT id, root_child FROM desc_regions/, [
-        { id: 301, root_child: 201 },
-        { id: 302, root_child: 201 },
+      [/FOR UPDATE OF r|SELECT id, root FROM subtree/, [
+        { id: 301, root: 201 },
+        { id: 302, root: 201 },
       ]],
     ]));
 
@@ -345,12 +350,33 @@ describe('smartFlatten', () => {
       [/WITH RECURSIVE/, [{ id: 201, name: 'A' }, { id: 202, name: 'B' }]],
       [/SELECT DISTINCT region_id FROM region_members/, [{ region_id: 201 }, { region_id: 202 }]],
     ]));
+    mockClientQuery.mockImplementation(answering([[/FOR UPDATE OF r|SELECT id, root FROM subtree/, [{ id: 201, root: 100 }, { id: 202, root: 100 }]]]));
 
     const res = makeRes();
     await answerRoute(smartFlattenRoute, makeReq({ regionId: 100 }), res);
 
     expect(res._body).toMatchObject({ absorbed: 2 });
     expect(invalidated()).toEqual([100]);
+  });
+
+  it('refuses, rolled back, when the branch changed between the read and the lock (#689)', async () => {
+    // Read before auto-matching, outside the transaction: a region moved into
+    // the branch since would be deleted without its members moving up.
+    mockPoolQuery.mockImplementation(answering([
+      [/FROM user_visited_regions/, [{ visits: 0 }]],
+      [/SELECT id, name FROM regions WHERE id = \$1 AND world_view_id/, [{ id: 100, name: 'Parent' }]],
+      [/WITH RECURSIVE/, [{ id: 201, name: 'A' }]],
+      [/SELECT DISTINCT region_id FROM region_members/, [{ region_id: 201 }]],
+    ]));
+    mockClientQuery.mockImplementation(answering([[/FOR UPDATE OF r|SELECT id, root FROM subtree/, [{ id: 201, root: 100 }, { id: 203, root: 100 }]]]));
+
+    const res = makeRes();
+    await answerRoute(smartFlattenRoute, makeReq({ regionId: 100 }), res);
+
+    expect(res._status).toBe(409);
+    const sqls = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(sqls.some((sql) => /DELETE FROM regions/.test(sql))).toBe(false);
+    expect(sqls).toContain('ROLLBACK');
   });
 
   it('clears nothing when the flatten is refused for an unmatched child', async () => {
@@ -380,7 +406,7 @@ describe('smartFlatten', () => {
     const refusal = Object.assign(new Error('violates foreign key constraint "user_visited_regions_region_id_fkey"'), {
       code: '23503', constraint: 'user_visited_regions_region_id_fkey',
     });
-    const answer = answering([]);
+    const answer = answering([[/FOR UPDATE OF r|SELECT id, root FROM subtree/, [{ id: 201, root: 100 }]]]);
     mockClientQuery.mockImplementation(async (sql: string) => {
       if (/DELETE FROM regions/.test(sql)) throw refusal;
       return answer(sql);

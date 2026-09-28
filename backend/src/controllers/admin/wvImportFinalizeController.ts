@@ -6,8 +6,8 @@
  */
 
 import type { z } from 'zod/v4';
-import { pool } from '../../db/index.js';
-import { insertRegion } from '../../db/regionWriter.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
+import { beginRegionTransaction, insertRegion } from '../../db/regionWriter.js';
 import { IMPORT_SOURCE_TYPES } from '../../services/worldViewImport/sourceTypes.js';
 import type { ChildRegionAdded, HierarchyWarningsDismissed } from '../../api/responses/wvImportTreeOps.js';
 import type { ReviewFinalized } from '../../api/responses/wvImportCoverage.js';
@@ -113,8 +113,9 @@ export async function addChildRegion(
   console.log(`[WV Import] POST /matches/${worldViewId}/add-child-region — parent=${parentRegionId}, name="${name}"`);
 
   const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    await client.query('BEGIN');
+    const tx = await beginRegionTransaction(client);
 
     // Verify parent belongs to world view
     const parent = await client.query(
@@ -133,7 +134,7 @@ export async function addChildRegion(
     const importRunId = parentState.rows[0]?.import_run_id ?? null;
 
     // Create child region
-    const regionId = (await insertRegion(client, { worldViewId, name, parentRegionId, color: null })).id;
+    const regionId = (await insertRegion(tx, { worldViewId, name, parentRegionId, color: null })).id;
 
     // Create region_import_state
     await client.query(
@@ -145,10 +146,10 @@ export async function addChildRegion(
     await client.query('COMMIT');
     return { created: true, regionId };
   } catch (err) {
-    await client.query('ROLLBACK');
+    unusable = await rollbackQuietly(client);
     throw err;
   } finally {
-    client.release();
+    client.release(unusable);
   }
 }
 

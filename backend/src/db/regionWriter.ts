@@ -13,16 +13,110 @@
  * function: the statement and what it does live here, and whether to issue it
  * stays with the caller that decided it.
  *
- * Each takes the connection it runs on, the caller's transaction client where
- * it has one. What a write changes on a tile is not the writer's to track: the
- * table bumps the world view's tile version at commit (ADR-0075).
+ * **Every write runs in a transaction (#689).** Each takes a `RegionTx`, which
+ * only `beginRegionTransaction` and `inRegionTransaction` produce, after
+ * `BEGIN` has run on that connection. A handler's statements then commit
+ * together or not at all: a reparent never lands without the invalidation of
+ * both parents, and a delete never leaves the members it moved moved. Where a
+ * handler decides on what it read of a region, it reads it with `lockRegion`,
+ * in the same transaction. What a write changes on a tile is not the writer's
+ * to track: the table bumps the world view's tile version at commit
+ * (ADR-0075).
  */
 
 import type { PoolClient } from 'pg';
-import { pool } from './index.js';
+import { pool, rollbackQuietly } from './index.js';
 
-/** The connection a write runs on: the pool, or the caller's transaction client. */
-export type RegionDb = Pick<PoolClient, 'query'>;
+declare const regionTransaction: unique symbol;
+
+/**
+ * A connection inside an open transaction, on which `regions` may be written.
+ * Produced only here, after `BEGIN` has run on it.
+ */
+export type RegionTx = Pick<PoolClient, 'query'> & { readonly [regionTransaction]: true };
+
+/** Open a transaction on a client the caller holds, for a writer that manages its own. */
+export async function beginRegionTransaction(client: PoolClient): Promise<RegionTx> {
+  await client.query('BEGIN');
+  return client as unknown as RegionTx;
+}
+
+/**
+ * Run `work` in one transaction on a client of its own: committed when it
+ * returns, rolled back when it throws, and the client released either way —
+ * as unusable when the rollback itself failed, so an open transaction never
+ * goes back to the pool.
+ */
+export async function inRegionTransaction<T>(work: (tx: RegionTx) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    const tx = await beginRegionTransaction(client);
+    const result = await work(tx);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    unusable = await rollbackQuietly(client);
+    throw err;
+  } finally {
+    client.release(unusable);
+  }
+}
+
+/**
+ * Lock a region for the rest of the transaction and read `columns` of it, so
+ * what the handler decides on is what it will write over. Null where the row
+ * is gone. `columns` is the caller's constant select list, never input.
+ */
+export async function lockRegion<Row extends Record<string, unknown>>(
+  tx: RegionTx,
+  regionId: number,
+  columns: string,
+): Promise<Row | null> {
+  const result = await tx.query(`SELECT ${columns} FROM regions WHERE id = $1 FOR UPDATE`, [regionId]);
+  return (result.rows[0] as Row | undefined) ?? null;
+}
+
+/** A region of a locked branch, and the root of `lockSubtree` it hangs under. */
+export interface BranchRow { id: number; root: number }
+
+/** How many times `lockSubtree` walks again before it gives up on a branch that keeps changing. */
+const BRANCH_WALKS = 5;
+
+/**
+ * Lock the regions below `rootIds` — and the roots too, `withRoots` — for the
+ * rest of the transaction, and answer them with the root each hangs under. A
+ * caller that moves or deletes a branch reads it here and then acts on exactly
+ * these ids: a branch read in one statement and deleted by walking it again in
+ * another can lose a region moved out in between, its members deleted and the
+ * region kept (#689).
+ *
+ * The walk that finds the rows runs before their locks are granted, so a
+ * region moved out while a lock was awaited would be locked where it now is,
+ * and one attached just before its new parent was locked would be missed. So
+ * the branch is walked again once locked, until two walks agree. Locked, the
+ * rows cannot be moved or deleted, and no region can be moved under one of
+ * them, until the commit, so the last walk is the branch.
+ */
+export async function lockSubtree(tx: RegionTx, rootIds: readonly number[], withRoots: boolean): Promise<BranchRow[]> {
+  const start = withRoots ? 'id' : 'parent_region_id';
+  const walk = `
+    WITH RECURSIVE subtree AS (
+      SELECT id, ${start} AS root FROM regions WHERE ${start} = ANY($1)
+      UNION ALL
+      SELECT r.id, s.root FROM regions r JOIN subtree s ON r.parent_region_id = s.id
+    )`;
+  for (let attempt = 0; attempt < BRANCH_WALKS; attempt++) {
+    const locked = await tx.query<BranchRow>(`${walk}
+      SELECT r.id, s.root FROM regions r JOIN subtree s ON s.id = r.id
+      FOR UPDATE OF r
+    `, [rootIds]);
+    const again = await tx.query<BranchRow>(`${walk} SELECT id, root FROM subtree`, [rootIds]);
+    const lockedIds = new Set(locked.rows.map((row) => row.id));
+    if (again.rows.length === lockedIds.size && again.rows.every((row) => lockedIds.has(row.id))) return again.rows;
+  }
+  throw new Error(`The branch under ${rootIds.join(', ')} kept changing while it was being locked`);
+}
 
 /** A region as a caller creates it, with no outline of its own. */
 export interface NewRegion {
@@ -35,8 +129,8 @@ export interface NewRegion {
 }
 
 /** Create a region with no outline. */
-export async function insertRegion(db: RegionDb, region: NewRegion): Promise<{ id: number; name: string }> {
-  const result = await db.query<{ id: number; name: string }>(
+export async function insertRegion(tx: RegionTx, region: NewRegion): Promise<{ id: number; name: string }> {
+  const result = await tx.query<{ id: number; name: string }>(
     `INSERT INTO regions (world_view_id, name, description, parent_region_id, color)
      VALUES ($1, $2, $3, $4, $5)
      RETURNING id, name`,
@@ -50,10 +144,10 @@ export async function insertRegion(db: RegionDb, region: NewRegion): Promise<{ i
  * derived from members may replace it (#283).
  */
 export async function insertDrawnRegion(
-  db: RegionDb,
+  tx: RegionTx,
   region: NewRegion & { geometryJson: string },
 ): Promise<{ id: number; hasGeom: boolean; geomPoints: number | null }> {
-  const result = await db.query<{ id: number; has_geom: boolean; geom_points: number | null }>(`
+  const result = await tx.query<{ id: number; has_geom: boolean; geom_points: number | null }>(`
     INSERT INTO regions (world_view_id, name, description, parent_region_id, color, geom, is_custom_boundary)
     VALUES ($1, $2, $3, $4, $5, validate_multipolygon(ST_GeomFromGeoJSON($6)), true)
     RETURNING id, geom IS NOT NULL AS has_geom, ST_NPoints(geom) AS geom_points
@@ -76,10 +170,10 @@ export async function insertDrawnRegion(
  * Writing a name to itself busts no tile (ADR-0075 compares).
  */
 export async function ensureChildRegion(
-  db: RegionDb,
+  tx: RegionTx,
   child: { worldViewId: number; parentRegionId: number | null; name: string; color: string | null },
 ): Promise<{ id: number; name: string; inserted: boolean }> {
-  const result = await db.query<{ id: number; name: string; inserted: boolean }>(
+  const result = await tx.query<{ id: number; name: string; inserted: boolean }>(
     `INSERT INTO regions (world_view_id, name, parent_region_id, color)
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (world_view_id, parent_region_id, name) WHERE parent_region_id IS NOT NULL
@@ -100,11 +194,11 @@ export async function ensureChildRegion(
  * it added later, so a child may carry the lower id.
  */
 export async function restoreRegions(
-  db: RegionDb,
+  tx: RegionTx,
   regions: ReadonlyArray<{ id: number; name: string; parent_region_id: number | null; is_leaf: boolean; world_view_id: number }>,
 ): Promise<void> {
   for (const region of parentsFirst(regions)) {
-    await db.query(
+    await tx.query(
       `INSERT INTO regions (id, name, parent_region_id, is_leaf, world_view_id)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (id) DO NOTHING`,
@@ -152,7 +246,7 @@ const FIELD_COLUMNS: ReadonlyArray<[keyof RegionFields, string]> = [
  * Write the fields the form sent, and nothing else. False where the region is
  * gone; true, with no statement, where nothing was sent.
  */
-export async function updateRegionFields(db: RegionDb, regionId: number, fields: RegionFields): Promise<boolean> {
+export async function updateRegionFields(tx: RegionTx, regionId: number, fields: RegionFields): Promise<boolean> {
   const setClauses: string[] = [];
   const values: unknown[] = [];
   for (const [key, column] of FIELD_COLUMNS) {
@@ -162,7 +256,7 @@ export async function updateRegionFields(db: RegionDb, regionId: number, fields:
   }
   if (setClauses.length === 0) return true;
   values.push(regionId);
-  const result = await db.query(`
+  const result = await tx.query(`
     UPDATE regions
     SET ${setClauses.join(', ')}
     WHERE id = $${values.length}
@@ -172,13 +266,13 @@ export async function updateRegionFields(db: RegionDb, regionId: number, fields:
 }
 
 /** Rename a region. */
-export async function setRegionName(db: RegionDb, regionId: number, name: string): Promise<void> {
-  await db.query('UPDATE regions SET name = $1 WHERE id = $2', [name, regionId]);
+export async function setRegionName(tx: RegionTx, regionId: number, name: string): Promise<void> {
+  await tx.query('UPDATE regions SET name = $1 WHERE id = $2', [name, regionId]);
 }
 
 /** Move a region under another parent. */
-export async function setRegionParent(db: RegionDb, regionId: number, parentRegionId: number | null): Promise<void> {
-  await db.query('UPDATE regions SET parent_region_id = $1 WHERE id = $2', [parentRegionId, regionId]);
+export async function setRegionParent(tx: RegionTx, regionId: number, parentRegionId: number | null): Promise<void> {
+  await tx.query('UPDATE regions SET parent_region_id = $1 WHERE id = $2', [parentRegionId, regionId]);
 }
 
 /**
@@ -187,14 +281,14 @@ export async function setRegionParent(db: RegionDb, regionId: number, parentRegi
  * that world view.
  */
 export async function moveChildRegions(
-  db: RegionDb,
+  tx: RegionTx,
   fromParentId: number,
   toParentId: number | null,
   worldViewId?: number,
 ): Promise<number> {
   const result = worldViewId === undefined
-    ? await db.query('UPDATE regions SET parent_region_id = $1 WHERE parent_region_id = $2', [toParentId, fromParentId])
-    : await db.query(
+    ? await tx.query('UPDATE regions SET parent_region_id = $1 WHERE parent_region_id = $2', [toParentId, fromParentId])
+    : await tx.query(
       'UPDATE regions SET parent_region_id = $1 WHERE parent_region_id = $2 AND world_view_id = $3',
       [toParentId, fromParentId, worldViewId],
     );
@@ -202,30 +296,12 @@ export async function moveChildRegions(
 }
 
 /** Delete regions by id. Their children, if any are left, become roots (ON DELETE SET NULL). */
-export async function deleteRegions(db: RegionDb, regionIds: readonly number[]): Promise<void> {
+export async function deleteRegions(tx: RegionTx, regionIds: readonly number[]): Promise<void> {
   if (regionIds.length === 1) {
-    await db.query('DELETE FROM regions WHERE id = $1', [regionIds[0]]);
+    await tx.query('DELETE FROM regions WHERE id = $1', [regionIds[0]]);
     return;
   }
-  await db.query('DELETE FROM regions WHERE id = ANY($1)', [regionIds]);
-}
-
-/**
- * Delete everything below the given parents — children, grandchildren and on
- * down — leaving the parents themselves. The walk is one recursive statement;
- * `parent_region_id` is ON DELETE SET NULL, so the order the rows go in does
- * not matter.
- */
-export async function deleteDescendants(db: RegionDb, parentIds: readonly number[]): Promise<void> {
-  await db.query(`
-    WITH RECURSIVE descendants AS (
-      SELECT id FROM regions WHERE parent_region_id = ANY($1)
-      UNION ALL
-      SELECT r.id FROM regions r
-      JOIN descendants d ON r.parent_region_id = d.id
-    )
-    DELETE FROM regions WHERE id IN (SELECT id FROM descendants)
-  `, [parentIds]);
+  await tx.query('DELETE FROM regions WHERE id = ANY($1)', [regionIds]);
 }
 
 /**
@@ -233,12 +309,12 @@ export async function deleteDescendants(db: RegionDb, parentIds: readonly number
  * `isCustomBoundary` says whether the shape is drawn rather than derived.
  */
 export async function saveDrawnOutline(
-  db: RegionDb,
+  tx: RegionTx,
   regionId: number,
   outline: { geometryJson: string; isCustomBoundary: boolean; hullJson?: string },
 ): Promise<void> {
   if (outline.hullJson) {
-    await db.query(`
+    await tx.query(`
       UPDATE regions
       SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1)),
           is_custom_boundary = $2,
@@ -247,7 +323,7 @@ export async function saveDrawnOutline(
     `, [outline.geometryJson, outline.isCustomBoundary, outline.hullJson, regionId]);
     return;
   }
-  await db.query(`
+  await tx.query(`
     UPDATE regions
     SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1)),
         is_custom_boundary = $2
@@ -276,35 +352,19 @@ export async function saveDrawnOutline(
  * Skips a hand-drawn boundary (is_custom_boundary): its shape is drawn, not
  * derived, and resetRegionToGADM is the explicit way to drop it (#283).
  *
- * `db` is the caller's transaction client where it has one, so the clearing
- * commits or rolls back with the change it answers for (#1026). There a lock
- * or deadlock is not swallowed: it has aborted the transaction, and the
- * operation fails whole. On the pool — a writer with no transaction — it is
- * swallowed, the tolerance carried from #283: what races an edit is usually
- * another edit clearing the same rows, and if not, Catalogue Checks reports
- * the stale outline (`parent-short-of-its-children`).
+ * It runs in the transaction of the change it answers for, so the clearing
+ * commits or rolls back with it (#1026). A lock timeout or a deadlock is not
+ * swallowed: it has aborted the transaction, and the change fails whole rather
+ * than landing with a parent left outside the next run's closure (#689).
  */
-export async function invalidateRegionGeometry(
-  regionId: number,
-  db: RegionDb = pool,
-): Promise<void> {
-  try {
-    await db.query(`
-      UPDATE regions
-      SET geom = NULL,
-          geom_3857 = NULL,
-          geom_simplified_low = NULL,
-          geom_simplified_medium = NULL
-      WHERE id = $1
-        AND is_custom_boundary IS NOT TRUE
-    `, [regionId]);
-  } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : String(err);
-    const isLockError = errorMessage.includes('could not obtain lock') || errorMessage.includes('deadlock');
-    if (isLockError && db === pool) {
-      console.log(`[invalidateRegionGeometry] Skipping region ${regionId} - already being updated by another operation`);
-      return;
-    }
-    throw err;
-  }
+export async function invalidateRegionGeometry(tx: RegionTx, regionId: number): Promise<void> {
+  await tx.query(`
+    UPDATE regions
+    SET geom = NULL,
+        geom_3857 = NULL,
+        geom_simplified_low = NULL,
+        geom_simplified_medium = NULL
+    WHERE id = $1
+      AND is_custom_boundary IS NOT TRUE
+  `, [regionId]);
 }

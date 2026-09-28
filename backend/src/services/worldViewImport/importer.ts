@@ -6,8 +6,8 @@
  */
 
 import type { PoolClient } from 'pg';
-import { pool } from '../../db/index.js';
-import { ensureChildRegion } from '../../db/regionWriter.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
+import { beginRegionTransaction, ensureChildRegion, type RegionTx } from '../../db/regionWriter.js';
 import type { ImportTreeNode, ImportProgress } from './types.js';
 
 /** Count total nodes in a tree (for progress tracking) */
@@ -65,7 +65,7 @@ function hierarchyWarningsFor(node: ImportTreeNode, hasSourcePages: boolean): st
  * duplicate (e.g. it is the occurrence that brings children) would be lost.
  */
 async function mergeHierarchyWarnings(
-  client: PoolClient,
+  client: Pick<PoolClient, 'query'>,
   regionId: number,
   node: ImportTreeNode,
   hasSourcePages: boolean,
@@ -118,8 +118,9 @@ export async function importTree(
   console.log(`[WV Importer] Tree stats: ${progress.totalRegions} total regions, ${leafCount} leaves, ${tree.children.length} root children`);
 
   const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    await client.query('BEGIN');
+    const tx = await beginRegionTransaction(client);
 
     // Create the WorldView
     const description = options.description ??
@@ -151,7 +152,7 @@ export async function importTree(
         progress.statusMessage = 'Import cancelled';
         return worldViewId;
       }
-      await insertRegion(client, child, worldViewId, null, importRunId, progress, hasSourcePages);
+      await insertRegion(tx, child, worldViewId, null, importRunId, progress, hasSourcePages);
     }
 
     // Update import run status (matching will be performed later; do not mark as completed yet)
@@ -166,10 +167,10 @@ export async function importTree(
     return worldViewId;
   } catch (err) {
     console.error(`[WV Importer] Transaction rolled back:`, err);
-    await client.query('ROLLBACK');
+    unusable = await rollbackQuietly(client);
     throw err;
   } finally {
-    client.release();
+    client.release(unusable);
   }
 }
 
@@ -190,7 +191,7 @@ export async function importTree(
  * applies at all for this import.
  */
 export async function insertRegion(
-  client: PoolClient,
+  client: RegionTx,
   node: ImportTreeNode,
   worldViewId: number,
   parentRegionId: number | null,

@@ -5,12 +5,12 @@
 import type { z } from 'zod/v4';
 import { NO_CONTENT } from '../../api/route.js';
 import type { RegenerateDisplayGeometriesResult, RegionReset } from '../../api/responses/geometry.js';
-import { badRequest, createError } from '../../middleware/errorHandler.js';
+import { badRequest } from '../../middleware/errorHandler.js';
 import type {
   regenerateDisplayQuerySchema, regionIdParamSchema, updateGeometryBodySchema, worldViewIdParamSchema,
 } from '../../types/index.js';
 import { pool } from '../../db/index.js';
-import { saveDrawnOutline } from '../../db/regionWriter.js';
+import { inRegionTransaction, saveDrawnOutline } from '../../db/regionWriter.js';
 
 /**
  * The regions in scope, deepest first.
@@ -160,11 +160,11 @@ export async function updateRegionGeometry(
 ): Promise<typeof NO_CONTENT> {
   if (!geometry) throw badRequest('Geometry is required');
 
-  await saveDrawnOutline(pool, regionId, {
+  await inRegionTransaction((tx) => saveDrawnOutline(tx, regionId, {
     geometryJson: JSON.stringify(geometry),
     isCustomBoundary,
     hullJson: hullGeometry ? JSON.stringify(hullGeometry) : undefined,
-  });
+  }));
 
   return NO_CONTENT;
 }
@@ -179,57 +179,49 @@ export async function resetRegionToGADM(
 ): Promise<RegionReset> {
   console.log(`[ResetToGADM] Resetting region ${regionId} to GADM boundaries`);
 
-  // First, clear the custom boundary flag and hull columns
-  await pool.query(`
-    UPDATE regions
-    SET is_custom_boundary = false,
-        hull_geom = NULL,
-        hull_geom_3857 = NULL,
-        hull_params = NULL
-    WHERE id = $1
-  `, [regionId]);
+  // One transaction: the drawing is dropped only together with the outline
+  // that replaces it (#689). The first UPDATE holds the region's row lock to
+  // the commit, so a boundary drawn by hand while the union runs waits for the
+  // reset and then lands over it, rather than being written over by it.
+  const result = await inRegionTransaction(async (tx) => {
+    await tx.query(`
+      UPDATE regions
+      SET is_custom_boundary = false,
+          hull_geom = NULL,
+          hull_geom_3857 = NULL,
+          hull_params = NULL
+      WHERE id = $1
+    `, [regionId]);
 
-  // Now compute the geometry from member divisions and update all related columns
-  const result = await pool.query<{ points: number }>(`
-    WITH direct_member_geoms AS (
-      SELECT ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)) as geom
-      FROM region_members rm
-      JOIN administrative_divisions ad ON rm.division_id = ad.id
-      WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
-    ),
-    child_group_geoms AS (
-      SELECT ST_MakeValid(geom) as geom
-      FROM regions
-      WHERE parent_region_id = $1 AND geom IS NOT NULL
-    ),
-    all_geoms AS (
-      SELECT geom FROM direct_member_geoms WHERE geom IS NOT NULL
-      UNION ALL
-      SELECT geom FROM child_group_geoms WHERE geom IS NOT NULL
-    ),
-    merged AS (
-      SELECT ST_Multi(ST_Union(geom)) as merged_geom
-      FROM all_geoms
-    )
-    UPDATE regions r
-    SET geom = validate_multipolygon(m.merged_geom)
-    FROM merged m
-    WHERE r.id = $1 AND m.merged_geom IS NOT NULL
-      AND r.is_custom_boundary IS NOT TRUE
-    RETURNING ST_NPoints(r.geom) as points
-  `, [regionId]);
-
-  // The flag again at the write: a boundary drawn by hand while the union ran
-  // is kept, and said to be, rather than written over (#439).
-  if (result.rows.length === 0) {
-    const drawn = await pool.query<{ drawn: boolean }>(
-      'SELECT is_custom_boundary IS TRUE AS drawn FROM regions WHERE id = $1',
-      [regionId],
-    );
-    if (drawn.rows[0]?.drawn) {
-      throw createError('The boundary was drawn by hand while it was being reset; the drawing is kept', 409);
-    }
-  }
+    // Now compute the geometry from member divisions and update all related columns
+    return tx.query<{ points: number }>(`
+      WITH direct_member_geoms AS (
+        SELECT ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)) as geom
+        FROM region_members rm
+        JOIN administrative_divisions ad ON rm.division_id = ad.id
+        WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
+      ),
+      child_group_geoms AS (
+        SELECT ST_MakeValid(geom) as geom
+        FROM regions
+        WHERE parent_region_id = $1 AND geom IS NOT NULL
+      ),
+      all_geoms AS (
+        SELECT geom FROM direct_member_geoms WHERE geom IS NOT NULL
+        UNION ALL
+        SELECT geom FROM child_group_geoms WHERE geom IS NOT NULL
+      ),
+      merged AS (
+        SELECT ST_Multi(ST_Union(geom)) as merged_geom
+        FROM all_geoms
+      )
+      UPDATE regions r
+      SET geom = validate_multipolygon(m.merged_geom)
+      FROM merged m
+      WHERE r.id = $1 AND m.merged_geom IS NOT NULL
+      RETURNING ST_NPoints(r.geom) as points
+    `, [regionId]);
+  });
 
   const points = result.rows[0]?.points || 0;
 
