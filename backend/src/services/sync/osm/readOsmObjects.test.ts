@@ -5,7 +5,8 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import {
-  OSM_BATCH, OsmEmptyAnswerError, OsmEmptyEnumerationError, readOsmDigs, readOsmObjects, type OsmDoor,
+  OSM_BATCH, OsmDoorFailedError, OsmEmptyAnswerError, OsmEmptyEnumerationError, readOsmDigs, readOsmObjects,
+  type OsmDoor,
 } from './readOsmObjects.js';
 import type { DigTags, KeepWkt, OsmObject } from './types.js';
 import type { SparqlFn } from '../wikidataQueries.js';
@@ -204,5 +205,25 @@ describe('readOsmDigs', () => {
       'Asking OpenStreetMap for every dig and ruin it maps (question 2/2)...',
     ]);
     expect([...digs.byItem.keys()].sort()).toEqual(['Q184427', 'Q272153']);
+  });
+});
+
+describe('a question the door could not get answered', () => {
+  const TAGS: DigTags = { historic: ['archaeological_site'], keys: ['ruins'] };
+  const lost = () => vi.fn<SparqlFn>(async () => { throw new Error('OSM 503, and the wait is spent'); });
+
+  it('ends the per-item read naming the door, with what it said kept as the cause', async () => {
+    const read = readOsmObjects(door(lost()), ['Q22647'], KEEP, runner().run);
+    await expect(read).rejects.toBeInstanceOf(OsmDoorFailedError);
+    await expect(read).rejects.toMatchObject({
+      door: 'qlever',
+      message: 'OpenStreetMap could not be read through qlever: OSM 503, and the wait is spent',
+    });
+  });
+
+  it('ends the enumeration the same way, never as an empty map', async () => {
+    const read = readOsmDigs(door(lost()), TAGS, runner().run);
+    await expect(read).rejects.toBeInstanceOf(OsmDoorFailedError);
+    await expect(read).rejects.not.toBeInstanceOf(OsmEmptyAnswerError);
   });
 });
