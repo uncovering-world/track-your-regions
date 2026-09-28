@@ -6,8 +6,9 @@
  * See ADR-0009 for the domain-split rationale.
  */
 
+import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
-import { insertRegion } from '../../db/regionWriter.js';
+import { inRegionTransaction, insertRegion } from '../../db/regionWriter.js';
 import type { StreamExchange } from '../../api/route.js';
 import { syncImportMatchStatus } from '../worldView/helpers.js';
 import {
@@ -603,22 +604,33 @@ export async function approveCoverageSuggestion(
       regionName = (divResult.rows[0]?.name as string) ?? `Region ${divisionId}`;
     }
 
-    targetRegionId = (await insertRegion(pool, { worldViewId, name: regionName, parentRegionId: regionId, color: null })).id;
-
-    // Create import state for the new region
-    await pool.query(
-      `INSERT INTO region_import_state (region_id, match_status) VALUES ($1, 'manual_matched')`,
-      [targetRegionId],
-    );
-
-    await pool.query(
-      'INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)',
-      [targetRegionId, divisionId],
-    );
+    // The region, its import state, its member and the gap's dismissal land
+    // together: a region created with the gap still offered would be offered
+    // to create again.
+    const name = regionName;
+    targetRegionId = await inRegionTransaction(async (tx) => {
+      const created = (await insertRegion(tx, { worldViewId, name, parentRegionId: regionId, color: null })).id;
+      await tx.query(
+        `INSERT INTO region_import_state (region_id, match_status) VALUES ($1, 'manual_matched')`,
+        [created],
+      );
+      await tx.query(
+        'INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)',
+        [created, divisionId],
+      );
+      await dismissGap(tx, worldViewId, divisionId);
+      return created;
+    });
+    return { approved: true, regionId: targetRegionId };
   }
 
-  // Auto-dismiss the gap
-  await pool.query(
+  await dismissGap(pool, worldViewId, divisionId);
+  return { approved: true, regionId: targetRegionId };
+}
+
+/** Take a GADM division off the world view's coverage gaps, once. */
+async function dismissGap(db: Pick<PoolClient, 'query'>, worldViewId: number, divisionId: number): Promise<void> {
+  await db.query(
     `UPDATE world_views
      SET dismissed_coverage_ids = array_append(
        COALESCE(dismissed_coverage_ids, ARRAY[]::integer[]),
@@ -628,6 +640,4 @@ export async function approveCoverageSuggestion(
        AND NOT ($2 = ANY(COALESCE(dismissed_coverage_ids, ARRAY[]::integer[])))`,
     [worldViewId, divisionId],
   );
-
-  return { approved: true, regionId: targetRegionId };
 }

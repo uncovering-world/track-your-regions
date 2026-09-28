@@ -8,7 +8,7 @@ import type { z } from 'zod/v4';
 import type { DivisionsAdded, DivisionsRemoved, MemberMoved, CreatedSubregion } from '../../api/responses/regions.js';
 import { pool } from '../../db/index.js';
 import type { RegionMembersRow } from '../../db/schema.generated.js';
-import { ensureChildRegion } from '../../db/regionWriter.js';
+import { ensureChildRegion, inRegionTransaction, type RegionTx } from '../../db/regionWriter.js';
 import { ensureRegionMember, syncImportMatchStatus } from './helpers.js';
 import { badRequest, notFound } from '../../middleware/errorHandler.js';
 import type {
@@ -18,6 +18,7 @@ import type {
 type RegionParams = z.output<typeof regionIdParamSchema>;
 
 interface AddDivisionsCtx {
+  tx: RegionTx;
   worldViewId: number;
   rootRegionId: number;
   colorToUse: string;
@@ -36,12 +37,13 @@ interface AddDivisionsCtx {
  * with `createdEntry` non-null only on a real create.
  */
 async function ensureSubregion(
+  tx: RegionTx,
   worldViewId: number,
   parentRegionId: number,
   name: string,
   color: string,
 ): Promise<{ id: number; createdEntry: { id: number; name: string } | null }> {
-  const row = await ensureChildRegion(pool, { worldViewId, parentRegionId, name, color });
+  const row = await ensureChildRegion(tx, { worldViewId, parentRegionId, name, color });
   return {
     id: row.id,
     createdEntry: row.inserted ? { id: row.id, name: row.name } : null,
@@ -53,7 +55,7 @@ async function processGadmChildren(
   parentDivisionId: number,
   parentSubregionId: number,
 ): Promise<void> {
-  const childrenResult = await pool.query(
+  const childrenResult = await ctx.tx.query(
     'SELECT id, name FROM administrative_divisions WHERE parent_id = $1 ORDER BY name',
     [parentDivisionId],
   );
@@ -65,6 +67,7 @@ async function processGadmChildren(
 
   for (const child of childrenToProcess) {
     const { id: childSubregionId, createdEntry } = await ensureSubregion(
+      ctx.tx,
       ctx.worldViewId,
       parentSubregionId,
       child.name,
@@ -73,7 +76,7 @@ async function processGadmChildren(
     if (createdEntry) {
       ctx.createdRegions.push({ ...createdEntry, divisionId: child.id });
     }
-    await ensureRegionMember(childSubregionId, child.id);
+    await ensureRegionMember(childSubregionId, child.id, ctx.tx);
     ctx.affectedRegionIds.add(childSubregionId);
   }
 }
@@ -82,7 +85,7 @@ async function addDivisionAsSubregion(
   ctx: AddDivisionsCtx,
   divisionId: number,
 ): Promise<void> {
-  const divisionInfo = await pool.query(
+  const divisionInfo = await ctx.tx.query(
     'SELECT name, has_children FROM administrative_divisions WHERE id = $1',
     [divisionId],
   );
@@ -96,6 +99,7 @@ async function addDivisionAsSubregion(
     : divisionName;
 
   const { id: subregionId, createdEntry } = await ensureSubregion(
+    ctx.tx,
     ctx.worldViewId,
     ctx.rootRegionId,
     subregionName,
@@ -108,7 +112,7 @@ async function addDivisionAsSubregion(
   // When childIds is provided (user selected specific children via dialog),
   // we should NOT add the parent division — only the selected children.
   if (!ctx.hasSelectedChildren) {
-    await ensureRegionMember(subregionId, divisionId);
+    await ensureRegionMember(subregionId, divisionId, ctx.tx);
     ctx.affectedRegionIds.add(subregionId);
   }
 
@@ -116,7 +120,7 @@ async function addDivisionAsSubregion(
     await processGadmChildren(ctx, divisionId, subregionId);
   } else if (ctx.hasSelectedChildren && ctx.childIds) {
     for (const childId of ctx.childIds) {
-      await ensureRegionMember(subregionId, childId);
+      await ensureRegionMember(subregionId, childId, ctx.tx);
     }
     ctx.affectedRegionIds.add(subregionId);
   }
@@ -129,13 +133,13 @@ async function addDivisionDirectly(
   ctx.affectedRegionIds.add(ctx.rootRegionId);
   if (ctx.hasSelectedChildren && ctx.childIds) {
     for (const childId of ctx.childIds) {
-      await ensureRegionMember(ctx.rootRegionId, childId);
+      await ensureRegionMember(ctx.rootRegionId, childId, ctx.tx);
     }
     return;
   }
 
   if (ctx.customGeometry) {
-    await pool.query(
+    await ctx.tx.query(
       `INSERT INTO region_members (region_id, division_id, custom_geom, custom_name)
        VALUES ($1, $2, validate_multipolygon(ST_GeomFromGeoJSON($3)), $4)`,
       [ctx.rootRegionId, divisionId, JSON.stringify(ctx.customGeometry), ctx.customName || null],
@@ -143,7 +147,7 @@ async function addDivisionDirectly(
     return;
   }
 
-  await ensureRegionMember(ctx.rootRegionId, divisionId);
+  await ensureRegionMember(ctx.rootRegionId, divisionId, ctx.tx);
 }
 
 /**
@@ -173,42 +177,48 @@ export async function addDivisionsToRegion(
     throw badRequest('divisionIds must be a non-empty array');
   }
 
-  const regionInfo = await pool.query(
-    'SELECT world_view_id, color FROM regions WHERE id = $1',
-    [regionId],
-  );
-  if (regionInfo.rows.length === 0) throw notFound('Region not found');
+  // One transaction (#689): the subregions and their members land together,
+  // or none of them does.
+  const createdRegions = await inRegionTransaction(async (tx) => {
+    const regionInfo = await tx.query(
+      'SELECT world_view_id, color FROM regions WHERE id = $1',
+      [regionId],
+    );
+    if (regionInfo.rows.length === 0) throw notFound('Region not found');
 
-  const ctx: AddDivisionsCtx = {
-    worldViewId: regionInfo.rows[0].world_view_id,
-    rootRegionId: regionId,
-    colorToUse: inheritColor ? (regionInfo.rows[0].color || '#3388ff') : '#3388ff',
-    hasSelectedChildren: childIds !== undefined && childIds.length > 0,
-    childIds,
-    includeChildren,
-    customName,
-    customGeometry,
-    createdRegions: [],
-    affectedRegionIds: new Set<number>(),
-  };
+    const ctx: AddDivisionsCtx = {
+      tx,
+      worldViewId: regionInfo.rows[0].world_view_id,
+      rootRegionId: regionId,
+      colorToUse: inheritColor ? (regionInfo.rows[0].color || '#3388ff') : '#3388ff',
+      hasSelectedChildren: childIds !== undefined && childIds.length > 0,
+      childIds,
+      includeChildren,
+      customName,
+      customGeometry,
+      createdRegions: [],
+      affectedRegionIds: new Set<number>(),
+    };
 
-  for (const divisionId of divisionIds) {
-    if (createAsSubregions) {
-      await addDivisionAsSubregion(ctx, divisionId);
-    } else {
-      await addDivisionDirectly(ctx, divisionId);
+    for (const divisionId of divisionIds) {
+      if (createAsSubregions) {
+        await addDivisionAsSubregion(ctx, divisionId);
+      } else {
+        await addDivisionDirectly(ctx, divisionId);
+      }
     }
-  }
 
-  // The regions whose members changed are cleared by the member trigger, in
-  // the statements above (ADR-0068).
-  for (const rid of ctx.affectedRegionIds) {
-    await syncImportMatchStatus(rid);
-  }
+    // The regions whose members changed are cleared by the member trigger, in
+    // the statements above (ADR-0068).
+    for (const rid of ctx.affectedRegionIds) {
+      await syncImportMatchStatus(rid, tx);
+    }
+    return ctx.createdRegions;
+  });
 
   return {
     added: divisionIds.length,
-    createdRegions: createAsSubregions ? ctx.createdRegions : undefined,
+    createdRegions: createAsSubregions ? createdRegions : undefined,
   };
 }
 

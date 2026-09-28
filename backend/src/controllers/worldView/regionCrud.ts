@@ -9,7 +9,10 @@ import { pool } from '../../db/index.js';
 import type { RegionsRow } from '../../db/schema.generated.js';
 import { visitedRegionRefusal, visitsUnder } from '../../db/regionVisits.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
-import { deleteDescendants, deleteRegions, insertDrawnRegion, insertRegion, invalidateRegionGeometry, moveChildRegions, updateRegionFields } from '../../db/regionWriter.js';
+import {
+  deleteRegions, inRegionTransaction, insertDrawnRegion, insertRegion, invalidateRegionGeometry,
+  lockRegion, lockSubtree, moveChildRegions, type RegionTx, updateRegionFields,
+} from '../../db/regionWriter.js';
 import { moveMembersToRegion } from './helpers.js';
 import { REGION_SELECT_SQL, regionOf, regionSearchResultOf, type RegionRow, type RegionSearchRow } from './regionAnswerRows.js';
 import type {
@@ -256,7 +259,7 @@ export async function createRegion(
     console.log(`[CreateRegion] Saving custom geometry with ${geometryJson.length} chars, first 200: ${geometryJson.substring(0, 200)}`);
 
     try {
-      const inserted = await insertDrawnRegion(pool, { ...region, geometryJson });
+      const inserted = await inRegionTransaction((tx) => insertDrawnRegion(tx, { ...region, geometryJson }));
       createdId = inserted.id;
 
       console.log(`[CreateRegion] Result: id=${createdId}, hasGeom=${inserted.hasGeom}, geomPoints=${inserted.geomPoints}`);
@@ -265,7 +268,7 @@ export async function createRegion(
       throw err;
     }
   } else {
-    createdId = (await insertRegion(pool, region)).id;
+    createdId = (await inRegionTransaction((tx) => insertRegion(tx, region))).id;
   }
 
   return readRegion(createdId);
@@ -273,44 +276,35 @@ export async function createRegion(
 
 type UpdateRegionBody = z.output<typeof updateRegionBodySchema>;
 
+/**
+ * Move the parent's memberships of the division the region is named after
+ * (a region created with "Also create as subregion") to the new parent, in two
+ * set-based statements on the caller's transaction.
+ */
 async function moveDivisionMembershipsForParentChange(
+  tx: RegionTx,
   oldParentId: number | null,
   newParentId: number | null,
   regionName: string,
 ): Promise<void> {
   if (oldParentId === null) return;
 
-  // Move all matching memberships in two set-based queries inside one
-  // transaction. Pre-refactor this was an N+1 DELETE/INSERT loop on the
-  // shared pool, where a mid-loop failure (or a connection-level error
-  // between two pool.query() calls) could leave region_members partially
-  // migrated.
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const moved = await client.query(
-      `DELETE FROM region_members rm
-       USING administrative_divisions ad
-       WHERE rm.division_id = ad.id
-         AND rm.region_id = $1
-         AND ad.name = $2
-       RETURNING rm.division_id`,
-      [oldParentId, regionName],
+  const moved = await tx.query(
+    `DELETE FROM region_members rm
+     USING administrative_divisions ad
+     WHERE rm.division_id = ad.id
+       AND rm.region_id = $1
+       AND ad.name = $2
+     RETURNING rm.division_id`,
+    [oldParentId, regionName],
+  );
+  if (newParentId !== null && moved.rows.length > 0) {
+    await tx.query(
+      `INSERT INTO region_members (region_id, division_id)
+       SELECT $1, did FROM unnest($2::int[]) AS t(did)
+       ON CONFLICT (region_id, division_id) WHERE custom_geom IS NULL DO NOTHING`,
+      [newParentId, moved.rows.map(r => r.division_id)],
     );
-    if (newParentId !== null && moved.rows.length > 0) {
-      await client.query(
-        `INSERT INTO region_members (region_id, division_id)
-         SELECT $1, did FROM unnest($2::int[]) AS t(did)
-         ON CONFLICT (region_id, division_id) WHERE custom_geom IS NULL DO NOTHING`,
-        [newParentId, moved.rows.map(r => r.division_id)],
-      );
-    }
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
   }
 }
 
@@ -320,44 +314,40 @@ async function moveDivisionMembershipsForParentChange(
 export async function updateRegion(
   { params: { regionId }, body }: { params: RegionParams; body: UpdateRegionBody },
 ): Promise<Region> {
-  const newParentId = body.parentRegionId;
+  const { name, description, parentRegionId: newParentId, color, usesHull } = body;
 
-  const currentRegion = await pool.query<Pick<RegionsRow, 'name' | 'parent_region_id'>>(`
-    SELECT name, parent_region_id
-    FROM regions WHERE id = $1
-  `, [regionId]);
-  if (currentRegion.rows.length === 0) {
-    throw notFound(`Region ${regionId} not found`);
-  }
-  const oldParentId = currentRegion.rows[0].parent_region_id;
-  const regionName = currentRegion.rows[0].name;
+  // One transaction, the region locked first (#689): what the reparent
+  // compares against is what it will write over, and the move lands with the
+  // invalidations below or not at all.
+  await inRegionTransaction(async (tx) => {
+    const current = await lockRegion<Pick<RegionsRow, 'name' | 'parent_region_id'>>(tx, regionId, 'name, parent_region_id');
+    if (!current) throw notFound(`Region ${regionId} not found`);
+    const oldParentId = current.parent_region_id;
 
-  const { name, description, parentRegionId, color, usesHull } = body;
-  if (!await updateRegionFields(pool, regionId, { name, description, parentRegionId, color, usesHull })) {
-    throw notFound(`Region ${regionId} not found`);
-  }
+    await updateRegionFields(tx, regionId, { name, description, parentRegionId: newParentId, color, usesHull });
 
-  // Parent change: move the corresponding GADM division membership too.
-  // This handles regions created via "Also create as subregion" checkbox.
-  //
-  // All three rows are named explicitly, because a structural move is the one
-  // thing the geometry trigger cannot see: no geometry is written, and both
-  // parents' unions change all the same -- one loses a child and the members
-  // that moved with it, the other gains them. The moved region's own
-  // invalidation reaches the new parent through the trigger *when it writes a
-  // row*, which it does not for a hand-drawn region (nothing derived from
-  // members may wipe a drawn shape, #283) -- and a parent's union does include
-  // a hand-drawn child, since it collects every child with geometry and filters
-  // none out. Leaving the third call to that path would put a continent beyond
-  // the reach of every later run whenever a curator moved a drawn region into
-  // it. Same reason deleteRegion names its parent: a DELETE fires no trigger on
-  // geom either.
-  if (newParentId !== undefined && oldParentId !== newParentId) {
-    await moveDivisionMembershipsForParentChange(oldParentId, newParentId, regionName);
-    await invalidateRegionGeometry(regionId);
-    if (oldParentId) await invalidateRegionGeometry(oldParentId);
-    if (newParentId) await invalidateRegionGeometry(newParentId);
-  }
+    // Parent change: move the corresponding GADM division membership too.
+    // This handles regions created via "Also create as subregion" checkbox.
+    //
+    // All three rows are named explicitly, because a structural move is the one
+    // thing the geometry trigger cannot see: no geometry is written, and both
+    // parents' unions change all the same -- one loses a child and the members
+    // that moved with it, the other gains them. The moved region's own
+    // invalidation reaches the new parent through the trigger *when it writes a
+    // row*, which it does not for a hand-drawn region (nothing derived from
+    // members may wipe a drawn shape, #283) -- and a parent's union does include
+    // a hand-drawn child, since it collects every child with geometry and filters
+    // none out. Leaving the third call to that path would put a continent beyond
+    // the reach of every later run whenever a curator moved a drawn region into
+    // it. Same reason deleteRegion names its parent: a DELETE fires no trigger on
+    // geom either.
+    if (newParentId !== undefined && oldParentId !== newParentId) {
+      await moveDivisionMembershipsForParentChange(tx, oldParentId, newParentId, current.name);
+      await invalidateRegionGeometry(tx, regionId);
+      if (oldParentId) await invalidateRegionGeometry(tx, oldParentId);
+      if (newParentId) await invalidateRegionGeometry(tx, newParentId);
+    }
+  });
 
   return readRegion(regionId);
 }
@@ -372,42 +362,40 @@ export async function deleteRegion(
 ): Promise<typeof NO_CONTENT> {
   const moveChildrenToParent = query.moveChildrenToParent === 'true';
 
-  // Get region info before deleting
-  const regionResult = await pool.query(
-    'SELECT parent_region_id FROM regions WHERE id = $1',
-    [regionId]
-  );
+  // One transaction, the region locked first (#689): the visit count, the
+  // moves and the delete stand or fall together, so a refusal or a failure
+  // at the delete leaves no child or member moved.
+  await inRegionTransaction(async (tx) => {
+    const region = await lockRegion<Pick<RegionsRow, 'parent_region_id'>>(tx, regionId, 'parent_region_id');
+    if (!region) throw notFound('Region not found');
+    const parentRegionId = region.parent_region_id;
 
-  if (regionResult.rows.length === 0) throw notFound('Region not found');
+    const visits = await visitsUnder(regionId, !moveChildrenToParent, tx);
+    if (visits > 0) throw createError(visitedRegionRefusal(visits), 409);
 
-  const parentRegionId = regionResult.rows[0].parent_region_id;
+    if (moveChildrenToParent) {
+      // Move all subregions to this region's parent (or to root if no parent)
+      await moveChildRegions(tx, regionId, parentRegionId);
 
-  // Before the first write: the moves below are not in one transaction with
-  // the delete, so a refusal at the delete would leave them standing (#764).
-  const visits = await visitsUnder(regionId, !moveChildrenToParent);
-  if (visits > 0) throw createError(visitedRegionRefusal(visits), 409);
-
-  if (moveChildrenToParent) {
-    // Move all subregions to this region's parent (or to root if no parent)
-    await moveChildRegions(pool, regionId, parentRegionId);
-
-    // The region's members move to the parent (if there is one) row by row,
-    // a cut part with its geometry (#384).
-    if (parentRegionId) {
-      await moveMembersToRegion(pool, regionId, parentRegionId);
+      // The region's members move to the parent (if there is one) row by row,
+      // a cut part with its geometry (#384).
+      if (parentRegionId) {
+        await moveMembersToRegion(tx, regionId, parentRegionId);
+      }
+    } else {
+      // Delete every descendant (ON DELETE SET NULL would only orphan them),
+      // locked first so it is the branch that goes
+      const branch = (await lockSubtree(tx, [regionId], false)).map((row) => row.id);
+      if (branch.length > 0) await deleteRegions(tx, branch);
     }
-  } else {
-    // Delete all descendants first (since ON DELETE SET NULL won't cascade)
-    // This recursively deletes all subregions, grandchildren, etc.
-    await deleteDescendants(pool, [regionId]);
-  }
 
-  await deleteRegions(pool, [regionId]);
+    await deleteRegions(tx, [regionId]);
 
-  // Invalidate parent's geometry (and its ancestors)
-  if (parentRegionId) {
-    await invalidateRegionGeometry(parentRegionId);
-  }
+    // Invalidate parent's geometry (and its ancestors)
+    if (parentRegionId) {
+      await invalidateRegionGeometry(tx, parentRegionId);
+    }
+  });
 
   return NO_CONTENT;
 }

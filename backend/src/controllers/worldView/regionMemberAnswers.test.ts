@@ -15,8 +15,13 @@ const { poolQuery, invalidateRegionGeometry } = vi.hoisted(() => ({
   invalidateRegionGeometry: vi.fn(),
 }));
 
+// A transaction's client sends through the same mock as the pool.
 vi.mock('../../db/index.js', () => ({
-  pool: { query: (...args: unknown[]) => poolQuery(...args) },
+  pool: {
+    query: (...args: unknown[]) => poolQuery(...args),
+    connect: async () => ({ query: (...args: unknown[]) => poolQuery(...args), release: () => undefined }),
+  },
+  rollbackQuietly: async () => undefined,
 }));
 vi.mock('./helpers.js', () => ({
   ensureRegionMember: vi.fn(),
@@ -135,7 +140,7 @@ describe('addChildDivisionsAsSubregions', () => {
     // it, and the new Limassol subregion has no geometry to cascade from.
     mockCyprus(0);
     await call(addChildDivisionsAsSubregionsRoute, { ...request, body: { ...request.body, removeOriginal: false } });
-    expect(invalidateRegionGeometry).toHaveBeenCalledWith(5377);
+    expect(invalidateRegionGeometry).toHaveBeenCalledWith(expect.anything(), 5377);
   });
 
   it('names nothing when the children join Cyprus as flat members, which the member trigger clears', async () => {

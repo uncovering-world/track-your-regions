@@ -5,7 +5,7 @@
  * sync instances across duplicate regions, handle-as-grouping (country-level matching).
  */
 
-import { pool } from '../../db/index.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
 import { isVisitedRegionDelete, visitedRegionRefusal, visitsOn } from '../../db/regionVisits.js';
 import type { InstancesSynced } from '../../api/responses/worldViewImport.js';
 import {
@@ -23,7 +23,7 @@ import {
   undoEntries,
   computeGeoSimilarityIfNeeded,
 } from './wvImportUtils.js';
-import { deleteDescendants, invalidateRegionGeometry } from '../../db/regionWriter.js';
+import { beginRegionTransaction, deleteRegions, invalidateRegionGeometry, lockSubtree } from '../../db/regionWriter.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import {
   ChildrenCollapsed, ChildrenGrouped, FlattenPreviewResult, SmartFlattenResult,
@@ -277,8 +277,18 @@ async function flattenPreviewOf(regionId: number, descendantIds: number[]): Prom
  */
 async function absorbDescendants(worldViewId: number, regionId: number, descendantIds: number[]): Promise<FlattenDone> {
   const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    await client.query('BEGIN');
+    const tx = await beginRegionTransaction(client);
+
+    // The branch was read before auto-matching, outside this transaction.
+    // Locked now, it is what gets absorbed; one that changed in between is
+    // refused rather than half-absorbed (#689).
+    const branch = (await lockSubtree(tx, [regionId], false)).map((row) => row.id);
+    const read = new Set(descendantIds);
+    if (branch.length !== read.size || branch.some((id) => !read.has(id))) {
+      throw createError('The region\'s subregions changed while it was being flattened; flatten it again', 409);
+    }
 
     // Snapshot parent import state + members
     const parentImportStateResult = await client.query(
@@ -334,7 +344,7 @@ async function absorbDescendants(worldViewId: number, regionId: number, descenda
     );
 
     // Delete every descendant
-    await deleteDescendants(client, [regionId]);
+    await deleteRegions(tx, descendantIds);
 
     // Update parent status
     await client.query(
@@ -352,7 +362,7 @@ async function absorbDescendants(worldViewId: number, regionId: number, descenda
     // named here as well because deleting the branch is structural, and
     // inside the transaction, so a failure rolls the flatten back rather than
     // answering an error for one that committed (#1026).
-    await invalidateRegionGeometry(regionId, client);
+    await invalidateRegionGeometry(tx, regionId);
 
     await client.query('COMMIT');
 
@@ -378,10 +388,10 @@ async function absorbDescendants(worldViewId: number, regionId: number, descenda
       undoAvailable: true,
     };
   } catch (err) {
-    await client.query('ROLLBACK');
+    unusable = await rollbackQuietly(client);
     throw err;
   } finally {
-    client.release();
+    client.release(unusable);
   }
 }
 

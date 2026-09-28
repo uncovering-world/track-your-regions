@@ -6,10 +6,12 @@ import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
 /** The declared routes these specs answer through (ADR-0071). */
 const resetRegionToGADMRoute = routeAt(worldViewRoutes, '/regions/:regionId/geometry/reset', 'post');
 
-const poolQuery = vi.fn();
+const clientQuery = vi.fn();
+const release = vi.fn();
 
 vi.mock('../../db/index.js', () => ({
-  pool: { query: (...args: unknown[]) => poolQuery(...args) },
+  pool: { connect: async () => ({ query: clientQuery, release }) },
+  rollbackQuietly: async () => undefined,
 }));
 
 
@@ -25,35 +27,49 @@ function answer() {
 
 const req = { params: { regionId: '42' } } as unknown as Request;
 
-describe('resetRegionToGADM keeps a boundary drawn while it ran (#439)', () => {
+/** The statements the reset sent, in order, each as its first line of SQL. */
+function statements(): string[] {
+  return clientQuery.mock.calls.map(([sql]) => String(sql).trim().split('\n')[0].trim());
+}
+
+/**
+ * The drawing is dropped only together with the outline that replaces it
+ * (#689): clearing the flag and writing the union are one transaction, whose
+ * first UPDATE holds the region's row lock until the commit.
+ */
+describe('resetRegionToGADM', () => {
   beforeEach(() => {
-    poolQuery.mockReset();
+    clientQuery.mockReset();
+    release.mockReset();
   });
 
-  it('answers 409 when the region was drawn by hand between clearing the flag and the write', async () => {
-    poolQuery.mockImplementation(async (sql: string) => {
-      const s = String(sql);
-      if (s.includes('SET geom')) return { rows: [], rowCount: 0 };
-      if (s.includes('AS drawn')) return { rows: [{ drawn: true }] };
-      return { rows: [], rowCount: 1 };
-    });
+  it('clears the drawing and writes the union in one transaction', async () => {
+    clientQuery.mockImplementation(async (sql: string) =>
+      (String(sql).includes('SET geom') ? { rows: [{ points: 120 }] } : { rows: [] }));
     const res = answer();
 
     await answerRoute(resetRegionToGADMRoute, req, res as unknown as Response);
 
-    expect(res.statusCode).toBe(409);
-    expect(res.body).toEqual({ error: 'The boundary was drawn by hand while it was being reset; the drawing is kept' });
-    const write = poolQuery.mock.calls.map(([sql]) => String(sql)).find((s) => s.includes('SET geom'));
-    expect(write).toContain('is_custom_boundary IS NOT TRUE');
+    expect(res.body).toMatchObject({ reset: true, points: 120 });
+    expect(statements()).toEqual(['BEGIN', 'UPDATE regions', 'WITH direct_member_geoms AS (', 'COMMIT']);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the drawing when the union fails', async () => {
+    clientQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('SET geom')) throw new Error('canceling statement due to statement timeout');
+      return { rows: [] };
+    });
+    const res = answer();
+
+    await answerRoute(resetRegionToGADMRoute, req, res as unknown as Response).catch(() => undefined);
+
+    expect(statements()).not.toContain('COMMIT');
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
   it('still answers the reset, with no points, for a region with nothing to union', async () => {
-    poolQuery.mockImplementation(async (sql: string) => {
-      const s = String(sql);
-      if (s.includes('SET geom')) return { rows: [], rowCount: 0 };
-      if (s.includes('AS drawn')) return { rows: [{ drawn: false }] };
-      return { rows: [], rowCount: 1 };
-    });
+    clientQuery.mockResolvedValue({ rows: [] });
     const res = answer();
 
     await answerRoute(resetRegionToGADMRoute, req, res as unknown as Response);

@@ -6,8 +6,8 @@
  */
 
 import type { z } from 'zod/v4';
-import { pool } from '../../db/index.js';
-import { invalidateRegionGeometry, setRegionName, setRegionParent } from '../../db/regionWriter.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
+import { beginRegionTransaction, invalidateRegionGeometry, setRegionName, setRegionParent } from '../../db/regionWriter.js';
 import type { RegionRenamed, RegionReparented } from '../../api/responses/wvImportTreeOps.js';
 import { badRequest, notFound } from '../../middleware/errorHandler.js';
 import type {
@@ -38,9 +38,10 @@ export async function renameRegion(
   // Wrap both writes in a single transaction so the rename and the optional
   // import-state enrichment commit atomically.
   const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    await client.query('BEGIN');
-    await setRegionName(client, regionId, name.trim());
+    const tx = await beginRegionTransaction(client);
+    await setRegionName(tx, regionId, name.trim());
 
     if (sourceUrl !== undefined || sourceExternalId !== undefined) {
       const setClauses: string[] = [];
@@ -64,10 +65,10 @@ export async function renameRegion(
     }
     await client.query('COMMIT');
   } catch (err) {
-    await client.query('ROLLBACK');
+    unusable = await rollbackQuietly(client);
     throw err;
   } finally {
-    client.release();
+    client.release(unusable);
   }
 
   return { renamed: true, regionId, oldName, newName: name.trim() };
@@ -126,9 +127,10 @@ export async function reparentRegion(
   }
 
   const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    await client.query('BEGIN');
-    await setRegionParent(client, regionId, newParentId);
+    const tx = await beginRegionTransaction(client);
+    await setRegionParent(tx, regionId, newParentId);
 
     // Both parents are named, because a structural move writes no geometry for
     // trg_regions_geom_invalidates_parent to see while changing what two unions
@@ -142,14 +144,14 @@ export async function reparentRegion(
     //
     // Inside the transaction, so a failed clearing rolls the move back rather
     // than answering an error for one that happened (#1026, ADR-0068).
-    if (oldParentId != null) await invalidateRegionGeometry(oldParentId, client);
-    if (newParentId != null) await invalidateRegionGeometry(newParentId, client);
+    if (oldParentId != null) await invalidateRegionGeometry(tx, oldParentId);
+    if (newParentId != null) await invalidateRegionGeometry(tx, newParentId);
     await client.query('COMMIT');
   } catch (err) {
-    await client.query('ROLLBACK');
+    unusable = await rollbackQuietly(client);
     throw err;
   } finally {
-    client.release();
+    client.release(unusable);
   }
 
   return { reparented: true, regionId, oldParentId, newParentId };

@@ -9,14 +9,20 @@ const deleteRegionRoute = routeAt(worldViewRoutes, '/regions/:regionId', 'delete
 const getRegionAncestorsRoute = routeAt(worldViewRoutes, '/regions/:regionId/ancestors', 'get');
 
 const poolQuery = vi.fn();
-const client = { query: vi.fn(), release: vi.fn() };
+// A transaction's client sends through the same mock, so a spec reads every
+// statement a handler made, in order, BEGIN and COMMIT among them.
+const client = { query: (...args: unknown[]) => poolQuery(...args), release: vi.fn() };
 
 vi.mock('../../db/index.js', () => ({
   pool: {
     query: (...args: unknown[]) => poolQuery(...args),
     connect: async () => client,
   },
+  rollbackQuietly: async () => undefined,
 }));
+
+/** The statements a handler sent, in order. */
+const sent = () => poolQuery.mock.calls.map(([sql]) => String(sql).trim());
 
 
 /**
@@ -67,8 +73,6 @@ describe('updateRegion invalidates both sides of a reparent (#680)', () => {
 
   beforeEach(() => {
     poolQuery.mockReset();
-    client.query.mockReset();
-    client.query.mockResolvedValue({ rows: [] });
     poolQuery.mockImplementation(async (sql: string) => {
       const s = String(sql);
       if (s.includes('SELECT name, parent_region_id')) {
@@ -97,6 +101,16 @@ describe('updateRegion invalidates both sides of a reparent (#680)', () => {
     // hand-drawn region the moved region's own statement writes no row, so
     // nothing fires.
     expect(invalidatedIds()).toEqual([REGION, OLD_PARENT, NEW_PARENT]);
+  });
+
+  it('reads the parent under a lock and commits the move with its invalidations (#689)', async () => {
+    await reparent();
+    const statements = sent();
+    expect(statements[0]).toBe('BEGIN');
+    expect(statements[1]).toMatch(/^SELECT name, parent_region_id FROM regions WHERE id = \$1 FOR UPDATE$/);
+    // The last invalidation is inside the transaction, before its COMMIT.
+    const lastInvalidation = statements.map((sql) => /(?<!\w)geom\s*=\s*NULL/.test(sql)).lastIndexOf(true);
+    expect(statements.indexOf('COMMIT')).toBeGreaterThan(lastInvalidation);
   });
 
   it('leaves geometry alone when the parent did not change', async () => {
@@ -165,11 +179,13 @@ describe('deleteRegion invalidates the parent it left behind (#680)', () => {
 
     expect(status).toHaveBeenCalledWith(409);
 
-    const writes = poolQuery.mock.calls
-      .map(([sql]) => String(sql))
-      .filter((sql) => /\b(UPDATE|DELETE|INSERT)\b/.test(sql));
+    const writes = sent().filter((sql) => /^(UPDATE|DELETE|INSERT)\b/.test(sql));
     expect(writes).toEqual([]);
     expect(invalidatedIds()).toEqual([]);
+    // Counted inside the transaction, under the region's lock, which then
+    // commits nothing (#689).
+    expect(sent()).toContain('BEGIN');
+    expect(sent()).not.toContain('COMMIT');
   });
 });
 
