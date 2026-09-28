@@ -7,7 +7,7 @@
  * - Region: User-defined grouping within a WorldView
  */
 
-import type { AdministrativeDivision as DivisionAnswer, Region as RegionAnswer } from '@tyr/shared/api';
+import type { AdministrativeDivision as DivisionAnswer, Region as RegionAnswer } from '../api/client.generated';
 
 // =============================================================================
 // Administrative Divisions (GADM boundaries)
@@ -17,7 +17,7 @@ import type { AdministrativeDivision as DivisionAnswer, Region as RegionAnswer }
  * An official GADM boundary as the client holds it (Germany, Bavaria, Munich).
  *
  * Every read answers with the whole row, `AdministrativeDivision` in
- * `@tyr/shared/api` (ADR-0066). A selection made on the map starts from what a
+ * `client.generated.ts` (ADR-0066). A selection made on the map starts from what a
  * vector tile carries, so past the four keys every selection sets its stored
  * focus may still be missing, as for a region below. Derived from the answer,
  * never declared beside it.
@@ -33,7 +33,7 @@ export type AdministrativeDivision =
  * A region as the client holds it.
  *
  * Every read and write answers with the whole row, `Region` in
- * `@tyr/shared/api` (ADR-0066). A selection made on the map starts from less:
+ * `client.generated.ts` (ADR-0066). A selection made on the map starts from less:
  * a vector tile carries a region's id, name, colour and, in most layers, its
  * parent, and the ancestors read completes the rest (`useAddressedRegion`). So
  * past the six keys every selection sets, the world view's and a null
@@ -49,7 +49,7 @@ export type Region =
 
 /**
  * An area on the map, one piece or several, as the client holds one it draws,
- * cuts or combines. The geometry reads declare theirs in `@tyr/shared/api`
+ * cuts or combines. The geometry reads declare theirs in `client.generated.ts`
  * (`MultiPolygon`, `AreaGeometry`), and every one of those is assignable to
  * this: the union of the two `geojson` types, which needs no cast at a map
  * surface.

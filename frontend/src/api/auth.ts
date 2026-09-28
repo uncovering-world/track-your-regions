@@ -4,7 +4,7 @@
 
 import type {
   AuthMessage, CodeExchanged, MyAccount, PasswordChanged, PublicUser, SessionStarted,
-} from '@tyr/shared/api';
+} from './client.generated';
 import { API_URL, ApiError } from './fetchUtils';
 import {
   getAuthMe, getGetAuthAppleUrl, getGetAuthGoogleUrl, getUsersMe, postAuthChangePassword, postAuthExchangeCode,
@@ -14,12 +14,12 @@ import {
 import type { LoginCredentials, RegisterCredentials } from '../types/auth';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call. None of them carries a
 // refresh token: that travels only in its httpOnly cookie.
 export type {
   AuthMessage, CodeExchanged, CuratorScope, MyAccount, PasswordChanged, PublicUser, SessionStarted,
-} from '@tyr/shared/api';
+} from './client.generated';
 
 /** What the change-password form sends */
 export type ChangePasswordInput = ChangePasswordBody;

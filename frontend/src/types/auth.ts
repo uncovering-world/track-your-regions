@@ -9,7 +9,7 @@ export type { UserRole, AuthProvider };
 
 // The signed-in account is an answer, declared once as a backend schema
 // (ADR-0066): `PublicUser`, re-exported from `api/auth.ts`.
-import type { PublicUser } from '@tyr/shared/api';
+import type { PublicUser } from '../api/client.generated';
 
 export interface LoginCredentials {
   email: string;

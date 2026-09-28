@@ -12,7 +12,7 @@ import type {
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
   LocationStateResult, ManualExperienceCreated, PublishResult, RefuseArrivalResult,
   RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
-} from '@tyr/shared/api';
+} from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
   getExperiencesByIdCurationLog, patchExperiencesByIdEdit, patchExperiencesByIdWorksByTreasureIdEdit,
@@ -26,7 +26,7 @@ import {
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
   AcceptSourceResult, AdmissionResult, AppliedPart, ContentKind, CurationLog, CurationLogEntry,
@@ -34,7 +34,7 @@ export type {
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated,
   PartNotFound, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
-} from '@tyr/shared/api';
+} from './client.generated';
 
 /**
  * Reject an experience from a region

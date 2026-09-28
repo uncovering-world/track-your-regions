@@ -2,7 +2,7 @@
  * Fetch utility for API calls
  */
 
-import type { SessionStarted } from '@tyr/shared/api';
+import type { SessionStarted } from './client.generated';
 import { jwtDecode } from 'jwt-decode';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';

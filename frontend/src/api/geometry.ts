@@ -5,7 +5,7 @@
 import type {
   ComputationCancelled, ComputationStartResult, ComputationStatus, ComputeComplete, ComputeProgressEvent,
   DisplayGeometryStatus, HullParams, HullPreview, HullSaved, RegenerateDisplayGeometriesResult, RegionReset,
-} from '@tyr/shared/api';
+} from './client.generated';
 import { API_URL, ensureFreshToken } from './fetchUtils.js';
 import {
   getGetWorldViewsRegionsByRegionIdGeometryComputeStreamUrl, getWorldViewsByWorldViewIdComputeGeometriesStatus,
@@ -16,14 +16,14 @@ import {
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`; the compute stream's events too. Passed
+// and generated into `client.generated.ts`; the compute stream's events too. Passed
 // on from here, so a component imports a call's answer from the module of the
 // call.
 export type {
   ComputationCancelled, ComputationStartResult, ComputationStatus, ComputeComplete, ComputeFailed, ComputeProgress,
   ComputeProgressEvent, ComputeResult, DisplayGeometryStatus, HullParams, HullPreview, HullSaved,
   RegenerateDisplayGeometriesResult, RegionReset, SavedHullParams,
-} from '@tyr/shared/api';
+} from './client.generated';
 
 // The hull a region is drawn with until it is tuned, the same numbers the server
 // builds with (ADR-0065).

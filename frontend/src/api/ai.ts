@@ -5,19 +5,19 @@
 import type {
   AIModels, AIStatus, BatchSuggestions, EscalationLevel, GroupDescriptions, GroupSuggestion, ModelSet,
   WebSearchModelSet,
-} from '@tyr/shared/api';
+} from './client.generated';
 import {
   getAiModels, getAiStatus, postAiGenerateGroupDescriptions, postAiModels, postAiModelsWebSearch,
   postAiSuggestGroup, postAiSuggestGroupsBatch,
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
   AIModel, AIModels, AIStatus, BatchGroupSuggestion, BatchSuggestions, Confidence, EscalationLevel,
   GroupDescriptions, GroupSuggestion, ModelSet, TokenUsage, WebSearchModelSet,
-} from '@tyr/shared/api';
+} from './client.generated';
 
 /**
  * Check if AI features are available

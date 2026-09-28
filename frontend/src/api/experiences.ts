@@ -9,9 +9,9 @@
 
 import type {
   ExperienceDetail, ExperienceKinds, ExperienceLocationsResponse, ExperienceSearch, ExperiencesByRegionResponse,
-  ExperienceTreasuresResponse, NewBadgesSeen, RegionExperienceCounts, RegionExperienceLocationsResponse,
-  SiteFindsResponse,
-} from '@tyr/shared/api';
+  ExperienceTreasuresResponse, NewBadgesSeen, RegionExperienceCounts, RegionExperienceLocation,
+  RegionExperienceLocationsResponse, SiteFindsResponse,
+} from './client.generated';
 import {
   getExperiencesById, getExperiencesByIdFinds, getExperiencesByIdLocations, getExperiencesByIdTreasures,
   getExperiencesByRegionByRegionId, getExperiencesByRegionByRegionIdLocations, getExperiencesKinds,
@@ -19,15 +19,24 @@ import {
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `@tyr/shared/api`. Passed on from here, so a component
+// and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
-  Experience, ExperienceDetail, ExperienceKind, ExperienceKinds, ExperienceLocation, ExperienceLocationsResponse,
+  Experience, ExperienceDetail, ExperienceKind, ExperienceKinds, ExperienceLocationsResponse,
   ExperienceLocationWithState, ExperienceRegionRef, ExperienceSearch, ExperienceSearchResult,
   ExperiencesByRegionResponse, ExperienceTreasure, ExperienceTreasuresResponse, ImageCredit, LinkedPlace,
   NewBadgesSeen, RegionExperienceCount, RegionExperienceCounts, RegionExperienceLocation,
   RegionExperienceLocationsResponse, SiteFind, SiteFindsResponse,
-} from '@tyr/shared/api';
+} from './client.generated';
+
+/**
+ * One point of an object, as both of its reads carry it: the fields a region's
+ * points (`RegionExperienceLocation`) and an object's own points
+ * (`ExperienceLocationWithState`) share. No route answers with it, so the
+ * document does not name it, and it is derived from a generated type rather
+ * than declared field by field (ADR-0074, narrowing ADR-0073 decision 4).
+ */
+export type ExperienceLocation = Omit<RegionExperienceLocation, 'region_path'>;
 
 // =============================================================================
 // API Functions

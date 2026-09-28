@@ -12,7 +12,7 @@ import type {
   HierarchyWarningsDismissed, ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone, OverlapChildren,
   OverlapResolved, RegionRemoved, RegionRenamed, RegionReparented, SelectionAccepted, SelectionRejected,
   SmartFlattenResult, SmartSimplifyApplied, SmartSimplifyMoves,
-} from '@tyr/shared/api';
+} from '../client.generated';
 import {
   postAdminWvImportMatchesByWorldViewIdAcceptBatchAndRejectRest,
   postAdminWvImportMatchesByWorldViewIdAddChildRegion, postAdminWvImportMatchesByWorldViewIdAiSuggestChildren,
@@ -33,7 +33,7 @@ import {
 } from '../client.generated';
 
 // What this module's calls answer is declared once, as a backend schema
-// (ADR-0066), and generated into `@tyr/shared/api`. Passed on from here, so a
+// (ADR-0066), and generated into `client.generated.ts`. Passed on from here, so a
 // component imports a call's answer from the module of the call. A spatial
 // anomaly is declared with the colour-match stream, which sends it too.
 export type {
@@ -44,7 +44,7 @@ export type {
   OverlapResolved, OverlapSplit, RegionRemoved, RegionRemovedKeepingChildren, RegionRemovedWithBranch, RegionRenamed,
   RegionReparented, SelectionAccepted, SelectionRejected, SimplifyReplacement, SmartFlattenResult, SmartSimplifyApplied,
   SmartSimplifyMove, SmartSimplifyMoves, SpatialAnomaly, SpatialAnomalyDivision, UndoOperation,
-} from '@tyr/shared/api';
+} from '../client.generated';
 
 
 // =============================================================================
