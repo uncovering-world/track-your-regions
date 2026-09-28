@@ -38,13 +38,20 @@
  * answer would read as the fastest endpoint in the table. Tile requests
  * are not limited and run back to back. Every request has a deadline; one
  * that misses it, or answers anything but 200, is counted as a failure and
- * kept out of the timings, and the probe exits non-zero.
+ * kept out of the timings, and the probe exits non-zero, naming why each
+ * failed endpoint did.
+ *
+ * Before measuring, the probe reads the world view's root regions and fails
+ * naming any that has no geometry, the way the Lighthouse runner fails naming
+ * a world view that did not answer: such a region leaves the root-regions
+ * tiles drawing less than the baseline did (#834).
  */
 
 import { performance } from 'node:perf_hooks';
 import { setTimeout as sleep } from 'node:timers/promises';
 import http from 'node:http';
 import https from 'node:https';
+import { failureLines, rootsWithoutGeometry, rootsWithoutGeometrySentence } from './perf-api-report.mjs';
 
 // Declared before the first call below: a `const` further down the module
 // is in its temporal dead zone when top-level code runs, and the parser is
@@ -121,6 +128,8 @@ if (!Number.isInteger(RUNS) || RUNS < 1) {
   fail('--runs must be a positive integer');
 }
 
+const roots = await readRoots();
+const emptyRoots = roots.ok ? rootsWithoutGeometry(roots.regions) : [];
 const results = [];
 for (const target of [...BACKEND_TARGETS, ...TILE_TARGETS]) {
   results.push(await probe(target));
@@ -129,17 +138,39 @@ for (const agent of Object.values(AGENTS)) {
   agent.destroy();
 }
 
-const failed = results.filter((r) => r.failures > 0);
+const failed = failureLines(results);
 if (options.json) {
-  process.stdout.write(`${JSON.stringify({ api: API, martin: MARTIN, worldView: WORLD_VIEW, region: REGION, runs: RUNS, results }, null, 2)}\n`);
+  const precondition = roots.ok ? { rootsWithoutGeometry: emptyRoots } : { rootsUnread: roots.status };
+  process.stdout.write(`${JSON.stringify({ api: API, martin: MARTIN, worldView: WORLD_VIEW, region: REGION, runs: RUNS, precondition, results }, null, 2)}\n`);
 } else {
   printTable(results);
+  if (!roots.ok) {
+    process.stdout.write(`\nThe root regions of world view ${WORLD_VIEW} could not be read (${roots.status === 0 ? 'no answer' : `answered ${roots.status}`}), so whether each has a geometry was not checked.\n`);
+  } else if (emptyRoots.length > 0) {
+    process.stdout.write(`\n${rootsWithoutGeometrySentence(WORLD_VIEW, emptyRoots)}\n`);
+  }
   if (failed.length > 0) {
-    process.stdout.write(`\n${failed.length} endpoint(s) had samples that timed out or did not answer 200; those samples are excluded from the timings above.\n`);
+    process.stdout.write(`\n${failed.length} endpoint(s) failed; their failed samples are excluded from the timings above:\n${failed.join('\n')}\n`);
   }
 }
-if (failed.length > 0) {
+if (failed.length > 0 || !roots.ok || emptyRoots.length > 0) {
   process.exitCode = 1;
+}
+
+/**
+ * The world view's root regions, read as a visitor reads them. fetch rather
+ * than fetchOnce, since this reads the body rather than counting it; paced
+ * like any backend request, since it spends the same limiter's budget.
+ */
+async function readRoots() {
+  try {
+    const response = await fetch(`${API}/api/world-views/${WORLD_VIEW}/regions/root`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    const answer = response.ok ? { ok: true, regions: await response.json() } : { ok: false, status: response.status };
+    await sleep(BACKEND_PACE_MS);
+    return answer;
+  } catch {
+    return { ok: false, status: 0 };
+  }
 }
 
 async function probe(target) {
