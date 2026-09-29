@@ -47,7 +47,7 @@ import {
   type CentroidInfo,
   type MatchingResult,
 } from './wvImportMatchPhase5.js';
-import type { SendEvent } from './wvImportMatchContext.js';
+import type { SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
 
 // Re-export SVG helpers for backward compatibility (used by other modules)
 export { parseSvgPathPoints, parseSvgSubPaths, resamplePath } from './wvImportMatchSvgHelpers.js';
