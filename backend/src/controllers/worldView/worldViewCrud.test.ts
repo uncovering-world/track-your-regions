@@ -128,3 +128,41 @@ describe('updateWorldView visibility', () => {
     expect(params[3]).toBeNull();
   });
 });
+
+/**
+ * An emptied description or source is a value, not an absence: COALESCE read
+ * the empty string as "keep", so once set, neither could be cleared (#1133).
+ */
+describe('updateWorldView clearing', () => {
+  beforeEach(() => {
+    mockedQuery.mockClear();
+    mockedQuery.mockResolvedValue({ rows: [worldViewRow()] });
+  });
+
+  async function paramsFor(body: Record<string, unknown>) {
+    await answerRoute(updateWorldViewRoute,
+      { params: { worldViewId: '2' }, body } as never,
+      makeRes() as never,
+    );
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    return { sql, params };
+  }
+
+  it('clears a description and a source sent empty', async () => {
+    const { sql, params } = await paramsFor({ description: '', source: '' });
+
+    expect(sql).toMatch(/description = CASE WHEN \$6 THEN NULLIF\(\$2, ''\) ELSE description END/);
+    expect(sql).toMatch(/source = CASE WHEN \$7 THEN NULLIF\(\$3, ''\) ELSE source END/);
+    expect(params[1]).toBe('');
+    expect(params[2]).toBe('');
+    expect(params[5]).toBe(true);
+    expect(params[6]).toBe(true);
+  });
+
+  it('leaves both alone when the body does not name them', async () => {
+    const { params } = await paramsFor({ name: 'Wikivoyage Regions' });
+
+    expect(params[5]).toBe(false);
+    expect(params[6]).toBe(false);
+  });
+});

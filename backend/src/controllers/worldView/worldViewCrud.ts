@@ -67,17 +67,21 @@ export async function updateWorldView(
     body: z.output<typeof updateWorldViewBodySchema>;
   },
 ): Promise<WorldView> {
+  // A description or source that is absent is left alone; one sent empty is
+  // cleared to NULL, the way the create path stores an empty one (#1133).
+  // COALESCE cannot say the second: it reads an empty value as "keep".
   const result = await pool.query<WorldViewRow>(
     `UPDATE world_views
      SET name = COALESCE($1, name),
-         description = COALESCE($2, description),
-         source = COALESCE($3, source),
+         description = CASE WHEN $6 THEN NULLIF($2, '') ELSE description END,
+         source = CASE WHEN $7 THEN NULLIF($3, '') ELSE source END,
          is_public = COALESCE($4, is_public),
          updated_at = NOW()
      WHERE id = $5
      RETURNING ${WORLD_VIEW_COLUMNS_SQL}`,
     // `?? null`, not `|| null`: false is a meaningful value here.
-    [name || null, description || null, source || null, isPublic ?? null, worldViewId]
+    [name || null, description ?? null, source ?? null, isPublic ?? null, worldViewId,
+      description !== undefined, source !== undefined]
   );
 
   if (result.rows.length === 0) {
