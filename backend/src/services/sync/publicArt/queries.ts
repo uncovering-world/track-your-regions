@@ -25,6 +25,7 @@ import {
   type Band,
   type QueryRunner,
   type SparqlFn,
+  standing,
 } from '../wikidataQueries.js';
 
 /**
@@ -263,35 +264,6 @@ export interface EntityFacts {
 const emptyFacts = (): EntityFacts => ({
   classes: [], locations: [], parents: [], collections: [], creators: [],
 });
-
-/**
- * The statements of `property` on `subject` that still hold, each binding
- * its value to `object`: best-ranked — what `wdt:` would answer — and
- * carrying no end time (`pq:P582`). The end-time rule is the museum
- * import's (`statementBranch` in `museum/queries.ts`): the Bust of
- * Nefertiti's own statements still name the museum it left in 2009, and the
- * Horses of Saint Mark carry nine ended locations. Per statement rather than
- * per value, so a value that has both an ended and a standing statement of
- * the same rank — a work that left a museum and came back — keeps the
- * standing one instead of being dropped with the ended one.
- *
- * Best rank is read the way `wdt:` reads it, because a preferred statement
- * is how Wikidata marks the current one — the signal the museum placement
- * weighs highest — where `statementBranch` keeps every rank for that
- * weighing to happen later. So an ended statement ranked preferred over a
- * standing one ranked normal would leave the work placeless: an editing
- * error upstream (preferred is for what holds now), and none on the pool of
- * 603 on 2026-09-05 — 13 preferred statements across the three properties,
- * not one of them ended.
- *
- * Exported for its second reader: the Archaeology kind asks a find's discovery
- * place (`P189`) under the same rule (`archaeology/queries.ts`).
- */
-export function standing(subject: string, property: string, object: string): string {
-  const st = `?st${property.slice(1)}`;
-  return `${subject} p:${property} ${st} . ${st} a wikibase:BestRank ; ps:${property} ${object} .
-        FILTER NOT EXISTS { ${st} pq:P582 ?ended }`;
-}
 
 /** Add the entity a binding names, when the binding is present and names one. */
 function pushEntity(into: string[], binding: SparqlBinding[string]): void {

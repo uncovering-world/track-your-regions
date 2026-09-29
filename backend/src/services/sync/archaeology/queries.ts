@@ -23,12 +23,12 @@ import {
   fetchClassTree,
   values,
   type QueryRunner,
+  standing,
   type SparqlFn,
 } from '../wikidataQueries.js';
 import {
   fetchClassPool,
   fetchEntitiesByIds,
-  standing,
   type PoolEntity,
 } from '../publicArt/queries.js';
 import {
