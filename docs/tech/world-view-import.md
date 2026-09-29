@@ -598,7 +598,38 @@ backend/src/services/worldViewImport/
 ├── aiMatcher.ts          — AI-assisted re-matching via OpenAI
 ├── geoshapeCache.ts      — Wikidata geoshape fetch, cache, IoU scoring, covering-set matching with precision drill-down and composite fallback
 ├── pointMatcher.ts       — Wikivoyage marker coord extraction → GADM ST_Contains matching, stores marker_points in region_import_state
-└── index.ts              — Exports, in-memory progress management
+├── index.ts              — Exports, in-memory progress management
+└── colorMatch/           — The CV colour match's computation: no pool, no request, nothing from controllers/
+    ├── context.ts        — PipelineContext, the SSE callback types, ImageDims, ReclusterPreset, WaterReviewDecision and the askWaterReview port
+    ├── cvTypes.ts        — OpenCV namespace types, type-only: the JS branch loads OpenCV onto globalThis.__cv
+    ├── pixels/
+    │   ├── colorLines.ts      — Downscaled buffers (buildDownscaledBuffers), drawn-line removal, rgbToHsl
+    │   ├── meanshift.ts       — Mean-shift filter and the sequence that builds the country mask (meanshiftPreprocess)
+    │   └── landWaterMasks.ts  — Background, sea, inland water, foreign land and coastal band masks
+    ├── water/
+    │   ├── waterComponents.ts — The water mask cut into components and cropped for the curator
+    │   └── waterFinalize.ts   — Edge filter, dilation, and the mask rebuilt from the curator's answer (reviewAndFinalizeWater)
+    ├── cluster/
+    │   ├── kmeans.ts            — k-means over CIELAB (runKMeansClustering)
+    │   ├── clusterClean.ts      — Clean-up between k-means and the review (cleanClusters)
+    │   ├── clusterPasses.ts     — Divisive split, fragment merge, noise exclusion
+    │   ├── clusterComponents.ts — Eroded components, the review's summary and images, split/exclude/merge
+    │   └── reclusterPresets.ts  — The JS branch's recluster presets (applyJsReclusterPreset)
+    ├── geometry/
+    │   ├── svgPath.ts        — ST_AsSVG path parsing and resampling
+    │   ├── borderTrace.ts    — OpenCV findContours borders, Douglas-Peucker simplification
+    │   ├── borderPreview.ts  — The border preview a reviewer sees first (renderBorderDebugPng)
+    │   └── divisionsSvg.ts   — The numbered divisions SVG the vision match is shown
+    ├── icp/
+    │   ├── icp.ts          — The alignment fit and its verdict (alignDivisionsToImage)
+    │   ├── icpOptions.ts   — The candidate transforms, options A to D
+    │   ├── icpOutliers.ts  — Bounding-box inflation and the divisions to leave out of it
+    │   └── icpAdjust.ts    — The adjustment's strategies B and C (runIcpAdjustment)
+    ├── assign/
+    │   ├── divisionRaster.ts — Division walls, scan-line fill, flood fill from a centroid
+    │   └── assignment.ts     — Voting and recursive splits (assignDivisionsToClusters; children read through loadChildDivisions)
+    └── result/
+        └── matchResult.ts    — Votes, gap filter, suggestion rows, preview features, the complete payload, the Python service's assignments
 
 backend/src/services/wikivoyageExtract/
 ├── markerParser.ts   — Pure parser for {{marker}} and {{geo}} Wikivoyage wikitext templates
@@ -607,6 +638,8 @@ backend/src/controllers/admin/wikivoyageExtractController.ts — Extraction endp
 backend/src/controllers/admin/wvImport*.ts                 — Import + match review endpoints and their helpers, one module per concern (the review callbacks in wvImportMatchReview.ts, the colour-match stream in wvImportMatchPipeline.ts); the routes import each directly
 backend/src/controllers/admin/baseLayerImportController.ts   — Base layer import start endpoint
 ```
+
+**The colour match splits across the layers.** What stays under `controllers/admin/` is the request and the database: the SSE entry point (`wvImportMatchPipeline.ts`), the two branches (`wvImportMatchJsBranch.ts`, which loads OpenCV at module load, and `wvImportMatchPythonBranch.ts`), the review registry (`wvImportMatchReview.ts`) and the cluster review's loop that waits on it (`wvImportMatchClusterReview.ts`), and the queries with the sequence that runs them (`wvImportMatchScope.ts`, `wvImportMatchShared.ts`, `wvImportMatchPhase5.ts`, `wvImportMatchMarkers.ts`). Everything they compute over is `services/worldViewImport/colorMatch/`. Where a computation needs the database or the curator, the controller hands it in: `AssignmentParams.loadChildDivisions` reads the children of a division being split, and `PipelineContext.askWaterReview` puts the water question to the curator. `SERVICE_LAYER_IMPORTS` in `backend/eslint.config.mjs` refuses a static import from `controllers/` anywhere under `services/`, and a static value import of OpenCV there; a dynamic `import()` is beyond it (Development Guide § Services).
 
 ## Frontend
 
@@ -745,7 +778,7 @@ Border opacity slider (0–100%) controls SVG layer visibility.
 | `ClusterPaintEditor.tsx` | SVG border overlay + color canvas; fill/eraser/line tools, undo/redo, zoom/pan |
 | `clusterPaintUtils.ts` | Flood fill (border-aware), overlay↔pixelLabels conversion, color helpers |
 | `svgBorderUtils.ts` | Catmull-Rom path smoothing, endpoint detection, rasterization for fill, eraser hit detection |
-| `wvImportMatchBorderTrace.ts` | OpenCV findContours border extraction, Douglas-Peucker simplification |
+| `services/worldViewImport/colorMatch/geometry/borderTrace.ts` | OpenCV findContours border extraction, Douglas-Peucker simplification |
 | `wvImportMatchReview.ts` | `ManualClusterDecision` type, `ClusterReviewResponse` union, overlay image store |
 | `wvImportCvMatch.ts` (frontend API) | `BorderPath`, `ManualClusterResponse`, `ClusterReviewCluster` |
 
