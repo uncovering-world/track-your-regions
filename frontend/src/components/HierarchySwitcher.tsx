@@ -126,7 +126,8 @@ export function HierarchySwitcher() {
     if (editName.trim()) {
       updateMutation.mutate({
         name: editName.trim(),
-        description: editDescription.trim() || undefined,
+        // Sent even when emptied: an empty description clears the stored one (#1133).
+        description: editDescription.trim(),
         isPublic: editIsPublic,
       });
     }

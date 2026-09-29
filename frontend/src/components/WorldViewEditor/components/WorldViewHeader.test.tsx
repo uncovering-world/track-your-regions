@@ -49,6 +49,17 @@ describe('the world view header editor', () => {
     expect(screen.queryByText('Validation error — name: Too big')).not.toBeInTheDocument();
   });
 
+  it('sends an emptied description as empty, so the stored one is cleared (#1133)', async () => {
+    const onUpdate = vi.fn().mockResolvedValue({});
+    renderHeader(onUpdate);
+
+    fireEvent.click(screen.getByText('By culture'));
+    fireEvent.change(screen.getByDisplayValue('By culture'), { target: { value: '  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(onUpdate).toHaveBeenCalledWith({ description: '' });
+  });
+
   it('closes when the save lands', async () => {
     const onUpdate = vi.fn().mockResolvedValue({});
     renderHeader(onUpdate);

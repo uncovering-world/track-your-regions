@@ -68,11 +68,11 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
   };
 
   const handleSaveDescription = () => {
-    save({ description: descriptionValue.trim() || undefined }, () => setIsEditingDescription(false));
+    save({ description: descriptionValue.trim() }, () => setIsEditingDescription(false));
   };
 
   const handleSaveSource = () => {
-    save({ source: sourceValue.trim() || undefined }, () => setIsEditingSource(false));
+    save({ source: sourceValue.trim() }, () => setIsEditingSource(false));
   };
 
   const cancelName = () => { setNameValue(worldView.name); setIsEditingName(false); forgetSave(); };
