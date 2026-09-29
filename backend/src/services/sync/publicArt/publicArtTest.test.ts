@@ -32,6 +32,11 @@ const BASILICA = 'Q120560';
 
 const PILGRIMAGE_SITE = 'Q15135589';
 
+const LOST_ARTWORK = 'Q4140840';
+const DESTROYED_ARTWORK = 'Q21745157';
+const LOST_SCULPTURE = 'Q26883973';
+const INSTALLATION = 'Q20437094';
+
 const trees = buildTrees({
   sculptural: [SCULPTURE, STATUE, COLOSSAL_STATUE, MONUMENTAL_SCULPTURE, 'Q29168169'],
   fountain: [FOUNTAIN, 'Q1371047'],
@@ -40,6 +45,8 @@ const trees = buildTrees({
   // The tree Wikidata walks under "structure of worship": the buildings, and
   // a pilgrimage site, which is a designation a statue can carry.
   worship: [WORSHIP, CATHOLIC_CATHEDRAL, SHINTO_SHRINE, BASILICA, 'Q1534477', 'Q2031836', PILGRIMAGE_SITE],
+  // The tree under lost artwork as Wikidata answered it on 2026-09-12.
+  lost: [LOST_ARTWORK, DESTROYED_ARTWORK, LOST_SCULPTURE, 'Q104438958'],
 });
 
 const facts = (over: Partial<PublicArtFacts>): PublicArtFacts => ({
@@ -175,6 +182,34 @@ describe('publicArtVerdict — what it refuses', () => {
       facts({ classes: ['Q194195', 'Q974968', WAR_MEMORIAL, SCULPTURE] }), trees,
     );
     expect(reasonOf(v)).toContain('amusement park');
+  });
+
+  it('refuses a work the source records as destroyed, by the lost tree alone', () => {
+    // The Floating Piers: an installation artwork typed destroyed artwork and
+    // nothing under lost sculpture — which a pinned kill class let through.
+    const v = publicArtVerdict(facts({ classes: [SCULPTURE, INSTALLATION, DESTROYED_ARTWORK] }), trees);
+    expect(v.pass).toBe(false);
+    expect(reasonOf(v)).toContain('nothing to stand in front of');
+  });
+
+  it('keeps refusing a lost sculpture, now through the same tree', () => {
+    // The Lemnian Athena: sculpture, lost sculpture.
+    const v = publicArtVerdict(facts({ classes: [SCULPTURE, LOST_SCULPTURE] }), trees);
+    expect(reasonOf(v)).toContain('nothing to stand in front of');
+  });
+
+  it('keeps the one work whose remains are on show, as the museum kinds do', () => {
+    // The Colossus of Constantine: a destroyed artwork whose fragments are what
+    // a traveller stands in front of (REMAINS_ON_SHOW). Where it stands is the
+    // container rule's question; being lost is not a reason on its own.
+    const v = publicArtVerdict(facts({ qid: 'Q1289781', classes: [SCULPTURE, DESTROYED_ARTWORK] }), trees);
+    expect(v.pass ? '' : (v as { reason: string }).reason).not.toContain('nothing to stand in front of');
+  });
+
+  it('refuses a lost sculpture from the pinned floor when the fetched tree came back short', () => {
+    const short = buildTrees({ sculptural: [SCULPTURE], fountain: [], commemorative: [], museum: [], worship: [], lost: [] });
+    const v = publicArtVerdict(facts({ classes: [SCULPTURE, LOST_SCULPTURE] }), short);
+    expect(reasonOf(v)).toContain('nothing to stand in front of');
   });
 
   it('refuses what the source records as destroyed', () => {
@@ -615,7 +650,7 @@ describe('buildTrees', () => {
   it('keeps a floor of places of worship under the fetched tree', () => {
     // The tree is read from Wikidata each run; the pinned floor is what the
     // catalogue check can see, and what holds if the tree comes back short.
-    const bare = buildTrees({ sculptural: [], fountain: [], commemorative: [], museum: [], worship: [] });
+    const bare = buildTrees({ sculptural: [], fountain: [], commemorative: [], museum: [], worship: [], lost: [] });
     expect(bare.worship.has(CATHOLIC_CATHEDRAL)).toBe(true);
     expect(bare.worship.has('Q32815')).toBe(true); // mosque
   });
