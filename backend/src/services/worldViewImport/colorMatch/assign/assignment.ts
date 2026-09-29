@@ -8,7 +8,6 @@
  */
 
 import sharp from 'sharp';
-import { pool } from '../../../../db/index.js';
 import { parseSvgPathPoints, parseSvgSubPaths } from '../geometry/svgPath.js';
 
 // =============================================================================
@@ -42,7 +41,18 @@ export interface AssignmentParams {
   /** Logging callbacks */
   logStep: (msg: string) => Promise<void>;
   pushDebugImage: (label: string, dataUrl: string) => Promise<void>;
+  /** Reads the GADM children of the divisions a split recurses into */
+  loadChildDivisions: LoadChildDivisions;
 }
+
+/** A GADM child of a division being split, with its centroid and outline. */
+export interface ChildDivision {
+  id: number; parentId: number; name: string;
+  cx: number; cy: number; svgPath: string;
+}
+
+/** Reads the children of `parentIds` that have a medium-resolution outline. */
+export type LoadChildDivisions = (parentIds: number[]) => Promise<ChildDivision[]>;
 
 export interface DivAssignment {
   divisionId: number;
@@ -411,27 +421,18 @@ interface ChildData { id: number; cx: number; cy: number; svgPath: string }
 async function fetchChildrenForSplits(
   splitIds: number[],
   divNameMap: Map<number, string>,
+  loadChildDivisions: LoadChildDivisions,
 ): Promise<Map<number, ChildData[]>> {
-  const subResult = await pool.query(`
-    SELECT id, parent_id, name,
-      ST_X(ST_Centroid(geom_simplified_medium)) AS cx,
-      ST_Y(ST_Centroid(geom_simplified_medium)) AS cy,
-      ST_AsSVG(geom_simplified_medium, 0, 4) AS svg_path
-    FROM administrative_divisions
-    WHERE parent_id = ANY($1) AND geom_simplified_medium IS NOT NULL
-  `, [splitIds]);
+  const rows = await loadChildDivisions(splitIds);
 
   const childrenByParent = new Map<number, ChildData[]>();
-  for (const r of subResult.rows) {
-    const pid = r.parent_id as number;
-    const childName = r.name as string;
+  for (const r of rows) {
+    const pid = r.parentId;
+    const childName = r.name;
     const parentPath = divNameMap.get(pid) ?? '';
-    divNameMap.set(r.id as number, parentPath ? `${parentPath} > ${childName}` : childName);
+    divNameMap.set(r.id, parentPath ? `${parentPath} > ${childName}` : childName);
     if (!childrenByParent.has(pid)) childrenByParent.set(pid, []);
-    childrenByParent.get(pid)!.push({
-      id: r.id as number, cx: parseFloat(r.cx as string),
-      cy: parseFloat(r.cy as string), svgPath: r.svg_path as string,
-    });
+    childrenByParent.get(pid)!.push({ id: r.id, cx: r.cx, cy: r.cy, svgPath: r.svgPath });
   }
   return childrenByParent;
 }
@@ -554,6 +555,7 @@ interface RecursiveSplitParams {
   pxS: (base: number) => number;
   hasSignificantMinority: (sorted: Array<[number, number]>) => boolean;
   logStep: (msg: string) => Promise<void>;
+  loadChildDivisions: LoadChildDivisions;
 }
 
 interface RecursiveSplitResult {
@@ -568,7 +570,7 @@ interface RecursiveSplitResult {
 async function resolveRecursiveSplits(p: RecursiveSplitParams): Promise<RecursiveSplitResult> {
   const {
     divAssignments, wallMask, divisionMap, divNameMap,
-    pixelLabels, gadmToPixel, TW, TH, tp, pxS, hasSignificantMinority, logStep,
+    pixelLabels, gadmToPixel, TW, TH, tp, pxS, hasSignificantMinority, logStep, loadChildDivisions,
   } = p;
 
   const finalPixelClusters = fillInitialPixelClusters(divisionMap, divAssignments, tp);
@@ -591,7 +593,7 @@ async function resolveRecursiveSplits(p: RecursiveSplitParams): Promise<Recursiv
     const splitIds = pendingSplits.map(s => s.divisionId);
     await logStep(`Split depth ${splitDepth}: resolving ${splitIds.length} divisions...`);
 
-    const childrenByParent = await fetchChildrenForSplits(splitIds, divNameMap);
+    const childrenByParent = await fetchChildrenForSplits(splitIds, divNameMap, loadChildDivisions);
 
     // Capture parents that have no GADM children — they can't be split further
     for (const s of pendingSplits) {
@@ -718,7 +720,7 @@ export async function assignDivisionsToClusters(params: AssignmentParams): Promi
     divPaths, centroids, divNameMap, gadmToPixel,
     pixelLabels, buf, colorCentroids, countrySize,
     TW, TH, origW, origH,
-    pxS, logStep, pushDebugImage,
+    pxS, logStep, pushDebugImage, loadChildDivisions,
   } = params;
 
   const tp = TW * TH;
@@ -755,7 +757,7 @@ export async function assignDivisionsToClusters(params: AssignmentParams): Promi
 
   const splitResult = await resolveRecursiveSplits({
     divAssignments, wallMask, divisionMap, divNameMap,
-    pixelLabels, gadmToPixel, TW, TH, tp, pxS, hasSignificantMinority, logStep,
+    pixelLabels, gadmToPixel, TW, TH, tp, pxS, hasSignificantMinority, logStep, loadChildDivisions,
   });
   const { finalAssignments, unsplittableDivs, finalPixelClusters, finalWallMask, splitDepth } = splitResult;
 
