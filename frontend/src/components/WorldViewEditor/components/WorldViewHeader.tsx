@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -15,7 +15,8 @@ import { useAppTheme } from '../../../theme';
 
 interface WorldViewHeaderProps {
   worldView: WorldView;
-  onUpdate: (data: { name?: string; description?: string; source?: string }) => void;
+  /** Settles when the save does: an editor closes on success and shows the reason on failure. */
+  onUpdate: (data: { name?: string; description?: string; source?: string }) => Promise<unknown>;
   isPending: boolean;
   onClose: () => void;
 }
@@ -28,6 +29,12 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
   const [descriptionValue, setDescriptionValue] = useState(worldView.description || '');
   const [isEditingSource, setIsEditingSource] = useState(false);
   const [sourceValue, setSourceValue] = useState(worldView.source || '');
+  // Why the last save was refused; the editor it came from stays open with it (#448).
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // The save whose answer the header still waits for. Dismissing or opening an
+  // editor moves it on, so a save answered after its editor closed shows
+  // nothing, rather than its refusal turning up under another field.
+  const currentSave = useRef(0);
 
   useEffect(() => {
     setNameValue(worldView.name);
@@ -35,22 +42,42 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
     setSourceValue(worldView.source || '');
   }, [worldView.name, worldView.description, worldView.source]);
 
+  const save = (data: { name?: string; description?: string; source?: string }, close: () => void) => {
+    // Enter reaches here past the disabled button: one save in flight at a time.
+    if (isPending) return;
+    setSaveError(null);
+    const thisSave = ++currentSave.current;
+    onUpdate(data).then(
+      () => { if (thisSave === currentSave.current) close(); },
+      (err: unknown) => {
+        if (thisSave !== currentSave.current) return;
+        setSaveError(err instanceof Error && err.message ? err.message : 'Could not save');
+      },
+    );
+  };
+
+  const forgetSave = () => { currentSave.current++; setSaveError(null); };
+  const openName = () => { forgetSave(); setIsEditingName(true); };
+  const openDescription = () => { forgetSave(); setIsEditingDescription(true); };
+  const openSource = () => { forgetSave(); setIsEditingSource(true); };
+
   const handleSaveName = () => {
     if (nameValue.trim()) {
-      onUpdate({ name: nameValue.trim() });
-      setIsEditingName(false);
+      save({ name: nameValue.trim() }, () => setIsEditingName(false));
     }
   };
 
   const handleSaveDescription = () => {
-    onUpdate({ description: descriptionValue.trim() || undefined });
-    setIsEditingDescription(false);
+    save({ description: descriptionValue.trim() || undefined }, () => setIsEditingDescription(false));
   };
 
   const handleSaveSource = () => {
-    onUpdate({ source: sourceValue.trim() || undefined });
-    setIsEditingSource(false);
+    save({ source: sourceValue.trim() || undefined }, () => setIsEditingSource(false));
   };
+
+  const cancelName = () => { setNameValue(worldView.name); setIsEditingName(false); forgetSave(); };
+  const cancelDescription = () => { setDescriptionValue(worldView.description || ''); setIsEditingDescription(false); forgetSave(); };
+  const cancelSource = () => { setSourceValue(worldView.source || ''); setIsEditingSource(false); forgetSave(); };
 
   const inlineInputSx = {
     '& .MuiOutlinedInput-root': {
@@ -82,7 +109,7 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
       {/* ── Row 1: Title ── */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
         {isEditingName ? (
-          <ClickAwayListener onClickAway={() => { setNameValue(worldView.name); setIsEditingName(false); }}>
+          <ClickAwayListener onClickAway={cancelName}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <TextField
                 size="small"
@@ -90,9 +117,11 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
                 onChange={(e) => setNameValue(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleSaveName();
-                  if (e.key === 'Escape') { setNameValue(worldView.name); setIsEditingName(false); }
+                  if (e.key === 'Escape') cancelName();
                 }}
                 autoFocus
+                error={saveError !== null}
+                helperText={saveError ?? undefined}
                 sx={{ ...inlineInputSx, minWidth: 200 }}
               />
               <Button size="small" variant="contained" onClick={handleSaveName} disabled={!nameValue.trim() || isPending} sx={saveBtnSx}>
@@ -103,7 +132,7 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
         ) : (
           <Box
             sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, cursor: 'pointer' }}
-            onClick={() => setIsEditingName(true)}
+            onClick={openName}
           >
             <Typography sx={{
               fontFamily: P.font.display,
@@ -118,7 +147,7 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
               {worldView.name}
             </Typography>
             <Tooltip title="Rename">
-              <IconButton size="small" onClick={() => setIsEditingName(true)} sx={sxTokens.darkIconBtn}>
+              <IconButton size="small" onClick={openName} sx={sxTokens.darkIconBtn}>
                 <EditIcon sx={{ fontSize: 14 }} />
               </IconButton>
             </Tooltip>
@@ -130,7 +159,7 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
         {/* Description */}
         {isEditingDescription ? (
-          <ClickAwayListener onClickAway={() => { setDescriptionValue(worldView.description || ''); setIsEditingDescription(false); }}>
+          <ClickAwayListener onClickAway={cancelDescription}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
               <TextField
                 size="small"
@@ -138,14 +167,15 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
                 onChange={(e) => setDescriptionValue(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleSaveDescription();
-                  if (e.key === 'Escape') { setDescriptionValue(worldView.description || ''); setIsEditingDescription(false); }
+                  if (e.key === 'Escape') cancelDescription();
                 }}
                 placeholder="Description..."
                 autoFocus
                 fullWidth
                 sx={inlineInputSx}
                 slotProps={{ htmlInput: { maxLength: WORLD_VIEW_DESCRIPTION_MAX_LENGTH } }}
-                helperText={`${descriptionValue.length}/${WORLD_VIEW_DESCRIPTION_MAX_LENGTH}`}
+                error={saveError !== null}
+                helperText={saveError ?? `${descriptionValue.length}/${WORLD_VIEW_DESCRIPTION_MAX_LENGTH}`}
               />
               <Button size="small" variant="contained" onClick={handleSaveDescription} disabled={isPending} sx={saveBtnSx}>
                 Save
@@ -167,7 +197,7 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
                 borderRadius: 0.5,
                 '&:hover': { bgcolor: P.dark.bgHover },
               }}
-              onClick={() => setIsEditingDescription(true)}
+              onClick={openDescription}
             >
               <Typography sx={{
                 fontFamily: P.font.ui,
@@ -191,7 +221,7 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
 
         {/* Source */}
         {isEditingSource ? (
-          <ClickAwayListener onClickAway={() => { setSourceValue(worldView.source || ''); setIsEditingSource(false); }}>
+          <ClickAwayListener onClickAway={cancelSource}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 200 }}>
               <TextField
                 size="small"
@@ -199,10 +229,12 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
                 onChange={(e) => setSourceValue(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleSaveSource();
-                  if (e.key === 'Escape') { setSourceValue(worldView.source || ''); setIsEditingSource(false); }
+                  if (e.key === 'Escape') cancelSource();
                 }}
                 placeholder="Source..."
                 autoFocus
+                error={saveError !== null}
+                helperText={saveError ?? undefined}
                 sx={{ ...inlineInputSx, minWidth: 180 }}
               />
               <Button size="small" variant="contained" onClick={handleSaveSource} disabled={isPending} sx={saveBtnSx}>
@@ -224,7 +256,7 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
                 borderRadius: 0.5,
                 '&:hover': { bgcolor: P.dark.bgHover },
               }}
-              onClick={() => setIsEditingSource(true)}
+              onClick={openSource}
             >
               <Typography sx={{
                 fontFamily: P.font.mono,

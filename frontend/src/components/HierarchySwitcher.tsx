@@ -20,6 +20,7 @@ import {
   FormControlLabel,
   Switch,
   Chip,
+  Alert,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
@@ -106,8 +107,14 @@ export function HierarchySwitcher() {
     }
   };
 
+  const handleOpenCreate = () => {
+    createMutation.reset();
+    setCreateDialogOpen(true);
+  };
+
   const handleOpenSettings = () => {
     if (selectedWorldView) {
+      updateMutation.reset();
       setEditName(selectedWorldView.name);
       setEditDescription(selectedWorldView.description || '');
       setEditIsPublic(selectedWorldView.isPublic);
@@ -179,7 +186,7 @@ export function HierarchySwitcher() {
               open={Boolean(adminMenuEl)}
               onClose={() => setAdminMenuEl(null)}
             >
-              <MenuItem onClick={() => { setAdminMenuEl(null); setCreateDialogOpen(true); }}>
+              <MenuItem onClick={() => { setAdminMenuEl(null); handleOpenCreate(); }}>
                 <ListItemIcon><AddIcon fontSize="small" /></ListItemIcon>
                 <ListItemText>Create world view</ListItemText>
               </MenuItem>
@@ -238,6 +245,11 @@ export function HierarchySwitcher() {
             slotProps={{ htmlInput: { maxLength: WORLD_VIEW_DESCRIPTION_MAX_LENGTH } }}
             helperText={`${newWorldViewDescription.length}/${WORLD_VIEW_DESCRIPTION_MAX_LENGTH}`}
           />
+          {createMutation.isError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {createMutation.error.message || 'Could not create the world view'}
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
@@ -285,6 +297,11 @@ export function HierarchySwitcher() {
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: -0.5 }}>
             Off: only admins can see or read this world view.
           </Typography>
+          {updateMutation.isError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {updateMutation.error.message || 'Could not save the settings'}
+            </Alert>
+          )}
 
           <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
             <Typography variant="subtitle2" color="error" gutterBottom>
@@ -296,6 +313,7 @@ export function HierarchySwitcher() {
               startIcon={<DeleteIcon />}
               onClick={async () => {
                 setSettingsDialogOpen(false);
+                deleteMutation.reset();
                 setDeleteDialogOpen(true);
                 setDeleteImpact(null);
                 setLoadingImpact(true);
@@ -368,6 +386,11 @@ export function HierarchySwitcher() {
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
               This will permanently delete this world view and all its custom regions. This action cannot be undone.
             </Typography>
+          )}
+          {deleteMutation.isError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {deleteMutation.error.message || 'Could not delete the world view'}
+            </Alert>
           )}
         </DialogContent>
         <DialogActions>

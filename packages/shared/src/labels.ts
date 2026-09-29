@@ -13,7 +13,7 @@
  * "is this the same name" alike: the server refuses a maker list that names one
  * person twice, folded, and a form that asked a narrower question would let
  * through exactly what the server then refuses — as `{ error: 'Validation
- * error' }` with the reason in a `details` array no screen reads. It is
+ * error' }` with the reason in Zod's words about a body path. It is
  * reachable with an ordinary paste: a work names *Vincent van Gogh* and a
  * curator pastes `Vincent  van Gogh` off a wrapped line, or `Jean‐Luc Godard`
  * with U+2010 where the stored name has a hyphen. Declared once so both sides

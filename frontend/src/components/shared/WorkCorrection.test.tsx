@@ -253,8 +253,8 @@ describe('WorkCorrection', () => {
     });
 
     // The endpoint refuses this through Zod, and a Zod failure reaches a client
-    // as "Validation error" with the reason in a `details` array no screen
-    // reads — so the reason has to be said here, before the request.
+    // as "Validation error" with Zod's own words about a body path — so the
+    // reason has to be said here, in a curator's words, before the request.
     expect(screen.getByText(/Not a picture this catalogue may show/)).toBeTruthy();
     expect(save()).toBeDisabled();
     expect(mockedEdit).not.toHaveBeenCalled();
@@ -297,9 +297,9 @@ describe('WorkCorrection', () => {
 });
 
 describe('what the form refuses before the server does', () => {
-  // Every one of these reaches the client as "Validation error" with the reason
-  // in a `details` array no screen reads, so a form that let them through would
-  // show a red box explaining nothing.
+  // Every one of these reaches the client as "Validation error" with Zod's own
+  // words about a body path, so a form that let them through would show a red
+  // box a curator cannot act on.
 
   it('refuses a title cleared to nothing', () => {
     // The endpoint's `min(1)` simply drops the field, so without this a curator

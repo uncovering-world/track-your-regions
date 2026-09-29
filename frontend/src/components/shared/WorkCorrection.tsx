@@ -174,9 +174,10 @@ function sameOrder(a: readonly string[], b: readonly string[]): boolean {
  * **Everything the endpoint would refuse, refused here in words.**
  *
  * A Zod failure reaches the client as `{ error: 'Validation error' }` with the
- * reason in a `details` array no screen reads, so anything this form lets
- * through and the server then turns down comes back as a red box explaining
- * nothing. Each of the three is a value a curator can plausibly type.
+ * reason in `details` as Zod's own words about a body path (`imageUrl: Invalid
+ * input`), so anything this form lets through and the server then turns down
+ * comes back as a red box a curator cannot act on. Each of the three is a
+ * value a curator can plausibly type.
  *
  * Its own function, and exported for its test, because these are claims about
  * what the *server* accepts: they are worth pinning where they can be read

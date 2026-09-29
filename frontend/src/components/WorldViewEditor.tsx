@@ -425,7 +425,7 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
         }}>
           <WorldViewHeader
             worldView={worldView}
-            onUpdate={(data) => updateWorldViewMutation.mutate(data)}
+            onUpdate={(data) => updateWorldViewMutation.mutateAsync(data)}
             isPending={updateWorldViewMutation.isPending}
             onClose={onClose}
           />
