@@ -202,6 +202,29 @@ const RESPONSE_SHAPE_RULES = [
   },
 ];
 
+/**
+ * What services/ may import (#1130). The layers run routes → controllers →
+ * services → db, so a module under services/ never reaches up into
+ * controllers/: what it needs from there moves down, or the module moves up.
+ * And OpenCV is loaded once, by controllers/admin/wvImportMatchJsBranch.ts,
+ * onto globalThis.__cv; a value import of it below that module would load the
+ * WASM build in every spec that reaches the importer, and its thenable hangs
+ * vitest. A type import is erased and stays allowed. `no-restricted-imports`
+ * reads static imports and re-exports only; a dynamic `import()` is beyond it.
+ */
+const SERVICE_LAYER_IMPORTS = {
+  patterns: [{
+    regex: '^(\\.\\./)+controllers/',
+    message: 'services/ sits below controllers/ (#1130): move what is needed into services/, or move this module up.',
+  }],
+  paths: [{
+    name: '@techstark/opencv-js',
+    allowTypeImports: true,
+    message: 'OpenCV is loaded once, by controllers/admin/wvImportMatchJsBranch.ts, onto globalThis.__cv; a value import '
+      + 'here loads it in every spec that reaches this module, and its thenable hangs vitest.',
+  }],
+};
+
 /** What the error-text rule says. */
 const ERROR_TEXT = [
   'An error\'s own text does not reach a caller: a driver, an HTTP client or a model SDK puts table and column names, URLs',
@@ -375,6 +398,15 @@ export default [
     rules: {
       'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
         ...READER_PREDICATE_RULES, ...ROUTE_REGISTRY_RULES],
+    },
+  },
+  // services/ never imports from controllers/, and loads no OpenCV of its
+  // own (SERVICE_LAYER_IMPORTS above). Specs included: a spec under
+  // services/ that needs a controller belongs beside that controller.
+  {
+    files: ['src/services/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', SERVICE_LAYER_IMPORTS],
     },
   },
   // The one file nobody writes: `schema.generated.ts` is the schema's
