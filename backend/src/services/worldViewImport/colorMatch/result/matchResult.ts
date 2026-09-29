@@ -1,5 +1,6 @@
 /**
  * The colour match's result, assembled from the division assignment:
+ *   - the Python service's assignments read as the JS branch's
  *   - cluster/region voting (per-cluster best region guess)
  *   - gap-only filter (hide already-assigned divisions)
  *   - per-cluster suggestion rows and the geo preview's features
@@ -37,6 +38,44 @@ export interface MatchingResult {
   cvOutOfBounds: Array<{ id: number; name: string }>;
   splitDepth: number;
   alignmentSummary: string;
+}
+
+// =============================================================================
+// The Python service's assignments
+// =============================================================================
+
+/** Convert one Python divAssignment to {divAssignment, finalAssignment|unsplittable} */
+export function classifyPythonAssignment(
+  a: { divisionId: number; clusterId: number; confidence: number; isSplit: boolean; splitClusters?: Array<{ clusterId: number; share: number }> },
+): { asDiv: DivAssignment; unsplittable?: MatchingResult['unsplittableDivs'][number]; final?: FinalDivAssignment } {
+  const asDiv: DivAssignment = {
+    divisionId: a.divisionId,
+    clusterId: a.clusterId,
+    confidence: a.confidence,
+    isSplit: a.isSplit,
+    splitClusters: a.splitClusters,
+  };
+  if (a.isSplit) {
+    return {
+      asDiv,
+      unsplittable: {
+        divisionId: a.divisionId,
+        clusterId: a.clusterId,
+        confidence: a.confidence,
+        depth: 0,
+        splitClusters: a.splitClusters ?? [],
+      },
+    };
+  }
+  return {
+    asDiv,
+    final: {
+      divisionId: a.divisionId,
+      clusterId: a.clusterId,
+      confidence: a.confidence,
+      depth: 0,
+    },
+  };
 }
 
 // =============================================================================
