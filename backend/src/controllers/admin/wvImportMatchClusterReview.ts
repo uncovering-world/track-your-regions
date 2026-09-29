@@ -15,7 +15,7 @@ import {
   type ClusterReviewDecision,
 } from './wvImportMatchReview.js';
 import type { SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
-import type { BorderPath } from './wvImportMatchBorderTrace.js';
+import type { BorderPath } from '../../services/worldViewImport/colorMatch/geometry/borderTrace.js';
 
 // =============================================================================
 // Shared types

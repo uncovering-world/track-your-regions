@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { douglasPeucker } from './wvImportMatchBorderTrace.js';
+import { douglasPeucker } from './borderTrace.js';
 
 // Note: traceBorderPaths requires OpenCV (globalThis.__cv) which isn't available
 // in the test environment. We test the Douglas-Peucker simplification standalone.

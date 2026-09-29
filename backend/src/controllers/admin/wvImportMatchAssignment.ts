@@ -9,7 +9,7 @@
 
 import sharp from 'sharp';
 import { pool } from '../../db/index.js';
-import { parseSvgPathPoints, parseSvgSubPaths } from './wvImportMatchSvgHelpers.js';
+import { parseSvgPathPoints, parseSvgSubPaths } from '../../services/worldViewImport/colorMatch/geometry/svgPath.js';
 
 // =============================================================================
 // Types

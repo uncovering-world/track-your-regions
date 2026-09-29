@@ -20,7 +20,7 @@ import { cleanClusters } from './wvImportMatchClusterClean.js';
 import {
   alignDivisionsToImage,
   type AlignmentResult,
-} from './wvImportMatchIcp.js';
+} from '../../services/worldViewImport/colorMatch/icp/icp.js';
 import {
   detectBboxInflation,
   findBboxOutliers,
@@ -28,8 +28,8 @@ import {
   computeSvgPathArea,
   computeBboxFromDivisions,
   type DivisionBbox,
-} from './wvImportMatchIcpOutliers.js';
-import { parseSvgPathPoints } from './wvImportMatchSvgHelpers.js';
+} from '../../services/worldViewImport/colorMatch/icp/icpOutliers.js';
+import { parseSvgPathPoints } from '../../services/worldViewImport/colorMatch/geometry/svgPath.js';
 import {
   assignDivisionsToClusters,
   type DivAssignment,
@@ -48,9 +48,6 @@ import {
   type MatchingResult,
 } from './wvImportMatchPhase5.js';
 import type { SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
-
-// Re-export SVG helpers for backward compatibility (used by other modules)
-export { parseSvgPathPoints, parseSvgSubPaths, resamplePath } from './wvImportMatchSvgHelpers.js';
 
 // Re-export ReclusterSignal for the pipeline caller
 export type { ReclusterSignal } from './wvImportMatchClusterReview.js';

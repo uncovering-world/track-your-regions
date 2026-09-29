@@ -6,7 +6,7 @@
  * smooth borders that match the "Detected clusters" preview exactly.
  */
 
-import type { BorderPath } from '../../api/responses/wvImportCvMatch.js';
+import type { BorderPath } from '../../../../api/responses/wvImportCvMatch.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (__cv global) has no TypeScript types
 const G = globalThis as unknown as { __cv?: any };
