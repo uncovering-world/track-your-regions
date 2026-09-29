@@ -184,9 +184,11 @@ export function flattenGroups(
  * Every movement of the list needs it — they live in `useListScrollAnchor` —
  * because windowing means the row a map marker points at usually has no element:
  * `itemRefs` holds nothing for it, so the virtualiser has to be asked for an
- * index instead. Three of the four read it through a ref rather than as a
- * dependency; the re-aim after a click is the one that depends on it, and gates
- * itself on that click's flight so a group toggled does not reach it.
+ * index instead. A movement that must not answer a change of rows reads it
+ * through a ref; one that depends on it carries a guard that keeps a group
+ * toggled from reaching it — the arrival of a selection is brought in once per
+ * selection (#917), and the re-aim after a click only inside that click's
+ * flight (#553).
  */
 export function rowIndexByExperienceId(rows: FlatRow[]): Map<number, number> {
   const m = new Map<number, number>();
