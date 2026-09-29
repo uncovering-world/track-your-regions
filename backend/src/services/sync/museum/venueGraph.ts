@@ -10,21 +10,26 @@
  *     is that owner's institution — and hand the work to the building one level up.
  *   - `survivorOf` walks the fold map to a fixed point. `computeFolds` records only immediate
  *     relationships and they chain, so a single lookup can name a venue that is itself gone.
- *   - `foldVenues` offers a venue's doors to `computeFolds` only after the venue test and the
- *     editorial exclusions have had their say, and the graph has facts for a door only because
- *     the walk followed `P276` from an entity the rule's classes match. `pipeline.test.ts` holds
- *     both cases.
+ *   - `foldVenues` offers a venue's doors to `computeFolds` only after the venue test, the
+ *     editorial exclusions and the organisation check (`isOrganisation`, #798) have had their
+ *     say, and the graph has facts for a door only because the walk followed `P276` from an
+ *     entity the rule's classes match. `pipeline.test.ts` and `venueGraph.test.ts` hold the
+ *     cases.
  */
 
 import { resolveVenue, type Resolution } from './resolveVenue.js';
-import { computeFolds, type Fold, type FoldCandidate } from './venueFolds.js';
+import {
+  computeFolds, CONTAINER_RADIUS_M, metresBetween, type Fold, type FoldCandidate,
+} from './venueFolds.js';
 import { venueVerdict, type VenueFacts, type VenueRule } from './venueTest.js';
 import { EDITORIAL_OUT } from './artTest.js';
 import {
   fetchEntityDetails,
   fetchEntityEdges,
+  fetchMuseumParts,
   type EntityDetails,
   type EntityEdges,
+  type MuseumPart,
 } from './queries.js';
 import { chunk, unique, type QueryRunner } from '../wikidataQueries.js';
 
@@ -48,6 +53,21 @@ export interface VenueGraph {
   locations: (qid: string) => string[];
   /** The full `P361` closure, which is what placement needs — see the file header. */
   ancestors: (qid: string) => ReadonlySet<string>;
+  /**
+   * The museums each door candidate counts among its parts, as fetched
+   * (`fetchMuseumParts`) — on the graph for the reason `edges` is.
+   */
+  parts: Map<string, MuseumPart[]>;
+  /**
+   * Whether an entity is an organisation rather than a building (#798): some
+   * museum it counts among its parts stands farther from it than the
+   * container radius. The Staatliche Museen zu Berlin and the Staatliche
+   * Kunstsammlungen Dresden are; Palazzo Pitti, the Petit Palais and the
+   * Forbidden City are not. An organisation is never a door, whatever its
+   * coordinate and its fame say — the umbrella's coordinate sits on one of its
+   * houses, and an umbrella is routinely better known than any one branch.
+   */
+  isOrganisation: (qid: string) => boolean;
 }
 
 /**
@@ -108,9 +128,11 @@ export async function loadVenueGraph(
 ): Promise<VenueGraph> {
   const details = new Map<string, EntityDetails>();
   const edges = new Map<string, EntityEdges>();
+  const parts = new Map<string, MuseumPart[]>();
   await walk(run, seeds, rule, details, edges);
   console.log(`${LOG_PREFIX} Venue candidates: ${details.size} entities`);
-  return graphOver(details, edges);
+  await askParts(run, rule, edges, parts);
+  return graphOver(details, edges, parts);
 }
 
 /**
@@ -140,7 +162,35 @@ export async function extendVenueGraph(
   if (!seeds.length) return graph;
   await walk(run, unique(seeds), rule, graph.details, graph.edges);
   console.log(`${LOG_PREFIX} Venue candidates: ${graph.details.size} entities after the venue-side read`);
-  return graphOver(graph.details, graph.edges);
+  await askParts(run, rule, graph.edges, graph.parts);
+  return graphOver(graph.details, graph.edges, graph.parts);
+}
+
+/**
+ * The museum parts of every door candidate the graph holds and has not asked
+ * about: what an entity the rule's classes match is part of or located in —
+ * exactly what `foldVenues` offers the door rule — so the question is asked of
+ * a few dozen entities, not of every district the walk passed through.
+ */
+async function askParts(
+  run: QueryRunner,
+  rule: VenueRule,
+  edges: Map<string, EntityEdges>,
+  parts: Map<string, MuseumPart[]>,
+): Promise<void> {
+  const candidates = new Set<string>();
+  for (const row of edges.values()) {
+    if (!row.classes.some((c) => rule.classes.has(c))) continue;
+    for (const door of [...row.parents, ...row.locations]) {
+      if (!parts.has(door)) candidates.add(door);
+    }
+  }
+  const batches = chunk([...candidates], FACT_BATCH);
+  for (let i = 0; i < batches.length; i++) {
+    run.phase(`Asking which door candidates are organisations, ${i + 1}/${batches.length}...`);
+    await run.step();
+    for (const [qid, found] of await fetchMuseumParts(run.sparql, batches[i])) parts.set(qid, found);
+  }
 }
 
 /** The walk itself: `VENUE_HOPS` of `P361` from the seeds, and `P276` one hop from a venue-class entity. */
@@ -183,10 +233,11 @@ async function walk(
   }
 }
 
-/** The graph's readers over the two maps. */
+/** The graph's readers over its maps: details, edges and the door candidates' parts. */
 function graphOver(
   details: Map<string, EntityDetails>,
   edges: Map<string, EntityEdges>,
+  parts: Map<string, MuseumPart[]>,
 ): VenueGraph {
   const parents = (qid: string) => edges.get(qid)?.parents ?? [];
   const locations = (qid: string) => edges.get(qid)?.locations ?? [];
@@ -201,7 +252,16 @@ function graphOver(
       dissolved: row.dissolved,
     };
   };
-  return { details, edges, facts, parents, locations, ancestors: makeAncestors(parents) };
+  const isOrganisation = (qid: string): boolean => {
+    const row = details.get(qid);
+    if (!row || row.lat === null || row.lon === null) return false;
+    const at = { qid, lat: row.lat, lon: row.lon, works: 0, sitelinks: 0 };
+    return (parts.get(qid) ?? []).some((part) =>
+      metresBetween(at, { ...part, works: 0, sitelinks: 0 }) > CONTAINER_RADIUS_M);
+  };
+  return {
+    details, edges, facts, parents, locations, ancestors: makeAncestors(parents), parts, isOrganisation,
+  };
 }
 
 /** The verdict on a QID a work named, memoised — and the venue it stands for, if any. */
@@ -230,9 +290,10 @@ export function makeResolver(graph: VenueGraph, rule: VenueRule) {
  * invent a museum rather than merge two — which is how a city quarter once swallowed the museum
  * inside it. What such a container can be is a *door* (#781): the building or complex a
  * collection is housed in, offered to the door rule only when it would pass the venue test on
- * its own and is not an entity the editors excluded — the quarter that did the swallowing is
+ * its own, is not an entity the editors excluded — the quarter that did the swallowing is
  * `EDITORIAL_OUT` for exactly that, and an entity kept out of the catalogue cannot be the door
- * to anything in it. Whether it *is* the door — on the same site, and the better-known name —
+ * to anything in it — and is not an organisation of several houses (`isOrganisation`, #798).
+ * Whether it *is* the door — on the same site, and the better-known name —
  * is `computeFolds`'s measurement, not this function's.
  */
 export function foldVenues(
@@ -262,7 +323,7 @@ export function foldVenues(
   };
   const doorsOf = (qid: string): FoldCandidate[] =>
     unique([...graph.parents(qid), ...graph.locations(qid)])
-      .filter((door) => !EDITORIAL_OUT[door] && wouldBeVenue(door))
+      .filter((door) => !EDITORIAL_OUT[door] && !graph.isOrganisation(door) && wouldBeVenue(door))
       .map(candidateOf)
       .filter((door): door is FoldCandidate => !!door);
   return computeFolds(candidates, graph.parents, doorsOf);

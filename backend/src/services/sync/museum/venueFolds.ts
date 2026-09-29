@@ -21,7 +21,7 @@ export type FoldKind = 'container' | 'door' | 'same-spot';
  *  key of the map computeFolds returns. See computeFolds for why, and how a consumer resolves it. */
 export interface Fold { into: string; metres: number; why: string; kind: FoldKind; }
 
-const CONTAINER_RADIUS_M = 250;
+export const CONTAINER_RADIUS_M = 250;
 const SAME_SPOT_M = 40;
 
 export function metresBetween(a: FoldCandidate, b: FoldCandidate): number {
