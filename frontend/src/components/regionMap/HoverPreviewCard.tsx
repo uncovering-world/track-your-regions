@@ -20,6 +20,7 @@ import { useHoverSelector } from '../../hooks/useHoverContext';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
+import { FindsOnViewChip } from '../shared/FindsOnViewChip';
 
 /**
  * The card's entrance, defined next to the thing that plays it.
@@ -122,7 +123,7 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
         <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }} noWrap>
           {hoverPreview.locationName || 'Primary location'}
         </Typography>
-        {(hoverPreview.kindName || hoverPreview.treasureCount) && (
+        {Boolean(hoverPreview.kindName || hoverPreview.treasureCount || hoverPreview.findsCount) && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
             {hoverPreview.kindName && (
               <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
@@ -130,6 +131,7 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
               </Typography>
             )}
             <TreasuresInsideChip count={hoverPreview.treasureCount} kindId={hoverPreview.kindId} />
+            <FindsOnViewChip count={hoverPreview.findsCount} />
           </Box>
         )}
       </Box>

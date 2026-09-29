@@ -14,6 +14,7 @@ import { Box, Typography } from '@mui/material';
 import { useHoverSelector } from '../../hooks/useHoverContext';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
+import { FindsOnViewChip } from '../shared/FindsOnViewChip';
 
 export function DiscoverHoverCard() {
   const hoverPreview = useHoverSelector(s => s.hoverPreview);
@@ -65,7 +66,7 @@ export function DiscoverHoverCard() {
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
           {hoverPreview.experienceName}
         </Typography>
-        {(hoverPreview.kindName || hoverPreview.treasureCount) && (
+        {Boolean(hoverPreview.kindName || hoverPreview.treasureCount || hoverPreview.findsCount) && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
             {hoverPreview.kindName && (
               <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
@@ -73,6 +74,7 @@ export function DiscoverHoverCard() {
               </Typography>
             )}
             <TreasuresInsideChip count={hoverPreview.treasureCount} kindId={hoverPreview.kindId} />
+            <FindsOnViewChip count={hoverPreview.findsCount} />
           </Box>
         )}
       </Box>
