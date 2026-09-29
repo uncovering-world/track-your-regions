@@ -1,6 +1,6 @@
-import type { PipelineContext } from '../../services/worldViewImport/colorMatch/context.js';
+import type { PipelineContext } from '../context.js';
 
-// OpenCV.js has no TypeScript types — mirror the no-type pattern used in wvImportMatchContext.
+// OpenCV.js has no TypeScript types — mirror the no-type pattern used in `../context.ts`.
 type Cv = PipelineContext['cv'];
 
 type Lab = [number, number, number];

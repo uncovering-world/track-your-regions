@@ -5,20 +5,20 @@
  *   1. Spatial split: break large clusters into spatially disconnected regions
  *   2. Tiny-cluster merge into nearest large neighbor (color-close merge)
  *   3. Small isolated-patch cleanup (circular-edge removal)
- *   4. Noise exclusion (color-outlier removal) — see `wvImportMatchClusterPasses.ts`
- *   5. Divisive split (merged adjacent regions) — see `wvImportMatchClusterPasses.ts`
- *   6. Fragmented-residue merge — see `wvImportMatchClusterPasses.ts`
+ *   4. Noise exclusion (color-outlier removal) — see `clusterPasses.ts`
+ *   5. Divisive split (merged adjacent regions) — see `clusterPasses.ts`
+ *   6. Fragmented-residue merge — see `clusterPasses.ts`
  *   7. Quantized map + border overlay rendering
  *   8. ICP-mask construction (tiny-noise CC removal)
  */
 
 import sharp from 'sharp';
-import { traceBorderPaths, type BorderPath } from '../../services/worldViewImport/colorMatch/geometry/borderTrace.js';
+import { traceBorderPaths, type BorderPath } from '../geometry/borderTrace.js';
 import {
   divisiveSplitClusters,
   mergeFragmentedClusters,
   excludeNoiseClusters,
-} from './wvImportMatchClusterPasses.js';
+} from './clusterPasses.js';
 
 // =============================================================================
 // Types
