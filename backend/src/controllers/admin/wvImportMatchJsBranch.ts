@@ -28,7 +28,7 @@ import { matchDivisionsFromClusters, type ReclusterSignal } from './wvImportMatc
 import { buildDownscaledBuffers } from '../../services/worldViewImport/colorMatch/pixels/colorLines.js';
 import { runKMeansClustering } from '../../services/worldViewImport/colorMatch/cluster/kmeans.js';
 import { applyJsReclusterPreset } from '../../services/worldViewImport/colorMatch/cluster/reclusterPresets.js';
-import { meanshiftPreprocess } from './wvImportMatchMeanshift.js';
+import { meanshiftPreprocess } from '../../services/worldViewImport/colorMatch/pixels/meanshift.js';
 
 // OpenCV WASM — eagerly initialized at module load to avoid tsx/esbuild overhead during requests.
 // tsx transforms every dynamic import() through esbuild, which takes 30s+ for the 10MB opencv.js.

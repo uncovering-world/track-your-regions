@@ -20,8 +20,8 @@
  */
 
 import sharp from 'sharp';
-import { reviewAndFinalizeWater } from '../../services/worldViewImport/colorMatch/water/waterFinalize.js';
-import type { PipelineContext } from '../../services/worldViewImport/colorMatch/context.js';
+import { reviewAndFinalizeWater } from '../water/waterFinalize.js';
+import type { PipelineContext } from '../context.js';
 
 // ── Mean-shift parameters ──────────────────────────────────────────
 const MS_SP = 10;   // spatial radius (pixels at full res) — must be smaller than narrowest region strip (~10-15px)
