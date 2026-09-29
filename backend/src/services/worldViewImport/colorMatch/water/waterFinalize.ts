@@ -13,8 +13,7 @@ import {
   WaterComponent, CompStat, morphCloseWaterMask, collectComponentStats, splitLargeComponents, buildWaterComponents,
 } from './waterComponents.js';
 import sharp from 'sharp';
-import { registerWaterReview, storeWaterCrops, type WaterReviewDecision } from '../../../../controllers/admin/wvImportMatchReview.js';
-import type { PipelineContext, SendEvent } from '../context.js';
+import type { PipelineContext, WaterReviewDecision } from '../context.js';
 
 /** Mark a pixel as border-connected and push it to the BFS queue if non-zero in erodedData. */
 function seedBorderPixel(
@@ -188,37 +187,6 @@ function rebuildMaskFromDecision(
   }
 }
 
-/** Emit the water_review SSE event and await the curator's decision. */
-async function requestWaterReview(
-  regionId: number,
-  waterComponents: WaterComponent[],
-  waterPxCount: number,
-  tp: number,
-  sendEvent: SendEvent,
-): Promise<WaterReviewDecision> {
-  const reviewId = `wr-${regionId}-${Date.now()}`;
-  storeWaterCrops(reviewId, waterComponents);
-  const cropCount = waterComponents.reduce((n, wc) => n + 1 + wc.subClusters.length, 0);
-  console.log(`  [Water] Stored ${cropCount} crop(s) for review ${reviewId}`);
-
-  sendEvent({
-    type: 'water_review',
-    reviewId,
-    waterPxPercent: Math.round(waterPxCount / tp * 1000) / 10,
-    waterComponents: waterComponents.map(wc => ({
-      id: wc.id,
-      pct: wc.pct,
-      cropDataUrl: '',
-      subClusters: wc.subClusters.map(sc => ({ idx: sc.idx, pct: sc.pct, cropDataUrl: '' })),
-    })),
-  });
-  await new Promise(resolve => setImmediate(resolve));
-
-  return new Promise<WaterReviewDecision>((resolve) => {
-    registerWaterReview(reviewId, resolve);
-  });
-}
-
 /** Log decision metadata and return parsed approval sets. */
 function describeReviewDecision(
   decision: WaterReviewDecision,
@@ -299,7 +267,7 @@ export async function reviewAndFinalizeWater(
   colorBuf: Buffer,
   ctx: PipelineContext,
 ): Promise<Uint8Array> {
-  const { cv, TW, TH, tp, oddK, origW, origH, regionId, pushDebugImage, sendEvent, origDownBuf } = ctx;
+  const { cv, TW, TH, tp, oddK, origW, origH, pushDebugImage, askWaterReview, origDownBuf } = ctx;
 
   // --- Morphological close to fill small gaps ---
   const wkSize = oddK(7);
@@ -350,7 +318,7 @@ export async function reviewAndFinalizeWater(
 
   // --- Interactive per-component water review ---
   if (waterComponents.length > 0) {
-    const decision = await requestWaterReview(regionId, waterComponents, waterPxCount, tp, sendEvent);
+    const decision = await askWaterReview(waterComponents, waterPxCount);
     await applyReviewDecision(
       ctx, waterMask, waterGrown, savedWaterLabels, compStats, compSubCentroids,
       colorBuf, waterComponents, decision,

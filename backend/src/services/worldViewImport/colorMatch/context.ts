@@ -9,6 +9,7 @@
  */
 
 import type { ColorMatchEvent } from '../../../api/responses/wvImportCvMatch.js';
+import type { WaterComponent } from './water/waterComponents.js';
 
 /** Mutable state threaded through every phase of the color-match pipeline. */
 export interface PipelineContext {
@@ -60,6 +61,8 @@ export interface PipelineContext {
 
   // SSE/debug helpers (set by orchestrator)
   sendEvent: SendEvent;
+  /** Shows the curator the water components and waits for the answer. */
+  askWaterReview: AskWaterReview;
   logStep: (step: string) => Promise<void>;
   pushDebugImage: (label: string, dataUrl: string) => Promise<void>;
   debugImages: Array<{ label: string; dataUrl: string }>;
@@ -69,6 +72,22 @@ export interface PipelineContext {
   oddK: (base: number) => number;
   pxS: (base: number) => number;
 }
+
+/** Water review decision: approved components + mix (sub-clustered) components */
+export interface WaterReviewDecision {
+  approvedIds: number[];
+  mixDecisions: Array<{ componentId: number; approvedSubClusters: number[] }>;
+}
+
+/**
+ * Asks the curator which water components are water. The branch that runs
+ * the pipeline supplies it, since the answer arrives through the review
+ * registry under `controllers/`.
+ */
+export type AskWaterReview = (
+  waterComponents: WaterComponent[],
+  waterPxCount: number,
+) => Promise<WaterReviewDecision>;
 
 /** Writes one event of the stream, held to the schema (ADR-0066). */
 export type SendEvent = (event: ColorMatchEvent) => void;
