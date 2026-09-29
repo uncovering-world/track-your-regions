@@ -4,6 +4,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Alert,
   Button,
   TextField,
   Box,
@@ -18,17 +19,20 @@ import {
   Checkbox,
 } from '@mui/material';
 import type { Region } from '../../../../types';
+import type { UpdateRegionBody } from '../../../../api/regions';
+import { useEditForm } from '../../../../hooks/useEditForm';
+
+/** The fields this dialog edits, named by the request body's keys (ADR-0076). */
+type RegionFields = Required<Pick<UpdateRegionBody, 'name' | 'parentRegionId' | 'color' | 'usesHull'>>;
+
+const REQUIRED = ['name'] as const;
 
 interface EditRegionDialogProps {
   region: Region | null;
   regions: Region[];
   onClose: () => void;
-  onSave: (data: {
-    name: string;
-    color?: string;
-    parentRegionId: number | null;
-    usesHull?: boolean;
-  }) => void;
+  /** Sends the changed fields; a rejection is shown in the dialog, which stays open. */
+  onSave: (changes: UpdateRegionBody) => Promise<unknown>;
 }
 
 export function EditRegionDialog({
@@ -37,54 +41,45 @@ export function EditRegionDialog({
   onClose,
   onSave,
 }: EditRegionDialogProps) {
-  // Local state for editing
-  const [editedRegion, setEditedRegion] = useState<Region | null>(null);
+  const form = useEditForm<RegionFields>({
+    initial: {
+      name: region?.name ?? '',
+      parentRegionId: region?.parentRegionId ?? null,
+      color: region?.color ?? null,
+      usesHull: region?.usesHull ?? false,
+    },
+    resetKey: region?.id ?? null,
+    required: REQUIRED,
+  });
+  const { parentRegionId, color, usesHull } = form.values;
+  const [pending, setPending] = useState(false);
   const [parentRegionSearch, setParentRegionSearch] = useState('');
   const [showParentSearchResults, setShowParentSearchResults] = useState(false);
   const [inheritParentColor, setInheritParentColor] = useState(false);
 
-  // Initialize local state when region prop changes
-  if (region && (!editedRegion || editedRegion.id !== region.id)) {
-    setEditedRegion({ ...region });
+  const handleClose = () => {
     setParentRegionSearch('');
     setShowParentSearchResults(false);
     setInheritParentColor(false);
-  }
-
-  // Clear local state when dialog closes
-  if (!region && editedRegion) {
-    setEditedRegion(null);
-  }
-
-  const handleClose = () => {
-    setEditedRegion(null);
-    setParentRegionSearch('');
-    setShowParentSearchResults(false);
     onClose();
   };
 
-  const handleSave = () => {
-    if (editedRegion) {
-      onSave({
-        name: editedRegion.name,
-        color: editedRegion.color || undefined,
-        parentRegionId: editedRegion.parentRegionId,
-        usesHull: editedRegion.usesHull,
-      });
-    }
+  const handleSave = async () => {
+    setPending(true);
+    const saved = await form.submit(onSave);
+    setPending(false);
+    if (saved) handleClose();
   };
 
   return (
     <Dialog open={!!region} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Edit Region</DialogTitle>
       <DialogContent>
+        {form.formError && <Alert severity="error" sx={{ mb: 1 }}>{form.formError}</Alert>}
         <TextField
           fullWidth
           label="Name"
-          value={editedRegion?.name || ''}
-          onChange={(e) =>
-            setEditedRegion((prev) => (prev ? { ...prev, name: e.target.value } : null))
-          }
+          {...form.field('name')}
           sx={{ mt: 1, mb: 2 }}
         />
 
@@ -93,10 +88,10 @@ export function EditRegionDialog({
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Parent Region
           </Typography>
-          {editedRegion?.parentRegionId ? (
+          {parentRegionId ? (
             <Chip
-              label={regions.find(r => r.id === editedRegion.parentRegionId)?.name || 'Unknown'}
-              onDelete={() => setEditedRegion(prev => prev ? { ...prev, parentRegionId: null } : null)}
+              label={regions.find(r => r.id === parentRegionId)?.name || 'Unknown'}
+              onDelete={() => form.set('parentRegionId', null)}
               sx={{ mb: 1 }}
             />
           ) : (
@@ -119,7 +114,7 @@ export function EditRegionDialog({
                 <ListItem disablePadding>
                   <ListItemButton
                     onClick={() => {
-                      setEditedRegion(prev => prev ? { ...prev, parentRegionId: null } : null);
+                      form.set('parentRegionId', null);
                       setParentRegionSearch('');
                       setShowParentSearchResults(false);
                     }}
@@ -129,7 +124,7 @@ export function EditRegionDialog({
                 </ListItem>
                 {regions
                   .filter(r =>
-                    r.id !== editedRegion?.id && // Can't be its own parent
+                    r.id !== region?.id && // Can't be its own parent
                     r.name.toLowerCase().includes(parentRegionSearch.toLowerCase())
                   )
                   .slice(0, 10)
@@ -137,13 +132,9 @@ export function EditRegionDialog({
                     <ListItem key={r.id} disablePadding>
                       <ListItemButton
                         onClick={() => {
-                          const newParent = r;
-                          setEditedRegion(prev => prev ? {
-                            ...prev,
-                            parentRegionId: newParent.id,
-                            // Inherit color from new parent by default
-                            color: inheritParentColor ? newParent.color : prev.color,
-                          } : null);
+                          form.set('parentRegionId', r.id);
+                          // Inherit color from new parent by default
+                          if (inheritParentColor && r.color) form.set('color', r.color);
                           setParentRegionSearch('');
                           setShowParentSearchResults(false);
                           setInheritParentColor(true); // Reset for next selection
@@ -158,7 +149,7 @@ export function EditRegionDialog({
                   ))
                 }
                 {regions.filter(r =>
-                  r.id !== editedRegion?.id &&
+                  r.id !== region?.id &&
                   r.name.toLowerCase().includes(parentRegionSearch.toLowerCase())
                 ).length === 0 && (
                   <ListItem>
@@ -174,13 +165,11 @@ export function EditRegionDialog({
           <Typography>Color:</Typography>
           <input
             type="color"
-            value={editedRegion?.color || '#3388ff'}
-            onChange={(e) =>
-              setEditedRegion((prev) => (prev ? { ...prev, color: e.target.value } : null))
-            }
+            value={color || '#3388ff'}
+            onChange={(e) => form.set('color', e.target.value)}
             style={{ width: 50, height: 30 }}
           />
-          {editedRegion?.parentRegionId && (
+          {parentRegionId && (
             <FormControlLabel
               control={
                 <Checkbox
@@ -189,10 +178,8 @@ export function EditRegionDialog({
                   onChange={(e) => {
                     setInheritParentColor(e.target.checked);
                     if (e.target.checked) {
-                      const parent = regions.find(r => r.id === editedRegion?.parentRegionId);
-                      if (parent?.color) {
-                        setEditedRegion(prev => prev ? { ...prev, color: parent.color } : null);
-                      }
+                      const parent = regions.find(r => r.id === parentRegionId);
+                      if (parent?.color) form.set('color', parent.color);
                     }
                   }}
                 />
@@ -207,10 +194,8 @@ export function EditRegionDialog({
           <FormControlLabel
             control={
               <Checkbox
-                checked={editedRegion?.usesHull || false}
-                onChange={(e) =>
-                  setEditedRegion((prev) => (prev ? { ...prev, usesHull: e.target.checked } : null))
-                }
+                checked={usesHull}
+                onChange={(e) => form.set('usesHull', e.target.checked)}
               />
             }
             label={
@@ -226,7 +211,7 @@ export function EditRegionDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave}>
+        <Button variant="contained" onClick={handleSave} disabled={!form.dirty || form.missing || pending}>
           Save
         </Button>
       </DialogActions>

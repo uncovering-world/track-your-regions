@@ -12,6 +12,7 @@ import {
   updateWorldView,
 } from '../../../api';
 import type { Region } from '../../../types';
+import type { UpdateRegionBody } from '../../../api/regions';
 import type { WorldView } from '../../../api/worldViews';
 import { queryKeys } from '../../../api/queryKeys';
 
@@ -30,7 +31,6 @@ interface UseRegionMutationsOptions {
   onRegionUpdated?: (region: Region) => void;
   onRegionCreated?: () => void;
   onDeleteConfirmNeeded?: (region: Region) => void;
-  onEditingComplete?: () => void;
   onWorldViewRenamed?: () => void;
   onAddChildrenComplete?: () => void;
 }
@@ -43,7 +43,6 @@ export function useRegionMutations({
   onRegionUpdated,
   onRegionCreated,
   onDeleteConfirmNeeded,
-  onEditingComplete,
   onWorldViewRenamed,
   onAddChildrenComplete,
 }: UseRegionMutationsOptions) {
@@ -149,7 +148,7 @@ export function useRegionMutations({
 
   // Update region mutation
   const updateRegionMutation = useMutation({
-    mutationFn: ({ regionId, data }: { regionId: number; data: { name?: string; color?: string; parentRegionId?: number | null; usesHull?: boolean } }) =>
+    mutationFn: ({ regionId, data }: { regionId: number; data: UpdateRegionBody }) =>
       updateRegion(regionId, data),
     onSuccess: (updatedRegion, variables) => {
       // If parent changed, invalidate ALL members (region moved between parents)
@@ -171,8 +170,6 @@ export function useRegionMutations({
           ...updatedRegion,
         });
       }
-
-      onEditingComplete?.();
     },
   });
 
