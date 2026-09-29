@@ -16,7 +16,7 @@ import {
   cancelIcpAdjustment,
   type IcpAdjustmentDecision,
 } from './wvImportMatchReview.js';
-import { cleanClusters } from './wvImportMatchClusterClean.js';
+import { cleanClusters } from '../../services/worldViewImport/colorMatch/cluster/clusterClean.js';
 import { alignDivisionsToImage } from '../../services/worldViewImport/colorMatch/icp/icp.js';
 import { detectBboxInflation } from '../../services/worldViewImport/colorMatch/icp/icpOutliers.js';
 import { runIcpAdjustment } from '../../services/worldViewImport/colorMatch/icp/icpAdjust.js';

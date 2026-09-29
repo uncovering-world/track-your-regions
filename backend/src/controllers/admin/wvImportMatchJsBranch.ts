@@ -25,7 +25,7 @@ import type {
 import sharp from 'sharp';
 import { matchDivisionsFromClusters, type ReclusterSignal } from './wvImportMatchShared.js';
 import { removeColoredLines } from '../../services/worldViewImport/colorMatch/pixels/colorLines.js';
-import { runKMeansClustering } from './wvImportMatchCluster.js';
+import { runKMeansClustering } from '../../services/worldViewImport/colorMatch/cluster/kmeans.js';
 import { meanshiftPreprocess } from './wvImportMatchMeanshift.js';
 
 // OpenCV WASM — eagerly initialized at module load to avoid tsx/esbuild overhead during requests.

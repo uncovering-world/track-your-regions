@@ -1,7 +1,7 @@
 /**
  * Less-frequently-used cluster-cleaning passes.
  *
- * Extracted from `wvImportMatchClusterClean.ts` to keep the orchestrator small:
+ * `clusterClean.ts` runs them, and keeps its own orchestration small:
  *   - Divisive split: detect merged adjacent regions within a single cluster
  *   - Fragmented merge: fold heavily-fragmented small clusters into color-close
  *     larger neighbours
