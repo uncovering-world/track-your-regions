@@ -18599,6 +18599,12 @@
             "maximum": 9007199254740991,
             "description": "Offered and published links to works."
           },
+          "finds_count": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Finds dug up at this site and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row that is not a site."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -18664,6 +18670,7 @@
           "kind_priority",
           "location_count",
           "treasure_count",
+          "finds_count",
           "source_membership",
           "existence",
           "missing_since",

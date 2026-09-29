@@ -78,6 +78,7 @@ const bamiyan: Experience = {
   kind_priority: 1,
   location_count: 1,
   treasure_count: 0,
+  finds_count: 0,
   source_membership: 'present',
   existence: 'extant',
   missing_since: null,

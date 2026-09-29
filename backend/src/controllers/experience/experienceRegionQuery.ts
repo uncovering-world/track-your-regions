@@ -26,6 +26,7 @@ import { countedPlacesSql } from './experienceCounts.js';
 import { rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import { isNewSql } from './experienceNewBadge.js';
 import { dangerSelectSql } from './experienceDanger.js';
+import { findsOnViewCountSql } from './siteFinds.js';
 
 /**
  * The two statements a region read needs, and their parameters.
@@ -156,6 +157,11 @@ export function buildRegionQueries(opts: {
            JOIN treasures t ON t.id = et.treasure_id
           WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
             AND ${publishedContentSql('et')} AND ${publishedContentSql('t')}) as treasure_count,
+        -- What was dug up at a site and is on view in a museum somewhere else
+        -- -- the "finds on view" mark on the row (#907). Zero on every row that
+        -- is not a site, and composed from the conditions the site's own list
+        -- of finds reads with, so the row and the card cannot disagree.
+        ${findsOnViewCountSql('e')} AS finds_count,
         ${lifecycleSelectSql()},
         ${isNewSql('e', readerParam)} AS is_new
         ${rejectionSelect}
@@ -232,6 +238,7 @@ export function buildRegionQueries(opts: {
            JOIN treasures t ON t.id = et.treasure_id
           WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
             AND ${publishedContentSql('et')} AND ${publishedContentSql('t')}) as treasure_count,
+        ${findsOnViewCountSql('e')} AS finds_count,
         ${lifecycleSelectSql()},
         ${isNewSql('e', readerParam)} AS is_new
         ${rejectionSelect}

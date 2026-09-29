@@ -52,21 +52,24 @@ describe('getSiteFinds', () => {
 
     // The link the source still places and a curator has passed; never widened,
     // since a link is a claim a reader acts on.
-    expect(sql).toContain(offeredLinkSql('et'));
-    expect(sql).toContain(publishedContentSql('et'));
+    expect(sql).toContain(offeredLinkSql('sl'));
+    expect(sql).toContain(publishedContentSql('sl'));
     expect(sql).not.toMatch(/::boolean OR/);
     // The museum admitted, passed and still standing; the work passed.
-    expect(sql).toContain(experienceOfferedToReaderSql('m'));
-    expect(sql).toContain(hideLostSql('m'));
-    // Anchored on the AND, since `publishedContentSql('t')` is a substring of
-    // the link's `('et')` and would match with the work's predicate gone.
+    expect(sql).toContain(experienceOfferedToReaderSql('sv'));
+    expect(sql).toContain(hideLostSql('sv'));
+    // Anchored on the AND, since `publishedContentSql('t')` could be a
+    // substring of another alias's and would match with the work's gone.
     expect(sql).toMatch(new RegExp(`AND ${publishedContentSql('t')}`));
     // And the site itself offered to a reader: a site nobody may see answers
     // the same empty list as an id that names nothing.
     expect(sql).toContain(experienceOfferedToReaderSql('e'));
-    expect(sql).toContain(hideLostSql('e'));
-    // A find no visible museum holds is not a find anybody can go and see.
-    expect(sql).toMatch(/WHERE json_array_length\(f\.shown_at\) > 0/);
+    // But not whether it still stands: a flooded dig's finds are still on
+    // view, and the count on its row says so too.
+    expect(sql).not.toContain(hideLostSql('e'));
+    // A find no visible museum holds is not a find anybody can go and see —
+    // asked of the same rows the list of museums is built from.
+    expect(sql).toMatch(/AND EXISTS \(SELECT 1 FROM experience_treasures sl/);
   });
 
   it('names each museum once, the row of the site\'s own kind first', async () => {
@@ -75,8 +78,8 @@ describe('getSiteFinds', () => {
     // A museum in two kinds is two rows (#755): the Naples museum holds the
     // Farnese Hercules as an art museum and as an archaeology museum, and a
     // find must not say "shown at Naples and Naples".
-    expect(sql).toMatch(/SELECT DISTINCT ON \(m\.external_id\) m\.id, m\.name, vk\.id AS kind_id/);
-    expect(sql).toMatch(/ORDER BY m\.external_id, \(m\.source_id = e\.source_id\) DESC, m\.id/);
+    expect(sql).toMatch(/SELECT DISTINCT ON \(sv\.external_id\) sv\.id, sv\.name, svk\.id AS kind_id/);
+    expect(sql).toMatch(/ORDER BY sv\.external_id, \(sv\.source_id = e\.source_id\) DESC, sv\.id/);
   });
 
   it('sends each museum the regions that name it to a reader, the way the search read does', async () => {
@@ -108,7 +111,21 @@ describe('getSiteFinds', () => {
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     expect(sql).toContain("t.metadata->'imageCredit' AS image_credit");
-    expect(sql).toMatch(/ORDER BY f\.sitelinks_count DESC, f\.id/);
+    expect(sql).toMatch(/ORDER BY t\.sitelinks_count DESC, t\.id/);
     expect(res.json).toHaveBeenCalledWith({ experienceId: 14730, finds: [find], total: 1 });
+  });
+});
+
+describe('the count a region\'s list carries on a site\'s row', () => {
+  it('is composed from the very conditions the list is, so the two cannot disagree', async () => {
+    const { findsOnViewCountSql, findOfSiteSql } = await import('./siteFinds.js');
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValue({ rows: [] });
+    const sql = await findsSql();
+
+    expect(sql).toContain(findOfSiteSql('e', 't'));
+    expect(findsOnViewCountSql('e')).toBe(
+      `(SELECT COUNT(*)::int FROM treasures sf WHERE ${findOfSiteSql('e', 'sf')})`,
+    );
   });
 });

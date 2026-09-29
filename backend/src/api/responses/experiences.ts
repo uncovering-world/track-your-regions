@@ -132,6 +132,8 @@ export const Experience = z.strictObject({
   kind_priority: z.number().int().describe("The kind's display order, which the list orders by."),
   location_count: z.number().int(),
   treasure_count: z.number().int().describe('Offered and published links to works.'),
+  finds_count: z.number().int()
+    .describe('Finds dug up at this site and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row that is not a site.'),
   created_at: timestamp.unwrap().optional(),
   is_rejected: z.boolean().optional().describe('Only for a curator whose scope reaches the region.'),
   rejection_reason: z.string().nullable().optional(),

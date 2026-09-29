@@ -19,10 +19,12 @@ import type { z } from 'zod/v4';
 import type { SiteFindsResponse } from '../../api/responses/experiences.js';
 import type { idParamSchema } from '../../types/index.js';
 import { pool } from '../../db/index.js';
-import { rowKindJoinSql } from '../../db/membership.js';
-import { experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
 import { siteFindOf, type SiteFindRow } from './experienceAnswerRows.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
+// What a find of a site on view is, shared with the count on the site's row in
+// a region's list, so "3 finds on view" and this list cannot disagree (#907).
+import { findOfSiteSql, venuesShowingSql } from './siteFinds.js';
 
 /**
  * Get the finds dug up at a site
@@ -30,12 +32,27 @@ import { readerRegionsJsonSql } from './readerRegions.js';
  *
  * Stateless, like `/search`: every row is one a reader may open, and the same
  * to every caller. A find is listed only through a museum a reader may be sent
- * to — the museum admitted and passed and still standing, the link the source
- * still places and a curator has passed, the work itself passed — and each
- * museum carries the regions that name it to a reader (`readerRegionsJsonSql`),
+ * to (`siteFinds.ts`: the museum admitted and passed and still standing, the
+ * link the source still places and a curator has passed, the work itself
+ * passed) — and each museum carries the regions that name it to a reader (`readerRegionsJsonSql`),
  * which is what makes "shown at the Louvre" a link rather than a name. A site
  * nobody may see, a row that is not a site, and an id that names nothing all
  * answer the same empty list, so the route confirms no existence.
+ *
+ * A site that no longer stands is not one nobody may see: a dig flooded by a
+ * dam or built over is shown to a reader who asks for what is gone, and what
+ * was found there is still on view — which is exactly what its card should
+ * say. So the site is gated on its acceptance alone, as the count on its row
+ * in a region's list is (`findsOnViewCountSql`); the museum still has to
+ * stand, since a find is listed only where a traveller can go and see it.
+ *
+ * The way back stays closed on purpose: a find on its museum's list names a
+ * lost dig as words, not a link (`found_at_site` in
+ * `experienceTreasureController.ts` keeps `hideLostSql`). A region's list
+ * holds a lost place only for a reader who asked for what is gone
+ * (`includeLost`), so a link from a museum would send everyone else to an
+ * address whose card the list cannot open — while a lost dig's own card is
+ * reached only by a reader who has already asked.
  *
  * A museum in two kinds is two rows today (#755) — the Naples museum holds the
  * Farnese Hercules as an art museum and as an archaeology museum — and a find
@@ -48,51 +65,29 @@ export async function getSiteFinds(
 ): Promise<SiteFindsResponse> {
 
   const result = await pool.query<SiteFindRow>(`
-    SELECT f.*
-    FROM (
-      SELECT
-        t.id, t.external_id, t.name, t.treasure_type, t.year, t.image_url,
-        t.is_iconic, t.sitelinks_count,
-        -- Whose photograph, for the same reason every list of works carries it
-        -- (ADR-0043): a share of Commons files ask that the author be named
-        -- wherever the picture appears, and this list shows it.
-        t.metadata->'imageCredit' AS image_credit,
-        (SELECT COALESCE(json_agg(json_build_object(
-                  'id', v.id, 'name', v.name, 'kind_id', v.kind_id,
-                  'regions', ${readerRegionsJsonSql('v.id')})
-                ORDER BY v.name, v.id), '[]'::json)
-         FROM (
-           SELECT DISTINCT ON (m.external_id) m.id, m.name, vk.id AS kind_id
-           FROM experience_treasures et
-           JOIN experiences m ON m.id = et.experience_id
-           ${rowKindJoinSql('m', 'vm', 'vk')}
-           WHERE et.treasure_id = t.id
-             -- The link: still placed by the source (ADR-0044) and passed by a
-             -- curator (ADR-0025). Not widened for anyone: a link is a claim a
-             -- reader acts on.
-             AND ${offeredLinkSql('et')}
-             AND ${publishedContentSql('et')}
-             -- The museum: accepted by a kind, passed, and still standing.
-             AND ${experienceOfferedToReaderSql('m')}
-             AND ${hideLostSql('m')}
-           -- One row per building; the site's own kind first, then the id, so
-           -- the choice is total.
-           ORDER BY m.external_id, (m.source_id = e.source_id) DESC, m.id
-         ) v) AS shown_at
-      FROM experiences e
-      JOIN treasures t ON t.metadata->'foundAt'->>'qid' = e.external_id
-      WHERE e.id = $1
-        -- A site, by the type only the Archaeology kind has: the QID a find
-        -- names is a place somebody dug in, never a museum.
-        AND e.type = 'site'
-        AND ${experienceOfferedToReaderSql('e')}
-        AND ${hideLostSql('e')}
-        -- The work itself is passed globally (ADR-0025 decision 2).
-        AND ${publishedContentSql('t')}
-    ) f
-    -- A find no museum a reader may see holds is a find nobody can go and see.
-    WHERE json_array_length(f.shown_at) > 0
-    ORDER BY f.sitelinks_count DESC, f.id
+    SELECT
+      t.id, t.external_id, t.name, t.treasure_type, t.year, t.image_url,
+      t.is_iconic, t.sitelinks_count,
+      -- Whose photograph, for the same reason every list of works carries it
+      -- (ADR-0043): a share of Commons files ask that the author be named
+      -- wherever the picture appears, and this list shows it.
+      t.metadata->'imageCredit' AS image_credit,
+      (SELECT COALESCE(json_agg(json_build_object(
+                'id', v.id, 'name', v.name, 'kind_id', v.kind_id,
+                'regions', ${readerRegionsJsonSql('v.id')})
+              ORDER BY v.name, v.id), '[]'::json)
+       FROM (
+         SELECT DISTINCT ON (sv.external_id) sv.id, sv.name, svk.id AS kind_id
+         ${venuesShowingSql('t')}
+         -- One row per building; the site's own kind first, then the id, so
+         -- the choice is total.
+         ORDER BY sv.external_id, (sv.source_id = e.source_id) DESC, sv.id
+       ) v) AS shown_at
+    FROM experiences e
+    JOIN treasures t ON ${findOfSiteSql('e', 't')}
+    WHERE e.id = $1
+      AND ${experienceOfferedToReaderSql('e')}
+    ORDER BY t.sitelinks_count DESC, t.id
   `, [experienceId]);
 
   return {
