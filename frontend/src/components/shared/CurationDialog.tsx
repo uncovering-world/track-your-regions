@@ -1,9 +1,11 @@
 /**
  * CurationDialog — Shared dialog for curator actions on an experience.
  *
- * Supports editing (name, description, kind, image), rejecting, and
+ * Supports editing (name, description, type, picture, links), rejecting, and
  * unrejecting an experience within a region, and lists the places the object
- * is made of with the way to correct each (`CurationPlaces`). Includes a
+ * is made of with the way to correct each (`CurationPlaces`). The edit's
+ * fields are held by the form layer (`useEditForm`, ADR-0076), which decides
+ * what changed, what is sent and which field a refusal names. Includes a
  * collapsible curation history log. Self-contained mutations that invalidate
  * the relevant query caches on success.
  *
@@ -15,7 +17,7 @@
  * of rather than anything of the dialog's own.
  */
 
-import { memo, useState, useEffect } from 'react';
+import { memo, useId, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -29,6 +31,7 @@ import {
   Chip,
   Divider,
   FormControl,
+  FormHelperText,
   InputLabel,
   Select,
   MenuItem,
@@ -55,6 +58,7 @@ import {
   fetchCurationLog,
   setExperienceState,
 } from '../../api/curation';
+import { useEditForm } from '../../hooks/useEditForm';
 import { formatRelativeTime } from '../../utils/dateFormat';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LoadingSpinner } from './LoadingSpinner';
@@ -90,23 +94,22 @@ function creditForPreview(editImageUrl: string, row: Experience): ImageCredit | 
   return row.image_credit;
 }
 
+/** What the edit form holds, named by the request body's keys (ADR-0076). */
+type EditFields = Required<Pick<Parameters<typeof editExperience>[1],
+  'name' | 'shortDescription' | 'type' | 'imageUrl' | 'websiteUrl' | 'wikipediaUrl'>>;
+
+const text = (value: unknown) => (typeof value === 'string' ? value : '');
+
 function CurationDialogComponent({ experience, regionId, onClose }: CurationDialogProps) {
   const queryClient = useQueryClient();
-
-  // Edit fields
-  const [editName, setEditName] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editType, setEditType] = useState('');
   const typeOptions = typeOptionsFor(experience?.kind_id);
-  const [editImageUrl, setEditImageUrl] = useState('');
-  const [editWebsiteUrl, setEditWebsiteUrl] = useState('');
-  const [editWikipediaUrl, setEditWikipediaUrl] = useState('');
 
-  // Reject fields
-  const [rejectReason, setRejectReason] = useState('');
-
-  // History toggle
-  const [historyOpen, setHistoryOpen] = useState(false);
+  // Open for the object it was opened on: the dialog outlives the object it
+  // shows, and the next one opens with its history folded.
+  const [historyFor, setHistoryFor] = useState<number | null>(null);
+  // A select's refusal is read out with it, as a text field's helper text is.
+  const typeErrorId = useId();
+  const historyOpen = historyFor === experience?.id;
 
   // Fetch full experience detail to get metadata.website
   const detailQuery = useQuery({
@@ -116,30 +119,25 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
     staleTime: 300_000,
   });
 
-  // Reset fields when experience changes
-  useEffect(() => {
-    if (experience) {
-      setEditName(experience.name);
-      setEditDescription(experience.short_description || '');
-      setEditType(experience.type || '');
-      setEditImageUrl(experience.image_url || '');
-      setRejectReason('');
-      setHistoryOpen(false);
-    }
-  }, [experience]);
-
-  // Populate website + wikipedia URLs when detail loads
-  useEffect(() => {
-    if (detailQuery.data?.metadata) {
-      const website = detailQuery.data.metadata.website;
-      const wiki = detailQuery.data.metadata.wikipediaUrl;
-      setEditWebsiteUrl(typeof website === 'string' ? website : '');
-      setEditWikipediaUrl(typeof wiki === 'string' ? wiki : '');
-    } else {
-      setEditWebsiteUrl('');
-      setEditWikipediaUrl('');
-    }
-  }, [detailQuery.data]);
+  // The stored values. The two links arrive with the detail read, and the form
+  // moves them in only where the curator has not typed. The name is compared
+  // and sent as the endpoint stores it (`tidyLabel`, #835), and an emptied one,
+  // which the endpoint refuses, holds the save back.
+  const metadata = detailQuery.data?.metadata;
+  const form = useEditForm<EditFields>({
+    initial: {
+      name: experience?.name ?? '',
+      shortDescription: experience?.short_description ?? '',
+      type: experience?.type ?? '',
+      imageUrl: experience?.image_url ?? '',
+      websiteUrl: text(metadata?.website),
+      wikipediaUrl: text(metadata?.wikipediaUrl),
+    },
+    resetKey: experience?.id ?? null,
+    tidy: { name: tidyLabel },
+    required: ['name'],
+  });
+  const rejectForm = useEditForm({ initial: { reason: '' }, resetKey: experience?.id ?? null });
 
   // Fetch curation log when history is opened
   const logQuery = useQuery({
@@ -218,40 +216,12 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
 
   if (!experience) return null;
 
-  // The name as the endpoint stores it, on both sides (`tidyLabel`, #835): a
-  // name that differs from the stored one only by whitespace is not a change,
-  // and sending it would claim the column over an edit nobody made. A name
-  // emptied to spaces is an empty name, which the endpoint refuses, so Save
-  // waits on it rather than sending a correction that fails whole.
-  const tidiedName = tidyLabel(editName);
-  const renamed = tidiedName !== tidyLabel(experience.name);
-
-  const handleSave = () => {
-    // A field travels only when it changed, and an emptied one travels as ''
-    // — the API's way of clearing it (#696). Folding it into `undefined` here
-    // had `JSON.stringify` drop it, so a removal never left the browser: alone
-    // it was answered "No fields to update", beside another change it was
-    // reported saved.
-    const changes: Record<string, string> = {};
-    if (renamed) changes.name = tidiedName;
-    if (editDescription !== (experience.short_description || '')) changes.shortDescription = editDescription;
-    if (editType !== (experience.type || '')) changes.type = editType;
-    if (editImageUrl !== (experience.image_url || '')) changes.imageUrl = editImageUrl;
-    const currentWebsite = (detailQuery.data?.metadata?.website as string) || '';
-    if (editWebsiteUrl !== currentWebsite) changes.websiteUrl = editWebsiteUrl;
-    const currentWiki = (detailQuery.data?.metadata?.wikipediaUrl as string) || '';
-    if (editWikipediaUrl !== currentWiki) changes.wikipediaUrl = editWikipediaUrl;
-
-    if (Object.keys(changes).length === 0) return;
-    editMutation.mutate(changes);
-  };
-
   const handleReject = () => {
     if (!regionId) return;
     rejectMutation.mutate({
       experienceId: experience.id,
       rId: regionId,
-      reason: rejectReason || undefined,
+      reason: rejectForm.changes().reason || undefined,
     });
   };
 
@@ -263,17 +233,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
     });
   };
 
-  const currentWebsite = (detailQuery.data?.metadata?.website as string) || '';
-  const currentWikipedia = (detailQuery.data?.metadata?.wikipediaUrl as string) || '';
-  const previewCredit = creditForPreview(editImageUrl, experience);
-  const hasChanges =
-    renamed ||
-    editDescription !== (experience.short_description || '') ||
-    editType !== (experience.type || '') ||
-    editImageUrl !== (experience.image_url || '') ||
-    editWebsiteUrl !== currentWebsite ||
-    editWikipediaUrl !== currentWikipedia;
-
+  const imageUrl = form.values.imageUrl;
   const isRejected = experience.is_rejected;
   // Every write from this dialog, including the lifecycle correction: they all
   // act on the same row, and one left enabled while another is in flight is an
@@ -306,14 +266,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
         </Typography>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
-          <TextField
-            label="Name"
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
-            fullWidth
-            size="small"
-            required
-          />
+          <TextField label="Name" {...form.field('name')} fullWidth size="small" required />
           {/* Where it is, beside what it is called: a fact of the object, read as a
               field of this form. For a museum or a monument the one place is the
               object, and this field is the only row that place has anywhere (#583).
@@ -331,8 +284,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
           />
           <TextField
             label="Short Description"
-            value={editDescription}
-            onChange={(e) => setEditDescription(e.target.value)}
+            {...form.field('shortDescription')}
             fullWidth
             size="small"
             multiline
@@ -343,25 +295,26 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
               for a place of worship — and no control
               at all for a museum, which is a kind without types (ADR-0045, #814). */}
           {typeOptions.length > 0 && (
-            <FormControl fullWidth size="small">
+            <FormControl fullWidth size="small" error={!!form.errors.type}>
               <InputLabel>Type</InputLabel>
               <Select
-                value={editType}
+                value={form.values.type}
                 label="Type"
-                onChange={(e) => setEditType(e.target.value)}
+                SelectDisplayProps={{ 'aria-describedby': form.errors.type ? typeErrorId : undefined }}
+                onChange={(e) => form.set('type', e.target.value)}
               >
                 <MenuItem value="">None</MenuItem>
                 {typeOptions.map(option => (
                   <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                 ))}
               </Select>
+              {form.errors.type && <FormHelperText id={typeErrorId}>{form.errors.type}</FormHelperText>}
             </FormControl>
           )}
           <Box>
             <TextField
               label="Image URL"
-              value={editImageUrl}
-              onChange={(e) => setEditImageUrl(e.target.value)}
+              {...form.field('imageUrl')}
               fullWidth
               size="small"
               placeholder="https://commons.wikimedia.org/..."
@@ -370,26 +323,23 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
                 so checking a picture is not a copy, a new tab and a way back. An
                 emptied box draws nothing: the picture is the field's value, and
                 the removal readers get is the removal the curator sees. */}
-            {editImageUrl && (
-              <PictureWithCredit url={editImageUrl} credit={previewCredit} alt="Picture preview" />
+            {imageUrl && (
+              <PictureWithCredit url={imageUrl} credit={creditForPreview(imageUrl, experience)} alt="Picture preview" />
             )}
           </Box>
           <TextField
             label="Wikipedia URL"
-            value={editWikipediaUrl}
-            onChange={(e) => setEditWikipediaUrl(e.target.value)}
+            {...form.field('wikipediaUrl')}
             fullWidth
             size="small"
             placeholder="https://en.wikipedia.org/wiki/..."
           />
           <TextField
             label="Website URL"
-            value={editWebsiteUrl}
-            onChange={(e) => setEditWebsiteUrl(e.target.value)}
+            {...form.field('websiteUrl', { helperText: 'Official site (UNESCO page, museum site, etc.)' })}
             fullWidth
             size="small"
             placeholder="https://..."
-            helperText="Official site (UNESCO page, museum site, etc.)"
           />
         </Box>
 
@@ -398,9 +348,9 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
             Changes saved.
           </Alert>
         )}
-        {editMutation.isError && (
+        {form.formError && (
           <Alert severity="error" sx={{ mb: 1 }}>
-            {(editMutation.error as Error).message || 'Failed to save'}
+            {form.formError}
           </Alert>
         )}
 
@@ -409,8 +359,8 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
             size="small"
             variant="contained"
             startIcon={<SaveIcon />}
-            onClick={handleSave}
-            disabled={!tidiedName || !hasChanges || isPending}
+            onClick={() => form.submit(editMutation.mutateAsync)}
+            disabled={!form.dirty || form.missing || isPending}
           >
             {editMutation.isPending ? 'Saving...' : 'Save Changes'}
           </Button>
@@ -460,12 +410,12 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
                 </Box>
                 {unrejectMutation.isError && (
                   <Alert severity="error" sx={{ mt: 1 }}>
-                    {(unrejectMutation.error as Error).message || 'Failed to unreject'}
+                    {unrejectMutation.error.message}
                   </Alert>
                 )}
                 {removeMutation.isError && (
                   <Alert severity="error" sx={{ mt: 1 }}>
-                    {(removeMutation.error as Error).message || 'Failed to remove'}
+                    {removeMutation.error.message}
                   </Alert>
                 )}
               </Box>
@@ -480,8 +430,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
                 <TextField
                   label="Reason (optional)"
                   placeholder="Why is this experience being rejected?"
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
+                  {...rejectForm.field('reason')}
                   fullWidth
                   size="small"
                   multiline
@@ -500,7 +449,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
                 </Button>
                 {rejectMutation.isError && (
                   <Alert severity="error" sx={{ mt: 1 }}>
-                    {(rejectMutation.error as Error).message || 'Failed to reject'}
+                    {rejectMutation.error.message}
                   </Alert>
                 )}
               </Box>
@@ -547,7 +496,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
           size="small"
           startIcon={<HistoryIcon />}
           endIcon={historyOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-          onClick={() => setHistoryOpen(!historyOpen)}
+          onClick={() => setHistoryFor(historyOpen ? null : experience.id)}
           sx={{ mb: 1, textTransform: 'none', color: 'text.secondary' }}
         >
           Curation History
