@@ -1118,10 +1118,26 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   into the Forbidden City, the Sackler Center into the Brooklyn Museum. Fame is what separates a
   collection inside a building from a museum that merely occupies one — the Galleria Borghese
   stays under its own name though it stands in a villa Wikidata types a museum — and distance
-  is what keeps a branch two streets from its institution a visit of its own; an umbrella
-  organisation is neither (the Nationalgalerie's coordinate lies 200 m from the Alte
-  Nationalgalerie and is less known), and the MuseumsQuartier, which is both, is the editorial
-  exclusion. Two rows at one spot with no edge between them are one record twice, and the row
+  is what keeps a branch two streets from its institution a visit of its own (the
+  Nationalgalerie's coordinate lies 200 m from the Alte Nationalgalerie and it is the less known
+  of the two), and the MuseumsQuartier, a quarter that passes both, is the editorial exclusion.
+  **An organisation is never a door** (#798): a candidate that counts among its parts
+  (`P527`, or `P361` pointing at it) a museum standing farther from it than the same 250 m is an
+  institution of several houses, not a building a visitor walks into (`isOrganisation` on the
+  venue graph, over `fetchMuseumParts`, asked of the door candidates only). Fame and distance
+  cannot tell that shape apart — an umbrella's coordinate sits on one of its houses, and an
+  umbrella is routinely better known than any one branch — so the Kupferstich-Kabinett Dresden
+  was folding into the Staatliche Kunstsammlungen Dresden (11 m, and fifteen museums as far as
+  the Grassi in Leipzig) and the Kupferstichkabinett Berlin into the Staatliche Museen zu Berlin
+  (196 m, and 23 of its 27 museums beyond the radius). Measured on 2026-09-29 over every door of
+  the last real run (run 111), the two umbrellas are the only candidates with a museum part
+  beyond 250 m; Palazzo Pitti, the Neues Museum, the Harvard Art Museums and the Sforza Castle
+  Civic Museums count theirs within 140 m, and the Forbidden City counts none; the same question
+  over the doors of the last Places of worship and Archaeology runs (runs 105 and 137, the path
+  those kinds share through `collectWorks`) finds one museum part in all of them, the Karnak
+  Open Air Museum 86 m inside the Precinct of Amun-Re. A branch refused
+  its umbrella keeps its own name, or goes through another door it has, such as the building it
+  stands in. Two rows at one spot with no edge between them are one record twice, and the row
   carrying the collection survives — and a row whose twin already went through a door or into
   its container follows it there, provided that door is the better-known name for it too, so a
   duplicate record of a collection does not stay behind as a second pin. The venue graph
