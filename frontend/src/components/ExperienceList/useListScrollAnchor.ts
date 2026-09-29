@@ -55,10 +55,13 @@ export function useListScrollAnchor({
   virtualizer,
   rowIndexByExperience,
 }: ListScrollWiring): ListScroll {
-  // Read through a ref, deliberately absent from the effects' dependencies: the
-  // map is rebuilt whenever the rows change, and a change of rows is not a change
-  // of selection — depending on it would scroll the reader back to the selected
-  // row every time a group is expanded or the region's experiences are refetched.
+  // Read through a ref wherever a change of rows must not move the list: the map
+  // is rebuilt whenever the rows change, and a change of rows is not a change of
+  // selection — depending on it unguarded would scroll the reader back to the
+  // selected row every time a group is expanded or the region's experiences are
+  // refetched. An effect that does depend on the rows carries its own guard: the
+  // arrival of a selection is brought in once, and the re-aim only inside the
+  // flight a click started.
   const rowIndexRef = useRef(rowIndexByExperience);
   rowIndexRef.current = rowIndexByExperience;
   // The open row, for callbacks that outlive the render that made them.
@@ -197,6 +200,8 @@ export function useListScrollAnchor({
   // reset that ran afterwards would clear the mark for the selection that had
   // just used it, and the next remount would scroll again.
   const scrolledForSelection = useRef<number | null>(null);
+  /** Which selection has been brought into the window, by the arrival effect below. */
+  const broughtInForSelection = useRef<number | null>(null);
   /** The row index the open card was last aimed at, so a moved row can be told from a still one. */
   const anchoredIndexRef = useRef<number | null>(null);
   const [trackedSelection, setTrackedSelection] = useState(selectedExperienceId);
@@ -207,6 +212,10 @@ export function useListScrollAnchor({
     // aimed at yet, and the old index must not be read as that one's. The
     // flight window closes with it — a new selection opens its own.
     anchoredIndexRef.current = null;
+    // Every new selection is brought in afresh, whatever happened to the last
+    // one: kept across a selection that never found its index, the mark would
+    // stop the row it names from being brought back when chosen again.
+    broughtInForSelection.current = null;
     flightWindowRef.current = false;
   }
   // An expectation whose row is not the current selection was never collected —
@@ -221,11 +230,24 @@ export function useListScrollAnchor({
   // A row that is not mounted cannot open, so a selection made from the map —
   // a marker click on a row far outside the window — is brought into the window
   // first. Its own alignment comes later, from `handleCardOpened`.
+  //
+  // Once per selection, and not necessarily at the moment it changes: a link
+  // names its card before the region's rows exist (#917), so the selection
+  // arrives with no index to aim at and the index a render later. So the rows
+  // are a dependency here, behind the guard that makes that safe: the mark keeps
+  // it the arrival's, and a later change of rows — a group toggled, a refetch —
+  // finds the selection already brought in and moves nothing.
   useEffect(() => {
-    if (!selectedExperienceId || itemRefs.current.has(selectedExperienceId)) return;
-    const index = rowIndexRef.current.get(selectedExperienceId);
-    if (index != null) virtualizer.scrollToIndex(index, { align: 'center' });
-  }, [selectedExperienceId, virtualizer, itemRefs]);
+    if (!selectedExperienceId || broughtInForSelection.current === selectedExperienceId) return;
+    if (itemRefs.current.has(selectedExperienceId)) {
+      broughtInForSelection.current = selectedExperienceId;
+      return;
+    }
+    const index = rowIndexByExperience.get(selectedExperienceId);
+    if (index == null) return;
+    broughtInForSelection.current = selectedExperienceId;
+    virtualizer.scrollToIndex(index, { align: 'center' });
+  }, [selectedExperienceId, rowIndexByExperience, virtualizer, itemRefs]);
 
   // Hands the virtualiser this row's height in the layout phase of the commit
   // that changed it — before paint, and therefore before the rows below are drawn
