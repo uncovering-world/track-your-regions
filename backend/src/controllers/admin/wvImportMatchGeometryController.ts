@@ -15,7 +15,7 @@
 import sharp from 'sharp';
 import { pool } from '../../db/index.js';
 import { matchDivisionsByVision } from '../../services/ai/openaiService.js';
-import { generateDivisionsSvg } from './wvImportMatchHelpers.js';
+import { generateDivisionsSvg } from '../../services/worldViewImport/colorMatch/pixels/colorLines.js';
 import { type PointInfo, fetchMarkersForDivisions } from './wvImportMatchMarkers.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import {
