@@ -392,6 +392,7 @@ Hooks in `frontend/src/hooks/` are app-wide concerns shared across many componen
 | `useDiscoverExperiences` | Discover mode queries |
 | `useRegionLocations` | Batch location fetching; takes `includeLost` and `includeChildren` so the markers follow the list they belong to — both are part of the query key |
 | `useNewBadgeImpressions` | Reports which "New" chips actually rendered, so the reader's personal window starts from a real impression |
+| `useEditForm` | A dialog's fields, what changed, what is sent (an emptied field as `''`), and a refusal's reasons on the fields they name — the form layer the world view dialogs, the header's inline editors and the region dialog declare their fields to (ADR-0076). Its spec is the one statement of those rules |
 
 **Don't put component-specific hooks here.** A hook that only serves one component (like `useMapFeatureState`) stays co-located with that component.
 
