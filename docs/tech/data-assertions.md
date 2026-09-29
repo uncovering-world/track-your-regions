@@ -428,7 +428,9 @@ check composes the rule's own lists (`classes.ts`) rather than a second copy in
 SQL, and that is the exception to the writer rule above turned the right way
 round: what it can catch is a row the lists never met, and a wrong list is not
 something a check reading the list's output could see. It reads the lists a
-constant can hold — the kill classes, the pinned worship floor, the buildings
+constant can hold — the kill classes, the pinned worship floor, the pinned floor
+of the lost tree (`LOST_CLASSES`: a lost sculpture, a destroyed artwork — with the rule's one
+exception by name, `REMAINS_ON_SHOW`, left alone here as the rule leaves it), the buildings
 and cemeteries of the veto list — and answers a building class the way the rule
 does, by an artwork class: not approximated, but read from the rule's own
 answer, which the run stores beside the classes (`metadata.wikidataArtwork`)
