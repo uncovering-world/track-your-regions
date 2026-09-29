@@ -1,6 +1,6 @@
 # ADR-0039: A run records facts, not columns
 
-**Status**: Accepted
+**Status**: Accepted — decision 2 narrowed by [ADR-0077](0077-the-curation-gate-keeps-its-tables-and-a-claims-reach-is-decided-once.md)
 **Date**: 2026-08-31
 **Issue**: [#725](https://github.com/uncovering-world/track-your-regions/issues/725)
 **Narrows**: ADR-0038 decisions 1 and 1a — a key inside the source's data is no longer

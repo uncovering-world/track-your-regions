@@ -58,7 +58,7 @@ and accepted by it.
 | [0036](0036-a-rung-carries-the-holes-its-source-has.md) | A rung carries the holes its source has | Accepted | 2026-08-27 |
 | [0037](0037-a-part-field-readers-see-is-held-like-the-objects.md) | A field of a part readers can see is held like the object's own | Accepted — decision 6 narrowed by [0050](0050-a-renamed-component-is-found-by-its-claim.md) | 2026-08-30 |
 | [0038](0038-a-held-proposal-is-answered-per-field.md) | A held proposal is answered per field, and the answer is recorded by value | Accepted — decisions 1 and 1a narrowed by ADR-0039 | 2026-08-30 |
-| [0039](0039-a-run-records-facts-not-columns.md) | A run records facts, not columns: every metadata key is its own changeset entry | Accepted | 2026-08-31 |
+| [0039](0039-a-run-records-facts-not-columns.md) | A run records facts, not columns: every metadata key is its own changeset entry | Accepted — decision 2 narrowed by ADR-0077 | 2026-08-31 |
 | [0040](0040-a-work-names-every-one-of-its-makers.md) | A work names every one of its makers, and a curator can correct them | Accepted — decision 6 narrowed by [0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md) | 2026-08-31 |
 | [0041](0041-a-database-says-which-migrations-it-has-seen.md) | A database says which migrations it has seen | Accepted | 2026-08-31 |
 | [0042](0042-a-search-answers-about-the-catalogue-and-opens-where-the-reader-is.md) | A search answers about the catalogue, and opens where the reader is | Accepted | 2026-09-01 |
@@ -96,6 +96,7 @@ and accepted by it.
 | [0074](0074-a-type-no-route-answers-is-derived-and-no-image-url-carries-a-token.md) | A type no route answers is derived from the generated ones, and no image URL carries a token | Accepted | 2026-09-28 |
 | [0075](0075-a-regions-write-bumps-the-tile-version-at-commit.md) | A write to regions bumps its world view's tile version, at commit | Accepted | 2026-09-28 |
 | [0076](0076-a-dialogs-fields-and-refusals-come-from-one-form-hook.md) | A dialog's fields and its refusals come from one form hook | Accepted | 2026-09-29 |
+| [0077](0077-the-curation-gate-keeps-its-tables-and-a-claims-reach-is-decided-once.md) | The curation gate keeps its tables, and a claim's reach is decided in one place | Accepted | 2026-09-29 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
