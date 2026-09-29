@@ -192,6 +192,53 @@ export function creditText(html: string | null | undefined): string | null {
   return text.length > CREDIT_MAX_CHARS ? `${text.slice(0, CREDIT_MAX_CHARS).trimEnd()}…` : text;
 }
 
+/** The sentence Commons writes into `Artist` when the uploader named nobody. */
+const NO_AUTHOR_PREFIX = 'No machine-readable author provided.';
+const ASSUMED_SUFFIXES = ['assumed (based on copyright claims).', 'assumed (based on copyright claims)'];
+
+/**
+ * An `Artist` field as the name of whoever took the picture.
+ *
+ * `creditText`, and then one thing it cannot know: where the uploader named
+ * nobody, Commons writes a sentence in place of a name — "No machine-readable
+ * author provided. Roybb95~commonswiki assumed (based on copyright claims)." —
+ * and a reader told that under the Sydney Opera House is told that a machine
+ * could not read something. The name between the two halves is the whole of
+ * what Commons claims, so it is what the credit says; the account name is kept
+ * as Commons spells it, `~commonswiki` included, since that is who the file
+ * page names. A field that is nothing but the sentence names nobody, and the
+ * line falls back to the licence alone, as it does for a file with no author.
+ */
+export function authorText(html: string | null | undefined): string | null {
+  return assumedAuthor(creditText(html));
+}
+
+/**
+ * The sentence reduced to the name it assumes, on text already reduced from
+ * markup — which is what a stored credit holds, and why this is its own step:
+ * `creditText` a second time would decode the entities it already decoded.
+ */
+function assumedAuthor(text: string | null): string | null {
+  if (!text?.startsWith(NO_AUTHOR_PREFIX)) return text;
+  let rest = text.slice(NO_AUTHOR_PREFIX.length).trim();
+  const suffix = ASSUMED_SUFFIXES.find((s) => rest.endsWith(s));
+  if (suffix) rest = rest.slice(0, rest.length - suffix.length).trim();
+  return rest || null;
+}
+
+/**
+ * A stored credit as a run resends it for the same picture: the author read the
+ * way a fetched one is (`assumedAuthor`). The UNESCO collector asks Commons
+ * only about files new to a row, so a credit stored before the sentence was
+ * reduced would otherwise keep it for as long as the row keeps its picture
+ * (#747). Not for a claimed picture: the upsert keeps that row's stored credit
+ * whatever is sent, so a reduced one would read as a change on every run.
+ */
+function resent(credit: ImageCredit): ImageCredit {
+  const author = assumedAuthor(credit.author);
+  return author === credit.author ? credit : { ...credit, author };
+}
+
 /**
  * A URL only if it is one somebody may safely be sent to.
  *
@@ -442,7 +489,7 @@ export function creditToWrite(
   // back on the row's stored credit would write the new photograph and the
   // previous photographer's name in one statement — a false claim about a real
   // person, which is the one thing this feature promises never to do.
-  if (stored?.credit && stored.imageUrl === imageUrl) return { imageCredit: stored.credit };
+  if (stored?.credit && stored.imageUrl === imageUrl) return { imageCredit: resent(stored.credit) };
   return {};
 }
 
@@ -516,7 +563,7 @@ function readCredit(page: CommonsPage): { name: string; credit: ImageCredit } | 
   return {
     name: page.title.replace(/^File:/, ''),
     credit: {
-      author: creditText(meta.Artist?.value),
+      author: authorText(meta.Artist?.value),
       license: creditText(meta.LicenseShortName?.value),
       licenseUrl: safeHttpUrl(meta.LicenseUrl?.value),
       detailsUrl: null,
