@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  authorText,
   batchTitles,
   commonsFileName,
   commonsFilePage,
@@ -89,6 +90,53 @@ describe('reading a Commons URL', () => {
       .toBeNull();
     expect(commonsFileName('https://commons.wikimedia.org/wiki/File:Mona_Lisa.jpg'))
       .toBeNull();
+  });
+});
+
+describe('the author Commons assumed when the uploader named nobody', () => {
+  it('names the assumed account and drops the sentence around it', () => {
+    // The Sydney Opera House's credit line on the development database, as
+    // Commons' Artist field sends it: the account is a link inside the sentence.
+    const html = 'No machine-readable author provided. <a href="//commons.wikimedia.org/wiki/User:Roybb95~commonswiki" '
+      + 'title="User:Roybb95~commonswiki">Roybb95~commonswiki</a> assumed (based on copyright claims).';
+    expect(authorText(html)).toBe('Roybb95~commonswiki');
+  });
+
+  it('reduces the plain-text form a stored credit holds the same way', () => {
+    expect(authorText('No machine-readable author provided. Azeri assumed (based on copyright claims).'))
+      .toBe('Azeri');
+  });
+
+  it('names nobody where the sentence names nobody, so the line falls back to the licence', () => {
+    expect(authorText('No machine-readable author provided.')).toBeNull();
+    expect(authorText('No machine-readable author provided. assumed (based on copyright claims).')).toBeNull();
+  });
+
+  it('reduces a credit a run resends without asking Commons again', () => {
+    // UNESCO asks only about files new to a row: the stored sentence would
+    // otherwise stay under the picture for as long as the row keeps it.
+    const stored = {
+      credit: {
+        author: 'No machine-readable author provided. Roybb95~commonswiki assumed (based on copyright claims).',
+        license: 'CC BY-SA 3.0', licenseUrl: null, detailsUrl: null,
+      },
+      hasCredit: true,
+      imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Sydney%20Opera%20House%20Sails.jpg',
+      imageClaimed: false,
+    };
+    const same = creditToWrite(undefined, stored, stored.imageUrl);
+    expect(same.imageCredit?.author).toBe('Roybb95~commonswiki');
+    expect(same.imageCredit?.license).toBe('CC BY-SA 3.0');
+    // A claimed picture's credit is resent as stored: the upsert keeps it
+    // whatever is sent, and a reduced one would read as a change every run.
+    const claimed = creditToWrite(undefined, { ...stored, imageClaimed: true }, stored.imageUrl);
+    expect(claimed.imageCredit).toBe(stored.credit);
+  });
+
+  it('leaves a named author exactly as creditText reads it', () => {
+    const html = '<a rel="nofollow" class="external text" href="https://flickr.com/x">Jane Doe</a>';
+    expect(authorText(html)).toBe(creditText(html));
+    expect(authorText(null)).toBeNull();
   });
 });
 
