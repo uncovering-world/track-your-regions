@@ -15,7 +15,7 @@
  * (DiscoverExperienceView).
  */
 
-import { memo, useState, useRef, useEffect } from 'react';
+import { memo, useId, useState, useRef, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -33,6 +33,7 @@ import {
   ListItem,
   ListItemText,
   FormControl,
+  FormHelperText,
   InputLabel,
   Select,
   MenuItem,
@@ -47,6 +48,7 @@ import {
 import { assignExperienceToRegion, createManualExperience } from '../../api/curation';
 import { searchPlaces, suggestImageUrl, type PlaceResult, type ImageSuggestion } from '../../api/geocode';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
+import { useEditForm } from '../../hooks/useEditForm';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LocationPicker } from './LocationPicker';
 import { LoadingSpinner } from './LoadingSpinner';
@@ -56,16 +58,47 @@ import { PictureWithCredit } from './PictureWithCredit';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { queryKeys } from '../../api/queryKeys';
 
-interface ApplySuggestionParams {
-  setNewImageUrl: (url: string) => void;
-  setNewDescription: (desc: string) => void;
-  setNewWikipediaUrl: (url: string) => void;
-  setAutoFillEntity: (entity: { label: string; wikidataId: string } | null) => void;
-  currentDescription: string;
-  currentWikipediaUrl: string;
-  imageAutoFilled: React.MutableRefObject<boolean>;
-  descAutoFilled: React.MutableRefObject<boolean>;
-  linkAutoFilled: React.MutableRefObject<boolean>;
+/**
+ * The new place's fields, named by the create body's keys (ADR-0076); the one
+ * coordinates box stands for the body's `latitude` and `longitude`.
+ */
+type NewPlace = {
+  name: string;
+  shortDescription: string;
+  type: string;
+  kindId: number | '';
+  coords: { lat: number; lng: number } | null;
+  imageUrl: string;
+  wikipediaUrl: string;
+  websiteUrl: string;
+};
+
+/** The fields a create sends only when filled in; the rest the body requires. */
+const OPTIONAL_FIELDS = ['shortDescription', 'type', 'imageUrl', 'wikipediaUrl', 'websiteUrl'] as const;
+const COORDS_PATHS = { latitude: 'coords', longitude: 'coords' } as const;
+const REQUIRED_FIELDS = ['name', 'kindId', 'coords'] as const;
+
+/**
+ * Calls `onOpen` in the render where `key` changes to a value, not after it in
+ * an effect, so an opening never paints a frame of the last opening's choices.
+ * `null` is closed; the first render's key counts as already seen.
+ */
+function useOnOpening(key: string | null, onOpen: () => void): void {
+  const [seen, setSeen] = useState(key);
+  if (key === seen) return;
+  setSeen(key);
+  if (key !== null) onOpen();
+}
+
+/** A select points at its refusal while it has one, so the reason is read out with it. */
+function describedBy(error: string | undefined, id: string) {
+  return { 'aria-describedby': error ? id : undefined };
+}
+
+function nameHelperText(loading: boolean, name: string): string | undefined {
+  if (loading) return ' '; // Reserve space so layout doesn't jump
+  if (name.length >= 1 && name.length < 3) return 'Type 3+ characters to auto-fill';
+  return undefined;
 }
 
 function pickImageHelperText(args: {
@@ -84,24 +117,6 @@ function pickImageHelperText(args: {
       : 'Auto-suggested from Wikidata';
   }
   return 'Wikimedia Commons URLs work best';
-}
-
-function applySuggestionToState(data: ImageSuggestion, p: ApplySuggestionParams): void {
-  // Mirror applyImageSuggestion's rule: overwrite description and Wikipedia
-  // URL when the field is empty OR was previously filled by auto-suggest.
-  // Keeping these two paths in lockstep prevents the manual "Suggest" button
-  // from leaving a stale auto-filled description behind after a re-lookup.
-  p.setNewImageUrl(data.imageUrl);
-  p.imageAutoFilled.current = true;
-  p.setAutoFillEntity({ label: data.entityLabel, wikidataId: data.wikidataId });
-  if (data.description && (!p.currentDescription || p.descAutoFilled.current)) {
-    p.setNewDescription(data.description);
-    p.descAutoFilled.current = true;
-  }
-  if (data.wikipediaUrl && (!p.currentWikipediaUrl || p.linkAutoFilled.current)) {
-    p.setNewWikipediaUrl(data.wikipediaUrl);
-    p.linkAutoFilled.current = true;
-  }
 }
 
 /**
@@ -182,28 +197,34 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     queryFn: fetchExperienceKinds,
   });
 
-  // Sync tab and kind when dialog opens with different defaults
-  useEffect(() => {
-    if (open) {
-      setActiveTab(defaultTab ?? 0);
-      setNewKindId(defaultKindId ?? '');
-      // A type belongs to a kind: a value picked for the last kind is not one of this
-      // kind's, and a select holding a value outside its items renders blank.
-      setNewType('');
-    }
-  }, [open, defaultTab, defaultKindId]);
-
   // --- Create New tab state ---
-  const [newName, setNewName] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [newType, setNewType] = useState('');
-  const [newKindId, setNewKindId] = useState<number | ''>(defaultKindId ?? '');
-  const typeOptions = typeOptionsFor(newKindId === '' ? null : newKindId);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [newImageUrl, setNewImageUrl] = useState('');
-  const [newWikipediaUrl, setNewWikipediaUrl] = useState('');
-  const [newWebsiteUrl, setNewWebsiteUrl] = useState('');
+  // The draft outlives a close — the lazy wrapper keeps this dialog mounted for
+  // that — and starts blank again only once a place is created (the key bump).
+  const [draft, setDraft] = useState(0);
+  // A select's refusal is read out with it, as a text field's helper text is.
+  const kindErrorId = useId();
+  const typeErrorId = useId();
+  const form = useEditForm<NewPlace>({
+    initial: {
+      name: '', shortDescription: '', type: '', kindId: defaultKindId ?? '', coords: null,
+      imageUrl: '', wikipediaUrl: '', websiteUrl: '',
+    },
+    resetKey: draft,
+    required: REQUIRED_FIELDS,
+    paths: COORDS_PATHS,
+  });
+  const { name, kindId, coords, imageUrl, wikipediaUrl } = form.values;
+  const typeOptions = typeOptionsFor(kindId === '' ? null : kindId);
   const [wikidataId, setWikidataId] = useState<string | null>(null);
+
+  // An opening, or new defaults while open, picks the tab and kind it was opened
+  // for. A type belongs to a kind: a value picked for the last kind is not one of
+  // this kind's, and a select holding a value outside its items renders blank.
+  useOnOpening(open ? `${defaultTab ?? 0}:${defaultKindId ?? ''}` : null, () => {
+    setActiveTab(defaultTab ?? 0);
+    form.set('kindId', defaultKindId ?? '');
+    form.set('type', '');
+  });
 
   // --- Auto-fill tracking ---
   // Refs track whether each field was set by auto-fill (true) or manually (false).
@@ -216,28 +237,37 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   const autoFillDone = useRef(false); // Lock: once true, name edits don't re-trigger
 
   // Refs for reading current values inside async effects without stale closures
-  const stateRef = useRef({ coords, newImageUrl, newDescription, newWikipediaUrl, wikidataId, newName, regionName });
-  stateRef.current = { coords, newImageUrl, newDescription, newWikipediaUrl, wikidataId, newName, regionName };
+  const stateRef = useRef({ values: form.values, wikidataId, regionName });
+  stateRef.current = { values: form.values, wikidataId, regionName };
 
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [autoFillInfo, setAutoFillInfo] = useState<string | null>(null);
   const [autoFillEntity, setAutoFillEntity] = useState<{ label: string; wikidataId: string } | null>(null);
 
+  // Apply a Wikidata image suggestion, from the auto-fill and the Suggest button
+  // alike: the picture always, the description and Wikipedia URL when the field
+  // is empty or was filled by an earlier suggestion — so a re-lookup never leaves
+  // a stale auto-filled description behind, and a curator's own text stays.
+  const applySuggestion = (suggestion: ImageSuggestion): void => {
+    const current = stateRef.current.values;
+    form.set('imageUrl', suggestion.imageUrl);
+    imageAutoFilled.current = true;
+    setAutoFillEntity({ label: suggestion.entityLabel, wikidataId: suggestion.wikidataId });
+    if (suggestion.description && (!current.shortDescription || descAutoFilled.current)) {
+      form.set('shortDescription', suggestion.description);
+      descAutoFilled.current = true;
+    }
+    if (suggestion.wikipediaUrl && (!current.wikipediaUrl || linkAutoFilled.current)) {
+      form.set('wikipediaUrl', suggestion.wikipediaUrl);
+      linkAutoFilled.current = true;
+    }
+  };
+
   // --- Suggest mutation (for manual Suggest button) ---
   const suggestMutation = useMutation({
     mutationFn: (params: { name?: string; lat?: number; lng?: number; wikidataId?: string }) =>
       suggestImageUrl(params),
-    onSuccess: (data) => applySuggestionToState(data, {
-      setNewImageUrl,
-      setNewDescription,
-      setNewWikipediaUrl,
-      setAutoFillEntity,
-      currentDescription: stateRef.current.newDescription,
-      currentWikipediaUrl: stateRef.current.newWikipediaUrl,
-      imageAutoFilled,
-      descAutoFilled,
-      linkAutoFilled,
-    }),
+    onSuccess: applySuggestion,
   });
 
   // --- Core lookup logic (used by both auto-fill and Re-lookup) ---
@@ -250,12 +280,10 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   // when the new place has none, instead of letting the caller fall back
   // to a stale previous QID).
   const applyNominatimPlace = (place: PlaceResult): { lat: number; lng: number; wikidataId?: string } => {
-    const manualCoordsPinned = stateRef.current.coords && !coordsAutoFilled.current;
-    const effectiveCoords = manualCoordsPinned
-      ? stateRef.current.coords!
-      : { lat: place.lat, lng: place.lng };
-    if (!manualCoordsPinned) {
-      setCoords(effectiveCoords);
+    const pinned = coordsAutoFilled.current ? null : stateRef.current.values.coords;
+    const effectiveCoords = pinned ?? { lat: place.lat, lng: place.lng };
+    if (!pinned) {
+      form.set('coords', effectiveCoords);
       coordsAutoFilled.current = true;
     }
     setWikidataId(place.wikidataId ?? null);
@@ -267,26 +295,9 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     };
   };
 
-  // Apply Wikidata image-suggestion result. Skips fields the user has manually
-  // changed (autoFilled refs track which ones we own).
-  const applyImageSuggestion = (suggestion: ImageSuggestion): void => {
-    setNewImageUrl(suggestion.imageUrl);
-    imageAutoFilled.current = true;
-    setAutoFillEntity({ label: suggestion.entityLabel, wikidataId: suggestion.wikidataId });
-    suggestMutation.reset();
-    if (suggestion.description && (!stateRef.current.newDescription || descAutoFilled.current)) {
-      setNewDescription(suggestion.description);
-      descAutoFilled.current = true;
-    }
-    if (suggestion.wikipediaUrl && (!stateRef.current.newWikipediaUrl || linkAutoFilled.current)) {
-      setNewWikipediaUrl(suggestion.wikipediaUrl);
-      linkAutoFilled.current = true;
-    }
-  };
-
   const performLookup = async () => {
-    const name = stateRef.current.newName;
-    if (name.length < 3) return;
+    const lookupName = stateRef.current.values.name;
+    if (lookupName.length < 3) return;
 
     const generation = ++autoFillGen.current;
     setAutoFillLoading(true);
@@ -296,26 +307,27 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     try {
       // Step 1: Search Nominatim for coordinates. Append region name for
       // geo-disambiguation (e.g. "Holocaust Memorial Berlin").
-      const nominatimQuery = stateRef.current.regionName ? `${name} ${stateRef.current.regionName}` : name;
+      const nominatimQuery = stateRef.current.regionName ? `${lookupName} ${stateRef.current.regionName}` : lookupName;
       const places = await searchPlaces(nominatimQuery, 1);
       if (autoFillGen.current !== generation) return;
       const effective = places.length > 0 ? applyNominatimPlace(places[0]) : null;
 
       // Step 2: Suggest image + description (only if user hasn't set image manually).
-      if (!stateRef.current.newImageUrl || imageAutoFilled.current) {
+      if (!stateRef.current.values.imageUrl || imageAutoFilled.current) {
         try {
           // When Nominatim returned a place, trust its identity (already
           // reconciled with the form's manual pins inside applyNominatimPlace).
           // Only fall back to stateRef when Nominatim returned nothing at all,
           // so a previous lookup's QID can't bleed into the new suggestion.
           const suggestion = await suggestImageUrl({
-            name,
-            lat: effective?.lat ?? stateRef.current.coords?.lat,
-            lng: effective?.lng ?? stateRef.current.coords?.lng,
+            name: lookupName,
+            lat: effective?.lat ?? stateRef.current.values.coords?.lat,
+            lng: effective?.lng ?? stateRef.current.values.coords?.lng,
             wikidataId: effective ? effective.wikidataId : stateRef.current.wikidataId ?? undefined,
           });
           if (autoFillGen.current !== generation) return;
-          applyImageSuggestion(suggestion);
+          applySuggestion(suggestion);
+          suggestMutation.reset();
         } catch {
           // 404 or error — no image found, that's OK.
         }
@@ -337,7 +349,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
 
   // --- Auto-fill effect: fires once, then locks ---
   useEffect(() => {
-    if (newName.length < 3) {
+    if (name.length < 3) {
       setAutoFillInfo(null);
       setAutoFillEntity(null);
       autoFillDone.current = false; // Reset lock when name is cleared
@@ -349,7 +361,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
 
     const timer = setTimeout(() => performLookupRef.current(), 800);
     return () => clearTimeout(timer);
-  }, [newName]);
+  }, [name]);
 
   // --- Explicit re-lookup (for when curator changed the name after initial auto-fill) ---
   const handleRelookup = () => {
@@ -364,47 +376,14 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
 
   // --- Manual change handlers (mark fields as manually set) ---
   const handleCoordsChange = (c: { lat: number; lng: number } | null) => {
-    setCoords(c);
+    form.set('coords', c);
     coordsAutoFilled.current = false;
-  };
-
-  const handleDescriptionChange = (desc: string) => {
-    setNewDescription(desc);
-    descAutoFilled.current = false;
-  };
-
-  const handleImageUrlChange = (url: string) => {
-    setNewImageUrl(url);
-    imageAutoFilled.current = false;
-    suggestMutation.reset();
   };
 
   // --- Create mutation ---
   const createMutation = useMutation({
-    mutationFn: (data: Parameters<typeof createManualExperience>[0]) => createManualExperience(data),
-    onSuccess: () => {
-      invalidateExperiences(queryClient, { regionId });
-      // Reset form state
-      setNewName('');
-      setNewDescription('');
-      setNewType('');
-      setNewKindId('');
-      setCoords(null);
-      setNewImageUrl('');
-      setNewWikipediaUrl('');
-      setNewWebsiteUrl('');
-      setWikidataId(null);
-      setAutoFillInfo(null);
-      setAutoFillEntity(null);
-      coordsAutoFilled.current = false;
-      imageAutoFilled.current = false;
-      descAutoFilled.current = false;
-      linkAutoFilled.current = false;
-      autoFillDone.current = false;
-      suggestMutation.reset();
-      // Close the dialog — the map/list will refresh via query invalidation
-      onClose();
-    },
+    mutationFn: createManualExperience,
+    onSuccess: () => invalidateExperiences(queryClient, { regionId }),
   });
 
   const handleClose = () => {
@@ -419,29 +398,31 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     autoFillDone.current = false;
     autoFillGen.current++;
     suggestMutation.reset();
+    // The dialog stays mounted after a close (`LazyAddExperienceDialog`), so
+    // an outcome line would otherwise greet the next opening.
+    createMutation.reset();
+    assignMutation.reset();
     onClose();
   };
 
-  const handleCreate = () => {
-    // The kind is required, as the button (`canCreate`) already says.
-    if (!newName || !coords || !newKindId) return;
-    createMutation.mutate({
-      name: newName,
-      shortDescription: newDescription || undefined,
-      // Always one of the chosen kind's own: the select lists only those, and a
-      // change of kind clears it.
-      type: newType || undefined,
-      longitude: coords.lng,
+  // The form sends the optional fields that were filled in; the ones the body
+  // requires come from the values, which `form.missing` holds non-blank before
+  // the button is enabled — the check below only narrows their types.
+  const handleCreate = async () => {
+    if (kindId === '' || coords === null) return;
+    const created = await form.submit(filled => createMutation.mutateAsync({
+      ...filled,
+      name: name.trim(),
+      kindId,
       latitude: coords.lat,
-      imageUrl: newImageUrl || undefined,
-      wikipediaUrl: newWikipediaUrl || undefined,
-      websiteUrl: newWebsiteUrl || undefined,
-      kindId: newKindId,
+      longitude: coords.lng,
       regionId,
-    });
+    }), OPTIONAL_FIELDS);
+    if (!created) return;
+    setDraft(d => d + 1);
+    linkAutoFilled.current = false;
+    handleClose();
   };
-
-  const canCreate = !!newName && coords !== null && !!newKindId;
 
   // Helper text for image field
   const imageHelperText = pickImageHelperText({
@@ -449,7 +430,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     isSuccess: suggestMutation.isSuccess,
     successEntityLabel: suggestMutation.data?.entityLabel,
     imageAutoFilled: imageAutoFilled.current,
-    hasNewImageUrl: !!newImageUrl,
+    hasNewImageUrl: !!imageUrl,
     autoFillEntityLabel: autoFillEntity?.label,
   });
 
@@ -467,16 +448,10 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
             <Box>
               <TextField
                 label="Name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+                {...form.field('name', { helperText: nameHelperText(autoFillLoading, name) })}
                 required
                 fullWidth
                 autoFocus
-                helperText={(() => {
-                  if (autoFillLoading) return ' '; // Reserve space so layout doesn't jump
-                  if (newName.length >= 1 && newName.length < 3) return 'Type 3+ characters to auto-fill';
-                  return undefined;
-                })()}
                 slotProps={{
                   input: {
                     endAdornment: autoFillLoading ? <CircularProgress size={16} /> : null,
@@ -526,79 +501,85 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
 
             <TextField
               label="Short Description"
-              value={newDescription}
-              onChange={(e) => handleDescriptionChange(e.target.value)}
+              {...form.field('shortDescription')}
+              onChange={(e) => { form.set('shortDescription', e.target.value); descAutoFilled.current = false; }}
               fullWidth
               multiline
               rows={2}
             />
 
             <Box sx={{ display: 'flex', gap: 2 }}>
-              <FormControl fullWidth size="small" required>
+              <FormControl fullWidth size="small" required error={!!form.errors.kindId}>
                 <InputLabel>Kind</InputLabel>
                 <Select
-                  value={newKindId}
+                  value={kindId}
                   label="Kind"
-                  onChange={(e) => { setNewKindId(e.target.value as number | ''); setNewType(''); }}
+                  SelectDisplayProps={describedBy(form.errors.kindId, kindErrorId)}
+                  onChange={(e) => { form.set('kindId', e.target.value as number | ''); form.set('type', ''); }}
                 >
                   {kinds?.map((s) => (
                     <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                   ))}
                 </Select>
+                {form.errors.kindId && <FormHelperText id={kindErrorId}>{form.errors.kindId}</FormHelperText>}
               </FormControl>
 
               {/* The chosen kind's own types, or no control for a kind without any
                   — a museum (ADR-0045, #814). */}
               {typeOptions.length > 0 && (
-                <FormControl fullWidth size="small">
+                <FormControl fullWidth size="small" error={!!form.errors.type}>
                   <InputLabel>Type</InputLabel>
                   <Select
-                    value={newType}
+                    value={form.values.type}
                     label="Type"
-                    onChange={(e) => setNewType(e.target.value)}
+                    SelectDisplayProps={describedBy(form.errors.type, typeErrorId)}
+                    onChange={(e) => form.set('type', e.target.value)}
                   >
                     <MenuItem value="">None</MenuItem>
                     {typeOptions.map(option => (
                       <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                     ))}
                   </Select>
+                  {form.errors.type && <FormHelperText id={typeErrorId}>{form.errors.type}</FormHelperText>}
                 </FormControl>
               )}
             </Box>
 
-            <LocationPicker
-              value={coords}
-              onChange={handleCoordsChange}
-              name={newName}
-              onPlaceSelect={(place) => {
-                setWikidataId(place.wikidataId ?? null);
-                coordsAutoFilled.current = false;
-              }}
-            />
+            <Box>
+              <LocationPicker
+                value={coords}
+                onChange={handleCoordsChange}
+                name={name}
+                onPlaceSelect={(place) => {
+                  setWikidataId(place.wikidataId ?? null);
+                  coordsAutoFilled.current = false;
+                }}
+              />
+              {form.errors.coords && <FormHelperText error>{form.errors.coords}</FormHelperText>}
+            </Box>
 
             <Box>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
                 <TextField
                   label="Image URL (optional)"
-                  value={newImageUrl}
-                  onChange={(e) => handleImageUrlChange(e.target.value)}
+                  {...form.field('imageUrl', { helperText: imageHelperText })}
+                  onChange={(e) => { form.set('imageUrl', e.target.value); imageAutoFilled.current = false; suggestMutation.reset(); }}
                   fullWidth
                   size="small"
                   placeholder="https://commons.wikimedia.org/..."
-                  helperText={imageHelperText}
-                  error={suggestMutation.isError}
-                  color={suggestMutation.isSuccess || (imageAutoFilled.current && newImageUrl) ? 'success' : undefined}
+                  error={!!form.errors.imageUrl || suggestMutation.isError}
+                  color={suggestMutation.isSuccess || (imageAutoFilled.current && imageUrl) ? 'success' : undefined}
                 />
                 <Button
                   variant="outlined"
                   size="small"
                   onClick={() => suggestMutation.mutate({
-                    name: newName || undefined,
+                    name: name || undefined,
                     lat: coords?.lat,
                     lng: coords?.lng,
                     wikidataId: wikidataId ?? undefined,
                   })}
-                  disabled={suggestMutation.isPending || (!newName && !coords)}
+                  disabled={suggestMutation.isPending || (!name && !coords)}
                   sx={{ minWidth: 90, mt: 0.25 }}
                 >
                   {suggestMutation.isPending ? <CircularProgress size={16} /> : 'Suggest'}
@@ -609,44 +590,34 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                   stored `metadata.imageCredit` to draw. `POST /experiences` resolves
                   the credit for whatever URL is saved, so the picture is named from
                   the moment anybody but its author can see it. */}
-              {newImageUrl && <PictureWithCredit url={newImageUrl} alt="Picture preview" />}
+              {imageUrl && <PictureWithCredit url={imageUrl} alt="Picture preview" />}
             </Box>
 
             <TextField
               label="Wikipedia URL (optional)"
-              value={newWikipediaUrl}
-              onChange={(e) => { setNewWikipediaUrl(e.target.value); linkAutoFilled.current = false; }}
+              {...form.field('wikipediaUrl', {
+                helperText: linkAutoFilled.current && wikipediaUrl ? 'Auto-suggested from Wikidata' : undefined,
+              })}
+              onChange={(e) => { form.set('wikipediaUrl', e.target.value); linkAutoFilled.current = false; }}
               fullWidth
               size="small"
               placeholder="https://en.wikipedia.org/wiki/..."
-              helperText={linkAutoFilled.current && newWikipediaUrl ? 'Auto-suggested from Wikidata' : undefined}
-              color={linkAutoFilled.current && newWikipediaUrl ? 'success' : undefined}
+              color={linkAutoFilled.current && wikipediaUrl ? 'success' : undefined}
             />
             <TextField
               label="Website URL (optional)"
-              value={newWebsiteUrl}
-              onChange={(e) => setNewWebsiteUrl(e.target.value)}
+              {...form.field('websiteUrl', { helperText: 'Official site (UNESCO page, museum site, etc.)' })}
               fullWidth
               size="small"
               placeholder="https://..."
-              helperText="Official site (UNESCO page, museum site, etc.)"
             />
 
-            {createMutation.isSuccess && (
-              <Alert severity="success">
-                Experience created and added to region.
-              </Alert>
-            )}
-            {createMutation.isError && (
-              <Alert severity="error">
-                {(createMutation.error as Error).message || 'Failed to create'}
-              </Alert>
-            )}
+            {form.formError && <Alert severity="error">{form.formError}</Alert>}
 
             <Button
               variant="contained"
               onClick={handleCreate}
-              disabled={!canCreate || createMutation.isPending}
+              disabled={form.missing || createMutation.isPending}
             >
               {createMutation.isPending ? 'Creating...' : 'Create Experience'}
             </Button>
@@ -724,7 +695,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
             )}
             {assignMutation.isError && (
               <Alert severity="error" sx={{ mt: 1 }}>
-                {(assignMutation.error as Error).message || 'Failed to assign'}
+                {(assignMutation.error as Error).message}
               </Alert>
             )}
           </Box>
