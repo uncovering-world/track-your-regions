@@ -6,14 +6,11 @@
  * a person can judge is a lake, a bay, a strait — so the mask is closed,
  * labelled, split where one component is really two, and each piece is cropped
  * out of the original image with its outline drawn on. What comes back is a
- * list of pictures with their share of the map.
- *
- * Split out of `wvImportMatchHelpers.ts`, which had reached the length the lint
- * draws the line at (#933); what is done with the answer is
- * `wvImportMatchWater.ts`.
+ * list of pictures with their share of the map. What is done with the answer
+ * is `waterFinalize.ts`.
  */
 
-import type { CvNs, CvMat } from '../../services/worldViewImport/colorMatch/cvTypes.js';
+import type { CvNs, CvMat } from '../cvTypes.js';
 import sharp from 'sharp';
 
 // =============================================================================
