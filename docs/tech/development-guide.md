@@ -165,6 +165,13 @@ services/
 │   ├── imageService.ts
 │   ├── regionAssignmentService.ts
 │   └── types.ts
+├── worldViewImport/
+│   ├── importer.ts, matcher*.ts, geoshapeCache.ts, …   ← the import and its name matchers
+│   └── colorMatch/            ← the CV colour match's computation
+│       ├── context.ts         ← the pipeline context and the ports a controller fills
+│       ├── pixels/  water/  cluster/
+│       ├── geometry/  icp/  assign/
+│       └── result/
 ├── hull/
 ├── ai/
 ├── authService.ts
@@ -176,6 +183,7 @@ services/
 1. **Shared utilities go in shared files.** `experienceUpsert.ts`, `syncUtils.ts` and `wikidataUtils.ts` are reused across all sync services. Don't duplicate their logic.
 2. **New source?** Create a new `*SyncService.ts` file that implements `SyncServiceConfig<T>` from `syncContract.ts` and runs through `orchestrateSync` in `syncOrchestrator.ts`. Reuse shared utilities.
 3. **Co-locate tests.** Test files sit next to source: `syncOrchestrator.test.ts` alongside `syncOrchestrator.ts`.
+4. **Services never import controllers.** The layers run routes → controllers → services → db. A computation that needs a query or a person hands it in as a parameter the controller fills — the colour match's `AssignmentParams.loadChildDivisions` and `PipelineContext.askWaterReview` — so the handler's change and the algorithm's change land in different files, and the algorithm is testable without the database. A spec that drives a controller sits beside that controller, as `controllers/experience/locationWriter.chain.db.test.ts` does beside the publish it drives. `SERVICE_LAYER_IMPORTS` in `backend/eslint.config.mjs` refuses a static import or re-export from `controllers/` anywhere under `services/`, specs included — `no-restricted-imports` does not see a dynamic `import()`, which is how `wvImportMatchJsBranch.ts` loads OpenCV, so such a loader belongs under `controllers/` by the rule's reasoning rather than its enforcement; `backend/src/services/serviceLayerLint.test.ts` pins the rule in both directions. The same block refuses a value import of `@techstark/opencv-js` there: `controllers/admin/wvImportMatchJsBranch.ts` loads OpenCV once onto `globalThis.__cv`, and a spec that reached another importer would load the WASM build and hang vitest. A type import is erased and stays allowed (`colorMatch/cvTypes.ts`).
 
 ### Database Queries
 
