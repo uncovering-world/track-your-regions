@@ -3352,6 +3352,12 @@ export interface Experience {
      * @maximum 9007199254740991
      */
   treasure_count: number;
+  /**
+     * Finds dug up at this site and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row that is not a site.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  finds_count: number;
   /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
   created_at?: string;
   /** Only for a curator whose scope reaches the region. */

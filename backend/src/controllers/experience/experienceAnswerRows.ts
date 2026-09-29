@@ -64,6 +64,7 @@ export interface ExperienceListRow {
   danger_since: number | null;
   location_count: number;
   treasure_count: number;
+  finds_count: number;
   source_membership: Membership;
   existence: Existence;
   missing_since: Date | null;
@@ -93,6 +94,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
     kind_priority: row.kind_priority,
     location_count: row.location_count,
     treasure_count: row.treasure_count,
+    finds_count: row.finds_count,
     created_at: row.created_at?.toISOString(),
     is_rejected: row.is_rejected,
     rejection_reason: row.rejection_reason,
