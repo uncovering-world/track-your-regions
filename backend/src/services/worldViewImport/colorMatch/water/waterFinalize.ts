@@ -4,20 +4,17 @@
  * The mask is first narrowed to what touches the image's own border — an inland
  * lake is not the sea — and grown back by a dilation, then the components go to
  * a curator as pictures. Their decision comes back as a mask the rest of the
- * pipeline works from, and the run records what was decided and why.
- *
- * Split out of `wvImportMatchHelpers.ts`, which had reached the length the lint
- * draws the line at (#933); the components themselves are built in
- * `wvImportMatchWaterComponents.ts`.
+ * pipeline works from, and the run records what was decided and why. The
+ * components themselves are built in `waterComponents.ts`.
  */
 
-import type { CvNs } from '../../services/worldViewImport/colorMatch/cvTypes.js';
+import type { CvNs } from '../cvTypes.js';
 import {
   WaterComponent, CompStat, morphCloseWaterMask, collectComponentStats, splitLargeComponents, buildWaterComponents,
-} from './wvImportMatchWaterComponents.js';
+} from './waterComponents.js';
 import sharp from 'sharp';
-import { registerWaterReview, storeWaterCrops, type WaterReviewDecision } from './wvImportMatchReview.js';
-import type { PipelineContext, SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
+import { registerWaterReview, storeWaterCrops, type WaterReviewDecision } from '../../../../controllers/admin/wvImportMatchReview.js';
+import type { PipelineContext, SendEvent } from '../context.js';
 
 /** Mark a pixel as border-connected and push it to the BFS queue if non-zero in erodedData. */
 function seedBorderPixel(
