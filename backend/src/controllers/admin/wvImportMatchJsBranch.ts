@@ -19,7 +19,10 @@ import type {
   PushDebugImage,
   ImageDims,
   PipelineContext,
+  WaterReviewDecision,
 } from '../../services/worldViewImport/colorMatch/context.js';
+import type { WaterComponent } from '../../services/worldViewImport/colorMatch/water/waterComponents.js';
+import { registerWaterReview, storeWaterCrops } from './wvImportMatchReview.js';
 import sharp from 'sharp';
 import { matchDivisionsFromClusters, type ReclusterSignal } from './wvImportMatchShared.js';
 import { buildDownscaledBuffers } from '../../services/worldViewImport/colorMatch/pixels/colorLines.js';
@@ -55,6 +58,37 @@ if (!G.__cvReady) {
 }
 
 
+/** Emit the water_review SSE event and await the curator's decision. */
+async function requestWaterReview(
+  regionId: number,
+  waterComponents: WaterComponent[],
+  waterPxCount: number,
+  tp: number,
+  sendEvent: SendEvent,
+): Promise<WaterReviewDecision> {
+  const reviewId = `wr-${regionId}-${Date.now()}`;
+  storeWaterCrops(reviewId, waterComponents);
+  const cropCount = waterComponents.reduce((n, wc) => n + 1 + wc.subClusters.length, 0);
+  console.log(`  [Water] Stored ${cropCount} crop(s) for review ${reviewId}`);
+
+  sendEvent({
+    type: 'water_review',
+    reviewId,
+    waterPxPercent: Math.round(waterPxCount / tp * 1000) / 10,
+    waterComponents: waterComponents.map(wc => ({
+      id: wc.id,
+      pct: wc.pct,
+      cropDataUrl: '',
+      subClusters: wc.subClusters.map(sc => ({ idx: sc.idx, pct: sc.pct, cropDataUrl: '' })),
+    })),
+  });
+  await new Promise(resolve => setImmediate(resolve));
+
+  return new Promise<WaterReviewDecision>((resolve) => {
+    registerWaterReview(reviewId, resolve);
+  });
+}
+
 interface JsPipelineContextInput {
   cv: PipelineContext['cv'];
   regionId: number; worldViewId: number; regionName: string;
@@ -86,6 +120,8 @@ function buildJsPipelineContext(input: JsPipelineContextInput): PipelineContext 
     colorCentroids: [], clusterCounts: [],
     ckOverride: null, chromaBoost: 1.0, randomSeed: false,
     sendEvent,
+    askWaterReview: (waterComponents, waterPxCount) =>
+      requestWaterReview(input.regionId, waterComponents, waterPxCount, dims.tp, sendEvent),
     logStep, pushDebugImage, debugImages, startTime,
     oddK: dims.oddK, pxS: dims.pxS,
   };

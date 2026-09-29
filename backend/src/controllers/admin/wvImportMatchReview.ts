@@ -6,18 +6,14 @@
  * and cluster review phases.
  *
  * This is a leaf dependency — it must NEVER import from phase modules
- * or the controller.
+ * or the controller; it reads the pipeline's shared types alone.
  */
+
+import type { WaterReviewDecision } from '../../services/worldViewImport/colorMatch/context.js';
 
 // =============================================================================
 // Water review
 // =============================================================================
-
-/** Water review decision: approved components + mix (sub-clustered) components */
-export interface WaterReviewDecision {
-  approvedIds: number[];
-  mixDecisions: Array<{ componentId: number; approvedSubClusters: number[] }>;
-}
 
 /** Pending water review callbacks — SSE handler pauses here, POST handler resolves */
 const pendingWaterReviews = new Map<string, (decision: WaterReviewDecision) => void>();
