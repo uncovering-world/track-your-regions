@@ -3,18 +3,15 @@
  *
  * Before a pixel is read the run has to know the region it is matching, the
  * divisions already assigned to it, the countries it covers and the depth to
- * go to — and it draws the border preview a reviewer sees first, with every
- * division's outline and a dot saying whether it is already held.
- *
- * Split out of `wvImportMatchPipeline.ts`, which had reached the length the
- * lint draws the line at (#933).
+ * go to — and it loads the rows of the border preview a reviewer sees first
+ * (`services/worldViewImport/colorMatch/geometry/borderPreview.ts` draws it).
  */
 
 import type { SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
 import { Response } from 'express';
-import sharp from 'sharp';
 import { pool } from '../../db/index.js';
 import { pictureFetchUrl } from '../../types/urlSafety.js';
+import type { BorderData, Centroid } from '../../services/worldViewImport/colorMatch/geometry/borderPreview.js';
 
 
 /** Load region name + map URL. Writes an error event and ends the response on failure. */
@@ -170,9 +167,6 @@ export async function loadAllDivisionIds(
   return [...allDivisionIdSet];
 }
 
-interface DivPath { id: number; svgPath: string }
-interface Centroid { id: number; name: string; cx: number; cy: number; assigned: { regionId: number; regionName: string } | null }
-
 /** Load per-child assignments so the debug preview can color assigned centroids green. */
 export async function loadAssignedMap(
   regionId: number, worldViewId: number,
@@ -215,14 +209,6 @@ export async function loadCentroids(
     cy: parseFloat(r.cy as string),
     assigned: assignedMap.get(r.id as number) ?? null,
   }));
-}
-
-interface BorderData {
-  divPaths: DivPath[];
-  countryPath: string;
-  externalBorder: string | null;
-  internalBorder: string | null;
-  cMinX: number; cMinY: number; cMaxX: number; cMaxY: number;
 }
 
 /** Fetch per-division SVG paths + union border classification in parallel. */
@@ -276,42 +262,4 @@ export async function loadDivPathsAndBorders(allDivisionIds: number[]): Promise<
     cMaxX: parseFloat(row.country_max_x as string),
     cMaxY: parseFloat(row.country_max_y as string),
   };
-}
-
-/** Render the "Step 1" debug image (GADM divisions + classified borders) to PNG. */
-export async function renderBorderDebugPng(data: BorderData, centroids: Centroid[]): Promise<Buffer> {
-  const { divPaths, countryPath, externalBorder, internalBorder, cMinX, cMinY, cMaxX, cMaxY } = data;
-  const pad = 0.5;
-  const vbX = cMinX - pad;
-  const vbY = -(cMaxY + pad);
-  const vbW = (cMaxX - cMinX) + 2 * pad;
-  const vbH = (cMaxY - cMinY) + 2 * pad;
-  const ss = Math.max(vbW, vbH) / 800;
-
-  const divisionShapes = divPaths.map(d =>
-    `<path d="${d.svgPath}" fill="#ddeeff" stroke="#90a4ae" stroke-width="${ss}" fill-opacity="0.7"/>`
-  ).join('\n');
-  const dots = centroids.map(c => {
-    const color = c.assigned ? '#2e7d32' : '#e65100';
-    return `<circle cx="${c.cx}" cy="${-c.cy}" r="${ss * 4}" fill="${color}" stroke="white" stroke-width="${ss * 0.5}"/>`;
-  }).join('\n');
-  const externalPath = externalBorder
-    ? `<path d="${externalBorder}" fill="none" stroke="#d32f2f" stroke-width="${ss * 3}" stroke-linecap="round"/>`
-    : '';
-  const internalPath = internalBorder
-    ? `<path d="${internalBorder}" fill="none" stroke="#1565c0" stroke-width="${ss * 2}" stroke-dasharray="${ss * 4},${ss * 3}" stroke-linecap="round"/>`
-    : '';
-
-  const borderSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" width="1600">
-    <rect x="${vbX}" y="${vbY}" width="${vbW}" height="${vbH}" fill="#f0f2f5"/>
-    <path d="${countryPath}" fill="#e8e8e8" stroke="#bbb" stroke-width="${ss * 0.5}"/>
-    ${divisionShapes}
-    ${externalPath}
-    ${internalPath}
-    ${dots}
-  </svg>`;
-  return sharp(Buffer.from(borderSvg))
-    .flatten({ background: '#f0f2f5' })
-    .png()
-    .toBuffer();
 }
