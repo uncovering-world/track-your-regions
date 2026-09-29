@@ -13,7 +13,7 @@
  */
 
 import sharp from 'sharp';
-import { traceBorderPaths, type BorderPath } from './wvImportMatchBorderTrace.js';
+import { traceBorderPaths, type BorderPath } from '../../services/worldViewImport/colorMatch/geometry/borderTrace.js';
 import {
   divisiveSplitClusters,
   mergeFragmentedClusters,

@@ -5,13 +5,10 @@
  * overseas department, an island group or a sliver that overlaps its
  * neighbours stretches the box over open sea, and the alignment that follows
  * is fitted to nothing. These helpers measure the box, say when it has been
- * inflated, and name the divisions to leave out of it.
- *
- * Split out of `wvImportMatchIcp.ts`, which had reached the length the lint
- * draws the line at (#933).
+ * inflated, and name the divisions to leave out of it; `icp.ts` reads them.
  */
 
-import { parseSvgSubPaths } from './wvImportMatchSvgHelpers.js';
+import { parseSvgSubPaths } from '../geometry/svgPath.js';
 
 // =============================================================================
 // Geometry helpers for ICP adjustment

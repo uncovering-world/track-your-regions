@@ -6,11 +6,7 @@
  * two clusters meet, as well as the silhouette's outer edge; D — a grid
  * search that asks instead which scale and offset land the divisions'
  * centroids on the largest clusters. Each returns a transform;
- * `wvImportMatchIcp.ts` scores them by overflow and mean error and keeps the
- * best.
- *
- * Split out of `wvImportMatchIcp.ts`, which had reached the length the lint
- * draws the line at (#933).
+ * `icp.ts` scores them by overflow and mean error and keeps the best.
  */
 
 // =============================================================================

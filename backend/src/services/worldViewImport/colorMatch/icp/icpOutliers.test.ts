@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeShoelaceArea, computeSvgPathArea, computeBboxFromDivisions, detectBboxInflation, findBboxOutliers, findOverlapOutliers } from './wvImportMatchIcpOutliers.js';
+import { computeShoelaceArea, computeSvgPathArea, computeBboxFromDivisions, detectBboxInflation, findBboxOutliers, findOverlapOutliers } from './icpOutliers.js';
 
 describe('computeShoelaceArea', () => {
   it('computes area of a unit square', () => {

@@ -7,15 +7,15 @@
  * the bounding boxes both sides are measured in, the border pixels the fit is
  * scored against, the four candidate transforms' overflow and mean error, and
  * the two debug images a reviewer reads. The candidates themselves — options
- * A to D — are `wvImportMatchIcpOptions.ts`, and which divisions are allowed
- * into the box at all is `wvImportMatchIcpOutliers.ts`.
+ * A to D — are `icpOptions.ts`, and which divisions are allowed into the box
+ * at all is `icpOutliers.ts`.
  */
 import sharp from 'sharp';
-import { parseSvgPathPoints, resamplePath } from './wvImportMatchSvgHelpers.js';
+import { parseSvgPathPoints, resamplePath } from '../geometry/svgPath.js';
 import {
   runOptionA, runOptionB, runOptionC, runOptionD,
   type Transform, type NearestFn,
-} from './wvImportMatchIcpOptions.js';
+} from './icpOptions.js';
 
 // =============================================================================
 // Types
