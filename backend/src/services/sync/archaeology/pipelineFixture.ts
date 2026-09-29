@@ -800,6 +800,10 @@ const edgeRows = (w: World, asked: string[]): SparqlBinding[] =>
 export function answer(w: World, sent: string): SparqlBinding[] {
   const query = sent.trimStart();
   const asked = askedFor(query);
+  // Which door candidates are organisations (#798): none in this world counts
+  // a museum among its parts. Before the tree arm, whose pattern the question
+  // also carries (`wdt:P279* wd:Q33506`).
+  if (query.includes('?e wdt:P527 ?part')) return [];
   const tree = /wdt:P279\* wd:(Q\d+)/.exec(query);
   if (tree) return (w.trees[tree[1]] ?? [tree[1]]).map((c) => ({ c: uri(c) }));
   if (query.includes('?c wdt:P279 ?p')) {
