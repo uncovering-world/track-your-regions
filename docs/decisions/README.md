@@ -95,6 +95,7 @@ and accepted by it.
 | [0073](0073-the-web-client-is-generated-from-the-openapi-document-by-orval.md) | The web client is generated from the OpenAPI document by Orval | Accepted — decisions 4 and 5 narrowed by ADR-0074 | 2026-09-27 |
 | [0074](0074-a-type-no-route-answers-is-derived-and-no-image-url-carries-a-token.md) | A type no route answers is derived from the generated ones, and no image URL carries a token | Accepted | 2026-09-28 |
 | [0075](0075-a-regions-write-bumps-the-tile-version-at-commit.md) | A write to regions bumps its world view's tile version, at commit | Accepted | 2026-09-28 |
+| [0076](0076-a-dialogs-fields-and-refusals-come-from-one-form-hook.md) | A dialog's fields and its refusals come from one form hook | Accepted | 2026-09-29 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
