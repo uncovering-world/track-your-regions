@@ -253,7 +253,11 @@ round trip. The test is what stops a parameter being added in one direction only
   the arriving row, so a keyboard or screen-reader visitor is put in what the
   link named rather than at the top of the page. The group holding that card is
   the one the region opens on, too — a card inside a collapsed kind is not
-  open, whatever the address says (`initiallyExpandedGroup`, #592).
+  open, whatever the address says (`initiallyExpandedGroup`, #592). And the row
+  is brought into the list's window even when it sits far down that group: the
+  list is windowed, so a row outside the first screen is not mounted and cannot
+  open until it is scrolled to, which the list does once the row's index is
+  known (`useListScrollAnchor.ts`, #917).
 - A name typed in the navigation pane is a way *into* the grammar: a search
   result writes the whole address in one `go()` — world view, region, card —
   and the region it names is the smallest one holding the object in the world
