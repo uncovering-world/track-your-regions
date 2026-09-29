@@ -13,9 +13,9 @@ import {
   storeClusterPreviewImage,
   storeClusterHighlights,
   type ClusterReviewDecision,
-} from './wvImportMatchReview.js';
-import type { ReclusterPreset, SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
-import type { BorderPath } from '../../services/worldViewImport/colorMatch/geometry/borderTrace.js';
+} from '../../../../controllers/admin/wvImportMatchReview.js';
+import type { ReclusterPreset, SendEvent } from '../context.js';
+import type { BorderPath } from '../geometry/borderTrace.js';
 
 // =============================================================================
 // Shared types

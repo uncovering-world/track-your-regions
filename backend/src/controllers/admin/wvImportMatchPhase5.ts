@@ -14,7 +14,7 @@ import { pool } from '../../db/index.js';
 import type { DivAssignment, FinalDivAssignment } from './wvImportMatchAssignment.js';
 import { getAdjacencyGraph, detectSpatialAnomalies } from '../../services/worldViewImport/spatialAnomalyDetector.js';
 import type { AdjacencyEdge, DivisionAssignment, SpatialAnomaly } from '../../services/worldViewImport/spatialAnomalyDetector.js';
-import type { GridDims } from './wvImportMatchClusterReview.js';
+import type { GridDims } from '../../services/worldViewImport/colorMatch/cluster/clusterComponents.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import type {
   ColorMatchCluster, ColorMatchComplete, ColorMatchResult, CvPreviewFeature,
