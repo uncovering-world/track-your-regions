@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { fetchClassPool, fetchEntityEdges, fetchVenueStatements } from './queries.js';
+import { fetchClassPool, fetchEntityEdges, fetchMuseumParts, fetchVenueStatements } from './queries.js';
 import { standing } from '../wikidataQueries.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
@@ -152,6 +152,29 @@ describe('the entity edges', () => {
     expect(flat).not.toContain('?st ps:P276 ?loc ; pq:P582 ?ended');
     // Part-of is read unfiltered on purpose: an ended membership is a question for resolution.
     expect(flat).toContain('{ ?e wdt:P361 ?parent }');
+  });
+});
+
+describe('the museum parts of a door candidate', () => {
+  it('asks what an entity has and what names it as its whole, museums only, with where they stand', async () => {
+    // The Staatliche Kunstsammlungen Dresden list the Grassi Museum in Leipzig
+    // among their parts (P527); the Galleria Palatina names Palazzo Pitti as
+    // the whole it is part of (P361). Either way the part must be a museum.
+    let sent = '';
+    const parts = await fetchMuseumParts(async (query) => {
+      sent = query;
+      return [
+        { e: { value: `${ENTITY}Q653002` }, part: { value: `${ENTITY}Q876610` }, coord: { value: 'Point(12.3886 51.3369)' } },
+        { e: { value: `${ENTITY}Q653002` }, part: { value: `${ENTITY}Q876610` }, coord: { value: 'Point(12.3886 51.3369)' } },
+      ];
+    }, ['Q653002', 'Q29286']);
+
+    const flat = sent.replace(/\s+/g, ' ');
+    expect(flat).toContain('{ ?e wdt:P527 ?part } UNION { ?part wdt:P361 ?e }');
+    expect(flat).toContain('?part wdt:P31/wdt:P279* wd:Q33506 ; wdt:P625 ?coord');
+    // Once per part, and an entity asked about with none answers an empty list.
+    expect(parts.get('Q653002')).toEqual([{ qid: 'Q876610', lat: 51.3369, lon: 12.3886 }]);
+    expect(parts.get('Q29286')).toEqual([]);
   });
 });
 

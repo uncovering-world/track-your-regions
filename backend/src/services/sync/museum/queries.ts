@@ -514,6 +514,46 @@ export async function fetchEntityEdges(
   return out;
 }
 
+/** A part of an entity that is itself a museum, where it stands. */
+export interface MuseumPart {
+  qid: string;
+  lat: number;
+  lon: number;
+}
+
+/**
+ * The museums each entity counts among its parts — what it lists as having
+ * (`P527`) and what names it as the whole it is part of (`P361`) — with their
+ * coordinates.
+ *
+ * For the door rule (#798): an entity whose museums stand across a city is an
+ * organisation, not a building a visitor walks into. The Staatliche
+ * Kunstsammlungen Dresden list fifteen museums, the Grassi Museum in Leipzig
+ * among them, 99 km away; Palazzo Pitti lists two, both inside it.
+ */
+export async function fetchMuseumParts(
+  sparql: SparqlFn,
+  qids: string[],
+): Promise<Map<string, MuseumPart[]>> {
+  const out = new Map<string, MuseumPart[]>();
+  if (!qids.length) return out;
+  for (const qid of qids) out.set(qid, []);
+  const rows = await sparql(`
+    SELECT ?e ?part ?coord WHERE {
+      VALUES ?e { ${values(qids)} }
+      { ?e wdt:P527 ?part } UNION { ?part wdt:P361 ?e }
+      ?part wdt:P31/wdt:P279* wd:${MUSEUM_ROOT} ; wdt:P625 ?coord .
+    }`, { kind: 'edges', label: `museum parts of ${qids.length} entities` });
+  for (const row of rows) {
+    const parts = out.get(extractQid(row.e?.value ?? ''));
+    const part = extractQid(row.part?.value ?? '');
+    const coord = row.coord?.value ? parseWktPoint(row.coord.value) : null;
+    if (!parts || !isQid(part) || !coord || parts.some((p) => p.qid === part)) continue;
+    parts.push({ qid: part, lat: coord.lat, lon: coord.lon });
+  }
+  return out;
+}
+
 /** Add the entity a binding names, when the binding is present and names one. */
 function pushEntity(into: string[], binding: SparqlBinding[string]): void {
   if (!binding) return;
