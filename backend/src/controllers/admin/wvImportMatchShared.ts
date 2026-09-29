@@ -22,6 +22,7 @@ import { detectBboxInflation } from '../../services/worldViewImport/colorMatch/i
 import { runIcpAdjustment } from '../../services/worldViewImport/colorMatch/icp/icpAdjust.js';
 import {
   assignDivisionsToClusters,
+  type ChildDivision,
   type DivAssignment,
   type FinalDivAssignment,
 } from '../../services/worldViewImport/colorMatch/assign/assignment.js';
@@ -237,6 +238,26 @@ async function loadRegionAndCountryNames(
     regionName: regionNameResult.rows[0]?.name ?? `Region#${regionId}`,
     countryName: countryNameResult.rows[0]?.name ?? `Country#${countryIds.join('+')}`,
   };
+}
+
+/**
+ * Load the GADM children of the divisions the assignment splits, with their
+ * centroid and outline (`assignDivisionsToClusters` reads them through
+ * `loadChildDivisions`).
+ */
+async function loadChildDivisions(parentIds: number[]): Promise<ChildDivision[]> {
+  const result = await pool.query<{ id: number; parent_id: number; name: string; cx: string; cy: string; svg_path: string }>(`
+    SELECT id, parent_id, name,
+      ST_X(ST_Centroid(geom_simplified_medium)) AS cx,
+      ST_Y(ST_Centroid(geom_simplified_medium)) AS cy,
+      ST_AsSVG(geom_simplified_medium, 0, 4) AS svg_path
+    FROM administrative_divisions
+    WHERE parent_id = ANY($1) AND geom_simplified_medium IS NOT NULL
+  `, [parentIds]);
+  return result.rows.map(r => ({
+    id: r.id, parentId: r.parent_id, name: r.name,
+    cx: parseFloat(r.cx), cy: parseFloat(r.cy), svgPath: r.svg_path,
+  }));
 }
 
 // =============================================================================
@@ -604,6 +625,7 @@ async function runJsMatching(p: RunJsMatchingParams): Promise<MatchingResult> {
     countrySize: p.countrySize,
     TW: p.dims.TW, TH: p.dims.TH, origW: p.origW, origH: p.origH,
     pxS: p.pxS, logStep: p.logStep, pushDebugImage: p.pushDebugImage,
+    loadChildDivisions,
   });
 
   return {
