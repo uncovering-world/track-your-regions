@@ -186,6 +186,7 @@ export function useWorldPointInteractions({
         // exactly as a region's list row has none (`rowKindJoinSql`).
         kindId: point.kindId ?? 0,
         treasureCount: undefined,
+        findsCount: undefined,
         // No picture and so no credit; see the note at the top of this file.
         imageUrl: null,
         imageCredit: null,

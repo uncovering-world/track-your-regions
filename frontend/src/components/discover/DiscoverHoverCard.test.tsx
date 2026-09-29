@@ -71,3 +71,40 @@ describe('DiscoverHoverCard treasures-inside chip', () => {
     expect(screen.queryByText(/treasures inside/)).not.toBeInTheDocument();
   });
 });
+
+describe('DiscoverHoverCard finds-on-view chip', () => {
+  it('says the finds of a site are on view, whatever the treasures chip says', () => {
+    // Mycenae: the Mask of Agamemnon and its sibling, both in Athens (#907).
+    renderCard();
+
+    act(() => {
+      actions.setHoverPreview({
+        ...basePreview, experienceName: 'Mycenae', kindName: null, kindId: 5, findsCount: 2,
+      });
+    });
+
+    expect(screen.getByText('2 finds on view')).toBeInTheDocument();
+  });
+
+  it('stays silent for a place with none', () => {
+    renderCard();
+
+    act(() => {
+      actions.setHoverPreview({ ...basePreview, kindId: PLACES_OF_WORSHIP, findsCount: 0 });
+    });
+
+    expect(screen.queryByText(/on view/)).not.toBeInTheDocument();
+  });
+
+  it('draws no stray zero when a place has no kind name and nothing to count', () => {
+    renderCard();
+
+    act(() => {
+      actions.setHoverPreview({
+        ...basePreview, kindName: null, kindId: PLACES_OF_WORSHIP, treasureCount: 0, findsCount: 0,
+      });
+    });
+
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+  });
+});

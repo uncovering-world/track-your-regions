@@ -103,6 +103,7 @@ function previewOf(exp: Experience): HoverPreview {
     kindName: exp.kind_name || '',
     kindId: exp.kind_id,
     treasureCount: exp.treasure_count,
+    findsCount: exp.finds_count,
     imageUrl: rawImg ? toThumbnailUrl(rawImg, 250) : null,
     imageCredit: exp.image_credit ?? null,
     longitude: exp.longitude,

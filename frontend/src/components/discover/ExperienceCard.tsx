@@ -15,6 +15,7 @@ import { inDangerLabel } from '../../utils/dangerLabel';
 import type { Experience } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
+import { FindsOnViewChip } from '../shared/FindsOnViewChip';
 
 interface CardSurfaceInputs {
   isRejected: boolean | undefined;
@@ -204,6 +205,7 @@ export function ExperienceCard({
           )}
           <LifecycleChip state={experience} />
           <TreasuresInsideChip count={experience.treasure_count} kindId={experience.kind_id} />
+          <FindsOnViewChip count={experience.finds_count} />
           {(experience.location_count ?? 0) > 1 && (
             <Chip
               icon={<PlaceIcon sx={{ fontSize: '0.6rem !important' }} />}

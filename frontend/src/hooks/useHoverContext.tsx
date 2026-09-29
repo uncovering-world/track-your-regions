@@ -38,6 +38,8 @@ export interface HoverPreview {
   kindId: number;
   /** Offered + published treasure links, for `TreasuresInsideChip`. */
   treasureCount?: number;
+  /** Finds dug up at a site and on view in a museum, for `FindsOnViewChip` (#907). */
+  findsCount?: number;
   imageUrl: string | null;
   /** Whose photograph it is. Carried with the picture, because the card shows one. */
   imageCredit: ImageCredit | null;
