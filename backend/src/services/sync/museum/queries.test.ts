@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { fetchClassPool, fetchEntityEdges, fetchVenueStatements } from './queries.js';
+import { standing } from '../wikidataQueries.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
@@ -134,15 +135,23 @@ describe('the entity edges', () => {
     });
   });
 
-  it('asks the source for the location edge, less any location the entity has left', async () => {
-    // A work's P276 carrying an end time (pq:P582) is dropped as a loan that ended or a move
-    // already made; an entity's location is read by the same rule, or a collection rehoused
-    // from one building to a better-known one next door keeps the old building as its door.
+  it('reads the location edge statement by statement, as a work\'s venue and the public-art facts are read', async () => {
+    // A container's P276 carrying an end time (pq:P582) is a building it has left, and is
+    // dropped — but per statement, not per value: a collection that left a building and came
+    // back has an ended and a standing statement with the same value, and keeps the building.
+    // One phrasing for the question across the importers (`standing`, #812), best-ranked the
+    // way the truthy value was.
     let sent = '';
     await fetchEntityEdges(async (query) => { sent = query; return []; }, ['Q254156']);
-    expect(sent).toContain('wdt:P276 ?loc');
-    const locationBranch = sent.slice(sent.indexOf('wdt:P276 ?loc'));
-    expect(locationBranch).toMatch(/FILTER NOT EXISTS \{[^}]*ps:P276 \?loc[^}]*pq:P582/);
+    const flat = sent.replace(/\s+/g, ' ');
+    expect(flat).toContain(
+      '?e p:P276 ?st276 . ?st276 a wikibase:BestRank ; ps:P276 ?loc . FILTER NOT EXISTS { ?st276 pq:P582 ?ended }',
+    );
+    expect(flat).toContain(standing('?e', 'P276', '?loc').replace(/\s+/g, ' '));
+    // The per-value filter is gone: it dropped a building a standing statement still names.
+    expect(flat).not.toContain('?st ps:P276 ?loc ; pq:P582 ?ended');
+    // Part-of is read unfiltered on purpose: an ended membership is a question for resolution.
+    expect(flat).toContain('{ ?e wdt:P361 ?parent }');
   });
 });
 

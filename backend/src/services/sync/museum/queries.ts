@@ -31,6 +31,7 @@ import {
   bandLabel,
   failIfTruncated,
   fetchClassTree,
+  standing,
   values,
   type Band,
   type QueryRunner,
@@ -486,18 +487,20 @@ export async function fetchEntityEdges(
   if (!qids.length) return out;
   for (const qid of qids) out.set(qid, { classes: [], parents: [], locations: [] });
 
-  // A location the entity has left — a P276 statement carrying an end time (pq:P582) — is
-  // dropped, by the rule a work's P276 is read under (statementBranch). The truthy value alone
-  // keeps a normal-ranked, end-dated location: the Bust of Nefertiti's own statements still name
-  // the Altes Museum it left in 2009, and a collection recorded that way would be offered a
-  // building it has left as its door. Part-of (P361) is read as before: it is the walk to a
-  // venue, and an ended membership is a question for resolution, not for this query.
+  // A location is read statement by statement (`standing`, the shared kit's phrasing): best-
+  // ranked, as the truthy value is, and a statement carrying an end time (pq:P582) dropped on its
+  // own. The truthy value alone keeps a normal-ranked, end-dated location: the Bust of
+  // Nefertiti's own statements still name the Altes Museum it left in 2009, and a collection
+  // recorded that way would be offered a building it has left as its door. Per statement rather
+  // than per value, so a container that left a building and came back to it — an ended and a
+  // standing statement with the same value — keeps the building, as a work's venue read keeps it
+  // (statementBranch). Part-of (P361) is read unfiltered on purpose: it is the walk to a venue,
+  // and an ended membership is a question for resolution, not for this query.
   const rows = await sparql(`
     SELECT ?e ?cls ?parent ?loc WHERE {
       VALUES ?e { ${values(qids)} }
       { ?e wdt:P31 ?cls } UNION { ?e wdt:P361 ?parent } UNION {
-        ?e wdt:P276 ?loc .
-        FILTER NOT EXISTS { ?e p:P276 ?st . ?st ps:P276 ?loc ; pq:P582 ?ended }
+        ${standing('?e', 'P276', '?loc')}
       }
     }`, { kind: 'edges', label: `class, part-of and location edges for ${qids.length} entities` });
 
