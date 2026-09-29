@@ -24,7 +24,7 @@ import {
   assignDivisionsToClusters,
   type DivAssignment,
   type FinalDivAssignment,
-} from './wvImportMatchAssignment.js';
+} from '../../services/worldViewImport/colorMatch/assign/assignment.js';
 import type { GridDims } from '../../services/worldViewImport/colorMatch/cluster/clusterComponents.js';
 import { runClusterReviewLoop, type ReclusterSignal } from './wvImportMatchClusterReview.js';
 import {

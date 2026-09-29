@@ -11,7 +11,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import type { DivAssignment, FinalDivAssignment } from './wvImportMatchAssignment.js';
+import type { DivAssignment, FinalDivAssignment } from '../../services/worldViewImport/colorMatch/assign/assignment.js';
 import { getAdjacencyGraph, detectSpatialAnomalies } from '../../services/worldViewImport/spatialAnomalyDetector.js';
 import type { AdjacencyEdge, DivisionAssignment, SpatialAnomaly } from '../../services/worldViewImport/spatialAnomalyDetector.js';
 import type { GridDims } from '../../services/worldViewImport/colorMatch/cluster/clusterComponents.js';

@@ -8,8 +8,8 @@
  */
 
 import sharp from 'sharp';
-import { pool } from '../../db/index.js';
-import { parseSvgPathPoints, parseSvgSubPaths } from '../../services/worldViewImport/colorMatch/geometry/svgPath.js';
+import { pool } from '../../../../db/index.js';
+import { parseSvgPathPoints, parseSvgSubPaths } from '../geometry/svgPath.js';
 
 // =============================================================================
 // Types
