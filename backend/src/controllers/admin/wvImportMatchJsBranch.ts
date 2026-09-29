@@ -21,7 +21,7 @@ import type {
   PushDebugImage,
   ImageDims,
   PipelineContext,
-} from './wvImportMatchContext.js';
+} from '../../services/worldViewImport/colorMatch/context.js';
 import sharp from 'sharp';
 import { matchDivisionsFromClusters, type ReclusterSignal } from './wvImportMatchShared.js';
 import { removeColoredLines } from './wvImportMatchHelpers.js';

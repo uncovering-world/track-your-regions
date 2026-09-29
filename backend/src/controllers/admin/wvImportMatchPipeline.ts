@@ -27,7 +27,7 @@ import { runPythonPipeline } from './wvImportMatchPythonBranch.js';
 import { runJavaScriptPipeline } from './wvImportMatchJsBranch.js';
 import type {
   SendEvent, LogStep, PushDebugImage, ImageDims,
-} from './wvImportMatchContext.js';
+} from '../../services/worldViewImport/colorMatch/context.js';
 import { ResponseShapeError } from '../../api/respond.js';
 import type { ColorMatchEvent } from '../../api/responses/wvImportCvMatch.js';
 import { fetchPicture } from '../../services/pictureFetch.js';

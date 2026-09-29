@@ -10,7 +10,7 @@
  * lint draws the line at (#933).
  */
 
-import type { SendEvent } from './wvImportMatchContext.js';
+import type { SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
 import { Response } from 'express';
 import sharp from 'sharp';
 import { pool } from '../../db/index.js';

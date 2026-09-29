@@ -4,13 +4,11 @@
  * Phase one hands the service the picture and takes back the buffers the rest
  * of the run needs; phase two is the loop a reclustering asks for, each pass
  * reported to the browser as it lands. The JavaScript branch beside it does
- * the same work in-process — `wvImportMatchJsBranch.ts`.
- *
- * Split out of `wvImportMatchPipeline.ts`, which had reached the length the
- * lint draws the line at (#933).
+ * the same work in-process — `wvImportMatchJsBranch.ts`; the SSE entry point
+ * that picks between them is `wvImportMatchPipeline.ts`.
  */
 
-import type { SendEvent, LogStep, PushDebugImage, ImageDims } from './wvImportMatchContext.js';
+import type { SendEvent, LogStep, PushDebugImage, ImageDims } from '../../services/worldViewImport/colorMatch/context.js';
 import { Response } from 'express';
 import sharp from 'sharp';
 import { matchDivisionsFromClusters, type ReclusterSignal } from './wvImportMatchShared.js';

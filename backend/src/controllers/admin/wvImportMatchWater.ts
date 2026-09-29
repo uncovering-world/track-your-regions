@@ -17,7 +17,7 @@ import {
 } from './wvImportMatchWaterComponents.js';
 import sharp from 'sharp';
 import { registerWaterReview, storeWaterCrops, type WaterReviewDecision } from './wvImportMatchReview.js';
-import type { PipelineContext, SendEvent } from './wvImportMatchContext.js';
+import type { PipelineContext, SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
 
 /** Mark a pixel as border-connected and push it to the BFS queue if non-zero in erodedData. */
 function seedBorderPixel(

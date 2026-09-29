@@ -14,7 +14,7 @@ import {
   storeClusterHighlights,
   type ClusterReviewDecision,
 } from './wvImportMatchReview.js';
-import type { SendEvent } from './wvImportMatchContext.js';
+import type { SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
 import type { BorderPath } from './wvImportMatchBorderTrace.js';
 
 // =============================================================================

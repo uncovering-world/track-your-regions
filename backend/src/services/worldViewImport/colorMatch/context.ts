@@ -3,15 +3,12 @@
  * phase writes into, the three calls that report progress to the browser, and
  * the dimensions the image is read at.
  *
- * Extracted from `wvImportMatchPipeline.ts` so that phase-module files
- * (`wvImportMatchCluster`, `wvImportMatchMeanshift`, `wvImportMatchWater` and
- * `wvImportMatchJsBranch`) can import the type without creating a circular
- * dependency through Pipeline;
- * the SSE callbacks and `ImageDims` followed it when the two CV branches moved
- * into files of their own (#933), for the same reason.
+ * It sits apart from the orchestrator (`controllers/admin/wvImportMatchPipeline.ts`)
+ * so that the phase modules under `colorMatch/` and both branches can import
+ * the types without a circular dependency through the orchestrator.
  */
 
-import type { ColorMatchEvent } from '../../api/responses/wvImportCvMatch.js';
+import type { ColorMatchEvent } from '../../../api/responses/wvImportCvMatch.js';
 
 /** Mutable state threaded through every phase of the color-match pipeline. */
 export interface PipelineContext {
