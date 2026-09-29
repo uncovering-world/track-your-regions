@@ -19,8 +19,8 @@ import type { worldViewIdParamSchema, wvImportColorMatchSchema } from '../../typ
 import {
   loadRegionAndMap, loadKnownDivisionIds, resolveCountryIds, countChildRegions,
   loadAllDivisionIds, loadAssignedMap, loadCentroids, loadDivPathsAndBorders,
-  renderBorderDebugPng,
 } from './wvImportMatchScope.js';
+import { renderBorderDebugPng } from '../../services/worldViewImport/colorMatch/geometry/borderPreview.js';
 import { runPythonPipeline } from './wvImportMatchPythonBranch.js';
 // Imported for its own sake as much as for the call: this module initialises
 // OpenCV at load, and a static import puts that cost at server startup.
