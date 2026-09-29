@@ -24,7 +24,7 @@ import type {
 } from '../../services/worldViewImport/colorMatch/context.js';
 import sharp from 'sharp';
 import { matchDivisionsFromClusters, type ReclusterSignal } from './wvImportMatchShared.js';
-import { removeColoredLines } from './wvImportMatchHelpers.js';
+import { removeColoredLines } from '../../services/worldViewImport/colorMatch/pixels/colorLines.js';
 import { runKMeansClustering } from './wvImportMatchCluster.js';
 import { meanshiftPreprocess } from './wvImportMatchMeanshift.js';
 

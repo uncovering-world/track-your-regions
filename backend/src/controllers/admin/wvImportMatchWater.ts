@@ -11,7 +11,7 @@
  * `wvImportMatchWaterComponents.ts`.
  */
 
-import type { CvNs } from './wvImportMatchHelpers.js';
+import type { CvNs } from '../../services/worldViewImport/colorMatch/pixels/colorLines.js';
 import {
   WaterComponent, CompStat, morphCloseWaterMask, collectComponentStats, splitLargeComponents, buildWaterComponents,
 } from './wvImportMatchWaterComponents.js';

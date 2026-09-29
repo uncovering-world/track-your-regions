@@ -13,7 +13,7 @@
  * `wvImportMatchWater.ts`.
  */
 
-import type { CvNs, CvMat } from './wvImportMatchHelpers.js';
+import type { CvNs, CvMat } from '../../services/worldViewImport/colorMatch/pixels/colorLines.js';
 import sharp from 'sharp';
 
 // =============================================================================
