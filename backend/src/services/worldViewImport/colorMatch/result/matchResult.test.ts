@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ColorMatchComplete } from '../../api/responses/wvImportCvMatch.js';
-import { buildCompletePayload, type BuildCompletePayloadParams } from './wvImportMatchPhase5.js';
+import { ColorMatchComplete } from '../../../../api/responses/wvImportCvMatch.js';
+import { buildCompletePayload, type BuildCompletePayloadParams } from './matchResult.js';
 
 // Angola's colour match: Cabinda province (GADM 2607) already belongs to the
 // Cabinda region, and one cluster covers Luanda province (GADM 2886), which no

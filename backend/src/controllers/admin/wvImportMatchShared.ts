@@ -34,7 +34,7 @@ import {
   buildCompletePayload,
   type CentroidInfo,
   type MatchingResult,
-} from './wvImportMatchPhase5.js';
+} from '../../services/worldViewImport/colorMatch/result/matchResult.js';
 import type { SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
 
 // Re-export ReclusterSignal for the pipeline caller

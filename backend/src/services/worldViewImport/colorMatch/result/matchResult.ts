@@ -10,15 +10,15 @@
  *   - final `complete` SSE payload construction
  */
 
-import { pool } from '../../db/index.js';
-import type { DivAssignment, FinalDivAssignment } from '../../services/worldViewImport/colorMatch/assign/assignment.js';
-import { getAdjacencyGraph, detectSpatialAnomalies } from '../../services/worldViewImport/spatialAnomalyDetector.js';
-import type { AdjacencyEdge, DivisionAssignment, SpatialAnomaly } from '../../services/worldViewImport/spatialAnomalyDetector.js';
-import type { GridDims } from '../../services/worldViewImport/colorMatch/cluster/clusterComponents.js';
-import type { AreaGeometry } from '../../api/responses/regions.js';
+import { pool } from '../../../../db/index.js';
+import type { DivAssignment, FinalDivAssignment } from '../assign/assignment.js';
+import { getAdjacencyGraph, detectSpatialAnomalies } from '../../spatialAnomalyDetector.js';
+import type { AdjacencyEdge, DivisionAssignment, SpatialAnomaly } from '../../spatialAnomalyDetector.js';
+import type { GridDims } from '../cluster/clusterComponents.js';
+import type { AreaGeometry } from '../../../../api/responses/regions.js';
 import type {
   ColorMatchCluster, ColorMatchComplete, ColorMatchResult, CvPreviewFeature,
-} from '../../api/responses/wvImportCvMatch.js';
+} from '../../../../api/responses/wvImportCvMatch.js';
 
 // =============================================================================
 // Shared types
