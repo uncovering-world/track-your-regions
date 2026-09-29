@@ -3284,6 +3284,11 @@ COMMENT ON COLUMN treasures.artists IS 'Every creator the source names for the w
 CREATE INDEX IF NOT EXISTS idx_treasures_type ON treasures(treasure_type);
 CREATE INDEX IF NOT EXISTS idx_treasures_sitelinks ON treasures(sitelinks_count DESC);
 CREATE INDEX IF NOT EXISTS idx_treasures_iconic ON treasures(is_iconic) WHERE is_iconic = true;
+-- The finds of a site: a treasure whose discovery place names the site's item
+-- (ADR-0058 decision 3), asked per site row by a region's list for its "finds
+-- on view" count (#907) and by a site's own list. Without it every site row in
+-- a region's list scans the table: 346 scans in Europe's list on 2026-09-29.
+CREATE INDEX IF NOT EXISTS idx_treasures_found_at ON treasures ((metadata->'foundAt'->>'qid'));
 
 -- A work carries state here and its link carries state too, and they answer
 -- different questions (ADR-0025): this one says the work is real and correctly
