@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import { publishContents } from '../../controllers/experience/publishContents.js';
-import { writeExperienceLocations } from './locationWriter.js';
+import { publishContents } from './publishContents.js';
+import { writeExperienceLocations } from '../../services/sync/locationWriter.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 
 /**
@@ -19,6 +19,10 @@ import { lockExperience } from '../../db/experienceWriter.js';
  * Every step reads its rows back by id. The fixture is one experience of its
  * own, under the gated source the schema seeds, deleted before and after; the
  * smoke fixture (ids 9001-9005) shares this database and is never touched.
+ *
+ * It sits beside `publishContents.ts`, the curator's publish it drives, rather
+ * than beside the run's `locationWriter.ts`: nothing under `services/` imports
+ * from `controllers/`.
  */
 
 const EXPERIENCE_ID = 9100;
