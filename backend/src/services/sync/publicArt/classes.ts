@@ -234,8 +234,10 @@ export const KILL_CLASSES: Record<string, string> = {
   Q47502370: 'walk of fame',
   Q1046088: 'hall of fame',
   Q1759852: 'sculpture garden',
-  // Nothing to stand in front of.
-  Q26883973: 'lost sculpture',
+  // Nothing to stand in front of. A lost or destroyed *work* is read from the
+  // whole tree under `lost artwork` instead (`PublicArtTrees.lost`, floored by
+  // `LOST_CLASSES`), the tree the works-first kinds read for the same
+  // question; a building is not in it.
   Q19860854: 'destroyed building or structure',
   // Landscape.
   Q1129474: 'cultural landscape',
@@ -327,6 +329,20 @@ export const VETO_CLASSES: Record<string, string> = {
 // The trees a verdict is asked against
 // =============================================================================
 
+/**
+ * A floor under the lost tree (`LOST_WORK_ROOT`): its members as Wikidata
+ * answered on 2026-09-12, pinned by name for the worship floor's reason — the
+ * tree read at run time extends this and never replaces it, so a tree that
+ * comes back short still refuses a lost sculpture, and the catalogue check,
+ * which reads constants and cannot walk a tree, names the rows the rule would.
+ */
+export const LOST_CLASSES: Record<string, string> = {
+  Q4140840: 'lost artwork',
+  Q21745157: 'destroyed artwork',
+  Q26883973: 'lost sculpture',
+  Q104438958: 'lost painting',
+};
+
 export interface PublicArtTrees {
   /** The sculpture and statue closures: a row carrying one is typed `sculpture`. */
   sculptural: ReadonlySet<string>;
@@ -343,6 +359,14 @@ export interface PublicArtTrees {
   museum: ReadonlySet<string>;
   /** `P279*` under structure of worship (Q1370598). */
   worship: ReadonlySet<string>;
+  /**
+   * `P279*` under lost artwork (`LOST_WORK_ROOT`, Q4140840): a work the source
+   * records as lost or destroyed, which leaves nothing to stand in front of.
+   * The same tree the Art Museums and Archaeology collectors read for the same
+   * question (#868), with the same one exception by name (`REMAINS_ON_SHOW`),
+   * so one fact is read one way by every kind (#872).
+   */
+  lost: ReadonlySet<string>;
 }
 
 /**
@@ -357,6 +381,7 @@ export function buildTrees(fetched: {
   commemorative: Iterable<string>;
   museum: Iterable<string>;
   worship: Iterable<string>;
+  lost: Iterable<string>;
 }): PublicArtTrees {
   const sculptural = new Set(fetched.sculptural);
   const artwork = new Set([...sculptural, ...fetched.fountain, ...Object.keys(MONUMENT_CLASSES)]);
@@ -371,5 +396,6 @@ export function buildTrees(fetched: {
     admitting,
     museum: new Set(fetched.museum),
     worship,
+    lost: new Set([...fetched.lost, ...Object.keys(LOST_CLASSES)]),
   };
 }

@@ -17,7 +17,10 @@ import {
   MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql, membershipAdmittedSql,
 } from '../../../db/membership.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
-import { KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES } from '../../../services/sync/publicArt/classes.js';
+import {
+  KILL_CLASSES, LOST_CLASSES, VETO_CLASSES, WORSHIP_CLASSES,
+} from '../../../services/sync/publicArt/classes.js';
+import { REMAINS_ON_SHOW } from '../../../services/sync/museum/worksCollector.js';
 import { tidyLabelSql } from '../../../services/sync/labelFold.js';
 
 import { count, text } from './assertion.js';
@@ -283,6 +286,10 @@ function qidArray(qids: string[]): string {
 }
 
 const REFUSED_OUTRIGHT = qidArray([...Object.keys(WORSHIP_CLASSES), ...Object.keys(KILL_CLASSES)]);
+// A lost or destroyed work is refused unless it is the one work the rule
+// names as remains on show (`REMAINS_ON_SHOW`, read by `publicArtVerdict`).
+const REFUSED_AS_LOST = qidArray(Object.keys(LOST_CLASSES));
+const REMAINS_SHOWN = qidArray(Object.keys(REMAINS_ON_SHOW));
 const REFUSED_UNLESS_ARTWORK = qidArray(Object.keys(VETO_CLASSES));
 
 /**
@@ -300,9 +307,11 @@ const REFUSED_UNLESS_ARTWORK = qidArray(Object.keys(VETO_CLASSES));
  * exception the data-assertions doc allows the other way round does not apply,
  * since a wrong list is not what this can see; a row the list never met is.
  *
- * Two things the rule reads that a constant cannot: the museum tree and the
- * worship tree, walked from Wikidata each run. The worship floor is pinned
- * (`WORSHIP_CLASSES`) and read here; a museum class the veto would catch is
+ * Three things the rule reads that a constant cannot: the museum tree, the
+ * worship tree and the lost tree, walked from Wikidata each run. The worship
+ * and lost floors are pinned (`WORSHIP_CLASSES`, `LOST_CLASSES`) and read
+ * here, the lost one with the rule's one exception by name
+ * (`REMAINS_ON_SHOW`); a museum class the veto would catch is
  * not, so a museum typed only by a class outside these lists is the rule's to
  * find, not this check's. Whether an artwork class answered a building's veto
  * is not approximated at all: the rule stores its own answer on the row
@@ -332,7 +341,8 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
                e.name AS experience_name,
                (SELECT string_agg(c, ', ' ORDER BY c)
                   FROM jsonb_array_elements_text(e.metadata->'wikidataClasses') c
-                 WHERE c = ANY(${REFUSED_OUTRIGHT}) OR c = ANY(${REFUSED_UNLESS_ARTWORK})) AS classes
+                 WHERE c = ANY(${REFUSED_OUTRIGHT}) OR c = ANY(${REFUSED_UNLESS_ARTWORK})
+                    OR (c = ANY(${REFUSED_AS_LOST}) AND NOT e.external_id = ANY(${REMAINS_SHOWN}))) AS classes
           FROM experiences e
           -- The public-art source's own membership (#822): the classes were
           -- written by its run and the admission is that source's rule.
@@ -347,6 +357,10 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
            AND (
              e.metadata->'wikidataClasses' ?| ${REFUSED_OUTRIGHT}
              OR (
+               e.metadata->'wikidataClasses' ?| ${REFUSED_AS_LOST}
+               AND NOT e.external_id = ANY(${REMAINS_SHOWN})
+             )
+             OR (
                e.metadata->'wikidataClasses' ?| ${REFUSED_UNLESS_ARTWORK}
                -- The rule's own answer to whether an artwork class lifted the
                -- veto; a row written before the key existed has none, and is
@@ -359,7 +373,7 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
     // The lists carry the labels; the row carries the ids. Said in words, as
     // the rule's own reason would be.
     const label = (qid: string) =>
-      WORSHIP_CLASSES[qid] ?? KILL_CLASSES[qid] ?? VETO_CLASSES[qid] ?? qid;
+      WORSHIP_CLASSES[qid] ?? KILL_CLASSES[qid] ?? LOST_CLASSES[qid] ?? VETO_CLASSES[qid] ?? qid;
     const classes = text(row, 'classes').split(', ').filter(Boolean).map(label).join(', ');
     return `${text(row, 'experience_name')}: admitted to Public Art & Monuments, typed `
       + `${classes} (experience ${count(row, 'experience_id')})`;

@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { heldFieldAnsweredSql, heldFieldRefusedSql } from '../../experience/heldDecisions.js';
 import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql } from '../../../db/membership.js';
 import {
-  KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, MONUMENT_CLASSES, FOUNTAIN_ROOT,
+  KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, MONUMENT_CLASSES, FOUNTAIN_ROOT, LOST_CLASSES,
 } from '../../../services/sync/publicArt/classes.js';
 import { readFileSync } from 'node:fs';
 import { repoFile } from '../../../testSupport/repoFile.js';
@@ -157,6 +157,16 @@ describe('an admitted public-art row typed as a building', () => {
       expect(sql).toContain(`'${qid}'`);
     }
     for (const qid of Object.keys(VETO_CLASSES)) expect(sql).toContain(`'${qid}'`);
+  });
+
+  it('refuses a lost work but not the one whose remains are on show, as the rule does', () => {
+    // The Colossus of Constantine is a destroyed artwork the rule lets through
+    // by name (REMAINS_ON_SHOW); naming it here would be the check arguing
+    // with the rule it composes.
+    for (const qid of Object.keys(LOST_CLASSES)) expect(sql).toContain(`'${qid}'`);
+    expect(sql).toContain(
+      "?| ARRAY['Q4140840', 'Q21745157', 'Q26883973', 'Q104438958'] AND NOT e.external_id = ANY(ARRAY['Q1289781'])",
+    );
   });
 
   it('lets an artwork class answer a building class by the rule\'s own answer, not an approximation', () => {

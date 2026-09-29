@@ -13,6 +13,8 @@
  */
 
 import { boundedClosure } from '../classClosure.js';
+// The works-first kinds' root for a lost or destroyed work, read here too (#872).
+import { LOST_WORK_ROOT } from '../museum/worksCollector.js';
 import {
   chunk,
   fetchClassTree,
@@ -118,6 +120,11 @@ async function collectTrees(run: QueryRunner): Promise<PublicArtTrees> {
   const museum = await fetchClassTree(run.sparql, MUSEUM_ROOT, 'museum classes');
   await run.step();
   const worship = await fetchClassTree(run.sparql, WORSHIP_ROOT, 'places of worship');
+  // The works-first kinds' tree for "nothing to stand in front of" (#872): a
+  // `destroyed artwork` without the `lost sculpture` class beside it would
+  // otherwise pass here and be refused there.
+  await run.step();
+  const lost = await fetchClassTree(run.sparql, LOST_WORK_ROOT, 'lost artwork classes');
 
   return buildTrees({
     sculptural: sculptural.classes,
@@ -125,6 +132,7 @@ async function collectTrees(run: QueryRunner): Promise<PublicArtTrees> {
     commemorative: commemorative.classes,
     museum,
     worship,
+    lost,
   });
 }
 

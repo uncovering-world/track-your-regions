@@ -25,6 +25,8 @@ import {
   MONUMENT_CLASSES,
   type PublicArtTrees,
 } from './classes.js';
+// The works-first kinds' exception for a lost work whose remains are on show (#872).
+import { REMAINS_ON_SHOW } from '../museum/worksCollector.js';
 
 /**
  * Something the entity stands in, or is part of, with what that thing is —
@@ -245,6 +247,11 @@ export function publicArtVerdict(e: PublicArtFacts, trees: PublicArtTrees): Publ
   const killed = named(e.classes, KILL_CLASSES);
   if (killed.length) {
     return { pass: false, reason: `not public art: ${killed.join('; ')}` };
+  }
+  // The works-first kinds' one exception by name holds here too: a destroyed
+  // work whose remains are what a traveller stands in front of.
+  if (!REMAINS_ON_SHOW[e.qid] && e.classes.some((c) => trees.lost.has(c))) {
+    return { pass: false, reason: 'not public art: lost or destroyed, nothing to stand in front of' };
   }
 
   if (!e.classes.some((c) => trees.admitting.has(c))) {
