@@ -51,6 +51,8 @@ vi.mock('./PointPreviewDialog', () => ({
 
 import { fetchExperience, type Experience, type ExperienceLocationsResponse } from '../../api/experiences';
 import { editExperience } from '../../api/curation';
+import { ApiError } from '../../api/fetchUtils';
+import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { CurationDialog } from './CurationDialog';
 
 const mockedEdit = editExperience as unknown as ReturnType<typeof vi.fn>;
@@ -194,6 +196,90 @@ describe('CurationDialog clearing a field', () => {
     save();
 
     await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { type: '' }));
+  });
+});
+
+/**
+ * The dialog's fields are held by the form layer (#1129); the layer's own
+ * spec holds its rules, and these hold that this dialog goes through it.
+ */
+describe('CurationDialog through the form layer', () => {
+  beforeEach(() => {
+    mockedEdit.mockReset();
+    mockedDetail.mockReset();
+  });
+
+  it('shows a refusal under the field it names, and stays open', async () => {
+    mockedDetail.mockResolvedValue({ ...bamiyan, metadata: { website: PORTAL_PAGE } });
+    mockedEdit.mockRejectedValue(new ApiError(
+      'Validation error — imageUrl: Invalid url', 400, 'Validation error', undefined,
+      [{ path: 'imageUrl', message: 'Invalid url' }],
+    ));
+    renderDialog();
+    await screen.findByDisplayValue(PORTAL_PAGE);
+
+    fireEvent.change(screen.getByLabelText('Image URL'), { target: { value: 'not a picture' } });
+    save();
+
+    const box = screen.getByLabelText('Image URL');
+    await waitFor(() => expect(box).toHaveAccessibleDescription('Invalid url'));
+    expect(box).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('reads a refused type out with its select', async () => {
+    mockedDetail.mockResolvedValue({ ...bamiyan, metadata: {} });
+    mockedEdit.mockRejectedValue(new ApiError(
+      'Validation error — type: Invalid option', 400, 'Validation error', undefined,
+      [{ path: 'type', message: 'Invalid option' }],
+    ));
+    renderDialog();
+
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Bamiyan Valley' } });
+    save();
+
+    const select = screen.getByRole('combobox');
+    await waitFor(() => expect(select).toHaveAccessibleDescription('Invalid option'));
+  });
+
+  it('keeps a saved rename when the save refetches the links', async () => {
+    const renamed = 'Bamiyan Valley';
+    const site = 'https://www.bamiyan.example/';
+    mockedDetail
+      .mockResolvedValueOnce({ ...bamiyan, metadata: { website: PORTAL_PAGE } })
+      .mockResolvedValue({ ...bamiyan, name: renamed, metadata: { website: site } });
+    mockedEdit.mockResolvedValue({ success: true, experienceId: bamiyan.id, curatedFields: ['name', 'metadata.website'] });
+    // What the save's invalidation does to the detail read the dialog holds.
+    vi.mocked(invalidateExperiences).mockImplementationOnce(queryClient => queryClient.invalidateQueries());
+    renderDialog();
+    await screen.findByDisplayValue(PORTAL_PAGE);
+
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: renamed } });
+    fireEvent.change(screen.getByLabelText(/^Website URL/), { target: { value: site } });
+    save();
+
+    // The caller's snapshot still says the old name; the refetch moves the link alone.
+    await waitFor(() => expect(mockedDetail).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText(/^Name/)).toHaveValue(renamed);
+    expect(screen.getByLabelText(/^Website URL/)).toHaveValue(site);
+  });
+
+  it('keeps a website typed before the detail read arrives', async () => {
+    let answer: (detail: unknown) => void = () => {};
+    mockedDetail.mockReturnValue(new Promise(resolve => { answer = resolve; }));
+    mockedEdit.mockResolvedValue({ success: true, experienceId: bamiyan.id, curatedFields: [] });
+    renderDialog();
+
+    const typed = 'https://www.bamiyan.example/';
+    fireEvent.change(screen.getByLabelText(/^Website URL/), { target: { value: typed } });
+    answer({ ...bamiyan, metadata: { website: PORTAL_PAGE, wikipediaUrl: 'https://en.wikipedia.org/wiki/Bamiyan' } });
+
+    // The untouched link moves in; the typed one stays, and is what is sent.
+    expect(await screen.findByDisplayValue('https://en.wikipedia.org/wiki/Bamiyan')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Website URL/)).toHaveValue(typed);
+    save();
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { websiteUrl: typed }));
   });
 });
 
