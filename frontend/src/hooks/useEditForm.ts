@@ -99,23 +99,31 @@ export function useEditForm<F extends Fields>(options: EditFormOptions<F>): Edit
   // Adjusted during render rather than in an effect, so a dialog never paints
   // one frame of the previous object's values: a new key starts the form
   // over; new stored values under the same key (a detail read arriving late,
-  // the refetch after a save) move every field the user has not touched and
-  // keep the ones they edited.
-  const [tracked, setTracked] = useState({ key: resetKey, signature });
+  // the refetch after a save) move the fields whose stored value moved,
+  // unless the user has touched them. A field whose stored value did not move
+  // keeps what it holds: a caller often passes some fields from a snapshot
+  // that no save refreshes, and a refetch of the others must not put that
+  // snapshot back over a value the form has just sent.
+  const [tracked, setTracked] = useState({ key: resetKey, signature, initial });
   if (tracked.key !== resetKey) {
     generation.current++;
-    setTracked({ key: resetKey, signature });
+    setTracked({ key: resetKey, signature, initial });
     setValues(initial);
     setBaseline(initial);
     setTouched(new Set());
     setErrors({});
     setFormError(null);
   } else if (tracked.signature !== signature) {
-    setTracked({ key: resetKey, signature });
-    setBaseline(initial);
+    const moved = keys.filter(k => !same(initial[k], tracked.initial[k]));
+    setTracked({ key: resetKey, signature, initial });
+    setBaseline(prev => {
+      const next = { ...prev };
+      for (const k of moved) next[k] = initial[k];
+      return next;
+    });
     setValues(prev => {
       const next = { ...prev };
-      for (const k of keys) if (!touched.has(k)) next[k] = initial[k];
+      for (const k of moved) if (!touched.has(k)) next[k] = initial[k];
       return next;
     });
   }
