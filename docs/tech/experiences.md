@@ -1062,9 +1062,13 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   query unaffordable, and it cost the catalogue unowned works such as *Sunflowers* and the
   *Burghers of Calais*. A work with no venue statement is simply homeless when placement runs
 - Resolves where a work actually hangs from its current `P195`/`P276` statements, dropping any
-  statement carrying a `pq:P582` end-time qualifier: a venue the two properties agree on wins;
-  failing that, a `preferred`-ranked statement that resolves to a venue wins; failing that,
-  ownership, then location
+  statement carrying a `pq:P582` end-time qualifier — **per statement, not per value**, so a
+  value with both an ended and a standing statement keeps the standing one: a venue the two
+  properties agree on wins; failing that, a `preferred`-ranked statement that resolves to a
+  venue wins; failing that, ownership, then location. The container walk below reads a venue's
+  own `P276` under the same end-time rule, per statement, through the shared kit's `standing`
+  (#812) — which keeps the best rank only, where a work's statements keep every rank for the
+  placement to weigh
 - **A work nobody can see is placed nowhere** (#868): it admits no museum, is linked as no
   museum's treasure, and its existing link is marked like any other departure (ADR-0044). Two
   readings, both in the shared collector (`worksCollector.ts`) so Places of worship gets them
@@ -1123,7 +1127,7 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   duplicate record of a collection does not stay behind as a second pin. The venue graph
   follows a museum-class entity's `P276` one
   hop, like a parent, so the door has facts — dropping a location the entity has left (a
-  statement carrying `pq:P582`), the rule a work's `P276` is read under; resolution itself still
+  statement carrying `pq:P582`, per statement as above); resolution itself still
   walks `P361` only, and `EDITORIAL_OUT` is what keeps an excluded quarter from being a door
 - Once folding settles, each surviving venue must also be an *art* museum (`artTest.ts`) — the
   kind holds art museums by product decision (2026-08-05); archaeology, egyptology,
@@ -1295,7 +1299,7 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    The pool no longer carries the five `OPTIONAL`s that made a monument with seven makers arrive
    seven times and spend a cap that counted rows (#720).
 3. **Facts** — per 50 candidates, one `UNION` question: every `P31`; `P276`, `P361` and `P195`,
-   each read statement by statement as what still holds (`standing` in `queries.ts`: best-ranked,
+   each read statement by statement as what still holds (the shared kit's `standing`, `wikidataQueries.ts`: best-ranked,
    what `wdt:` would answer, and carrying no `pq:P582` end time — the end-time rule the museum
    import reads a work's location under, and per statement rather than per value so that a whole
    that has both an ended and a standing statement of the same rank keeps the standing one; a
