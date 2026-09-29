@@ -1337,8 +1337,14 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    archaeological sites and caves, tombs and mausolea, finds — a Venus figurine is a museum
    object wherever Wikidata "locates" it, and the Venus of Willendorf is located in Austria —
    organisations, settlements and areas, events and works, amusement parks, walks and halls of
-   fame, sculpture gardens, lost or destroyed things, landscape) is refused whatever else it
-   carries; **where it stands** — a container in the museum or worship tree, walked up as above,
+   fame, sculpture gardens, a destroyed building or structure, landscape) is refused whatever
+   else it carries, and so is a lost or destroyed *work* — a class of the `P279*` tree under
+   `lost artwork` (`LOST_WORK_ROOT`, the tree § Art Museums names under *Lost*, fetched by the
+   same `fetchClassTree` and cached per source), "nothing to stand in front of", so a `destroyed
+   artwork` without `lost sculpture` beside it is refused here as it is refused there, with the
+   same one exception by name (`REMAINS_ON_SHOW`) and the tree floored by `LOST_CLASSES` so the
+   catalogue check can name what it refuses (#872);
+   **where it stands** — a container in the museum or worship tree, walked up as above,
    refuses it as `inside St. Peter's Basilica: a work of a place of worship, not public art`
    (`inside Louvre Museum` for the Venus de Milo), a room or a wing as `inside Room 325 (Louvre
    Palace): a work indoors, not public art`, and a container that is a site (`SITE_CLASSES`: an
