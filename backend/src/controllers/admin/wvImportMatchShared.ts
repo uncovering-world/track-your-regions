@@ -25,11 +25,8 @@ import {
   type DivAssignment,
   type FinalDivAssignment,
 } from './wvImportMatchAssignment.js';
-import {
-  runClusterReviewLoop,
-  type GridDims,
-  type ReclusterSignal,
-} from '../../services/worldViewImport/colorMatch/cluster/clusterComponents.js';
+import type { GridDims } from '../../services/worldViewImport/colorMatch/cluster/clusterComponents.js';
+import { runClusterReviewLoop, type ReclusterSignal } from './wvImportMatchClusterReview.js';
 import {
   buildPhase5Results,
   runSpatialAnomalyDetection,
@@ -40,7 +37,7 @@ import {
 import type { SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
 
 // Re-export ReclusterSignal for the pipeline caller
-export type { ReclusterSignal } from '../../services/worldViewImport/colorMatch/cluster/clusterComponents.js';
+export type { ReclusterSignal } from './wvImportMatchClusterReview.js';
 
 // =============================================================================
 // Exported types
