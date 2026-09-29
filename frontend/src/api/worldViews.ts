@@ -12,6 +12,8 @@ import {
 // and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type { DeleteImpact, WorldView, WorldViews } from './client.generated';
+// And what the calls take, for the forms that build them (ADR-0076).
+export type { CreateWorldViewBody, UpdateWorldViewBody } from './client.generated';
 
 /**
  * Longest description the server keeps: `world_views.description` is

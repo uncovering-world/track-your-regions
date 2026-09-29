@@ -32,7 +32,8 @@ import { useNavigation } from '../hooks/useNavigation';
 import { useAuth } from '../hooks/useAuth';
 import { createWorldView, updateWorldView, deleteWorldView } from '../api';
 import { getDeleteImpact, WORLD_VIEW_DESCRIPTION_MAX_LENGTH } from '../api/worldViews';
-import type { DeleteImpact } from '../api/worldViews';
+import type { CreateWorldViewBody, DeleteImpact, UpdateWorldViewBody } from '../api/worldViews';
+import { useEditForm } from '../hooks/useEditForm';
 import { lazyChunk } from '../utils/lazyChunk';
 import { ChunkBoundary } from './shared/ChunkBoundary';
 import { queryKeys } from '../api/queryKeys';
@@ -54,30 +55,40 @@ export function HierarchySwitcher() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [newWorldViewName, setNewWorldViewName] = useState('');
-  const [newWorldViewDescription, setNewWorldViewDescription] = useState('');
-  const [editName, setEditName] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editIsPublic, setEditIsPublic] = useState(false);
   const [adminMenuEl, setAdminMenuEl] = useState<HTMLElement | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<DeleteImpact | null>(null);
   const [loadingImpact, setLoadingImpact] = useState(false);
 
+  // Each dialog's fields and its refusal come from the form layer (ADR-0076):
+  // it opens on blanks (create) or the stored values (settings), sends what
+  // changed, and shows a refused field under that field.
+  const createForm = useEditForm<Required<Pick<CreateWorldViewBody, 'name' | 'description'>>>({
+    initial: { name: '', description: '' },
+    resetKey: createDialogOpen,
+    required: ['name'],
+  });
+  const settingsForm = useEditForm<Required<Pick<UpdateWorldViewBody, 'name' | 'description' | 'isPublic'>>>({
+    initial: {
+      name: selectedWorldView?.name ?? '',
+      description: selectedWorldView?.description ?? '',
+      isPublic: selectedWorldView?.isPublic ?? false,
+    },
+    resetKey: settingsDialogOpen ? selectedWorldView?.id ?? null : null,
+    required: ['name'],
+  });
+
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; description?: string }) => createWorldView(data),
+    mutationFn: (data: CreateWorldViewBody) => createWorldView(data),
     onSuccess: (newWorldView) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.worldViews.all });
       setCreateDialogOpen(false);
-      setNewWorldViewName('');
-      setNewWorldViewDescription('');
       // Auto-select the new world view
       setSelectedWorldView(newWorldView);
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: { name?: string; description?: string; isPublic?: boolean }) =>
-      updateWorldView(selectedWorldView!.id, data),
+    mutationFn: (data: UpdateWorldViewBody) => updateWorldView(selectedWorldView!.id, data),
     onSuccess: (updatedWorldView) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.worldViews.all });
       setSettingsDialogOpen(false);
@@ -98,40 +109,18 @@ export function HierarchySwitcher() {
     },
   });
 
-  const handleCreateWorldView = () => {
-    if (newWorldViewName.trim()) {
-      createMutation.mutate({
-        name: newWorldViewName.trim(),
-        description: newWorldViewDescription.trim() || undefined,
-      });
-    }
-  };
+  // A create opens on blanks, so what changed is what was filled in, and
+  // `required` keeps Create asleep until the name is.
+  const handleCreateWorldView = () =>
+    createForm.submit(changes => createMutation.mutateAsync(changes as CreateWorldViewBody));
 
-  const handleOpenCreate = () => {
-    createMutation.reset();
-    setCreateDialogOpen(true);
-  };
+  const handleOpenCreate = () => setCreateDialogOpen(true);
 
   const handleOpenSettings = () => {
-    if (selectedWorldView) {
-      updateMutation.reset();
-      setEditName(selectedWorldView.name);
-      setEditDescription(selectedWorldView.description || '');
-      setEditIsPublic(selectedWorldView.isPublic);
-      setSettingsDialogOpen(true);
-    }
+    if (selectedWorldView) setSettingsDialogOpen(true);
   };
 
-  const handleUpdateWorldView = () => {
-    if (editName.trim()) {
-      updateMutation.mutate({
-        name: editName.trim(),
-        // Sent even when emptied: an empty description clears the stored one (#1133).
-        description: editDescription.trim(),
-        isPublic: editIsPublic,
-      });
-    }
-  };
+  const handleUpdateWorldView = () => settingsForm.submit(updateMutation.mutateAsync);
 
   const handleDeleteWorldView = () => {
     deleteMutation.mutate();
@@ -230,26 +219,23 @@ export function HierarchySwitcher() {
             autoFocus
             fullWidth
             label="Name"
-            value={newWorldViewName}
-            onChange={(e) => setNewWorldViewName(e.target.value)}
+            {...createForm.field('name')}
             sx={{ mt: 1, mb: 2 }}
             placeholder="e.g., Cultural Regions"
           />
           <TextField
             fullWidth
             label="Description (optional)"
-            value={newWorldViewDescription}
-            onChange={(e) => setNewWorldViewDescription(e.target.value)}
+            {...createForm.field('description', {
+              helperText: `${createForm.values.description.length}/${WORLD_VIEW_DESCRIPTION_MAX_LENGTH}`,
+            })}
             multiline
             rows={2}
             placeholder="e.g., Regions grouped by cultural similarities"
             slotProps={{ htmlInput: { maxLength: WORLD_VIEW_DESCRIPTION_MAX_LENGTH } }}
-            helperText={`${newWorldViewDescription.length}/${WORLD_VIEW_DESCRIPTION_MAX_LENGTH}`}
           />
-          {createMutation.isError && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {createMutation.error.message || 'Could not create the world view'}
-            </Alert>
+          {createForm.formError && (
+            <Alert severity="error" sx={{ mt: 2 }}>{createForm.formError}</Alert>
           )}
         </DialogContent>
         <DialogActions>
@@ -257,7 +243,7 @@ export function HierarchySwitcher() {
           <Button
             variant="contained"
             onClick={handleCreateWorldView}
-            disabled={!newWorldViewName.trim() || createMutation.isPending}
+            disabled={createForm.missing || createMutation.isPending}
           >
             Create
           </Button>
@@ -272,25 +258,24 @@ export function HierarchySwitcher() {
             autoFocus
             fullWidth
             label="Name"
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
+            {...settingsForm.field('name')}
             sx={{ mt: 1, mb: 2 }}
           />
           <TextField
             fullWidth
             label="Description (optional)"
-            value={editDescription}
-            onChange={(e) => setEditDescription(e.target.value)}
+            {...settingsForm.field('description', {
+              helperText: `${settingsForm.values.description.length}/${WORLD_VIEW_DESCRIPTION_MAX_LENGTH}`,
+            })}
             multiline
             rows={3}
             slotProps={{ htmlInput: { maxLength: WORLD_VIEW_DESCRIPTION_MAX_LENGTH } }}
-            helperText={`${editDescription.length}/${WORLD_VIEW_DESCRIPTION_MAX_LENGTH}`}
           />
           <FormControlLabel
             control={
               <Switch
-                checked={editIsPublic}
-                onChange={(e) => setEditIsPublic(e.target.checked)}
+                checked={settingsForm.values.isPublic}
+                onChange={(e) => settingsForm.set('isPublic', e.target.checked)}
               />
             }
             label="Visible to everyone"
@@ -298,10 +283,8 @@ export function HierarchySwitcher() {
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: -0.5 }}>
             Off: only admins can see or read this world view.
           </Typography>
-          {updateMutation.isError && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {updateMutation.error.message || 'Could not save the settings'}
-            </Alert>
+          {settingsForm.formError && (
+            <Alert severity="error" sx={{ mt: 2 }}>{settingsForm.formError}</Alert>
           )}
 
           <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
@@ -340,7 +323,7 @@ export function HierarchySwitcher() {
           <Button
             variant="contained"
             onClick={handleUpdateWorldView}
-            disabled={!editName.trim() || updateMutation.isPending}
+            disabled={!settingsForm.dirty || settingsForm.missing || updateMutation.isPending}
           >
             Save Changes
           </Button>
@@ -390,7 +373,7 @@ export function HierarchySwitcher() {
           )}
           {deleteMutation.isError && (
             <Alert severity="error" sx={{ mt: 2 }}>
-              {deleteMutation.error.message || 'Could not delete the world view'}
+              {deleteMutation.error.message}
             </Alert>
           )}
         </DialogContent>
