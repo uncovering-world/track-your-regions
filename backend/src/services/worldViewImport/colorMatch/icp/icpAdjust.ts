@@ -17,7 +17,7 @@ import {
   type DivisionBbox,
 } from './icpOutliers.js';
 import { parseSvgPathPoints } from '../geometry/svgPath.js';
-import type { GridDims } from '../../../../controllers/admin/wvImportMatchClusterReview.js';
+import type { GridDims } from '../cluster/clusterComponents.js';
 
 /** Parse division paths + compute per-division bboxes using per-ring area */
 function buildDivisionBboxes(divPaths: Array<{ id: number; svgPath: string }>): {

@@ -29,7 +29,7 @@ import {
   runClusterReviewLoop,
   type GridDims,
   type ReclusterSignal,
-} from './wvImportMatchClusterReview.js';
+} from '../../services/worldViewImport/colorMatch/cluster/clusterComponents.js';
 import {
   buildPhase5Results,
   runSpatialAnomalyDetection,
@@ -40,7 +40,7 @@ import {
 import type { SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
 
 // Re-export ReclusterSignal for the pipeline caller
-export type { ReclusterSignal } from './wvImportMatchClusterReview.js';
+export type { ReclusterSignal } from '../../services/worldViewImport/colorMatch/cluster/clusterComponents.js';
 
 // =============================================================================
 // Exported types
