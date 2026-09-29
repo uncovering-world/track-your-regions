@@ -29,7 +29,7 @@ export type {
   AnchorPoint, AreaGeometry, ChildDivisionsAdded, CreatedSubregion, DescendantMemberGeometries, DescendantMemberGeometry,
   DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, FocusBbox, MemberGeometries, MemberGeometry, MemberMoved,
   RegionGeometry, RegionGeometryProperties, RegionMember, RegionMembers, RegionMemberType, Regions, RegionSearchResult,
-  RegionSearchResults, SubregionFlattened, SubregionsExpanded,
+  RegionSearchResults, SubregionFlattened, SubregionsExpanded, UpdateRegionBody,
 } from './client.generated';
 
 export async function searchRegions(

@@ -175,9 +175,6 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
     onDeleteConfirmNeeded: (region) => {
       setDeleteConfirmRegion(region);
     },
-    onEditingComplete: () => {
-      setEditingRegion(null);
-    },
     onAddChildrenComplete: () => {
       setAddChildrenDialogMember(null);
     },
@@ -685,11 +682,7 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
         region={editingRegion}
         regions={regions}
         onClose={() => setEditingRegion(null)}
-        onSave={(data) => {
-          if (editingRegion) {
-            updateRegionMutation.mutate({ regionId: editingRegion.id, data });
-          }
-        }}
+        onSave={data => updateRegionMutation.mutateAsync({ regionId: editingRegion!.id, data })}
       />
 
       <EditRefusedSnackbar
