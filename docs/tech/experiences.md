@@ -2051,8 +2051,29 @@ Julien" on the British Museum's stays words. On screen the list is `SiteFinds` (
 mode's card, where `SiteFindsList` adds the map's picture overlay, and Discover's panel) and the
 link is `PlaceLink`; the card asks for the finds only of a row `hasExtent()` says is a site,
 before any read, and `useExperienceCardReady` waits on the answer so the list is in the card the
-frame it opens. The site's own row is gated the same way, and a site nobody may see, a row that
-is not a site and an id that names nothing all answer the same empty list.
+frame it opens. The site's own row is gated on its acceptance alone, and a site nobody may see,
+a row that is not a site and an id that names nothing all answer the same empty list. A site that
+no longer stands is not one of them: a dig flooded by a dam or built over is shown to a reader who
+asks for what is gone, and its finds are still in a museum, so its card lists them and its row
+counts them — the museum, not the site, is what has to stand. The way back stays words: a find
+on its museum's list names a lost dig without a link (`found_at_site` keeps `hideLostSql`),
+because a region's list holds a lost place only for a reader who asked for what is gone, and a
+link would send everyone else to a card the list cannot open.
+
+**The site's row says how many before the card is opened** (#907). The region read carries
+`finds_count` beside `treasure_count` — the finds of the row, counted by the conditions the list
+above is read with, so "4 finds on view" on the Acropolis of Athens and the four entries on its
+card cannot disagree: both reads are composed from `siteFinds.ts` (`findOfSiteSql` for "a find of
+this site, passed, shown somewhere a reader may go", `venuesShowingSql` for the museums that show
+it), and the list's `WHERE` and the count's `EXISTS` are the same fragment. Zero on every row that
+is not a site. `FindsOnViewChip`, the sibling of `TreasuresInsideChip`, draws it on the map-mode
+row, the Discover card and both hover cards, silent at zero — a different statement from the
+treasures chip, "what was found here is on view somewhere else", and not one the must-see badge
+could carry, since almost every archaeology row wears that already. The count is a subquery per
+site row keyed by the find's discovery place, so `idx_treasures_found_at` (migration 065) indexes
+`metadata->'foundAt'->>'qid'`: without it each site row scanned the table, 346 scans on Europe's
+list — about 125 ms of a read measured on the development database on 2026-09-29 — against
+0.002 ms a row through the index.
 
 **The badge differs by door** (ADR-0045 decision 5, the world tier). A site is badged for
 belonging — being one of the world's archaeological sites is the whole claim — and a museum only
