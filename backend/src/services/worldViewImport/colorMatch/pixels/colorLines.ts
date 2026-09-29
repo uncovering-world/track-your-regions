@@ -1,10 +1,13 @@
 /**
- * The first clean-up a map image gets: the vivid rivers, roads and borders it
- * draws are thin coloured lines, and each such pixel takes the median of its
- * neighbours so the colour clustering sees the regions' fills alone.
- * `rgbToHsl` is the colour-space conversion the rest of the pipeline reads
- * hue and saturation through.
+ * The first clean-up a map image gets: it is read down to the working
+ * resolution, and the vivid rivers, roads and borders it draws — thin
+ * coloured lines — each take the median of their neighbours, so the colour
+ * clustering sees the regions' fills alone. `rgbToHsl` is the colour-space
+ * conversion the rest of the pipeline reads hue and saturation through.
  */
+
+import sharp from 'sharp';
+import type { ImageDims } from '../context.js';
 
 // =============================================================================
 // Map noise removal helpers
@@ -149,4 +152,25 @@ export function removeColoredLines(buf: Buffer, w: number, h: number, resScale =
   const replaced = replaceWithNeighborMedian(buf, out, mask, w, h, medianR);
   out.copy(buf);
   return replaced;
+}
+
+/** Downscale + median filter + color-line removal; keep a pristine origDownBuf for water crops. */
+export async function buildDownscaledBuffers(
+  mapBuffer: Buffer, dims: ImageDims,
+): Promise<{ origDownBuf: Buffer; rawBuf: Buffer; colorBuf: Buffer }> {
+  const { TW, TH, RES_SCALE, oddK } = dims;
+  const origDownBuf = await sharp(mapBuffer)
+    .removeAlpha()
+    .resize(TW, TH, { kernel: 'lanczos3' })
+    .raw()
+    .toBuffer();
+  const rawBuf = await sharp(mapBuffer)
+    .removeAlpha()
+    .resize(TW, TH, { kernel: 'lanczos3' })
+    .median(oddK(5))
+    .raw()
+    .toBuffer();
+  removeColoredLines(rawBuf, TW, TH, RES_SCALE);
+  const colorBuf = Buffer.from(origDownBuf);
+  return { origDownBuf, rawBuf, colorBuf };
 }

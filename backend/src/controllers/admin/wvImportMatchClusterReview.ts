@@ -14,7 +14,7 @@ import {
   storeClusterHighlights,
   type ClusterReviewDecision,
 } from './wvImportMatchReview.js';
-import type { SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
+import type { ReclusterPreset, SendEvent } from '../../services/worldViewImport/colorMatch/context.js';
 import type { BorderPath } from '../../services/worldViewImport/colorMatch/geometry/borderTrace.js';
 
 // =============================================================================
@@ -25,7 +25,7 @@ export interface GridDims { TW: number; TH: number; tp: number }
 
 export interface ReclusterSignal {
   recluster: true;
-  preset: 'more_clusters' | 'different_seed' | 'boost_chroma' | 'remove_roads' | 'fill_holes' | 'clean_light' | 'clean_heavy';
+  preset: ReclusterPreset;
 }
 
 // =============================================================================

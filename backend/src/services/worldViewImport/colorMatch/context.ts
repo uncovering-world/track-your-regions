@@ -73,6 +73,10 @@ export interface PipelineContext {
 /** Writes one event of the stream, held to the schema (ADR-0066). */
 export type SendEvent = (event: ColorMatchEvent) => void;
 
+/** A reclustering the curator can ask for from the cluster review. */
+export type ReclusterPreset =
+  'more_clusters' | 'different_seed' | 'boost_chroma' | 'remove_roads' | 'fill_holes' | 'clean_light' | 'clean_heavy';
+
 export type LogStep = (step: string) => Promise<void>;
 export type PushDebugImage = (label: string, dataUrl: string) => Promise<void>;
 
