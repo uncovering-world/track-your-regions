@@ -28,9 +28,8 @@ import {
 } from '../../services/worldViewImport/colorMatch/assign/assignment.js';
 import type { GridDims } from '../../services/worldViewImport/colorMatch/cluster/clusterComponents.js';
 import { runClusterReviewLoop, type ReclusterSignal } from './wvImportMatchClusterReview.js';
+import { buildPhase5Results, runSpatialAnomalyDetection } from './wvImportMatchPhase5.js';
 import {
-  buildPhase5Results,
-  runSpatialAnomalyDetection,
   buildCompletePayload,
   type CentroidInfo,
   type MatchingResult,
