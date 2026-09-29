@@ -112,6 +112,22 @@ describe('useEditForm', () => {
     expect(result.current.changes()).toEqual({});
   });
 
+  it('keeps a sent value when a refetch moves only another field', async () => {
+    // The caller's name comes from a snapshot no save refreshes, its links
+    // from a read the save invalidates: the refetch moves the link alone.
+    const { result, rerender } = renderForm();
+    act(() => {
+      result.current.set('name', 'Kölner Dom');
+      result.current.set('website', 'https://www.koelner-dom.de/en');
+    });
+    await act(async () => { await result.current.submit(() => Promise.resolve({})); });
+
+    rerender({ initial: { ...stored, website: 'https://www.koelner-dom.de/en' }, resetKey: 1 });
+
+    expect(result.current.values.name).toBe('Kölner Dom');
+    expect(result.current.dirty).toBe(false);
+  });
+
   it('starts over on a new key', () => {
     const { result, rerender } = renderForm();
 
