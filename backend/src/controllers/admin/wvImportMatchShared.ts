@@ -31,6 +31,7 @@ import { runClusterReviewLoop, type ReclusterSignal } from './wvImportMatchClust
 import { buildPhase5Results, runSpatialAnomalyDetection } from './wvImportMatchPhase5.js';
 import {
   buildCompletePayload,
+  classifyPythonAssignment,
   type CentroidInfo,
   type MatchingResult,
 } from '../../services/worldViewImport/colorMatch/result/matchResult.js';
@@ -355,40 +356,6 @@ interface PythonMatchParams {
   origH: number;
   logStep: (msg: string) => Promise<void>;
   pushDebugImage: (label: string, dataUrl: string) => Promise<void>;
-}
-
-/** Convert one Python divAssignment to {divAssignment, finalAssignment|unsplittable} */
-function classifyPythonAssignment(
-  a: { divisionId: number; clusterId: number; confidence: number; isSplit: boolean; splitClusters?: Array<{ clusterId: number; share: number }> },
-): { asDiv: DivAssignment; unsplittable?: MatchingResult['unsplittableDivs'][number]; final?: FinalDivAssignment } {
-  const asDiv: DivAssignment = {
-    divisionId: a.divisionId,
-    clusterId: a.clusterId,
-    confidence: a.confidence,
-    isSplit: a.isSplit,
-    splitClusters: a.splitClusters,
-  };
-  if (a.isSplit) {
-    return {
-      asDiv,
-      unsplittable: {
-        divisionId: a.divisionId,
-        clusterId: a.clusterId,
-        confidence: a.confidence,
-        depth: 0,
-        splitClusters: a.splitClusters ?? [],
-      },
-    };
-  }
-  return {
-    asDiv,
-    final: {
-      divisionId: a.divisionId,
-      clusterId: a.clusterId,
-      confidence: a.confidence,
-      depth: 0,
-    },
-  };
 }
 
 /** Attempt Python RANSAC matching. Returns null if Python service is unavailable. */
