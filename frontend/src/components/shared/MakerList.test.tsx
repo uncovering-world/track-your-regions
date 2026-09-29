@@ -76,7 +76,7 @@ describe('MakerList', () => {
 
     // What a wrapped line pastes. Compared on case alone this was a new name to
     // the form and a repeat to the endpoint, which answers "Validation error"
-    // with the reason in a `details` array no screen reads.
+    // with Zod's own words about a body path.
     fireEvent.change(screen.getByLabelText('Add a maker'), {
       target: { value: 'Vincent  van Gogh' },
     });

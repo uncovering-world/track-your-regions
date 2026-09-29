@@ -165,10 +165,48 @@ function buildJsonHeaders(options?: RequestInit, token: string | null = accessTo
   return headers;
 }
 
+/** One field a refusal names: where in the body, and what was wrong with it. */
+export interface FieldIssue {
+  /** The field's path in the request body, dotted (`description`, `members.0.id`). */
+  path: string;
+  message: string;
+}
+
+/**
+ * The field issues a validation refusal carries in `details`
+ * (`errorHandler.ts` answers a Zod failure with its issues there). Anything
+ * that is not an issue list reads as none.
+ */
+function fieldIssuesOf(details: unknown): FieldIssue[] {
+  if (!Array.isArray(details)) return [];
+  return details.flatMap((issue: unknown) => {
+    if (typeof issue !== 'object' || issue === null) return [];
+    const { path, message } = issue as { path?: unknown; message?: unknown };
+    if (typeof message !== 'string') return [];
+    const dotted = Array.isArray(path) ? path.map(String).join('.') : '';
+    return [{ path: dotted, message }];
+  });
+}
+
+/**
+ * The message a refusal is shown with: the server's sentence, and where the
+ * refusal names fields, the first of them — "Validation error" alone names
+ * nothing a person can change (#448).
+ */
+function refusalMessage(sentence: string | undefined, status: number, issues: FieldIssue[]): string {
+  const base = sentence || `HTTP ${status}`;
+  if (issues.length === 0) return base;
+  const [first] = issues;
+  const named = first.path ? `${first.path}: ${first.message}` : first.message;
+  const more = issues.length > 1 ? ` (and ${issues.length - 1} more)` : '';
+  return `${base} — ${named}${more}`;
+}
+
 /**
  * A refused request: its message is the server's sentence where it sent one,
- * and `code` the machine-readable reason some answers carry
- * (`EMAIL_NOT_VERIFIED`).
+ * with the first field a validation refusal names; `code` is the
+ * machine-readable reason some answers carry (`EMAIL_NOT_VERIFIED`), and
+ * `fieldIssues` every field the refusal names.
  */
 export class ApiError extends Error {
   constructor(
@@ -177,6 +215,7 @@ export class ApiError extends Error {
     /** The server's own sentence, absent where the answer carried none. */
     readonly sentence: string | undefined,
     readonly code: string | undefined,
+    readonly fieldIssues: readonly FieldIssue[] = [],
   ) {
     super(message);
   }
@@ -185,8 +224,9 @@ export class ApiError extends Error {
 async function parseJsonResponse<T>(response: Response, noContent: () => T): Promise<T> {
   if (response.status === 204) return noContent();
   if (!response.ok) {
-    const error: { error?: string; code?: string } = await response.json().catch(() => ({}));
-    throw new ApiError(error.error || `HTTP ${response.status}`, response.status, error.error, error.code);
+    const error: { error?: string; code?: string; details?: unknown } = await response.json().catch(() => ({}));
+    const issues = fieldIssuesOf(error.details);
+    throw new ApiError(refusalMessage(error.error, response.status, issues), response.status, error.error, error.code, issues);
   }
   // An image route answers a picture, which the generated types call a Blob.
   if (response.headers?.get('Content-Type')?.startsWith('image/')) return response.blob() as Promise<T>;

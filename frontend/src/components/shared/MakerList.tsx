@@ -78,7 +78,7 @@ export function MakerList({ makers, onChange, overCap = false }: {
   // narrower question would pass exactly what the server then refuses: a work
   // names *Vincent van Gogh* and a curator pastes `Vincent  van Gogh` off a
   // wrapped line, or a hyphen that is U+2010, and the answer comes back as the
-  // opaque "Validation error" this form exists to prevent.
+  // "Validation error" in Zod's words this form exists to prevent.
   const duplicate = typed.trim().length > 0 && makers.some(held => sameLabel(held, typed));
   const full = makers.length >= MAX_MAKERS;
 
