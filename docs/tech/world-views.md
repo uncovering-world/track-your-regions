@@ -511,7 +511,7 @@ Every call `frontend/src/api/worldViews.ts`, `frontend/src/api/regions.ts` and `
 ### World Views
 - `GET /api/world-views` - List all world views
 - `POST /api/world-views` - Create world view
-- `PUT /api/world-views/:worldViewId` - Update world view
+- `PUT /api/world-views/:worldViewId` - Update world view (a field the body leaves out is kept; a `description` or `source` sent empty is cleared to NULL)
 - `GET /api/world-views/:worldViewId/delete-impact` - What a delete would destroy: its regions, the object assignments and the readers' visits that go with them
 - `DELETE /api/world-views/:worldViewId` - Delete world view
 
