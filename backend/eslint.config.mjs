@@ -161,6 +161,75 @@ const REGION_WRITE_RULES = [
   { selector: `Literal[value=${REGION_WRITE_TEXT}]`, message: REGION_WRITE },
 ];
 
+/**
+ * The curation gate's tables, on the same closed lists (ADR-0077 decision 4,
+ * #1148): the answers a curator gives a run's proposals, the run's own record
+ * of what it proposed, and the membership that says whether a place is in a
+ * kind and in what state. One family per table, since each has its own
+ * writers; a delete is a write on each of them, as on `regions`.
+ */
+const GATE_WRITE_VERBS = '(INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)';
+
+/** The two entries that refuse a statement naming `table` outright. */
+function spelledWriteRules(table, message) {
+  const text = `/\\b${GATE_WRITE_VERBS}\\s+${table}(?!\\w)/i`;
+  return [
+    { selector: `TemplateElement[value.raw=${text}]`, message },
+    { selector: `Literal[value=${text}]`, message },
+  ];
+}
+
+/**
+ * A curator's standing refusal of a proposed value and its release: both ends
+ * of the record in `src/controllers/experience/conflictDecisions.ts`.
+ */
+const CONFLICT_DECISION_WRITE = 'experience_conflict_decisions is written by its writer module only (ADR-0077): add a named '
+  + 'write to src/controllers/experience/conflictDecisions.ts, taking the place\'s LockedExperience token.';
+const CONFLICT_DECISION_WRITE_RULES = spelledWriteRules('experience_conflict_decisions', CONFLICT_DECISION_WRITE);
+
+/** A curator's answer to one row of a held proposal: `recordHeldAnswers` in `heldDecisions.ts`. */
+const HELD_DECISION_WRITE = 'experience_held_decisions is written by its writer module only (ADR-0077): record an answer '
+  + 'through recordHeldAnswers in src/controllers/experience/heldDecisions.ts.';
+const HELD_DECISION_WRITE_RULES = spelledWriteRules('experience_held_decisions', HELD_DECISION_WRITE);
+
+/**
+ * A run's record of what it proposed, written once and never rewritten (a
+ * changeset is what happened, ADR-0020): `recordSyncChanges` in
+ * `src/services/sync/changeRecorder.ts`.
+ */
+const SYNC_CHANGE_WRITE = 'experience_sync_changes is written by its writer module only (ADR-0077): a run records its '
+  + 'changes through recordSyncChanges in src/services/sync/changeRecorder.ts, and nothing rewrites them.';
+const SYNC_CHANGE_WRITE_RULES = spelledWriteRules('experience_sync_changes', SYNC_CHANGE_WRITE);
+
+/**
+ * A place's membership in a kind: the curator's writes in
+ * `src/controllers/experience/membershipWriter.ts`, under the place's
+ * `LockedExperience` token; the run's upsert (`experienceUpsert.ts`, which
+ * writes the place and its membership in one statement), the admission sweep
+ * (`admission.ts`), the verified pass a new content retires
+ * (`curationDecay.ts`) and the held proposal's pointer
+ * (`heldProposalPointer.ts`); and the seed.
+ *
+ * The table is named through `MEMBERSHIPS` (`src/db/membership.ts`) far more
+ * often than it is spelled, so the verb is read at the end of the literal part
+ * before an interpolation, in a template that interpolates `MEMBERSHIPS`. A
+ * selector cannot pair a literal part with the expression after it, so a
+ * template that interpolates both `MEMBERSHIPS` and another table right after a
+ * verb is read as a membership write too; none does. A row lock
+ * (`FOR UPDATE`, `FOR NO KEY UPDATE`) and an upsert's `DO UPDATE` end the same
+ * way and are not writes to the table, so the lookbehind lets them pass.
+ */
+const MEMBERSHIP_WRITE = 'experience_kind_memberships is written by its writer modules only (ADR-0077): add a named write '
+  + 'to src/controllers/experience/membershipWriter.ts, taking the place\'s LockedExperience token.';
+const MEMBERSHIP_WRITE_RULES = [
+  ...spelledWriteRules('experience_kind_memberships', MEMBERSHIP_WRITE),
+  {
+    selector: "TemplateLiteral:has(> Identifier[name='MEMBERSHIPS']) > TemplateElement[tail=false]"
+      + `[value.raw=/(?<!\\b(FOR(\\s+NO\\s+KEY)?|DO)\\s+)\\b${GATE_WRITE_VERBS}\\s*$/i]`,
+    message: MEMBERSHIP_WRITE,
+  },
+];
+
 /** What the response-shape rule says. */
 const RESPONSE_SHAPE = [
   'A success body is sent through respond(res, Schema, body) from src/api/respond.ts, with its schema in src/api/responses/,',
@@ -268,7 +337,14 @@ const ERROR_TEXT_RULES = ANSWER_CONTEXTS.flatMap(context => [
 const SOURCE_RULE_FAMILIES = [
   TRANSACTION_RULES, RESPONSE_SHAPE_RULES, ERROR_TEXT_RULES, READER_PREDICATE_RULES,
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
+  CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
   ROUTE_REGISTRY_RULES,
+];
+
+/** Every family that closes a table's list of writers, for the seed, which writes them all. */
+const TABLE_WRITE_FAMILIES = [
+  EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
+  CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
 ];
 
 /** The `no-restricted-syntax` setting of every family but the ones named. */
@@ -359,12 +435,19 @@ export default [
   {
     files: [
       'src/db/experienceWriter.ts',
-      'src/services/sync/experienceUpsert.ts',
       'src/services/sync/missingDetection.ts',
       'src/services/sync/pictureRepair.ts',
     ],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(EXPERIENCE_WRITE_RULES),
+    },
+  },
+  // The run's upsert, whose one statement writes the place and its membership
+  // together: both lists name it, and a file matches one block of these.
+  {
+    files: ['src/services/sync/experienceUpsert.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(EXPERIENCE_WRITE_RULES, MEMBERSHIP_WRITE_RULES),
     },
   },
   // The modules that write `experience_locations` (ADR-0069), the same way.
@@ -403,12 +486,43 @@ export default [
       'no-restricted-syntax': restrictedSyntaxWithout(REGION_WRITE_RULES),
     },
   },
+  // The curation gate's writers (ADR-0077 decision 4, #1148), the same way:
+  // a conflict answer, a held answer, a run's record of its changes, and a
+  // place's membership in a kind.
+  {
+    files: ['src/controllers/experience/conflictDecisions.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(CONFLICT_DECISION_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/controllers/experience/heldDecisions.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(HELD_DECISION_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/services/sync/changeRecorder.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(SYNC_CHANGE_WRITE_RULES),
+    },
+  },
+  {
+    files: [
+      'src/controllers/experience/membershipWriter.ts',
+      'src/services/sync/admission.ts',
+      'src/services/sync/curationDecay.ts',
+      'src/services/sync/heldProposalPointer.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(MEMBERSHIP_WRITE_RULES),
+    },
+  },
   // The seed writes the catalogue's tables, as the fixture it is.
   {
     files: ['src/db/seed/**/*.ts'],
     rules: {
-      'no-restricted-syntax': restrictedSyntaxWithout(EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES,
-        WORK_WRITE_RULES, REGION_WRITE_RULES),
+      'no-restricted-syntax': restrictedSyntaxWithout(...TABLE_WRITE_FAMILIES),
     },
   },
   // services/ never imports from controllers/, and loads no OpenCV of its
