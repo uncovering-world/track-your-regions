@@ -13,7 +13,7 @@
 import { createSyncLog, updateSyncLog } from './syncUtils.js';
 import { startProgressWriter } from './syncProgressWriter.js';
 import type { ChangeRecord } from './changeRecorder.js';
-import { finishPlacement, enterAssigningPhase, terminalStatus } from './placement.js';
+import { finishPlacement, enterAssigningPhase, takeOverUnplaced, terminalStatus } from './placement.js';
 import { countAdmitted, markRefused } from './admission.js';
 import {
   missingDetectionSkipReason,
@@ -165,13 +165,16 @@ export async function orchestrateSync<T>(
 
   const progress = initSyncProgress(dryRun);
   runningSyncs.set(sourceId, progress);
-  // The row follows the memory from here to the close (#1131), so a restart
-  // leaves a row that says how far the run got.
-  const progressWriter = startProgressWriter(progress, { logPrefix });
-  const errorDetails: ErrorDetail[] = [];
-  const changes: ChangeRecord[] = [];
   // Experiences whose geometry moved, so their region assignment is stale.
   const movedExperiences = new Set<number>();
+  // The row follows the memory from here to the close (#1131), so a restart
+  // leaves a row that says how far the run got, and what it moved and has not
+  // placed yet (#1152).
+  const progressWriter = startProgressWriter(progress, { logPrefix, moved: movedExperiences });
+  // Earlier runs' rows whose unplaced objects this run took over.
+  let inheritedLogIds: number[] = [];
+  const errorDetails: ErrorDetail[] = [];
+  const changes: ChangeRecord[] = [];
   // The verdict the run reached, applied once placement has also finished.
   let finishedStatus: RunVerdict | undefined;
   // The failure path also records the changeset, so it has to know whether the
@@ -190,6 +193,7 @@ export async function orchestrateSync<T>(
   try {
     progress.logId = await createSyncLog(sourceId, triggeredBy, dryRun);
     console.log(`${logPrefix} Started sync (log ID: ${progress.logId})${dryRun ? ' [DRY RUN]' : ''}`);
+    inheritedLogIds = await takeOverUnplaced(sourceId, progress.logId, dryRun, movedExperiences, logPrefix);
     await progressWriter.flush(true);
 
     const previousActiveCount = await countActiveExperiences(sourceId);
@@ -310,11 +314,12 @@ export async function orchestrateSync<T>(
     // Placed on the way out, not on the success path. A cancel is a button, and
     // a run stopped halfway has already moved the points it got to — leaving
     // those unplaced would put real objects in the wrong region, or nowhere,
-    // until someone noticed. The set holds what was actually written, so
-    // placing it is right however the run ended. It reports rather than throws,
+    // until someone noticed. The set holds what was actually written, and
+    // what earlier runs wrote and never placed, so placing it is right however
+    // the run ended. It reports rather than throws,
     // so it cannot displace the failure that brought us here.
     const placed = await finishPlacement(config, progress, errorDetails, movedExperiences, {
-      dryRun, finishedStatus, logPrefix,
+      dryRun, finishedStatus, logPrefix, inheritedLogIds,
     });
 
     // Only now is the run over, so only now may a poller see it that way. Both

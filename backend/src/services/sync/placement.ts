@@ -4,17 +4,69 @@
  * Its own module because it is its own responsibility: the orchestrator runs a
  * source's items through a lifecycle, while this decides where the objects that
  * moved now belong. Nothing here is needed to run that lifecycle — it talks to
- * `regionAssignmentService`, `syncLogMarkers` and `annotateClosedSyncLog`, none
- * of which the loop touches.
+ * `regionAssignmentService`, `syncLogMarkers` and the log row's own writes in
+ * `syncUtils` (the close's annotation, and the list of what a run has not
+ * placed, #1152), none of which the loop touches.
  */
 
 import { assignRegionsForExperiences, worldViewsWithGeometry } from './regionAssignmentService.js';
-import { annotateClosedSyncLog } from './syncUtils.js';
+import { annotateClosedSyncLog, clearUnplacedExperiences, readUnplacedExperiences } from './syncUtils.js';
 import { PLACEMENT_FAILED_MARKER } from './syncLogMarkers.js';
 import type { SyncProgress, ErrorDetail, RunVerdict } from './types.js';
 
 /** What placement reported, or nothing when it had no verdict of its own. */
 export type PlacementOutcome = RunVerdict | 'partial' | undefined;
+
+/**
+ * Take over what the source's earlier runs moved and never placed, into this
+ * run's moved set, and answer the rows that named it (#1152).
+ *
+ * A run whose placement a restart cut short, or that failed, closed with the
+ * objects still named on its row, and their points will not move again to put
+ * them in a later run's set by themselves. This run places them with its own,
+ * names them on its own row meanwhile — so a restart under this run hands them
+ * on again — and empties the earlier rows once they are placed.
+ *
+ * Real runs only: a preview places nothing. Reports rather than throws, like
+ * the placement itself: a run that could not read the list places only its
+ * own, and the earlier rows keep theirs for the next one.
+ */
+export async function takeOverUnplaced(
+  sourceId: number,
+  logId: number,
+  dryRun: boolean,
+  moved: Set<number>,
+  logPrefix: string,
+): Promise<number[]> {
+  if (dryRun) return [];
+  try {
+    const { logIds, experienceIds } = await readUnplacedExperiences(sourceId, logId);
+    for (const id of experienceIds) moved.add(id);
+    if (logIds.length > 0) {
+      console.log('%s Taking over %d unplaced object(s) from earlier run(s) %s',
+        logPrefix, experienceIds.length, logIds.join(', '));
+    }
+    return logIds;
+  } catch (err) {
+    console.error('%s Could not read what earlier runs left unplaced: %s',
+      logPrefix, err instanceof Error ? err.message : String(err));
+    return [];
+  }
+}
+
+/**
+ * Say on this run's row, and on the rows it took over, that what they named
+ * is placed. Reports rather than throws: a list left standing costs only a
+ * placement again on the next run.
+ */
+async function clearPlaced(logIds: number[], logPrefix: string): Promise<void> {
+  try {
+    await clearUnplacedExperiences(logIds);
+  } catch (err) {
+    console.error('%s Could not record that the moved objects are placed: %s',
+      logPrefix, err instanceof Error ? err.message : String(err));
+  }
+}
 
 /**
  * Place the experiences whose geometry moved, in every world view that has
@@ -75,8 +127,8 @@ export async function placeMovedExperiences(
  *
  * `updateSyncLog` has already closed this run — usually as a success — and an
  * operator reading that has no way to know `experience_regions` is stale for
- * the objects it moved, or that a full re-assignment is the remedy. Nothing
- * else in the product prompts for one.
+ * the objects it moved. The row keeps naming them (#1152), so the source's
+ * next real run places them again; a full re-assignment is the remedy now.
  *
  * Downgrades a successful run to `partial`: the catalogue is correct and the
  * changeset landed, so the run did its own job — what is stale is
@@ -133,8 +185,11 @@ export async function recordPlacementFailure(
 /**
  * Place what the run moved, and say so in the log if that fails.
  *
- * The two steps are one act — placing, and reporting that placing went wrong —
- * and keeping them together is what lets the caller's `finally` stay readable.
+ * The steps are one act — placing, and recording how that went — and keeping
+ * them together is what lets the caller's `finally` stay readable. A clean
+ * placement empties the list of what is unplaced on this run's row and on the
+ * rows it took over (`inheritedLogIds`); a failed one leaves every list
+ * standing, for the next run to place again.
  */
 export async function finishPlacement(
   config: { sourceId: number },
@@ -145,9 +200,14 @@ export async function finishPlacement(
     dryRun: boolean;
     finishedStatus: RunVerdict | undefined;
     logPrefix: string;
+    inheritedLogIds: number[];
   },
 ): Promise<PlacementOutcome> {
   const failures = await placeMovedExperiences(moved, opts.dryRun, opts.logPrefix);
+  const named = moved.size > 0 || opts.inheritedLogIds.length > 0;
+  if (failures.length === 0 && !opts.dryRun && progress.logId !== null && named) {
+    await clearPlaced([progress.logId, ...opts.inheritedLogIds], opts.logPrefix);
+  }
   return recordPlacementFailure(
     config, progress, errorDetails, failures, opts.finishedStatus, opts.logPrefix);
 }

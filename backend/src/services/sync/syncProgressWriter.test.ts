@@ -2,7 +2,9 @@
  * Tests for when a running run writes its progress to its log row (#1131):
  * at once when asked, on a change of phase, not more than once per gap while
  * its figures move, on a heartbeat while they do not, one write at a time with
- * the newest waiting, never after it is closed, and never with a throw.
+ * the newest waiting, never after it is closed, and never with a throw. And
+ * what it writes of the objects the run moved and has not placed (#1152):
+ * every one, none on a preview, and a new one on the same gap as the figures.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -68,7 +70,52 @@ describe('startProgressWriter', () => {
     expect(write).toHaveBeenCalledWith(42, {
       phase: 'fetching', statusMessage: 'Initializing...', currentItem: '', done: 0, total: 0,
       created: 0, updated: 0, unchanged: 0, missing: 0, curatedConflicts: 0, held: 3, filtered: 0, errors: 0,
+      unplaced: [],
     });
+  });
+
+  it('names the objects the run has moved and not placed', async () => {
+    writer = startProgressWriter(progress, { moved: new Set([11, 12]) });
+
+    await writer.flush(true);
+
+    expect(write).toHaveBeenCalledWith(42, expect.objectContaining({ unplaced: [11, 12] }));
+  });
+
+  it('names nothing on a preview, which places nothing', async () => {
+    progress.dryRun = true;
+    writer = startProgressWriter(progress, { moved: new Set([11]) });
+
+    await writer.flush(true);
+
+    expect(write).toHaveBeenCalledWith(42, expect.objectContaining({ unplaced: [] }));
+  });
+
+  it('writes a newly moved object on the gap, like any figure', async () => {
+    const moved = new Set<number>();
+    writer = startProgressWriter(progress, { moved });
+    await writer.flush(true);
+
+    moved.add(11);
+    await vi.advanceTimersByTimeAsync(1000);
+    // Inside the gap: the list waits with the counts rather than being
+    // rewritten every tick.
+    expect(write).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write).toHaveBeenLastCalledWith(42, expect.objectContaining({ unplaced: [11] }));
+  });
+
+  it('names every moved object in the close\'s last write', async () => {
+    const moved = new Set([11]);
+    writer = startProgressWriter(progress, { moved });
+    await writer.flush(true);
+
+    moved.add(12);
+    await writer.close();
+
+    expect(write).toHaveBeenLastCalledWith(42, expect.objectContaining({ unplaced: [11, 12] }));
   });
 
   it('writes moving figures at most once per gap', async () => {
