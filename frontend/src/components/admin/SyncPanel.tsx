@@ -31,7 +31,6 @@ import {
   getSources,
   startSync,
   fixPictures,
-  getSyncStatus,
   cancelSync,
   reorderSources,
   type ExperienceSource,
@@ -42,6 +41,8 @@ import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { CurationGateControls } from './CurationGateControls';
 import { SourceLineControls } from './SourceLineControls';
 import { WikidataCacheSection } from './WikidataCacheSection';
+import { SourceLastRunNote } from './SourceLastRunNote';
+import { useSyncStatusPolling } from './useSyncStatusPolling';
 import { queryKeys } from '../../api/queryKeys';
 
 export function SyncPanel() {
@@ -152,6 +153,9 @@ function runningLabel(status: SyncStatus | null): string {
 
 /** What the Cancel button should say for the phase the run is in. */
 function cancelLabel(status: SyncStatus | null): string {
+  // Read from the run's log row: another server holds it, and the flag a
+  // cancel sets lives in that server's memory (#1131).
+  if (status?.progressAt) return 'Running on another server';
   if (status?.status === 'assigning') return 'Assigning regions…';
   // Refused but still running: the item loop is over and the run is closing up.
   if (status?.cancellable === false) return 'Finishing…';
@@ -160,8 +164,6 @@ function cancelLabel(status: SyncStatus | null): string {
 
 function SourceCard({ source }: SourceCardProps) {
   const queryClient = useQueryClient();
-  const [isPolling, setIsPolling] = useState(false);
-  const [status, setStatus] = useState<SyncStatus | null>(null);
 
   // What the server said about the last Cancel, when it said no. A press the
   // server refuses — the run is already over, or the backend was restarted under
@@ -176,6 +178,25 @@ function SourceCard({ source }: SourceCardProps) {
   // gone in the same tick it arrived. Held here so the admin reads it.
   const [endedBadly, setEndedBadly] = useState<{ status: string; message: string } | null>(null);
 
+  // Track if sync just completed (to show hint)
+  const [justCompleted, setJustCompleted] = useState(false);
+
+  // Every answer that says no run is going refreshes the source and its
+  // history; one that ends a run this card was following also says how it
+  // ended.
+  const onIdle = useCallback((idle: SyncStatus, wasRunning: boolean) => {
+    // Only a real sync earns the hint: a dry run creates no experiences, so
+    // telling the admin to go and assign them would be nonsense.
+    if (wasRunning && idle.status === 'complete' && !idle.dryRun) setJustCompleted(true);
+    if (wasRunning && (idle.status === 'failed' || idle.status === 'cancelled')) {
+      setEndedBadly({ status: idle.status, message: idle.statusMessage ?? '' });
+    }
+    // Refresh sources list to get updated last_sync info
+    queryClient.invalidateQueries({ queryKey: queryKeys.admin.sources });
+    queryClient.invalidateQueries({ queryKey: queryKeys.admin.syncLogsAll });
+  }, [queryClient]);
+  const { status, isPolling, lostTouch, follow, pollNow } = useSyncStatusPolling(source.id, onIdle);
+
   /**
    * A new run is starting: poll it, and drop what the last one was told.
    *
@@ -187,8 +208,7 @@ function SourceCard({ source }: SourceCardProps) {
    * as there is one.
    */
   const beginRun = (kind: 'sync' | 'repair') => () => {
-    setStatus({ running: true, kind });
-    setIsPolling(true);
+    follow(kind);
     setCancelRefused(false);
     setEndedBadly(null);
   };
@@ -227,66 +247,15 @@ function SourceCard({ source }: SourceCardProps) {
   const isStarting = startMutation.isPending || dryRunMutation.isPending
     || refreshMutation.isPending || fixPicturesMutation.isPending;
 
-  // Track if sync just completed (to show hint)
-  const [justCompleted, setJustCompleted] = useState(false);
-
-  // Ref to track previous running state (avoids dependency cycle in pollStatus)
-  const wasRunningRef = useRef(false);
-
-  // Poll for status — no dependency on status to avoid double-fire on mount
-  const pollStatus = useCallback(async () => {
-    try {
-      const newStatus = await getSyncStatus(source.id);
-      setStatus(newStatus);
-
-      // A run found already in flight — the page was reloaded during one — is
-      // followed like one this panel started, or it would sit at whatever the
-      // first poll saw until somebody reloaded again.
-      if (newStatus.running) setIsPolling(true);
-
-      if (!newStatus.running) {
-        setIsPolling(false);
-        // Only a real sync earns the hint: a dry run creates no experiences, so
-        // telling the admin to go and assign them would be nonsense.
-        if (wasRunningRef.current && newStatus.status === 'complete' && !newStatus.dryRun) {
-          setJustCompleted(true);
-        }
-        if (wasRunningRef.current && (newStatus.status === 'failed' || newStatus.status === 'cancelled')) {
-          setEndedBadly({ status: newStatus.status, message: newStatus.statusMessage ?? '' });
-        }
-        // Refresh sources list to get updated last_sync info
-        queryClient.invalidateQueries({ queryKey: queryKeys.admin.sources });
-        queryClient.invalidateQueries({ queryKey: queryKeys.admin.syncLogsAll });
-      }
-      wasRunningRef.current = !!newStatus.running;
-    } catch (error) {
-      console.error('Error polling status:', error);
-      setIsPolling(false);
-    }
-  }, [source.id, queryClient]);
-
   const cancelMutation = useMutation({
     mutationFn: () => cancelSync(source.id),
     onSuccess: (result) => {
       // Taken: the status will say so at the next poll. Refused: say so, and
       // poll at once, so the card stops showing a run that is no longer there.
       setCancelRefused(!result.cancelled);
-      if (!result.cancelled) void pollStatus();
+      if (!result.cancelled) pollNow();
     },
   });
-
-  // Check initial status on mount
-  useEffect(() => {
-    pollStatus();
-  }, [pollStatus]);
-
-  // Polling interval
-  useEffect(() => {
-    if (!isPolling) return;
-
-    const interval = setInterval(pollStatus, 1000);
-    return () => clearInterval(interval);
-  }, [isPolling, pollStatus]);
 
   // `isPolling` as well as the two above. Between `startSync` resolving and the
   // first poll answering, `isStarting` is already false and `status.running` is
@@ -417,6 +386,12 @@ function SourceCard({ source }: SourceCardProps) {
                 says so, and that sentence is the whole of what an admin needs
                 from it. */}
             {endedBadlySentence(status?.kind, endedBadly)}
+          </Alert>
+        )}
+        {!isRunning && <SourceLastRunNote run={status?.lastRun} />}
+        {lostTouch && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Lost touch with the server — reload to see how this run ended.
           </Alert>
         )}
         {cancelRefused && (

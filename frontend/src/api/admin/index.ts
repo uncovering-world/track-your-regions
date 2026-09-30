@@ -31,8 +31,8 @@ export type {
   CuratorAssignmentCreated, CuratorAssignmentRevoked, CuratorInfo, Curators, CuratorScope, CurationGateSet,
   ExperienceSource, ExperienceSources, PictureRepairStarted, PlacementCount, PlacementCounts,
   PublishedWaitingObject, PublishWaitingResult, RefusedWaitingObject, SourceLineSet, SourcesReordered,
-  SyncCancelled, SyncChange, SyncChanges, SyncContentItem, SyncContentsDelta, SyncErrorDetail, SyncLog,
-  SyncLogDetail, SyncLogs, SyncStarted, SyncStatus, UserSearchResult, UserSearchResults, WaitingCounts,
+  SyncCancelled, SyncChange, SyncChanges, SyncContentItem, SyncContentsDelta, SyncErrorDetail, SyncLastRun,
+  SyncLog, SyncLogDetail, SyncLogs, SyncStarted, SyncStatus, UserSearchResult, UserSearchResults, WaitingCounts,
   WikidataCache, WikidataCacheCleared, WikidataCacheKind, WikidataCacheTtlSet,
 } from '../client.generated';
 
