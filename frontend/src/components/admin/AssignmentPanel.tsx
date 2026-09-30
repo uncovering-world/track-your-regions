@@ -2,9 +2,15 @@
  * Assignment Panel
  *
  * Controls for assigning experiences to regions based on spatial containment.
+ *
+ * The rebuild is one transaction on the server (#1152), so a restart under it
+ * keeps nothing it did — and the server that comes back knows nothing of it:
+ * the status answers a bare `{ running: false }`. The panel keeps asking
+ * through the seconds the server refuses, and when the answer after a run it
+ * was following is that bare one, it says the run was lost to a restart.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -42,6 +48,13 @@ import {
 import { fetchWorldViews } from '../../api/worldViews';
 import { useAuth } from '../../hooks/useAuth';
 import { queryKeys } from '../../api/queryKeys';
+import { LOST_TOUCH_AFTER_MS } from './useSyncStatusPolling';
+
+/** What the panel says when a run it was following was lost to a restart. */
+export const RESTARTED_UNDER_IT = 'The server was restarted while this was assigning; nothing it did '
+  + 'was kept, and the assignments from before stand. Start it again.';
+
+const FINISHED_SEVERITY = { complete: 'success', failed: 'error', cancelled: 'info' } as const;
 
 export function AssignmentPanel() {
   const { user } = useAuth();
@@ -49,6 +62,15 @@ export function AssignmentPanel() {
   const [selectedSource, setSelectedSource] = useState<number | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [status, setStatus] = useState<AssignmentStatus | null>(null);
+  const [restarted, setRestarted] = useState(false);
+  const [lostTouch, setLostTouch] = useState(false);
+  // Whether the last answer, or a start from here, said a run was going.
+  const followingRef = useRef(false);
+  // Moved on by a start and by a change of world view: an answer to a request
+  // sent before either describes what was there before, and read after a start
+  // its bare `{ running: false }` would pass for a restart under the new run.
+  const statusGenerationRef = useRef(0);
+  const failingSinceRef = useRef<number | null>(null);
 
   // Fetch world views
   const { data: worldViews } = useQuery({
@@ -75,7 +97,14 @@ export function AssignmentPanel() {
   // Start assignment mutation
   const startMutation = useMutation({
     mutationFn: () => startRegionAssignment(selectedWorldView!, selectedSource || undefined),
+    onMutate: () => {
+      statusGenerationRef.current += 1;
+    },
     onSuccess: () => {
+      followingRef.current = true;
+      failingSinceRef.current = null;
+      setRestarted(false);
+      setLostTouch(false);
       setIsPolling(true);
     },
   });
@@ -88,18 +117,42 @@ export function AssignmentPanel() {
   // Poll for status
   const pollStatus = useCallback(async () => {
     if (!selectedWorldView) return;
+    const generation = statusGenerationRef.current;
 
     try {
       const newStatus = await getAssignmentStatus(selectedWorldView);
+      if (generation !== statusGenerationRef.current) return;
+      failingSinceRef.current = null;
       setStatus(newStatus);
 
-      if (!newStatus.running) {
+      if (newStatus.running) {
+        followingRef.current = true;
+        setIsPolling(true);
+      } else {
+        // A run that ended keeps its status until the next one starts, so a
+        // bare answer right after one was going means the server holding it is gone.
+        if (followingRef.current && newStatus.status === undefined) setRestarted(true);
+        followingRef.current = false;
         setIsPolling(false);
         refetchCounts();
       }
     } catch (error) {
+      if (generation !== statusGenerationRef.current) return;
       console.error('Error polling status:', error);
-      setIsPolling(false);
+      // A refusal while a run is being followed is most likely the server
+      // restarting: keep asking, and give up only after about two minutes.
+      const now = Date.now();
+      failingSinceRef.current ??= now;
+      if (!followingRef.current || now - failingSinceRef.current >= LOST_TOUCH_AFTER_MS) {
+        if (followingRef.current) {
+          setLostTouch(true);
+          // The last answer said running; nothing has answered since, so the
+          // panel stops presenting a run it can no longer see.
+          setStatus(s => s && { ...s, running: false });
+        }
+        followingRef.current = false;
+        setIsPolling(false);
+      }
     }
   }, [selectedWorldView, refetchCounts]);
 
@@ -119,6 +172,18 @@ export function AssignmentPanel() {
   }, [isPolling, pollStatus]);
 
   const isRunning = status?.running || startMutation.isPending;
+  const finished = !isRunning && status?.status !== undefined && status.status in FINISHED_SEVERITY
+    ? status.status as keyof typeof FINISHED_SEVERITY
+    : null;
+
+  const chooseWorldView = (worldViewId: number) => {
+    statusGenerationRef.current += 1;
+    followingRef.current = false;
+    failingSinceRef.current = null;
+    setRestarted(false);
+    setLostTouch(false);
+    setSelectedWorldView(worldViewId);
+  };
 
   // Filter to only custom world views (not GADM)
   const customWorldViews = worldViews?.filter(wv => !wv.isDefault) || [];
@@ -137,8 +202,9 @@ export function AssignmentPanel() {
         ordinary one is that regions changed — their boundaries, or where they sit in the tree — and
         every location has to be tested against them again. The other is that the placement at the
         end of a run failed — the run then reports itself Partial and says so, and this is what it is
-        asking for. Either way it clears this world view's automatic assignments before rebuilding,
-        so regions look empty while it runs.
+        asking for. Either way it rebuilds this world view's automatic assignments in one go:
+        regions keep their assignments until it finishes, and a stop or a restart leaves them as
+        they were.
       </Typography>
 
       <Card sx={{ mb: 3 }}>
@@ -149,7 +215,7 @@ export function AssignmentPanel() {
               <Select
                 value={selectedWorldView || ''}
                 label="World View"
-                onChange={(e) => setSelectedWorldView(e.target.value as number)}
+                onChange={(e) => chooseWorldView(e.target.value as number)}
                 disabled={isRunning}
               >
                 {customWorldViews.map((wv) => (
@@ -199,6 +265,20 @@ export function AssignmentPanel() {
                 </Box>
               </Box>
             </Box>
+          )}
+
+          {finished && status?.statusMessage && (
+            <Alert severity={FINISHED_SEVERITY[finished]} sx={{ mt: 2 }}>{status.statusMessage}</Alert>
+          )}
+
+          {restarted && !isRunning && (
+            <Alert severity="warning" sx={{ mt: 2 }}>{RESTARTED_UNDER_IT}</Alert>
+          )}
+
+          {lostTouch && !isRunning && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              Lost touch with the server — reload to see how this assignment ended.
+            </Alert>
           )}
 
           {startMutation.isError && (
