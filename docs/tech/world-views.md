@@ -421,6 +421,8 @@ Compute merged geometries for regions.
 - Shows progress with current region name and percentage
 - Can be cancelled mid-process
 
+**What a restart leaves** (#1152). A run's progress lives in memory only (`runningComputations`), and a backend restart — a deploy, or any source edit on the development stack — ends it with nothing recording that it ran. What it computed stays: each region's outline is its own write, committed as it lands, and the ancestors that write nulled stay null. So a killed run leaves the tree part-computed, and a non-forced **Compute All** is the remedy — its closure is exactly the regions still without geometry and the derived ancestors above them, so it picks up where the killed one stopped rather than starting over. Meanwhile Catalogue Checks' `region-without-geometry` lists what is missing, and the map draws nothing for those regions. A single region's compute, followed over its event stream, ends for the editor in *Connection to server lost*; what it had written before the restart stays, and computing the region again finishes it.
+
 ---
 
 ## Real-World Examples
