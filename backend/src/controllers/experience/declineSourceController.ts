@@ -20,7 +20,7 @@ import type { declineSourceBodySchema, idParamSchema } from '../../types/index.j
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor } from '../../services/sync/changeSet.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
-import { tidyNameValue } from './heldDecisions.js';
+import { recordConflictRefusals } from './conflictDecisions.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 
 /**
@@ -149,7 +149,8 @@ async function recordRefusals(
       return { declined: [], fromSyncLogId: fromSyncLogId ?? 0, refusal: { error, fromSyncLogId } };
     };
 
-    if (proposal.rows.length === 0) {
+    // A place gone before the lock has no proposal either: the proposal joins it.
+    if (!locked || proposal.rows.length === 0) {
       return await refuse('No source proposal on record for this experience');
     }
     const fromSyncLogId = proposal.rows[0].sync_log_id as number;
@@ -168,21 +169,10 @@ async function recordRefusals(
       return await refuse('None of the requested fields is still an open conflict');
     }
 
-    // One row per field, replaced: this is the standing answer, so a curator who refuses
-    // twice leaves one record and not a pile. The history of who answered when is the
-    // curation log's, written below in the same transaction. A name-carrying value is
-    // recorded as the catalogue stores a name (`tidyNameValue`, #835): the queue matches
-    // the refusal to the record by value, and every run records the tidied form now.
-    for (const p of open) {
-      await client.query(`
-        INSERT INTO experience_conflict_decisions (experience_id, field, declined, decided_by)
-        VALUES ($1, $2, $3::jsonb, $4)
-        ON CONFLICT (experience_id, field)
-        DO UPDATE SET declined = EXCLUDED.declined,
-                      decided_by = EXCLUDED.decided_by,
-                      decided_at = NOW()
-      `, [experienceId, p.field, JSON.stringify(tidyNameValue(p.field, p.new ?? null)), userId]);
-    }
+    // The standing answer, one row per field; the curation log below holds who
+    // answered when, in the same transaction.
+    await recordConflictRefusals(client, locked.lock, userId,
+      open.map(p => ({ field: p.field, proposed: p.new })));
 
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)

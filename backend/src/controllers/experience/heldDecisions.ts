@@ -277,7 +277,7 @@ function namesAName(field: string): boolean {
 /**
  * A recorded value as the catalogue stores a name: a string tidied, a list's
  * strings tidied, anything else as it is. Shared with the claimed field's
- * refusal (`declineSourceValue`), which is matched by value the same way.
+ * refusal (`recordConflictRefusals`), which is matched by value the same way.
  */
 export function tidyNameValue(field: string, value: unknown): unknown {
   if (!namesAName(field)) return value;
