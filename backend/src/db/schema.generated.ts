@@ -280,6 +280,7 @@ export interface ExperienceSyncLogsRow {
   progress_done: number | null;
   progress_total: number | null;
   progress_at: Date | null;
+  unplaced_experience_ids: number[] | null;
 }
 
 /** The table `experience_treasures`. */
