@@ -33,6 +33,21 @@ export const ORPHANED_RUN_MARKER = { externalId: 'system', error: ORPHANED_RUN_E
 export const PLACEMENT_FAILED_MARKER = { externalId: 'region-assignment' } as const;
 
 /**
+ * The server was restarted while the run, already closed, was placing what it
+ * moved (#1152). The startup sweep leaves it, with the objects still named on
+ * the row, and downgrades a successful run to `partial`: the run did its own
+ * job, and what is stale is `experience_regions` for those objects, which the
+ * source's next real run places. Carries the placement marker's `externalId`,
+ * so the sweep, which skips a run carrying that, never marks a run twice nor
+ * one whose placement failed on its own.
+ */
+export const PLACEMENT_STOPPED_ERROR = 'Server restarted while the run was placing what it moved';
+export const PLACEMENT_STOPPED_MARKER = {
+  ...PLACEMENT_FAILED_MARKER,
+  error: PLACEMENT_STOPPED_ERROR,
+} as const;
+
+/**
  * SQL predicate: did this run's changeset reach the table?
  *
  * `prev` must name an `experience_sync_logs` row. Both markers are matched by
@@ -53,4 +68,17 @@ export const CHANGESET_LANDED_SQL = `
  */
 export function stoppedByRestartSql(alias: string): string {
   return `COALESCE(${alias}.error_details @> '[${JSON.stringify(ORPHANED_RUN_MARKER)}]', FALSE)`;
+}
+
+/**
+ * SQL: did the startup sweep find this closed run still placing what it
+ * moved, because the server was restarted under its placement (#1152)?
+ *
+ * `alias` must name an `experience_sync_logs` row. By containment, like the
+ * one above: the run keeps the status it closed with, downgraded from
+ * `success` to `partial`, and a status cannot tell this from a placement that
+ * failed on its own.
+ */
+export function placementStoppedByRestartSql(alias: string): string {
+  return `COALESCE(${alias}.error_details @> '[${JSON.stringify(PLACEMENT_STOPPED_MARKER)}]', FALSE)`;
 }
