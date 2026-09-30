@@ -2763,6 +2763,26 @@ COMMENT ON COLUMN experience_sync_logs.total_filtered IS 'Entities the source of
 COMMENT ON COLUMN experience_sync_logs.detection_skipped_reason IS 'Why missing-object detection did not run: ranked source, force run, cancelled, errors, or coverage below the floor. Every value missingDetectionSkipReason() produces lands here.';
 COMMENT ON COLUMN experience_sync_logs.withdrawal_skipped_reason IS 'Why this run marked none of the works its museums stopped holding: works coverage below the floor (ADR-0044). Every value worksCoverageSkipReason() produces lands here, and a run carrying one is partial, never success. NULL where withdrawals were applied, and on every run of a source whose contents need no floor: points are paired per object, not measured per pool.';
 
+-- A run writes where it stands to its row as it goes (#1131), and its running
+-- counts to the total_* columns above: a restart then leaves a row that says
+-- how far the run got, and the status endpoint can read a run this process
+-- does not hold.
+ALTER TABLE experience_sync_logs
+  ADD COLUMN IF NOT EXISTS phase VARCHAR(20)
+    CHECK (phase IN ('fetching', 'processing', 'assigning'));
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS status_message TEXT;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS current_item TEXT;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS progress_done INTEGER;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS progress_total INTEGER;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS progress_at TIMESTAMPTZ;
+
+COMMENT ON COLUMN experience_sync_logs.phase IS 'The phase the run was last in while it ran: fetching, processing or assigning. Written with its progress (#1131) and left as it stood when the row closed, so a run the startup sweep closed says whether it had got past collecting from the source. NULL on runs from before the column.';
+COMMENT ON COLUMN experience_sync_logs.status_message IS 'The line the admin panel shows over the running bar, as the run last wrote it.';
+COMMENT ON COLUMN experience_sync_logs.current_item IS 'The object the run was on when it last wrote its progress; empty between objects.';
+COMMENT ON COLUMN experience_sync_logs.progress_done IS 'Items the run had gone through when it last wrote its progress.';
+COMMENT ON COLUMN experience_sync_logs.progress_total IS 'Items the run was given to go through; 0 while it is still collecting. The startup sweep closes a killed run with this as its total_fetched, the figure a failed run closes with.';
+COMMENT ON COLUMN experience_sync_logs.progress_at IS 'When the running run last wrote its progress: at each change of phase, at most every two seconds while its counts move, and every fifteen seconds while they do not. Its progress writes only ever touch a running row.';
+
 -- Built for the "New" chip's per-row lookup of the latest completed non-dry run
 -- of a source, which #529 deleted: the chip now counts from published_at and
 -- reads no sync log at all. Kept because dropping an index is its own decision
