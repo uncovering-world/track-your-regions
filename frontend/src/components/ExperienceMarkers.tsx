@@ -35,6 +35,7 @@ import {
   hoverGlowLayer, hoverRingLayer, highlightRingLayer, highlightPointLayer,
   extentFillLayer, extentLineLayer,
 } from './experienceMarkers/layers';
+import { buildHighlightData, buildMarkerFeatures } from './experienceMarkers/scene';
 import { useMarkerInteractions } from './experienceMarkers/useMarkerInteractions';
 import { useExtentLayer } from './experienceMarkers/useExtentLayer';
 import { useExperienceContext } from '../hooks/useExperienceContext';
@@ -42,7 +43,6 @@ import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../h
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience, ExperienceLocation } from '../api/experiences';
 import { locationLabel } from '../utils/locationLabel';
-import { experienceColor } from '../utils/kindColors';
 import { frameGeoJson } from '../utils/mapUtils';
 
 
@@ -162,38 +162,11 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   // ── Declarative GeoJSON data for sources ──
 
   // Main markers source data (excludes selected experience — shown via highlight instead)
-  const markersGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
-    const visibleMarkers = selectedExperienceId != null
+  const markersGeoJson = useMemo<GeoJSON.FeatureCollection>(() => buildMarkerFeatures(
+    selectedExperienceId != null
       ? markers.filter(m => m.experienceId !== selectedExperienceId)
-      : markers;
-
-    return {
-      type: 'FeatureCollection',
-      features: visibleMarkers.map((m) => ({
-        type: 'Feature' as const,
-        // The object's id would now repeat across every one of its places, and a
-        // source whose features share an id cannot tell them apart — `id` is what
-        // MapLibre keys a feature by. `m.id` is `${experienceId}-${locationId}`.
-        id: m.id,
-        geometry: { type: 'Point' as const, coordinates: [m.longitude, m.latitude] },
-        properties: {
-          // No `id` here: the feature-level one above is what identifies a
-          // marker, and nothing reads a property by that name — the handlers ask
-          // for `experienceId`/`locationId`, the popup for the names, the badge
-          // layers for `locationCount`.
-          experienceId: m.experienceId,
-          locationId: m.locationId,
-          name: m.locationName || m.experience.name,
-          experienceName: m.experience.name,
-          // The pin's colour, decided once for every surface (`experienceColor`):
-          // the kind's, refined by the type where the types are told apart.
-          color: experienceColor(m.experience.kind_id, m.experience.type),
-          locationCount: m.locationCount,
-          folded: m.folded === true,
-        },
-      })),
-    };
-  }, [markers, selectedExperienceId]);
+      : markers,
+  ), [markers, selectedExperienceId]);
 
   /**
    * The places an object shows on the map, or `null` for "draw its own point".
@@ -226,27 +199,16 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     if (!shown) {
       const exp = getExperienceById(selectedExperienceId);
       if (!exp) return EMPTY_FC;
-      return {
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature' as const,
-          geometry: { type: 'Point' as const, coordinates: [exp.longitude, exp.latitude] },
-          properties: { locationId: null, name: exp.name },
-        }],
-      };
+      return buildHighlightData([
+        { coordinates: [exp.longitude, exp.latitude], locationId: null, name: exp.name },
+      ]);
     }
 
-    return {
-      type: 'FeatureCollection',
-      features: shown.map((loc) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [loc.longitude, loc.latitude] },
-        properties: {
-          locationId: loc.id,
-          name: locationLabel(loc),
-        },
-      })),
-    };
+    return buildHighlightData(shown.map(loc => ({
+      coordinates: [loc.longitude, loc.latitude],
+      locationId: loc.id,
+      name: locationLabel(loc),
+    })));
   }, [selectedExperienceId, shownPlacesFor, getExperienceById]);
 
   // ── Imperative event handlers (registered on the map, not rendered) ──
