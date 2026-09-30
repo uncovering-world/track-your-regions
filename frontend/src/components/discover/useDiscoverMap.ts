@@ -21,7 +21,10 @@
 import { useEffect } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { isWebGLAvailable } from '../../utils/webgl';
-import { addDiscoverMapLayers, SOURCE_ID, HOVER_SOURCE_ID } from './discoverMapLayers';
+import { addDiscoverMapLayers, LAYER_CLUSTERS } from './discoverMapLayers';
+import {
+  SCENE_SOURCES, LAYER_MARKERS, LAYER_HIGHLIGHT_POINT, MARKER_LAYERS,
+} from '../experienceMarkers/scene';
 
 export interface DiscoverMapWiring {
   /** Where the map is mounted; nothing is built until it exists. */
@@ -92,11 +95,11 @@ export function useDiscoverMap({
       addDiscoverMapLayers(map);
 
       // ── Cluster click → zoom ──
-      map.on('click', 'clusters', async (e) => {
-        const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
+      map.on('click', LAYER_CLUSTERS, async (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS] });
         if (!features.length) return;
         const clusterId = features[0].properties.cluster_id;
-        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource;
+        const source = map.getSource(SCENE_SOURCES.markers) as maplibregl.GeoJSONSource;
         const zoom = await source.getClusterExpansionZoom(clusterId);
         // The reader asked for this view, even though the camera move is ours:
         // `easeTo` fires a `movestart` with no `originalEvent`, so the listener
@@ -111,11 +114,11 @@ export function useDiscoverMap({
       });
 
       // ── Marker click → select experience ──
-      const interactiveMarkerLayers = ['unclustered-point', 'unclustered-count-badge-bg', 'unclustered-count-badge-text'];
+      const interactiveMarkerLayers = [...MARKER_LAYERS];
       const onMarkerClick = (e: maplibregl.MapLayerMouseEvent) => {
         // The gate the delegated listeners had: naming a layer the style does not
         // hold makes `queryRenderedFeatures` fire an ErrorEvent and log.
-        if (!map.getLayer('unclustered-point')) return;
+        if (!map.getLayer(LAYER_MARKERS)) return;
         const features = map.queryRenderedFeatures(e.point, { layers: interactiveMarkerLayers });
         if (features.length === 0) return;
         const id = features[0].properties?.id;
@@ -154,7 +157,7 @@ export function useDiscoverMap({
        * express, deliberately, because nothing on this side rings more than one.
        */
       const setHoverRing = (coords: [number, number] | null) => {
-        const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
+        const hoverSource = map.getSource(SCENE_SOURCES.hover) as maplibregl.GeoJSONSource;
         if (!hoverSource) return;
         hoverSource.setData(coords
           ? {
@@ -202,9 +205,7 @@ export function useDiscoverMap({
           }
         }
       };
-      map.on('mousemove', 'unclustered-point', onMarkerMouseMove);
-      map.on('mousemove', 'unclustered-count-badge-bg', onMarkerMouseMove);
-      map.on('mousemove', 'unclustered-count-badge-text', onMarkerMouseMove);
+      for (const id of MARKER_LAYERS) map.on('mousemove', id, onMarkerMouseMove);
 
       // A move the reader made themself carries an `originalEvent`; the ones this
       // component makes (`fitBounds`, `flyTo`) do not.
@@ -214,7 +215,7 @@ export function useDiscoverMap({
 
       /** The pin under a point, if one is there. */
       const markerAt = (point: maplibregl.Point): maplibregl.MapGeoJSONFeature | null => {
-        if (!map.getLayer('unclustered-point')) return null;
+        if (!map.getLayer(LAYER_MARKERS)) return null;
         const under = map.queryRenderedFeatures(point, { layers: interactiveMarkerLayers });
         return under[0] ?? null;
       };
@@ -225,13 +226,13 @@ export function useDiscoverMap({
        * what nothing will set again until the pointer leaves the cluster too.
        */
       const onACluster = (point: maplibregl.Point): boolean =>
-        !!map.getLayer('clusters')
-        && map.queryRenderedFeatures(point, { layers: ['clusters'] }).length > 0;
+        !!map.getLayer(LAYER_CLUSTERS)
+        && map.queryRenderedFeatures(point, { layers: [LAYER_CLUSTERS] }).length > 0;
 
       /** The place of the selected object under a point, if one is there. */
       const highlightDotAt = (point: maplibregl.Point): maplibregl.MapGeoJSONFeature | null => {
-        if (!map.getLayer('highlight-point')) return null;
-        return map.queryRenderedFeatures(point, { layers: ['highlight-point'] })[0] ?? null;
+        if (!map.getLayer(LAYER_HIGHLIGHT_POINT)) return null;
+        return map.queryRenderedFeatures(point, { layers: [LAYER_HIGHLIGHT_POINT] })[0] ?? null;
       };
 
       // The badge is drawn `circle-translate: [8, -8]` over a point of radius 6,
@@ -284,11 +285,9 @@ export function useDiscoverMap({
 
         mapHoverCallbackRef.current?.(null);
       };
-      map.on('mouseleave', 'unclustered-point', onMarkerMouseLeave);
-      map.on('mouseleave', 'unclustered-count-badge-bg', onMarkerMouseLeave);
-      map.on('mouseleave', 'unclustered-count-badge-text', onMarkerMouseLeave);
+      for (const id of MARKER_LAYERS) map.on('mouseleave', id, onMarkerMouseLeave);
 
-      map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseenter', LAYER_CLUSTERS, () => { map.getCanvas().style.cursor = 'pointer'; });
       // The cursor is shared with the pins and the dots a bubble covers — a dot
       // is drawn above it and stays hoverable — and neither gets it back from
       // this move: the dots' `mousemove` sets it inside a dedupe, so on a dot
@@ -296,7 +295,7 @@ export function useDiscoverMap({
       // sets it unconditionally but is registered ahead of this leave, so the
       // reset lands after it and holds for a frame. Ask, like the two leaves
       // above do about clusters.
-      map.on('mouseleave', 'clusters', (e: maplibregl.MapLayerMouseEvent) => {
+      map.on('mouseleave', LAYER_CLUSTERS, (e: maplibregl.MapLayerMouseEvent) => {
         const fromAMove = e.originalEvent?.type === 'mousemove';
         if (fromAMove && (markerAt(e.point) || highlightDotAt(e.point))) return;
         map.getCanvas().style.cursor = '';
@@ -304,8 +303,8 @@ export function useDiscoverMap({
 
       // ── Highlight-point hover → location list scroll ──
 
-      map.on('mousemove', 'highlight-point', (e) => {
-        const features = map.queryRenderedFeatures(e.point, { layers: ['highlight-point'] });
+      map.on('mousemove', LAYER_HIGHLIGHT_POINT, (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_HIGHLIGHT_POINT] });
         if (features.length > 0) {
           const locId = features[0].properties?.locationId as number | undefined;
           if (locId != null && locId !== mapCurrentHighlightLocId) {
@@ -320,7 +319,7 @@ export function useDiscoverMap({
         }
       });
 
-      map.on('mouseleave', 'highlight-point', (e) => {
+      map.on('mouseleave', LAYER_HIGHLIGHT_POINT, (e) => {
         mapCurrentHighlightLocId = null;
 
         // The mirror of the case above. These dots overlap the pins of every

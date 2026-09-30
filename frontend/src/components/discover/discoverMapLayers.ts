@@ -6,13 +6,36 @@
  * and how it paints — while the component keeps the behaviour: which features go
  * into the sources, and what a click or a hover means. The handlers stay there
  * because they read this component's refs and props.
+ *
+ * The pin, its badge, the highlight and the hover ring are the scene Map mode
+ * draws too (`experienceMarkers/scene.ts`, #1132), added here as declared. What
+ * this file adds is Discover's one difference: its markers source clusters, so
+ * it holds the bubbles and their counts, and each pin layer is kept off the
+ * aggregate features with a not-a-cluster test.
  */
 
 import * as maplibregl from 'maplibre-gl';
+import {
+  SCENE_SOURCES, SCENE_MARKER_ORDER, SCENE_OVERLAY_ORDER, EMPTY_FC,
+} from '../experienceMarkers/scene';
 
-export const SOURCE_ID = 'experience-markers';
-export const HIGHLIGHT_SOURCE_ID = 'highlight-markers';
-export const HOVER_SOURCE_ID = 'hover-marker';
+/** The cluster bubbles and their counts — the layers only this map has. */
+export const LAYER_CLUSTERS = 'clusters';
+export const LAYER_CLUSTER_COUNT = 'cluster-count';
+
+/** A feature that is not a cluster: the test every pin layer here is kept to. */
+export const NOT_CLUSTER: maplibregl.FilterSpecification = ['!', ['has', 'point_count']];
+
+/**
+ * A scene pin layer as this map draws it: the same layer, kept off the
+ * clusters. A layer with a filter of its own (the badge's) keeps it, joined to
+ * the not-a-cluster test.
+ */
+export function unclustered<L extends maplibregl.CircleLayerSpecification | maplibregl.SymbolLayerSpecification>(
+  layer: L,
+): L {
+  return { ...layer, filter: layer.filter ? ['all', NOT_CLUSTER, layer.filter] : NOT_CLUSTER };
+}
 
 /**
  * How big a cluster bubble is painted, by how many points it holds.
@@ -48,165 +71,58 @@ export function clusterRadiusFor(count: number): number {
 
 /** Adds every source and layer the view needs, in paint order. */
 export function addDiscoverMapLayers(map: maplibregl.Map): void {
-    map.addSource(SOURCE_ID, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-      cluster: true,
-      clusterMaxZoom: 12,
-      clusterRadius: 50,
-      // No `promoteId`. Deriving each feature's id from `properties.id` keys
-      // every place of an object the same, since a place is the feature and
-      // that id is one per object — MapLibre would then share the first
-      // feature-state written here across forty pins. Nothing reads
-      // feature-state on this source, so
-      // this removes a latent collision rather than a live bug.
-    });
+  map.addSource(SCENE_SOURCES.markers, {
+    type: 'geojson',
+    data: EMPTY_FC,
+    cluster: true,
+    clusterMaxZoom: 12,
+    clusterRadius: 50,
+    // No `promoteId`. Deriving each feature's id from `properties.id` keys
+    // every place of an object the same, since a place is the feature and
+    // that id is one per object — MapLibre would then share the first
+    // feature-state written here across forty pins. Nothing reads
+    // feature-state on this source, so
+    // this removes a latent collision rather than a live bug.
+  });
+  map.addSource(SCENE_SOURCES.highlight, { type: 'geojson', data: EMPTY_FC });
+  map.addSource(SCENE_SOURCES.hover, { type: 'geojson', data: EMPTY_FC });
 
-    map.addSource(HIGHLIGHT_SOURCE_ID, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    });
+  // ── Layers (order matters: bottom → top) ──
 
-    map.addSource(HOVER_SOURCE_ID, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    });
+  // Cluster circles
+  map.addLayer({
+    id: LAYER_CLUSTERS,
+    type: 'circle',
+    source: SCENE_SOURCES.markers,
+    filter: ['has', 'point_count'],
+    paint: {
+      'circle-color': [
+        'step', ['get', 'point_count'],
+        '#7dd3c8', 10, '#5ab8aa', 30, '#3d9d8f', 100, '#2a7d72',
+      ],
+      'circle-radius': clusterRadiusExpression(),
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#ffffff',
+      'circle-opacity': 0.9,
+    },
+  });
 
-    // ── Layers (order matters: bottom → top) ──
+  // Cluster count labels
+  map.addLayer({
+    id: LAYER_CLUSTER_COUNT,
+    type: 'symbol',
+    source: SCENE_SOURCES.markers,
+    filter: ['has', 'point_count'],
+    layout: {
+      'text-field': ['get', 'point_count_abbreviated'],
+      'text-size': 11,
+      'text-font': ['Open Sans Bold'],
+    },
+    paint: { 'text-color': '#ffffff' },
+  });
 
-    // Cluster circles
-    map.addLayer({
-      id: 'clusters',
-      type: 'circle',
-      source: SOURCE_ID,
-      filter: ['has', 'point_count'],
-      paint: {
-        'circle-color': [
-          'step', ['get', 'point_count'],
-          '#7dd3c8', 10, '#5ab8aa', 30, '#3d9d8f', 100, '#2a7d72',
-        ],
-        'circle-radius': clusterRadiusExpression(),
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff',
-        'circle-opacity': 0.9,
-      },
-    });
-
-    // Cluster count labels
-    map.addLayer({
-      id: 'cluster-count',
-      type: 'symbol',
-      source: SOURCE_ID,
-      filter: ['has', 'point_count'],
-      layout: {
-        'text-field': ['get', 'point_count_abbreviated'],
-        'text-size': 11,
-        'text-font': ['Open Sans Bold'],
-      },
-      paint: { 'text-color': '#ffffff' },
-    });
-
-    // Individual markers
-    map.addLayer({
-      id: 'unclustered-point',
-      type: 'circle',
-      source: SOURCE_ID,
-      filter: ['!', ['has', 'point_count']],
-      paint: {
-        // Decided once, in `experienceColor`, and carried on the feature — see
-        // the marker layer in `experienceMarkers/layers.ts` (#814).
-        'circle-color': ['get', 'color'],
-        'circle-radius': 6,
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff',
-      },
-    });
-
-    // Multi-location badge background (shows total locations behind marker)
-    map.addLayer({
-      id: 'unclustered-count-badge-bg',
-      type: 'circle',
-      source: SOURCE_ID,
-      filter: ['all', ['!', ['has', 'point_count']], ['>', ['coalesce', ['get', 'locationCount'], 1], 1]],
-      paint: {
-        'circle-color': '#0f172a',
-        'circle-radius': 8,
-        'circle-stroke-width': 1.5,
-        'circle-stroke-color': '#ffffff',
-        'circle-translate': [8, -8],
-        'circle-translate-anchor': 'viewport',
-      },
-    });
-
-    map.addLayer({
-      id: 'unclustered-count-badge-text',
-      type: 'symbol',
-      source: SOURCE_ID,
-      filter: ['all', ['!', ['has', 'point_count']], ['>', ['coalesce', ['get', 'locationCount'], 1], 1]],
-      layout: {
-        'text-field': ['to-string', ['get', 'locationCount']],
-        'text-size': 9,
-        'text-font': ['Open Sans Bold'],
-        'text-offset': [0.88, -0.88],
-        'text-anchor': 'center',
-        'text-allow-overlap': true,
-      },
-      paint: {
-        'text-color': '#ffffff',
-        'text-halo-color': '#0f172a',
-        'text-halo-width': 0.2,
-      },
-    });
-
-    // Hover glow (soft orange fill behind the ring — visible even on clusters)
-    map.addLayer({
-      id: 'hover-glow',
-      type: 'circle',
-      source: HOVER_SOURCE_ID,
-      paint: {
-        'circle-color': '#f97316',
-        'circle-radius': ['coalesce', ['get', 'hoverRadius'], 24],
-        'circle-opacity': 0.18,
-        'circle-blur': 0.6,
-      },
-    });
-
-    // Hover ring (bright orange, prominent)
-    map.addLayer({
-      id: 'hover-ring',
-      type: 'circle',
-      source: HOVER_SOURCE_ID,
-      paint: {
-        'circle-color': 'transparent',
-        'circle-radius': ['coalesce', ['get', 'ringRadius'], 18],
-        'circle-stroke-width': 3,
-        'circle-stroke-color': '#f97316',
-        'circle-stroke-opacity': 1,
-      },
-    });
-
-    // Highlight markers (red ring for selected experience locations)
-    map.addLayer({
-      id: 'highlight-ring',
-      type: 'circle',
-      source: HIGHLIGHT_SOURCE_ID,
-      paint: {
-        'circle-color': 'transparent',
-        'circle-radius': 14,
-        'circle-stroke-width': 3,
-        'circle-stroke-color': '#ef4444',
-        'circle-stroke-opacity': 0.8,
-      },
-    });
-    map.addLayer({
-      id: 'highlight-point',
-      type: 'circle',
-      source: HIGHLIGHT_SOURCE_ID,
-      paint: {
-        'circle-color': '#ef4444',
-        'circle-radius': 6,
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff',
-      },
-    });
+  // The pins and their badges, then the selection and the hover over them —
+  // the scene's layers in the scene's order, the same as Map mode's.
+  for (const layer of SCENE_MARKER_ORDER) map.addLayer(unclustered(layer));
+  for (const layer of SCENE_OVERLAY_ORDER) map.addLayer(layer);
 }

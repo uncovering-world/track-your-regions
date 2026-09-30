@@ -31,7 +31,7 @@ import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
 import { LazyAddExperienceDialog, LazyCurationDialog } from '../shared/lazyCurationDialogs';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
-import { SOURCE_ID, HIGHLIGHT_SOURCE_ID } from './discoverMapLayers';
+import { SCENE_SOURCES } from '../experienceMarkers/scene';
 import { useDiscoverMap } from './useDiscoverMap';
 import { useDiscoverHover } from './useDiscoverHover';
 import { frameGeoJson } from '../../utils/mapUtils';
@@ -313,7 +313,7 @@ export function DiscoverExperienceView({
     if (!map) return;
 
     const updateData = () => {
-      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      const source = map.getSource(SCENE_SOURCES.markers) as maplibregl.GeoJSONSource | undefined;
       if (!source) return;
 
       // Hide selected experience's main marker — its locations are shown as highlight dots
@@ -391,7 +391,7 @@ export function DiscoverExperienceView({
       }
     };
 
-    if (map.getSource(SOURCE_ID)) {
+    if (map.getSource(SCENE_SOURCES.markers)) {
       updateData();
       return;
     }
@@ -423,7 +423,7 @@ export function DiscoverExperienceView({
     }
 
     const updateHighlight = () => {
-      const source = map.getSource(HIGHLIGHT_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      const source = map.getSource(SCENE_SOURCES.highlight) as maplibregl.GeoJSONSource | undefined;
       if (!source) return;
 
       // A folded object is one point here too. The selected object is drawn by
@@ -454,7 +454,7 @@ export function DiscoverExperienceView({
       }
     };
 
-    if (map.getSource(HIGHLIGHT_SOURCE_ID)) {
+    if (map.getSource(SCENE_SOURCES.highlight)) {
       updateHighlight();
     } else {
       map.on('load', updateHighlight);

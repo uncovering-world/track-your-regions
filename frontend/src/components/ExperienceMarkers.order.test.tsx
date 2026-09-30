@@ -22,6 +22,7 @@ import { render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HoverProvider } from '../hooks/useHoverContext';
+import { SCENE_MARKER_ORDER, SCENE_OVERLAY_ORDER } from './experienceMarkers/scene';
 
 vi.mock('react-map-gl/maplibre', () => ({
   useMap: () => ({ current: undefined }),
@@ -86,5 +87,15 @@ describe('the order Map mode mounts its sources in', () => {
     }
     // And the outline over its own wash, or the 15% fill would sit on the line.
     expect(at('exp-extent-fill')).toBeLessThan(at('exp-extent-line'));
+  });
+});
+
+describe('the scene layers Map mode mounts', () => {
+  it('are the pins, then the selection, then the hover — the order Discover adds them in', () => {
+    // `discover/discoverMapLayers.test.ts` holds Discover to the same two
+    // lists, so the maps cannot paint one over the other differently.
+    const { layers } = draw();
+    const scene = [...SCENE_MARKER_ORDER, ...SCENE_OVERLAY_ORDER].map(l => l.id);
+    expect(layers.filter(id => id != null && scene.includes(id))).toEqual(scene);
   });
 });

@@ -23,7 +23,8 @@ import * as maplibregl from 'maplibre-gl';
 import type { Experience } from '../../api/experiences';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../../hooks/useHoverContext';
-import { clusterRadiusFor, SOURCE_ID, HOVER_SOURCE_ID } from './discoverMapLayers';
+import { clusterRadiusFor, LAYER_CLUSTERS } from './discoverMapLayers';
+import { SCENE_SOURCES, LAYER_MARKERS } from '../experienceMarkers/scene';
 import { pointInView } from '../../utils/viewBounds';
 
 /**
@@ -46,7 +47,7 @@ function pinRingsFor(map: maplibregl.Map, expId: number): GeoJSON.Feature<GeoJSO
   // (`promoteId` is deliberately absent, see `discoverMapLayers.ts`). Counting the
   // copies would make an object look fully drawn and skip the cluster pass below.
   const byPosition = new Map<string, GeoJSON.Feature<GeoJSON.Point>>();
-  for (const f of map.queryRenderedFeatures({ layers: ['unclustered-point'] })) {
+  for (const f of map.queryRenderedFeatures({ layers: [LAYER_MARKERS] })) {
     if (f.properties?.id !== expId) continue;
     const point = f.geometry as GeoJSON.Point;
     const key = point.coordinates.map(c => c.toFixed(6)).join(',');
@@ -176,7 +177,7 @@ export function useDiscoverHover({
   useEffect(() => subscribeToHoverTarget(store, ({ hoveredExperienceId, hoveredLocationId, hoverSource }) => {
     const map = mapRef.current;
     if (!map) return;
-    const hoverSource_ = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    const hoverSource_ = map.getSource(SCENE_SOURCES.hover) as maplibregl.GeoJSONSource | undefined;
     if (!hoverSource_) return;
 
     if (hoverSource === 'list' && hoveredLocationId != null) {
@@ -209,7 +210,7 @@ export function useDiscoverHover({
 
     const map = mapRef.current;
     if (!map) return;
-    const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    const hoverSource = map.getSource(SCENE_SOURCES.hover) as maplibregl.GeoJSONSource | undefined;
     if (!hoverSource) return;
 
     const exp = experiencesRef.current.find(e => e.id === expId);
@@ -268,9 +269,9 @@ export function useDiscoverHover({
     const onScreen = drawn.filter(([lng, lat]) => pointInView(lng, lat, inView));
     if (pinRings.length >= onScreen.length) return;
 
-    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    const source = map.getSource(SCENE_SOURCES.markers) as maplibregl.GeoJSONSource | undefined;
     if (!source) return;
-    const clusterFeatures = map.queryRenderedFeatures({ layers: ['clusters'] });
+    const clusterFeatures = map.queryRenderedFeatures({ layers: [LAYER_CLUSTERS] });
     if (clusterFeatures.length === 0) {
       if (pinRings.length === 0) {
         // Nothing of this object is on screen at all: ring where it says it is.
@@ -334,7 +335,7 @@ export function useDiscoverHover({
 
     const map = mapRef.current;
     if (!map) return;
-    const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    const hoverSource = map.getSource(SCENE_SOURCES.hover) as maplibregl.GeoJSONSource | undefined;
     if (hoverSource) {
       hoverSource.setData({ type: 'FeatureCollection', features: [] });
     }
