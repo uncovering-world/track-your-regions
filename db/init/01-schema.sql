@@ -2783,6 +2783,15 @@ COMMENT ON COLUMN experience_sync_logs.progress_done IS 'Items the run had gone 
 COMMENT ON COLUMN experience_sync_logs.progress_total IS 'Items the run was given to go through; 0 while it is still collecting. The startup sweep closes a killed run with this as its total_fetched, the figure a failed run closes with.';
 COMMENT ON COLUMN experience_sync_logs.progress_at IS 'When the running run last wrote its progress: at each change of phase, at most every two seconds while its counts move, and every fifteen seconds while they do not. Its progress writes only ever touch a running row.';
 
+-- The objects a run moved and has not placed yet (#1152): placement runs after
+-- the row closes, so a restart during it would otherwise leave them in no
+-- region with the run reading success. The default is set apart from the
+-- column so the rows from before keep NULL (migration 067).
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS unplaced_experience_ids INTEGER[];
+ALTER TABLE experience_sync_logs ALTER COLUMN unplaced_experience_ids SET DEFAULT '{}';
+
+COMMENT ON COLUMN experience_sync_logs.unplaced_experience_ids IS 'The objects whose points this run moved and that are not yet placed in their regions (#1152). Written with the run''s progress, emptied when placement succeeds, taken over by the source''s next real run, and read by the startup sweep, which marks a closed run still naming any partial. Empty on a preview, which moves nothing; NULL on runs from before the column.';
+
 -- Built for the "New" chip's per-row lookup of the latest completed non-dry run
 -- of a source, which #529 deleted: the chip now counts from published_at and
 -- reads no sync log at all. Kept because dropping an index is its own decision
