@@ -10,8 +10,9 @@
  * ancestor's row comes from the tree (`directPlacementSql`, ADR-0054).
  */
 
+import type { PoolClient } from 'pg';
 import type { AssignmentStatus, PlacementCounts } from '../../api/responses/admin.js';
-import { pool } from '../../db/index.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
 import { offeredLocationSql } from '../../db/readerPredicates.js';
 
 export interface AssignmentProgress {
@@ -32,12 +33,14 @@ export const runningAssignments = new Map<number, AssignmentProgress>();
 function checkCancelled(progress: AssignmentProgress): boolean {
   if (!progress.cancel) return false;
   progress.status = 'cancelled';
-  progress.statusMessage = 'Cancelled';
+  // The rebuild is one transaction, rolled back on a cancel.
+  progress.statusMessage = 'Cancelled; the assignments from before stand.';
   return true;
 }
 
 /** Step 1: drop the previous run's auto-assignments for this world view (and optionally one source). */
 async function clearPreviousAssignments(
+  client: PoolClient,
   worldViewId: number,
   sourceId: number | undefined,
   progress: AssignmentProgress
@@ -45,7 +48,7 @@ async function clearPreviousAssignments(
   progress.statusMessage = 'Clearing previous auto-assignments...';
   const params = sourceId ? [worldViewId, sourceId] : [worldViewId];
 
-  const clearLocResult = await pool.query(`
+  const clearLocResult = await client.query(`
     DELETE FROM experience_location_regions elr
     USING experience_locations el, experiences e, regions r
     WHERE elr.location_id = el.id
@@ -57,7 +60,7 @@ async function clearPreviousAssignments(
   `, params);
   console.log(`[Region Assignment] Cleared ${clearLocResult.rowCount} location-region auto-assignments`);
 
-  const clearExpResult = await pool.query(`
+  const clearExpResult = await client.query(`
     DELETE FROM experience_regions er
     USING regions r
     WHERE er.region_id = r.id
@@ -188,13 +191,14 @@ const THESE_EXPERIENCES = 'AND el.experience_id = ANY($2::int[])';
 
 /** Step 2: insert direct location→region rows — the leaves that hold each point, and for a point no leaf holds, the other regions that do. */
 async function assignDirect(
+  client: PoolClient,
   worldViewId: number,
   sourceId: number | undefined,
   progress: AssignmentProgress
 ): Promise<void> {
   progress.statusMessage = 'Computing direct spatial containment for locations...';
 
-  const directResult = await pool.query(
+  const directResult = await client.query(
     directPlacementSql(sourceId ? ONE_SOURCE : ''),
     sourceId ? [worldViewId, sourceId] : [worldViewId],
   );
@@ -205,6 +209,7 @@ async function assignDirect(
 
 /** Step 3: propagate location→region assignments to all ancestor regions. */
 async function assignAncestors(
+  client: PoolClient,
   worldViewId: number,
   sourceId: number | undefined,
   progress: AssignmentProgress
@@ -213,7 +218,7 @@ async function assignAncestors(
   progress.statusMessage = 'Propagating to ancestor regions...';
   const params = sourceId ? [worldViewId, sourceId] : [worldViewId];
 
-  const ancestorResult = await pool.query(`
+  const ancestorResult = await client.query(`
     WITH RECURSIVE ancestors AS (
       -- Start with direct assignments for this world view
       SELECT elr.location_id, r.parent_region_id as region_id
@@ -249,6 +254,7 @@ async function assignAncestors(
 
 /** Step 4: denormalize location→region rows into experience→region for backward compatibility. */
 async function denormalizeExperienceRegions(
+  client: PoolClient,
   worldViewId: number,
   sourceId: number | undefined,
   progress: AssignmentProgress
@@ -257,7 +263,7 @@ async function denormalizeExperienceRegions(
   progress.statusMessage = 'Denormalizing to experience-region assignments...';
   const params = sourceId ? [worldViewId, sourceId] : [worldViewId];
 
-  const expResult = await pool.query(`
+  const expResult = await client.query(`
     INSERT INTO experience_regions (experience_id, region_id, assignment_type)
     SELECT DISTINCT el.experience_id, elr.region_id, 'auto'
     FROM experience_location_regions elr
@@ -274,9 +280,48 @@ async function denormalizeExperienceRegions(
 }
 
 /**
+ * The rebuild's steps, on the transaction the caller opened: clear the
+ * automatic rows, place every point again, carry the places up the tree,
+ * write each experience's regions from its points, and stamp the world view.
+ * Answers false when a cancel stopped it between two steps, for the caller to
+ * roll back.
+ */
+async function rebuild(
+  client: PoolClient,
+  worldViewId: number,
+  sourceId: number | undefined,
+  progress: AssignmentProgress,
+): Promise<boolean> {
+  await clearPreviousAssignments(client, worldViewId, sourceId, progress);
+  if (checkCancelled(progress)) return false;
+
+  await assignDirect(client, worldViewId, sourceId, progress);
+  if (checkCancelled(progress)) return false;
+
+  await assignAncestors(client, worldViewId, sourceId, progress);
+  if (checkCancelled(progress)) return false;
+
+  await denormalizeExperienceRegions(client, worldViewId, sourceId, progress);
+
+  await client.query(
+    'UPDATE world_views SET last_assignment_at = NOW() WHERE id = $1',
+    [worldViewId]
+  );
+  return true;
+}
+
+/**
  * Assign experiences to regions based on spatial containment.
  * Uses experience_locations for per-location assignment, supporting multi-location experiences.
  * Then propagates assignments up to ancestor regions and denormalizes to experience_regions.
+ *
+ * One transaction, clear and rebuild alike (#1152). A reader goes on seeing
+ * the assignments from before until the new ones commit, and a cancel, a
+ * failure or a restart between the clear and the inserts leaves them as they
+ * were: a world view is never left without the automatic assignments it had,
+ * with nothing to say so. The price is a transaction as long as the rebuild —
+ * seconds on the largest world view — holding the rows it deletes and a key
+ * share on every point it places (`db/locks.ts`).
  *
  * @param worldViewId - The world view to assign experiences within
  * @param sourceId - Optional: only assign experiences from this source
@@ -302,25 +347,20 @@ export async function assignExperiencesToRegions(
   };
   runningAssignments.set(worldViewId, progress);
 
+  let client: PoolClient | undefined;
+  let unusable: Error | undefined;
   try {
     const sourceSuffix = sourceId ? ` (source ${sourceId})` : '';
     console.log(`[Region Assignment] Starting for world view ${worldViewId}${sourceSuffix}`);
 
-    await clearPreviousAssignments(worldViewId, sourceId, progress);
-    if (checkCancelled(progress)) return progress;
-
-    await assignDirect(worldViewId, sourceId, progress);
-    if (checkCancelled(progress)) return progress;
-
-    await assignAncestors(worldViewId, sourceId, progress);
-    if (checkCancelled(progress)) return progress;
-
-    await denormalizeExperienceRegions(worldViewId, sourceId, progress);
-
-    await pool.query(
-      'UPDATE world_views SET last_assignment_at = NOW() WHERE id = $1',
-      [worldViewId]
-    );
+    client = await pool.connect();
+    await client.query('BEGIN');
+    if (!await rebuild(client, worldViewId, sourceId, progress)) {
+      unusable = await rollbackQuietly(client);
+      console.log(`[Region Assignment] Cancelled for world view ${worldViewId}; rolled back`);
+      return progress;
+    }
+    await client.query('COMMIT');
 
     progress.status = 'complete';
     progress.statusMessage = `Complete: ${progress.directAssignments} direct, ${progress.ancestorAssignments} ancestor, ${progress.experienceAssignments} experience assignments`;
@@ -331,19 +371,19 @@ export async function assignExperiencesToRegions(
     return progress;
 
   } catch (err) {
+    // A client whose ROLLBACK also failed is destroyed rather than pooled.
+    if (client) unusable = await rollbackQuietly(client);
     progress.status = 'failed';
-    progress.statusMessage = 'Region assignment failed; the server log has the cause.';
+    progress.statusMessage = 'Region assignment failed, and the assignments from before stand; the server log has the cause.';
     progress.errors++;
     console.error('[Region Assignment] Failed:', err);
     throw err;
   } finally {
-    // Clean up after delay, but only if this assignment's progress is still current
-    const thisProgress = progress;
-    setTimeout(() => {
-      if (runningAssignments.get(worldViewId) === thisProgress) {
-        runningAssignments.delete(worldViewId);
-      }
-    }, 30000);
+    client?.release(unusable);
+    // The finished run's progress stays until the next start replaces it: a
+    // panel that followed the run finds its closing line however long its tab
+    // was throttled, so a status of none can only mean the server does not
+    // know of the run — it was restarted under it (#1152).
   }
 }
 
@@ -407,8 +447,9 @@ export async function getExperienceCountsByRegion(
  * `locationWriter` keeps the row of a point that stayed put, the work left is
  * only the experiences whose geometry actually differs. Doing the full rebuild
  * for that would be wrong twice over: it re-tests every point of the world view
- * for the sake of a few, and its clear-then-insert leaves a window in which the
- * world view has no assignments at all and users see empty regions.
+ * for the sake of a few, and its one transaction holds every automatic row of
+ * the world view, and a key share on every point, for seconds rather than
+ * milliseconds.
  *
  * Scoped by experience rather than by location on purpose. A point that moved
  * out of a region can leave a stale row at the *experience* level, which is a

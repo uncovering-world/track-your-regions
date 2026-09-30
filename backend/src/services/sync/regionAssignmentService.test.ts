@@ -21,24 +21,40 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn(), connect: vi.fn() },
+  rollbackQuietly: async (client: { query: (sql: string) => Promise<unknown> }) => {
+    try {
+      await client.query('ROLLBACK');
+      return undefined;
+    } catch (error) {
+      return error as Error;
+    }
+  },
 }));
 
 import { pool } from '../../db/index.js';
-import { assignExperiencesToRegions, assignRegionsForExperiences } from './regionAssignmentService.js';
+import {
+  assignExperiencesToRegions, assignRegionsForExperiences, cancelAssignment, getAssignmentStatus,
+} from './regionAssignmentService.js';
 
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
-const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
-function fakeClient() {
+/**
+ * A client that records what it is sent. `answer` may throw for a statement,
+ * or run something between two steps, the way a cancel press lands.
+ */
+function fakeClient(answer: (sql: string) => void = () => {}) {
   const statements: string[] = [];
+  const calls: { sql: string; params: unknown[] | undefined }[] = [];
   const client = {
-    query: vi.fn(async (sql: string) => {
+    query: vi.fn(async (sql: string, params?: unknown[]) => {
       statements.push(sql);
+      calls.push({ sql, params });
+      answer(sql);
       return { rows: [], rowCount: 0 };
     }),
     release: vi.fn(),
   };
-  return { client, statements };
+  return { client, statements, calls };
 }
 
 const ONE_SOURCE = 'AND e.source_id = $2';
@@ -60,12 +76,16 @@ async function movedPathDirect(): Promise<string> {
 
 /** The direct statement and its parameters a world view's rebuild sends, narrowed to one source or not. */
 async function rebuildDirect(worldViewId: number, sourceId?: number): Promise<{ sql: string; params: unknown[] }> {
-  mockedQuery.mockClear();
+  const { client, calls } = fakeClient();
+  mockedConnect.mockResolvedValue(client);
   await assignExperiencesToRegions(worldViewId, sourceId);
-  const call = mockedQuery.mock.calls.find(c => isDirect(String(c[0])));
+  const call = calls.find(c => isDirect(c.sql));
   expect(call, 'no direct placement statement was sent').toBeDefined();
-  return { sql: String(call?.[0]), params: call?.[1] as unknown[] };
+  return { sql: String(call?.sql), params: call?.params as unknown[] };
 }
+
+/** The statement's first words, enough to tell the rebuild's steps apart. */
+const head = (sql: string) => sql.trim().split(/\s+/).slice(0, 3).join(' ');
 
 describe('assignRegionsForExperiences', () => {
   beforeEach(() => {
@@ -108,8 +128,9 @@ describe('assignRegionsForExperiences', () => {
 
 describe('assignExperiencesToRegions', () => {
   beforeEach(() => {
-    mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockedConnect.mockReset();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
   it('places the points still on offer on the full-rebuild path too', async () => {
@@ -117,10 +138,12 @@ describe('assignExperiencesToRegions', () => {
     // whole world view, and an admin reaches for it exactly when the
     // assignments are already wrong. A withdrawn point voting there would put
     // its experience back into a region no reader can see it in.
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
     await assignExperiencesToRegions(4242);
 
-    const sent = mockedQuery.mock.calls.map(call => String(call[0]));
-    const containment = sent.find(s => /ST_Contains/.test(s));
+    const containment = statements.find(s => /ST_Contains/.test(s));
     expect(containment).toBeDefined();
     // Both terms on the full-rebuild path too, for the reason above: the two paths
     // were separate statements once, and a revert on either stayed green.
@@ -129,13 +152,90 @@ describe('assignExperiencesToRegions', () => {
     // pending and never to be published, so no region may count it.
     expect(containment).toMatch(/el\.refused_at IS NULL/);
   });
+
+  it('clears and rebuilds in one transaction on one client, and stamps the world view inside it', async () => {
+    // Autocommit statements on the pool left a window between the clear and
+    // the inserts: a restart in it left the world view without its automatic
+    // assignments, and nothing said so (#1152).
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+    const poolQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
+    poolQuery.mockClear();
+
+    const progress = await assignExperiencesToRegions(4250);
+
+    expect(statements.map(head)).toEqual([
+      'BEGIN',
+      'DELETE FROM experience_location_regions',
+      'DELETE FROM experience_regions',
+      'WITH offered AS',
+      'WITH RECURSIVE ancestors',
+      'INSERT INTO experience_regions',
+      'UPDATE world_views SET',
+      'COMMIT',
+    ]);
+    expect(poolQuery).not.toHaveBeenCalled();
+    expect(client.release).toHaveBeenCalledTimes(1);
+    expect(client.release.mock.calls[0][0]).toBeUndefined();
+    expect(progress.status).toBe('complete');
+  });
+
+  it('rolls back when a step throws, and says the assignments from before stand', async () => {
+    const boom = new Error('canceling statement due to statement timeout');
+    const { client, statements } = fakeClient((sql) => {
+      if (/WITH RECURSIVE ancestors/.test(sql)) throw boom;
+    });
+    mockedConnect.mockResolvedValue(client);
+
+    await expect(assignExperiencesToRegions(4251)).rejects.toBe(boom);
+
+    expect(statements.map(head)).toContain('ROLLBACK');
+    expect(statements.map(head)).not.toContain('COMMIT');
+    expect(statements.some(s => /UPDATE world_views/.test(s))).toBe(false);
+    expect(client.release).toHaveBeenCalledTimes(1);
+    expect(getAssignmentStatus(4251)).toMatchObject({
+      status: 'failed',
+      statusMessage: expect.stringContaining('the assignments from before stand'),
+    });
+  });
+
+  it('destroys a client whose ROLLBACK failed too, rather than pooling it mid-transaction', async () => {
+    const lost = new Error('Connection terminated unexpectedly');
+    const { client } = fakeClient((sql) => {
+      if (/^DELETE FROM experience_regions/.test(sql.trim()) || sql === 'ROLLBACK') throw lost;
+    });
+    mockedConnect.mockResolvedValue(client);
+
+    await expect(assignExperiencesToRegions(4252)).rejects.toBe(lost);
+
+    expect(client.release).toHaveBeenCalledWith(lost);
+  });
+
+  it('rolls back a cancel that lands after the clear, and commits nothing', async () => {
+    const { client, statements } = fakeClient((sql) => {
+      if (/^DELETE FROM experience_regions/.test(sql.trim())) cancelAssignment(4253);
+    });
+    mockedConnect.mockResolvedValue(client);
+
+    const progress = await assignExperiencesToRegions(4253);
+
+    expect(progress).toMatchObject({
+      status: 'cancelled', statusMessage: 'Cancelled; the assignments from before stand.',
+    });
+    expect(statements.map(head)).toEqual([
+      'BEGIN',
+      'DELETE FROM experience_location_regions',
+      'DELETE FROM experience_regions',
+      'ROLLBACK',
+    ]);
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('the direct step both ways in share', () => {
   beforeEach(() => {
     mockedConnect.mockReset();
-    mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
   it('is one statement, whatever narrows the points', async () => {
