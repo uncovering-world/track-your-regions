@@ -26,8 +26,9 @@ export const ORPHANED_RUN_MARKER = { externalId: 'system', error: ORPHANED_RUN_E
  * A separate marker rather than a plain error string, for the same reason as
  * the two above: what an operator has to do about it is specific. The catalogue
  * is correct and the changeset landed — what is stale is `experience_regions`
- * for the objects this run moved, and the remedy is a full re-assignment of
- * that world view, which nothing else in the product will prompt for.
+ * for the objects this run moved. The row goes on naming them
+ * (`unplaced_experience_ids`, #1152), so the source's next real run places
+ * them again; a full re-assignment of the world view places them now.
  */
 export const PLACEMENT_FAILED_MARKER = { externalId: 'region-assignment' } as const;
 

@@ -86,6 +86,11 @@ export interface SyncLogProgress {
   held: number;
   filtered: number;
   errors: number;
+  /**
+   * The objects whose points the run has moved, and those it took over from
+   * earlier runs, none of them placed yet (#1152); empty on a preview.
+   */
+  unplaced: number[];
 }
 
 /**
@@ -112,13 +117,56 @@ export async function writeSyncLogProgress(logId: number, snapshot: SyncLogProgr
       total_held = $12,
       total_filtered = $13,
       total_errors = $14,
+      unplaced_experience_ids = $15::int[],
       progress_at = NOW()
      WHERE id = $1 AND status = 'running'`,
     [logId, snapshot.phase, snapshot.statusMessage, snapshot.currentItem, snapshot.done,
      snapshot.total, snapshot.created, snapshot.updated, snapshot.unchanged, snapshot.missing,
-     snapshot.curatedConflicts, snapshot.held, snapshot.filtered, snapshot.errors],
+     snapshot.curatedConflicts, snapshot.held, snapshot.filtered, snapshot.errors, snapshot.unplaced],
   );
   return (result.rowCount ?? 0) > 0;
+}
+
+/** What earlier runs of a source moved and never placed, and the rows that name it. */
+export interface UnplacedExperiences {
+  logIds: number[];
+  experienceIds: number[];
+}
+
+/**
+ * The objects the source's earlier closed real runs moved and did not place
+ * (#1152): a run the restart killed before its placement, or during it, and
+ * one whose placement failed. Read by the source's next real run, which
+ * places them with its own. A running row is not read: its run, in another
+ * process, will place what it names.
+ */
+export async function readUnplacedExperiences(
+  sourceId: number,
+  beforeLogId: number,
+): Promise<UnplacedExperiences> {
+  const { rows } = await pool.query<Pick<ExperienceSyncLogsRow, 'id' | 'unplaced_experience_ids'>>(
+    `SELECT id, unplaced_experience_ids
+       FROM experience_sync_logs
+      WHERE source_id = $1 AND id < $2 AND status <> 'running' AND NOT is_dry_run
+        AND cardinality(unplaced_experience_ids) > 0
+      ORDER BY id`,
+    [sourceId, beforeLogId],
+  );
+  const experienceIds = new Set<number>();
+  for (const row of rows) {
+    for (const id of row.unplaced_experience_ids ?? []) experienceIds.add(id);
+  }
+  return { logIds: rows.map(row => row.id), experienceIds: [...experienceIds] };
+}
+
+/** Say on these runs' rows that what they named is placed now. Answers how many rows changed. */
+export async function clearUnplacedExperiences(logIds: number[]): Promise<number> {
+  const result = await pool.query(
+    `UPDATE experience_sync_logs SET unplaced_experience_ids = '{}'
+      WHERE id = ANY($1::int[]) AND cardinality(unplaced_experience_ids) > 0`,
+    [logIds],
+  );
+  return result.rowCount ?? 0;
 }
 
 export interface SyncLogStats {

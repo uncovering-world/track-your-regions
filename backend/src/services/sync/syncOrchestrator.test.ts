@@ -18,6 +18,8 @@ vi.mock('./syncUtils.js', () => ({
   updateSyncLog: vi.fn().mockResolvedValue(undefined),
   writeSyncLogProgress: vi.fn().mockResolvedValue(true),
   annotateClosedSyncLog: vi.fn().mockResolvedValue(undefined),
+  readUnplacedExperiences: vi.fn().mockResolvedValue({ logIds: [], experienceIds: [] }),
+  clearUnplacedExperiences: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('./changeRecorder.js', () => ({

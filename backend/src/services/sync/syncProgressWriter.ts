@@ -13,6 +13,11 @@
  * time; what comes up meanwhile waits, the newest replacing the one before
  * it. A failed write is logged and never thrown: the run's own work matters
  * more than its report of it, and the close writes the figures anyway.
+ *
+ * It also writes the objects the run has moved and not yet placed (#1152),
+ * with the figures and on the same gap: a restart then leaves a row naming
+ * them, for the next run to place. The close's last write, while the row is
+ * still running, names every one.
  */
 
 import { writeSyncLogProgress, type SyncLogProgress } from './syncUtils.js';
@@ -50,7 +55,7 @@ export interface ProgressWriter {
 }
 
 /** The row's progress for a run still going, or null for one that has ended. */
-function snapshotOf(progress: SyncProgress): SyncLogProgress | null {
+function snapshotOf(progress: SyncProgress, moved: ReadonlySet<number>): SyncLogProgress | null {
   const { status } = progress;
   if (status !== 'fetching' && status !== 'processing' && status !== 'assigning') return null;
   return {
@@ -67,6 +72,8 @@ function snapshotOf(progress: SyncProgress): SyncLogProgress | null {
     held: progress.held,
     filtered: progress.filtered,
     errors: progress.errors,
+    // A preview moves nothing, and names nothing for a later run to place.
+    unplaced: progress.dryRun ? [] : [...moved],
   };
 }
 
@@ -77,10 +84,15 @@ function sameProgress(a: SyncLogProgress, b: SyncLogProgress): boolean {
 
 export function startProgressWriter(
   progress: SyncProgress,
-  options: Partial<ProgressWriterTiming> & { logPrefix?: string } = {},
+  options: Partial<ProgressWriterTiming> & {
+    logPrefix?: string;
+    /** The run's moved objects, a set it only ever adds to. */
+    moved?: ReadonlySet<number>;
+  } = {},
 ): ProgressWriter {
   const timing = { ...PROGRESS_WRITER_TIMING, ...options };
   const logPrefix = options.logPrefix ?? '[Sync]';
+  const moved = options.moved ?? new Set<number>();
   let last: SyncLogProgress | null = null;
   let lastAt = 0;
   let inFlight: Promise<void> | null = null;
@@ -89,6 +101,9 @@ export function startProgressWriter(
 
   function due(snapshot: SyncLogProgress, force: boolean): boolean {
     if (force || last === null || snapshot.phase !== last.phase) return true;
+    // A longer list of moved objects is a change like any figure's, written on
+    // the same gap: on a source's first run the whole source lands in it, and
+    // rewriting that array every tick would cost more than the lag it saves.
     const since = Date.now() - lastAt;
     if (since >= timing.heartbeatMs) return true;
     return since >= timing.minGapMs && !sameProgress(snapshot, last);
@@ -116,7 +131,7 @@ export function startProgressWriter(
   function flush(force = false): Promise<void> {
     const settled = inFlight ?? Promise.resolve();
     if (closed || progress.logId === null) return settled;
-    const snapshot = snapshotOf(progress);
+    const snapshot = snapshotOf(progress, moved);
     if (snapshot === null || !due(snapshot, force)) return settled;
     if (inFlight !== null) {
       waiting = snapshot;

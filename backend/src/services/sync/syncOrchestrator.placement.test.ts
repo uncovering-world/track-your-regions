@@ -22,6 +22,8 @@ vi.mock('./syncUtils.js', () => ({
   updateSyncLog: vi.fn().mockResolvedValue(undefined),
   writeSyncLogProgress: vi.fn().mockResolvedValue(true),
   annotateClosedSyncLog: vi.fn().mockResolvedValue(undefined),
+  readUnplacedExperiences: vi.fn().mockResolvedValue({ logIds: [], experienceIds: [] }),
+  clearUnplacedExperiences: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('./changeRecorder.js', () => ({
@@ -49,7 +51,9 @@ vi.mock('./missingDetection.js', () => ({
   countSeenAmongActive: vi.fn().mockResolvedValue(0),
 }));
 
-import { updateSyncLog, annotateClosedSyncLog } from './syncUtils.js';
+import {
+  updateSyncLog, annotateClosedSyncLog, clearUnplacedExperiences, readUnplacedExperiences,
+} from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
 import { assignRegionsForExperiences, worldViewsWithGeometry } from './regionAssignmentService.js';
 
@@ -313,5 +317,72 @@ describe('placing what moved', () => {
     await orchestrateSync(config, null);
 
     expect(labelDuringPlacement).toBe('Assigning regions for 2 moved objects...');
+  });
+});
+
+describe('what earlier runs moved and never placed (#1152)', () => {
+  const read = readUnplacedExperiences as ReturnType<typeof vi.fn>;
+  const clear = clearUnplacedExperiences as ReturnType<typeof vi.fn>;
+  /** Run 40 was killed while placing object 7, run 41 while placing 8 and 11. */
+  const leftOver = { logIds: [40, 41], experienceIds: [7, 8, 11] };
+
+  /** A run that moves object 11 itself. */
+  const movesEleven = () => makeConfig({
+    processItem: vi.fn().mockImplementation(async (_i, _p, ctx) => {
+      ctx.onLocationsChanged(11);
+      return { ...processed('updated'), experienceId: 11 };
+    }),
+  });
+
+  beforeEach(() => {
+    (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(3);
+    (worldViewsWithGeometry as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([5]);
+    (annotateClosedSyncLog as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(undefined);
+    read.mockReset().mockResolvedValue(leftOver);
+    clear.mockReset().mockResolvedValue(2);
+    runningSyncs.delete(TEST_SOURCE_ID);
+  });
+
+  it('places them with what this run moved, asking only of the runs before its own', async () => {
+    await orchestrateSync(movesEleven(), null);
+
+    expect(read).toHaveBeenCalledWith(TEST_SOURCE_ID, 42);
+    const [ids, worldView] = (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect([...ids].sort((a: number, b: number) => a - b)).toEqual([7, 8, 11]);
+    expect(worldView).toBe(5);
+  });
+
+  it('empties this run\'s list and the lists it took over once placement succeeds', async () => {
+    await orchestrateSync(movesEleven(), null);
+
+    expect(clear).toHaveBeenCalledWith([42, 40, 41]);
+  });
+
+  it('leaves every list standing when placement fails, for the next run to place again', async () => {
+    (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('geometry exploded'));
+
+    await orchestrateSync(movesEleven(), null);
+
+    expect(clear).not.toHaveBeenCalled();
+    const note = (annotateClosedSyncLog as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    expect(note?.[2]).toBe('partial');
+  });
+
+  it('neither takes over nor empties anything on a preview', async () => {
+    await orchestrateSync(movesEleven(), null, { dryRun: true });
+
+    expect(read).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+    expect(assignRegionsForExperiences).not.toHaveBeenCalled();
+  });
+
+  it('places only its own when the list cannot be read, and leaves the earlier rows theirs', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    read.mockRejectedValue(new Error('connection reset'));
+
+    await orchestrateSync(movesEleven(), null);
+
+    expect(assignRegionsForExperiences).toHaveBeenCalledWith([11], 5);
+    expect(clear).toHaveBeenCalledWith([42]);
   });
 });
