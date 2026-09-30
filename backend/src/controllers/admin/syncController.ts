@@ -23,7 +23,7 @@ import type {
   WikidataCacheCleared,
   WikidataCacheTtlSet,
 } from '../../api/responses/admin.js';
-import type { CheckValue, ExperienceSourcesRow, WorldViewsRow } from '../../db/schema.generated.js';
+import type { ExperienceSourcesRow, WorldViewsRow } from '../../db/schema.generated.js';
 import {
   experienceSourceOf,
   syncChangeOf,
@@ -34,8 +34,9 @@ import {
   type SyncLogRow,
 } from './syncAnswerRows.js';
 import { isTerminalSyncStatus } from '../../services/sync/types.js';
-import { isCancellable } from '../../services/sync/syncOrchestrator.js';
-import { CHANGESET_LOST_MARKER } from '../../services/sync/syncLogMarkers.js';
+import { heldRunStatusOf, idleStatusOf, rowRunStatusOf } from './syncStatusAnswer.js';
+import { CHANGESET_LOST_MARKER, stoppedByRestartSql } from '../../services/sync/syncLogMarkers.js';
+import { readLatestSyncLog } from '../../services/sync/syncUtils.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { waitingCountsBySource } from '../experience/waitingCounts.js';
 import {
@@ -222,54 +223,21 @@ export async function setWikidataCacheTtl(
  * GET /api/admin/sync/sources/:sourceId/status
  */
 export async function getSyncStatus({ params: { sourceId } }: { params: SourceParams }): Promise<SyncStatus> {
-
-  // Get in-memory sync status (generic for all sources)
+  // The run this process holds answers first: it is the one a cancel reaches.
   const status = getServiceSyncStatus(sourceId);
+  if (status) return heldRunStatusOf(status);
 
-  if (status) {
-    const isRunning = !isTerminalSyncStatus(status.status);
-    // Whether a Cancel press would actually be acted on. Sent rather than
-    // re-derived in the panel: the rule has moved twice in this change alone,
-    // and a copy that lags shows up as a button promising what the server
-    // refuses.
-    const cancellable = isCancellable(status);
-    return {
-      running: isRunning,
-      cancellable,
-      kind: status.kind,
-      status: status.status,
-      statusMessage: status.statusMessage,
-      progress: status.progress,
-      total: status.total,
-      percent: status.total > 0 ? Math.round((status.progress / status.total) * 100) : 0,
-      created: status.created,
-      updated: status.updated,
-      unchanged: status.unchanged,
-      missing: status.missing,
-      curatedConflicts: status.curatedConflicts,
-      held: status.held,
-      filtered: status.filtered,
-      errors: status.errors,
-      currentItem: status.currentItem,
-      logId: status.logId,
-      dryRun: status.dryRun,
-    };
-  }
-
-  // No in-memory status - check the database for last sync status
   const source = await pool.query<Pick<ExperienceSourcesRow, 'last_sync_at' | 'last_sync_status'>>(
     'SELECT last_sync_at, last_sync_status FROM experience_sources WHERE id = $1',
     [sourceId]
   );
-
   if (source.rows.length === 0) throw notFound('Source not found');
 
-  return {
-    running: false,
-    lastSyncAt: source.rows[0].last_sync_at === null ? null : source.rows[0].last_sync_at.toISOString(),
-    // The CHECK is what makes the stored text one of the closing statuses.
-    lastSyncStatus: source.rows[0].last_sync_status as CheckValue<'experience_sources', 'last_sync_status'> | null,
-  };
+  // Then the rows (#1131): a run another process holds, or the last one, with
+  // how far it got when a restart stopped it.
+  const latest = await readLatestSyncLog(sourceId);
+  if (latest?.status === 'running') return rowRunStatusOf(latest);
+  return idleStatusOf(source.rows[0], latest);
 }
 
 /**
@@ -370,7 +338,12 @@ const SYNC_LOG_COLUMNS_SQL = `
       -- in batches with no transaction around them. Read from the marker the
       -- orchestrator leaves, because has_changeset alone cannot tell a lost
       -- record from an old run, nor a partial landing from a whole one.
-      COALESCE(l.error_details @> '[${JSON.stringify(CHANGESET_LOST_MARKER)}]', FALSE) AS changeset_lost
+      COALESCE(l.error_details @> '[${JSON.stringify(CHANGESET_LOST_MARKER)}]', FALSE) AS changeset_lost,
+      -- The startup sweep closed the run: the server was restarted under it,
+      -- so its counters are how far it got and its changeset never left
+      -- memory, which has_changeset alone would read as a run from before
+      -- change provenance.
+      ${stoppedByRestartSql('l')} AS stopped_by_restart
 `;
 
 /**

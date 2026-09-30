@@ -7827,6 +7827,79 @@ export interface SyncErrorDetail {
   error?: string;
 }
 
+export type SyncLastRunStatus = typeof SyncLastRunStatus[keyof typeof SyncLastRunStatus];
+
+
+export const SyncLastRunStatus = {
+  success: 'success',
+  partial: 'partial',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+/**
+ * The phase the run was last in; null on runs from before a run wrote its progress.
+ */
+export type SyncLastRunPhase = typeof SyncLastRunPhase[keyof typeof SyncLastRunPhase] | null;
+
+
+export const SyncLastRunPhase = {
+  fetching: 'fetching',
+  processing: 'processing',
+  assigning: 'assigning',
+} as const;
+
+/**
+ * A source's newest closed run, previews included, as its log row holds it.
+ */
+export interface SyncLastRun {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  logId: number;
+  status: SyncLastRunStatus;
+  dryRun: boolean;
+  startedAt: string | null;
+  completedAt: string | null;
+  /** The phase the run was last in; null on runs from before a run wrote its progress. */
+  phase: SyncLastRunPhase;
+  /**
+     * Items the run had gone through.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  progress: number;
+  /**
+     * Items it was given; 0 when it stopped while still collecting.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  total: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  created: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  updated: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  held: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  errors: number;
+  /** The server was restarted under the run and the startup sweep closed it, with its figures as they stood (#1131). */
+  stoppedByRestart: boolean;
+}
+
 export type SyncLogStatus = typeof SyncLogStatus[keyof typeof SyncLogStatus];
 
 
@@ -7918,6 +7991,8 @@ export interface SyncLog {
   has_changeset: boolean;
   /** The changeset insert threw, so the per-object record is missing or short. */
   changeset_lost: boolean;
+  /** The server was restarted under the run: its figures are how far it got, and its per-object record never left memory. */
+  stopped_by_restart: boolean;
 }
 
 export type SyncLogDetailStatus = typeof SyncLogDetailStatus[keyof typeof SyncLogDetailStatus];
@@ -8011,6 +8086,8 @@ export interface SyncLogDetail {
   has_changeset: boolean;
   /** The changeset insert threw, so the per-object record is missing or short. */
   changeset_lost: boolean;
+  /** The server was restarted under the run: its figures are how far it got, and its per-object record never left memory. */
+  stopped_by_restart: boolean;
   error_details: SyncErrorDetail[] | null;
 }
 
@@ -8093,7 +8170,7 @@ export const SyncStatusLastSyncStatus = {
 } as const;
 
 /**
- * A source's run as it stands: the figures of the run the server knows of, or the last run the database recorded.
+ * A source's run as it stands: the figures of the run this server holds, a run another holds as its log row says, or the last run the database recorded.
  */
 export interface SyncStatus {
   running: boolean;
@@ -8163,9 +8240,16 @@ export interface SyncStatus {
   currentItem?: string;
   logId?: number | null;
   dryRun?: boolean;
-  /** Sent instead of the run's figures when no run is known since the server started: the source's last run as the database holds it. */
+  /**
+     * Sent only for a run this server does not hold, read from its log row: when that run last wrote its progress. It cannot be cancelled from here.
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+     */
+  progressAt?: string;
+  /** Sent instead of the run's figures when no run is going: the source's last real run as the database holds it. */
   lastSyncAt?: string | null;
   lastSyncStatus?: SyncStatusLastSyncStatus;
+  /** Sent with `lastSyncAt` when the source has run at all. */
+  lastRun?: SyncLastRun;
 }
 
 export type TransferAcceptedTransferType = typeof TransferAcceptedTransferType[keyof typeof TransferAcceptedTransferType];

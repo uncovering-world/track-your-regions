@@ -27859,6 +27859,121 @@
         "additionalProperties": false,
         "description": "One error a run recorded."
       },
+      "SyncLastRun": {
+        "type": "object",
+        "properties": {
+          "logId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "partial",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fetching",
+                  "processing",
+                  "assigning"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The phase the run was last in; null on runs from before a run wrote its progress."
+          },
+          "progress": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Items the run had gone through."
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Items it was given; 0 when it stopped while still collecting."
+          },
+          "created": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "updated": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "held": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "errors": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "stoppedByRestart": {
+            "type": "boolean",
+            "description": "The server was restarted under the run and the startup sweep closed it, with its figures as they stood (#1131)."
+          }
+        },
+        "required": [
+          "logId",
+          "status",
+          "dryRun",
+          "startedAt",
+          "completedAt",
+          "phase",
+          "progress",
+          "total",
+          "created",
+          "updated",
+          "held",
+          "errors",
+          "stoppedByRestart"
+        ],
+        "additionalProperties": false,
+        "description": "A source's newest closed run, previews included, as its log row holds it."
+      },
       "SyncLog": {
         "type": "object",
         "properties": {
@@ -27997,6 +28112,10 @@
           "changeset_lost": {
             "type": "boolean",
             "description": "The changeset insert threw, so the per-object record is missing or short."
+          },
+          "stopped_by_restart": {
+            "type": "boolean",
+            "description": "The server was restarted under the run: its figures are how far it got, and its per-object record never left memory."
           }
         },
         "required": [
@@ -28021,7 +28140,8 @@
           "triggered_by",
           "triggered_by_name",
           "has_changeset",
-          "changeset_lost"
+          "changeset_lost",
+          "stopped_by_restart"
         ],
         "additionalProperties": false,
         "description": "One run of a source."
@@ -28165,6 +28285,10 @@
             "type": "boolean",
             "description": "The changeset insert threw, so the per-object record is missing or short."
           },
+          "stopped_by_restart": {
+            "type": "boolean",
+            "description": "The server was restarted under the run: its figures are how far it got, and its per-object record never left memory."
+          },
           "error_details": {
             "anyOf": [
               {
@@ -28202,6 +28326,7 @@
           "triggered_by_name",
           "has_changeset",
           "changeset_lost",
+          "stopped_by_restart",
           "error_details"
         ],
         "additionalProperties": false,
@@ -28388,8 +28513,14 @@
           "dryRun": {
             "type": "boolean"
           },
+          "progressAt": {
+            "description": "Sent only for a run this server does not hold, read from its log row: when that run last wrote its progress. It cannot be cancelled from here.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
           "lastSyncAt": {
-            "description": "Sent instead of the run's figures when no run is known since the server started: the source's last run as the database holds it.",
+            "description": "Sent instead of the run's figures when no run is going: the source's last real run as the database holds it.",
             "anyOf": [
               {
                 "type": "string",
@@ -28416,13 +28547,17 @@
                 "type": "null"
               }
             ]
+          },
+          "lastRun": {
+            "description": "Sent with `lastSyncAt` when the source has run at all.",
+            "$ref": "#/components/schemas/SyncLastRun"
           }
         },
         "required": [
           "running"
         ],
         "additionalProperties": false,
-        "description": "A source's run as it stands: the figures of the run the server knows of, or the last run the database recorded."
+        "description": "A source's run as it stands: the figures of the run this server holds, a run another holds as its log row says, or the last run the database recorded."
       },
       "TokenUsage": {
         "type": "object",

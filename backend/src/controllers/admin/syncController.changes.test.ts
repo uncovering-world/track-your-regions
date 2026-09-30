@@ -49,7 +49,7 @@ const LOG_ROW = {
   total_fetched: 1248, total_created: 0, total_updated: 3, total_unchanged: 1245, total_missing: 0,
   total_curated_conflicts: 0, total_held: 0, total_filtered: 0, total_errors: 0, is_dry_run: false,
   detection_skipped_reason: null, withdrawal_skipped_reason: null, triggered_by: 1, triggered_by_name: 'admin',
-  has_changeset: true, changeset_lost: false, error_details: null,
+  has_changeset: true, changeset_lost: false, stopped_by_restart: false, error_details: null,
 };
 
 describe('sync log queries', () => {
@@ -82,6 +82,28 @@ describe('sync log queries', () => {
       expect(String(call)).toContain('AS changeset_lost');
       expect(String(call)).toContain('{"externalId":"changeset"}');
     }
+  });
+
+  it('says whether a restart stopped the run, from the marker the startup sweep leaves', async () => {
+    // A killed run's counters are real and its changeset never left memory:
+    // read off has_changeset alone, the card would call it a run from before
+    // change provenance (#1131).
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValueOnce({ rows: [{ ...LOG_ROW, status: 'failed', stopped_by_restart: true }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ count: '1' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ ...LOG_ROW, status: 'failed', stopped_by_restart: true }] });
+    const list = makeRes();
+    const detail = makeRes();
+
+    await answerRoute(getSyncLogsRoute, { query: {} } as never, list as never);
+    await answerRoute(getSyncLogDetailsRoute, makeReq(), detail as never);
+
+    for (const call of [mockedQuery.mock.calls[0][0], mockedQuery.mock.calls[2][0]]) {
+      expect(String(call)).toContain('AS stopped_by_restart');
+      expect(String(call)).toContain('"error":"Server restarted while sync was running"');
+    }
+    expect(list.json.mock.calls[0][0].logs[0].stopped_by_restart).toBe(true);
+    expect(detail.json.mock.calls[0][0].stopped_by_restart).toBe(true);
   });
 });
 
