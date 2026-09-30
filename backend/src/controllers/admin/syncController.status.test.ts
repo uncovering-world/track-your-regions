@@ -32,7 +32,7 @@ function row(overrides: Partial<LatestSyncLogRow> = {}): LatestSyncLogRow {
     progress_done: 412, progress_total: 1083, progress_at: new Date('2026-09-29T20:58:14Z'),
     total_fetched: 0, total_created: 37, total_updated: 12, total_unchanged: 360, total_missing: 0,
     total_curated_conflicts: 0, total_held: 3, total_filtered: 0, total_errors: 0,
-    stopped_by_restart: false,
+    stopped_by_restart: false, unplaced: 0, placement_stopped_by_restart: false,
     ...overrides,
   };
 }
@@ -100,9 +100,32 @@ describe('getSyncStatus', () => {
         logId: 140, status: 'failed', dryRun: false,
         startedAt: '2026-09-29T20:40:00.000Z', completedAt: '2026-09-29T21:00:00.000Z',
         phase: 'processing', progress: 412, total: 1083, created: 37, updated: 12, held: 3, errors: 0,
-        stoppedByRestart: true,
+        stoppedByRestart: true, unplaced: 0, placementStoppedByRestart: false,
       },
     });
+  });
+
+  it('says how many moved objects a run left unplaced, and when a restart stopped its placement (#1152)', async () => {
+    const stopped = row({
+      status: 'partial', completed_at: new Date('2026-09-29T21:00:00Z'), total_fetched: 1083,
+      progress_done: 1083, unplaced: 37, placement_stopped_by_restart: true,
+    });
+    mockedQuery.mockResolvedValueOnce({ rows: [SOURCE] }).mockResolvedValueOnce({ rows: [stopped] });
+
+    const { body } = await statusOf();
+
+    expect(body.lastRun).toMatchObject({
+      status: 'partial', stoppedByRestart: false, unplaced: 37, placementStoppedByRestart: true,
+    });
+  });
+
+  it('sends no count for a run from before the list', async () => {
+    const old = row({ status: 'success', completed_at: new Date('2026-09-29T21:00:00Z'), unplaced: null });
+    mockedQuery.mockResolvedValueOnce({ rows: [SOURCE] }).mockResolvedValueOnce({ rows: [old] });
+
+    const { body } = await statusOf();
+
+    expect(body.lastRun.unplaced).toBeNull();
   });
 
   it('carries the newest run even when it was a preview, which the source\'s own verdict leaves out', async () => {
@@ -137,6 +160,8 @@ describe('getSyncStatus', () => {
     expect(params).toEqual([5]);
     expect(sql).toMatch(/ORDER BY l\.id DESC\s+LIMIT 1/);
     expect(sql).toContain('"error":"Server restarted while sync was running"');
+    expect(sql).toMatch(/unnest\(w\.unplaced_experience_ids\) AS waiting\(id\)[\s\S]*NOT w\.is_dry_run AND w\.status <> 'running'/);
+    expect(sql).toContain('"error":"Server restarted while the run was placing what it moved"');
   });
 
   it('answers 404 for a source that does not exist, before reading any run', async () => {

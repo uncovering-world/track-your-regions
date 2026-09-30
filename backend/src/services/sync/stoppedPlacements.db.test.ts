@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import { clearUnplacedExperiences, closeStoppedPlacements, readUnplacedExperiences } from './syncUtils.js';
+import { clearUnplacedExperiences, closeStoppedPlacements, readLatestSyncLog, readUnplacedExperiences } from './syncUtils.js';
 import { ORPHANED_RUN_MARKER, PLACEMENT_FAILED_MARKER, PLACEMENT_STOPPED_MARKER } from './syncLogMarkers.js';
 
 /**
@@ -180,6 +180,18 @@ describe('closeStoppedPlacements', () => {
     expect(await logOf(PUBLIC_ART_CANCELLED)).toMatchObject({
       error_details: [CANCELLED_NOTE, PLACEMENT_STOPPED_MARKER],
     });
+  });
+});
+
+describe('what the card counts as waiting', () => {
+  it('counts what every closed real run of the source names, not the newest row alone', async () => {
+    // UNESCO's newest run names nothing; the stopped one before it names 301,
+    // which is what the next real run takes over — a later run (or a preview)
+    // must not hide it from the card.
+    const latest = await readLatestSyncLog(sourceId['UNESCO World Heritage Sites']);
+
+    expect(latest?.id).toBe(UNESCO_NEWER);
+    expect(latest?.unplaced).toBe(1);
   });
 });
 
