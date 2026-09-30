@@ -77,12 +77,12 @@ export function addDiscoverMapLayers(map: maplibregl.Map): void {
     cluster: true,
     clusterMaxZoom: 12,
     clusterRadius: 50,
-    // No `promoteId`. Deriving each feature's id from `properties.id` keys
-    // every place of an object the same, since a place is the feature and
-    // that id is one per object — MapLibre would then share the first
-    // feature-state written here across forty pins. Nothing reads
-    // feature-state on this source, so
-    // this removes a latent collision rather than a live bug.
+    // No `promoteId`. `properties.experienceId` is one per object while a
+    // place is the feature, so promoting it would key every place of an
+    // object the same, and MapLibre would share the first feature-state
+    // written here across forty pins. Nothing reads feature-state on this
+    // source — and the features' own ids are no better key, for the reason
+    // `buildMarkerFeatures` gives.
   });
   map.addSource(SCENE_SOURCES.highlight, { type: 'geojson', data: EMPTY_FC });
   map.addSource(SCENE_SOURCES.hover, { type: 'geojson', data: EMPTY_FC });

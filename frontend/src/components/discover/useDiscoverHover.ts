@@ -24,7 +24,10 @@ import type { Experience } from '../../api/experiences';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../../hooks/useHoverContext';
 import { clusterRadiusFor, LAYER_CLUSTERS } from './discoverMapLayers';
-import { SCENE_SOURCES, LAYER_MARKERS } from '../experienceMarkers/scene';
+import {
+  SCENE_SOURCES, LAYER_MARKERS, EMPTY_FC,
+  buildPointHoverData, buildPointsHoverData, buildSizedRing,
+} from '../experienceMarkers/scene';
 import { pointInView } from '../../utils/viewBounds';
 
 /**
@@ -41,31 +44,27 @@ import { pointInView } from '../../utils/viewBounds';
  * own position to ring. The caller rings the bubbles instead, by asking the
  * source which clusters hold this object.
  */
-function pinRingsFor(map: maplibregl.Map, expId: number): GeoJSON.Feature<GeoJSON.Point>[] {
+function pinRingsFor(map: maplibregl.Map, expId: number): [number, number][] {
   // Deduplicated by coordinate: a point inside two tiles' buffers is returned
-  // once per tile, and this source carries no feature id to tell the copies apart
-  // (`promoteId` is deliberately absent, see `discoverMapLayers.ts`). Counting the
-  // copies would make an object look fully drawn and skip the cluster pass below.
-  const byPosition = new Map<string, GeoJSON.Feature<GeoJSON.Point>>();
+  // once per tile, and a rendered feature's id cannot tell the copies apart —
+  // MapLibre reduces the place's key to the object's id (`buildMarkerFeatures`),
+  // and `promoteId` is deliberately absent (`discoverMapLayers.ts`). Counting
+  // the copies would make an object look fully drawn and skip the cluster pass
+  // below.
+  const byPosition = new Map<string, [number, number]>();
   for (const f of map.queryRenderedFeatures({ layers: [LAYER_MARKERS] })) {
-    if (f.properties?.id !== expId) continue;
-    const point = f.geometry as GeoJSON.Point;
-    const key = point.coordinates.map(c => c.toFixed(6)).join(',');
-    if (!byPosition.has(key)) {
-      byPosition.set(key, { type: 'Feature', geometry: point, properties: {} });
-    }
+    if (f.properties?.experienceId !== expId) continue;
+    const coordinates = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+    const key = coordinates.map(c => c.toFixed(6)).join(',');
+    if (!byPosition.has(key)) byPosition.set(key, coordinates);
   }
   return [...byPosition.values()];
 }
 
-/** A ring sized to sit just outside a cluster bubble of `pointCount` points. */
+/** A ring sized to sit just outside a cluster bubble, by how many points it holds. */
 function clusterRing(cluster: maplibregl.MapGeoJSONFeature): GeoJSON.Feature<GeoJSON.Point> {
   const radius = clusterRadiusFor((cluster.properties?.point_count as number) ?? 0);
-  return {
-    type: 'Feature',
-    geometry: cluster.geometry as GeoJSON.Point,
-    properties: { hoverRadius: radius + 10, ringRadius: radius + 4 },
-  };
+  return buildSizedRing((cluster.geometry as GeoJSON.Point).coordinates as [number, number], radius);
 }
 
 /** What the hover needs from the view that owns the map and the list. */
@@ -182,21 +181,12 @@ export function useDiscoverHover({
 
     if (hoverSource === 'list' && hoveredLocationId != null) {
       const loc = selectedLocsRef.current?.find(l => l.id === hoveredLocationId);
-      if (loc) {
-        hoverSource_.setData({
-          type: 'FeatureCollection',
-          features: [{
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [loc.lng, loc.lat] },
-            properties: {},
-          }],
-        });
-      }
+      if (loc) hoverSource_.setData(buildPointHoverData([loc.lng, loc.lat]));
     } else if (hoveredExperienceId == null) {
       // Nothing hovered anywhere: the ring comes down. Idempotent beside the
       // imperative clears in the leave handlers, and what takes the ring down
       // after the pointer leaves the panel's rows.
-      hoverSource_.setData({ type: 'FeatureCollection', features: [] });
+      hoverSource_.setData(EMPTY_FC);
     }
     // `mapRef`/`selectedLocsRef` are refs — stable identities, listed only for
     // the exhaustive-deps rule.
@@ -230,21 +220,14 @@ export function useDiscoverHover({
     // Through a ref, because this callback is created once and the map handlers
     // registered with it must see the current selection rather than the first.
     if (expId === selectedExpIdRef.current) {
-      hoverSource.setData({
-        type: 'FeatureCollection',
-        features: drawn.map(c => ({
-          type: 'Feature' as const,
-          geometry: { type: 'Point' as const, coordinates: c },
-          properties: {},
-        })),
-      });
+      hoverSource.setData(buildPointsHoverData(drawn));
       return;
     }
 
     // Every pin of this object that is drawn, in one query over the layer.
     const pinRings = pinRingsFor(map, expId);
     if (pinRings.length > 0) {
-      hoverSource.setData({ type: 'FeatureCollection', features: pinRings });
+      hoverSource.setData(buildPointsHoverData(pinRings));
     }
 
     // Its remaining places are inside clusters, and a bubble sits at its members'
@@ -275,15 +258,12 @@ export function useDiscoverHover({
     if (clusterFeatures.length === 0) {
       if (pinRings.length === 0) {
         // Nothing of this object is on screen at all: ring where it says it is.
-        hoverSource.setData({
-          type: 'FeatureCollection',
-          features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coords }, properties: {} }],
-        });
+        hoverSource.setData(buildPointHoverData(coords));
       }
       return;
     }
 
-    const rings = [...pinRings];
+    const clusterRings: GeoJSON.Feature<GeoJSON.Point>[] = [];
     let remaining = clusterFeatures.length;
     // `getClusterLeaves` answers after the pointer may have moved on, and this
     // path is taken on most hovers now — any object with places off screen has
@@ -300,7 +280,9 @@ export function useDiscoverHover({
       source.getClusterLeaves(clusterId, pointCount, 0)
         .then(leaves => {
           if (generation !== hoverGenerationRef.current) return;
-          if (leaves.some(leaf => leaf.properties?.id === expId)) rings.push(clusterRing(cluster));
+          if (leaves.some(leaf => leaf.properties?.experienceId === expId)) {
+            clusterRings.push(clusterRing(cluster));
+          }
         })
         // supercluster throws "No cluster with the specified id" once the index
         // is rebuilt, and `source.setData` rebuilds it — which this view now does
@@ -315,14 +297,11 @@ export function useDiscoverHover({
           if (generation !== hoverGenerationRef.current) return;
           remaining--;
           if (remaining > 0) return;
-          if (rings.length > 0) {
-            hoverSource.setData({ type: 'FeatureCollection', features: rings });
+          if (pinRings.length + clusterRings.length > 0) {
+            hoverSource.setData(buildPointsHoverData(pinRings, clusterRings));
           } else {
             // In no cluster and drawn nowhere — ring the coordinate it claims.
-            hoverSource.setData({
-              type: 'FeatureCollection',
-              features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coords }, properties: {} }],
-            });
+            hoverSource.setData(buildPointHoverData(coords));
           }
         });
     }
@@ -336,9 +315,7 @@ export function useDiscoverHover({
     const map = mapRef.current;
     if (!map) return;
     const hoverSource = map.getSource(SCENE_SOURCES.hover) as maplibregl.GeoJSONSource | undefined;
-    if (hoverSource) {
-      hoverSource.setData({ type: 'FeatureCollection', features: [] });
-    }
+    hoverSource?.setData(EMPTY_FC);
   }, [mapRef, store, setHoveredFromList]);
 
   return {

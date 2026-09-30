@@ -24,6 +24,7 @@ import { isWebGLAvailable } from '../../utils/webgl';
 import { addDiscoverMapLayers, LAYER_CLUSTERS } from './discoverMapLayers';
 import {
   SCENE_SOURCES, LAYER_MARKERS, LAYER_HIGHLIGHT_POINT, MARKER_LAYERS,
+  EMPTY_FC, buildPointHoverData,
 } from '../experienceMarkers/scene';
 
 export interface DiscoverMapWiring {
@@ -121,7 +122,7 @@ export function useDiscoverMap({
         if (!map.getLayer(LAYER_MARKERS)) return;
         const features = map.queryRenderedFeatures(e.point, { layers: interactiveMarkerLayers });
         if (features.length === 0) return;
-        const id = features[0].properties?.id;
+        const id = features[0].properties?.experienceId as number | undefined;
         if (id == null) return;
 
         // A folded pin unfolds, exactly as in Map mode — the badge is what says
@@ -159,16 +160,7 @@ export function useDiscoverMap({
       const setHoverRing = (coords: [number, number] | null) => {
         const hoverSource = map.getSource(SCENE_SOURCES.hover) as maplibregl.GeoJSONSource;
         if (!hoverSource) return;
-        hoverSource.setData(coords
-          ? {
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: coords },
-              properties: {},
-            }],
-          }
-          : { type: 'FeatureCollection', features: [] });
+        hoverSource.setData(coords ? buildPointHoverData(coords) : EMPTY_FC);
       };
 
       /** Where a queried feature is. */
@@ -177,7 +169,7 @@ export function useDiscoverMap({
 
       /** The one key space `mapCurrentHoveredKey` is written and read in. */
       const keyOf = (feature: maplibregl.MapGeoJSONFeature): string =>
-        `${feature.properties?.id}:${feature.properties?.locationId ?? ''}`;
+        `${feature.properties?.experienceId}:${feature.properties?.locationId ?? ''}`;
 
       // ── Marker hover (mousemove for precise tracking with nearby points) ──
       const onMarkerMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
@@ -185,7 +177,7 @@ export function useDiscoverMap({
         const features = map.queryRenderedFeatures(e.point, { layers: interactiveMarkerLayers });
         if (features.length > 0) {
           const feature = features[0];
-          const id = feature.properties?.id as number;
+          const id = feature.properties?.experienceId as number;
           const coords = pointOf(feature);
 
           // Keyed by the place: an object is many pins now, and keying on the
@@ -345,7 +337,7 @@ export function useDiscoverMap({
           // check absorbs. The hover is the pin's now, so there is nothing of
           // the dot's left to clear — hence no `highlightHoverCallbackRef`.
           mapCurrentHoveredKey = keyOf(pin);
-          mapHoverCallbackRef.current?.(pin.properties?.id as number);
+          mapHoverCallbackRef.current?.(pin.properties?.experienceId as number);
           return;
         }
         if (!fromAMove || !onACluster(e.point)) map.getCanvas().style.cursor = '';

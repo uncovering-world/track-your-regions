@@ -31,11 +31,10 @@ import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
 import { LazyAddExperienceDialog, LazyCurationDialog } from '../shared/lazyCurationDialogs';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
-import { SCENE_SOURCES } from '../experienceMarkers/scene';
+import { SCENE_SOURCES, buildHighlightData, buildMarkerFeatures } from '../experienceMarkers/scene';
 import { useDiscoverMap } from './useDiscoverMap';
 import { useDiscoverHover } from './useDiscoverHover';
 import { frameGeoJson } from '../../utils/mapUtils';
-import { experienceColor } from '../../utils/kindColors';
 import { foldLabel } from '@tyr/shared/labels';
 
 /**
@@ -329,32 +328,11 @@ export function DiscoverExperienceView({
       const markers = buildExperienceMarkers(
         visibleExperiences, locationsByExperience, NO_KIND_FILTER, collapsedExperienceIds);
 
-      // No feature-level `id`: the experience's repeats across every one of its
-      // places, and nothing here reads one — clustering
-      // does not need it, and the handlers below resolve an object through
-      // `properties.id`.
-      const features: GeoJSON.Feature<GeoJSON.Point>[] = markers.map((m) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [m.longitude, m.latitude] },
-        properties: {
-          id: m.experienceId,
-          locationId: m.locationId,
-          // No `name` here: nothing on this surface reads it. The hover card
-          // resolves the object through `properties.id`, and the layer
-          // expressions read `color`, `locationCount` and `point_count`.
-          // `id` stays the object's, which is what the handlers ask for.
-          // The pin's colour, decided once for every surface (`experienceColor`).
-          color: experienceColor(m.experience.kind_id, m.experience.type),
-          // 1 for a place drawn as itself, the count only for a pin standing in
-          // for places it does not draw — which is what the badge means.
-          locationCount: m.locationCount,
-          // Whether this pin was drawn folded, which the click handler needs and
-          // cannot infer: a stand-in pin looks the same from the outside.
-          folded: m.folded === true,
-        },
-      }));
-
-      source.setData({ type: 'FeatureCollection', features });
+      // The features Map mode builds from the same markers: the handlers
+      // resolve an object through `properties.experienceId`, and the layer
+      // expressions read `color`, `locationCount` and `point_count`.
+      const markerData = buildMarkerFeatures(markers);
+      source.setData(markerData);
 
       // Fit to a *new* set, not to every rebuild of one. The fold rebuilds these
       // markers, and unfolding by clicking a folded pin selects nothing — so a
@@ -382,12 +360,12 @@ export function DiscoverExperienceView({
         && !fittedWithPlacesRef.current && !movedByReaderRef.current;
       const justDeselected = lastSelectedRef.current != null && selectedExperienceId == null;
       lastSelectedRef.current = selectedExperienceId;
-      if (features.length > 0 && !selectedExperienceId
+      if (markerData.features.length > 0 && !selectedExperienceId
           && (isNewSet || firstWithPlaces || justDeselected)) {
         fittedForRef.current = experiences;
         fittedWithPlacesRef.current = locationsResolved;
         movedByReaderRef.current = false;
-        frameGeoJson(map, { type: 'FeatureCollection', features }, { padding: 40, maxZoom: 10, duration: 800 });
+        frameGeoJson(map, markerData, { padding: 40, maxZoom: 10, duration: 800 });
       }
     };
 
@@ -431,27 +409,23 @@ export function DiscoverExperienceView({
       // the source would be undone by the act of selecting the row — which is
       // exactly when a reader is looking at it.
       if (foldedSelection) {
-        source.setData({
-          type: 'FeatureCollection',
-          features: [{
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [foldedSelection.longitude, foldedSelection.latitude] },
-            properties: { name: foldedSelection.name, locationId: null },
-          }],
-        });
+        source.setData(buildHighlightData([{
+          coordinates: [foldedSelection.longitude, foldedSelection.latitude],
+          locationId: null,
+          name: foldedSelection.name,
+        }]));
         return;
       }
 
-      if (selectedExperienceLocations && selectedExperienceLocations.length > 0) {
-        const features: GeoJSON.Feature<GeoJSON.Point>[] = selectedExperienceLocations.map((loc, i) => ({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [loc.lng, loc.lat] },
-          properties: { name: loc.name || `Location ${i + 1}`, locationId: loc.id ?? i },
-        }));
-        source.setData({ type: 'FeatureCollection', features });
-      } else {
-        source.setData({ type: 'FeatureCollection', features: [] });
-      }
+      // A place without an id carries null, as the folded dot does: the dot is
+      // drawn, and its hover names no place, since the panel has no row to
+      // light for one. Its index in the list stood in once, and the panel reads
+      // that number as a location id — another place's, or nobody's.
+      source.setData(buildHighlightData((selectedExperienceLocations ?? []).map((loc, i) => ({
+        coordinates: [loc.lng, loc.lat],
+        locationId: loc.id ?? null,
+        name: loc.name || `Location ${i + 1}`,
+      }))));
     };
 
     if (map.getSource(SCENE_SOURCES.highlight)) {
