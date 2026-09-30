@@ -258,6 +258,27 @@ const ERROR_TEXT_RULES = ANSWER_CONTEXTS.flatMap(context => [
   { selector: `${context} CallExpression[callee.property.name='toString'][callee.object.name=/^(e|err|error|\\w+(Err|Error))$/]`, message: ERROR_TEXT },
 ]);
 
+/**
+ * Every family of `no-restricted-syntax` entries a source file answers to, in
+ * one list. ESLint's flat config replaces a rule's options block by block and
+ * never merges them, so a module exempt from one family has to restate every
+ * other; `restrictedSyntaxWithout` builds that restatement from this list, and
+ * a family added here reaches every block at once, exemptions included.
+ */
+const SOURCE_RULE_FAMILIES = [
+  TRANSACTION_RULES, RESPONSE_SHAPE_RULES, ERROR_TEXT_RULES, READER_PREDICATE_RULES,
+  EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
+  ROUTE_REGISTRY_RULES,
+];
+
+/** The `no-restricted-syntax` setting of every family but the ones named. */
+function restrictedSyntaxWithout(...allowed) {
+  for (const family of allowed) {
+    if (!SOURCE_RULE_FAMILIES.includes(family)) throw new Error('restrictedSyntaxWithout: not a family of SOURCE_RULE_FAMILIES');
+  }
+  return ['error', ...SOURCE_RULE_FAMILIES.filter(family => !allowed.includes(family)).flat()];
+}
+
 export default [
   {
     ignores: ['dist/', 'node_modules/'],
@@ -322,9 +343,7 @@ export default [
     files: ['src/**/*.ts'],
     ignores: ['src/**/*.test.ts', 'src/api/respond.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
-        ...REGION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+      'no-restricted-syntax': restrictedSyntaxWithout(),
     },
   },
   // The two modules the reader predicates are spelled in (#791): every entry
@@ -332,9 +351,7 @@ export default [
   {
     files: ['src/db/readerPredicates.ts', 'src/db/membership.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
-        ...REGION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+      'no-restricted-syntax': restrictedSyntaxWithout(READER_PREDICATE_RULES),
     },
   },
   // The modules that write `experiences` (ADR-0069): every entry above but
@@ -347,9 +364,7 @@ export default [
       'src/services/sync/pictureRepair.ts',
     ],
     rules: {
-      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
-        ...REGION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+      'no-restricted-syntax': restrictedSyntaxWithout(EXPERIENCE_WRITE_RULES),
     },
   },
   // The modules that write `experience_locations` (ADR-0069), the same way.
@@ -359,8 +374,7 @@ export default [
       'src/services/sync/locationWriter.ts',
     ],
     rules: {
-      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...WORK_WRITE_RULES, ...REGION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+      'no-restricted-syntax': restrictedSyntaxWithout(EXPERIENCE_LOCATION_WRITE_RULES),
     },
   },
   // The modules that write `treasures` and `experience_treasures` (ADR-0069,
@@ -372,8 +386,7 @@ export default [
       'src/services/sync/museum/linkWithdrawal.ts',
     ],
     rules: {
-      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...REGION_WRITE_RULES, ...ROUTE_REGISTRY_RULES],
+      'no-restricted-syntax': restrictedSyntaxWithout(WORK_WRITE_RULES),
     },
   },
   // The modules that write `regions` (ADR-0069, #1073), the same way.
@@ -387,17 +400,15 @@ export default [
       'src/services/hull/generator.ts',
     ],
     rules: {
-      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...EXPERIENCE_WRITE_RULES, ...EXPERIENCE_LOCATION_WRITE_RULES, ...WORK_WRITE_RULES,
-        ...ROUTE_REGISTRY_RULES],
+      'no-restricted-syntax': restrictedSyntaxWithout(REGION_WRITE_RULES),
     },
   },
   // The seed writes the catalogue's tables, as the fixture it is.
   {
     files: ['src/db/seed/**/*.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...TRANSACTION_RULES, ...RESPONSE_SHAPE_RULES, ...ERROR_TEXT_RULES,
-        ...READER_PREDICATE_RULES, ...ROUTE_REGISTRY_RULES],
+      'no-restricted-syntax': restrictedSyntaxWithout(EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES,
+        WORK_WRITE_RULES, REGION_WRITE_RULES),
     },
   },
   // services/ never imports from controllers/, and loads no OpenCV of its
