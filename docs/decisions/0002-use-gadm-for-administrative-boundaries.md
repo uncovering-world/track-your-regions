@@ -1,7 +1,7 @@
 # ADR-0002: Use GADM for Administrative Boundaries
 
 **Date:** 2024-11-01
-**Status:** Accepted
+**Status:** Accepted — its licence consequence narrowed by [ADR-0078](0078-the-product-is-public-and-non-commercial-and-gadm-is-asked-before-it-is-published.md)
 
 ---
 
