@@ -6,9 +6,27 @@
  * that reads them is behaviour. Each paint property here is set against a
  * specific failure, and those reasons are kept with the property rather than in
  * the component, so a future edit meets them where the value is.
+ *
+ * The pin, its badge, the highlight and the hover ring are not declared here
+ * but in `scene.ts`, which Discover draws from as well (#1132). What this file
+ * adds to them is Map mode's own: the heatmap they cross-fade with. The extent
+ * outline is Map mode's alone and stays here whole.
  */
 
 import type { LayerProps } from 'react-map-gl/maplibre';
+import type { ExpressionSpecification } from 'maplibre-gl';
+import {
+  SCENE_SOURCES, EMPTY_FC,
+  sceneMarkerLayer, sceneBadgeBgLayer, sceneBadgeTextLayer,
+  sceneHoverGlowLayer, sceneHoverRingLayer, sceneHighlightRingLayer, sceneHighlightPointLayer,
+} from './scene';
+
+// What the rest of Map mode imports from here, declared once in the scene.
+export {
+  EMPTY_FC, buildPointHoverData, buildPointsHoverData,
+  LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT,
+  MARKER_LAYERS, LAYER_HIGHLIGHT_POINT,
+} from './scene';
 
 /**
  * The three shapes of layer this file declares, named so that a definition can
@@ -21,7 +39,7 @@ type CircleLayerProps = Extract<LayerProps, { type: 'circle' }>;
 type HeatmapLayerProps = Extract<LayerProps, { type: 'heatmap' }>;
 type SymbolLayerProps = Extract<LayerProps, { type: 'symbol' }>;
 
-export const SOURCE_MARKERS = 'exp-markers';
+export const SOURCE_MARKERS = SCENE_SOURCES.markers;
 const LAYER_HEAT = 'exp-heatmap';
 /**
  * Below this, density; from it, individual markers.
@@ -48,8 +66,8 @@ export const HEATMAP_MAX_ZOOM = 5;
  */
 export const MARKER_FADE_START = HEATMAP_MAX_ZOOM - 0.5;
 
-export const SOURCE_HIGHLIGHT = 'exp-highlight';
-export const SOURCE_HOVER = 'exp-hover';
+export const SOURCE_HIGHLIGHT = SCENE_SOURCES.highlight;
+export const SOURCE_HOVER = SCENE_SOURCES.hover;
 
 /**
  * The outline of the place the reader is looking at, where the catalogue has
@@ -60,37 +78,6 @@ export const SOURCE_HOVER = 'exp-hover';
  * waiting on #755).
  */
 export const SOURCE_EXTENT = 'exp-extent';
-
-/**
- * What every hover source starts from, and what it goes back to when the
- * pointer leaves. One collection, shared: both files that write to
- * `SOURCE_HOVER` clear it, and two identical literals are two things to keep
- * in step for no gain.
- */
-export const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
-
-/**
- * The ring's payload: points, no properties — the hover layers paint by geometry
- * alone. Every writer goes through here (a marker hovered, a highlight dot
- * hovered, a place row, an object row ringing all of its places), so a property
- * the layers start reading is added once rather than at four literals the
- * compiler cannot connect.
- */
-export function buildPointsHoverData(coords: [number, number][]): GeoJSON.FeatureCollection {
-  return {
-    type: 'FeatureCollection',
-    features: coords.map(c => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: c },
-      properties: {},
-    })),
-  };
-}
-
-/** The single-point case, which is three of the four writers. */
-export function buildPointHoverData(coords: [number, number]): GeoJSON.FeatureCollection {
-  return buildPointsHoverData([coords]);
-}
 
 /**
  * The extent source's payload: one feature carrying the colour its pin is drawn
@@ -111,23 +98,6 @@ export function buildExtentData(
     features: [{ type: 'Feature', geometry: boundary, properties: { color } }],
   };
 }
-
-// Layer IDs
-export const LAYER_MARKERS = 'exp-markers-points';
-export const LAYER_MARKER_COUNT_BADGE_BG = 'exp-marker-count-badge-bg';
-export const LAYER_MARKER_COUNT_BADGE_TEXT = 'exp-marker-count-badge-text';
-/**
- * The three layers one pin is drawn with: its point, and the badge that says how
- * many places it stands for. Queried together, because a pointer over any of
- * them is a pointer over the same pin.
- */
-export const MARKER_LAYERS = [
-  LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT,
-] as const;
-const LAYER_HOVER_GLOW = 'exp-hover-glow';
-const LAYER_HOVER_RING = 'exp-hover-ring';
-const LAYER_HIGHLIGHT_RING = 'exp-highlight-ring';
-export const LAYER_HIGHLIGHT_POINT = 'exp-highlight-point';
 
 // ── Layer style definitions ──
 
@@ -198,124 +168,59 @@ export const heatmapLayer: HeatmapLayerProps = {
 };
 
 /**
+ * The pins fade in across the band the heat fades out over. The ramp is one
+ * value for every pin layer, so the point, its badge and the badge's number
+ * arrive together.
+ */
+const FADE_IN: ExpressionSpecification = ['interpolate', ['linear'], ['zoom'],
+  MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1];
+
+/**
+ * The scene's pin (`scene.ts`), plus what only this map has: the cross-fade
+ * with the heatmap, as a `minzoom` at the start of the band and an opacity ramp
+ * across it. Everything else — colour, radius, stroke — is the scene's, and
+ * Discover draws the same definition.
+ *
  * No `point_count` filter on the marker layers. With `cluster` off the source
  * never produces an aggregate feature, so `['!', ['has', 'point_count']]` held
  * for every feature it would ever see — a filter that selected nothing and read
  * as if clustering were still in play.
  */
 export const markerLayer: CircleLayerProps = {
-  id: LAYER_MARKERS,
+  ...sceneMarkerLayer,
   minzoom: MARKER_FADE_START,
-  type: 'circle',
-  source: SOURCE_MARKERS,
   paint: {
-    // Decided once, in `experienceColor` (the kind's colour, refined by the type
-    // where the types are told apart), and carried on the feature: a `match` on
-    // the type value here has no literal to key a museum's blue on and drops a
-    // monument into the fallback (#814).
-    'circle-color': ['get', 'color'],
-    'circle-radius': 6,
-    'circle-stroke-width': 2,
-    'circle-stroke-color': '#ffffff',
-    'circle-opacity': ['interpolate', ['linear'], ['zoom'],
-      MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1],
-    'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'],
-      MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1],
+    ...sceneMarkerLayer.paint,
+    'circle-opacity': FADE_IN,
+    'circle-stroke-opacity': FADE_IN,
   },
 };
 
 export const markerCountBadgeBgLayer: CircleLayerProps = {
-  id: LAYER_MARKER_COUNT_BADGE_BG,
+  ...sceneBadgeBgLayer,
   minzoom: MARKER_FADE_START,
-  type: 'circle',
-  source: SOURCE_MARKERS,
-  filter: ['>', ['coalesce', ['get', 'locationCount'], 1], 1],
   paint: {
-    'circle-color': '#0f172a',
-    'circle-radius': 8,
-    'circle-stroke-width': 1.5,
-    'circle-stroke-color': '#ffffff',
-    'circle-translate': [8, -8],
-    'circle-translate-anchor': 'viewport',
-    'circle-opacity': ['interpolate', ['linear'], ['zoom'],
-      MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1],
-    'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'],
-      MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1],
+    ...sceneBadgeBgLayer.paint,
+    'circle-opacity': FADE_IN,
+    'circle-stroke-opacity': FADE_IN,
   },
 };
 
 export const markerCountBadgeTextLayer: SymbolLayerProps = {
-  id: LAYER_MARKER_COUNT_BADGE_TEXT,
+  ...sceneBadgeTextLayer,
   minzoom: MARKER_FADE_START,
-  type: 'symbol',
-  source: SOURCE_MARKERS,
-  filter: ['>', ['coalesce', ['get', 'locationCount'], 1], 1],
-  layout: {
-    'text-field': ['to-string', ['get', 'locationCount']],
-    'text-size': 9,
-    'text-font': ['Open Sans Bold'],
-    'text-offset': [0.88, -0.88],
-    'text-anchor': 'center',
-    'text-allow-overlap': true,
-  },
   paint: {
-    'text-opacity': ['interpolate', ['linear'], ['zoom'],
-      MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1],
-    'text-color': '#ffffff',
-    'text-halo-color': '#0f172a',
-    'text-halo-width': 0.2,
+    ...sceneBadgeTextLayer.paint,
+    'text-opacity': FADE_IN,
   },
 };
 
-export const hoverGlowLayer: CircleLayerProps = {
-  id: LAYER_HOVER_GLOW,
-  type: 'circle',
-  source: SOURCE_HOVER,
-  paint: {
-    'circle-color': '#f97316',
-    'circle-radius': ['coalesce', ['get', 'hoverRadius'], 24],
-    'circle-opacity': 0.18,
-    'circle-blur': 0.6,
-  },
-};
-
-export const hoverRingLayer: CircleLayerProps = {
-  id: LAYER_HOVER_RING,
-  type: 'circle',
-  source: SOURCE_HOVER,
-  paint: {
-    'circle-color': 'transparent',
-    'circle-radius': ['coalesce', ['get', 'ringRadius'], 18],
-    'circle-stroke-width': 3,
-    'circle-stroke-color': '#f97316',
-    'circle-stroke-opacity': 1,
-  },
-};
-
-export const highlightRingLayer: LayerProps = {
-  id: LAYER_HIGHLIGHT_RING,
-  type: 'circle',
-  source: SOURCE_HIGHLIGHT,
-  paint: {
-    'circle-color': 'transparent',
-    'circle-radius': 14,
-    'circle-stroke-width': 3,
-    'circle-stroke-color': '#ef4444',
-    'circle-stroke-opacity': 0.8,
-  },
-};
-
-export const highlightPointLayer: LayerProps = {
-  id: LAYER_HIGHLIGHT_POINT,
-  type: 'circle',
-  source: SOURCE_HIGHLIGHT,
-  paint: {
-    'circle-color': '#ef4444',
-    'circle-radius': 6,
-    'circle-stroke-width': 2,
-    'circle-stroke-color': '#ffffff',
-  },
-};
+// The selection and the hover are the scene's as they stand: nothing about them
+// changes with the heatmap, so this map adds nothing to them.
+export const hoverGlowLayer: CircleLayerProps = sceneHoverGlowLayer;
+export const hoverRingLayer: CircleLayerProps = sceneHoverRingLayer;
+export const highlightRingLayer: LayerProps = sceneHighlightRingLayer;
+export const highlightPointLayer: LayerProps = sceneHighlightPointLayer;
 
 const LAYER_EXTENT_FILL = 'exp-extent-fill';
 const LAYER_EXTENT_LINE = 'exp-extent-line';
