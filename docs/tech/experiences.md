@@ -2754,10 +2754,22 @@ recomputes.
 The full rebuild (`assignExperiencesToRegions`, `POST /api/admin/experiences/assign-regions`)
 stays an admin action, for the case that genuinely needs it: **a region changed** — its geometry,
 or its place in the tree, neither of which re-places anything on its own (#494) — so every location
-has to be re-tested against it. That one clears the world view's `auto` rows
-first, which is why it is not what a sync uses — the clear and the rebuild are separate
-statements, so while it runs the world view has no assignments and a browsing user sees empty
-regions — for about seven seconds on the development catalogue.
+has to be re-tested against it. That one clears the world view's `auto` rows and rebuilds them,
+which is why it is not what a sync uses: it re-tests every point for the sake of a few. The clear
+and the rebuild are **one transaction** on one client (#1152), `last_assignment_at` included, so a
+reader goes on seeing the assignments from before until the new ones commit — about seven seconds
+on the development catalogue — and a cancel, a failure or a restart between the clear and the
+inserts leaves them as they were: a cancel and a failure roll back, and a restart ends the
+connection, which Postgres rolls back the same way. It used to run its steps as separate
+statements on the pool, so a restart between them left the world view partly or wholly without its
+automatic assignments and nothing said so. The price is a transaction as long as the rebuild,
+holding the rows it deleted and a key share on every point it places until it commits
+(`db/locks.ts`). The panel follows the run and says how it ended: a cancel *Cancelled; the
+assignments from before stand.*, and a run the server lost — the status answers a bare
+`{ running: false }` right after one was going, since a run that ended keeps its status until the
+next one starts — that the server was restarted, nothing it did was kept, and it has to be started
+again. It keeps asking through the seconds the server refuses, for about two minutes, the sync
+card's limit.
 
 **Where a point is placed: the leaves first, every ancestor from the tree, and the other regions
 only for what no leaf holds**
