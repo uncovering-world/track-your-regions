@@ -166,10 +166,12 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
       <TableCell align="right">{log.total_created.toLocaleString()}</TableCell>
       <TableCell align="right">
         {log.total_updated.toLocaleString()}
-        {/* Not on a lost record: that run counted the new way and merely
-            failed to keep its changeset, and its card says so. Starring it
-            here would have the list and the card disagree about one run. */}
-        {!log.has_changeset && !log.changeset_lost && log.total_updated > 0 && (
+        {/* Not on a lost record, on a run a restart stopped or on one still
+            going: each counted the new way and has no changeset for a reason
+            of its own, which its card says. Starring them here would have the
+            list and the card disagree about one run. */}
+        {!log.has_changeset && !log.changeset_lost && !log.stopped_by_restart && log.status !== 'running'
+          && log.total_updated > 0 && (
           <Tooltip title="Counted every row touched, not only those that changed — not comparable with later runs">
             <Typography component="span" color="text.secondary" sx={{ ml: 0.5 }}>*</Typography>
           </Tooltip>
@@ -239,7 +241,7 @@ export function skippedNotes(log: SyncLog): Array<{ label: string; reason: strin
 
 /**
  * Why a run's per-object record is missing or short, which is not one question
- * but four.
+ * but five.
  *
  * A missing changeset means "no record kept", and that has separate causes with
  * separate consequences: a run from before this slice existed, a run whose
@@ -249,8 +251,34 @@ export function skippedNotes(log: SyncLog): Array<{ label: string; reason: strin
  * 500 with no transaction around them, so a failure on the third batch of run
  * 68's 1272 rows leaves a thousand committed under the same lost-changeset
  * marker, and `has_changeset` alone cannot tell that list from a whole one.
+ * The fifth is a run the server was restarted under, which never got to
+ * write one, and a run still going has not written its yet.
  */
 export function changesetNote(log: SyncLog) {
+  // A run still going writes its counters as it goes and its changeset only
+  // at its close (#1131).
+  if (log.status === 'running') {
+    return (
+      <Alert severity="info" sx={{ mb: 2 }}>
+        This run is still going: the counters below are how far it has got, and its per-object
+        record is written when it ends.
+      </Alert>
+    );
+  }
+
+  // A run the server was restarted under kept its changeset in memory until
+  // its close, which never came, while its counters were written as it went
+  // (#1131). Asked first: read off `has_changeset` and the counters, it is a
+  // run from before change provenance.
+  if (log.stopped_by_restart) {
+    return (
+      <Alert severity="warning" sx={{ mb: 2 }}>
+        The server was restarted under this run, so it stopped where the counters below say, and
+        its per-object record never left memory: there is no breakdown of what it did.
+      </Alert>
+    );
+  }
+
   // `changeset_lost` is the server's reading of the marker the run leaves, and
   // it is proof where the counters and `has_changeset` are inference:
   // `recordSyncChanges` inserts in batches and an empty changeset cannot

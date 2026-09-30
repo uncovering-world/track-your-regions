@@ -12,6 +12,8 @@
  * lost-changeset marker — which `has_changeset` alone cannot tell from a whole
  * one and which needs a note of its own. The marker is the evidence in every
  * case it is present, ahead of `has_changeset` and of the counters (#523).
+ * A fifth is a run the server was restarted under, whose counters were written
+ * as it went and whose record never was (#1131).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -41,6 +43,7 @@ function log(overrides: Partial<SyncLog> = {}) {
     withdrawal_skipped_reason: null,
     has_changeset: false,
     changeset_lost: false,
+    stopped_by_restart: false,
     triggered_by: null,
     triggered_by_name: null,
     ...overrides,
@@ -133,6 +136,40 @@ describe('changesetNote', () => {
     }))}</>);
 
     expect(screen.getByText(/could not be written/i)).toBeInTheDocument();
+  });
+});
+
+describe('changesetNote on a run whose record is still in memory, or was lost with it', () => {
+  it('says the record never left memory, not that the run predates change provenance', () => {
+    // A museum run killed 412 of 1,083 in: its counters were written as it
+    // went (#1131), its changeset only ever at the close, which never came.
+    // Read off the counters and has_changeset, it is an old run.
+    render(<>{changesetNote(log({
+      status: 'failed',
+      total_fetched: 1083,
+      total_created: 37,
+      total_updated: 12,
+      stopped_by_restart: true,
+    }))}</>);
+
+    expect(screen.getByText(/restarted under this run/i)).toBeInTheDocument();
+    expect(screen.getByText(/never left memory/i)).toBeInTheDocument();
+    expect(screen.queryByText(/predates change provenance/i)).not.toBeInTheDocument();
+  });
+
+  it('says a run still going has its record still to write', () => {
+    // Its counters are written as it goes; read off them and has_changeset
+    // while it runs, it too would be an old run.
+    render(<>{changesetNote(log({ status: 'running', completed_at: null, total_created: 37, total_updated: 12 }))}</>);
+
+    expect(screen.getByText(/still going/i)).toBeInTheDocument();
+    expect(screen.queryByText(/predates change provenance/i)).not.toBeInTheDocument();
+  });
+
+  it('says so even for a run stopped before it counted anything', () => {
+    render(<>{changesetNote(log({ status: 'failed', total_fetched: 0, stopped_by_restart: true }))}</>);
+
+    expect(screen.getByText(/restarted under this run/i)).toBeInTheDocument();
   });
 });
 
