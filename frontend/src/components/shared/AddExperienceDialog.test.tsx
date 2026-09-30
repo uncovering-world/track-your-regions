@@ -43,6 +43,7 @@ vi.mock('./LocationPicker', () => ({
 }));
 
 import { createManualExperience } from '../../api/curation';
+import { searchPlaces } from '../../api/geocode';
 import { ApiError } from '../../api/fetchUtils';
 import { AddExperienceDialog } from './AddExperienceDialog';
 
@@ -111,5 +112,115 @@ describe('AddExperienceDialog create', () => {
     fillMinaret();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Curator access required');
+  });
+});
+
+/**
+ * A draft kept across a close (#1147): the lazy wrapper keeps the dialog
+ * mounted so a half-typed place survives, and the reopened draft behaves as
+ * it did before — its kind and type stay, and a value auto-fill wrote for the
+ * old name still moves with a new one.
+ */
+describe('a draft kept across a close', () => {
+  const mockedSearch = searchPlaces as unknown as ReturnType<typeof vi.fn>;
+  const JAM = { lat: 34.3964, lng: 64.5161, display_name: 'Minaret of Jam, Ghor, Afghanistan' };
+  const BAMIYAN = { lat: 34.8318, lng: 67.8273, display_name: 'Buddhas of Bamiyan, Bamyan, Afghanistan' };
+
+  function renderKept(defaultKindId?: number) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = (open: boolean, kind: number | undefined) => (
+      <QueryClientProvider client={client}>
+        <AddExperienceDialog open={open} onClose={vi.fn()} regionId={5} regionName="Afghanistan" defaultKindId={kind} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(view(true, defaultKindId));
+    return {
+      /**
+       * Close with the Close button and open again: from the same button by
+       * default, from a kind's "+" when given a kind, from one naming none on null.
+       */
+      closeAndReopen: (reopenWith: number | null = defaultKindId ?? null) => {
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+        rerender(view(false, defaultKindId));
+        rerender(view(true, reopenWith ?? undefined));
+      },
+    };
+  }
+
+  const kindSelect = async () => (await screen.findAllByRole('combobox'))[0];
+  const typeSelect = async () => (await screen.findAllByRole('combobox'))[1];
+
+  const nameBox = () => screen.getByRole('textbox', { name: /^Name/ });
+
+  it('keeps the kind the curator chose', async () => {
+    const { closeAndReopen } = renderKept(undefined);
+    fireEvent.mouseDown((await screen.findAllByRole('combobox'))[0]);
+    fireEvent.click(await screen.findByRole('option', { name: 'World Heritage Sites' }));
+
+    closeAndReopen();
+
+    expect(await kindSelect()).toHaveTextContent('World Heritage Sites');
+  });
+
+  it('starts the draft after a create with no kind, for the next opening to name', async () => {
+    mockedCreate.mockResolvedValue({ id: 902 });
+    const { closeAndReopen } = renderKept(1);
+    fireEvent.change(nameBox(), { target: { value: 'Minaret of Jam' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Drop pin' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+
+    // Reopened from the list's generic button, which names no kind.
+    closeAndReopen(null);
+
+    expect(await kindSelect()).not.toHaveTextContent('World Heritage Sites');
+  });
+
+  it('keeps the kind when reopened from a button that names none', async () => {
+    const { closeAndReopen } = renderKept(1);
+    // The kinds arrive from a query; the select reads blank until they do.
+    await waitFor(async () => expect(await kindSelect()).toHaveTextContent('World Heritage Sites'));
+
+    closeAndReopen(null);
+
+    await waitFor(async () => expect(await kindSelect()).toHaveTextContent('World Heritage Sites'));
+    fireEvent.change(nameBox(), { target: { value: 'Minaret of Jam' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Drop pin' }));
+    // The kind is the form's value, not only the select's label.
+    expect(screen.getByRole('button', { name: 'Create Experience' })).toBeEnabled();
+  });
+
+  it('keeps the type when reopened from the kind it already has', async () => {
+    const { closeAndReopen } = renderKept(undefined);
+    fireEvent.mouseDown(await kindSelect());
+    fireEvent.click(await screen.findByRole('option', { name: 'World Heritage Sites' }));
+    fireEvent.mouseDown(await typeSelect());
+    fireEvent.click(await screen.findByRole('option', { name: 'Cultural' }));
+
+    closeAndReopen(1);
+
+    expect(await typeSelect()).toHaveTextContent('Cultural');
+  });
+
+  it('moves a pin auto-fill placed when the name is replaced after reopening', async () => {
+    mockedSearch.mockImplementation(async (query: string) => [query.startsWith('Minaret') ? JAM : BAMIYAN]);
+    mockedCreate.mockResolvedValue({ id: 901 });
+    const { closeAndReopen } = renderKept(1);
+
+    fireEvent.change(nameBox(), { target: { value: 'Minaret of Jam' } });
+    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    closeAndReopen();
+
+    // Replaced by clearing it first, which is what lets auto-fill run again.
+    fireEvent.change(nameBox(), { target: { value: '' } });
+    fireEvent.change(nameBox(), { target: { value: 'Buddhas of Bamiyan' } });
+    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    expect(mockedCreate.mock.calls[0][0]).toMatchObject({
+      name: 'Buddhas of Bamiyan', latitude: BAMIYAN.lat, longitude: BAMIYAN.lng,
+    });
+    mockedSearch.mockImplementation(async () => []);
   });
 });
