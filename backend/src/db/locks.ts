@@ -59,6 +59,16 @@
  *   `experiences` is another key share, compatible with the mode below, so it
  *   cannot be the far side of a cycle. Placement is also always post-commit on
  *   the curator routes, which is what keeps that true rather than an accident.
+ * - `assignExperiencesToRegions` — the admin's full rebuild of a world view —
+ *   reaches the contents the same way, and for longer: it clears and rebuilds
+ *   in one transaction (#1152), so the key shares its inserts take on the
+ *   points, and the row locks of the automatic rows it deleted, are held until
+ *   it commits, seconds on the largest world view. A location writer parking
+ *   an ordinal waits that long; it is still never waited *by*, for the reason
+ *   above. Its statements run in placement's order — the point-level rows,
+ *   then the object-level ones, each cleared before either is inserted — so
+ *   it and a run's placement of the same objects wait for each other in one
+ *   direction only.
  *
  * **Then the mode: `FOR NO KEY UPDATE`, not `FOR UPDATE`.** It self-conflicts, so
  * two writers on one object still serialise, and it still blocks an UPDATE or a
