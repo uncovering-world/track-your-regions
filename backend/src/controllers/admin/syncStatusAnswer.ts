@@ -99,6 +99,8 @@ export function lastRunOf(row: LatestSyncLogRow): SyncLastRun {
     held: row.total_held ?? 0,
     errors: row.total_errors ?? 0,
     stoppedByRestart: row.stopped_by_restart,
+    unplaced: row.unplaced,
+    placementStoppedByRestart: row.placement_stopped_by_restart,
   };
 }
 

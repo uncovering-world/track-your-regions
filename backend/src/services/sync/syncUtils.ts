@@ -12,7 +12,8 @@ import type { ClosedSyncStatus } from '@tyr/shared/runStatuses';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { CheckValue, ExperienceSyncLogsRow } from '../../db/schema.generated.js';
 import {
-  ORPHANED_RUN_MARKER, PLACEMENT_FAILED_MARKER, PLACEMENT_STOPPED_MARKER, stoppedByRestartSql,
+  ORPHANED_RUN_MARKER, PLACEMENT_FAILED_MARKER, PLACEMENT_STOPPED_MARKER, placementStoppedByRestartSql,
+  stoppedByRestartSql,
 } from './syncLogMarkers.js';
 import {
   writeExperienceLocations, type LocationWriteResult, type LocationWriteRun,
@@ -248,12 +249,20 @@ export type LatestSyncLogRow = Pick<ExperienceSyncLogsRow,
   | 'total_created' | 'total_updated' | 'total_unchanged' | 'total_missing'
   | 'total_curated_conflicts' | 'total_held' | 'total_filtered' | 'total_errors'> & {
   stopped_by_restart: boolean;
+  /**
+   * How many objects the source's runs moved and have not placed, across its
+   * closed real runs — what its next real run takes over; null when the newest
+   * run is a real one from before the list (#1152).
+   */
+  unplaced: number | null;
+  placement_stopped_by_restart: boolean;
 };
 
 /**
  * The newest run of a source, previews included, or null for a source never
  * run: a run going on in another process, or the last one, whose row says how
- * far it got when a restart stopped it (#1131).
+ * far it got when a restart stopped it (#1131), and how many of the objects the
+ * source's runs moved are not placed yet (#1152).
  */
 export async function readLatestSyncLog(sourceId: number): Promise<LatestSyncLogRow | null> {
   const { rows } = await pool.query<LatestSyncLogRow>(
@@ -261,7 +270,16 @@ export async function readLatestSyncLog(sourceId: number): Promise<LatestSyncLog
             l.current_item, l.progress_done, l.progress_total, l.progress_at, l.total_fetched,
             l.total_created, l.total_updated, l.total_unchanged, l.total_missing,
             l.total_curated_conflicts, l.total_held, l.total_filtered, l.total_errors,
-            ${stoppedByRestartSql('l')} AS stopped_by_restart
+            ${stoppedByRestartSql('l')} AS stopped_by_restart,
+            -- The source's waiting objects, not this row's: what the next real
+            -- run takes over is every closed real row's list, so a preview run
+            -- since (its own list is empty) does not hide them.
+            CASE WHEN l.unplaced_experience_ids IS NULL AND NOT l.is_dry_run THEN NULL
+                 ELSE (SELECT count(DISTINCT waiting.id)::int
+                         FROM experience_sync_logs w, unnest(w.unplaced_experience_ids) AS waiting(id)
+                        WHERE w.source_id = l.source_id AND NOT w.is_dry_run AND w.status <> 'running')
+            END AS unplaced,
+            ${placementStoppedByRestartSql('l')} AS placement_stopped_by_restart
        FROM experience_sync_logs l
       WHERE l.source_id = $1
       ORDER BY l.id DESC

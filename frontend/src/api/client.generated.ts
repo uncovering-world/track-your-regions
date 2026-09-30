@@ -7898,6 +7898,10 @@ export interface SyncLastRun {
   errors: number;
   /** The server was restarted under the run and the startup sweep closed it, with its figures as they stood (#1131). */
   stoppedByRestart: boolean;
+  /** Objects the source's runs moved and have not placed in their regions yet, across its closed real runs; its next real run places them (#1152). Null when the newest run is a real one from before the count. */
+  unplaced: number | null;
+  /** The run had closed and was placing what it moved when the server was restarted; the startup sweep marked it (#1152). */
+  placementStoppedByRestart: boolean;
 }
 
 export type SyncLogStatus = typeof SyncLogStatus[keyof typeof SyncLogStatus];

@@ -96,6 +96,10 @@ export const SyncLastRun = z.strictObject({
   errors: z.number().int(),
   stoppedByRestart: z.boolean()
     .describe('The server was restarted under the run and the startup sweep closed it, with its figures as they stood (#1131).'),
+  unplaced: z.number().int().nullable()
+    .describe('Objects the source\'s runs moved and have not placed in their regions yet, across its closed real runs; its next real run places them (#1152). Null when the newest run is a real one from before the count.'),
+  placementStoppedByRestart: z.boolean()
+    .describe('The run had closed and was placing what it moved when the server was restarted; the startup sweep marked it (#1152).'),
 }).describe('A source\'s newest closed run, previews included, as its log row holds it.');
 export type SyncLastRun = z.infer<typeof SyncLastRun>;
 

@@ -61,7 +61,7 @@ function killed(overrides: Partial<SyncLastRun> = {}): SyncStatus {
       logId: 140, status: 'failed', dryRun: false,
       startedAt: '2026-09-29T20:40:00Z', completedAt: '2026-09-29T21:00:00Z',
       phase: 'processing', progress: 412, total: 1083, created: 37, updated: 12, held: 0, errors: 0,
-      stoppedByRestart: true,
+      stoppedByRestart: true, unplaced: null, placementStoppedByRestart: false,
       ...overrides,
     },
   };
