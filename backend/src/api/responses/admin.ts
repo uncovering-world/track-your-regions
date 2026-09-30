@@ -80,6 +80,25 @@ export const PictureRepairStarted = z.strictObject({
 }).describe('A repair of one source\'s pictures, started in the background and followed through the sync status.');
 export type PictureRepairStarted = z.infer<typeof PictureRepairStarted>;
 
+export const SyncLastRun = z.strictObject({
+  logId: z.number().int(),
+  status: z.enum(CLOSED_SYNC_STATUSES),
+  dryRun: z.boolean(),
+  startedAt: timestamp.nullable(),
+  completedAt: timestamp.nullable(),
+  phase: z.enum(CHECK_VALUES.experience_sync_logs.phase).nullable()
+    .describe('The phase the run was last in; null on runs from before a run wrote its progress.'),
+  progress: z.number().int().describe('Items the run had gone through.'),
+  total: z.number().int().describe('Items it was given; 0 when it stopped while still collecting.'),
+  created: z.number().int(),
+  updated: z.number().int(),
+  held: z.number().int(),
+  errors: z.number().int(),
+  stoppedByRestart: z.boolean()
+    .describe('The server was restarted under the run and the startup sweep closed it, with its figures as they stood (#1131).'),
+}).describe('A source\'s newest closed run, previews included, as its log row holds it.');
+export type SyncLastRun = z.infer<typeof SyncLastRun>;
+
 export const SyncStatus = z.strictObject({
   running: z.boolean(),
   cancellable: z.boolean().optional().describe('Whether a Cancel press would be acted on: the server\'s rule, not a copy.'),
@@ -101,10 +120,13 @@ export const SyncStatus = z.strictObject({
   currentItem: z.string().optional(),
   logId: z.number().int().nullable().optional(),
   dryRun: z.boolean().optional(),
+  progressAt: timestamp.optional()
+    .describe('Sent only for a run this server does not hold, read from its log row: when that run last wrote its progress. It cannot be cancelled from here.'),
   lastSyncAt: timestamp.nullable().optional()
-    .describe('Sent instead of the run\'s figures when no run is known since the server started: the source\'s last run as the database holds it.'),
+    .describe('Sent instead of the run\'s figures when no run is going: the source\'s last real run as the database holds it.'),
   lastSyncStatus: z.enum(CLOSED_SYNC_STATUSES).nullable().optional(),
-}).describe('A source\'s run as it stands: the figures of the run the server knows of, or the last run the database recorded.');
+  lastRun: SyncLastRun.optional().describe('Sent with `lastSyncAt` when the source has run at all.'),
+}).describe('A source\'s run as it stands: the figures of the run this server holds, a run another holds as its log row says, or the last run the database recorded.');
 export type SyncStatus = z.infer<typeof SyncStatus>;
 
 export const SyncCancelled = z.strictObject({
@@ -237,6 +259,8 @@ export const SyncLog = z.strictObject({
   triggered_by_name: z.string().nullable(),
   has_changeset: z.boolean().describe('False on runs that predate change provenance, whose counters mean something else.'),
   changeset_lost: z.boolean().describe('The changeset insert threw, so the per-object record is missing or short.'),
+  stopped_by_restart: z.boolean()
+    .describe('The server was restarted under the run: its figures are how far it got, and its per-object record never left memory.'),
 }).describe('One run of a source.');
 export type SyncLog = z.infer<typeof SyncLog>;
 

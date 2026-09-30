@@ -11,7 +11,7 @@
 import type { ClosedSyncStatus } from '@tyr/shared/runStatuses';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { CheckValue, ExperienceSyncLogsRow } from '../../db/schema.generated.js';
-import { ORPHANED_RUN_MARKER } from './syncLogMarkers.js';
+import { ORPHANED_RUN_MARKER, stoppedByRestartSql } from './syncLogMarkers.js';
 import {
   writeExperienceLocations, type LocationWriteResult, type LocationWriteRun,
 } from './locationWriter.js';
@@ -189,6 +189,36 @@ export async function updateSyncLog(
      WHERE id = $1`,
     [sourceId, status, status === 'failed' ? 'See sync log for details' : null]
   );
+}
+
+/** A source's newest run as the status endpoint reads it (`readLatestSyncLog`). */
+export type LatestSyncLogRow = Pick<ExperienceSyncLogsRow,
+  'id' | 'status' | 'is_dry_run' | 'started_at' | 'completed_at' | 'phase' | 'status_message'
+  | 'current_item' | 'progress_done' | 'progress_total' | 'progress_at' | 'total_fetched'
+  | 'total_created' | 'total_updated' | 'total_unchanged' | 'total_missing'
+  | 'total_curated_conflicts' | 'total_held' | 'total_filtered' | 'total_errors'> & {
+  stopped_by_restart: boolean;
+};
+
+/**
+ * The newest run of a source, previews included, or null for a source never
+ * run: a run going on in another process, or the last one, whose row says how
+ * far it got when a restart stopped it (#1131).
+ */
+export async function readLatestSyncLog(sourceId: number): Promise<LatestSyncLogRow | null> {
+  const { rows } = await pool.query<LatestSyncLogRow>(
+    `SELECT l.id, l.status, l.is_dry_run, l.started_at, l.completed_at, l.phase, l.status_message,
+            l.current_item, l.progress_done, l.progress_total, l.progress_at, l.total_fetched,
+            l.total_created, l.total_updated, l.total_unchanged, l.total_missing,
+            l.total_curated_conflicts, l.total_held, l.total_filtered, l.total_errors,
+            ${stoppedByRestartSql('l')} AS stopped_by_restart
+       FROM experience_sync_logs l
+      WHERE l.source_id = $1
+      ORDER BY l.id DESC
+      LIMIT 1`,
+    [sourceId],
+  );
+  return rows[0] ?? null;
 }
 
 /**

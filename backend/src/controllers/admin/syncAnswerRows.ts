@@ -93,6 +93,7 @@ export type SyncLogRow = Pick<ExperienceSyncLogsRow,
   triggered_by_name: UsersRow['display_name'];
   has_changeset: boolean;
   changeset_lost: boolean;
+  stopped_by_restart: boolean;
 };
 
 export function syncLogOf(row: SyncLogRow): SyncLog {
@@ -120,6 +121,7 @@ export function syncLogOf(row: SyncLogRow): SyncLog {
     triggered_by_name: row.triggered_by_name,
     has_changeset: row.has_changeset,
     changeset_lost: row.changeset_lost,
+    stopped_by_restart: row.stopped_by_restart,
   };
 }
 

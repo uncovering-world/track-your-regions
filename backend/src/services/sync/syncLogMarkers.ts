@@ -41,3 +41,15 @@ export const CHANGESET_LANDED_SQL = `
   prev.completed_at IS NOT NULL
   AND NOT COALESCE(prev.error_details @> '[${JSON.stringify(CHANGESET_LOST_MARKER)}]', FALSE)
   AND NOT COALESCE(prev.error_details @> '[${JSON.stringify(ORPHANED_RUN_MARKER)}]', FALSE)`;
+
+/**
+ * SQL: did the startup sweep close this run, because the server was
+ * restarted under it (#1131)?
+ *
+ * `alias` must name an `experience_sync_logs` row. Matched by containment,
+ * like the predicate above, since the sweep closes the row `failed` and a
+ * status alone cannot tell it from a run that failed on its own.
+ */
+export function stoppedByRestartSql(alias: string): string {
+  return `COALESCE(${alias}.error_details @> '[${JSON.stringify(ORPHANED_RUN_MARKER)}]', FALSE)`;
+}
