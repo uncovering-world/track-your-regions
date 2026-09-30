@@ -12,7 +12,11 @@ This document describes how experience markers work in both map surfaces:
 - Discover Mode: `frontend/src/components/discover/DiscoverExperienceView.tsx`, which owns the
   selection and the camera and delegates the rest to one file each: `useDiscoverMap.ts` (the map
   instance and every listener on it), `useDiscoverHover.ts` (hover, in both directions),
-  `discoverMapLayers.ts` (sources and paint) and `DiscoverExperienceList.tsx` (the windowed rows)
+  `discoverMapLayers.ts` (the sources and layers, its clusters added to the shared scene) and
+  `DiscoverExperienceList.tsx` (the windowed rows)
+- The scene both draw: `frontend/src/components/experienceMarkers/scene.ts` — the pin, its
+  badge, the highlight and the hover ring, with the data they are drawn from (§ One scene, two
+  maps)
 - Shared interaction state: `frontend/src/hooks/useExperienceContext.tsx`, and hover alone in
   `frontend/src/hooks/useHoverContext.tsx` — see § What a hover is allowed to re-render. Both
   surfaces ride that store now (#573): `ExperienceProvider` mounts its provider for Map mode, and
@@ -129,7 +133,7 @@ rule itself.
 
 **Every place, not one of them** ([#558](https://github.com/uncovering-world/track-your-regions/issues/558), ADR-0028 decision 1). A serial nomination *is* its parts, and the map used to draw one of them: Gondwana Rainforests was a single dot 171 km from any component, and the Rock Art of the Mediterranean Basin one dot for 734 rock shelters. `buildExperienceMarkers()` now emits a marker per place a reader may go to, and both surfaces call it — Map Mode and Discover cannot disagree about what an object is. Measured on Europe with the World Heritage kind expanded, which is the set both surfaces were reading: its **467 objects drew 467 markers and now draw 3463**. The whole region holds 661 offered objects over 3725 visible places in the database (3531 of them under UNESCO); the app draws fewer than the raw count because an object with any in-region place draws only those. The Rock Art of the Mediterranean Basin contributes 734 of the 3463, the Frontiers of the Roman Empire 420 and Aalto Works 13. Panning at marker zoom holds a **59.9 FPS median** (p95 50 ms, worst frame 83 ms) with 1698 of them drawn.
 
-In Map Mode a feature's `id` is `${experienceId}-${locationId}`, because the object's id now repeats across every one of its places and `id` is what MapLibre keys a feature by. Discover sets no feature id and no longer promotes one: clustering does not need it, its handlers resolve an object through `properties.id`, and that property is the experience — so promoting it would have keyed every place of an object the same, which is the collision Map Mode's composite id avoids. The hover dedupe is keyed by place for the same reason: keyed by object, the ring and popup stayed on the first part the pointer touched while it crossed the other thirty-nine. A row's hover rings **every** place of its object — in Discover, where the source is clustered, that means a ring on each of its drawn pins plus one on each cluster bubble holding the rest, since a bubble sits at its members' centroid rather than at any of them.
+A marker feature's handlers resolve the object through `properties.experienceId` and the place through `properties.locationId`, on both surfaces: both build their features with `buildMarkerFeatures`. Its top-level `id` is the place's key, `${experienceId}-${locationId}`, and nothing reads it back — MapLibre parses a string id to its leading integer, so for MapLibre every place of an object carries the object's id, and neither marker source reads feature-state (`maplibre-patterns.md` § Where a feature's id comes from). Discover promotes no id either: `properties.experienceId` is the experience, so promoting it would key every place of an object the same. The hover dedupe is keyed by place for the same reason: keyed by object, the ring and popup stayed on the first part the pointer touched while it crossed the other thirty-nine. A row's hover rings **every** place of its object — in Discover, where the source is clustered, that means a ring on each of its drawn pins plus one on each cluster bubble holding the rest, since a bubble sits at its members' centroid rather than at any of them.
 
 **The fold: one object, back to one pin.** Drawing every place is right by default and wrong for a few rows — the Rock Art of the Mediterranean Basin and the Roman limes own a third of the 3463 pins Europe's UNESCO kind draws — so a reader can fold *one object* and leave its neighbours drawn. The ask lives on the object: a chip at the top of the map for the selected object, a click on a folded pin to unfold it, and — in Map Mode — the count chip on a list row, filled when folded. Discover's rows carry a plain count instead, so a fold is asked for there by selecting the object and using the map's chip. It is held per region and per surface by `useCollapsedExperiences(regionId)`, derived rather than reset by an effect; Map Mode and Discover hold their own, because two readings of a region are two sessions of looking.
 
@@ -165,6 +169,17 @@ The handover is a cross-fade, not a threshold. `minzoom` cannot express one — 
 Removing clustering removed the only asynchronous path in the hover: `getClusterLeaves` was what made an answer arrive after the pointer had moved on, and the ownership-token machinery existed solely to discard those stale answers. A list hover now paints the ring on the marker's own point directly — `updateHoverFromList` takes no map handle at all, which also removed a guard that had started skipping the "clear the ring" branch whenever the map was not ready yet.
 
 Discover Mode still uses clustering (cluster circles, count labels, fold badge, hover ring, selected-location highlights) with a dedicated map instance and imperative MapLibre event wiring — the heatmap is Map Mode only. Its clusters count **places** since #558: measured on the same set as above — UNESCO in Europe — 467 objects draw the same 3463 points, the largest clusters reading 843 over central Europe and 526 over the Balkans. What a cluster label counts is rendered features rather than places represented, which are the same number until a reader folds something: a folded object contributes one feature to the cluster while its own badge still says how many places it stands for. A cluster of one-point-per-object counted sites; a cluster of places counts what a reader zooming in is about to be shown.
+
+### One scene, two maps
+
+Map Mode declares its layers in react-map-gl JSX and Discover calls MapLibre on its own map instance, but what they draw is one declaration (#1132): `components/experienceMarkers/scene.ts`. It holds the three source ids (`SCENE_SOURCES`: `exp-markers`, `exp-highlight`, `exp-hover` — the same on both maps, which are separate instances), the layer ids (`LAYER_MARKERS`, `MARKER_LAYERS`, `LAYER_HIGHLIGHT_POINT` and the rest), the layers with their paint — the pin, its count badge with its `locationCount > 1` filter, the highlight's red ring and dot, the hover's orange glow and ring — and the order they are painted in: the pin and its badge (`SCENE_MARKER_ORDER`), then the selection and the hover over it (`SCENE_OVERLAY_ORDER`). It also holds the builders of what those sources carry: `buildMarkerFeatures` for the markers, `buildHighlightData` for the selection (a dot that names no one place carries a null `locationId`), `buildPointHoverData` / `buildPointsHoverData` for the rings, `buildSizedRing` for a ring sized to sit outside a drawn bubble, and `EMPTY_FC` to clear.
+
+Each map adds only what is its own, declared where it is added rather than as a copy:
+
+- **Map Mode's cross-fade with the heatmap.** `layers.ts` spreads the scene's pin layers and adds a `minzoom` at `MARKER_FADE_START` and the opacity ramp across the band (§ Density instead of clusters). The selection and hover layers it takes as they stand, and `worldPointLayers.ts` spreads `layers.ts` in turn.
+- **Discover's clustering.** `discoverMapLayers.ts` clusters the markers source, adds the bubbles and their counts (`LAYER_CLUSTERS`, `LAYER_CLUSTER_COUNT`), and keeps each scene pin layer off the aggregates with `unclustered()`, which joins `NOT_CLUSTER` to the layer's own filter.
+
+Both maps' listeners name layers and sources by these constants rather than by string literals. `scene.test.ts` holds Map Mode's layers to the scene with only the cross-fade added, `discover/discoverMapLayers.test.ts` holds Discover's to it with only the clustering added, and `ExperienceMarkers.order.test.tsx` holds Map Mode's mount order to the scene's order. A change to the ring's size or the badge's offset is therefore made once, in `scene.ts`, and either map drifting from it fails one of those specs.
 
 ## The world layer: a kind's places before a region is chosen
 
@@ -204,7 +219,8 @@ becomes the `FeatureCollection` MapLibre is handed.
 | a click | selects the object in the list | opens it where this world view holds it (ADR-0042) |
 
 **What is shared is the paint**, spread from `layers.ts` rather than restated
-(`worldPointLayers.ts`): the heatmap's radius and palette, the marker's size, and the
+(`worldPointLayers.ts`), whose pins are themselves the scene's (§ One scene, two maps): the
+heatmap's radius and palette, the marker's size, and the
 cross-fade between them at `MARKER_FADE_START` → `HEATMAP_MAX_ZOOM`. Two point layers on one
 map that disagreed about any of those would read as two different things being shown.
 
@@ -472,7 +488,7 @@ Both Map mode and Discover mode render hover cards as React `<Box>` overlays pos
 
 Map mode (`regionMap/HoverPreviewCard.tsx`): positioned by marker screen location (left/right and top/bottom) to avoid covering the hovered marker. Its own component and its own subscriber to the hover store, so the map is not one: `RegionMapVT` used to read the preview and render this inline, which meant a mouse move across a list of places re-rendered the whole map. It still needs the map — only the map can say where on screen the described point currently is — and takes `mapRef`/`mapLoaded` as props for that.
 
-Discover mode (`discover/DiscoverHoverCard.tsx`): positioned in the bottom-left corner of the map — which is why the fold chip sits at the top centre (`FoldPlacesControl`), since the card would otherwise paint over it. Its own component and its own subscriber to the hover store, for the same reason as Map mode's: rendered inline by `DiscoverExperienceView`, every marker the pointer crossed re-rendered the component that owns the map. On marker hover, `useDiscoverHover` looks up the experience in the `experiences` array by feature ID and writes the preview into the store. Uses `extractImageUrl()` + `toThumbnailUrl()` for image thumbnails. Both use `objectFit: 'contain'` with `maxHeight` to handle portrait-oriented images without severe cropping.
+Discover mode (`discover/DiscoverHoverCard.tsx`): positioned in the bottom-left corner of the map — which is why the fold chip sits at the top centre (`FoldPlacesControl`), since the card would otherwise paint over it. Its own component and its own subscriber to the hover store, for the same reason as Map mode's: rendered inline by `DiscoverExperienceView`, every marker the pointer crossed re-rendered the component that owns the map. On marker hover, `useDiscoverHover` looks up the experience in the `experiences` array by the marker's `experienceId` and writes the preview into the store. Uses `extractImageUrl()` + `toThumbnailUrl()` for image thumbnails. Both use `objectFit: 'contain'` with `maxHeight` to handle portrait-oriented images without severe cropping.
 
 ## What the map reads at each level
 
