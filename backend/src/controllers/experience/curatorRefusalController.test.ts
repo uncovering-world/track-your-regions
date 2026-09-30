@@ -118,7 +118,7 @@ describe('refuseArrival', () => {
     const membership = client.queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
     expect(membership?.sql).toContain("admission = 'refused'");
     expect(membership?.sql).toContain('is_iconic = CASE');
-    expect(membership?.params).toEqual([40, CURATOR_REFUSAL_REASON, JSON.stringify(['admission'])]);
+    expect(membership?.params).toEqual([40, CURATOR_REFUSAL_REASON, JSON.stringify(['admission']), 5]);
     // Nobody passed it: the gate state is left as it is, and both facts are said.
     expect(membership?.sql).not.toContain('curation_state');
 

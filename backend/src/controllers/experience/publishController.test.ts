@@ -56,7 +56,7 @@ describe('publishing an arrival', () => {
     // the publication lands on the place's membership, the content on the place.
     const update = only(queries, 'UPDATE experience_kind_memberships');
     expect(update.sql).toContain(`curation_state = 'verified'`);
-    expect(update.params).toEqual([77]);
+    expect(update.params).toEqual([77, 5]);
     // Its contents go with it: naming none means all of them, which is what an
     // arrival card asks about — the whole object, nobody having seen any of it.
     expect(only(queries, 'UPDATE experience_locations SET curation_state').sql).not.toContain('ANY($2::int[])');

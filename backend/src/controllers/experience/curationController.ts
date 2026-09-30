@@ -12,7 +12,6 @@ import type {
   CurationLog, CurationLogEntry, ExperienceEditResult, ManualExperienceCreated, RegionMembershipResult,
 } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
 import type { ExperienceCurationLogRow, RegionsRow, UsersRow } from '../../db/schema.generated.js';
 import { badRequest, createError, notFound } from '../../middleware/errorHandler.js';
 import type {
@@ -37,6 +36,7 @@ import {
 } from '../../types/urlSafety.js';
 import { lockExperience, updateExperienceColumns, insertCuratedExperience } from '../../db/experienceWriter.js';
 import { insertCuratedPoint } from './experienceLocationWriter.js';
+import { insertManualMembership } from './membershipWriter.js';
 
 /**
  * The same rule the request schema applied, asked again where the value is
@@ -789,13 +789,7 @@ async function insertManualExperience(
   // moment it is created, and visible
   // from the moment it exists: see the function comment above. A person's
   // judgement does not depend on the source's gate, so nothing here reads it.
-  await client.query(`
-    INSERT INTO ${MEMBERSHIPS} (experience_id, kind_id, source_id, curation_state, published_at)
-    VALUES (
-      $1, (SELECT kind_id FROM experience_sources WHERE id = $2), $2,
-      'verified', NOW()
-    )
-  `, [experienceId, sourceId]);
+  await insertManualMembership(client, created, sourceId);
 
   const locationId = await insertCuratedPoint(client, created, body.name, body.longitude, body.latitude);
 
