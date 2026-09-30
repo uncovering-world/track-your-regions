@@ -3862,6 +3862,32 @@ in opposite orders. The tables' writers are a closed list the backend lint names
 (`WORK_WRITE_RULES`): that module; the run's `museum/treasureWriter.ts` and
 `museum/linkWithdrawal.ts`; and the seed.
 
+**The curation gate's tables are closed lists too** (ADR-0077 decision 4, #1148). Each has a
+family of its own in the backend lint, which refuses an `INSERT`, `UPDATE` or `DELETE` of the
+table anywhere but its writers:
+
+- `experience_conflict_decisions` (`CONFLICT_DECISION_WRITE_RULES`):
+  `controllers/experience/conflictDecisions.ts` alone. `recordConflictRefusals` writes a
+  curator's standing refusal of a proposed value, and `releaseConflictRefusals` drops it when
+  accept-source hands the field back; both take the place's `LockedExperience`.
+- `experience_held_decisions` (`HELD_DECISION_WRITE_RULES`): `recordHeldAnswers` in
+  `controllers/experience/heldDecisions.ts` alone.
+- `experience_sync_changes` (`SYNC_CHANGE_WRITE_RULES`): `recordSyncChanges` in
+  `services/sync/changeRecorder.ts` alone. A run's record of what it proposed is what happened,
+  and nothing rewrites it.
+- `experience_kind_memberships` (`MEMBERSHIP_WRITE_RULES`): the curator's writes in
+  `controllers/experience/membershipWriter.ts`, each requiring the place's `LockedExperience` —
+  `answerAdmissionOnMembership`, `refuseOnMembership`, `publishMembership`, `clearHeldPointer`
+  and `insertManualMembership`; the run's upsert (`experienceUpsert.ts`, whose one statement
+  writes the place and its membership), its admission sweep (`admission.ts`), `curationDecay.ts`
+  and `heldProposalPointer.ts`; and the seed. The code names the table through `MEMBERSHIPS`
+  (`db/membership.ts`) more often than it spells it, so the rule also reads a verb that ends the
+  literal part before that interpolation; a row lock (`FOR UPDATE`, `FOR NO KEY UPDATE`) and an
+  upsert's `DO UPDATE` end the same way and pass.
+
+`db/curationGateWriteLint.test.ts` holds the four rules in both directions, as
+`db/catalogueWriteLint.test.ts` holds the catalogue's.
+
 The **order**, because the audit row's foreign key reaches `experiences` even in a handler that
 never names it, so a writer that took the point first and logged afterwards was holding one row
 and waiting for the other. That binds `writeExperienceLocations` too, which is why the sync's
