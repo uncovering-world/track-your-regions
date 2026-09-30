@@ -21,7 +21,7 @@ and accepted by it.
 | ADR | Title | Status | Date |
 |-----|-------|--------|------|
 | [0001](0001-use-maplibre-over-mapbox.md) | Use MapLibre over Mapbox | Accepted | 2024-11-01 |
-| [0002](0002-use-gadm-for-administrative-boundaries.md) | Use GADM for administrative boundaries | Accepted | 2024-11-01 |
+| [0002](0002-use-gadm-for-administrative-boundaries.md) | Use GADM for administrative boundaries | Accepted — its licence consequence narrowed by [0078](0078-the-product-is-public-and-non-commercial-and-gadm-is-asked-before-it-is-published.md) | 2024-11-01 |
 | [0003](0003-barrel-exports-for-controllers.md) | Use barrel exports for controllers | Accepted | 2025-01-01 |
 | [0004](0004-drizzle-orm-plus-raw-pool-for-postgis.md) | Drizzle ORM + raw pool for PostGIS | Superseded by [0064](0064-row-types-are-generated-from-the-schema-and-queries-stay-sql.md) | 2025-01-01 |
 | [0005](0005-source-agnostic-world-view-import.md) | Source-agnostic world view import pipeline | Accepted | 2025-01-01 |
@@ -97,6 +97,7 @@ and accepted by it.
 | [0075](0075-a-regions-write-bumps-the-tile-version-at-commit.md) | A write to regions bumps its world view's tile version, at commit | Accepted | 2026-09-28 |
 | [0076](0076-a-dialogs-fields-and-refusals-come-from-one-form-hook.md) | A dialog's fields and its refusals come from one form hook | Accepted | 2026-09-29 |
 | [0077](0077-the-curation-gate-keeps-its-tables-and-a-claims-reach-is-decided-once.md) | The curation gate keeps its tables, and a claim's reach is decided in one place | Accepted | 2026-09-29 |
+| [0078](0078-the-product-is-public-and-non-commercial-and-gadm-is-asked-before-it-is-published.md) | The product is public and non-commercial, and GADM is asked before it is published | Accepted | 2026-09-30 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

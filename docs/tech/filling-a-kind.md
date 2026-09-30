@@ -165,6 +165,12 @@ Reading a list and showing what it says are two different permissions, and both 
   which permits caching nothing but the location id; § 3.4.4(iv) no commingling with third-party
   content; § 3.5.2(c) no transforming; § 3.1.2 display to end users only; § 3.1.3 no model
   training) are excluded for both tiers and for curator screens alike.
+- **Non-commercial.** A licence that forbids commercial use (CC BY-NC, CC BY-NC-SA, GADM's
+  terms) is admissible, because the product is public and not operated for revenue
+  ([ADR-0078](../decisions/0078-the-product-is-public-and-non-commercial-and-gadm-is-asked-before-it-is-published.md)).
+  The rest of the licence is still read and scored. That covers attribution, share-alike, and a
+  ban on redistribution without permission: GADM must have granted its permission before the
+  product is published, and a request still unanswered is not a grant.
 - **Share-alike.** ODbL and CC BY-SA bind a *derivative database* to the same licence. Storing
   OSM's museum rows beside rows from a CC BY register makes a derivative database whose ODbL
   obligations reach the whole; ADR-0002 noted the same for boundaries. Reading OSM to *find*
