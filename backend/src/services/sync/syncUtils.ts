@@ -11,6 +11,7 @@
 import type { ClosedSyncStatus } from '@tyr/shared/runStatuses';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { CheckValue, ExperienceSyncLogsRow } from '../../db/schema.generated.js';
+import { ORPHANED_RUN_MARKER } from './syncLogMarkers.js';
 import {
   writeExperienceLocations, type LocationWriteResult, type LocationWriteRun,
 } from './locationWriter.js';
@@ -188,6 +189,56 @@ export async function updateSyncLog(
      WHERE id = $1`,
     [sourceId, status, status === 'failed' ? 'See sync log for details' : null]
   );
+}
+
+/**
+ * Close the runs a dead process left `running`, at startup (#1131).
+ *
+ * Each is closed `failed` with the orphaned-run marker the review queue and
+ * the run card read, and with how far it got: the counts and the phase its
+ * progress writes left stand, and `total_fetched` becomes the items it had
+ * been given, the figure a failed run closes with. A source whose newest real
+ * run is one of these gets the same verdict as its last sync, as
+ * `updateSyncLog` would have given it, so the card and the history agree; a
+ * preview synced nothing and leaves the source alone.
+ *
+ * One statement, so the log and the source can never disagree about a run.
+ * It closes every running row, which is right only while one backend process
+ * runs the syncs: a second process starting would close the first's live runs.
+ */
+export async function closeOrphanedSyncLogs(): Promise<{ closed: number; sourcesMarked: number }> {
+  const { rows: [counts] } = await pool.query<{ closed: number; sources_marked: number }>(
+    `WITH closed AS (
+       UPDATE experience_sync_logs SET
+         status = 'failed',
+         completed_at = NOW(),
+         error_details = jsonb_build_array($1::jsonb),
+         total_fetched = COALESCE(progress_total, total_fetched)
+       WHERE status = 'running'
+       RETURNING id, source_id, is_dry_run, completed_at
+     ), newest AS (
+       SELECT DISTINCT ON (source_id) id, source_id, completed_at
+       FROM closed
+       WHERE NOT is_dry_run
+       ORDER BY source_id, id DESC
+     ), marked AS (
+       UPDATE experience_sources s SET
+         last_sync_at = newest.completed_at,
+         last_sync_status = 'failed',
+         last_sync_error = $2
+       FROM newest
+       WHERE s.id = newest.source_id
+         AND NOT EXISTS (
+           SELECT 1 FROM experience_sync_logs later
+           WHERE later.source_id = newest.source_id AND NOT later.is_dry_run AND later.id > newest.id
+         )
+       RETURNING s.id
+     )
+     SELECT (SELECT COUNT(*) FROM closed)::int AS closed,
+            (SELECT COUNT(*) FROM marked)::int AS sources_marked`,
+    [JSON.stringify(ORPHANED_RUN_MARKER), 'See sync log for details'],
+  );
+  return { closed: counts.closed, sourcesMarked: counts.sources_marked };
 }
 
 /**
