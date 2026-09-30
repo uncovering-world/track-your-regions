@@ -38,7 +38,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, refuseArrivalBodySchema, refuseContentsBodySchema } from '../../types/index.js';
-import { CLEAR_ICONIC } from '../../services/sync/admission.js';
+import { refuseOnMembership } from './membershipWriter.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
@@ -179,15 +179,7 @@ export async function refuseArrivalUnderLock(
     // good. Who decided, when and the note on the place, beside the other
     // verdicts that share those columns.
     const curated = [...new Set([...((before.curated_fields as string[]) ?? []), 'admission'])];
-    await client.query(`
-      UPDATE ${MEMBERSHIPS} m
-      SET admission = 'refused',
-          admission_reason = $2,
-          curated_fields = $3,
-          updated_at = NOW(),
-          ${CLEAR_ICONIC}
-      WHERE m.id = $1
-    `, [membershipId, CURATOR_REFUSAL_REASON, JSON.stringify(curated)]);
+    await refuseOnMembership(client, locked.lock, membershipId, CURATOR_REFUSAL_REASON, curated);
     await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
 
     await client.query(`

@@ -181,7 +181,7 @@ describe('declineHeldValue', () => {
     expect(queries.find(q => q.sql.includes('UPDATE experiences'))).toBeUndefined();
     const write = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
     expect(write?.sql).toContain('pending_change_sync_log_id = NULL');
-    expect(write?.params).toEqual([77]);
+    expect(write?.params).toEqual([77, 1138]);
     expect(write?.sql).not.toContain('curated_fields');
     expect(write?.sql).not.toContain('name = ');
     expect(write?.sql).not.toContain('short_description');

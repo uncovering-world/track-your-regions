@@ -212,12 +212,16 @@ function rowsFrom(result: { rows: { id: number; external_id: string; name: strin
  * The flag has its own curator pin, honoured separately from admission's: a
  * person who marked this must-see goes on saying so, whatever the rule decided.
  *
- * Shared with the curator's confirmation of a refusal (`setExperienceAdmission`),
- * which is the one refusal write after which no run reaches the row: the pin it
- * sets is what `UNPROTECTED` honours, so whatever the flag holds at that moment
- * is what it holds for good. Eight museums refused on the day these writes
- * landed kept the flag exactly that way until migration 042 cleared them
- * (#760); `refused-row-wearing-iconic` in Catalogue Checks is what would name
+ * Shared with the curator's two refusal writes in `membershipWriter.ts` — the
+ * confirmation of a refusal (`setExperienceAdmission`, written by
+ * `answerAdmissionOnMembership`) and the refusal of an arrival
+ * (`refuseOnMembership`). A pinned one — the card's confirm and every refusal
+ * of an arrival — is a write after which no run reaches the row: its pin is
+ * what `UNPROTECTED` honours, so whatever the flag holds at that moment is
+ * what it holds for good. A batch confirm pins nothing (ADR-0067) and leaves
+ * the row to the next run's sweep. Eight museums refused on the day these
+ * writes landed kept the flag exactly that way until migration 042 cleared
+ * them (#760); `refused-row-wearing-iconic` in Catalogue Checks is what would name
  * the next one.
  */
 export const CLEAR_ICONIC = `is_iconic = CASE

@@ -51,6 +51,7 @@ import { recordHeldAnswers } from './heldDecisions.js';
 import type { HeldSelection, SelectedPart } from './heldSelection.js';
 import { lockExperience, updateExperienceColumns, type LockedExperience } from '../../db/experienceWriter.js';
 import { lockWorksToPublish, type WorksToPublish } from './workWriter.js';
+import { publishMembership } from './membershipWriter.js';
 
 /**
  * What the curator asked to be published.
@@ -553,12 +554,7 @@ export async function publishUnderLock(
       // two statements in the one transaction, under the one lock.
       // `write.params` binds the id as `$1`; the writer binds it itself.
       await updateExperienceColumns(client, locked.lock, write.assignments, write.params.slice(1));
-      await client.query(
-        `UPDATE ${MEMBERSHIPS}
-         SET ${[...publicationAssignments(before, heldLeftOpen), 'updated_at = NOW()'].join(',\n             ')}
-         WHERE id = $1`,
-        [membershipId],
-      );
+      await publishMembership(client, locked.lock, membershipId, publicationAssignments(before, heldLeftOpen));
 
       // The parts, after the object and in the same transaction: a held
       // attribution published while the pointer that named it stayed would be

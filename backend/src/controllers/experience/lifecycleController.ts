@@ -27,7 +27,7 @@ import type { experienceAdmissionBodySchema, idParamSchema, lifecycleStateBodySc
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
-import { CLEAR_ICONIC } from '../../services/sync/admission.js';
+import { answerAdmissionOnMembership } from './membershipWriter.js';
 import {
   lockExperience, setLifecycleVerdict, recordDecisionOnExperience, type LockedExperience,
 } from '../../db/experienceWriter.js';
@@ -272,23 +272,6 @@ async function publishArrivalContents(
 }
 
 /**
- * What a verdict on a refusal does to the must-see flag, appended to the
- * verdict's own `UPDATE`.
- *
- * A confirmed refusal drops the flag the way the run's own refusal writes do,
- * and it has to: the pin that statement writes is what keeps every later run
- * off the row, so whatever the flag holds after it is what it holds for good.
- * Eight museums refused on the day those writes landed wore the badge that way
- * until migration 042 (#760). `override` leaves the flag where the refusal put
- * it — an admitted museum without the badge is a legitimate state (ADR-0045
- * decision 5), and what the badge should mean beyond works-first admission is
- * #603's question, not this endpoint's.
- */
-function iconicAfterVerdictSql(admitted: boolean): string {
-  return admitted ? '' : `, ${CLEAR_ICONIC}`;
-}
-
-/**
  * Answer a refusal.
  * POST /api/experiences/:id/admission
  * Body: { decision: 'confirm' | 'override', note?: string }
@@ -492,36 +475,18 @@ export async function answerAdmissionUnderLock(
     // just answered "does this belong here", and asking "has anyone looked at
     // it" a moment later, about the same click, would be asking the same
     // question with different words.
-    //
-    // Built here rather than as a `CASE` over a parameter, for the reason
-    // `nextReason` is: a parameter used both as the value of a varchar column
-    // and as the left side of a text comparison gives Postgres two types to
-    // deduce for one placeholder, and the error is invisible to every
-    // mocked-pool test.
     publishes = admitted && before.curation_state === 'pending';
     curationState = publishes
       ? 'verified'
       : (before.curation_state as CheckValue<'experience_kind_memberships', 'curation_state'>);
-    const publishSet = publishes
-      ? `, curation_state = 'verified', published_at = COALESCE(published_at, NOW())`
-      : '';
 
     // The verdict, the pin, the badge and the publication on the membership;
     // who decided, when and the note on the place, beside the lifecycle
     // verdicts that share those columns. Two statements, one transaction, one
     // lock (#822).
-    await client.query(`
-      UPDATE ${MEMBERSHIPS} m
-      SET admission = $2,
-          admission_reason = $3,
-          curated_fields = $4,
-          admission_answered_at = ${!admitted && !pin ? 'NOW()' : 'NULL'},
-          updated_at = NOW()${publishSet}${iconicAfterVerdictSql(admitted)}
-      WHERE m.id = $1
-    `, [
-      membershipId, admitted ? 'admitted' : 'refused', nextReason,
-      JSON.stringify(curated),
-    ]);
+    await answerAdmissionOnMembership(client, locked.lock, membershipId, {
+      admitted, pin, publishes, reason: nextReason, curated,
+    });
     await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
 
     ({ locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =

@@ -36,6 +36,7 @@ import {
 } from './heldSelection.js';
 import type { ContentsByKind } from '../../services/sync/types.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { clearHeldPointer } from './membershipWriter.js';
 
 export interface DeclineRefusal {
   status: number;
@@ -165,7 +166,7 @@ export async function refuseUnderLock(
     const membershipId = (read.rows[0]?.membership_id as number | null) ?? null;
     const pointer = (read.rows[0]?.pending_change_sync_log_id as number | null) ?? null;
 
-    if (pointer === null) {
+    if (pointer === null || membershipId === null) {
       return await refuse(409,
         'The proposal this row was holding is gone — reload to see where it stands', null);
     }
@@ -210,11 +211,7 @@ export async function refuseUnderLock(
     // and nothing else names the run they belong to.
     const heldLeftOpen = open.length - selected.length;
     if (heldLeftOpen === 0) {
-      await client.query(
-        `UPDATE ${MEMBERSHIPS} SET pending_change_sync_log_id = NULL, updated_at = NOW()
-          WHERE id = $1`,
-        [membershipId],
-      );
+      await clearHeldPointer(client, locked.lock, membershipId);
     }
 
     const declinedFields = selected.filter(row => row.ref.kind === null).map(row => row.ref.field);
