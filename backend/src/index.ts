@@ -89,25 +89,17 @@ const startServer = async () => {
   const { initializePassport } = await import('./auth/passport.js');
   initializePassport();
 
-  // Mark any orphaned 'running' sync logs as failed (e.g., from a previous server crash)
   const { pool } = await import('./db/index.js');
   // The first statement below is the first the database sees: wait for it to
   // answer rather than die on a refusal while it finishes starting (#775).
   const { waitForDatabase } = await import('./db/waitForDatabase.js');
   await waitForDatabase(pool);
-  // The review queue reads this marker to tell a run that recorded nothing
-  // from one whose changeset landed, and matches it by containment — so the
-  // whole object comes from the constant, not just its message.
-  const { ORPHANED_RUN_MARKER } = await import('./services/sync/syncLogMarkers.js');
-  const staleResult = await pool.query(
-    `UPDATE experience_sync_logs
-     SET status = 'failed', completed_at = NOW(),
-         error_details = jsonb_build_array($1::jsonb)
-     WHERE status = 'running'`,
-    [JSON.stringify(ORPHANED_RUN_MARKER)]
-  );
-  if (staleResult.rowCount && staleResult.rowCount > 0) {
-    console.log(`🧹 Marked ${staleResult.rowCount} stale sync log(s) as failed`);
+  // A run the previous process was in the middle of is closed with how far it
+  // got, and its source's last verdict with it (#1131).
+  const { closeOrphanedSyncLogs } = await import('./services/sync/syncUtils.js');
+  const orphaned = await closeOrphanedSyncLogs();
+  if (orphaned.closed > 0) {
+    console.log(`🧹 Marked ${orphaned.closed} stale sync log(s) as failed`);
   }
 
   // Mark any orphaned import_runs as failed (e.g., from a previous server crash)
