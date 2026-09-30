@@ -359,6 +359,8 @@ cmd_load_gadm() {
         # Interactive: offer the known URL, then prompt for a custom one.
         if [[ -t 0 ]]; then
             echo -e "${YELLOW}GADM file not found in ./deployment/ or ~/.${NC}"
+            echo "GADM's terms (https://gadm.org/license.html): free for non-commercial use;"
+            echo "redistribution, including serving it on a public host, needs GADM's permission."
             read -r -p "Download it now from the known location? [Y/n]: " ans
             if [[ ! "$ans" =~ ^[Nn] ]]; then
                 gadm_file="$(download_gadm "$GADM_DOWNLOAD_URL" || true)"
