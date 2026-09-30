@@ -11,6 +11,7 @@
  */
 
 import { createSyncLog, updateSyncLog } from './syncUtils.js';
+import { startProgressWriter } from './syncProgressWriter.js';
 import type { ChangeRecord } from './changeRecorder.js';
 import { finishPlacement, enterAssigningPhase, terminalStatus } from './placement.js';
 import { countAdmitted, markRefused } from './admission.js';
@@ -164,6 +165,9 @@ export async function orchestrateSync<T>(
 
   const progress = initSyncProgress(dryRun);
   runningSyncs.set(sourceId, progress);
+  // The row follows the memory from here to the close (#1131), so a restart
+  // leaves a row that says how far the run got.
+  const progressWriter = startProgressWriter(progress, { logPrefix });
   const errorDetails: ErrorDetail[] = [];
   const changes: ChangeRecord[] = [];
   // Experiences whose geometry moved, so their region assignment is stale.
@@ -186,6 +190,7 @@ export async function orchestrateSync<T>(
   try {
     progress.logId = await createSyncLog(sourceId, triggeredBy, dryRun);
     console.log(`${logPrefix} Started sync (log ID: ${progress.logId})${dryRun ? ' [DRY RUN]' : ''}`);
+    await progressWriter.flush(true);
 
     const previousActiveCount = await countActiveExperiences(sourceId);
     // Read before the run writes, so the sweep's floor compares like with like.
@@ -268,6 +273,8 @@ export async function orchestrateSync<T>(
     finishedStatus = finalStatus === 'failed' ? 'failed' : 'complete';
     progress.statusMessage = completionMessage(progress, finalStatus, withdrawalSkippedReason);
 
+    // Stopped before the close, so no progress write lands behind it.
+    await progressWriter.close();
     await updateSyncLog(sourceId, progress.logId, finalStatus, runCounters(
       progress, fetchedCount, detectionSkippedReason, withdrawalSkippedReason,
     ), errorDetails.length > 0 ? errorDetails : undefined);
@@ -281,11 +288,15 @@ export async function orchestrateSync<T>(
     // the run non-terminal: `isSyncStillRunning` true forever, a spinner over a
     // finished run, and retries answered 409 until the cleanup timer fires.
     finishedStatus = progress.cancel ? 'cancelled' : 'failed';
+    await progressWriter.close();
     await recordSyncFailure(
       config, progress, err, errorDetails, changes, changesRecorded, finishedStatus,
       detectionSkippedReason, withdrawalSkippedReason);
     throw err;
   } finally {
+    // Both paths above have closed it already; this is for a path that forgot.
+    await progressWriter.close();
+
     // The run is not over, but it is no longer processing items: placement is
     // its own phase, and a window of its own on a first run, where the whole
     // source lands in `movedExperiences` and every world view gets its own

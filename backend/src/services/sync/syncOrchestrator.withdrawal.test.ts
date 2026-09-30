@@ -20,6 +20,7 @@ import { runningSyncs } from './types.js';
 vi.mock('./syncUtils.js', () => ({
   createSyncLog: vi.fn().mockResolvedValue(42),
   updateSyncLog: vi.fn().mockResolvedValue(undefined),
+  writeSyncLogProgress: vi.fn().mockResolvedValue(true),
   annotateClosedSyncLog: vi.fn().mockResolvedValue(undefined),
 }));
 
