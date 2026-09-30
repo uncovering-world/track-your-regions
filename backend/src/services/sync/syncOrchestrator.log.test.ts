@@ -1,8 +1,9 @@
 /**
  * Tests for the log a run writes and the state it ends in: the counts it
  * reports, the status it settles on when items fail or nothing changed, a dry
- * run that writes nothing, and a changeset that is neither lost nor inserted
- * twice when closing the log throws.
+ * run that writes nothing, a changeset that is neither lost nor inserted
+ * twice when closing the log throws, and the progress a run writes to its row
+ * before the close and never after it (#1131).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -11,6 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('./syncUtils.js', () => ({
   createSyncLog: vi.fn().mockResolvedValue(42),
   updateSyncLog: vi.fn().mockResolvedValue(undefined),
+  writeSyncLogProgress: vi.fn().mockResolvedValue(true),
   annotateClosedSyncLog: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -42,7 +44,7 @@ vi.mock('./missingDetection.js', () => ({
 
 import { orchestrateSync } from './syncOrchestrator.js';
 import { runningSyncs } from './types.js';
-import { createSyncLog, updateSyncLog } from './syncUtils.js';
+import { createSyncLog, updateSyncLog, writeSyncLogProgress } from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
 import {
   TEST_SOURCE_ID, processed, makeConfig, resetOrchestratorMocks, restoreOrchestratorTimers,
@@ -223,6 +225,78 @@ describe('orchestrateSync changeset recording', () => {
       TEST_SOURCE_ID, 42, 'partial',
       expect.objectContaining({ unchanged: 1, errors: 1 }),
       expect.anything(),
+    );
+  });
+});
+
+describe('orchestrateSync progress on the log row', () => {
+  beforeEach(resetOrchestratorMocks);
+  afterEach(restoreOrchestratorTimers);
+
+  const progressWrite = writeSyncLogProgress as ReturnType<typeof vi.fn>;
+  const close = updateSyncLog as ReturnType<typeof vi.fn>;
+
+  it('writes where the run stands as soon as its row exists', async () => {
+    await orchestrateSync(makeConfig(), 1);
+
+    expect(progressWrite.mock.calls[0]).toEqual([
+      42, expect.objectContaining({ phase: 'fetching', statusMessage: 'Initializing...', done: 0, total: 0 }),
+    ]);
+    expect(progressWrite.mock.invocationCallOrder[0])
+      .toBeGreaterThan((createSyncLog as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]);
+  });
+
+  it('writes the running counts while the items go through', async () => {
+    // Each item takes three seconds, so the writer's gap passes inside the loop.
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        return processed('created');
+      }),
+    });
+
+    const run = orchestrateSync(config, 1);
+    await vi.advanceTimersByTimeAsync(7000);
+    await run;
+
+    expect(progressWrite).toHaveBeenCalledWith(
+      42, expect.objectContaining({ phase: 'processing', total: 2, created: 1 }),
+    );
+  });
+
+  it('stops writing before the close, so no running count lands over the final one', async () => {
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        return processed('created');
+      }),
+    });
+
+    const run = orchestrateSync(config, 1);
+    await vi.advanceTimersByTimeAsync(7000);
+    await run;
+    const writesAtClose = progressWrite.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60000);
+
+    expect(progressWrite.mock.invocationCallOrder.at(-1)).toBeLessThan(close.mock.invocationCallOrder[0]);
+    expect(progressWrite).toHaveBeenCalledTimes(writesAtClose);
+  });
+
+  it('stops writing before a failed run closes its row too', async () => {
+    const config = makeConfig({ fetchItems: vi.fn().mockRejectedValue(new Error('API down')) });
+
+    await expect(orchestrateSync(config, 1)).rejects.toThrow('API down');
+    await vi.advanceTimersByTimeAsync(60000);
+
+    expect(close).toHaveBeenCalledWith(TEST_SOURCE_ID, 42, 'failed', expect.anything(), expect.anything());
+    expect(progressWrite.mock.invocationCallOrder.at(-1)).toBeLessThan(close.mock.invocationCallOrder[0]);
+  });
+
+  it('writes a preview\'s progress too', async () => {
+    await orchestrateSync(makeConfig(), 1, { dryRun: true });
+
+    expect(progressWrite).toHaveBeenCalledWith(
+      42, expect.objectContaining({ phase: 'fetching', statusMessage: 'Initializing preview...' }),
     );
   });
 });

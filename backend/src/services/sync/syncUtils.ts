@@ -10,7 +10,7 @@
 // ADR-0064: raw parameterized SQL on the pool, typed by the generated rows.
 import type { ClosedSyncStatus } from '@tyr/shared/runStatuses';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import type { ExperienceSyncLogsRow } from '../../db/schema.generated.js';
+import type { CheckValue, ExperienceSyncLogsRow } from '../../db/schema.generated.js';
 import {
   writeExperienceLocations, type LocationWriteResult, type LocationWriteRun,
 } from './locationWriter.js';
@@ -64,6 +64,60 @@ export async function createSyncLog(
     [sourceId, triggeredBy, isDryRun]
   );
   return result.rows[0].id;
+}
+
+/**
+ * Where a running run stands, as its log row carries it (#1131): the phase,
+ * the panel's line and object, how far through its items it is, and the
+ * running counts, which go to the same total_* columns the close writes.
+ */
+export interface SyncLogProgress {
+  phase: CheckValue<'experience_sync_logs', 'phase'>;
+  statusMessage: string;
+  currentItem: string;
+  done: number;
+  total: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  missing: number;
+  curatedConflicts: number;
+  held: number;
+  filtered: number;
+  errors: number;
+}
+
+/**
+ * Write a running run's progress to its log row, and stamp `progress_at`.
+ *
+ * Only a running row: a write still in flight when the run closes its row
+ * finds the status moved and touches nothing, so it can never put a running
+ * count back over the figures the close wrote. `status` is not written here,
+ * so the status-move guard never fires on it. Answers whether the row took it.
+ */
+export async function writeSyncLogProgress(logId: number, snapshot: SyncLogProgress): Promise<boolean> {
+  const result = await pool.query(
+    `UPDATE experience_sync_logs SET
+      phase = $2,
+      status_message = $3,
+      current_item = $4,
+      progress_done = $5,
+      progress_total = $6,
+      total_created = $7,
+      total_updated = $8,
+      total_unchanged = $9,
+      total_missing = $10,
+      total_curated_conflicts = $11,
+      total_held = $12,
+      total_filtered = $13,
+      total_errors = $14,
+      progress_at = NOW()
+     WHERE id = $1 AND status = 'running'`,
+    [logId, snapshot.phase, snapshot.statusMessage, snapshot.currentItem, snapshot.done,
+     snapshot.total, snapshot.created, snapshot.updated, snapshot.unchanged, snapshot.missing,
+     snapshot.curatedConflicts, snapshot.held, snapshot.filtered, snapshot.errors],
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 export interface SyncLogStats {
