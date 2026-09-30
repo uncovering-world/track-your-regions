@@ -1,6 +1,11 @@
 /**
- * Shared map styles for MapLibre GL components
+ * Shared map styles for MapLibre GL components. `MAP_STYLE` is the style of
+ * every map that imports it — Map mode through react-map-gl, and Discover's
+ * own `maplibregl.Map` — so a glyph URL or a basemap changed here reaches all
+ * of them. A map that declares a style of its own is not reached.
  */
+
+import type { StyleSpecification } from 'maplibre-gl';
 
 export const MAP_STYLE = {
   version: 8 as const,
@@ -13,4 +18,4 @@ export const MAP_STYLE = {
     },
   },
   layers: [{ id: 'osm-tiles', type: 'raster' as const, source: 'osm' }],
-};
+} satisfies StyleSpecification;

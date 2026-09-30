@@ -21,6 +21,7 @@
 import { useEffect } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { isWebGLAvailable } from '../../utils/webgl';
+import { MAP_STYLE } from '../../constants/mapStyles';
 import { addDiscoverMapLayers, LAYER_CLUSTERS } from './discoverMapLayers';
 import {
   SCENE_SOURCES, LAYER_MARKERS, LAYER_HIGHLIGHT_POINT, MARKER_LAYERS,
@@ -66,18 +67,7 @@ export function useDiscoverMap({
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: {
-        version: 8,
-        glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
-        sources: {
-          osm: {
-            type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-            tileSize: 256,
-          },
-        },
-        layers: [{ id: 'osm-tiles', type: 'raster', source: 'osm' }],
-      },
+      style: MAP_STYLE,
       center: [15, 30],
       zoom: 2,
       attributionControl: false,
