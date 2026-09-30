@@ -96,10 +96,16 @@ const startServer = async () => {
   await waitForDatabase(pool);
   // A run the previous process was in the middle of is closed with how far it
   // got, and its source's last verdict with it (#1131).
-  const { closeOrphanedSyncLogs } = await import('./services/sync/syncUtils.js');
+  const { closeOrphanedSyncLogs, closeStoppedPlacements } = await import('./services/sync/syncUtils.js');
   const orphaned = await closeOrphanedSyncLogs();
   if (orphaned.closed > 0) {
     console.log(`🧹 Marked ${orphaned.closed} stale sync log(s) as failed`);
+  }
+  // And a closed run it stopped while placing what it moved: the objects stay
+  // named on the row for the source's next run to place (#1152).
+  const stoppedPlacements = await closeStoppedPlacements();
+  if (stoppedPlacements.marked > 0) {
+    console.log(`🧹 Marked ${stoppedPlacements.marked} sync run(s) stopped while placing what they moved`);
   }
 
   // Mark any orphaned import_runs as failed (e.g., from a previous server crash)

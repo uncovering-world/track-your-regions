@@ -11,7 +11,9 @@
 import type { ClosedSyncStatus } from '@tyr/shared/runStatuses';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { CheckValue, ExperienceSyncLogsRow } from '../../db/schema.generated.js';
-import { ORPHANED_RUN_MARKER, stoppedByRestartSql } from './syncLogMarkers.js';
+import {
+  ORPHANED_RUN_MARKER, PLACEMENT_FAILED_MARKER, PLACEMENT_STOPPED_MARKER, stoppedByRestartSql,
+} from './syncLogMarkers.js';
 import {
   writeExperienceLocations, type LocationWriteResult, type LocationWriteRun,
 } from './locationWriter.js';
@@ -317,6 +319,61 @@ export async function closeOrphanedSyncLogs(): Promise<{ closed: number; sources
     [JSON.stringify(ORPHANED_RUN_MARKER), 'See sync log for details'],
   );
   return { closed: counts.closed, sourcesMarked: counts.sources_marked };
+}
+
+/**
+ * Mark the closed runs a restart stopped while they placed what they moved,
+ * at startup, after `closeOrphanedSyncLogs` (#1152).
+ *
+ * Placement runs after a run's row has closed, so a restart there leaves a
+ * closed row — usually `success` — that still names objects it moved and
+ * never placed. Each such run gets the placement-stopped marker, and a
+ * successful one becomes `partial`, the verdict a failed placement gives it;
+ * a run that closed `failed` or `cancelled` keeps that fact. A source whose
+ * newest real run is one of those downgraded gets `partial` too, as
+ * `annotateClosedSyncLog` would have given it. The list stays on the row: the
+ * source's next real run takes it over and places it.
+ *
+ * Left alone: a preview, which names nothing; a run the orphan sweep closed,
+ * whose marker already says the restart stopped it; and a run already
+ * carrying a placement marker, whether its placement failed or this sweep has
+ * been by, which also makes the sweep safe to run again. One statement, so
+ * the log and the source can never disagree about a run.
+ *
+ * What it reads is "a list outlived its run". A restart is by far the likeliest
+ * cause; a placement that succeeded but whose clearing write failed, or one
+ * that failed and whose own marker could not be written, leaves the same trace
+ * and is marked the same way. Either way the next run places what the list
+ * names.
+ */
+export async function closeStoppedPlacements(): Promise<{ marked: number; sourcesMarked: number }> {
+  const { rows: [counts] } = await pool.query<{ marked: number; sources_marked: number }>(
+    `WITH stopped AS (
+       UPDATE experience_sync_logs l SET
+         status = CASE WHEN l.status = 'success' THEN 'partial' ELSE l.status END,
+         error_details = COALESCE(l.error_details, '[]'::jsonb) || jsonb_build_array($1::jsonb)
+       WHERE l.status <> 'running'
+         AND NOT l.is_dry_run
+         AND cardinality(l.unplaced_experience_ids) > 0
+         AND NOT COALESCE(l.error_details @> jsonb_build_array($2::jsonb), FALSE)
+         AND NOT ${stoppedByRestartSql('l')}
+       RETURNING l.id, l.source_id, l.status
+     ), marked AS (
+       UPDATE experience_sources s SET last_sync_status = 'partial', last_sync_error = NULL
+       FROM stopped
+       WHERE s.id = stopped.source_id
+         AND stopped.status = 'partial'
+         AND NOT EXISTS (
+           SELECT 1 FROM experience_sync_logs later
+           WHERE later.source_id = stopped.source_id AND NOT later.is_dry_run AND later.id > stopped.id
+         )
+       RETURNING s.id
+     )
+     SELECT (SELECT COUNT(*) FROM stopped)::int AS marked,
+            (SELECT COUNT(*) FROM marked)::int AS sources_marked`,
+    [JSON.stringify(PLACEMENT_STOPPED_MARKER), JSON.stringify(PLACEMENT_FAILED_MARKER)],
+  );
+  return { marked: counts.marked, sourcesMarked: counts.sources_marked };
 }
 
 /**
