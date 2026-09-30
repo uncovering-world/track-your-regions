@@ -56,6 +56,10 @@ npm run db:load-gadm   # offers to download the data if missing, then
 This is a one-time step and is slow — expect tens of minutes to a
 couple of hours depending on your machine.
 
+GADM's data is free for non-commercial use only, and serving it
+publicly needs GADM's permission. See [License](#license) before you
+put an instance on a public host.
+
 **Dev sign-ups (non-admin):** email verification links are printed to
 the backend Docker logs — no SMTP configuration needed.
 
@@ -90,4 +94,26 @@ Detailed docs live in [`docs/`](docs/README.md):
 
 ## License
 
-Apache-2.0
+The **code** in this repository is licensed under [Apache-2.0](LICENSE).
+
+The **data** the product loads and serves is not part of the repository and is not covered by
+that licence. Each source keeps its own terms, and whoever runs an instance with that data
+loaded is bound by them:
+
+| Source | What the product takes | Terms |
+|--------|------------------------|-------|
+| [GADM](https://gadm.org/license.html) 4.1 | Administrative boundaries, loaded by `npm run db:load-gadm` and served as map tiles | Free for academic and other **non-commercial** use. **Redistribution or commercial use needs GADM's prior permission**, and serving the boundaries publicly (the tiles, the API) is redistribution. |
+| [UNESCO World Heritage List](https://data.unesco.org/explore/dataset/whc001/) (`whc001`) | The list of properties, their descriptions and components | CC BY-SA 4.0, per the dataset's metadata |
+| [Wikidata](https://www.wikidata.org/wiki/Wikidata:Licensing) | Places, works, classes and coordinates | CC0 |
+| [Wikimedia Commons](https://commons.wikimedia.org/wiki/Commons:Licensing) | Every picture, linked and never copied | Each file under its own licence, credited under the picture |
+| [OpenStreetMap](https://www.openstreetmap.org/copyright) | Site extents and site verdicts; the basemap tiles | ODbL, "© OpenStreetMap contributors". What the catalogue takes is kept separable and offered under ODbL |
+| [Wikivoyage](https://en.wikivoyage.org/wiki/Wikivoyage:Copyleft) | The region hierarchy of the Wikivoyage world view | CC BY-SA 4.0 |
+| [CARTO basemaps](https://carto.com/basemaps/) | The Positron basemap under several admin screens and a world-view editor dialog | Free for **non-commercial** use, with "© OpenStreetMap contributors, © CARTO" shown; an API key and a monthly request ceiling apply outside CARTO's platform (open in #651) |
+
+This project runs the product as a public, **non-commercial** service. It asks GADM's
+permission before any public host is set up. Anyone who runs their own public instance
+needs that permission too. See
+[ADR-0078](docs/decisions/0078-the-product-is-public-and-non-commercial-and-gadm-is-asked-before-it-is-published.md),
+[ADR-0059](docs/decisions/0059-what-the-catalogue-takes-from-openstreetmap-it-keeps-separable-and-offers-under-odbl.md)
+(OpenStreetMap) and
+[ADR-0043](docs/decisions/0043-a-picture-we-show-is-one-we-may-show.md) (pictures).
