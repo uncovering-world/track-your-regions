@@ -201,12 +201,16 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   // The draft outlives a close — the lazy wrapper keeps this dialog mounted for
   // that — and starts blank again only once a place is created (the key bump).
   const [draft, setDraft] = useState(0);
+  // The kind a draft opens on, fixed when the draft starts: read from the
+  // prop instead, a later opening that names no kind would move an untouched
+  // kind to blank through the form's late-value rebase (#1147).
+  const draftStartKind = useRef<number | ''>(defaultKindId ?? '');
   // A select's refusal is read out with it, as a text field's helper text is.
   const kindErrorId = useId();
   const typeErrorId = useId();
   const form = useEditForm<NewPlace>({
     initial: {
-      name: '', shortDescription: '', type: '', kindId: defaultKindId ?? '', coords: null,
+      name: '', shortDescription: '', type: '', kindId: draftStartKind.current, coords: null,
       imageUrl: '', wikipediaUrl: '', websiteUrl: '',
     },
     resetKey: draft,
@@ -217,12 +221,16 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   const typeOptions = typeOptionsFor(kindId === '' ? null : kindId);
   const [wikidataId, setWikidataId] = useState<string | null>(null);
 
-  // An opening, or new defaults while open, picks the tab and kind it was opened
-  // for. A type belongs to a kind: a value picked for the last kind is not one of
-  // this kind's, and a select holding a value outside its items renders blank.
+  // An opening picks the tab it was opened for, and takes the kind it was
+  // opened for only when it names one other than the draft's own: a kept draft
+  // reopened from its kind's "+", or from a button that names no kind, keeps
+  // the kind and type the curator chose (#1147). A type belongs to a kind, so a
+  // new kind clears it — a select holding a value outside its items renders
+  // blank.
   useOnOpening(open ? `${defaultTab ?? 0}:${defaultKindId ?? ''}` : null, () => {
     setActiveTab(defaultTab ?? 0);
-    form.set('kindId', defaultKindId ?? '');
+    if (defaultKindId === undefined || defaultKindId === form.values.kindId) return;
+    form.set('kindId', defaultKindId);
     form.set('type', '');
   });
 
@@ -386,17 +394,16 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     onSuccess: () => invalidateExperiences(queryClient, { regionId }),
   });
 
+  // A close keeps the draft whole — its values, and which of them auto-fill
+  // wrote — so a reopened draft behaves as it did before the close (#1147): a
+  // value filled for the old name still moves with a new one. Only a lookup in
+  // flight is dropped, since it answers a question nobody is waiting on.
   const handleClose = () => {
     setSearchQuery('');
     setActiveTab(0);
-    setWikidataId(null);
-    setAutoFillInfo(null);
-    setAutoFillEntity(null);
-    coordsAutoFilled.current = false;
-    imageAutoFilled.current = false;
-    descAutoFilled.current = false;
-    autoFillDone.current = false;
     autoFillGen.current++;
+    // The dropped lookup never reaches its own `finally`, so its spinner ends here.
+    setAutoFillLoading(false);
     suggestMutation.reset();
     // The dialog stays mounted after a close (`LazyAddExperienceDialog`), so
     // an outcome line would otherwise greet the next opening.
@@ -419,8 +426,19 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
       regionId,
     }), OPTIONAL_FIELDS);
     if (!created) return;
+    // A new draft: blank values, no kind — the next opening's "+" names its
+    // own, and a button that names none leaves it for the curator to pick — and
+    // no auto-fill of its own yet.
+    draftStartKind.current = '';
     setDraft(d => d + 1);
+    setWikidataId(null);
+    setAutoFillInfo(null);
+    setAutoFillEntity(null);
+    coordsAutoFilled.current = false;
+    imageAutoFilled.current = false;
+    descAutoFilled.current = false;
     linkAutoFilled.current = false;
+    autoFillDone.current = false;
     handleClose();
   };
 
