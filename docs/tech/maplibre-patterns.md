@@ -50,13 +50,13 @@ map.off('click', onMarkerClick);   // cleanup takes the same shape
 
 ### The rule
 
-**One handler, one registration.** Registering the same handler across layers that can overlap is what runs it twice — a single-layer registration is one listener whatever the handler does, which is why `map.on('click', 'clusters', …)` navigating on its own layer is fine. Where layers do overlap, only idempotent handlers may stay per layer: `mousemove` may, because painting the same ring twice is painting it once. Anything that toggles, counts, navigates or mutates must be registered once, on the map.
+**One handler, one registration.** Registering the same handler across layers that can overlap is what runs it twice — a single-layer registration is one listener whatever the handler does, which is why `map.on('click', LAYER_CLUSTERS, …)` navigating on its own layer is fine. Where layers do overlap, only idempotent handlers may stay per layer: `mousemove` may, because painting the same ring twice is painting it once. Anything that toggles, counts, navigates or mutates must be registered once, on the map.
 
 `mouseleave` is not one of them, and idempotency is not what makes it safe. Over overlapping layers it fires a *spurious* leave: moving from a pin onto its own count badge leaves the marker layer while the pointer has not left the pin, and clearing there — once is already too many — takes the popup and the hover ring off something the reader is still pointing at. A per-layer `mouseleave` over layers that overlap needs a condition of its own: that the thing under the point is not the thing the hover is already on. That means one leave handler across every overlapping layer, reading one key space — not one per layer, each blind to the others. `useMarkerInteractions.ts` carries that check for its four — `MARKER_LAYERS` (the pins and the two halves of the count badge) and `LAYER_HIGHLIGHT_POINT`, every layer it registers `onHoverLayerLeave` on: a leave arriving *after* a sibling layer's `mousemove` has set the hover would otherwise clear what the reader has just arrived at, and within one DOM move the handlers run in registration order.
 
 Two trackers over one visual are the accepted alternative, and `useDiscoverMap.ts` is the example: a marker hover and a highlight-dot hover mean different things and call different callbacks, so they cannot share a key. The price is that a leave which ends one of them must *hand the ring over* to the other rather than merely keep it, since each side dedupes on its own tracker and a ring left alone stays where the pointer no longer is. Hand over the visual only. Writing the other tracker's key is the trap: its own `mousemove` is registered later and runs later in the same DOM move, and a key already set makes it dedupe — so the visual moves and the callback that tells the rest of the app never fires.
 
-A visual whose owner sets it from a one-shot `mouseenter` cannot be reset by anybody else, because nothing will put it back. `mouseenter` fires once and does not fire again while the pointer stays on the layer, so a sibling layer's leave that resets the cursor over a cluster leaves the default arrow on a bubble that is still clickable, until the pointer leaves the cluster too. This is not the same-target check in another form — a cluster is never the thing the hover is *on*; it owns the cursor and nothing else — so ask separately, and ask in the cluster's own leave as well, about the pins and dots its bubble covers. `useDiscoverMap.ts` does, in each of its leaves: the markers' `onMarkerMouseLeave`, the `clusters` leave and the `highlight-point` leave. Map Mode gets away without it only because its source is unclustered and it has no `mouseenter`-set cursor to strand.
+A visual whose owner sets it from a one-shot `mouseenter` cannot be reset by anybody else, because nothing will put it back. `mouseenter` fires once and does not fire again while the pointer stays on the layer, so a sibling layer's leave that resets the cursor over a cluster leaves the default arrow on a bubble that is still clickable, until the pointer leaves the cluster too. This is not the same-target check in another form — a cluster is never the thing the hover is *on*; it owns the cursor and nothing else — so ask separately, and ask in the cluster's own leave as well, about the pins and dots its bubble covers. `useDiscoverMap.ts` does, in each of its leaves: the markers' `onMarkerMouseLeave`, the leave on `LAYER_CLUSTERS` and the leave on `LAYER_HIGHLIGHT_POINT` — layer ids that come from their declarations (`discoverMapLayers.ts` for the clusters, `experienceMarkers/scene.ts` for the rest), never from string literals. Map Mode gets away without it only because its source is unclustered and it has no `mouseenter`-set cursor to strand.
 
 Test it against both paths. MapLibre's delegated `mouseleave` fires from a `mousemove` that no longer hits the layer *and* from a `mouseout` when the pointer leaves the canvas — and only the first guarantees the point is off the feature. A `mouseout` carries the point the pointer left *from*, which is still on the pin whenever it left onto an overlay drawn above the map, and after it `mousein` is false, so no further leave arrives until a feature is entered again. A same-target check that trusts that point leaves the hover lit for good; check `e.originalEvent.type` before trusting it.
 
@@ -165,9 +165,15 @@ The two failures are opposite and are easy to mix up:
   `setFeatureState` with an undefined id errors. Nothing highlights, everywhere.
 - **An id that repeats** — every feature carrying it keys the same state, so one
   write highlights all of them. `discoverMapLayers.ts` carries the measured
-  account: `promoteId` from `properties.id` was one id per *object*, and once a
-  place became a feature that id repeated across every place of an object, so
-  "the first feature-state written here would be shared by forty pins".
+  account: `promoteId` from the object's id property was one id per *object*,
+  and once a place became a feature that id repeated across every place of an
+  object, so the first feature-state written would be shared by forty pins.
+- **A string id is the second kind in disguise.** A `geojson` feature's string
+  `id` is parsed to its leading integer, so the markers' place keys
+  (`${experienceId}-${locationId}`, set by `buildMarkerFeatures` in
+  `experienceMarkers/scene.ts`) all come out as the object's id. Nothing reads
+  feature-state on either marker source; a layer that starts to needs a
+  numeric id of the place's own first.
 
 So a symptom scoped to one object is a repeating id, not a missing one. Reach for
 `promoteId` only where the property it lifts is unique per feature, which after
@@ -290,10 +296,6 @@ Noto Sans variants are NOT available and will silently break symbol layers.
 ### Silent rendering stall
 
 If a symbol layer references a font that doesn't exist on the glyph server, MapLibre does not show an error. Instead, the **entire GeoJSON source rendering pipeline stalls** — tiles load but no features render (`usedCount=0` in debug). This is extremely hard to diagnose. Always verify font names against the available list above.
-
-### Multiple map instances
-
-Discover creates its own `maplibregl.Map()` with an inline style object (separate from the shared `MAP_STYLE` constant), in `discover/useDiscoverMap.ts`. When changing glyph URLs or fonts, update BOTH the shared style and the inline style.
 
 ## Paint expression priority
 
