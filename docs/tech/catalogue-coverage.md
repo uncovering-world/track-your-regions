@@ -156,13 +156,62 @@ record under the catalogue's own name, and that no live record names a kind the 
 lacks. It checks before it deletes anything, and a load that fails for any reason leaves the
 tables holding what they held.
 
-## The command
+## The commands
 
-It runs against the active database, the one `npm run db:migrate` would use.
+Both run against the active database, the one `npm run db:migrate` would use.
 
 ```bash
-./scripts/catalogue-coverage.sh load    # read the files, refuse a wrong line, replace the tables
+./scripts/catalogue-coverage.sh load                       # read the files, refuse a wrong line, replace the tables
+./scripts/catalogue-coverage.sh report                     # print the report over what is loaded
+./scripts/catalogue-coverage.sh report --region rome       # one region; the flag repeats
+./scripts/catalogue-coverage.sh report --json              # the report as data
 ```
+
+The report reads the tables, never the files: after a list changes, load before reporting.
+
+## What the report says
+
+`buildCoverageReport` in `backend/src/controllers/admin/catalogueCoverage/report.ts` decides,
+from what `readCoverageFacts` (`reportQueries.ts`) read; `reportText.ts` writes it out.
+
+**Where each expectation stands.** The first that applies:
+
+| Verdict | Meaning |
+|---|---|
+| offered | The catalogue holds it under one of its identifiers and a reader sees it |
+| held | The catalogue holds it and a reader does not: it waits for a curator, was refused, or no longer stands |
+| unsorted | Absent, and filed under no kind yet |
+| missing, kind proposed | Absent, and every kind it is filed under is only proposed |
+| something else at its spot | Absent by identifier from a kind that exists, while an offered place stands within `SAME_SPOT_METRES` of it |
+| missing, kind exists | Absent, a kind it is filed under exists, and nothing stands at its spot |
+
+An identifier is the entry's Wikidata id, an id in its `same_as`, or its UNESCO id. A place is
+offered when a kind's count would count it, and a work when it is passed and a museum a reader
+may go to shows it: the report composes `countedMembershipSql` and `venuesShowingSql`, the
+predicates the lists and counts use, and spells none of its own.
+
+"Something else at its spot" is a list for a person and is never counted as found. It turns up
+three things: the same place under another Wikidata item (Palazzo Barberini is the building,
+and the catalogue holds the gallery inside it); a named point of a serial World Heritage row
+(Tōshōdai-ji inside the monuments of ancient Nara); and a plain neighbour. When it is the same
+place, the other item's id goes into the entry's `same_as`, and the next load finds it. It is
+asked only of a place a live kind should hold: a square beside a fountain the catalogue holds
+is a neighbour and nothing else.
+
+**What the surveys expect of each proposed kind.** For every kind the product does not have:
+how many expectations are filed under it, in how many regions, how many of them a reader
+already sees through another kind, the most named examples, what a member of the kind is, and
+its issue. Kinds asked for by the most regions come first. This is the evidence for what to
+build next; it changes no priority (ADR-0081 decision 8).
+
+**What each live kind lacks.** For every live kind: how many of the expectations filed under it
+the kind itself offers, the absent ones at or over the kind's own sitelinks line by name, and
+a count of the absent ones under it, which are the regional tier's to hold. The line is the
+`enterSitelinks` the kind's source states, or the code's line for a monument and for a work.
+Two kinds have none, and every absent entry of theirs is named: World Heritage, where being
+inscribed is the whole rule, and Art Museums, which admits a museum through a work it holds,
+so the museum's own sitelinks are not what the kind asks of it. An entry a reader
+sees under another kind is still absent from this one, and the report says so.
 
 ## How the lists of 2026-10-01 were compiled
 
