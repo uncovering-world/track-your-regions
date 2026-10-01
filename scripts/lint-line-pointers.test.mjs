@@ -64,14 +64,15 @@ describe('what the gate reads', () => {
     expect(prefixes).toContain('docs/decisions/');
     expect(prefixes).toContain('docs/security/audit-');
     expect(prefixes).toContain('db/migrations/');
+    expect(prefixes).toContain('docs/research/');
     for (const [prefix, reason] of RECORDS) {
       expect(reason, prefix).toMatch(/\S+ \S+/);
     }
     // Living prose is never on the list: a doc under docs/tech is read as
-    // current, and only the plans beneath it — gitignored working documents —
-    // are records.
-    expect(prefixes).toContain('docs/tech/planning/');
-    expect(prefixes.filter((prefix) => prefix.startsWith('docs/tech/'))).toEqual(['docs/tech/planning/']);
+    // current. Local work under docs/local/ is gitignored, so the pass, which
+    // reads tracked files, never sees it and needs no entry for it.
+    expect(prefixes.filter((prefix) => prefix.startsWith('docs/tech/'))).toEqual([]);
+    expect(prefixes.filter((prefix) => prefix.startsWith('docs/local/'))).toEqual([]);
     expect(prefixes).not.toContain('CLAUDE.md');
   });
 });

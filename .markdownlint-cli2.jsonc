@@ -72,18 +72,16 @@
   },
 
   "globs": ["**/*.md"],
-  // Prose this repository does not own or does not keep: dependencies, local
-  // working documents (`docs/tech/planning/` is gitignored by design),
-  // vendored bundles, agent scratch space and test output.
+  // Prose this repository does not own or does not keep: dependencies,
+  // vendored bundles, agent scratch space and test output. Local work under
+  // `docs/local/` is gitignored, which `"gitignore": true` below already skips.
   "ignores": [
     "**/node_modules/**",
-    "docs/tech/planning/**",
     "data/**",
     "ds-bundle/**",
     ".superpowers/**",
     ".agents/**",
     ".worktrees/**",
-    "docs/inbox/**",
     ".test-results/**",
     "frontend/playwright-report/**",
     "frontend/test-results/**"
