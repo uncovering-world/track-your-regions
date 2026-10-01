@@ -9,8 +9,8 @@ import { CoverageRegisterMismatch, replaceCoverage } from './load.js';
  * database refuses leaves the previous content exactly as it was.
  *
  * These four tables have one writer and no other owner of rows, so this spec
- * empties them rather than delete rows of its own; the lane runs its files one
- * after another.
+ * and the report's empty them rather than delete rows of their own; the lane
+ * runs its files one after another.
  */
 
 const SLUGS: Record<number, string> = {

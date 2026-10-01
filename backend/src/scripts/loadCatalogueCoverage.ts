@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { pool } from '../db/index.js';
 import { CoverageFilesError, defaultCoverageDir, readCoverageFiles } from '../services/catalogueCoverage/files.js';
 import { CoverageRegisterMismatch, replaceCoverage, type CoverageLoadSummary } from '../services/catalogueCoverage/load.js';
@@ -41,7 +42,7 @@ async function main(): Promise<void> {
 }
 
 // Only run main() when invoked directly, not when imported by a spec.
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => {
     console.error(err);
     process.exit(1);

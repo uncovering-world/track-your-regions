@@ -4,6 +4,9 @@
 #   scripts/catalogue-coverage.sh load [--dir <path>]
 #       read db/catalogue-coverage/, refuse a wrong line, and replace the four
 #       coverage tables with it in one transaction
+#   scripts/catalogue-coverage.sh report [--region <slug>]... [--json]
+#       print what the catalogue holds of what is expected, which proposed kind
+#       the surveys ask for most, and what each live kind lacks
 #
 # The backend's own scripts read the connection from the environment and
 # nothing loads .env for them, so this sets it the way db-migrate.sh does: the
@@ -19,13 +22,17 @@ DB_NAME="$(get_active_db)"
 export DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME
 
 usage() {
-    echo "Usage: scripts/catalogue-coverage.sh load [--dir <path>]" >&2
+    echo "Usage: scripts/catalogue-coverage.sh load [--dir <path>] | report [--region <slug>]... [--json]" >&2
 }
 
 case "${1:-}" in
     load)
         shift
         exec npm --prefix "$PROJECT_ROOT/backend" run --silent catalogue:coverage:load -- "$@"
+        ;;
+    report)
+        shift
+        exec npm --prefix "$PROJECT_ROOT/backend" run --silent catalogue:coverage -- "$@"
         ;;
     *)
         usage
