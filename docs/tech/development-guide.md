@@ -1148,6 +1148,8 @@ The project's workflows are skills, one `SKILL.md` each in `.claude/skills/<name
 | `/issue-create` | Create a new GitHub issue — type (Bug / Feature / Task / Epic), the form's body shape in a neutral voice, area labels, Priority / Size / Theme / AI fit, parent / blockers / milestone, board placement; a slice of an Epic also gets its `→ #N` ledger mark written onto the Epic's own list, which the other commands gate on |
 | `/issue-upload` | Batch-create issues from a markdown file — the same type, fields, hierarchy and Epic mark per item, with a file ledger that lets an interrupted run resume, plus a lookup of recently created issues shown for adoption before the batch is confirmed, which covers the one gap the ledger cannot (a create that succeeded while its file mark failed); a line is cleaned up only once its placement, its Epic mark and — for an adopted issue — its hierarchy, labels and type have all landed |
 | `/review-dependabot` | Review Dependabot PRs and security alerts |
+| `/coverage-survey <region>` | Compile a region's survey list for catalogue coverage — a list written before the catalogue is looked at, from Wikivoyage, guides' open pages and UNESCO's lists; identifiers from the lookup, never from memory; every entry filed under a kind of the register (`docs/tech/catalogue-coverage.md`) |
+| `/coverage-check [region…]` | Load the survey lists and read the coverage report — what moved since the last one, which absent places are defects and whose, what stands at the spot of a place a kind lacks, which proposed kind the surveys ask for most; proposes issues and priorities and changes neither on its own |
 
 ### Typical workflows
 
