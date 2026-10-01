@@ -31,7 +31,7 @@
     "lint:md": "./scripts/require-node-tools.sh markdownlint-cli2 && markdownlint-cli2",
     "lint:openapi": "docker run --rm -v \"${PWD}/packages/shared:/spec:z,ro\" -w /spec redocly/cli:2.54.3@sha256:8e3a6fee4e002900d22fb35595e7f7346524b9a93acb29615062b3cbfc7bb55c lint src/openapi.generated.json --config redocly.yaml",
     "api:breaking": "node scripts/openapi-breaking.mjs",
-    "lint:links": "docker run --rm -v \"${PWD}:/w:z,ro\" -w /w lycheeverse/lychee:0.24.2@sha256:eaff3e0a13603c9a701accfcc84f44158bb77bf36ecfa4622b626056c3463892 --offline --include-fragments --no-progress $(git ls-files '*.md' ':!docs/tech/planning')",
+    "lint:links": "docker run --rm -v \"${PWD}:/w:z,ro\" -w /w lycheeverse/lychee:0.24.2@sha256:eaff3e0a13603c9a701accfcc84f44158bb77bf36ecfa4622b626056c3463892 --offline --include-fragments --no-progress $(git ls-files '*.md')",
     "review:surface": "node scripts/review-surface.mjs",
     "gates": "node scripts/gates.mjs",
     "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run typecheck && npm --prefix packages/shared run typecheck",

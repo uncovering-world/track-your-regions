@@ -47,8 +47,7 @@ export const READ_EXTENSIONS = ['md', 'ts', 'tsx', 'mjs', 'cjs', 'js', 'sql', 's
 export const RECORDS = [
   ['docs/decisions/', 'an ADR is immutable once Accepted and describes the code as of its date'],
   ['docs/security/audit-', 'an audit report holds line pointers as evidence dated to its audit'],
-  ['docs/inbox/', 'an unsorted note is not read as current until it is filed'],
-  ['docs/tech/planning/', 'a plan is a local working document (gitignored; the ones still tracked are #514’s to move out)'],
+  ['docs/research/', 'a research report is dated and immutable, describing what was measured as of its date'],
   ['db/migrations/', 'a migration is the one-shot change a database went through once'],
   ['scripts/lint-line-pointers.mjs', 'this file — its examples are the shape it refuses'],
   ['scripts/lint-line-pointers.test.mjs', 'the spec — its fixtures are the shape it refuses'],
