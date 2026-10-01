@@ -71,7 +71,7 @@ export function areaOf(path) {
   if (first === 'backend' || first === 'frontend' || first === 'cv-python') return first;
   if (first === 'db') return 'db';
   if (first === 'docs') return second === 'decisions' ? 'docs/decisions' : 'docs';
-  if (first === '.claude' || first === '.github' || first === 'scripts') return 'tooling';
+  if (first === '.claude' || first === '.agents' || first === '.github' || first === 'scripts') return 'tooling';
   return first.includes('.') ? 'root' : first;
 }
 

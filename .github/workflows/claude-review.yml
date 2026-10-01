@@ -302,7 +302,7 @@ jobs:
             restores from main before you start — `.claude/`, `CLAUDE.md`
             and its other configuration paths (docs/security.md) — and it
             keeps the PR's own copies of those paths under `.claude-pr/`
-            (`.claude-pr/.claude/commands/…`, `.claude-pr/CLAUDE.md`). So
+            (`.claude-pr/.claude/skills/…`, `.claude-pr/CLAUDE.md`). So
             for those paths read `.claude-pr/` — whole files, which the
             Phase 4 search and the "fixed at the head" check both need —
             or the diff, never the working tree: a grep there reads

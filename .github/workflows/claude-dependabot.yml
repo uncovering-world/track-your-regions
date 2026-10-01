@@ -2,8 +2,8 @@ name: Claude Dependabot Review
 
 # Auto-review every Dependabot PR — assess version bump risk, search
 # our codebase for affected APIs, recommend safe-to-merge / needs-care.
-# Mirrors the project's review-dependabot slash-command logic
-# (.claude/commands/review-dependabot.md), running it automatically
+# Mirrors the project's review-dependabot skill
+# (.claude/skills/review-dependabot/SKILL.md), running it automatically
 # whenever Dependabot opens or updates a PR.
 #
 # Auth: Pro/Max subscription via CLAUDE_CODE_OAUTH_TOKEN.
@@ -57,7 +57,7 @@ jobs:
 
             This is a Dependabot dependency-update PR. Review it using
             the project's `review-dependabot` skill logic
-            (`.claude/commands/review-dependabot.md`).
+            (`.claude/skills/review-dependabot/SKILL.md`).
 
             ## Workflow
 
