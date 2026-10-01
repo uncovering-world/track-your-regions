@@ -187,7 +187,7 @@ When working on this codebase, keep docs in sync:
 - **Implementing a feature** → update relevant `docs/tech/` doc (or create one). This is the committed artefact: docs describe **what exists**, never what is planned. A committed plan starts drifting from reality the moment it lands and becomes a second, wrong source of truth
 - **Any user-facing change** → **always** update `docs/vision/vision.md`. This applies to any change that affects what visitors, users, curators, or admins can see or do — new UI, changed workflows, new input methods, etc. Vision docs describe the product from the user's perspective
 - **Security-relevant change** → update `docs/security/SECURITY.md` (profile, known gaps) and/or `docs/security/asvs-checklist.yaml` (requirement status). This applies to new auth flows, new API endpoints, new input surfaces, file handling changes, new roles/permissions, or changes to token/session handling
-- **Any living document** (`docs/tech/*`, this file, the command files, a code comment) → names the code it describes: file + symbol or `§ Section`, never a line number; the places a rule is stated in, never a count of them. `docs/tech/development-guide.md` § What a living document may not say has the rule and where a number stays legitimate — a point-in-time record such as an ADR, an audit or an issue. A code comment also states the current invariant and why the code is not the obvious one, never how the rule arrived — what an older comment said, which review found what — since Git history, the issue and the ADR hold that (§ What a source comment says, #925)
+- **Any living document** (`docs/tech/*`, this file, the skill files, a code comment) → names the code it describes: file + symbol or `§ Section`, never a line number; the places a rule is stated in, never a count of them. `docs/tech/development-guide.md` § What a living document may not say has the rule and where a number stays legitimate — a point-in-time record such as an ADR, an audit or an issue. A code comment also states the current invariant and why the code is not the obvious one, never how the rule arrived — what an older comment said, which review found what — since Git history, the issue and the ADR hold that (§ What a source comment says, #925)
 - **A product idea** → an issue (a far-off one is a Low Epic with no milestone); `docs/vision/` describes the product's direction in words, and every step of it is an issue
 - **Architectural decision** → create an ADR in `docs/decisions/` (see below)
 - **Unsorted** → drop in `docs/local/inbox/`; `/issue-upload` empties it into issues
@@ -238,6 +238,18 @@ Before working in a specific area, read the relevant docs. Start from the area g
 | **Architecture decisions** | `docs/decisions/README.md` | ADR index, when/how to create, template |
 | **Product vision** (user-facing changes) | `docs/vision/vision.md` | Role-specific capabilities, design principles |
 
+## Skills for other agents
+
+The repository's workflows are skills, one `SKILL.md` each in `.claude/skills/<name>/` ([ADR-0080](docs/decisions/0080-the-repositorys-workflows-are-skills-both-agents-read-from-one-copy.md)). Claude Code runs one as `/<name> args`. Codex finds the same files through `.agents/skills/<name>`, which are links, and runs one as `$<name>`. Either agent can follow them:
+
+- **Arguments.** `$ARGUMENTS` in a skill is the text the user gave after the skill's name; an agent that does not substitute it reads it that way. A skill's text never holds `$` followed by a digit, which Claude Code would replace with an argument.
+- **Claude Code tools.** Where a skill names one, another agent does the equivalent:
+  - the Skill tool: run the named skill;
+  - the Agent tool or a subagent: do the step in-line;
+  - plan mode: present the plan in chat and wait for approval;
+  - `AskUserQuestion`: ask in chat.
+- **Editing.** A skill is edited in `.claude/skills/` only. `.agents/skills/` holds links, never copies; a new skill gets its link in the same change (`ln -s ../../.claude/skills/<name> .agents/skills/<name>`).
+
 ## Skill Integration Rules
 
 When executing **any** skill workflow (brainstorming, writing-plans, debugging, TDD, code review, etc.), the following project rules always apply **in addition to** the skill's own instructions:
@@ -248,6 +260,6 @@ When executing **any** skill workflow (brainstorming, writing-plans, debugging, 
 4. **ADRs for architecture** — check `docs/decisions/` before proposing architectural choices; create a new ADR if one is needed
 5. **Security standards** — follow OWASP ASVS 5.0 Level 2 rules (see Security Standards section above)
 6. **Pre-commit checks** — a gate runs when, and only when, the inputs it checks have changed. Follow § Mandatory Pre-Commit Checks above for the commands and the tiers, and `docs/tech/gates.md` for the map they read.
-7. **Design docs path** — save design documents and plans to `docs/local/plans/<N>-slug.md` (not `docs/plans/`, not `docs/superpowers/`), named by the issue's number, and leave them **uncommitted**: plans are local working documents (`docs/README.md` § Where things live). What gets committed when the work lands is documentation of what exists, in `docs/tech/`. Guideline edits a plan calls for (this file, `.claude/commands/*`) ship with the implementation, never ahead of it
+7. **Design docs path** — save design documents and plans to `docs/local/plans/<N>-slug.md` (not `docs/plans/`, not `docs/superpowers/`), named by the issue's number, and leave them **uncommitted**: plans are local working documents (`docs/README.md` § Where things live). What gets committed when the work lands is documentation of what exists, in `docs/tech/`. Guideline edits a plan calls for (this file, `.claude/skills/*`) ship with the implementation, never ahead of it
 8. **Development guide** — follow all conventions in `docs/tech/development-guide.md` (file size limits, commit format, refactoring hygiene)
 9. **Refactoring cleanup** — after any code change, remove unused imports, dead variables, and now-redundant checks

@@ -89,7 +89,7 @@ asked to merge when a review wave since then touched their inputs:
 scans the change asks for) and, when `npm run gates` lists them,
 `npm run test:e2e:smoke`, `npm run test:db`, `npm run test:api` and `npm run perf:local` — a
 review-wave push owes the per-commit tier alone, and CI answers for the
-slow lanes on the pushed head (`.claude/commands/commit.md` § 8 holds the
+slow lanes on the pushed head (the `commit` skill's § 8, `.claude/skills/commit/SKILL.md`, holds the
 rule, #920). A
 gate the map skips was not run and did not need to be; a gate the host
 cannot run (the Python tooling guard) is a failure to report, not a

@@ -99,6 +99,7 @@ and accepted by it.
 | [0077](0077-the-curation-gate-keeps-its-tables-and-a-claims-reach-is-decided-once.md) | The curation gate keeps its tables, and a claim's reach is decided in one place | Accepted | 2026-09-29 |
 | [0078](0078-the-product-is-public-and-non-commercial-and-gadm-is-asked-before-it-is-published.md) | The product is public and non-commercial, and GADM is asked before it is published | Accepted | 2026-09-30 |
 | [0079](0079-each-kind-of-project-information-has-one-home.md) | Each kind of project information has one home, and drafts stay local | Accepted | 2026-10-01 |
+| [0080](0080-the-repositorys-workflows-are-skills-both-agents-read-from-one-copy.md) | The repository's workflows are skills both agents read from one copy | Accepted | 2026-10-01 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
