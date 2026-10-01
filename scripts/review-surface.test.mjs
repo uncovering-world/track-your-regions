@@ -177,7 +177,8 @@ describe('where a file sits', () => {
     expect(areaOf('frontend/src/components/X.tsx')).toBe('frontend');
     expect(areaOf('docs/decisions/0061-x.md')).toBe('docs/decisions');
     expect(areaOf('docs/tech/x.md')).toBe('docs');
-    expect(areaOf('.claude/commands/pr-create.md')).toBe('tooling');
+    expect(areaOf('.claude/skills/pr-create/SKILL.md')).toBe('tooling');
+    expect(areaOf('.agents/skills/pr-create')).toBe('tooling');
     expect(areaOf('scripts/review-surface.mjs')).toBe('tooling');
     expect(areaOf('package.json')).toBe('root');
   });
