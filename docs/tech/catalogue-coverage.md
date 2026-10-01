@@ -136,6 +136,34 @@ Two regions may hold the same place: Nara is a day trip from more than one city.
 - **A kind is never renamed by editing its slug in place** without changing every entry filed
   under it in the same change; the reader refuses the leftover.
 
+## The tables
+
+`coverage_kinds`, `coverage_regions`, `coverage_expectations` and
+`coverage_expectation_kinds` hold a copy of the files, so that the comparison with the
+catalogue is a join. They are declared in `db/init/01-schema.sql` and
+`db/migrations/068-catalogue-coverage.sql`, which create them and load nothing.
+
+- **One writer.** `replaceCoverage` in `backend/src/services/catalogueCoverage/load.ts`
+  empties all four and fills them from what the reader returned, in one transaction. Nobody
+  edits a row by hand: the next load would undo it.
+- **Apart from `experience_kinds`.** That table is what a traveller browses by. A proposed
+  kind lives only in `coverage_kinds`; a live kind's record there points at its
+  `experience_kinds` row.
+- **Keys are the files' slugs**, so a reload keeps every key.
+
+The load also checks what the reader cannot see: that every `experience_kinds` row has a live
+record under the catalogue's own name, and that no live record names a kind the catalogue
+lacks. It checks before it deletes anything, and a load that fails for any reason leaves the
+tables holding what they held.
+
+## The command
+
+It runs against the active database, the one `npm run db:migrate` would use.
+
+```bash
+./scripts/catalogue-coverage.sh load    # read the files, refuse a wrong line, replace the tables
+```
+
 ## How the lists of 2026-10-01 were compiled
 
 A list whose region carries `surveyed: 2026-10-01` comes from the first survey, which took one
