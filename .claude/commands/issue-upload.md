@@ -4,15 +4,17 @@ Parse issues/features from a markdown file, create GitHub issues for each, and r
 
 ## Arguments
 
-$ARGUMENTS — optional: path to the file. If not provided, show both known files and let the user pick:
-- `docs/inbox/found-issues.md` — bugs and issues found during development
-- `docs/inbox/new-features.md` — feature ideas and enhancement proposals
+$ARGUMENTS — optional: path to the file. If not provided, list the files in the inbox, `docs/local/inbox/` (gitignored; `docs/README.md` § Where things live), and let the user pick. Two are conventional:
+- `docs/local/inbox/found-issues.md` — bugs and issues found during development
+- `docs/local/inbox/new-features.md` — feature ideas and enhancement proposals
+
+The inbox is an entrance, not a store: what it holds becomes issues (this command) or a document, and an emptied file is deleted.
 
 ## Instructions
 
 ### 1. Read the source file
 
-If $ARGUMENTS is provided, read that file. Otherwise, list both files and ask the user which one to process (or both).
+If $ARGUMENTS is provided, read that file. Otherwise, list the inbox's files and ask the user which to process (one, several or all).
 
 Read the file contents.
 
