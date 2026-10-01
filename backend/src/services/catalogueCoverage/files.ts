@@ -12,9 +12,16 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { findRepoRoot } from '../../db/repoRoot.js';
+import { CHECK_VALUES } from '../../db/schema.generated.js';
 
-/** What a member of a kind is. A kind holds one form, and an entry is filed only under kinds of its own. */
-const FORMS = ['place', 'work', 'food', 'drink', 'event', 'route', 'activity', 'title', 'person', 'species', 'object', 'sound'] as const;
+/**
+ * What a member of a kind is. A kind holds one form, and an entry is filed only under kinds
+ * of its own. The lists are the schema's: a file the reader passes is one the load can insert.
+ */
+const FORMS = CHECK_VALUES.coverage_kinds.form;
+const ENTRY_TYPES = CHECK_VALUES.coverage_expectations.type;
+const STATUSES = CHECK_VALUES.coverage_kinds.status;
 
 // eslint-disable-next-line security/detect-unsafe-regex -- each repeat of the group starts with a literal dash, so the match is linear
 const slug = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'lowercase words joined by dashes');
@@ -28,7 +35,7 @@ const kindSchema = z.strictObject({
   /** One sentence: what a traveller files under this kind. */
   definition: text,
   /** `live`: the product has it. `proposed`: it is a record and nothing else yet. */
-  status: z.enum(['live', 'proposed']),
+  status: z.enum(STATUSES),
   /** The `experience_kinds` row of a live kind of place; a live kind of work has none. */
   experience_kind_id: z.number().int().positive().nullable(),
   /** The issue that owns building the kind. Priority and order live there, never here (ADR-0079). */
@@ -51,7 +58,7 @@ const expectationSchema = z.strictObject({
   slug,
   name: text,
   aliases: z.array(text),
-  type: z.enum(FORMS),
+  type: z.enum(ENTRY_TYPES),
   /** Kinds of the register; none means the entry is not sorted yet. */
   kinds: z.array(slug),
   wikidata: wikidataId.nullable(),
@@ -87,6 +94,11 @@ export class CoverageFilesError extends Error {
     super(`The catalogue-coverage files have ${problems.length} problem(s):\n${problems.join('\n')}`);
     this.name = 'CoverageFilesError';
   }
+}
+
+/** The checkout's own files: `db/catalogue-coverage`, on the host and in the container alike. */
+export function defaultCoverageDir(): string {
+  return join(findRepoRoot(), 'db', 'catalogue-coverage');
 }
 
 /** The kind an entry is filed under exactly when it carries a UNESCO id: the inscribed property itself. */
