@@ -45,7 +45,7 @@ Exceptions: files with dense, non-decomposable JSX can exceed the ~500 target if
 | Any code | `docs/tech/` — create or update the relevant technical doc |
 | User-facing behavior (UI, workflows, inputs) | `docs/vision/vision.md` — describe what users/curators/admins see or do |
 | New/changed API endpoints, auth flows, input surfaces | `docs/security/SECURITY.md` and/or `docs/security/asvs-checklist.yaml` |
-| Completed a plan | Trim `docs/tech/planning/*.md` — remove implemented sections, keep only remaining ideas |
+| A PR that carries a local plan merges | File what the plan holds and the branch did not build as issues, then delete or archive `docs/local/plans/<N>-*.md` (`docs/README.md` § Where things live) |
 | New tech doc | Add it to `docs/README.md` index table |
 | A line pointer, a count of places or a tally in living prose | Replace it with the symbol, the names or the class (§ What a living document may not say, below) |
 | A comment narrating how the rule arrived | State the invariant and link the record (§ What a source comment says, below) |
@@ -58,7 +58,7 @@ A living document — `docs/tech/*`, `docs/security/SECURITY.md`, `CLAUDE.md` (a
 - **No count of places — name the places.** "Seven statements read `paired_rows`" is falsified by the eighth writer without a character of the sentence changing (PR #548), and the module inventory in `docs/tech/experiences.md` went stale on five consecutive pushes of PR #495. Name what is counted ("`markVisited`, `markLocationVisited` and `markTreasureViewed` all carry it"), or name the class ("every writer of `image_url`"), or put the enumeration in the same sentence as the count, so the sentence checks itself. A number that does not drift stays: an external contract (Commons answers 50 titles per request), a declared constant or a rule's threshold, a schema width, an id, a date, a named real example. A tally measured from the database — rows, works, sites — is the same defect one step over, with one boundary (#579): a measurement that carries its date or its run number ("dry run 109 of 2026-09-13 admitted…", "on 2026-09-22 the catalogue held 8 842 places") is a record and stays, since a reader can see what it was true of; the same figure stated as a bare present fact ("1382 of 1604 objects", "the catalogue's 8 830 places") is restated as the class it stands for, or re-measured and dated where the figure is the argument — a ceiling's headroom, a threshold's justification. A count of what the code or the prose itself holds never stays in either form.
 - **One file, not twins.** A rule stated for more than one reader lives in one file the others link to or are generated from. `AGENTS.md` is a symlink to `CLAUDE.md` for that reason: the hand-kept paraphrase it used to be still said the JWT lived in `localStorage` after it had moved to memory. (On a checkout without symlinks — Windows with `core.symlinks` off — the file is one line naming `CLAUDE.md`, which is still the pointer.)
 
-Where all of this stays legitimate: a point-in-time record — an ADR, an audit report, an issue or pull request, a commit message, a local plan under `docs/tech/planning/` (gitignored; the plans still tracked there are #514's to move out) — describes the code as of a date, and a line pointer or a count there is evidence rather than a standing claim. The same measurement copied from a pull request description into `docs/tech/` becomes one.
+Where all of this stays legitimate: a point-in-time record — an ADR, an audit report, an issue or pull request, a commit message, a research report under `docs/research/`, a local file under `docs/local/` (gitignored) — describes the code as of a date, and a line pointer or a count there is evidence rather than a standing claim. The same measurement copied from a pull request description into `docs/tech/` becomes one.
 
 The review bot reads a stale count, tally or line pointer as a Note whose fix is to drop the volatile claim and name the class or the symbols — never to refresh the number, which the next change falsifies again. The sweep that does so is also where a claim that was never true gets caught: a sentence read as boilerplate for months is read as a claim once.
 
@@ -801,7 +801,7 @@ Bad: one giant commit "Add batch location fetching" with all of the above mixed 
 
 - **One purpose per branch/PR.** A branch delivers ONE feature, fix, or improvement.
 - Don't sneak in unrelated changes — no "while I'm here" fixes, no inbox notes, no drive-by refactors.
-- **Never commit `docs/inbox/`** — inbox is a local scratch space, not tracked in git.
+- **Never commit `docs/local/`** — plans, drafts, session state and the inbox are local (`docs/README.md` § Where things live); `git add -f` past the ignore is the one way to break it.
 - Branch naming: `feature/NNN-short-slug`, `fix/NNN-short-slug`, or descriptive kebab-case (`add-development-guide`).
 
 ### Review Surface

@@ -98,6 +98,7 @@ and accepted by it.
 | [0076](0076-a-dialogs-fields-and-refusals-come-from-one-form-hook.md) | A dialog's fields and its refusals come from one form hook | Accepted | 2026-09-29 |
 | [0077](0077-the-curation-gate-keeps-its-tables-and-a-claims-reach-is-decided-once.md) | The curation gate keeps its tables, and a claim's reach is decided in one place | Accepted | 2026-09-29 |
 | [0078](0078-the-product-is-public-and-non-commercial-and-gadm-is-asked-before-it-is-published.md) | The product is public and non-commercial, and GADM is asked before it is published | Accepted | 2026-09-30 |
+| [0079](0079-each-kind-of-project-information-has-one-home.md) | Each kind of project information has one home, and drafts stay local | Accepted | 2026-10-01 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

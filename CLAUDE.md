@@ -168,30 +168,30 @@ Docs live in `docs/` with this structure:
 ```
 docs/
 ├── decisions/        ← Architecture Decision Records (immutable once Accepted)
-├── inbox/            ← unsorted docs awaiting categorization
+├── research/         ← dated research reports an issue or ADR cites (immutable)
 ├── security/         ← OWASP ASVS security profile, checklist, audit reports
 ├── sources/          ← the register of sources looked at for filling a kind (a source is a record before it is code, ADR-0048)
-├── tech/             ← technical details of implemented features
-│   └── planning/     ← plans for features to build next
-└── vision/           ← non-technical vision, user stories, concepts
-    └── vision.md     ← root vision document
+├── tech/             ← technical docs of what exists
+├── vision/           ← the product, as it is and where it is heading
+│   └── vision.md     ← root vision document
+└── local/            ← gitignored: plans/<N>-slug.md, research drafts, sessions, inbox, archive
 ```
 
-See `docs/README.md` for the full index.
+**Where each kind of information lives is `docs/README.md` § Where things live** (ADR-0079), the one statement of the rule. In short: intent is a GitHub issue and the roadmap is the open milestones; everything published under `docs/` is English and final; everything unpublished, in any language, is under `docs/local/`. See `docs/README.md` for the full index.
 
 ### Documentation Workflow
 
 When working on this codebase, keep docs in sync:
 
-- **Planning a feature** → create or update a doc in `docs/tech/planning/`. **Plans are never committed** — they stay untracked local working documents (the directory is gitignored). Do not stage one, and never open a PR for one
+- **Planning a feature** → the plan is `docs/local/plans/<N>-slug.md`, named by its issue's number, and is **never committed**. When the PR merges, file what was not built as issues and delete or archive the plan (§ Where things live)
 - **Implementing a feature** → update relevant `docs/tech/` doc (or create one). This is the committed artefact: docs describe **what exists**, never what is planned. A committed plan starts drifting from reality the moment it lands and becomes a second, wrong source of truth
 - **Any user-facing change** → **always** update `docs/vision/vision.md`. This applies to any change that affects what visitors, users, curators, or admins can see or do — new UI, changed workflows, new input methods, etc. Vision docs describe the product from the user's perspective
 - **Security-relevant change** → update `docs/security/SECURITY.md` (profile, known gaps) and/or `docs/security/asvs-checklist.yaml` (requirement status). This applies to new auth flows, new API endpoints, new input surfaces, file handling changes, new roles/permissions, or changes to token/session handling
-- **Completing a plan** → trim the planning doc to only unimplemented ideas/improvements. Remove fully implemented sections
 - **Any living document** (`docs/tech/*`, this file, the command files, a code comment) → names the code it describes: file + symbol or `§ Section`, never a line number; the places a rule is stated in, never a count of them. `docs/tech/development-guide.md` § What a living document may not say has the rule and where a number stays legitimate — a point-in-time record such as an ADR, an audit or an issue. A code comment also states the current invariant and why the code is not the obvious one, never how the rule arrived — what an older comment said, which review found what — since Git history, the issue and the ADR hold that (§ What a source comment says, #925)
-- **Pure idea or concept** → add to `docs/vision/`
+- **A product idea** → an issue (a far-off one is a Low Epic with no milestone); `docs/vision/` describes the product's direction in words, and every step of it is an issue
 - **Architectural decision** → create an ADR in `docs/decisions/` (see below)
-- **Unsorted** → drop in `docs/inbox/`, categorize later
+- **Unsorted** → drop in `docs/local/inbox/`; `/issue-upload` empties it into issues
+- **Research** → draft in `docs/local/research/<topic>/`; publish a finished English report to `docs/research/` only when an issue or ADR cites it
 
 ### Architecture Decision Records (ADRs)
 
@@ -248,6 +248,6 @@ When executing **any** skill workflow (brainstorming, writing-plans, debugging, 
 4. **ADRs for architecture** — check `docs/decisions/` before proposing architectural choices; create a new ADR if one is needed
 5. **Security standards** — follow OWASP ASVS 5.0 Level 2 rules (see Security Standards section above)
 6. **Pre-commit checks** — a gate runs when, and only when, the inputs it checks have changed. Follow § Mandatory Pre-Commit Checks above for the commands and the tiers, and `docs/tech/gates.md` for the map they read.
-7. **Design docs path** — save design documents and plans to `docs/tech/planning/` (not `docs/plans/`), and leave them **uncommitted**: plans are local working documents. What gets committed when the work lands is documentation of what exists, in `docs/tech/`. Guideline edits a plan calls for (this file, `.claude/commands/*`) ship with the implementation, never ahead of it
+7. **Design docs path** — save design documents and plans to `docs/local/plans/<N>-slug.md` (not `docs/plans/`, not `docs/superpowers/`), named by the issue's number, and leave them **uncommitted**: plans are local working documents (`docs/README.md` § Where things live). What gets committed when the work lands is documentation of what exists, in `docs/tech/`. Guideline edits a plan calls for (this file, `.claude/commands/*`) ship with the implementation, never ahead of it
 8. **Development guide** — follow all conventions in `docs/tech/development-guide.md` (file size limits, commit format, refactoring hygiene)
 9. **Refactoring cleanup** — after any code change, remove unused imports, dead variables, and now-redundant checks
