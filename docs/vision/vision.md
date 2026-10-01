@@ -217,7 +217,7 @@ Follow users, journey planning, privacy controls, notifications.
 
 ### Mobile Apps (Planned)
 
-Native iOS/Android sharing the same API. See `mobile-planning.md` (in tech/planning).
+Native iOS/Android sharing the same API, through a client generated from the OpenAPI document (#1182).
 
 ---
 

@@ -48,22 +48,6 @@ docs/
 | [world-view-import.md](tech/world-view-import.md) | WorldView Import — matching algorithm, API endpoints, admin UI |
 | [world-view-import-format.md](tech/world-view-import-format.md) | WorldView Import JSON format specification for source-agnostic imports |
 
-## Tech — Planning
-
-| Document | Topic | Status |
-|----------|-------|--------|
-| [curator-system.md](tech/planning/curator-system.md) | Curator roles, scope-based auth, curation workflows | Core implemented; remaining improvements listed |
-| [ci-cd.md](tech/planning/ci-cd.md) | GitHub Actions CI workflow | Implemented |
-| [testing-strategy.md](tech/planning/testing-strategy.md) | High-level testing model (fast lane + E2E lanes, coverage philosophy, CI tiers) | In progress (baseline implemented; command defaults aligned) |
-| [testing-feature-matrix-v1.md](tech/planning/testing-feature-matrix-v1.md) | First-pass use-case/workflow/scenario inventory mapped to test lanes | Draft v1 (active) |
-| [testing-interview-notes.md](tech/planning/testing-interview-notes.md) | Structured interview questionnaire to finalize scope/priorities | In progress |
-| [e2e-fresh-db-strategy.md](tech/planning/e2e-fresh-db-strategy.md) | Full-fidelity E2E approach with fresh DB + GADM + UI-driven flows | In progress (default isolated test environment; full fresh-GADM workflow pending) |
-| [deployment.md](tech/planning/deployment.md) | Production deployment (PaaS options, DigitalOcean setup) | Planned |
-| [mobile-planning.md](tech/planning/mobile-planning.md) | Mobile app strategy (React Native vs native) | Planned |
-| [region-metadata-layers.md](tech/planning/region-metadata-layers.md) | Groupings, disputed territories, changes since visit, historical countries — overview | Planned |
-| [groupings.md](tech/planning/groupings.md) | Groupings/Tags detailed plan — data model, API, UI, seed data, phases | Planned |
-| [ENV-PLAN.md](tech/planning/ENV-PLAN.md) | Database bootstrap and current command workflow | Implemented |
-
 ## Sources — the register
 
 | Document | Topic |

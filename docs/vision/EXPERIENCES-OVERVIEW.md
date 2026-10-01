@@ -179,7 +179,7 @@ Curators are the quality layer — local experts or subject-matter specialists w
 
 The system trusts curators: nobody approves their work and there are no drafts. The review page runs the other way round — the machine asking a curator, not a curator waiting on anyone. Actions are logged for accountability, and curator edits are protected from being overwritten by automated syncs. Curation is scoped — a curator might be responsible for a specific region, a specific source, or have global access.
 
-See [`curator-system.md`](../tech/planning/curator-system.md) for what's implemented and remaining improvements.
+What is still open for curators is tracked as issues: an admin's feed of all curation activity (#611), scope-aware buttons (#613), a curator home (#614), and applying to curate (#1183).
 
 ---
 

@@ -33,6 +33,25 @@ npm run db:use <db_name>
 npm run db:mark-golden
 ```
 
+Which database is active depends on who is asking:
+
+- **The Compose services read `DB_NAME` from `.env`.** That covers the backend and the Martin
+  container, with `track_regions` as the default.
+- **The `db:*` scripts and standalone `npm run martin` read `.active-db` first and fall back
+  to `DB_NAME`.** This is `get_active_db`, in `scripts/lib/db-env.sh` and in
+  `martin/run-martin.sh`.
+- **`npm run db:use <name>` writes both and restarts Martin,** so the two agree after it.
+  A `.active-db` left naming a database that was dropped another way sends the scripts
+  somewhere the app is not. Delete the file, or run `db:use` again.
+
+`npm run db:mark-golden` protects the active database: `db:drop` refuses it until
+`db:unmark-golden`.
+
+`npm run db:load-gadm` offers to download the GADM file when none is found, then runs
+the importer in the `db-loader` container (built from `db/Dockerfile`, `tools` profile),
+so the host needs Docker and no Python or GDAL. Checking a load and a fast sample import
+are #610.
+
 ## Where Things Live
 
 - API routes: `backend/src/routes/*`

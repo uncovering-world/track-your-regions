@@ -36,7 +36,7 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 strict_equality = true
 # `disallow_untyped_defs` deliberately not enabled yet — first land the floor,
-# then ratchet via follow-up PRs (see docs/tech/planning when it lands). The
+# then ratchet via follow-up PRs (#1185). The
 # `app.cv.*` override below silences the numpy/cv2-stub noise on day one.
 
 [[tool.mypy.overrides]]
