@@ -87,8 +87,8 @@ reading a number:
   first run against real data. `vite preview` still answers
   `Cache-Control: no-cache`, which Lighthouse notes under its diagnostics;
   it is not asserted, and a real host sets its own headers.
-- **Desktop preset.** The product is a desktop map today (`mobile-planning.md`
-  is a plan); the mobile preset's 4× CPU slowdown and slow-4G network on a
+- **Desktop preset.** The product is a desktop map today (native apps are
+  #1182); the mobile preset's 4× CPU slowdown and slow-4G network on a
   2.8 MB bundle would produce numbers that describe a device the product
   does not yet address. A mobile matrix is a one-entry change to the
   budgets file when that changes.

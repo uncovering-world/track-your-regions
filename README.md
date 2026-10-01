@@ -89,7 +89,7 @@ Detailed docs live in [`docs/`](docs/README.md):
 
 - **[Vision](docs/vision/vision.md)** — what we're building and why, user roles, future plans
 - **[Tech docs](docs/README.md#tech--implemented-features)** — architecture, domain model, auth, experiences, geometry
-- **[Planning](docs/README.md#tech--planning)** — upcoming features and design decisions
+- **[Planning](https://github.com/uncovering-world/track-your-regions/milestones)** — upcoming work is GitHub issues, and the roadmap is the open milestones ([where things live](docs/README.md#where-things-live))
 - **[Security](docs/README.md#security)** — OWASP ASVS Level 2 profile and audit status
 
 ## License
