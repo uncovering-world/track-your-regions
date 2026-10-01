@@ -82,14 +82,15 @@ deployment/
 # Playwright MCP
 .playwright-mcp/
 
-# Inbox (local scratchpad, not for version control)
-docs/inbox/
-
-# Plans and design specs are local working documents. What gets committed is
-# documentation of what exists, under docs/tech/ — a committed plan drifts from
-# reality and becomes a second, wrong source of truth.
-# Note: this hides new plans only. Docs already tracked here stay tracked.
-docs/tech/planning/
+# Local, unpublished work: plans per issue, research drafts, session state,
+# the inbox and the archive (docs/README.md § Where things live, ADR-0079).
+# What gets committed is documentation of what exists — a committed plan
+# drifts from reality and becomes a second, wrong source of truth.
+docs/local/
+# The old homes of plans and the inbox, kept ignored while they are
+# symlinks into docs/local/ for the sessions that still use the old paths.
+docs/inbox
+docs/tech/planning
 
 # Debug screenshots
 *.png

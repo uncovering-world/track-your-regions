@@ -6,16 +6,18 @@
 docs/
 ├── README.md              ← this file
 ├── decisions/             ← Architecture Decision Records (immutable once Accepted)
-├── inbox/                 ← unsorted docs awaiting categorization
+├── research/              ← dated research reports an issue or ADR cites (immutable)
 ├── security/              ← OWASP ASVS security profile, checklist, audit reports
 ├── sources/               ← the register of sources looked at for filling a kind (one record each)
-├── tech/                  ← technical implementation details
-│   ├── planning/          ← plans for features to build
-│   └── ...                ← docs for implemented features
-└── vision/                ← non-technical vision and user stories
-    ├── vision.md          ← root vision document (start here)
-    └── ...                ← feature-specific vision docs
+├── tech/                  ← technical docs of what exists
+├── vision/                ← non-technical vision and user stories
+│   ├── vision.md          ← root vision document (start here)
+│   └── ...                ← feature-specific vision docs
+└── local/                 ← gitignored: plans, drafts, session state, inbox, archive
 ```
+
+Everything above `local/` is published: English, final, and describing what exists or what was
+decided. § Where things live says what goes where.
 
 ## Tech — Implemented Features
 
@@ -79,6 +81,12 @@ docs/
 |----------|-------|
 | [README.md](decisions/README.md) | ADR index, process guide, and template |
 
+## Research
+
+| Document | Topic |
+|----------|-------|
+| [README.md](research/README.md) | What a research report is, when one is published, and how a draft becomes one |
+
 ## Security
 
 | Document | Topic |
@@ -95,10 +103,41 @@ Local security scanning:
 - `npm run security:all` — the fast gates plus the slow scans, each one run only
   if the change touched what it reads (`docs/tech/gates.md`)
 
-## Conventions
+## Where things live
 
-- **New feature plan?** → Create in `docs/tech/planning/`
-- **Feature implemented?** → Update `docs/tech/` (add or revise), update `docs/vision/vision.md` if it changes user-facing behavior
-- **Pure idea/concept?** → Add to `docs/vision/`
-- **Unsorted?** → Drop in `docs/inbox/`, categorize later
-- **Plan completed?** → Remove implemented sections, keep only remaining ideas/improvements
+Each kind of information has one home
+([ADR-0079](decisions/0079-each-kind-of-project-information-has-one-home.md)). This section is
+the one statement of the rule; `CLAUDE.md`, the development guide and the commands point here.
+
+| What | Home | Lifetime |
+|------|------|----------|
+| **Intent**: what to do, why, its priority and order | GitHub issues. The roadmap is the open milestones (each with an exit criterion), a theme is an Epic, a far-off idea is a Low Epic with no milestone | until done |
+| **What exists** | `docs/tech/`, `docs/security/`, `docs/sources/` | updated with the code that changes it |
+| **The product, as it is and where it is heading** | `docs/vision/` (the direction in words; each step of it is an issue) | updated with every user-facing change |
+| **Decisions** | `docs/decisions/` (an ADR is a Draft inside its pull request, then Accepted) | immutable once Accepted |
+| **Research a decision rests on** | `docs/research/YYYY-MM-DD-slug.md`, only when an issue or ADR cites it ([README](research/README.md)) | immutable |
+| **The working plan of issue N** | `docs/local/plans/<N>-slug.md` | from the start of the work to its merge: then what was not built is filed as issues, and the plan is deleted or archived |
+| **A research draft** | `docs/local/research/<topic>/` | until it is published or dropped |
+| **One session's state** | `docs/local/sessions/YYYY-MM-DD.md` | the session |
+| **An unsorted note** | `docs/local/inbox/` | until `/issue-upload` turns it into issues or a document |
+| **Finished or stale local files** | `docs/local/archive/` | until `/docs-sweep` deletes them |
+| **How an agent should work** (feedback, gotchas, references) | the agent's own memory | living; never project status |
+
+The rules that follow from it:
+
+- **Published means English and final.** Nothing under `docs/` outside `docs/local/` is a draft.
+  A draft in any language stays in `docs/local/` until it is finished.
+- **A plan has an issue number.** A plan without one does not exist: file the issue first, or it
+  is session scratch.
+- **No roadmap, strategy or "next session" document** sits beside the issues. Their content is a
+  milestone description, an Epic, or an issue.
+- **A change to what exists updates its doc in the same pull request.** A user-facing change also
+  updates `docs/vision/vision.md`. A planned change touches no published doc.
+- **`/docs-sweep`** lists what has drifted:
+  - local plans whose issue is closed;
+  - local files with no issue number;
+  - stale drafts and session files;
+  - memory that holds project status.
+
+`docs/tech/planning` and `docs/inbox` are symlinks into `docs/local/` while sessions still use the
+old paths.
