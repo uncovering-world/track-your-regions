@@ -81,6 +81,13 @@ the product has a kind for it.
 | `sitelinks`, `lat`, `lon` | As Wikidata gave them on the region's `surveyed` date |
 | `note` | Anything a later reader needs: why an entry lies outside the region's reach, which of two Wikidata items was taken |
 
+A field with no value is `null`, except `note`, which is `""`, and the lists, which are `[]`.
+`unesco` is UNESCO's number written as a string. A line, in full:
+
+```json
+{"slug": "moray", "name": "Moray", "aliases": [], "type": "place", "kinds": ["archaeology"], "wikidata": "Q1814201", "same_as": [], "unesco": null, "venue": null, "sources": 4, "sitelinks": 18, "lat": -13.32925, "lon": -72.19644, "note": ""}
+```
+
 An entry is identified by its identifiers. A match by name reports a place as missing when
 the catalogue spells it differently: Sacsayhuamán is "Saqsaywaman" there (#1160).
 
@@ -168,6 +175,27 @@ Both run against the active database, the one `npm run db:migrate` would use.
 ```
 
 The report reads the tables, never the files: after a list changes, load before reporting.
+
+A third subcommand reads the web and touches no database. It is what a survey looks things up
+with, so that an identifier on a list is one a search returned and a distance confirmed:
+
+```bash
+./scripts/catalogue-coverage.sh lookup wikivoyage "Yerevan" --save <dir>   # what the article names, by section, and the articles it links
+./scripts/catalogue-coverage.sh lookup search "Zvartnots Cathedral"        # the Wikidata items a name could be
+./scripts/catalogue-coverage.sh lookup facts 40.18 44.51 Q17054090         # label, sitelinks, distance from that centre, coordinates, classes
+```
+
+It is `backend/src/scripts/catalogueCoverageLookup.ts`, and it names itself to Wikimedia through
+`userAgent()` like every other outbound call.
+
+## The two skills
+
+`/coverage-survey <region>` compiles a region's list: the surveyor's own list written before
+anything is read, Wikivoyage, the open pages of commercial guides, UNESCO's lists, then the
+merge, the identifiers, the kinds, and the file. `/coverage-check` loads the lists, reads the
+report and says what each finding asks for: a defect and its issue, a place to record under
+`same_as`, an entry to sort, a proposed kind whose issue the surveys speak for. Both are
+`SKILL.md` files under `.claude/skills/`, and the procedure is stated there and nowhere else.
 
 ## What the report says
 
