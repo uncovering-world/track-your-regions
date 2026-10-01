@@ -1,6 +1,5 @@
-import { existsSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, relative } from 'node:path';
+import { backendSrc, findRepoRoot } from '../db/repoRoot.js';
 
 /**
  * Where a spec finds a repository file that lives outside `backend/`.
@@ -13,42 +12,11 @@ import { fileURLToPath } from 'node:url';
  * imported from `packages/shared` by both, and pinned to the schema by a type
  * (ADR-0065, `src/db/curationLogActions.test.ts`).
  *
- * The root is found rather than counted: a walk up from a spec's own file with
- * its own count of `..` works only where `backend/` sits inside a full checkout.
- * The container unit lane mounts `backend/src` at `/app/src`, so such a walk lands
- * on `/` and the spec fails on a path that is simply not there — 18 files on `main`, green
- * on the host and in CI, which is how the lane stayed broken unnoticed (#948).
- *
- * So the root is found rather than counted: the nearest ancestor that actually holds
- * `db/init/01-schema.sql`. On a checkout that is the checkout; in the container it is
- * `/`, where `docker-compose.yml` mounts `db`, `frontend/src`, `martin` and `scripts`
- * read-only beside `/app`. When no ancestor holds it, the throw names the mounts,
- * because "ENOENT /db/init/01-schema.sql" does not.
+ * How the root is found, and why it is found rather than counted, is
+ * `db/repoRoot.ts`, which the commands that read `db/catalogue-coverage/` share.
  */
 
-/** This package's `src`, which is present wherever the suite runs — mounted, in the container. */
-export const backendSrc = dirname(dirname(fileURLToPath(import.meta.url)));
-
-/** The file every checkout has at its root and no package has inside it. */
-const MARKER = join('db', 'init', '01-schema.sql');
-
-function findRepoRoot(): string {
-  let dir = backendSrc;
-  for (;;) {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- dir walks up from this module's own path
-    if (existsSync(join(dir, MARKER))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) {
-      throw new Error(
-        `No ancestor of ${backendSrc} holds ${MARKER}, so the repository root cannot be found. `
-        + 'In the container unit lane this means the backend service is missing the read-only '
-        + 'repository mounts (db, frontend/src, martin, scripts) that docker-compose.yml declares '
-        + 'beside /app — recreate the stack so they are applied.',
-      );
-    }
-    dir = parent;
-  }
-}
+export { backendSrc };
 
 /** The checkout the suite is running against. */
 export const repoRoot = findRepoRoot();
