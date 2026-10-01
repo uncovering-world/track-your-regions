@@ -126,7 +126,11 @@ interface SiteMatrixAnswer extends CategoryAnswer {
  */
 async function wikipediaEditions(options: CategoryOptions, budget: WaitBudget): Promise<Set<string>> {
   const answer = await askWikipediaOnce(
-    { action: 'sitematrix', smtype: 'language', smlangprop: 'code|site', smsiteprop: 'code' },
+    {
+      action: 'sitematrix', smtype: 'language', smlangprop: 'code|site', smsiteprop: 'code',
+      // Named, as on every question here: the API's default format is an HTML page.
+      format: 'json', formatversion: '2',
+    },
     options, budget, 'the list of Wikipedias',
   ) as SiteMatrixAnswer;
   const editions = new Set<string>();

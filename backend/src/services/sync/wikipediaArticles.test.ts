@@ -15,6 +15,11 @@ const EDITIONS = ['en', 'tr', 'sr', 'el', 'de', 'es'];
  * the title it holds — listing what it normalised (`Nemrut_Dağı` to
  * `Nemrut Dağı`) and what it redirected (`Gerasa` to `Jerash`) apart, as the
  * API does.
+ *
+ * And as the API does, it answers JSON only to a question that asked for it:
+ * the Action API's default format is an HTML rendering of the answer, under a
+ * 200, so a question that names no `format` is a run that ends on a page
+ * (#1199).
  */
 function wiki(
   items: Record<string, string>, redirects: Record<string, string> = {}, normalized: Record<string, string> = {},
@@ -23,6 +28,11 @@ function wiki(
   const fetchImpl: typeof fetch = async (input, init) => {
     const body = new URLSearchParams(String(init?.body));
     asked.push({ url: String(input), body });
+    if (body.get('format') !== 'json') {
+      return new Response('<!DOCTYPE html><html><body>MediaWiki API result</body></html>', {
+        status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' },
+      });
+    }
     if (body.get('action') === 'sitematrix') {
       return new Response(JSON.stringify({ sitematrix: {
         count: EDITIONS.length,
@@ -56,7 +66,11 @@ describe('resolveWikipediaArticles', () => {
       ['tr:Nemrut Dağı', 'Q207917'], ['en:Jerash', 'Q31565'], ['sr:Gamzigrad', 'Q904128'],
     ]));
     // The site matrix once, then each language's own wiki.
-    expect(asked.filter((a) => a.body.get('action') === 'sitematrix')).toHaveLength(1);
+    const matrix = asked.filter((a) => a.body.get('action') === 'sitematrix');
+    expect(matrix).toHaveLength(1);
+    // Version 2 is the shape the fold reads: an object keyed by index, beside `count`.
+    expect(matrix[0].body.get('format')).toBe('json');
+    expect(matrix[0].body.get('formatversion')).toBe('2');
     expect(asked.filter((a) => a.body.get('action') !== 'sitematrix').map((a) => a.url).sort()).toEqual([
       'https://en.wikipedia.org/w/api.php', 'https://sr.wikipedia.org/w/api.php', 'https://tr.wikipedia.org/w/api.php',
     ]);
