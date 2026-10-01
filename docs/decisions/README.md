@@ -100,7 +100,7 @@ and accepted by it.
 | [0078](0078-the-product-is-public-and-non-commercial-and-gadm-is-asked-before-it-is-published.md) | The product is public and non-commercial, and GADM is asked before it is published | Accepted | 2026-09-30 |
 | [0079](0079-each-kind-of-project-information-has-one-home.md) | Each kind of project information has one home, and drafts stay local | Accepted | 2026-10-01 |
 | [0080](0080-the-repositorys-workflows-are-skills-both-agents-read-from-one-copy.md) | The repository's workflows are skills both agents read from one copy | Accepted | 2026-10-01 |
-| [0081](0081-a-kind-is-a-record-before-it-is-code-and-an-expectation-is-listed-before-the-catalogue-holds-it.md) | A kind is a record before it is code, and an expectation is listed before the catalogue holds it | Draft | 2026-10-01 |
+| [0081](0081-a-kind-is-a-record-before-it-is-code-and-an-expectation-is-listed-before-the-catalogue-holds-it.md) | A kind is a record before it is code, and an expectation is listed before the catalogue holds it | Accepted | 2026-10-01 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

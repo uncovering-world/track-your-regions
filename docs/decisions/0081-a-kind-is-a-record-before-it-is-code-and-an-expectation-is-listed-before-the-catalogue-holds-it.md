@@ -1,7 +1,7 @@
 # ADR-0081: A kind is a record before it is code, and an expectation is listed before the catalogue holds it
 
 **Date:** 2026-10-01
-**Status:** Draft
+**Status:** Accepted
 
 ---
 
