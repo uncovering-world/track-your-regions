@@ -2,6 +2,8 @@
 
 Ideas for regional experience layers. Each category is something a user can discover about a region they're exploring.
 
+The list of kinds, live and proposed, is the register `db/catalogue-coverage/kinds.jsonl` ([ADR-0081](../decisions/0081-a-kind-is-a-record-before-it-is-code-and-an-expectation-is-listed-before-the-catalogue-holds-it.md), `docs/tech/catalogue-coverage.md`): each record there names, where there is one, the heading that describes its kind here and the issue that owns building it, and has the expected objects of the surveyed regions filed under it. This document keeps the descriptions.
+
 ---
 
 ## Books
