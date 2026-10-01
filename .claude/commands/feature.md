@@ -78,7 +78,7 @@ This is a feature — it requires proper planning. Enter plan mode to:
 - Explore the relevant parts of the codebase
 - Understand existing patterns and architecture
 - **Search for existing code to reuse** — check shared utilities, hooks, and components before planning new ones (see "Reuse Before You Create" in the development guide)
-- Check `docs/tech/planning/` for any existing plans related to this feature
+- Check `docs/local/plans/<N>-*.md` for this issue's plan (`<N>` is the issue number). When the plan is worth writing down, write it there under that name, never anywhere else and never committed (`docs/README.md` § Where things live)
 - Check `docs/vision/vision.md` for relevant user stories
 - Check `frontend/src/components/shared/` for reusable components
 - Design the implementation approach
@@ -122,7 +122,7 @@ Features always require doc updates:
 
 - **`docs/tech/`** — create or update technical documentation for the feature
 - **`docs/vision/vision.md`** — update if the feature is user-facing
-- **`docs/tech/planning/`** — if there was an existing plan, trim it to only remaining ideas
+- **`docs/local/plans/<N>-*.md`** — the plan is not committed; what it holds and this branch does not build is filed as issues when the PR is reported (`/pr-create` § Done)
 - **`docs/security/`** — update if the feature touches auth, new endpoints, or input surfaces
 - **`docs/decisions/`** — if the plan included a new ADR, create the file and update the index
 
