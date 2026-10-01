@@ -43,7 +43,7 @@ decided. § Where things live says what goes where.
 | [development-guide.md](tech/development-guide.md) | Code organization conventions, splitting patterns, commit hygiene |
 | [gates.md](tech/gates.md) | Which gates a change asks for — the map from each gate to its inputs, how to read a run of it, how CI applies it, and what it does not reach |
 | [data-assertions.md](tech/data-assertions.md) | Catalogue Checks — invariants over the live catalogue's rows, and the debt it carries |
-| [catalogue-coverage.md](tech/catalogue-coverage.md) | Catalogue coverage — the register of kinds of experience, live and proposed, the lists of what a traveller expects in each surveyed region, their file formats and what the reader refuses, and the tables they load into (ADR-0081) |
+| [catalogue-coverage.md](tech/catalogue-coverage.md) | Catalogue coverage — the register of kinds of experience, live and proposed, the lists of what a traveller expects in each surveyed region, their file formats and what the reader refuses, the tables they load into, and the report of what the catalogue holds of them and which proposed kind they ask for most (ADR-0081) |
 | [performance.md](tech/performance.md) | Performance lane — what is measured, the baseline, the budgets and their ratchet rule, known breaches |
 | [review-surface.md](tech/review-surface.md) | How much review a branch asks for — the baseline over merged PRs, the budget it sets and the rule for moving it |
 | [shared-frontend-patterns.md](tech/shared-frontend-patterns.md) | Shared UI components and utilities — full inventory with "use this, not that" reference |

@@ -29,7 +29,7 @@ npm run dev                # Start all services via Docker Compose (rebuilds ima
 npm run db:shell           # Open psql shell to active database
 npm run db:migrate         # Apply pending db/migrations/ files and record them (db:migrate:status to look first)
 npm run db:types           # Regenerate backend/src/db/schema.generated.ts from the schema (db:types:check is the gate)
-./scripts/catalogue-coverage.sh load    # Replace the catalogue-coverage tables from db/catalogue-coverage/ (ADR-0081, docs/tech/catalogue-coverage.md)
+./scripts/catalogue-coverage.sh load    # Replace the catalogue-coverage tables from db/catalogue-coverage/ (ADR-0081); `report` prints what the catalogue holds of what a traveller expects and which proposed kind the surveys ask for most (docs/tech/catalogue-coverage.md)
 npm --prefix backend run api:openapi  # Regenerate packages/shared/src/openapi.generated.json, the OpenAPI 3.1 document, from the route declarations (backend/src/api/openApi.test.ts is the check; npm run lint:openapi lints it, ADR-0072)
 npm --prefix frontend run api:client  # Regenerate frontend/src/api/client.generated.ts, the web's client, from that document with Orval (the api:client gate is the check, ADR-0073)
 npm run help               # Full command reference (all other scripts: package.json)
