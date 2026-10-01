@@ -70,6 +70,52 @@ export interface AiUsageLogRow {
   created_at: Date | null;
 }
 
+/** The table `coverage_expectation_kinds`. */
+export interface CoverageExpectationKindsRow {
+  region_slug: string;
+  expectation_slug: string;
+  kind_slug: string;
+}
+
+/** The table `coverage_expectations`. */
+export interface CoverageExpectationsRow {
+  region_slug: string;
+  slug: string;
+  name: string;
+  aliases: string[];
+  type: string;
+  wikidata_id: string | null;
+  same_as: string[];
+  unesco_id: string | null;
+  venue: string | null;
+  source_count: number;
+  sitelinks: number | null;
+  location: string | null;
+  note: string;
+}
+
+/** The table `coverage_kinds`. */
+export interface CoverageKindsRow {
+  slug: string;
+  name: string;
+  form: string;
+  definition: string;
+  status: string;
+  experience_kind_id: number | null;
+  issue_number: number | null;
+  vision_heading: string | null;
+}
+
+/** The table `coverage_regions`. */
+export interface CoverageRegionsRow {
+  slug: string;
+  name: string;
+  country: string;
+  centre: string;
+  radius_km: number;
+  surveyed: Date;
+}
+
 /** The table `curator_assignments`. */
 export interface CuratorAssignmentsRow {
   id: number;
@@ -624,6 +670,29 @@ export const COLUMN_WIDTHS = {
     feature: 100,
     model: 100,
   },
+  coverage_expectation_kinds: {
+    region_slug: 80,
+    expectation_slug: 120,
+    kind_slug: 80,
+  },
+  coverage_expectations: {
+    region_slug: 80,
+    slug: 120,
+    type: 20,
+    wikidata_id: 20,
+    unesco_id: 20,
+  },
+  coverage_kinds: {
+    slug: 80,
+    name: 255,
+    form: 20,
+    status: 10,
+  },
+  coverage_regions: {
+    slug: 80,
+    name: 255,
+    country: 255,
+  },
   curator_assignments: {
     scope_type: 20,
   },
@@ -752,6 +821,13 @@ export const COLUMN_WIDTHS = {
  * reads it from here (`CheckValue`) rather than restating it.
  */
 export const CHECK_VALUES = {
+  coverage_expectations: {
+    type: ["place", "work", "food", "drink", "event", "route", "activity", "title", "person", "species", "object", "sound"],
+  },
+  coverage_kinds: {
+    form: ["place", "work", "food", "drink", "event", "route", "activity", "title", "person", "species", "object", "sound"],
+    status: ["live", "proposed"],
+  },
   curator_assignments: {
     scope_type: ["region", "source", "global"],
   },
