@@ -3999,6 +3999,7 @@ CREATE TABLE IF NOT EXISTS coverage_kinds (
     experience_kind_id INTEGER REFERENCES experience_kinds(id),
     issue_number INTEGER,
     vision_heading TEXT,
+    in_venue BOOLEAN NOT NULL DEFAULT false,
     CONSTRAINT coverage_kinds_proposed_names_no_catalogue_kind CHECK (status = 'live' OR experience_kind_id IS NULL)
 );
 
@@ -4053,6 +4054,7 @@ CREATE INDEX IF NOT EXISTS idx_coverage_expectation_kinds_kind
 
 COMMENT ON TABLE coverage_kinds IS 'The register of kinds of experience, live and proposed, loaded from db/catalogue-coverage/kinds.jsonl (ADR-0081). A copy: the file is the source of truth.';
 COMMENT ON COLUMN coverage_kinds.form IS 'What a member of the kind is. An expectation is filed only under a kind whose form is its own type.';
+COMMENT ON COLUMN coverage_kinds.in_venue IS 'True when a member exists only inside a place: a work shown there, something done there. An expectation filed under such a kind names its venue.';
 COMMENT ON COLUMN coverage_kinds.issue_number IS 'The issue that owns building a proposed kind. Its priority and order live there, never here (ADR-0079).';
 COMMENT ON TABLE coverage_regions IS 'The surveyed regions, loaded from db/catalogue-coverage/regions.jsonl (ADR-0081).';
 COMMENT ON TABLE coverage_expectations IS 'What two or more independent sources recommend in a surveyed region, loaded from db/catalogue-coverage/expectations/ (ADR-0081). Identified by wikidata_id, same_as and unesco_id, never by name.';
