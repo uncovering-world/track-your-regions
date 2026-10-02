@@ -67,6 +67,8 @@ export interface ProposedKindDemand {
   slug: string;
   name: string;
   form: string;
+  /** Its members exist only inside a place, so building it is building what a place holds. */
+  inVenue: boolean;
   issue: number | null;
   /** Expectations filed under the kind, and the regions they come from. */
   expected: number;
@@ -202,6 +204,7 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
         slug: kind.slug,
         name: kind.name,
         form: kind.form,
+        inVenue: kind.in_venue,
         issue: kind.issue_number,
         expected: filed.length,
         regions: new Set(filed.map(result => result.regionSlug)).size,

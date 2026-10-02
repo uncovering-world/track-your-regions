@@ -35,7 +35,8 @@ function proposedLines(report: CoverageReport): string[] {
   for (const kind of report.proposedKinds) {
     const owner = kind.issue === null ? 'no issue' : `#${kind.issue}`;
     const elsewhere = kind.offeredElsewhere > 0 ? `, ${kind.offeredElsewhere} already offered through another kind` : '';
-    lines.push(`${kind.name} [${kind.slug}; holds: ${kind.form}; ${owner}]`);
+    const holds = kind.inVenue ? `${kind.form}, inside a place` : kind.form;
+    lines.push(`${kind.name} [${kind.slug}; holds: ${holds}; ${owner}]`);
     lines.push(`    ${kind.expected} expected in ${kind.regions} region(s)${elsewhere}`);
     lines.push(`    such as: ${kind.examples.join('; ')}`);
   }

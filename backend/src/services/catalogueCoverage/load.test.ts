@@ -24,7 +24,7 @@ const CATALOGUE_KINDS = [{ id: 1, name: 'World Heritage Sites' }, { id: 5, name:
 
 const kind = (over: Partial<CoverageFiles['kinds'][number]>): CoverageFiles['kinds'][number] => ({
   slug: 'markets', name: 'Markets', form: 'place', definition: 'A market.', status: 'proposed',
-  experience_kind_id: null, issue: null, vision: null, ...over,
+  experience_kind_id: null, issue: null, vision: null, in_venue: false, ...over,
 });
 
 const FILES: CoverageFiles = {
@@ -102,7 +102,7 @@ describe('replaceCoverage', () => {
       const call = (client.query.mock.calls as [string, string[]?][]).find(([sql]) => sql.replace(/\s+/g, ' ').includes(insert));
       return JSON.parse(call?.[1]?.[0] ?? '[]') as Record<string, unknown>[];
     };
-    expect(sent('coverage_kinds')[1]).toMatchObject({ slug: 'archaeology', experience_kind_id: 5, issue_number: null, vision_heading: null });
+    expect(sent('coverage_kinds')[1]).toMatchObject({ slug: 'archaeology', experience_kind_id: 5, issue_number: null, vision_heading: null, in_venue: false });
     expect(sent('coverage_regions')[0]).toMatchObject({ slug: 'cusco-region', centre: 'POINT(-71.967 -13.532)', surveyed: '2026-10-01' });
     const [moray, cuy] = sent('coverage_expectations');
     expect(moray).toMatchObject({

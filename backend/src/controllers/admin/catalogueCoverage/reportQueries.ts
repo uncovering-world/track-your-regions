@@ -20,7 +20,7 @@ import type {
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
 
-export type KindRow = Pick<CoverageKindsRow, 'slug' | 'name' | 'form' | 'status' | 'experience_kind_id' | 'issue_number'> & {
+export type KindRow = Pick<CoverageKindsRow, 'slug' | 'name' | 'form' | 'status' | 'experience_kind_id' | 'issue_number' | 'in_venue'> & {
   /** The sitelinks a place needs to enter this kind's world tier, where its source states one. */
   enter_sitelinks: number | null;
 };
@@ -58,7 +58,7 @@ export interface CoverageFacts {
 }
 
 const KINDS_SQL = `
-  SELECT ck.slug, ck.name, ck.form, ck.status, ck.experience_kind_id, ck.issue_number,
+  SELECT ck.slug, ck.name, ck.form, ck.status, ck.experience_kind_id, ck.issue_number, ck.in_venue,
          (SELECT MIN((s.api_config->>'enterSitelinks')::int)
             FROM experience_sources s
            WHERE s.kind_id = ck.experience_kind_id AND s.is_active) AS enter_sitelinks

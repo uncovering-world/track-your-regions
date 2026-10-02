@@ -19,14 +19,14 @@ import { renderCoverageReport } from './reportText.js';
 
 const kind = (over: Partial<KindRow>): KindRow => ({
   slug: 'archaeology', name: 'Archaeology', form: 'place', status: 'live', experience_kind_id: 5, issue_number: null,
-  enter_sitelinks: 22, ...over,
+  in_venue: false, enter_sitelinks: 22, ...over,
 });
 const KINDS: KindRow[] = [
   kind({}),
   kind({ slug: 'world-heritage', name: 'World Heritage Sites', experience_kind_id: 1, enter_sitelinks: null }),
   kind({ slug: 'art-museums', name: 'Art Museums', experience_kind_id: 2, enter_sitelinks: null }),
   kind({ slug: 'public-art', name: 'Public Art & Monuments', experience_kind_id: 3, enter_sitelinks: null }),
-  kind({ slug: 'notable-works', name: 'Notable works', form: 'work', experience_kind_id: null, enter_sitelinks: null }),
+  kind({ slug: 'notable-works', name: 'Notable works', form: 'work', experience_kind_id: null, in_venue: true, enter_sitelinks: null }),
   kind({ slug: 'markets', name: 'Markets', status: 'proposed', experience_kind_id: null, enter_sitelinks: null }),
   kind({ slug: 'festivals-and-events', name: 'Festivals & events', form: 'event', status: 'proposed', experience_kind_id: null, issue_number: 1300, enter_sitelinks: null }),
   kind({ slug: 'beaches-and-swimming', name: 'Beaches', status: 'proposed', experience_kind_id: null, enter_sitelinks: null }),
@@ -256,5 +256,17 @@ describe('the report as text', () => {
     expect(text).toContain('Festivals & events [festivals-and-events; holds: event; #1300]');
     expect(text).toContain('cusco-region: Cusco Cathedral -> City of Cuzco / Main Square (78 m)');
     expect(text).toContain('cusco-region: Climbing the dome [activity]');
+  });
+
+  it('says of a proposed kind that it exists only inside a place', () => {
+    const text = renderCoverageReport(buildCoverageReport(facts({
+      kinds: [...KINDS, kind({
+        slug: 'on-site-activities', name: 'On-site activities', form: 'activity', status: 'proposed', experience_kind_id: null,
+        in_venue: true, enter_sitelinks: null,
+      })],
+      expectations: [entry('Climbing the dome', { type: 'activity', kinds: ['on-site-activities'] })],
+    })));
+
+    expect(text).toContain('On-site activities [on-site-activities; holds: activity, inside a place; no issue]');
   });
 });

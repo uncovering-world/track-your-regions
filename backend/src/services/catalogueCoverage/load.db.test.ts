@@ -22,12 +22,16 @@ async function liveKinds(): Promise<CoverageFiles['kinds']> {
   const { rows } = await pool.query<{ id: number; name: string }>('SELECT id, name FROM experience_kinds ORDER BY id');
   return rows.map(row => ({
     slug: SLUGS[row.id] ?? `kind-${row.id}`, name: row.name, form: 'place', definition: `${row.name}.`, status: 'live',
-    experience_kind_id: row.id, issue: null, vision: null,
+    experience_kind_id: row.id, issue: null, vision: null, in_venue: false,
   }));
 }
 
 const MARKETS: CoverageFiles['kinds'][number] = {
-  slug: 'markets', name: 'Markets', form: 'place', definition: 'A market.', status: 'proposed', experience_kind_id: null, issue: 1163, vision: 'Markets',
+  slug: 'markets', name: 'Markets', form: 'place', definition: 'A market.', status: 'proposed', experience_kind_id: null, issue: 1163, vision: 'Markets', in_venue: false,
+};
+
+const NOTABLE_WORKS: CoverageFiles['kinds'][number] = {
+  slug: 'notable-works', name: 'Notable works', form: 'work', definition: 'A work.', status: 'live', experience_kind_id: null, issue: null, vision: null, in_venue: true,
 };
 
 const entry = (slug: string, kinds: string[]): CoverageFiles['expectations'] extends Map<string, (infer E)[]> ? E : never => ({
@@ -37,7 +41,7 @@ const entry = (slug: string, kinds: string[]): CoverageFiles['expectations'] ext
 
 async function files(regionSlug: string, slugs: string[], filedUnder = 'markets'): Promise<CoverageFiles> {
   return {
-    kinds: [...await liveKinds(), MARKETS],
+    kinds: [...await liveKinds(), MARKETS, NOTABLE_WORKS],
     regions: [{ slug: regionSlug, name: regionSlug, country: 'Peru', lat: -13.532, lon: -71.967, radius_km: 110, surveyed: '2026-10-01' }],
     expectations: new Map([[regionSlug, slugs.map(slug => entry(slug, [filedUnder]))]]),
   };
@@ -74,6 +78,16 @@ describe('replacing the catalogue-coverage tables', () => {
          JOIN coverage_kinds k ON k.slug = xk.kind_slug`,
     );
     expect(row.rows).toEqual([{ lon: -72.197, lat: -13.33, aliases: ['also'], source_count: 3, surveyed: '2026-10-01', issue_number: 1163 }]);
+  });
+
+  it('copies which kinds exist only inside a place', async () => {
+    await replaceCoverage(await files('first-region', ['moray']));
+
+    const flags = await pool.query<{ slug: string; in_venue: boolean }>(
+      'SELECT slug, in_venue FROM coverage_kinds WHERE slug = ANY($1) ORDER BY slug',
+      [['markets', 'notable-works']],
+    );
+    expect(flags.rows).toEqual([{ slug: 'markets', in_venue: false }, { slug: 'notable-works', in_venue: true }]);
   });
 
   it('leaves nothing of the load before', async () => {

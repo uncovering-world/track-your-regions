@@ -42,6 +42,11 @@ const kindSchema = z.strictObject({
   issue: z.number().int().positive().nullable(),
   /** The heading that describes the kind in `docs/vision/PROPOSED-EXPERIENCE-CATEGORIES.md`. */
   vision: text.nullable(),
+  /**
+   * True when a member exists only inside a place: a work shown there, the climb of its dome.
+   * A traveller finds it on the place's card and never browses a region by it.
+   */
+  in_venue: z.boolean(),
 });
 
 const regionSchema = z.strictObject({
@@ -66,7 +71,7 @@ const expectationSchema = z.strictObject({
   same_as: z.array(wikidataId),
   /** UNESCO's own id of a World Heritage property. */
   unesco: z.string().regex(/^[1-9]\d*$/, "UNESCO's id, digits").nullable(),
-  /** Where a work is shown, in words. */
+  /** The place a work is shown in, or an activity or an event is held at, in words. */
   venue: text.nullable(),
   /** How many independent sources named it. Which ones is not published. */
   sources: z.number().int().min(2, 'an entry counts when two or more sources name it'),
@@ -198,6 +203,8 @@ function checkEntry(entry: CoverageExpectation, kinds: Map<string, CoverageKind>
       found.push(`${entry.slug} is filed under ${kindSlug}, which the register does not have`);
     } else if (kind.form !== entry.type) {
       found.push(`${entry.slug} is a ${entry.type} and ${kindSlug} holds a ${kind.form}`);
+    } else if (kind.in_venue && entry.venue === null) {
+      found.push(`${entry.slug} is filed under ${kindSlug}, which exists only inside a place, and names no venue`);
     }
   }
   if (entry.unesco !== null && !seen.has(WORLD_HERITAGE)) {
@@ -209,8 +216,9 @@ function checkEntry(entry: CoverageExpectation, kinds: Map<string, CoverageKind>
   if ((entry.lat === null) !== (entry.lon === null)) {
     found.push('lat and lon are given together or not at all');
   }
-  if (entry.venue !== null && entry.type !== 'work') {
-    found.push(`${entry.slug} names a venue and is not a work`);
+  // A place is where it is. Anything else may be shown or held at one.
+  if (entry.venue !== null && entry.type === 'place') {
+    found.push(`${entry.slug} is a place and names a venue`);
   }
   return found;
 }

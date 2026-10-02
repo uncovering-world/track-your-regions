@@ -15,11 +15,13 @@ import { CoverageFilesError, readCoverageFiles } from './files.js';
 type Line = Record<string, unknown>;
 
 const KINDS: Line[] = [
-  { slug: 'world-heritage', name: 'World Heritage Sites', form: 'place', definition: 'A site on the List.', status: 'live', experience_kind_id: 1, issue: null, vision: null },
-  { slug: 'archaeology', name: 'Archaeology', form: 'place', definition: 'A dig or its museum.', status: 'live', experience_kind_id: 5, issue: null, vision: null },
-  { slug: 'markets', name: 'Markets', form: 'place', definition: 'A market.', status: 'proposed', experience_kind_id: null, issue: null, vision: 'Markets' },
-  { slug: 'regional-food', name: 'Regional food', form: 'food', definition: 'A dish.', status: 'proposed', experience_kind_id: null, issue: null, vision: 'Regional Food' },
-  { slug: 'notable-works', name: 'Notable works', form: 'work', definition: 'A work in a venue.', status: 'live', experience_kind_id: null, issue: null, vision: null },
+  { slug: 'world-heritage', name: 'World Heritage Sites', form: 'place', definition: 'A site on the List.', status: 'live', experience_kind_id: 1, issue: null, vision: null, in_venue: false },
+  { slug: 'archaeology', name: 'Archaeology', form: 'place', definition: 'A dig or its museum.', status: 'live', experience_kind_id: 5, issue: null, vision: null, in_venue: false },
+  { slug: 'markets', name: 'Markets', form: 'place', definition: 'A market.', status: 'proposed', experience_kind_id: null, issue: null, vision: 'Markets', in_venue: false },
+  { slug: 'regional-food', name: 'Regional food', form: 'food', definition: 'A dish.', status: 'proposed', experience_kind_id: null, issue: null, vision: 'Regional Food', in_venue: false },
+  { slug: 'notable-works', name: 'Notable works', form: 'work', definition: 'A work in a venue.', status: 'live', experience_kind_id: null, issue: null, vision: null, in_venue: true },
+  { slug: 'on-site-activities', name: 'On-site activities', form: 'activity', definition: 'Something done at one place.', status: 'proposed', experience_kind_id: null, issue: null, vision: null, in_venue: true },
+  { slug: 'shows-and-performances', name: 'Shows & performances', form: 'activity', definition: 'A show.', status: 'proposed', experience_kind_id: null, issue: null, vision: null, in_venue: false },
 ];
 const REGIONS: Line[] = [
   { slug: 'cusco-region', name: 'Cusco region', country: 'Peru', lat: -13.532, lon: -71.967, radius_km: 110, surveyed: '2026-10-01' },
@@ -129,9 +131,24 @@ describe('a list that does not agree with the register', () => {
     expect(problemsOf(withoutId)).toEqual([expect.stringMatching(/line 1: moray is filed under world-heritage and carries no UNESCO id/)]);
   });
 
-  it('refuses a venue on anything but a work', () => {
+  it('refuses a venue on a place, which is where it is', () => {
     const dir = files({ expectations: { 'cusco-region': [entry({ venue: 'Museo Inka' })] } });
-    expect(problemsOf(dir)).toEqual([expect.stringMatching(/line 1: moray names a venue and is not a work/)]);
+    expect(problemsOf(dir)).toEqual([expect.stringMatching(/line 1: moray is a place and names a venue/)]);
+  });
+
+  it('takes a venue on what is shown or held at a place', () => {
+    const show = entry({ slug: 'qoricancha-night-show', type: 'activity', kinds: ['shows-and-performances'], wikidata: null, venue: 'Qorikancha' });
+    const climb = entry({ slug: 'cathedral-bell-tower', type: 'activity', kinds: ['on-site-activities'], wikidata: null, venue: 'Cusco Cathedral' });
+    expect(problemsOf(files({ expectations: { 'cusco-region': [show, climb] } }))).toEqual([]);
+  });
+
+  it('refuses an entry of a kind that exists only inside a place when it names no venue', () => {
+    const climb = entry({ slug: 'cathedral-bell-tower', type: 'activity', kinds: ['on-site-activities'], wikidata: null });
+    const work = entry({ slug: 'last-supper-with-cuy', type: 'work', kinds: ['notable-works'], wikidata: 'Q2003624' });
+    expect(problemsOf(files({ expectations: { 'cusco-region': [climb, work] } }))).toEqual([
+      'expectations/cusco-region.jsonl line 1: cathedral-bell-tower is filed under on-site-activities, which exists only inside a place, and names no venue',
+      'expectations/cusco-region.jsonl line 2: last-supper-with-cuy is filed under notable-works, which exists only inside a place, and names no venue',
+    ]);
   });
 });
 
@@ -165,7 +182,7 @@ describe('an identity used twice', () => {
     const identityTwice = files({ expectations: { 'cusco-region': [entry(), entry({ slug: 'moray-terraces', venue: 'Museo Inka' })] } });
     expect(problemsOf(identityTwice)).toEqual([
       'expectations/cusco-region.jsonl line 2: Q1814201 is already the identity of moray on line 1',
-      'expectations/cusco-region.jsonl line 2: moray-terraces names a venue and is not a work',
+      'expectations/cusco-region.jsonl line 2: moray-terraces is a place and names a venue',
     ]);
   });
 
@@ -184,7 +201,7 @@ describe('an identity used twice', () => {
 describe('the register', () => {
   it('refuses a slug used twice', () => {
     const dir = files({ kinds: [...KINDS, KINDS[2]] });
-    expect(problemsOf(dir)).toEqual(['kinds.jsonl line 6: slug markets is already used on line 3']);
+    expect(problemsOf(dir)).toEqual(['kinds.jsonl line 8: slug markets is already used on line 3']);
   });
 
   it('refuses a live kind of place with no catalogue kind behind it, and a proposed kind with one', () => {
@@ -204,8 +221,8 @@ describe('the register', () => {
   it('says what is wrong with a record besides its slug being used twice', () => {
     const dir = files({ kinds: [...KINDS, { ...KINDS[2], experience_kind_id: 7 }] });
     expect(problemsOf(dir)).toEqual([
-      'kinds.jsonl line 6: markets is proposed and names experience_kind_id 7',
-      'kinds.jsonl line 6: slug markets is already used on line 3',
+      'kinds.jsonl line 8: markets is proposed and names experience_kind_id 7',
+      'kinds.jsonl line 8: slug markets is already used on line 3',
     ]);
   });
 
