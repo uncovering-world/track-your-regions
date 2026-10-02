@@ -3,5 +3,5 @@
 {"slug": "kyoto", "name": "Kyoto", "country": "Japan", "lat": 35.011, "lon": 135.768, "radius_km": 45, "surveyed": "2026-10-01"}
 {"slug": "cairo", "name": "Cairo", "country": "Egypt", "lat": 30.044, "lon": 31.236, "radius_km": 40, "surveyed": "2026-10-01"}
 {"slug": "mexico-city", "name": "Mexico City", "country": "Mexico", "lat": 19.433, "lon": -99.133, "radius_km": 50, "surveyed": "2026-10-01"}
-{"slug": "sydney", "name": "Sydney", "country": "Australia", "lat": -33.868, "lon": 151.209, "radius_km": 90, "surveyed": "2026-10-01"}
+{"slug": "sydney", "name": "Sydney", "country": "Australia", "lat": -33.868, "lon": 151.209, "radius_km": 90, "surveyed": "2026-10-02"}
 {"slug": "auckland", "name": "Auckland", "country": "New Zealand", "lat": -36.85, "lon": 174.763, "radius_km": 60, "surveyed": "2026-10-01"}
