@@ -104,6 +104,7 @@ export interface CoverageKindsRow {
   experience_kind_id: number | null;
   issue_number: number | null;
   vision_heading: string | null;
+  in_venue: boolean;
 }
 
 /** The table `coverage_regions`. */
