@@ -12,3 +12,8 @@
 {"slug": "bali", "name": "Bali", "country": "Indonesia", "lat": -8.41, "lon": 115.19, "radius_km": 90, "surveyed": "2026-10-02"}
 {"slug": "istanbul", "name": "Istanbul", "country": "Türkiye", "lat": 41.02, "lon": 28.98, "radius_km": 35, "surveyed": "2026-10-02"}
 {"slug": "isfahan", "name": "Isfahan", "country": "Iran", "lat": 32.657, "lon": 51.677, "radius_km": 160, "surveyed": "2026-10-02"}
+{"slug": "dakar", "name": "Dakar", "country": "Senegal", "lat": 14.69, "lon": -17.44, "radius_km": 45, "surveyed": "2026-10-02"}
+{"slug": "zanzibar", "name": "Zanzibar", "country": "Tanzania", "lat": -6.13, "lon": 39.36, "radius_km": 50, "surveyed": "2026-10-02"}
+{"slug": "addis-ababa", "name": "Addis Ababa", "country": "Ethiopia", "lat": 9.01, "lon": 38.76, "radius_km": 120, "surveyed": "2026-10-02"}
+{"slug": "havana", "name": "Havana", "country": "Cuba", "lat": 23.137, "lon": -82.358, "radius_km": 80, "surveyed": "2026-10-02"}
+{"slug": "salvador", "name": "Salvador da Bahia", "country": "Brazil", "lat": -12.973, "lon": -38.51, "radius_km": 85, "surveyed": "2026-10-02"}
