@@ -5,3 +5,7 @@
 {"slug": "mexico-city", "name": "Mexico City", "country": "Mexico", "lat": 19.433, "lon": -99.133, "radius_km": 50, "surveyed": "2026-10-02"}
 {"slug": "sydney", "name": "Sydney", "country": "Australia", "lat": -33.868, "lon": 151.209, "radius_km": 90, "surveyed": "2026-10-02"}
 {"slug": "auckland", "name": "Auckland", "country": "New Zealand", "lat": -36.85, "lon": 174.763, "radius_km": 60, "surveyed": "2026-10-02"}
+{"slug": "delhi", "name": "Delhi", "country": "India", "lat": 28.632, "lon": 77.22, "radius_km": 40, "surveyed": "2026-10-02"}
+{"slug": "beijing", "name": "Beijing", "country": "China", "lat": 39.904, "lon": 116.407, "radius_km": 130, "surveyed": "2026-10-02"}
+{"slug": "samarkand", "name": "Samarkand", "country": "Uzbekistan", "lat": 39.655, "lon": 66.975, "radius_km": 80, "surveyed": "2026-10-02"}
+{"slug": "yerevan", "name": "Yerevan", "country": "Armenia", "lat": 40.18, "lon": 44.51, "radius_km": 85, "surveyed": "2026-10-02"}
