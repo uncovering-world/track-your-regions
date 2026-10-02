@@ -69,6 +69,7 @@ async function fill(client: PoolClient, files: CoverageFiles): Promise<CoverageL
     experience_kind_id: kind.experience_kind_id,
     issue_number: kind.issue,
     vision_heading: kind.vision,
+    in_venue: kind.in_venue,
   }));
   const regions = files.regions.map(region => ({
     slug: region.slug,
@@ -103,11 +104,11 @@ async function fill(client: PoolClient, files: CoverageFiles): Promise<CoverageL
   await client.query('DELETE FROM coverage_kinds');
 
   await client.query(
-    `INSERT INTO coverage_kinds (slug, name, form, definition, status, experience_kind_id, issue_number, vision_heading)
-     SELECT slug, name, form, definition, status, experience_kind_id, issue_number, vision_heading
+    `INSERT INTO coverage_kinds (slug, name, form, definition, status, experience_kind_id, issue_number, vision_heading, in_venue)
+     SELECT slug, name, form, definition, status, experience_kind_id, issue_number, vision_heading, in_venue
        FROM jsonb_to_recordset($1::jsonb)
          AS sent(slug text, name text, form text, definition text, status text,
-                 experience_kind_id integer, issue_number integer, vision_heading text)`,
+                 experience_kind_id integer, issue_number integer, vision_heading text, in_venue boolean)`,
     [JSON.stringify(kinds)],
   );
   await client.query(

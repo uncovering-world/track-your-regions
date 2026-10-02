@@ -85,14 +85,14 @@ const entry = (slug: string, over: Partial<CoverageExpectation>): CoverageExpect
 
 async function files(): Promise<CoverageFiles> {
   const { rows } = await pool.query<{ id: number; name: string }>('SELECT id, name FROM experience_kinds ORDER BY id');
-  const proposed = { status: 'proposed', experience_kind_id: null, issue: null, vision: null } as const;
+  const proposed = { status: 'proposed', experience_kind_id: null, issue: null, vision: null, in_venue: false } as const;
   return {
     kinds: [
       ...rows.map(row => ({
         slug: SLUGS[row.id] ?? `kind-${row.id}`, name: row.name, form: 'place' as const, definition: `${row.name}.`,
-        status: 'live' as const, experience_kind_id: row.id, issue: null, vision: null,
+        status: 'live' as const, experience_kind_id: row.id, issue: null, vision: null, in_venue: false,
       })),
-      { slug: 'notable-works', name: 'Notable works', form: 'work', definition: 'A work.', status: 'live', experience_kind_id: null, issue: null, vision: null },
+      { slug: 'notable-works', name: 'Notable works', form: 'work', definition: 'A work.', status: 'live', experience_kind_id: null, issue: null, vision: null, in_venue: true },
       { slug: 'markets', name: 'Markets', form: 'place', definition: 'A market.', ...proposed },
       { slug: 'festivals-and-events', name: 'Festivals & events', form: 'event', definition: 'A festival.', ...proposed, issue: 1300 },
     ],
