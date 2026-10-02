@@ -271,9 +271,8 @@ A list whose region carries `surveyed: 2026-10-02` was compiled, or compiled aga
 rules the `/coverage-survey` skill now states. The first survey, a day earlier, took one place
 per macro-region of the Administrative world view and counted Lonely Planet from the results
 of searches of its site. An audit found that such a count was often not a reading: the name
-stood in the search tool's summary, or the search had carried the name. A list of that survey
-is rebuilt from its sources and then carries the later date; one that still carries
-`2026-10-01` waits for its turn.
+stood in the search tool's summary, or the search had carried the name. Those lists were
+rebuilt from their sources and carry the later date.
 
 Each list is merged from:
 
