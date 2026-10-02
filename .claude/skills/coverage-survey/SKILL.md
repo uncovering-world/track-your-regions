@@ -19,7 +19,8 @@ Read `docs/tech/catalogue-coverage.md`: the file formats, what the reader refuse
 
 - **Do not look at the catalogue.** No query of the database, no reading of what a sync admits, until the list is written. A list shaped by what the catalogue holds measures nothing.
 - **Names are facts; a guide's words are not.** Record the names of what a source recommends. Never copy a description.
-- **A site that refuses automated reading is left alone.** A 403, a robots refusal or a page that needs a browser is recorded as "could not be read". No workaround, no browser, no bulk download.
+- **A site that refuses automated reading is left alone.** A 403, a robots refusal or a page that needs a browser is recorded as "could not be read". No workaround, no browser, no bulk download, and no reading of it through a search engine either. A file that carries a no-copy flag is read as the fetch shows it or not at all.
+- **A source counts for an entry when you read it and it named the thing.** A page you fetched counts. So does the title or the URL of a result on the source's own site, from a search for the region or for a category of it, where the site's pages cannot be fetched for a technical reason. Three things do not: the search tool's summary, which is prose written by a model and blends pages; a search that contains the name of the thing, which finds the string wherever it is; and a page that lists everything of a kind, which is a directory and not a recommendation.
 - **An identifier comes from a lookup, never from memory.** That includes one a Wikivoyage listing carries: check it like any other.
 - **Which commercial guide named what is not committed.** The committed entry carries how many sources named it. The record of which ones goes under `docs/local/`.
 
@@ -51,21 +52,31 @@ Record what Wikivoyage names: the highlights and prose of the main article, and 
 
 Find the publisher's own open pages for the region with a web search and read two guides where two can be read; a third that can be read is one more source, never a reason to stop early. A publisher with no page for the region counts for what its country pages name in this region. Ask each page for the names of what it recommends and nothing else.
 
-Rough Guides' pages have been readable. Lonely Planet's are drawn by script and show only navigation to a fetch: take the names a search restricted to its site returns, and mark the source as partial. Fodor's and Frommer's have answered 403. Record for each guide what was read and what could not be.
+One of the guides is in a language visitors to the region read, when that is not English: French for West Africa, Portuguese for Brazil, Spanish for Cuba, Russian for Central Asia. Where the English guides are thin this is the guide that names the feasts, the dishes and what opened lately: in Dakar 38 entries reached two sources only through French-language guides.
 
-### 5. Read UNESCO's lists
+Rough Guides' pages have been readable. Lonely Planet's English pages are drawn by script and show only navigation to a fetch: read one of its other-language sites that the server draws or the publisher's open chapter preview, or take the names that stand in the titles and URLs of the results a search restricted to its site returns for the region, and mark the source as partial. Fodor's, Frommer's and Petit Futé have answered 403. Record for each guide what was read and what could not be.
 
-The World Heritage properties in or beside the region, each with UNESCO's own id, and the country's elements on the Intangible Cultural Heritage lists that a visitor to this region would meet. UNESCO is a source like the others: it names the property, and the components the property's own page lists.
+### 5. Read a source written from inside the country
 
-### 6. Merge
+A national or city tourism board, or a guide written by residents. It is counted like any other source, and it is where the places residents go and the sights opened since the foreign guides were last revised turn up. A directory of every restaurant, hotel or museum is not a recommendation and is not counted for them.
+
+### 6. Read UNESCO's lists
+
+The World Heritage properties in or beside the region, each with UNESCO's own id, and the country's elements on the Intangible Cultural Heritage lists that a visitor to this region would meet. UNESCO is a source like the others: it names the property, and the components the property's own page lists. The property pages have answered 403 while the State Party page was readable; a component whose page could not be read is not counted as named by UNESCO.
+
+### 7. Merge
 
 One entry per thing, with the sources that named it. Keep an entry when two or more sources name it; the single-source ones stay in the working directory.
+
+Sources that repeat each other item for item are one source: a tour operator's page copied from Wikivoyage, or two language editions of one article. Count them once and say so in the record of step 10.
+
+Your own list is one of the sources and counts as one. It may be the second source of an entry, never both: a thing only you named is not on the list, however sure you are of it.
 
 Give each entry a `type`, in the vocabulary `docs/tech/catalogue-coverage.md` § `kinds.jsonl` lists for `form`: a statue outdoors is a `place`, an object shown inside a venue is a `work` with its `venue`, a ride or a class is an `activity`. A thing that is both a place and something to do is one entry: a `place` when a traveller goes to see it (a singing fountain), an `activity` when the doing is the point (a ride on a children's railway).
 
 An entry belongs to this region when a source presents it as part of the place or as a trip from it. A sight a country-wide page lists, days away, belongs to its own region's list, however many sources name it.
 
-### 7. Find the identifiers
+### 8. Find the identifiers
 
 ```bash
 ./scripts/catalogue-coverage.sh lookup search "<name>" "<another name>"
@@ -76,23 +87,23 @@ For every place and work, `search` lists the Wikidata items the name could be; c
 
 Where Wikidata has two items for one place, the entry takes the one the Wikipedia articles are on and names the other in `same_as`: a building and the institution inside it, or a site and its heritage-register record. An item with no sitelinks beside a twin with many is the wrong choice; search the name again before keeping it.
 
-An entry farther from the centre than the reach stays on the list when it passed the test of step 6, with the distance and the reason in its `note`. An item Wikidata gives no coordinates has `lat` and `lon` null. When Wikidata's coordinates are plainly not the place's, keep the identifier, leave `lat` and `lon` null, and say so in the `note`.
+An entry farther from the centre than the reach stays on the list when it passed the test of step 7, with the distance and the reason in its `note`. An item Wikidata gives no coordinates has `lat` and `lon` null. When Wikidata's coordinates are plainly not the place's, keep the identifier, leave `lat` and `lon` null, and say so in the `note`.
 
 An inscribed World Heritage property is one entry of the list, with its `unesco` id, filed under `world-heritage`; no second entry carries that id. A component of a serial property, one temple among Kyoto's, is an entry of its own when sources name it, filed under what it is, with no `unesco` id.
 
-### 8. File every entry under kinds
+### 9. File every entry under kinds
 
 For each entry choose the kinds of the register a traveller would look for it under: usually one, two when they would truly look in both. A kind may be given only when its `form` is the entry's `type`.
 
-When no kind fits, leave the entry unsorted and note what kind is missing. If two or more entries miss the same kind, add a record to `kinds.jsonl` as `proposed`, with a definition a person could apply to the next entry, and file them under it. Do not stretch a kind to cover what it does not define.
+When no kind fits, leave the entry unsorted and note what kind is missing. If two or more entries miss the same kind, add a record to `kinds.jsonl` as `proposed`, with a definition a person could apply to the next entry, and file them under it. Do not stretch a kind to cover what it does not define. When a kind plainly means the thing and its definition lacks the word, a dargah under places of worship, reword the definition in the same change so that it names it: a definition is held to every surveyed region, not to the first one.
 
-### 9. Write the list
+### 10. Write the list
 
-Add the region's line to `db/catalogue-coverage/regions.jsonl` and write `db/catalogue-coverage/expectations/<slug>.jsonl`, one entry per line, the most-named first. Fill `sitelinks`, `lat` and `lon` from step 7's `facts`.
+Add the region's line to `db/catalogue-coverage/regions.jsonl` and write `db/catalogue-coverage/expectations/<slug>.jsonl`, one entry per line, the most-named first. Fill `sitelinks`, `lat` and `lon` from step 8's `facts`.
 
-Write the per-source record, which source named which entry, to `sources.jsonl` in the working directory. It is never committed.
+Write the per-source record, which source named which entry, to `sources.jsonl` in the working directory, your own list and the source from inside the country each under a name of its own, and beside it how each source was read: fetched whole, fetched in part, or through searches of its site. It is never committed.
 
-### 10. Check, and report
+### 11. Check, and report
 
 ```bash
 npx vitest run --root backend src/services/catalogueCoverage/files.test.ts
@@ -102,4 +113,4 @@ npx vitest run --root backend src/services/catalogueCoverage/files.test.ts
 
 The spec reads the committed files and names every wrong line. The load and the report are the first look at the catalogue, which is why they come last.
 
-Tell the user: how many entries, how many by type, which sources were read and which could not be, the kinds added to the register, the entries left unsorted, and what the report says for the region. Commit through `/commit`: the list and any register change together, as data, apart from code.
+Tell the user: how many entries, how many by type, which sources were read and which could not be, how many entries have your own list as one of only two sources and how many the source from inside the country, the kinds added to the register and the definitions reworded, the entries left unsorted, and what the report says for the region. Commit through `/commit`: the list and any register change together, as data, apart from code.
