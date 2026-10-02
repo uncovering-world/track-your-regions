@@ -9,3 +9,6 @@
 {"slug": "beijing", "name": "Beijing", "country": "China", "lat": 39.904, "lon": 116.407, "radius_km": 130, "surveyed": "2026-10-02"}
 {"slug": "samarkand", "name": "Samarkand", "country": "Uzbekistan", "lat": 39.655, "lon": 66.975, "radius_km": 80, "surveyed": "2026-10-02"}
 {"slug": "yerevan", "name": "Yerevan", "country": "Armenia", "lat": 40.18, "lon": 44.51, "radius_km": 85, "surveyed": "2026-10-02"}
+{"slug": "bali", "name": "Bali", "country": "Indonesia", "lat": -8.41, "lon": 115.19, "radius_km": 90, "surveyed": "2026-10-02"}
+{"slug": "istanbul", "name": "Istanbul", "country": "Türkiye", "lat": 41.02, "lon": 28.98, "radius_km": 35, "surveyed": "2026-10-02"}
+{"slug": "isfahan", "name": "Isfahan", "country": "Iran", "lat": 32.657, "lon": 51.677, "radius_km": 160, "surveyed": "2026-10-02"}
