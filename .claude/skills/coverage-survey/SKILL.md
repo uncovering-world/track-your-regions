@@ -74,6 +74,8 @@ Your own list is one of the sources and counts as one. It may be the second sour
 
 Give each entry a `type`, in the vocabulary `docs/tech/catalogue-coverage.md` § `kinds.jsonl` lists for `form`: a statue outdoors is a `place`, an object shown inside a venue is a `work` with its `venue`, a ride or a class is an `activity`. A thing that is both a place and something to do is one entry: a `place` when a traveller goes to see it (a singing fountain), an `activity` when the doing is the point (a ride on a children's railway).
 
+A work, an activity or an event tied to one place names it in `venue`, in words: the show given at a fort, the match at a stadium, the feast kept at one temple. One done at many places, a tea ceremony or a ride in a classic car, names none, and a place never does.
+
 An entry belongs to this region when a source presents it as part of the place or as a trip from it. A sight a country-wide page lists, days away, belongs to its own region's list, however many sources name it.
 
 ### 8. Find the identifiers
@@ -93,7 +95,7 @@ An inscribed World Heritage property is one entry of the list, with its `unesco`
 
 ### 9. File every entry under kinds
 
-For each entry choose the kinds of the register a traveller would look for it under: usually one, two when they would truly look in both. A kind may be given only when its `form` is the entry's `type`.
+For each entry choose the kinds of the register a traveller would look for it under: usually one, two when they would truly look in both. A kind may be given only when its `form` is the entry's `type`. A kind whose record says `in_venue` holds what exists only inside a place, and an entry filed under it names its `venue`: a single work under `notable-works`, and under `on-site-activities` what a visitor does there as part of the visit, such as climbing the dome or taking the tour of the house. What a traveller also browses a region by keeps its own kind and names the venue: a show stays a show.
 
 When no kind fits, leave the entry unsorted and note what kind is missing. If two or more entries miss the same kind, add a record to `kinds.jsonl` as `proposed`, with a definition a person could apply to the next entry, and file them under it. Do not stretch a kind to cover what it does not define. When a kind plainly means the thing and its definition lacks the word, a dargah under places of worship, reword the definition in the same change so that it names it: a definition is held to every surveyed region, not to the first one.
 
