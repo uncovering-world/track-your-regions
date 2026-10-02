@@ -140,6 +140,14 @@ Two regions may hold the same place: Nara is a day trip from more than one city.
 - **An entry is filed only under a kind that holds what it is.** When no kind fits, the entry
   stays unsorted. A new kind is a new record in the register, added in the same pull request
   as the entries that need it, with a definition a person could apply to the next entry.
+- **A definition is held to every surveyed region.** It names what a traveller files under the
+  kind wherever a list was compiled, not what the first region had: `places-of-worship` names a
+  dargah, a terreiro and a state altar beside a church, because Delhi, Salvador and Beijing
+  have them. When a survey has to stretch a kind that plainly means the thing, the definition
+  is reworded in the same change, and the entries of every list that belong under the new
+  wording are refiled with it.
+- **Sources that repeat each other are one source.** A page copied from another, or two
+  language editions of one article, count once towards an entry's `sources`.
 - **A kind is never renamed by editing its slug in place** without changing every entry filed
   under it in the same change; the reader refuses the leftover.
 
@@ -191,8 +199,9 @@ It is `backend/src/scripts/catalogueCoverageLookup.ts`, and it names itself to W
 ## The two skills
 
 `/coverage-survey <region>` compiles a region's list: the surveyor's own list written before
-anything is read, Wikivoyage, the open pages of commercial guides, UNESCO's lists, then the
-merge, the identifiers, the kinds, and the file. `/coverage-check` loads the lists, reads the
+anything is read, Wikivoyage, the open pages of commercial guides, one of them in a language
+visitors to the region read, a source written from inside the country, UNESCO's lists, then
+the merge, the identifiers, the kinds, and the file. `/coverage-check` loads the lists, reads the
 report and says what each finding asks for: a defect and its issue, a place to record under
 `same_as`, an entry to sort, a proposed kind whose issue the surveys speak for. Both are
 `SKILL.md` files under `.claude/skills/`, and the procedure is stated there and nowhere else.
