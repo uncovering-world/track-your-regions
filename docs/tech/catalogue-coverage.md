@@ -41,6 +41,7 @@ kind like any other and has its own record.
 | `experience_kind_id` | The `experience_kinds` row of a live kind of place; `null` otherwise |
 | `issue` | The issue that owns building the kind, or `null` |
 | `vision` | The heading that describes the kind in `docs/vision/PROPOSED-EXPERIENCE-CATEGORIES.md`, or `null` |
+| `in_venue` | `true` when a member exists only inside a place; `false` for a kind a traveller browses a region by |
 
 A record says what the kind is. It never says when the kind is built: that the kind is
 planned is its `issue`, and priority, order and milestone live in that issue
@@ -52,6 +53,12 @@ apart. The catalogue's records are places today, so a proposed kind whose form i
 
 Works shown inside a venue are a live kind, `notable-works`, with no `experience_kinds` row:
 the product holds them as treasures of the venue.
+
+`in_venue` tells the kinds apart on another line: where a traveller meets the member. A
+museum, a beach or a festival is something a region is browsed by. The Pietà and the climb of
+St Peter's dome are met on the basilica's own card, and nobody browses Rome by "climbs". The
+kinds of what a place holds are `notable-works` and `on-site-activities`; the product has
+the first as treasures and nothing yet for the second (#1214).
 
 ### `regions.jsonl`: the surveyed regions
 
@@ -76,7 +83,7 @@ the product has a kind for it.
 | `wikidata` | Its Wikidata id, or `null` |
 | `same_as` | Other Wikidata items that are this same place: a building and the museum inside it |
 | `unesco` | UNESCO's id of an inscribed World Heritage property, or `null` |
-| `venue` | Where a work is shown, in words; `null` on anything but a work |
+| `venue` | The place a work is shown in, or an activity or an event is held at, in words; `null` when it is tied to no one place, and always on a place |
 | `sources` | How many sources named it. Two or more |
 | `sitelinks`, `lat`, `lon` | As Wikidata gave them on the region's `surveyed` date |
 | `note` | Anything a later reader needs: why an entry lies outside the region's reach, which of two Wikidata items was taken |
@@ -116,7 +123,8 @@ It refuses:
 - a region with no list, and a list with no region;
 - in a list: a slug used twice; a Wikidata id used twice, as an entry's `wikidata` or in its
   `same_as`; a UNESCO id used twice; a kind the register does not have; the same kind twice on one entry; a kind whose
-  `form` is not the entry's `type`; `lat` without `lon`; a `venue` on anything but a work;
+  `form` is not the entry's `type`; `lat` without `lon`; a `venue` on a place; an entry filed
+  under a kind that exists only inside a place and naming no `venue`;
 - an entry with a UNESCO id that is not filed under `world-heritage`, and an entry filed there
   without one. `world-heritage` is the inscribed property itself, so one entry of a list
   carries its id. A component of a serial property, such as one temple of Kyoto's, is filed
@@ -146,6 +154,12 @@ Two regions may hold the same place: Nara is a day trip from more than one city.
   have them. When a survey has to stretch a kind that plainly means the thing, the definition
   is reworded in the same change, and the entries of every list that belong under the new
   wording are refiled with it.
+- **What is shown or held at one place names it.** A work, an activity or an event tied to
+  one place carries that place in `venue`: the Sound and Light show names the Giza pyramids
+  and stays filed under shows, the kind a traveller looks for it under. An activity that does
+  not exist apart from its place, the climb of a dome or the tour of an opera house, is filed
+  under `on-site-activities`. A tea ceremony or a ride in a classic car, done at many places,
+  names none.
 - **Sources that repeat each other are one source.** A page copied from another, or two
   language editions of one article, count once towards an entry's `sources`.
 - **A kind is never renamed by editing its slug in place** without changing every entry filed
@@ -156,7 +170,8 @@ Two regions may hold the same place: Nara is a day trip from more than one city.
 `coverage_kinds`, `coverage_regions`, `coverage_expectations` and
 `coverage_expectation_kinds` hold a copy of the files, so that the comparison with the
 catalogue is a join. They are declared in `db/init/01-schema.sql` and
-`db/migrations/068-catalogue-coverage.sql`, which create them and load nothing.
+`db/migrations/068-catalogue-coverage.sql`, which create them and load nothing;
+`069-coverage-kinds-in-venue.sql` adds `coverage_kinds.in_venue` to a database that has them.
 
 - **One writer.** `replaceCoverage` in `backend/src/services/catalogueCoverage/load.ts`
   empties all four and fills them from what the reader returned, in one transaction. Nobody
@@ -237,8 +252,8 @@ is a neighbour and nothing else.
 
 **What the surveys expect of each proposed kind.** For every kind the product does not have:
 how many expectations are filed under it, in how many regions, how many of them a reader
-already sees through another kind, the most named examples, what a member of the kind is, and
-its issue. Kinds asked for by the most regions come first. This is the evidence for what to
+already sees through another kind, the most named examples, what a member of the kind is,
+whether it exists only inside a place, and its issue. Kinds asked for by the most regions come first. This is the evidence for what to
 build next; it changes no priority (ADR-0081 decision 8).
 
 **What each live kind lacks.** For every live kind: how many of the expectations filed under it
