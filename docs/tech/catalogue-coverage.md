@@ -265,15 +265,41 @@ inscribed is the whole rule, and Art Museums, which admits a museum through a wo
 so the museum's own sitelinks are not what the kind asks of it. An entry a reader
 sees under another kind is still absent from this one, and the report says so.
 
-## How the lists of 2026-10-01 were compiled
+## How the lists of 2026-10-02 were compiled
 
-A list whose region carries `surveyed: 2026-10-01` comes from the first survey, which took one
-place per macro-region of the Administrative world view. Each list was merged from five
-sources: a model's own list written before anything was read, Wikivoyage's articles for the
-place and its districts, the open pages of Rough Guides, Lonely Planet as far as a search of
-its site shows it, and UNESCO's World Heritage and intangible heritage lists. Sites that
-refuse automated reading were left alone.
+A list whose region carries `surveyed: 2026-10-02` was compiled, or compiled again, under the
+rules the `/coverage-survey` skill now states. The first survey, a day earlier, took one place
+per macro-region of the Administrative world view and counted Lonely Planet from the results
+of searches of its site. An audit found that such a count was often not a reading: the name
+stood in the search tool's summary, or the search had carried the name. A list of that survey
+is rebuilt from its sources and then carries the later date; one that still carries
+`2026-10-01` waits for its turn.
 
-Every entry was filed under kinds twice, independently: by an agent per region and by a
-structured-decision model (#929). Where the two differed the entry was read by hand, and the
-kinds they both lacked were added to the register. ADR-0081 has the numbers.
+Each list is merged from:
+
+- a model's own list, written before anything was read;
+- Wikivoyage's articles for the place, its districts and its day trips;
+- the guides whose sites may be read, among them one in a language visitors to the region
+  read, where that is not English;
+- a source written from inside the country: a tourism board or a guide written by residents;
+- UNESCO's State Party page and its intangible-heritage pages.
+
+In these lists every count stands on a page that was fetched and names the thing. The skill
+also lets a site that may be read, but draws its pages by script, count through the titles and
+URLs of a search of it, as a partial source; no list needed that in the end.
+
+Whether a site may be read was decided once per site, from its `robots.txt` and its terms as
+fetched, and applied to every list alike. On that date Rough Guides, Routard, and Lonely
+Planet's Italian and Spanish sites could be read. Lonely Planet's English and French sites,
+Bradt, Time Out, Rick Steves, Moon, Marco Polo and National Geographic could not: their
+`robots.txt` or their terms bar robots, mining or use by AI. Routard's terms bar automated
+extraction save with the publisher's leave, and its `robots.txt` gives that leave: it allows
+`ClaudeBot` and `anthropic-ai`, Anthropic's agents, by name, which is the one case in which
+the skill's rule reads a site in spite of such a clause. So an English guidebook is often absent from a list, and a list rests more on
+the source from inside the country and on the own list than a reader might expect. The
+weakest entry a list has is one whose two sources are the own list and one other.
+
+Every entry of the first survey was filed under kinds twice, independently: by an agent per
+region and by a structured-decision model (#929). Where the two differed the entry was read by
+hand, and the kinds they both lacked were added to the register. ADR-0081 has the numbers. An
+entry added since was filed by the surveying agent alone.
