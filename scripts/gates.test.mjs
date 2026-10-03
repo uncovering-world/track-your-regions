@@ -150,6 +150,43 @@ describe('what a change asks for', () => {
     expect(gates).not.toContain('check:py');
   });
 
+  it('asks only the backend unit lane and the secrets scan for a change of the coverage lists', () => {
+    // files.test.ts is the one spec that reads the committed register, regions
+    // and lists, and it runs in that lane; nothing of the stack tier reads them.
+    // The Node Semgrep scan does: `.semgrepignore` leaves `.jsonl` in, and its
+    // `p/secrets` pack is what would find a credential an agent copied in.
+    for (const path of [
+      'db/catalogue-coverage/expectations/rome.jsonl',
+      'db/catalogue-coverage/kinds.jsonl',
+      'db/catalogue-coverage/regions.jsonl',
+    ]) {
+      expect(applying([path]), path).toEqual(['test:backend', 'security:scan']);
+      const out = outputs([path]);
+      expect(out.job_test, path).toBe('true');
+      expect(out.job_security_node, path).toBe('true');
+      for (const job of ['job_check', 'job_build', 'job_security_python', 'job_trivy', 'job_smoke', 'job_perf']) {
+        expect(out[job], `${path} ${job}`).toBe('false');
+      }
+    }
+  });
+
+  it('still asks every gate of the product for the rest of db/', () => {
+    // The schema and the migrations are what every backend spec and the stack
+    // stand on; only the coverage lists left the class.
+    const product = applying(['backend/src/a.ts']);
+    for (const path of ['db/init/01-schema.sql', 'db/migrations/060-x.sql', 'db/README.md']) {
+      const gates = applying([path]);
+      for (const id of product.filter((gate) => gate !== 'lint:pointers')) {
+        expect(gates, `${path} ${id}`).toContain(id);
+      }
+    }
+    // Only the lists left: a name that merely starts like the directory, or a
+    // file of another kind put beside the lists, is still the product's.
+    for (const path of ['db/catalogue-coverage-notes.sql', 'db/catalogue-coverage/load.sql']) {
+      expect(applying([path]), path).toContain('test:e2e:smoke');
+    }
+  });
+
   it('asks the docs gates as well for a README inside a service', () => {
     const gates = applying(['martin/README.md']);
     expect(gates).toContain('lint:md');
@@ -241,6 +278,7 @@ describe('the map itself', () => {
     expect(inputsOf('packages/shared/src/labels.ts')).toEqual(['app', 'prose']);
     expect(inputsOf('packages/shared/package-lock.json')).toEqual(['app', 'node-deps']);
     expect(inputsOf('db/gadm_levels.py')).toEqual(['app', 'db-python', 'prose']);
+    expect(inputsOf('db/catalogue-coverage/kinds.jsonl')).toEqual(['coverage']);
     expect(inputsOf('backend/Dockerfile')).toEqual(['app', 'docker']);
     expect(inputsOf('scripts/db-cli.sh')).toEqual(['app', 'prose', 'shell']);
     expect(inputsOf('scripts/gates.mjs')).toEqual(['app', 'prose', 'tooling']);
@@ -308,6 +346,7 @@ describe('the CI outputs', () => {
       app: 'backend/src/a.ts',
       python: 'cv-python/app/a.py',
       'db-python': 'db/gadm_levels.py',
+      coverage: 'db/catalogue-coverage/expectations/rome.jsonl',
       schema: 'db/init/01-schema.sql',
       'node-deps': 'backend/package-lock.json',
       docs: 'docs/tech/x.md',
@@ -657,6 +696,15 @@ const gateSpecs = () => [
  */
 const REPO_FILE_CALL = /repoFile\(\s*('[^']*'(?:\s*,\s*'[^']*')*)\s*\)/g;
 
+/** Every file under a directory, repository-relative; installed packages are not the repository's. */
+function filesBelow(full, path) {
+  return readdirSync(full, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.name === 'node_modules') return [];
+    const rel = `${path}/${entry.name}`;
+    return entry.isDirectory() ? filesBelow(join(full, entry.name), rel) : [rel];
+  });
+}
+
 describe('the map against the repository', () => {
   it('covers every repository file the specs of its own gate read', () => {
     const read = new Set();
@@ -666,10 +714,14 @@ describe('the map against the repository', () => {
         const segments = args.split(',').map((arg) => arg.trim().slice(1, -1));
         const path = segments.join('/');
         // A segment list naming a directory is that directory's whole subtree:
-        // `repoFile('db')` is the input `db/`, not a file called `db`.
+        // `repoFile('db')` is the input `db/`, not a file called `db`. Each file
+        // under it is classified, not the directory's name, since a class may
+        // take part of a directory: the coverage lists are `.jsonl` files under
+        // a `db/` whose other files are `app`.
         const full = repoFile(path);
         const isDir = existsSync(full) && statSync(full).isDirectory();
         read.add(isDir ? `${path}/` : path);
+        if (isDir) for (const under of filesBelow(full, path)) read.add(under);
       }
     }
     expect(read.size).toBeGreaterThan(0);

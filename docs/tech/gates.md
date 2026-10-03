@@ -117,9 +117,10 @@ everything or the base was simply unknown.
 
 | Input | Paths | Why this is what it is |
 | --- | --- | --- |
-| `app` | `backend/`, `frontend/`, `packages/`, `db/`, `martin/`, `scripts/`, `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | The product is one contract surface, not two stacks. Both sides import packages/shared (ADR-0065), whose generated api module types the frontend by the backend's response schemas (ADR-0066). Backend specs read db/, frontend/src, martin/, packages/ and scripts/ through repoFile(). So a change to any of them asks for all of it. |
+| `app` | `backend/`, `frontend/`, `packages/`, `/^db\/(?!catalogue-coverage\/.*\.jsonl$)/`, `martin/`, `scripts/`, `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | The product is one contract surface, not two stacks. Both sides import packages/shared (ADR-0065), whose generated api module types the frontend by the backend's response schemas (ADR-0066). Backend specs read db/, frontend/src, martin/, packages/ and scripts/ through repoFile(). So a change to any of them asks for all of it, but for the coverage lists, which are a class of their own below. |
 | `python` | `cv-python/` | The computer-vision service is its own interpreter, its own dependency set and its own image; no Node gate reads it except the Semgrep scan pointed at the whole checkout. |
 | `db-python` | `/^db\/.*\.py$/`, `db/pyproject.toml`, `db/requirements.txt` | The GADM loaders live in db/ but are run by pytest, so they are an input to the Python test lane without being an input to cv-python’s lint. |
+| `coverage` | `/^db\/catalogue-coverage\/.*\.jsonl$/` | The catalogue-coverage register, regions and lists (ADR-0081) are data with one reader, services/catalogueCoverage/files.ts, and one spec that reads the committed files whole, files.test.ts, in the backend unit lane. The load and the report read them from a command, and their specs use fixtures; no lint, build or stack lane sees a line of them. The Semgrep scan does, for a secret in what agents copied from the web. |
 | `schema` | `/^db\/init\//`, `docker-compose.yml`, `backend/src/db/schema.generated.ts`, `backend/src/db/generateSchemaTypes.ts`, `backend/src/db/schemaTypesRender.ts`, `backend/src/db/testDbName.ts`, `scripts/db-types.sh` | The generated row types are a function of what a fresh database is built from: the db/init directory the image applies on first start, the compose file that pins that image, the file the generator produces, the generator, the renderer, the guard it imports and its runner. The migrations are not — a fresh database never reads them, and the schema-to-migration parity test answers for those. |
 | `node-deps` | `backend/package.json`, `backend/package-lock.json`, `frontend/package.json`, `frontend/package-lock.json`, `packages/shared/package.json`, `packages/shared/package-lock.json` | npm audit reads the three manifests and their lockfiles and nothing else, so a change of source code cannot alter its answer. |
 | `docs` | `/\.md$/` | Every tracked Markdown file, wherever it sits: the docs pass checks what renders and what a link points at, which is the same question in docs/, in a service’s README and in the root guides. |
@@ -158,10 +159,10 @@ everything or the base was simply unknown.
 | `check:py` | check | `python` | `npm run check:py` | check |
 | `security:py:bandit` | check | `python` | `npm run security:py:bandit` | check |
 | `security:py:deps` | check | `python` | `npm run security:py:deps` | check |
-| `test:backend` | test | `app` | `node scripts/test-report.mjs backend-unit` | test |
+| `test:backend` | test | `app`, `coverage` | `node scripts/test-report.mjs backend-unit` | test |
 | `test:frontend` | test | `app` | `node scripts/test-report.mjs frontend-unit` | test |
 | `test:py` | test | `python`, `db-python` | `npm run test:py` | python-tests |
-| `security:scan` | scan | `app`, `python` | `npm run security:scan` | security |
+| `security:scan` | scan | `app`, `python`, `coverage` | `npm run security:scan` | security |
 | `security:py:semgrep` | scan | `python` | `npm run security:py:semgrep` | security |
 | `security:image` | scan | `python` | `npm run security:image` | trivy |
 | `build` | stack | `app` | `npm run build && npm --prefix frontend run size` | build |
