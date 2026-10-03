@@ -38,6 +38,7 @@ vi.mock('../shared/PointPreviewDialog', () => ({
 }));
 
 import { GatedCard } from './WaitingToPublish';
+import { pointsSentence, worksSentence } from './GatedContents';
 
 /** The Gemäldegalerie with unread paintings under it. */
 function contents(...works: NonNullable<ReviewQueueItem['pending_works']>): ReviewQueueItem {
@@ -293,3 +294,63 @@ describe('the question the run wrote down', () => {
     expect(screen.queryByText(/The run asks:/)).toBeNull();
   });
 });
+
+describe('what the unread rows are, said as what they are', () => {
+  it('calls a point that replaces a stored one a move, with how far', () => {
+    // Ephesus, run 146: one point, moved 158 m. The run keeps the stored pin and
+    // writes the new position unread, naming what it replaces.
+    const ephesus: ReviewQueueItem = {
+      ...points({
+        id: 15624, name: null, externalRef: 'Q47611', latitude: 37.94058, longitude: 27.33939,
+        replaces: { latitude: 37.939722, longitude: 27.340833 },
+      }),
+      id: 14724, external_id: 'Q47611', name: 'Ephesus', kind_id: 5, kind_name: 'Archaeology',
+      pending_moved_locations: 1,
+    };
+    renderCard(ephesus);
+
+    expect(screen.getByText('1 point moved — readers see the old position until you publish.')).toBeInTheDocument();
+    expect(screen.getByText(/moved 158 m north-west from the position readers see/)).toBeInTheDocument();
+    expect(screen.queryByText(/new point/)).toBeNull();
+  });
+
+  it('tells points that arrived from points that moved where a card holds both', () => {
+    expect(pointsSentence(3, 1)).toBe(
+      '2 new points waiting and 1 point moved — readers are shown the rest of this object without '
+      + 'the new ones, and a moved point at its old position.',
+    );
+    expect(pointsSentence(2, 0)).toBe('2 new points waiting — readers are shown the rest of this object without them.');
+  });
+
+  it('says a work readers already see in another list is not new, and names the list', () => {
+    // Boy with Thorn: on show under the Capitoline Museums' Art Museums row,
+    // unread under their Archaeology row.
+    const capitoline: ReviewQueueItem = {
+      ...contents({
+        id: 3447, name: 'Boy with Thorn', artists: [], artistsCurated: false, year: null,
+        imageUrl: null, iconic: false, externalId: 'Q1187500',
+        venues: [
+          { id: 6214, name: 'Capitoline Museums', kind: 'Art Museums', externalId: 'Q333906', onShow: true },
+          { id: 14546, name: 'Capitoline Museums', kind: 'Archaeology', externalId: 'Q333906', onShow: false },
+        ],
+      }),
+      id: 14546, external_id: 'Q333906', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology',
+      pending_treasures_on_show: 1,
+    };
+    renderCard(capitoline);
+
+    expect(screen.getByText(
+      '1 work waiting that readers already see in another list — publishing adds it to this one.',
+    )).toBeInTheDocument();
+    expect(screen.getByText(/already on show in Capitoline Museums \(Art Museums\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/new work/)).toBeNull();
+  });
+
+  it('keeps the two apart where a card holds new works and works on show elsewhere', () => {
+    expect(worksSentence(12, 0)).toBe('12 new works waiting — the museum itself is on show already.');
+    expect(worksSentence(3, 1)).toBe(
+      '2 new works waiting, and 1 work readers already see in another list — the museum itself is on show already.',
+    );
+  });
+});
+

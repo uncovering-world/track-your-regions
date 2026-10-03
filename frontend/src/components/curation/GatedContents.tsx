@@ -29,6 +29,7 @@ import { claimLabel as workClaimLabel } from '../../utils/workClaims';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';
+import { moveLabel } from '../../utils/moveDescription';
 import { GatedRow } from './queueCard';
 import { ContentsList } from '../shared/ContentsList';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
@@ -37,6 +38,68 @@ import type { WorkToCorrect } from '../shared/WorkCorrection';
 
 /** An unread point as the card lists it — the row a curator can open, and correct. */
 type PendingPoint = NonNullable<ReviewQueueItem['pending_points']>[number];
+type PendingWork = NonNullable<ReviewQueueItem['pending_works']>[number];
+
+/**
+ * What the unread points are, in one sentence — and a point that moved is not a
+ * point that arrived.
+ *
+ * A gated run that finds a point somewhere else keeps the stored pin and writes
+ * the new position as an unread point naming the one it replaces
+ * (`locationWriter.ts`), so the object does not vanish from the map while the
+ * move waits. Counted as "1 new point" it reads as a second place — Ephesus,
+ * whose one point run 146 moved 158 m, read as a site made of two.
+ */
+export function pointsSentence(points: number, moved: number): string {
+  const arrived = points - moved;
+  if (moved === 0) {
+    return `${plural(points, 'new point')} waiting — readers are shown the rest of this object without them.`;
+  }
+  if (arrived === 0) {
+    return `${plural(moved, 'point')} moved — readers see the old position until you publish.`;
+  }
+  return `${plural(arrived, 'new point')} waiting and ${plural(moved, 'point')} moved — readers are shown `
+    + 'the rest of this object without the new ones, and a moved point at its old position.';
+}
+
+/**
+ * What the unread works are — and a work readers already see in another museum is
+ * new to this list, not to the catalogue.
+ *
+ * The gate is on the link as well as on the work (ADR-0025 decision 2), so a work
+ * long on show in one museum arrives unread in another that also holds it. Until a
+ * place several kinds admit is one row (#755) that other museum is often the same
+ * one: Boy with Thorn, on show under the Art Museums row of the Capitoline Museums,
+ * arrived unread under their Archaeology row.
+ */
+export function worksSentence(works: number, onShow: number): string {
+  const fresh = works - onShow;
+  if (onShow === 0) return `${plural(works, 'new work')} waiting — the museum itself is on show already.`;
+  if (fresh === 0) {
+    return `${plural(works, 'work')} waiting that readers already see in another list — `
+      + `publishing adds ${works === 1 ? 'it' : 'them'} to this one.`;
+  }
+  return `${plural(fresh, 'new work')} waiting, and ${plural(onShow, 'work')} readers already see in `
+    + 'another list — the museum itself is on show already.';
+}
+
+/** Where readers already see an unread work, as its row says it — or null where they see it nowhere. */
+function shownElsewhere(work: PendingWork, here: number): string | null {
+  const [shown] = (work.venues ?? []).filter(venue => venue.id !== here && venue.onShow);
+  if (!shown) return null;
+  const kind = shown.kind ? ` (${shown.kind})` : '';
+  return `already on show in ${shown.name}${kind}`;
+}
+
+/** How far an unread point is from the stored one it replaces, or null for a point that arrived. */
+function movedFrom(point: PendingPoint): string | null {
+  if (!point.replaces || point.latitude == null || point.longitude == null) return null;
+  const move = moveLabel(
+    { lon: point.replaces.longitude, lat: point.replaces.latitude },
+    { lon: point.longitude, lat: point.latitude },
+  );
+  return move ? `moved ${move} from the position readers see` : null;
+}
 
 export function GatedContents({ group, item, contents, points, works, onDone }: {
   /** The object the rows belong to: whose caches a correction clears, and whose name leads the outcome. */
@@ -68,8 +131,7 @@ export function GatedContents({ group, item, contents, points, works, onDone }: 
           {points > 0 && (
             <GatedRow label="points">
               <Typography variant="body2">
-                {plural(points, 'new point')} waiting — readers are shown the rest of this object
-                without them.
+                {pointsSentence(points, Number(contents?.pending_moved_locations ?? 0))}
               </Typography>
               <ContentsList
                 total={points}
@@ -84,6 +146,7 @@ export function GatedContents({ group, item, contents, points, works, onDone }: 
                     point.latitude != null && point.longitude != null
                       ? `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`
                       : null,
+                    movedFrom(point),
                     claimLabel(point.curatedFields),
                   ].filter(Boolean).join(' · ') || null,
                   // A row with a coordinate opens in the point dialog, where it can
@@ -99,7 +162,7 @@ export function GatedContents({ group, item, contents, points, works, onDone }: 
           {works > 0 && (
             <GatedRow label="works">
               <Typography variant="body2">
-                {plural(works, 'new work')} waiting — the museum itself is on show already.
+                {worksSentence(works, Number(contents?.pending_treasures_on_show ?? 0))}
               </Typography>
               <ContentsList
                 total={works}
@@ -120,6 +183,7 @@ export function GatedContents({ group, item, contents, points, works, onDone }: 
                     // What a curator already answered for on this work, so a
                     // corrected title does not read as the source's.
                     workClaimLabel(work.curatedFields),
+                    shownElsewhere(work, group.id),
                   ].filter(Boolean).join(', ') || null,
                   // A work a curator is looking at is a work they may correct:
                   // the row opens the same dialog every other surface opens,
@@ -136,6 +200,7 @@ export function GatedContents({ group, item, contents, points, works, onDone }: 
                     imageUrl: work.imageUrl,
                     imageCredit: work.imageCredit,
                     venueCount: work.venueCount,
+                    venues: work.venues,
                     treasureType: work.treasureType,
                     externalId: work.externalId,
                   }),
