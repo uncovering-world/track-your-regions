@@ -240,7 +240,10 @@ export type PublishRequest =
   | { locationIds?: number[]; treasureIds?: number[]; contentsOnly?: undefined;
       fieldsOnly?: undefined; heldFields?: undefined; heldParts?: undefined;
       expectedSyncLogId?: undefined }
-  /** The object's held fields, and none of its unread contents (#524). */
+  /**
+   * The object's held fields, and none of its unread contents (#524) — except
+   * the point that is the object's held coordinate moving (#1233).
+   */
   | { fieldsOnly: true; locationIds?: undefined; treasureIds?: undefined;
       contentsOnly?: undefined; heldFields?: undefined; heldParts?: undefined;
       expectedSyncLogId?: number }

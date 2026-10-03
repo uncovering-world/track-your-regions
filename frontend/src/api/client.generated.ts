@@ -7227,6 +7227,8 @@ export interface ReviewQueueItem {
      * @maximum 9007199254740991
      */
   pending_moved_locations?: number;
+  /** The unread point the object's held coordinate would publish with it (#1233): one of `pending_points`, listed first. */
+  coordinates_move_point_id?: number | null;
   /**
      * How many of the unread works readers already see in another museum.
      * @minimum -9007199254740991

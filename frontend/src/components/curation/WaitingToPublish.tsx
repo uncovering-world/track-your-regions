@@ -339,7 +339,10 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
               which the one button above does two things at once: on the card of
               a museum holding twelve unread paintings and a proposed label,
               answering the label releases the paintings, so a curator who doubts
-              one sentence would otherwise hold back twelve works (#524). */}
+              one sentence would otherwise hold back twelve works (#524). The
+              change alone releases nothing unread, with one point excepted: the
+              one that is the object's held coordinate moving goes with that
+              coordinate (#1233, `pointMovedWithObject` on the server). */}
           {held && contents && (
             <Button
               variant="text"
@@ -451,7 +454,8 @@ function runNote({ arrival }: GatedGroup): string {
  * count — and `POST /:id/publish` has always accepted `locationIds`/`treasureIds`.
  * The narrower act has its own button now — `fieldsOnly`, offered only where both
  * halves are open, since that is the only case in which this one does two things
- * at once. What is still missing of #524 is per-row publishing: the ids are here
+ * at once. It leaves the unread rows waiting, except the point that is the object's
+ * own held coordinate moving, which is published with that coordinate (#1233). What is still missing of #524 is per-row publishing: the ids are here
  * beside each count and the endpoint has always accepted them, but nothing on the
  * card lets a curator choose among them, so a third button would promise a
  * precision the screen cannot express.

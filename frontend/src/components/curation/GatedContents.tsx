@@ -50,16 +50,26 @@ type PendingWork = NonNullable<ReviewQueueItem['pending_works']>[number];
  * move waits. Counted as "1 new point" it reads as a second place — Ephesus,
  * whose one point run 146 moved 158 m, read as a site made of two.
  */
-export function pointsSentence(points: number, moved: number): string {
+export function pointsSentence(points: number, moved: number, withCoordinates = false): string {
   const arrived = points - moved;
   if (moved === 0) {
     return `${plural(points, 'new point')} waiting — readers are shown the rest of this object without them.`;
   }
+  // One of the moved points is the object's own coordinate moving — the same
+  // move the coordinates row above asks about. Publishing that row publishes
+  // the point with it (`pointMovedWithObject` on the server), so the card says
+  // they are one rather than leaving a curator to answer the move twice.
+  let paired = '';
+  if (withCoordinates) {
+    // Which one, where more than one moved: the row says so itself.
+    const which = moved === 1 ? 'The moved point is' : 'One moved point, marked below, is';
+    paired = ` ${which} the coordinates above: publishing them moves the pin with them.`;
+  }
   if (arrived === 0) {
-    return `${plural(moved, 'point')} moved — readers see the old position until you publish.`;
+    return `${plural(moved, 'point')} moved — readers see the old position until you publish.${paired}`;
   }
   return `${plural(arrived, 'new point')} waiting and ${plural(moved, 'point')} moved — readers are shown `
-    + 'the rest of this object without the new ones, and a moved point at its old position.';
+    + `the rest of this object without the new ones, and a moved point at its old position.${paired}`;
 }
 
 /**
@@ -119,6 +129,10 @@ export function GatedContents({ group, item, contents, points, works, onDone }: 
   const [openPoint, setOpenPoint] = useState<PendingPoint | null>(null);
   const [openWork, setOpenWork] = useState<WorkToCorrect | null>(null);
 
+  // The one row the coordinates row's move publishes, named by the server by
+  // the rule the publish takes it by (`pointMovedToSql`), and listed first.
+  const pairedPoint = contents?.coordinates_move_point_id ?? null;
+
   return (
     <>
       {/* Ruled like every other pair of rows on the card. On the card these two
@@ -131,7 +145,11 @@ export function GatedContents({ group, item, contents, points, works, onDone }: 
           {points > 0 && (
             <GatedRow label="points">
               <Typography variant="body2">
-                {pointsSentence(points, Number(contents?.pending_moved_locations ?? 0))}
+                {pointsSentence(
+                  points,
+                  Number(contents?.pending_moved_locations ?? 0),
+                  pairedPoint !== null,
+                )}
               </Typography>
               <ContentsList
                 total={points}
@@ -147,6 +165,7 @@ export function GatedContents({ group, item, contents, points, works, onDone }: 
                       ? `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`
                       : null,
                     movedFrom(point),
+                    point.id === pairedPoint ? 'the coordinates above' : null,
                     claimLabel(point.curatedFields),
                   ].filter(Boolean).join(' · ') || null,
                   // A row with a coordinate opens in the point dialog, where it can

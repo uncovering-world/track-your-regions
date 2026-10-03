@@ -314,6 +314,30 @@ describe('what the unread rows are, said as what they are', () => {
     expect(screen.queryByText(/new point/)).toBeNull();
   });
 
+  it('marks the one point the server names as the coordinates row\'s move', () => {
+    // The object's coordinate and its one point are one move: the queue names
+    // the point the publish would take along (\`coordinates_move_point_id\`),
+    // and the card marks that row and says so rather than asking twice.
+    const ephesus: ReviewQueueItem = {
+      ...points(
+        { id: 15623, name: null, externalRef: 'Q47611', latitude: 37.9406, longitude: 27.3394,
+          replaces: { latitude: 37.9397, longitude: 27.3408 } },
+        { id: 15624, name: null, externalRef: 'Q47611', latitude: 37.94058, longitude: 27.33939,
+          replaces: { latitude: 37.939722, longitude: 27.340833 } },
+      ),
+      id: 14724, external_id: 'Q47611', name: 'Ephesus', kind_id: 5, kind_name: 'Archaeology',
+      pending_moved_locations: 2, coordinates_move_point_id: 15624,
+    };
+    renderCard(ephesus);
+
+    expect(screen.getByText(/One moved point, marked below, is the coordinates above/)).toBeInTheDocument();
+    expect(screen.getAllByText(/the coordinates above$/)).toHaveLength(1);
+    expect(pointsSentence(1, 1, true)).toBe(
+      '1 point moved — readers see the old position until you publish. '
+      + 'The moved point is the coordinates above: publishing them moves the pin with them.',
+    );
+  });
+
   it('tells points that arrived from points that moved where a card holds both', () => {
     expect(pointsSentence(3, 1)).toBe(
       '2 new points waiting and 1 point moved — readers are shown the rest of this object without '
