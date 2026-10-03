@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.sydney.com/terms-of-use
 family: tourism-board
-kinds: [beaches-and-swimming, historic-hotels-and-restaurants, neighbourhoods, natural-landmarks, parks-and-gardens, markets, viewpoints, entertainment-venues, squares-and-streets, national-parks-and-reserves, art-museums, historic-houses, zoos-and-aquariums, architecture, science-and-nature-museums, history-museums, shops, towns-and-villages, historical-sites, sports-venues, world-heritage, landmarks, public-art, archaeology, bridges-and-engineering, palaces-and-castles, live-music-venues, farms-and-workshops, specialty-museums]
+kinds: [beaches-and-swimming, historic-hotels-and-restaurants, neighbourhoods, natural-landmarks, parks-and-gardens, markets, viewpoints, festivals-and-events, entertainment-venues, hiking-trails-and-walks, outdoor-activities, squares-and-streets, national-parks-and-reserves, art-museums, historic-houses, tours-and-cruises, zoos-and-aquariums, architecture, science-and-nature-museums, history-museums, shops, regional-food, towns-and-villages, historical-sites, sports-venues, world-heritage, day-trips-and-itineraries, landmarks, public-art, archaeology, notable-works, bridges-and-engineering, on-site-activities, iconic-transport, palaces-and-castles, live-music-venues, farms-and-workshops, specialty-museums]
 tier: regional
 unit: { level: region, code: AU, name: "New South Wales" }
 row:

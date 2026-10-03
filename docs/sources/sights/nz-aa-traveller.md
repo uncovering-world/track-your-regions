@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.aa.co.nz/site-info/terms-and-conditions/website/
 family: association
-kinds: [natural-landmarks, beaches-and-swimming, national-parks-and-reserves, neighbourhoods, parks-and-gardens, viewpoints, towns-and-villages, markets, zoos-and-aquariums, historic-hotels-and-restaurants, history-museums, art-museums, sports-venues, archaeology, palaces-and-castles, landmarks, historic-houses, observatories-and-planetariums]
+kinds: [natural-landmarks, beaches-and-swimming, national-parks-and-reserves, neighbourhoods, parks-and-gardens, viewpoints, hiking-trails-and-walks, towns-and-villages, markets, zoos-and-aquariums, outdoor-activities, historic-hotels-and-restaurants, history-museums, art-museums, sports-venues, archaeology, palaces-and-castles, landmarks, regional-drinks, wildlife-encounters, festivals-and-events, historic-houses, observatories-and-planetariums]
 tier: regional
 unit: { level: country, code: NZ, name: "New Zealand" }
 row:

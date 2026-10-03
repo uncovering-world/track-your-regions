@@ -80,5 +80,5 @@ contact page, not read.
 **What the survey measured.** The Bali survey's first pass met 404 on two guessed addresses; its
 second read the Bali destination page in English and in Indonesian and eleven articles, and
 named it on 100 entries. It was read before its terms were. Nothing of it counts: the surveys
-withdrew every count taken from it, and this record carries no figure. The table records what
-was withdrawn: Bali: 100 counts.
+withdrew every count taken from it, and this record carries no figure. The surveys withdrew, by
+region: Bali: 100 counts.

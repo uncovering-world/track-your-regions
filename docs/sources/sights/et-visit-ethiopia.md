@@ -8,7 +8,7 @@ urls:
   api: none
   terms: none
 family: tourism-board
-kinds: [natural-landmarks, places-of-worship, archaeology, history-museums, public-art, parks-and-gardens, world-heritage, towns-and-villages, palaces-and-castles]
+kinds: [natural-landmarks, places-of-worship, festivals-and-events, regional-food, archaeology, history-museums, public-art, parks-and-gardens, world-heritage, towns-and-villages, palaces-and-castles]
 tier: regional
 unit: { level: country, code: ET, name: Ethiopia }
 row:

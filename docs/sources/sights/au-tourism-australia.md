@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.australia.com/en/terms-and-conditions.html
 family: tourism-board
-kinds: [neighbourhoods, beaches-and-swimming, historic-hotels-and-restaurants, natural-landmarks, national-parks-and-reserves, art-museums, squares-and-streets, world-heritage, architecture, parks-and-gardens, towns-and-villages, zoos-and-aquariums]
+kinds: [neighbourhoods, beaches-and-swimming, historic-hotels-and-restaurants, natural-landmarks, national-parks-and-reserves, outdoor-activities, festivals-and-events, art-museums, hiking-trails-and-walks, squares-and-streets, world-heritage, architecture, parks-and-gardens, on-site-activities, regional-food, regional-drinks, towns-and-villages, zoos-and-aquariums]
 tier: regional
 unit: { level: country, code: AU, name: Australia }
 row:

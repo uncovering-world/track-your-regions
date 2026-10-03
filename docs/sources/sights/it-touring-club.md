@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.touringclub.it/termini-e-condizioni
 family: association
-kinds: [places-of-worship, archaeology, squares-and-streets, neighbourhoods, public-art, art-museums, parks-and-gardens]
+kinds: [places-of-worship, archaeology, squares-and-streets, notable-works, neighbourhoods, public-art, art-museums, parks-and-gardens]
 tier: regional
 unit: { level: country, code: IT, name: Italy }
 row:
