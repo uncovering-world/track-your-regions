@@ -26,6 +26,7 @@ import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/placeClaims';
 import { claimLabel as workClaimLabel } from '../../utils/workClaims';
 import type { ContentKind } from '../../api/curation';
+import { HELD_CREDIT_FIELD, pictureCreditPartner } from '@tyr/shared/pictures';
 
 export type FactKind = 'new' | 'changed' | 'removed';
 
@@ -117,6 +118,26 @@ function saidWhole(meaning: FieldMeaning): boolean {
  */
 const NOT_A_QUESTION = new Set(['tags']);
 
+/**
+ * Whether a proposal carries the picture its credit belongs to.
+ *
+ * A picture and its credit are one answer (`pictureCreditPartner`,
+ * `@tyr/shared/pictures`): the server widens either button onto both, so the old
+ * photograph cannot be kept under the new photographer's name. Where a run
+ * proposes a different file the credit therefore gets no row of its own — the
+ * picture row draws each side's picture over that side's credit (`creditFor`,
+ * `fieldMeaning.tsx`) and its one answer is the pair's. A credit proposed with
+ * no picture beside it is the same file under a corrected name or licence, a
+ * question of its own, and keeps its row. Both spellings of the picture are
+ * asked about, since an object's is `imageUrl` and a part's is `image_url`.
+ * Exported for the feed's one-line summary (`rowSpecific.ts`), which names the
+ * same facts the table draws.
+ */
+export function creditFoldsIntoPicture(proposed: ReadonlyArray<Pick<ProposedField, 'field'>>): boolean {
+  const pictures = (['object', 'part'] as const).map(level => pictureCreditPartner(HELD_CREDIT_FIELD, level));
+  return proposed.some(proposal => pictures.includes(proposal.field));
+}
+
 function kindOf(before: unknown, after: unknown): FactKind {
   if (isEmptyValue(before)) return 'new';
   if (isEmptyValue(after)) return 'removed';
@@ -163,9 +184,11 @@ function row(
  */
 export function rowsFor(proposed: ReadonlyArray<Proposal>, context: ChangeContext): FactRow[] {
   const rows: FactRow[] = [];
+  const creditFolded = creditFoldsIntoPicture(proposed);
   for (const proposal of proposed) {
     const { field } = proposal;
     if (NOT_A_QUESTION.has(field)) continue;
+    if (creditFolded && field === HELD_CREDIT_FIELD) continue;
     // The proposed value tells a type's meaning which vocabulary to speak, and the
     // stored one does where the proposal clears it (#814).
     const meaning = meaningOf(field, proposal.new, proposal.old);

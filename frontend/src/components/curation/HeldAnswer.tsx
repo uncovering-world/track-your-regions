@@ -30,10 +30,9 @@
  * screen recommend the other.
  */
 
-import { Button, Stack, Typography } from '@mui/material';
+import { Button, Stack } from '@mui/material';
 import type { HeldSelectionPart } from '../../api/curation';
 import type { FactSubject } from './factRows';
-import { HELD_CREDIT_FIELD, pictureCreditPartner } from '@tyr/shared/pictures';
 
 /** What a curator answered: rows of the object's own, rows of its parts, or both. */
 export interface HeldSelection {
@@ -57,33 +56,6 @@ export function heldSelectionFor(subject: FactSubject, field: string): HeldSelec
 }
 
 /**
- * A picture and the credit that belongs to it, as the card has to say it.
- *
- * The server answers the two together — `heldSelection.ts` widens the match
- * at both endpoints — but they are two changeset fields, and
- * `FactTable` draws one answer cell per field. So a subject whose run held both
- * gets two cells and four buttons, any of which answers both rows. The card
- * says so under them rather than pretending they are independent: two buttons
- * under a promise they will not keep is the screen misleading a curator about
- * an act that has no undo, since a refusal settles that value for good.
- *
- * The pair is the server's own, `pictureCreditPartner` (`@tyr/shared/pictures`):
- * level-aware, since the object spells its picture `imageUrl` and a part its
- * column `image_url`, while the credit is `metadata.imageCredit` on both.
- *
- * Merging the two into one cell would be the other fix, and it would put the
- * pairing into the table's layout rule. This says it instead.
- */
-function pairingFor(field: string, isPart: boolean): { partner: string; note: string } | undefined {
-  const partner = pictureCreditPartner(field, isPart ? 'part' : 'object');
-  if (partner === undefined) return undefined;
-  return {
-    partner,
-    note: partner === HELD_CREDIT_FIELD ? 'Answered with its credit.' : 'Answered with its picture.',
-  };
-}
-
-/**
  * The answer column's two buttons for one fact.
  *
  * "publish this" writes that value and leaves the rest of the card open; "not
@@ -91,33 +63,20 @@ function pairingFor(field: string, isPart: boolean): { partner: string; note: st
  * since the gate first held this one — and settles the question for that value,
  * so a source that comes back with something different is heard again.
  *
- * The one exception to "the rest of the card" is a picture and its credit — an
- * object's as well as a work's, since ADR-0039 — which either button answers
- * together; the note under them says so —
- * but only where the partner row is actually open. `heldFields` is what this
- * subject's proposal holds, and the note is drawn against it rather than
- * against the field's name alone: the server widens the selection only onto a
- * row that is there, so on a work whose run held a picture and no credit —
- * which is the ordinary shape, since `creditToWrite` returns nothing for a
- * changed picture the Commons batch did not come back for, and the writer drops
- * an entry whose two sides are equal — the note would promise a second answer
- * that is not happening. A caption that overstates what a button does is the
- * defect it was added to fix, one row over.
+ * A picture's answer is its credit's too, an object's as well as a work's
+ * (ADR-0039): the server widens the selection across the pair
+ * (`heldSelection.ts`), and the table draws the pair as the one picture row
+ * these buttons stand beside (`rowsFor`, `factRows.ts`), each side's picture
+ * over that side's credit.
  */
-export function HeldAnswer({ subject, field, busy, heldFields, onPublish, onRefuse }: {
+export function HeldAnswer({ subject, field, busy, onPublish, onRefuse }: {
   subject: FactSubject;
   field: string;
   busy: boolean;
-  /** Every field this subject's held proposal carries — what the server can widen onto. */
-  heldFields: readonly string[];
   onPublish: (selection: HeldSelection) => void;
   onRefuse: (selection: HeldSelection) => void;
 }) {
   const selection = heldSelectionFor(subject, field);
-  const pairing = pairingFor(field, subject.part !== undefined);
-  const partnerNote = pairing !== undefined && heldFields.includes(pairing.partner)
-    ? pairing.note
-    : undefined;
   return (
     <Stack spacing={0.5}>
       <Button size="small" variant="outlined" disabled={busy} onClick={() => onPublish(selection)}>
@@ -129,11 +88,6 @@ export function HeldAnswer({ subject, field, busy, heldFields, onPublish, onRefu
       <Button size="small" variant="outlined" color="inherit" disabled={busy} onClick={() => onRefuse(selection)}>
         not this
       </Button>
-      {partnerNote !== undefined && (
-        <Typography variant="caption" color="text.secondary">
-          {partnerNote}
-        </Typography>
-      )}
     </Stack>
   );
 }

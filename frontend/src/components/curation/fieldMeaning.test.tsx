@@ -333,11 +333,19 @@ describe('what a change means, in one line', () => {
     expect(change('metadata.areaHectares', null, 3.04)).toBeNull();
   });
 
-  it('reads a credit arriving as readers seeing the picture uncredited, and a new author as a new picture', () => {
-    const brigas = { author: 'Graciela Gonzalez Brigas', license: '© UNESCO' };
+  it('reads a credit arriving as readers seeing the picture uncredited, and tells a renamed author from another file', () => {
+    const brigas = {
+      author: 'Graciela Gonzalez Brigas', license: '© UNESCO',
+      detailsUrl: 'https://commons.wikimedia.org/wiki/File:Tehuacan.jpg',
+    };
     expect(change('metadata.imageCredit', null, brigas)).toBe('Readers see the picture uncredited today.');
+    // A credit has a row of its own only where no picture is proposed beside it
+    // (`rowsFor`), so the same file page under another name is Commons
+    // correcting its record — and another file page is another photograph.
     expect(change('metadata.imageCredit', brigas, { ...brigas, author: 'Someone Else' }))
-      .toBe('A different photographer — check the picture is the one this credit is for.');
+      .toBe('The same file: Wikimedia Commons names its author differently now.');
+    expect(change('metadata.imageCredit', brigas, { ...brigas, detailsUrl: 'https://commons.wikimedia.org/wiki/File:Other.jpg' }))
+      .toBe('The credit of a different file — check the picture readers see is the one it is for.');
     expect(change('metadata.imageCredit', brigas, { ...brigas, license: 'CC BY 4.0' })).toBeNull();
   });
 

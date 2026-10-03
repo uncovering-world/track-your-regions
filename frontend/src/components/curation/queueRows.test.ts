@@ -146,6 +146,23 @@ describe('queueRows', () => {
     expect(rows[0].specific).toBe('criteria, name (ko), picture credit');
   });
 
+  it('names a picture once where its credit is proposed with it', () => {
+    const rows = queueRows(queue({
+      held: [item({
+        id: 7,
+        name: 'Grand Egyptian Museum',
+        kind: 'held',
+        proposed: [
+          { field: 'imageUrl', old: 'https://old', new: 'https://new' },
+          { field: 'metadata.imageCredit', old: { author: 'Amr F.Nagy' }, new: { author: 'Mohamed abdelzaher' } },
+        ],
+      })],
+      order: [orderEntry({ kind: 'waiting', id: 7, subs: ['held'] })],
+    }));
+
+    expect(rows[0].specific).toBe('picture');
+  });
+
   it('counts a held group\'s parts as work(s)', () => {
     const rows = queueRows(queue({
       held: [item({

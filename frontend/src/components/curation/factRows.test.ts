@@ -84,7 +84,19 @@ describe('rowsFor', () => {
     }], NO_CONTEXT);
     expect(rows).toHaveLength(1);
     expect(rows[0].meaning.label).toBe('picture credit');
-    expect(rows[0].sentence).toBe('A different photographer — check the picture is the one this credit is for.');
+    expect(rows[0].sentence).toBe('The same file: Wikimedia Commons names its author differently now.');
+  });
+
+  it('gives a credit no row where its picture is proposed beside it, at either level', () => {
+    // One answer, so one row: the picture row draws each side's credit under it.
+    for (const picture of ['imageUrl', 'image_url']) {
+      const rows = rowsFor([
+        { field: picture, old: 'https://commons.wikimedia.org/wiki/Special:FilePath/Old.jpg', new: 'https://commons.wikimedia.org/wiki/Special:FilePath/New.jpg' },
+        { field: 'metadata.imageCredit', old: { author: 'Thomas Wolf' }, new: { author: 'VitVit' } },
+        { field: 'metadata.wikipediaUrl', old: null, new: 'https://en.wikipedia.org/wiki/Museum_Island' },
+      ], NO_CONTEXT);
+      expect(rows.map(r => r.field)).toEqual([picture, 'metadata.wikipediaUrl']);
+    }
   });
 
   it('keeps a coordinate whole, because a place is not two numbers', () => {

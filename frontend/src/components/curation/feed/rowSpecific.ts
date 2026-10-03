@@ -12,6 +12,8 @@
 import type { HeldPart, ReviewQueueItem } from '../../../api/reviewQueue';
 import type { GatedGroup } from '../WaitingToPublish';
 import type { RowKind } from '../queueRowTypes';
+import { creditFoldsIntoPicture } from '../factRows';
+import { HELD_CREDIT_FIELD } from '@tyr/shared/pictures';
 
 /**
  * The colour a *question* is drawn in — never an object's own colour.
@@ -95,7 +97,13 @@ function partsLabels(parts: HeldPart[]): string[] {
 function waitingSpecific(group: GatedGroup): string {
   if (group.arrival) return '';
   const pieces: string[] = [];
-  pieces.push(...(group.held?.proposed ?? []).map(f => humaniseField(f.field)));
+  const proposed = group.held?.proposed ?? [];
+  // The facts the card's table draws, so the line and the card count alike: a
+  // credit proposed beside its picture is that picture's, not a fact of its own.
+  const folded = creditFoldsIntoPicture(proposed);
+  pieces.push(...proposed
+    .filter(f => !(folded && f.field === HELD_CREDIT_FIELD))
+    .map(f => humaniseField(f.field)));
   pieces.push(...partsLabels(group.held?.proposed_parts ?? []));
   if (group.contents) {
     const works = group.contents.pending_treasures ?? 0;
