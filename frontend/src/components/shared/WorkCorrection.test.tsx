@@ -241,6 +241,39 @@ describe('WorkCorrection', () => {
     expect(screen.getByText(/hangs in 11 museums/)).toBeTruthy();
   });
 
+  it('names the museums where the read carries them, each with the kind it is listed under', () => {
+    const venues = [
+      { id: 1, name: 'British Museum', kind: 'Art Museums', externalId: 'Q6373', onShow: true },
+      { id: 2, name: 'Tokyo National Museum', kind: 'Art Museums', externalId: 'Q653433', onShow: false },
+    ];
+    show({ ...VISITATION, name: 'The Great Wave off Kanagawa', venueCount: 2, venues });
+
+    expect(screen.getByText(/hangs in 2 museums/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'British Museum' }))
+      .toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q6373');
+    // A museum that carries the row and shows it to nobody yet is said to be one.
+    expect(screen.getByText(/Tokyo National Museum/).closest('li'))
+      .toHaveTextContent('readers do not see it there yet');
+  });
+
+  it('says one museum listed twice is one museum', () => {
+    // Until a place several kinds admit is one row (#755), the Capitoline
+    // Museums are an Art Museums row and an Archaeology row over one Wikidata
+    // item, and Boy with Thorn is linked to both: one museum, not two.
+    const venues = [
+      { id: 6214, name: 'Capitoline Museums', kind: 'Art Museums', externalId: 'Q333906', onShow: true },
+      { id: 14546, name: 'Capitoline Museums', kind: 'Archaeology', externalId: 'Q333906', onShow: false },
+    ];
+    show({ ...VISITATION, name: 'Boy with Thorn', venueCount: 2, venues });
+
+    expect(screen.getByText(/hangs in one museum, listed 2 times/)).toBeTruthy();
+    expect(screen.getByText(/under Art Museums and Archaeology/)).toBeTruthy();
+    // And which of its two lists readers do not see the work in: on show under
+    // one and unread under the other is the state the card is about.
+    expect(screen.getByText(/Today readers do not see it under Archaeology yet\./)).toBeTruthy();
+    expect(screen.queryByText(/hangs in 2 museums/)).toBeNull();
+  });
+
   it('keeps the reach quiet for a work only one museum holds', () => {
     show(VISITATION);
     expect(screen.queryByText(/hangs in/)).toBeNull();
@@ -395,5 +428,19 @@ describe('correctionOutcome', () => {
       { success: true, treasureId: 7705, claimed: ['name'] },
     );
     expect(line).toContain('All 11 museums holding this work carry the correction');
+  });
+
+  it('counts places, not rows, in the outcome', () => {
+    const venues = [
+      { id: 6214, name: 'Capitoline Museums', kind: 'Art Museums', externalId: 'Q333906', onShow: true },
+      { id: 14546, name: 'Capitoline Museums', kind: 'Archaeology', externalId: 'Q333906', onShow: false },
+    ];
+    const line = correctionOutcome(
+      { ...VISITATION, venueCount: 2, venues },
+      { year: -100 },
+      { success: true, treasureId: 3447, claimed: ['year'] },
+    );
+    expect(line).toContain('Every list Capitoline Museums is in carries the correction.');
+    expect(line).not.toContain('2 museums');
   });
 });

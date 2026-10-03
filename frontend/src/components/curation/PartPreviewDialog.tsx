@@ -89,6 +89,7 @@ export function PartPreviewDialog({ part, onClose, object, onDone }: {
           imageUrl: part.imageUrl ?? null,
           imageCredit: part.imageCredit ?? null,
           venueCount: part.venueCount,
+          venues: part.venues,
           treasureType: part.treasureType ?? null,
           externalId: part.item.ref,
         }}

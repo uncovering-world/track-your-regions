@@ -3786,6 +3786,27 @@ export type ExperienceTreasureFoundAt = {
 } | null;
 
 /**
+ * A museum that hangs a work, as a curator correcting the work is told of it.
+ */
+export interface WorkVenue {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /**
+     * The kind the museum is listed under.
+     * @nullable
+     */
+  kind: string | null;
+  /** The source's own id for the place. Two venues with one id are one place listed under two kinds (#755). */
+  externalId: string;
+  /** Whether readers are shown the work in this museum today. */
+  onShow: boolean;
+}
+
+/**
  * A place another card names, with the regions a link to it is built from (ADR-0042).
  */
 export interface LinkedPlace {
@@ -3824,6 +3845,8 @@ export interface ExperienceTreasure {
      * @maximum 9007199254740991
      */
   venue_count: number;
+  /** Those museums, named, for a caller who may correct the work. Null for a reader. */
+  venues: WorkVenue[] | null;
   year: number | null;
   /** @nullable */
   image_url: string | null;
@@ -4513,6 +4536,8 @@ export interface HeldPart {
   workCuratedFields?: string[] | null;
   /** How many museums hang the work. */
   venueCount?: number | null;
+  /** Those museums, named. */
+  venues?: WorkVenue[] | null;
   year?: number | null;
   /** @nullable */
   imageUrl?: string | null;
@@ -5703,6 +5728,14 @@ export interface PasswordChanged {
 }
 
 /**
+ * The stored point this one replaces, where the source moved a point rather than added one (ADR-0025 decision 5).
+ */
+export type PendingPointReplaces = {
+  latitude: number;
+  longitude: number;
+} | null;
+
+/**
  * An unread point under a row readers already see.
  */
 export interface PendingPoint {
@@ -5720,6 +5753,8 @@ export interface PendingPoint {
   /** @nullable */
   longitude: number | null;
   curatedFields?: string[];
+  /** The stored point this one replaces, where the source moved a point rather than added one (ADR-0025 decision 5). */
+  replaces?: PendingPointReplaces;
 }
 
 /**
@@ -5746,6 +5781,8 @@ export interface PendingWork {
   imageCredit?: ImageCredit | null;
   curatedFields?: string[] | null;
   venueCount?: number | null;
+  /** The museums that hang the work, named. */
+  venues?: WorkVenue[] | null;
 }
 
 /**
@@ -7184,6 +7221,18 @@ export interface ReviewQueueItem {
      * @maximum 9007199254740991
      */
   pending_locations?: number;
+  /**
+     * How many of the unread points replace a stored one: a point that moved, not a place that arrived.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  pending_moved_locations?: number;
+  /**
+     * How many of the unread works readers already see in another museum.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  pending_treasures_on_show?: number;
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
