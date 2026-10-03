@@ -12,11 +12,11 @@ reading of it. An **allowed** site may carry a condition: *a few pages, one at a
 terms limit the rate of requests or bar copying in bulk by script; *through the API, one request
 at a time* for Wikivoyage, which the `lookup` command reads; *closed paths not read* where
 `robots.txt` closes some paths to every agent, so a count that rests on such a page is not
-taken. A `robots.txt` that is *none* (the address answers 404) or *unavailable* (lost in a
-redirect loop) allows; one that is *unreachable* (a timeout, a failed certificate, a server
-error) refuses (RFC 9309 § 2.3.1). Terms *not read* means the terms page could not be fetched; a
-clause seen only in a search result is not a reading, and the site is judged on its `robots.txt`
-alone.
+taken. A `robots.txt` that is *none* (the address answers 404, or redirects to a page that holds
+no rules, such as the home page) or *unavailable* (lost in a redirect loop) allows; one that is
+*unreachable* (a timeout, a failed certificate, a server error) refuses (RFC 9309 § 2.3.1).
+Terms *not read* means the terms page could not be fetched; a clause seen only in a search
+result is not a reading, and the site is judged on its `robots.txt` alone.
 
 Each country edition of a guide is its own publisher's site and has its own line. The terms
 column links the page the verdict was read on. The records of the sources these sites belong to
@@ -144,7 +144,7 @@ are under [`sights/`](sights/), where a source the surveys counted has its terms
 | `turismoi.pe` | Turismoi | open | no terms page linked | allowed | — | 2026-10-02 |
 | `www.turismoroma.it` | Roma Capitale, Dipartimento Grandi Eventi, Sport, Turismo e Moda | open | [silent on automated reading](https://www.turismoroma.it/it/page/copyright) | allowed | — | 2026-10-02 |
 | `www.unesco.org` | UNESCO | disallows Anthropic agents | [bar mining, bar automated access, bar AI use, allow](https://www.unesco.org/en/terms-use) | refused | `robots.txt` disallows Anthropic agents | 2026-10-02 |
-| `uzbekistan.travel` | ГУ «Национальный PR-центр» (National PR Centre), Uzbekistan | none | [bar mass copying by script](https://uzbekistan.travel/ru/polzovatelskoe-soglashenie/) | allowed | the user agreement bars "automated scripts for mass copying of materials", which a few pages read for names is not; a few pages, one at a time | 2026-10-02 |
+| `uzbekistan.travel` | ГУП «Национальный PR-центр» (State Unitary Enterprise National PR-centre), Uzbekistan | none | [bar mass copying by script](https://uzbekistan.travel/ru/polzovatelskoe-soglashenie/) | allowed | the user agreement bars "automated scripts for mass copying of materials", which a few pages read for names is not; a few pages, one at a time | 2026-10-02 |
 | `www.viajeros.com` | — | none | not read | allowed | — | 2026-10-02 |
 | `www.viajeroscallejeros.com` | Viajeros Callejeros 2021 SL | open | [silent on automated reading](https://www.viajeroscallejeros.com/aviso-legal/) | allowed | — | 2026-10-02 |
 | `viajes.nationalgeographic.com.es` | — | answers a challenge | not read | refused | answers 403 or a challenge page | 2026-10-02 |

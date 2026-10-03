@@ -85,5 +85,5 @@ would reopen it is the Tourism Committee's written permission; the site offers a
 
 **What the survey measured.** The Yerevan survey read 21 pages of it by fetch in its second pass
 and named it on 118 entries. It was read before its terms were. Nothing of it counts: the
-surveys withdrew every count taken from it, and this record carries no figure. The table records
-what was withdrawn: Yerevan: 118 counts (the licence on its privacy-policy page).
+surveys withdrew every count taken from it, and this record carries no figure. The surveys
+withdrew, by region: Yerevan: 118 counts (the licence on its privacy-policy page).

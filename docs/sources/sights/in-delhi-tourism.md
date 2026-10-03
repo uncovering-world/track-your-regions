@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://delhitourism.gov.in/dttdc/website-policy.html
 family: tourism-board
-kinds: [places-of-worship, markets, historic-hotels-and-restaurants, palaces-and-castles, tombs-and-mausoleums, public-art, entertainment-venues, squares-and-streets, architecture, landmarks, parks-and-gardens, art-museums, history-museums, famous-peoples-places, world-heritage, neighbourhoods, observatories-and-planetariums, science-and-nature-museums]
+kinds: [places-of-worship, markets, festivals-and-events, historic-hotels-and-restaurants, regional-food, palaces-and-castles, tombs-and-mausoleums, public-art, entertainment-venues, squares-and-streets, architecture, landmarks, parks-and-gardens, art-museums, history-museums, famous-peoples-places, day-trips-and-itineraries, world-heritage, neighbourhoods, observatories-and-planetariums, science-and-nature-museums]
 tier: regional
 unit: { level: city, code: IN, name: Delhi }
 row:

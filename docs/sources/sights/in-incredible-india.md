@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.incredibleindia.gov.in/en/terms-of-use
 family: tourism-board
-kinds: [markets, historic-hotels-and-restaurants, places-of-worship, parks-and-gardens, entertainment-venues, palaces-and-castles, neighbourhoods, public-art, art-museums, squares-and-streets, world-heritage, tombs-and-mausoleums, landmarks, archaeology, science-and-nature-museums, specialty-museums, famous-peoples-places]
+kinds: [regional-food, markets, historic-hotels-and-restaurants, places-of-worship, parks-and-gardens, entertainment-venues, palaces-and-castles, neighbourhoods, public-art, art-museums, squares-and-streets, world-heritage, tombs-and-mausoleums, landmarks, archaeology, science-and-nature-museums, specialty-museums, famous-peoples-places, wellness]
 tier: regional
 unit: { level: country, code: IN, name: India }
 row:
