@@ -664,7 +664,8 @@ export const publishExperienceBodySchema = z.object({
    * - `{ locationIds }` / `{ treasureIds }` (or both): those ids only, object
    *   untouched.
    * - `{ fieldsOnly: true }`: the object's held fields and none of its unread
-   *   contents — the field below, and the mirror of `contentsOnly`.
+   *   contents, except the point that is the object's held coordinate moving
+   *   (#1233) — the field below, and the mirror of `contentsOnly`.
    * - `{ heldFields }` / `{ heldParts }` (or both) with `expectedSyncLogId`:
    *   that mirror narrowed to the held rows named, the rest left open (#722).
    *   The run id is required here and nowhere else in this schema, because a
@@ -674,7 +675,8 @@ export const publishExperienceBodySchema = z.object({
   /**
    * The fourth shape, and the mirror of the one above: apply what the run
    * proposed for the object's own fields and leave every unread point and work
-   * where it is.
+   * where it is — except the point that is the object's held coordinate moving,
+   * which goes with that coordinate (#1233, `pointMovedWithObject`).
    *
    * What #524 asked for, in the words of the case that raised it: a museum whose
    * label is held *and* which gained twelve paintings could be answered only as

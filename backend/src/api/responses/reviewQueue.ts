@@ -259,6 +259,8 @@ export const ReviewQueueItem = z.strictObject({
   pending_locations: z.number().int().optional(),
   pending_moved_locations: z.number().int().optional()
     .describe('How many of the unread points replace a stored one: a point that moved, not a place that arrived.'),
+  coordinates_move_point_id: z.number().int().nullable().optional()
+    .describe("The unread point the object's held coordinate would publish with it (#1233): one of `pending_points`, listed first."),
   pending_treasures_on_show: z.number().int().optional()
     .describe('How many of the unread works readers already see in another museum.'),
   pending_treasures: z.number().int().optional(),

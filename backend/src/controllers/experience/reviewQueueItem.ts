@@ -54,6 +54,7 @@ export interface QueueRow {
   sync_log_id?: number | null;
   pending_locations?: number;
   pending_moved_locations?: number;
+  coordinates_move_point_id?: number | null;
   pending_treasures?: number;
   pending_treasures_on_show?: number;
   pending_points?: PendingPoint[];
@@ -165,6 +166,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     sync_log_id: row.sync_log_id,
     pending_locations: row.pending_locations,
     pending_moved_locations: row.pending_moved_locations,
+    coordinates_move_point_id: row.coordinates_move_point_id,
     pending_treasures_on_show: row.pending_treasures_on_show,
     pending_treasures: row.pending_treasures,
     pending_points: row.pending_points,
