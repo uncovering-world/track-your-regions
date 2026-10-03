@@ -17,7 +17,11 @@ import * as webgl from '../../utils/webgl';
 
 vi.mock('react-map-gl/maplibre', () => ({
   default: ({ children }: { children?: React.ReactNode }) => <div data-testid="the-map">{children}</div>,
-  Marker: () => <span data-testid="the-marker" />,
+  Marker: ({ children }: { children?: React.ReactNode }) => <span data-testid="the-marker">{children}</span>,
+  Source: ({ children, data }: { children?: React.ReactNode; data: GeoJSON.Feature<GeoJSON.LineString> }) => (
+    <span data-testid="the-line" data-coordinates={JSON.stringify(data.geometry.coordinates)}>{children}</span>
+  ),
+  Layer: () => null,
 }));
 
 vi.mock('./PointCorrection', () => ({
@@ -52,6 +56,52 @@ describe('PointPreviewDialog', () => {
     expect(screen.getByTestId('the-marker')).toBeInTheDocument();
     expect(screen.queryByTestId('the-form')).toBeNull();
     expect(screen.queryByText(/Bilbao Fine Arts Museum/)).toBeNull();
+  });
+
+  it('draws a proposed move as both pins, the line between them and what the move is', () => {
+    // Ephesus, run 146: the stored point and the one the run proposes are 158 m
+    // apart, which two pairs of numbers say and only a map shows.
+    render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Ephesus" latitude={37.939722} longitude={27.340833}
+        movedTo={{ latitude: 37.94058, longitude: 27.33939 }}
+      />,
+    );
+
+    // The stored pin, the proposed pin and the arrowhead on the line.
+    expect(screen.getAllByTestId('the-marker')).toHaveLength(3);
+    expect(screen.getByTestId('the-line')).toBeInTheDocument();
+    expect(screen.getByText('37.9397, 27.3408 → 37.9406, 27.3394 · a proposed move of 158 m north-west')).toBeInTheDocument();
+    expect(screen.getByText('readers see')).toBeInTheDocument();
+    expect(screen.getByText('the run proposes')).toBeInTheDocument();
+  });
+
+  it('draws a move across the antimeridian across it, not round the world', () => {
+    // Taveuni, Fiji, sits on the 180th meridian: a correction from one side to
+    // the other is a kilometre or two, and a line between the raw longitudes
+    // would run 359 degrees the other way, away from both pins.
+    render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Taveuni" latitude={-16.85} longitude={179.99}
+        movedTo={{ latitude: -16.85, longitude: -179.99 }}
+      />,
+    );
+
+    const [[fromLon], [toLon]] = JSON.parse(screen.getByTestId('the-line').dataset.coordinates ?? '[]') as number[][];
+    expect(fromLon).toBe(179.99);
+    expect(toLon).toBeCloseTo(180.01, 6);
+  });
+
+  it('draws one pin where the proposed point is the stored one', () => {
+    render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Bilbao" latitude={43.27} longitude={-2.94}
+        movedTo={{ latitude: 43.27, longitude: -2.94 }}
+      />,
+    );
+
+    expect(screen.getAllByTestId('the-marker')).toHaveLength(1);
+    expect(screen.queryByTestId('the-line')).toBeNull();
   });
 
   it('opens on the form where the place may be corrected, and never shows the map beside it', () => {

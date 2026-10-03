@@ -38,6 +38,7 @@ import { describeMove } from '../../utils/moveDescription';
 import { yearLabel } from '../../utils/yearLabel';
 import { extentLabel } from '../shared/ExtentLine';
 import { PictureFact } from './PictureFact';
+import { MoveFact } from './MoveFact';
 
 /** One field of a proposal, as the queue carries it: the part of its `ChangedField` a rendering reads. */
 export type ProposedField = Pick<ChangedField, 'field' | 'old' | 'new'>;
@@ -381,7 +382,10 @@ const MEANINGS: Record<string, FieldMeaning> = {
     label: 'coordinates',
     what: 'The point the source gives for the object — the pin readers see, and what decides which regions the object counts in.',
     whenItChanges: 'A move of a few metres is jitter. Kilometres can put the object in a different region or country: check the pin on the map before publishing.',
-    render: coordinateLabel,
+    // The proposed side opens the move on a map; the stored side is the number.
+    render: (value, context, side) => (side === 'after'
+      ? <MoveFact before={context.proposed.find(f => f.field === 'location')?.old} after={value} label={coordinateLabel(value)} />
+      : coordinateLabel(value)),
     event: true,
     // The one rule for a moved pin, shared with the correction dialog (`utils/moveDescription.ts`).
     describeChange: (before, after) => describeMove(before, after),

@@ -26,37 +26,112 @@
  * looking at a place, and `ObjectContext`, which shows the source's locator rather than
  * a place.
  *
+ * **A move is drawn as a move.** Where a caller hands in `movedTo` — a run proposing a
+ * different coordinate, a card whose question is whether the new point is the better one
+ * — the read-only map draws both: the place readers see as a grey pin, the proposed one
+ * as the pin, and an arrow from the first to the second, at the zoom the move itself asks
+ * for (`moveView`). Two pairs of numbers and "158 m north-west" say that something moved;
+ * whether it moved onto the ruins or off them is read from the ground under the arrow.
+ *
  * In `shared/` because the same look is asked for from three places — the review
  * page's cards, the object's own screen and the places list on a map — and the rule
  * for where a place may be corrected is the same on all of them: wherever a curator is
  * looking at one.
  */
 
-import { Dialog, DialogContent, DialogTitle, IconButton, Typography } from '@mui/material';
+import { Box, Dialog, DialogContent, DialogTitle, IconButton, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { Marker } from 'react-map-gl/maplibre';
+import { Layer, Marker, Source } from 'react-map-gl/maplibre';
 import { GuardedMap } from './GuardedMap';
 import { MAP_STYLE } from '../../constants/mapStyles';
 import { PointCorrection, type PlaceToCorrect } from './PointCorrection';
+import { moveLabel, moveView, movedBy, shortWayLongitudeDelta } from '../../utils/moveDescription';
 
-export function PointPreviewDialog({ open, onClose, name, latitude, longitude, correction }: {
+/** The pin readers see today, where the map also draws the one proposed: present, and plainly not the news. */
+const STORED_PIN = '#757575';
+const MOVE_LINE = '#C62828';
+
+/**
+ * The line a move is drawn along, and the arrowhead on it.
+ *
+ * The head is a marker rather than a symbol layer: a symbol needs an image in the
+ * basemap's sprite, and the styles this map draws with are not ours to add one to. It
+ * sits at the middle of the line, turned to the bearing and pinned to the map's own
+ * rotation, so it keeps pointing along the line however the map is turned.
+ */
+function MoveArrow({ from, to }: {
+  from: { latitude: number; longitude: number };
+  to: { latitude: number; longitude: number };
+}) {
+  const before = { lon: from.longitude, lat: from.latitude };
+  const after = { lon: to.longitude, lat: to.latitude };
+  const middle = moveView(before, after);
+  const bearing = movedBy(before, after)?.degrees ?? 0;
+  const line: GeoJSON.Feature<GeoJSON.LineString> = {
+    type: 'Feature',
+    properties: {},
+    // The end is written relative to the start, so a move across the
+    // antimeridian is drawn across it — past 180 — rather than the long way
+    // round through Greenwich, away from both pins.
+    geometry: {
+      type: 'LineString',
+      coordinates: [
+        [from.longitude, from.latitude],
+        [from.longitude + shortWayLongitudeDelta(before, after), to.latitude],
+      ],
+    },
+  };
+  return (
+    <>
+      <Source id="proposed-move" type="geojson" data={line}>
+        <Layer id="proposed-move-line" type="line" paint={{ 'line-color': MOVE_LINE, 'line-width': 2.5 }} />
+      </Source>
+      <Marker
+        latitude={middle.latitude}
+        longitude={middle.longitude}
+        rotation={bearing}
+        rotationAlignment="map"
+        anchor="center"
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" style={{ display: 'block' }}>
+          <path d="M9 2 L15 14 L9 11 L3 14 Z" fill={MOVE_LINE} stroke="#fff" strokeWidth="1" />
+        </svg>
+      </Marker>
+    </>
+  );
+}
+
+export function PointPreviewDialog({ open, onClose, name, latitude, longitude, movedTo, correction }: {
   open: boolean;
   onClose: () => void;
   name: string;
   latitude: number;
   longitude: number;
   /**
+   * Where a run proposes the place is instead. With it the map shows the move: both
+   * pins and the arrow between them. Read by the look alone — a correction opens on
+   * its own form, whose picker already draws the source's position.
+   */
+  movedTo?: { latitude: number; longitude: number };
+  /**
    * Offered where a curator may correct the place: what to correct, and where the
    * outcome line goes. Absent, the dialog is the look it always was.
    */
   correction?: { place: PlaceToCorrect; onDone: (message: string) => void };
 }) {
+  // The move as the title says it, and null where there is none to draw: a
+  // correction has its own form, and two points under a metre apart are one pin.
+  const stored = { lon: longitude, lat: latitude };
+  const proposed = movedTo && !correction ? { lon: movedTo.longitude, lat: movedTo.latitude } : null;
+  const move = proposed && (movedBy(stored, proposed)?.meters ?? 0) >= 1 ? moveLabel(stored, proposed) : null;
+  const view = proposed && move ? moveView(stored, proposed) : { latitude, longitude, zoom: 11 };
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pr: 6 }}>
         {name}
         <Typography variant="body2" color="text.secondary">
           {latitude.toFixed(4)}, {longitude.toFixed(4)}
+          {move && ` → ${movedTo?.latitude.toFixed(4)}, ${movedTo?.longitude.toFixed(4)} · a proposed move of ${move}`}
           {/* Whose place this is — unless the place is named for the object already,
               as a museum's one place is, where the line would say the name twice. */}
           {correction && correction.place.objectName !== name ? ` · ${correction.place.objectName}` : ''}
@@ -81,21 +156,42 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, c
           />
         </DialogContent>
       ) : (
-        <DialogContent sx={{ height: 420, p: 0 }}>
+        <DialogContent sx={{ height: 420, p: 0, position: 'relative' }}>
           {/* Mounted only while the dialog is open — MUI unmounts the content by default,
               which is what keeps the WebGL context to the moment it is wanted. Zoom 11
               shows the surroundings a description talks about rather than the roof of the
               building, which is what a curator is checking. */}
           {open && (
             <GuardedMap
-              initialViewState={{ latitude, longitude, zoom: 11 }}
+              initialViewState={view}
               mapStyle={MAP_STYLE}
               style={{ width: '100%', height: '100%' }}
               unavailableCompact
               unavailableDetail="The coordinate is above; the rest of this card needs no map."
             >
-              <Marker latitude={latitude} longitude={longitude} />
+              {movedTo && move ? (
+                <>
+                  <MoveArrow from={{ latitude, longitude }} to={movedTo} />
+                  <Marker latitude={latitude} longitude={longitude} color={STORED_PIN} />
+                  <Marker latitude={movedTo.latitude} longitude={movedTo.longitude} />
+                </>
+              ) : (
+                <Marker latitude={latitude} longitude={longitude} />
+              )}
             </GuardedMap>
+          )}
+          {move && (
+            // Which pin is which, on the map and not only in the title: a legend a
+            // curator has to look away from the pins to read is one they skip.
+            <Box
+              sx={{
+                position: 'absolute', left: 12, bottom: 12, px: 1, py: 0.5, borderRadius: 1,
+                bgcolor: 'background.paper', boxShadow: 1, fontSize: 12, lineHeight: 1.5,
+              }}
+            >
+              <Box><Box component="span" sx={{ color: STORED_PIN, fontWeight: 700 }}>●</Box> readers see</Box>
+              <Box><Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>●</Box> the run proposes</Box>
+            </Box>
           )}
         </DialogContent>
       )}
