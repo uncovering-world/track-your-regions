@@ -20,6 +20,7 @@ import {
   offeredLocationSql,
   publishedContentSql,
   venueCountSql,
+  venuesSql,
 } from '../../db/readerPredicates.js';
 import { treasureOf, type TreasureRow } from './experienceAnswerRows.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
@@ -59,6 +60,10 @@ export async function getExperienceTreasures(
       -- the row all of them carry (ADR-0025 decision 2). What it counts is where
       -- the work hangs rather than who can see it today; venueCountSql says why.
       ${venueCountSql('t')} AS venue_count,
+      -- And which they are, for the caller this read widens its gate for: the
+      -- list names venues whatever their state, which the dialog that corrects
+      -- the work needs and a reader must not be served (venuesSql).
+      CASE WHEN $2::boolean THEN ${venuesSql('t')} END AS venues,
       t.image_url, t.sitelinks_count, t.is_iconic,
       -- Beside the picture, as it is on the object itself: these files are
       -- served from Wikimedia Commons and a share of them are CC BY or CC BY-SA,

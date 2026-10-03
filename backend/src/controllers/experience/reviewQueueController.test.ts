@@ -22,7 +22,9 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { admissionAnsweredSql, membershipAdmittedSql } from '../../db/membership.js';
-import { hidePendingSql, hideRefusedSql, offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
+import {
+  hidePendingSql, hideRefusedSql, linkedForReaderSql, offeredLinkSql, offeredLocationSql, venuesSql,
+} from '../../db/readerPredicates.js';
 import { CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
@@ -993,6 +995,10 @@ describe('getReviewQueue', () => {
       // hand it counted a point a curator had declared gone from the world.
       expect(sql, `${kind}'s point count stopped using the shared predicate`)
         .toMatch(/off\.missing_since IS NULL AND off\.existence <> 'lost'/);
+      // And a point is counted once while it moves: the unread replacement of a
+      // stored pin is the same place, not a second one (Ephesus, run 146).
+      expect(sql, `${kind} counts a moved point twice`)
+        .toMatch(/replaced\.id = off\.withdrawal_deferred_for_location_id\s+AND replaced\.missing_since IS NULL AND replaced\.existence <> 'lost'\)\)::int\s+AS offered_locations/);
       expect(sql, `${kind} lost the works count`).toContain('AS counted_works_total');
       // The works count is what "N famous works" reads, and a link the source
       // has stopped placing here is not one the museum holds (ADR-0044).
@@ -1003,6 +1009,25 @@ describe('getReviewQueue', () => {
       expect(worksCount, `${kind}'s works count stopped hiding withdrawn links`)
         .toContain('et.missing_since IS NULL');
     }
+  });
+
+  it('tells a moved point from an arrived one, and a work on show elsewhere from a new one', async () => {
+    // The card's two sentences turn on these: "1 point moved" rather than "1 new
+    // point" where the unread row replaces a stored pin (Ephesus, run 146), and
+    // "readers already see it in another list" where an unread link leads to a
+    // work on show in another museum (Boy with Thorn, the Capitoline Museums).
+    const sql = await capturedQueueSql('contents');
+    // A pin a curator has declared gone is replaced by nothing: the arrival is
+    // then the object's point, and both the row and the count of places say so.
+    expect(sql).toMatch(/WHERE old\.id = el\.withdrawal_deferred_for_location_id\s+AND old\.missing_since IS NULL AND old\.existence <> 'lost'\) AS replaces/);
+    expect(sql).toContain('COUNT(*) FILTER (WHERE replaces IS NOT NULL)::int AS moved');
+    expect(sql).toContain('points.moved AS pending_moved_locations');
+    expect(sql).toContain('COUNT(*) FILTER (WHERE on_show_elsewhere)::int AS on_show');
+    // On show means the reader's whole question, asked of another museum's link.
+    expect(sql).toMatch(/shown\.experience_id <> e\.id\s+AND /);
+    expect(sql).toContain(linkedForReaderSql('shown_in', 'shown'));
+    // And the venues are named, for the dialog a row opens.
+    expect(sql).toContain(`${venuesSql('t')} AS venues`);
   });
 
   it('offers only links the source still places here on the contents card, and names only those', async () => {

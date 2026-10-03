@@ -85,8 +85,22 @@ export function objectContextSelectSql(alias = 'e'): string {
           -- world is not one of them. Written by hand it would have counted one, which
           -- is the divergence reviewQueueContents.ts's own join already learned once,
           -- and says so where it composes the same fragment.
+          --
+          -- And a point is counted once while it moves. A gated run keeps the
+          -- stored pin and writes the moved one as an unread arrival that names
+          -- what it replaces (locationWriter.ts), so for as long as the move
+          -- waits the object offers both rows and is still made of one place:
+          -- Ephesus, run 146, read "made of 2 places" over a 158 m correction.
+          -- Only while the pin it replaces is itself still offered: a curator
+          -- may declare that pin gone while the move waits, the pairing stands
+          -- until the arrival is answered, and leaving both rows out would
+          -- read "made of 0 places".
           (SELECT count(*) FROM experience_locations off
-            WHERE off.experience_id = ${alias}.id AND ${offeredLocationSql('off')})::int
+            WHERE off.experience_id = ${alias}.id AND ${offeredLocationSql('off')}
+              AND NOT EXISTS (
+                SELECT 1 FROM experience_locations replaced
+                 WHERE replaced.id = off.withdrawal_deferred_for_location_id
+                   AND ${offeredLocationSql('replaced')}))::int
             AS offered_locations,
           (SELECT count(*) FROM experience_treasures et
             WHERE et.experience_id = ${alias}.id

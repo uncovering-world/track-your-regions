@@ -12,7 +12,7 @@
 
 import type {
   Experience, ExperienceDetail, ExperienceRegionRef, ExperienceSearchResult, ExperienceTreasure, ImageCredit,
-  LinkedPlace, SiteFind,
+  LinkedPlace, SiteFind, WorkVenue,
 } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 
@@ -221,6 +221,7 @@ export interface TreasureRow {
   year: number | null;
   curated_fields: string[];
   venue_count: number;
+  venues: WorkVenue[] | null;
   image_url: string | null;
   sitelinks_count: number;
   is_iconic: boolean;
@@ -239,6 +240,7 @@ export function treasureOf(row: TreasureRow): ExperienceTreasure {
     artists_curated: row.artists_curated,
     curated_fields: row.curated_fields,
     venue_count: row.venue_count,
+    venues: row.venues,
     year: row.year,
     image_url: row.image_url,
     image_credit: creditOf(row.image_credit),
