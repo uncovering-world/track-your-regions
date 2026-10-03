@@ -12,6 +12,7 @@ import { foldVenues, loadVenueGraph } from './venueGraph.js';
 import { museumRule } from './venueTest.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
+import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const ART_MUSEUM = 'Q207694';
@@ -71,6 +72,7 @@ const detailRows = (qids: string[]): SparqlBinding[] => qids.map((qid) => ({
 function world(): { sparql: ReturnType<typeof vi.fn<SparqlFn>>; asked: string[][] } {
   const asked: string[][] = [];
   const sparql = vi.fn<SparqlFn>(async (query) => {
+    if (isWikipediaEditionsQuery(query)) return wikipediaEditionsRows(query, (q) => WORLD[q]?.sitelinks);
     const qids = askedFor(query).filter((q) => WORLD[q]);
     if (query.includes('?e wdt:P527 ?part')) {
       asked.push(askedFor(query));

@@ -164,7 +164,7 @@ async function readHoldings(
   for (let i = 0; i < batches.length; i++) {
     run.phase(`Reading what each admitted venue holds (batch ${i + 1}/${batches.length})...`);
     await run.step();
-    for (const holding of await fetchVenueHoldings(run.sparql, batches[i], floor)) {
+    for (const holding of await fetchVenueHoldings(run, batches[i], floor)) {
       const entry = held.get(holding.work)
         ?? { sitelinks: holding.sitelinks, heldBy: new Set<string>(), venues: new Set<string>() };
       entry.heldBy.add(survivorOf(folds, holding.venue));
@@ -181,7 +181,7 @@ async function readDetails(run: QueryRunner, qids: string[]): Promise<Map<string
   for (let i = 0; i < batches.length; i++) {
     run.phase(`Asking what each object found from the venue's side is (batch ${i + 1}/${batches.length})...`);
     await run.step();
-    for (const [qid, row] of await fetchWorksByIds(run.sparql, batches[i])) details.set(qid, row);
+    for (const [qid, row] of await fetchWorksByIds(run, batches[i])) details.set(qid, row);
   }
   return details;
 }
@@ -326,8 +326,8 @@ export async function readVenueSide(
   const reported = refused.filter((refusal) => refusal.sitelinks >= reportFloor);
   console.log(
     `${opts.logPrefix} Venue-side read: ${venues.length} venues hold ${held.size} objects at `
-    + `${floor}+ sitelinks; ${held.size - fresh.length} already in the pool, ${kept.size} kept as `
-    + `${opts.noun.works}, ${refused.length} refused (${reported.length} at ${reportFloor}+ sitelinks, named)`,
+    + `${floor}+ Wikipedia editions; ${held.size - fresh.length} already in the pool, ${kept.size} kept as `
+    + `${opts.noun.works}, ${refused.length} refused (${reported.length} at ${reportFloor}+ Wikipedia editions, named)`,
   );
   return {
     collection: { ...collection, pool, statements: allStatements, graph, resolver, placed, unseen, afterFolds },

@@ -27,7 +27,9 @@
  */
 
 import { extractQid, isQid } from '../wikidataUtils.js';
-import { failIfTruncated, HINT_PREFIX, values, type SparqlFn } from '../wikidataQueries.js';
+import {
+  doorOf, failIfTruncated, HINT_PREFIX, inWikipediaEditions, values, type Door,
+} from '../wikidataQueries.js';
 import { parsePool, POOL_DETAILS, type PoolWork } from './queries.js';
 
 /** One current statement of a venue's: this object is in its collection (`P195`), or stands in it (`P276`). */
@@ -72,12 +74,13 @@ function holdingBranch(property: 'P195' | 'P276'): string {
  * something to resolve: it is the admitted venue the caller asked about.
  */
 export async function fetchVenueHoldings(
-  sparql: SparqlFn,
+  door: Door,
   venueQids: string[],
   floor: number,
 ): Promise<VenueHolding[]> {
   const asked = venueQids.filter(isQid);
   if (!asked.length) return [];
+  const { sparql, step } = doorOf(door);
   const rows = await sparql(`${HINT_PREFIX}
     SELECT ?w ?sl ?venue ?rel ?rank WHERE {
       hint:Query hint:optimizer "None" .
@@ -102,7 +105,8 @@ export async function fetchVenueHoldings(
     if ((row.rank?.value ?? '').endsWith('#DeprecatedRank')) continue;
     out.push({ work, venue, property, sitelinks: parseInt(row.sl?.value || '0', 10) });
   }
-  return out;
+  // The floor the question asked by every site, held again by Wikipedia editions (ADR-0082).
+  return inWikipediaEditions(sparql, out, { floor, qidOf: (holding) => holding.work, before: step });
 }
 
 /** An object asked for by id: the pool's row for it, and every class it carries with its label. */
@@ -138,12 +142,13 @@ export function lowestClass(classes: ReadonlyMap<string, string>): string | null
  * re-types the object where it carries one (`venueSide.ts`).
  */
 export async function fetchWorksByIds(
-  sparql: SparqlFn,
+  door: Door,
   qids: string[],
 ): Promise<Map<string, WorkDetails>> {
   const out = new Map<string, WorkDetails>();
   const asked = qids.filter(isQid);
   if (!asked.length) return out;
+  const { sparql, step } = doorOf(door);
   const rows = await sparql(`
     SELECT ?w ?wLabel ?sl ?img ?creator ?creatorLabel (YEAR(?inception) AS ?year) ?cls ?clsLabel WHERE {
       VALUES ?w { ${values(asked)} }
@@ -174,5 +179,8 @@ export async function fetchWorksByIds(
       classes,
     });
   }
+  // Every object the venue side keeps enters the pool, and the pool's lines,
+  // its iconic mark and its stored count all read Wikipedia editions (ADR-0082).
+  await inWikipediaEditions(sparql, [...out.values()].map((details) => details.work), { before: step });
   return out;
 }

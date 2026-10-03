@@ -28,6 +28,7 @@ import { LOST_WORK_ROOT } from '../museum/worksCollector.js';
 import { POOL_MIN_SITELINKS } from '../publicArt/queries.js';
 import type { SourceLine } from '../sourceLine.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const RANK = 'http://wikiba.se/ontology#NormalRank';
@@ -437,6 +438,9 @@ function workByIdRows(w: World, asked: string[]): SparqlBinding[] {
 
 function answer(w: World, sent: string): SparqlBinding[] {
   const query = sent.trimStart();
+  if (isWikipediaEditionsQuery(query)) {
+    return wikipediaEditionsRows(query, (q) => w.places[q]?.sitelinks ?? w.works[q]?.sitelinks);
+  }
   const asked = askedFor(query);
   // Which door candidates are organisations (#798): none in this world counts
   // a museum among its parts. Before the tree arm, whose pattern the question
@@ -674,7 +678,7 @@ describe('collectPlacesOfWorship', () => {
     expect(item(out, 'Q197019')).toMatchObject({ door: 'place' });
     expect(item(out, 'Q172077')).toBeUndefined();
     expect(reason(out, 'Q172077'))
-      .toBe("17 sitelinks: below the world tier's line (22 to enter, 18 to stay)");
+      .toBe("17 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)");
   });
 
   it('says where the works it writes have moved since the last run', async () => {

@@ -100,7 +100,7 @@ export async function collectOsmEntrance(
   for (let i = 0; i < wantedBatches.length; i++) {
     run.phase(`Fetching the digs OpenStreetMap maps that Wikidata knows by name (batch ${i + 1}/${wantedBatches.length})...`);
     await run.step();
-    for (const entity of await fetchEntitiesByIds(run.sparql, wantedBatches[i], 'digs OpenStreetMap maps')) {
+    for (const entity of await fetchEntitiesByIds(run, wantedBatches[i], 'digs OpenStreetMap maps')) {
       pool.set(entity.qid, entity);
       byOsm.add(entity.qid);
     }

@@ -13,13 +13,15 @@ import {
 } from './venueSideQueries.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+import { answeringWith, isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const RANK = 'http://wikiba.se/ontology#';
 const uri = (qid: string) => ({ value: `${ENTITY}${qid}` });
 
+/** One canned answer, and the recount every fetcher now asks answered from its own counts. */
 function answering(rows: SparqlBinding[]): SparqlFn {
-  return async () => rows;
+  return answeringWith(rows);
 }
 
 function holding(
@@ -95,6 +97,19 @@ describe('fetchWorksByIds', () => {
     if (cls.label) row.clsLabel = { value: cls.label };
     return row;
   }
+
+  it('carries an object\'s Wikipedia editions, not every site linking it', async () => {
+    // An object the venue side keeps enters the pool, and the pool's iconic
+    // mark, its stored count and a museum's famous-find admission read this
+    // number (ADR-0082): 22 sitelinks on 21 Wikipedias must read 21.
+    const sparql: SparqlFn = async (query) => (isWikipediaEditionsQuery(query)
+      ? wikipediaEditionsRows(query, () => 21)
+      : [detail('Q26082', 'Ishtar Gate', { qid: 'Q82117', label: 'city gate' }, { sl: { value: '22' } })]);
+
+    const found = await fetchWorksByIds(sparql, ['Q26082']);
+
+    expect(found.get('Q26082')?.work.sitelinks).toBe(21);
+  });
 
   it('collects every class an object carries, and types it by the lowest-numbered one', async () => {
     // The Ishtar Gate is `city gate` (Q82117) and `arch` (Q12277) on Wikidata:

@@ -31,6 +31,7 @@ import {
 } from './classes.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const ref = (qid: string) => ({ value: `${ENTITY}${qid}` });
@@ -187,13 +188,13 @@ describe('fetchArchaeologyTrees', () => {
 });
 
 describe('fetchSitelinksByIds', () => {
-  it('answers the sitelink count of every item that has one, five hundred to a question', async () => {
+  it('answers the Wikipedia editions of every item it is told about, a batch to a question', async () => {
     const sent: string[] = [];
     const sparql: SparqlFn = (query) => {
       sent.push(query);
       const asked = askedFor(query);
       return Promise.resolve(asked.filter((qid) => qid !== 'Q999999999').map((qid) => ({
-        e: ref(qid), sl: { value: String(asked.indexOf(qid) + 1) },
+        e: ref(qid), editions: { value: String(asked.indexOf(qid) + 1) },
       })));
     };
     const qids = Array.from({ length: SITELINKS_BATCH + 1 }, (_, i) => `Q${i + 1}`);
@@ -201,12 +202,14 @@ describe('fetchSitelinksByIds', () => {
 
     expect(sent).toHaveLength(2);
     expect(askedFor(sent[0])).toHaveLength(SITELINKS_BATCH);
-    expect(sent[0]).toContain('wikibase:sitelinks');
+    // The count every line reads (ADR-0082): Wikipedia editions, not every site.
+    expect(sent[0]).toContain('wikibase:wikiGroup "wikipedia"');
+    expect(sent[0]).not.toContain('wikibase:sitelinks');
     // Only the count: the pool details are asked later, of the few above the floor.
     expect(sent[0]).not.toContain('P625');
     expect(sitelinks.get('Q1')).toBe(1);
     expect(sitelinks.get(`Q${SITELINKS_BATCH}`)).toBe(SITELINKS_BATCH);
-    // An item the door did not answer for — deleted, merged — is absent, never zero.
+    // An item the answer leaves out is absent rather than invented.
     expect(sitelinks.has('Q999999999')).toBe(false);
   });
 
@@ -233,6 +236,8 @@ describe('collectMuseumPool', () => {
 
   const byId: string[][] = [];
   const door = (query: string): SparqlBinding[] => {
+    // The recount every pool is held to (ADR-0082), from the counts the rows carry.
+    if (isWikipediaEditionsQuery(query)) return wikipediaEditionsRows(query, () => 100);
     if (query.includes('VALUES ?cls')) {
       return askedFor(query).includes('Q3329412') ? [poolRow(LOUVRE, 'Louvre')] : [];
     }

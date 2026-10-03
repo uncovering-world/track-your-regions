@@ -145,7 +145,7 @@ export function lineStanding(
 
 /** The sentence a curator reads beside a row that fell: one wording for every kind. */
 export function belowLineReason(sitelinks: number, line: LinePair): string {
-  return `${sitelinks} sitelinks: below the world tier's line `
+  return `${sitelinks} Wikipedia editions: below the world tier's line `
     + `(${line.enterSitelinks} to enter, ${line.staySitelinks} to stay)`;
 }
 

@@ -110,7 +110,7 @@ describe('museumVerdict', () => {
   });
   it('refuses by name a museum the source held that fell below the stay line', () => {
     const v = museumVerdict({ facts, sitelinks: 17, findsForTheDoor: 0, nature, admitted: new Set(['Q636928']), line });
-    expect(v).toEqual({ pass: false, reason: '17 sitelinks: below the world tier\'s line (22 to enter, 18 to stay)' });
+    expect(v).toEqual({ pass: false, reason: '17 Wikipedia editions: below the world tier\'s line (22 to enter, 18 to stay)' });
   });
   it('holds a museum with only an antiquities department, with the question for a curator', () => {
     const v = museumVerdict({ facts: { ...facts, qid: 'Q132783' }, sitelinks: 86, findsForTheDoor: 4, nature: { nature: 'department', why: 'category: Egyptological collections in Russia' }, admitted: new Set(), line });

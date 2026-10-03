@@ -212,7 +212,7 @@ function nameFiltered(
       filtered.set(statement.venue, {
         externalId: statement.venue,
         name: nameOf(statement.venue),
-        reason: `${found.unresolved} — named by ${work.label} (${work.sitelinks} sitelinks)`,
+        reason: `${found.unresolved} — named by ${work.label} (${work.sitelinks} Wikipedia editions)`,
       });
     }
   }

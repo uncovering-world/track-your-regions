@@ -20,8 +20,12 @@
 import { extractQid, isQid, LABEL_LANGS } from '../wikidataUtils.js';
 import {
   chunk,
+  doorOf,
   fetchClassTree,
+  fetchWikipediaEditions,
+  type Door,
   values,
+  WIKIPEDIA_EDITIONS_BATCH,
   type QueryRunner,
   standing,
   type SparqlFn,
@@ -158,41 +162,26 @@ export async function fetchArchaeologyTrees(run: QueryRunner): Promise<Archaeolo
 }
 
 /**
- * Items to a sitelinks question. Five hundred `VALUES` answer in about a
- * second on the Query Service — the question binds one number per item and
- * nothing else — where the pool's own question, with its picture, article and
+ * Items to a sitelinks question: the batch the Wikipedia-editions count asks in
+ * (`WIKIPEDIA_EDITIONS_BATCH`), so a caller that chunks by it sends one
+ * question per chunk. The pool's own question, with its picture, article and
  * country, is asked fifty at a time.
  */
-export const SITELINKS_BATCH = 500;
+export const SITELINKS_BATCH = WIKIPEDIA_EDITIONS_BATCH;
 
 /**
- * How many Wikipedias hold an article about each item, and nothing else: the
- * question the OSM entrance asks of its tens of thousands of items before it
- * asks the pool's question of the few hundred at the floor (#895).
- *
- * An item the door does not answer for — deleted, merged into another — is
- * absent, never zero: a count of zero would be a fact about the world, and
- * absence is the caller's to read as "not this run".
+ * How many Wikipedia editions hold an article about each item, and nothing
+ * else: the question the OSM entrance asks of its tens of thousands of items
+ * before it asks the pool's question of the few hundred at the floor (#895).
+ * The count every line reads (ADR-0082), so an item clears the entrance's floor
+ * on the number the pool will hold it to.
  */
 export async function fetchSitelinksByIds(
-  sparql: SparqlFn,
+  door: Door,
   qids: string[],
 ): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  const asked = [...new Set(qids.filter(isQid))];
-  for (const batch of chunk(asked, SITELINKS_BATCH)) {
-    const rows = await sparql(`
-    SELECT ?e ?sl WHERE {
-      VALUES ?e { ${values(batch)} }
-      ?e wikibase:sitelinks ?sl .
-    }`, { kind: 'edges', label: `sitelinks of ${batch.length} items` });
-    for (const row of rows) {
-      const qid = extractQid(row.e?.value ?? '');
-      const sitelinks = parseInt(row.sl?.value ?? '', 10);
-      if (isQid(qid) && Number.isFinite(sitelinks)) out.set(qid, sitelinks);
-    }
-  }
-  return out;
+  const { sparql, step } = doorOf(door);
+  return fetchWikipediaEditions(sparql, qids, step);
 }
 
 /**
@@ -280,7 +269,7 @@ export async function collectMuseumPool(
   for (let i = 0; i < batches.length; i++) {
     run.phase(`Fetching the archaeology museum classes (batch ${i + 1}/${batches.length})...`);
     await run.step();
-    for (const entity of await fetchClassPool(run.sparql, batches[i])) {
+    for (const entity of await fetchClassPool(run, batches[i])) {
       if (!pool.has(entity.qid)) pool.set(entity.qid, entity);
     }
   }
@@ -290,7 +279,7 @@ export async function collectMuseumPool(
   for (let i = 0; i < missingBatches.length; i++) {
     run.phase(`Asking after admitted rows the pool did not name (batch ${i + 1}/${missingBatches.length})...`);
     await run.step();
-    for (const entity of await fetchEntitiesByIds(run.sparql, missingBatches[i])) {
+    for (const entity of await fetchEntitiesByIds(run, missingBatches[i])) {
       pool.set(entity.qid, entity);
     }
   }

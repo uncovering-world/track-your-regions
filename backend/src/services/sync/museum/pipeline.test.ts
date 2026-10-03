@@ -20,6 +20,7 @@ import {
 } from './pipelineFixture.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+import { answeringWith, isWikipediaEditionsQuery } from '../wikipediaEditionsFixture.js';
 
 const POOL_BAND_COUNT = POOL_BANDS.length;
 
@@ -386,13 +387,17 @@ describe('pool truncation', () => {
     // The same work in two answers is one work: bands do not overlap, but a class
     // query can reach the same painting, and the merge is what stops the pool's
     // own length lying to the admission rule that reads it.
-    const sparql = vi.fn(async (_query: string, _descriptor?: { label: string }) => rows(1));
+    const answer = answeringWith(rows(1));
+    const sparql = vi.fn(async (query: string, _descriptor?: { label: string }) => answer(query));
     const { run } = runner(sparql);
 
     const works = await fetchBroadPool(run, { qid: PAINTING, type: 'painting' }, 2);
 
-    expect(sparql).toHaveBeenCalledTimes(POOL_BAND_COUNT);
-    const filters = sparql.mock.calls.map(call => String(call[0]));
+    // One question per band, then one recount of what they found (ADR-0082).
+    const bands = sparql.mock.calls.filter(call => !isWikipediaEditionsQuery(String(call[0])));
+    expect(bands).toHaveLength(POOL_BAND_COUNT);
+    expect(sparql).toHaveBeenCalledTimes(POOL_BAND_COUNT + 1);
+    const filters = bands.map(call => String(call[0]));
     expect(filters[0]).toContain('FILTER(?sl >= 100)');
     expect(filters[1]).toContain('FILTER(?sl >= 50 && ?sl < 100)');
     // The hint is the whole reason a band is answerable: without the fixed join
@@ -401,26 +406,27 @@ describe('pool truncation', () => {
     expect(filters[0]).toContain('hint:rangeSafe true');
     // Every band is its own cached question, which is what lets a run that dies
     // in the fourth band keep the first three.
-    const labels = sparql.mock.calls.map(call => call[1]?.label);
+    const labels = bands.map(call => call[1]?.label);
     expect(new Set(labels).size).toBe(POOL_BAND_COUNT);
     expect(works).toHaveLength(1);
   });
 
   it('paces and reports between bands, not only between roots', async () => {
-    const { run, phases, steps } = runner(vi.fn(async () => rows(1)));
+    const { run, phases, steps } = runner(vi.fn(answeringWith(rows(1))));
 
     await fetchBroadPool(run, { qid: PAINTING, type: 'painting' }, 2);
 
     // Each band is tens of seconds of somebody's afternoon: a Cancel pressed in
     // the middle of a root has to be acted on before the next band, and the
-    // phase message has to move, or the run reads as hung.
-    expect(steps()).toBe(POOL_BAND_COUNT);
-    expect(new Set(phases).size).toBe(POOL_BAND_COUNT);
+    // phase message has to move, or the run reads as hung. The recount after
+    // the bands is a question too, and steps and reports like one.
+    expect(steps()).toBe(POOL_BAND_COUNT + 1);
+    expect(new Set(phases).size).toBe(POOL_BAND_COUNT + 1);
     expect(phases[0]).toContain('band 1/');
   });
 
   it('is content when the band fits', async () => {
-    const { run } = runner(vi.fn(async () => rows(1)));
+    const { run } = runner(vi.fn(answeringWith(rows(1))));
     await expect(fetchBroadPool(run, { qid: PAINTING, type: 'painting' }, 2)).resolves.toHaveLength(1);
     expect(warn).not.toHaveBeenCalled();
   });
@@ -428,9 +434,10 @@ describe('pool truncation', () => {
   it('asks a batch of narrow classes once, without bands', async () => {
     // Narrow classes were never the query that failed, and banding them would
     // turn thirty affordable questions into two hundred.
-    const sparql = vi.fn(async (_query: string) => rows(1));
+    const sparql = vi.fn(answeringWith(rows(1)));
     await fetchClassPool(sparql, ['Q1476300', 'Q93184'], 2);
-    expect(sparql).toHaveBeenCalledTimes(1);
-    expect(String(sparql.mock.calls[0][0])).toContain('VALUES ?cls');
+    const asked = sparql.mock.calls.filter(call => !isWikipediaEditionsQuery(String(call[0])));
+    expect(asked).toHaveLength(1);
+    expect(String(asked[0][0])).toContain('VALUES ?cls');
   });
 });

@@ -59,6 +59,95 @@ export function qidsOf(rows: SparqlBinding[], column: string): string[] {
   return out;
 }
 
+/**
+ * What a fetcher may be handed: a bare door, or the run's paced runner. A
+ * fetcher that asks more than one question — its own, then a recount — steps a
+ * runner before each, so a paced run keeps its pace and a cancelled one stops
+ * between them; a bare door (a test, a one-off repair) is asked straight.
+ */
+export type Door = SparqlFn | Pick<QueryRunner, 'sparql' | 'step'>;
+
+/** A door as its two halves: the question, and what runs ahead of every one. */
+export function doorOf(door: Door): { sparql: SparqlFn; step: () => Promise<void> } {
+  return typeof door === 'function' ? { sparql: door, step: () => Promise.resolve() } : door;
+}
+
+/** Items per question when counting Wikipedia editions: a cheap join, well inside the endpoint's limits. */
+export const WIKIPEDIA_EDITIONS_BATCH = 400;
+
+/**
+ * How many Wikipedia language editions hold an article about each item
+ * (ADR-0082).
+ *
+ * Every fame line a run draws reads this number, never `wikibase:sitelinks`:
+ * that one counts every site linking the item — a Commons category, a
+ * Wikivoyage or Wikiquote page — so on 2026-10-03 it stood one above the
+ * Wikipedia count for most of the catalogue, and a line written as "22 editions"
+ * admitted on 21. The collecting questions keep reading `wikibase:sitelinks`,
+ * which is stored and range-indexed and is never smaller than this count, so
+ * they gather a superset; the rows are then recounted here and held to the line.
+ *
+ * Every item asked about is answered, 0 where no Wikipedia writes about it:
+ * `VALUES` binds each one and the count runs over an `OPTIONAL`.
+ */
+export async function fetchWikipediaEditions(
+  sparql: SparqlFn,
+  qids: string[],
+  before: () => Promise<void> = () => Promise.resolve(),
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const asked = unique(qids.filter(isQid));
+  for (const batch of chunk(asked, WIKIPEDIA_EDITIONS_BATCH)) {
+    await before();
+    const rows = await sparql(`
+      SELECT ?e (COUNT(DISTINCT ?article) AS ?editions) WHERE {
+        VALUES ?e { ${values(batch)} }
+        OPTIONAL {
+          ?article schema:about ?e ; schema:isPartOf ?wiki .
+          ?wiki wikibase:wikiGroup "wikipedia" .
+        }
+      }
+      GROUP BY ?e`, { kind: 'edges', label: `Wikipedia editions of ${batch.length} items` });
+    for (const row of rows) {
+      const qid = extractQid(row.e?.value ?? '');
+      const editions = parseInt(row.editions?.value ?? '', 10);
+      if (isQid(qid) && Number.isFinite(editions)) out.set(qid, editions);
+    }
+  }
+  return out;
+}
+
+/**
+ * The same items with `sitelinks` holding their Wikipedia editions, and those
+ * below `floor` left out: what a collecting question gathered by every site,
+ * held to the line it was meant to draw. `qidOf` names the item a row is about
+ * where that is not its `qid` (a holding's `work`). An item the count did not
+ * answer for keeps nothing it cannot prove and reads 0. `before` runs ahead of
+ * every question, which is where a paced run steps and a cancelled one stops.
+ */
+export async function inWikipediaEditions<T extends { qid: string; sitelinks: number }>(
+  sparql: SparqlFn,
+  items: T[],
+  options?: { floor?: number; before?: () => Promise<void> },
+): Promise<T[]>;
+export async function inWikipediaEditions<T extends { sitelinks: number }>(
+  sparql: SparqlFn,
+  items: T[],
+  options: { floor?: number; before?: () => Promise<void>; qidOf: (item: T) => string },
+): Promise<T[]>;
+export async function inWikipediaEditions<T extends { sitelinks: number; qid?: string }>(
+  sparql: SparqlFn,
+  items: T[],
+  { floor = 0, before, qidOf = (item: T) => item.qid ?? '' }: {
+    floor?: number; before?: () => Promise<void>; qidOf?: (item: T) => string;
+  } = {},
+): Promise<T[]> {
+  if (!items.length) return items;
+  const editions = await fetchWikipediaEditions(sparql, items.map(qidOf), before);
+  for (const item of items) item.sitelinks = editions.get(qidOf(item)) ?? 0;
+  return items.filter((item) => item.sitelinks >= floor);
+}
+
 /** A `VALUES` list of entities. */
 export function values(qids: string[]): string {
   return qids.map((q) => `wd:${q}`).join(' ');

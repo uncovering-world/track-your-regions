@@ -342,7 +342,7 @@ async function collectPool(
   for (let i = 0; i < batches.length; i++) {
     run.phase(`Fetching narrow classes of ${opts.noun.works} ${i + 1}/${batches.length}...`);
     await run.step();
-    add(await fetchClassPool(run.sparql, batches[i]));
+    add(await fetchClassPool(run, batches[i]));
   }
 
   console.log(`${opts.logPrefix} Pool: ${pool.size} works`);
@@ -423,7 +423,7 @@ async function collectLost(
   // A step before each query, as every other stage takes one: the pause and the
   // cancel check land between the two questions, not only before the first.
   await run.step();
-  for (const work of await fetchClassPool(run.sparql, [...tree])) {
+  for (const work of await fetchClassPool(run, [...tree])) {
     if (pool.has(work.qid)) lost.set(work.qid, work.type);
   }
   // The tree travels with the answer: the venue-side read asks it of an
