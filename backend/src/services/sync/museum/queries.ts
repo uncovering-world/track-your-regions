@@ -30,7 +30,10 @@ import {
   bandFilter,
   bandLabel,
   failIfTruncated,
+  doorOf,
   fetchClassTree,
+  inWikipediaEditions,
+  type Door,
   standing,
   values,
   type Band,
@@ -313,7 +316,8 @@ export async function fetchBroadPool(
     failIfTruncated(rows, limit, `pool: ${root.type} (${bandLabel(band)})`);
     for (const work of parsePool(rows, root.type, root.qid)) works.set(work.qid, work);
   }
-  return [...works.values()];
+  run.phase(`Counting the Wikipedia editions of ${works.size} ${root.type}s...`);
+  return inWikipediaEditions(run.sparql, [...works.values()], { floor: POOL_MIN_SITELINKS, before: run.step });
 }
 
 /**
@@ -321,17 +325,18 @@ export async function fetchBroadPool(
  * Losing a work on the way in is worse than deciding later that it has no placeable venue.
  */
 export async function fetchClassPool(
-  sparql: SparqlFn,
+  door: Door,
   classQids: string[],
   limit = POOL_LIMIT,
 ): Promise<PoolWork[]> {
   if (!classQids.length) return [];
+  const { sparql, step } = doorOf(door);
   const rows = await sparql(
     classPoolQuery(classQids, limit),
     { kind: 'pool', label: `pool: ${classQids.length} narrow classes` },
   );
   failIfTruncated(rows, limit, `pool: ${classQids.length} narrow classes`);
-  return parsePool(rows, 'artwork', null);
+  return inWikipediaEditions(sparql, parsePool(rows, 'artwork', null), { floor: POOL_MIN_SITELINKS, before: step });
 }
 
 // =============================================================================
@@ -437,11 +442,13 @@ export interface EntityEdges {
 }
 
 export async function fetchEntityDetails(
-  sparql: SparqlFn,
+  door: Door,
   qids: string[],
+  { recount = true }: { recount?: boolean } = {},
 ): Promise<Map<string, EntityDetails>> {
   const out = new Map<string, EntityDetails>();
   if (!qids.length) return out;
+  const { sparql, step } = doorOf(door);
 
   const rows = await sparql(`
     SELECT ?e ?eLabel ?eDescription ?coord ?dissolved ?img ?site ?article ?sl ?countryLabel WHERE {
@@ -476,6 +483,10 @@ export async function fetchEntityDetails(
       dissolved: row.dissolved?.value || null,
     });
   }
+  // A venue's own fame decides folds and, where it is a row of its own, its
+  // line: the same count the works are held to (ADR-0082). A caller that reads
+  // no fame — the picture repair — says so and is not asked the second question.
+  if (recount) await inWikipediaEditions(sparql, [...out.values()], { before: step });
   return out;
 }
 

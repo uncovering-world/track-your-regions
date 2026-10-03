@@ -12,6 +12,7 @@ import { belowLineReason } from '../sourceLine.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import type { CacheDescriptor } from '../wikidataCache.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const ref = (qid: string) => ({ value: `${ENTITY}${qid}` });
@@ -84,6 +85,9 @@ function doorTo(world: World, asked: CacheDescriptor['kind'][] = []): QueryRunne
   const sparql = (sent: string, descriptor?: CacheDescriptor): Promise<SparqlBinding[]> => {
     if (descriptor) asked.push(descriptor.kind);
     const query = sent.trimStart();
+    if (isWikipediaEditionsQuery(query)) {
+      return Promise.resolve(wikipediaEditionsRows(query, (q) => world.entities.find((e) => e.qid === q)?.sitelinks));
+    }
     const tree = query.match(/wdt:P279\* wd:(Q\d+)/);
     if (query.includes('wdt:P279 ?p')) return Promise.resolve(subclassesOf(world, query));
     if (tree) return Promise.resolve(treeOf(world, tree[1]));
@@ -139,7 +143,7 @@ describe('collectPublicArt', () => {
     // its number; one that was never in is not a refusal and nothing is said.
     expect(filtered).toEqual([{
       externalId: 'Q4', name: 'Fountain of Cybele',
-      reason: `${STAY_SITELINKS - 1} sitelinks: below the world tier's line (${ENTER_SITELINKS} to enter, ${STAY_SITELINKS} to stay)`,
+      reason: `${STAY_SITELINKS - 1} Wikipedia editions: below the world tier's line (${ENTER_SITELINKS} to enter, ${STAY_SITELINKS} to stay)`,
     }]);
     // And it is the catalogue's one sentence for that verdict, not a copy of it
     // that happens to read the same (#884): this kind asks `lineStanding` and
@@ -328,7 +332,7 @@ describe('collectPublicArt', () => {
     expect(items).toEqual([]);
     expect(filtered).toEqual([{
       externalId: 'Q2736564', name: 'Fountain of Cybele',
-      reason: `14 sitelinks: below the world tier's line (${ENTER_SITELINKS} to enter, ${STAY_SITELINKS} to stay)`,
+      reason: `14 Wikipedia editions: below the world tier's line (${ENTER_SITELINKS} to enter, ${STAY_SITELINKS} to stay)`,
     }]);
   });
 

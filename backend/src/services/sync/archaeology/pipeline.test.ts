@@ -721,7 +721,7 @@ describe('collectArchaeology', () => {
     // And the museum the band find had carried has fallen by name.
     expect(item(out, 'Q1135392')).toBeUndefined();
     expect(reason(out, 'Q1135392')).toBe(
-      "15 sitelinks: below the world tier's line (22 to enter, 18 to stay)",
+      "15 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)",
     );
   });
 
@@ -938,7 +938,7 @@ describe('collectArchaeology', () => {
     const out = await collect(fallen, { admitted: ['Q19675'] });
     expect(item(out, 'Q19675')).toBeUndefined();
     expect(reason(out, 'Q19675'))
-      .toBe("17 sitelinks: below the world tier's line (22 to enter, 18 to stay)");
+      .toBe("17 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)");
 
     // The same museum at the same count that the source never admitted is
     // simply out: no rule ran on it, so no refusal is reported.

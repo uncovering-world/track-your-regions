@@ -15,11 +15,13 @@ import {
 } from './queries.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+import { answeringWith } from '../wikipediaEditionsFixture.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const ref = (qid: string) => ({ value: `${ENTITY}${qid}` });
 
-const answer = (rows: SparqlBinding[]): SparqlFn => () => Promise.resolve(rows);
+/** One canned answer, and the recount every fetcher now asks answered from its own counts. */
+const answer = (rows: SparqlBinding[]): SparqlFn => answeringWith(rows);
 
 describe('fetchClassPool', () => {
   it('makes one entity of the rows an answer repeats, the first row fixing its fields', async () => {

@@ -9,6 +9,7 @@
  * works-first kind shares. Both need the same works and venues, so one fixture serves both.
  */
 
+import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 import { vi } from 'vitest';
 import { MUSEUM_BROAD_ROOTS, MUSEUM_WHOLE_ROOTS, MUSEUM_PINNED_CLASSES } from './worksCollector.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
@@ -550,6 +551,11 @@ function detailByIdRows(qids: string[]): SparqlBinding[] {
 /** Answers on the shape of the query, so the pipeline is free to reorder its calls. */
 export function makeSparql() {
   return vi.fn(async (query: string): Promise<SparqlBinding[]> => {
+    // The recount every pool and every venue is held to (ADR-0082): this
+    // world's own counts, so the lines read as they were written against.
+    if (isWikipediaEditionsQuery(query)) {
+      return wikipediaEditionsRows(query, (q) => WORKS[q]?.sitelinks ?? ENTITIES[q]?.sitelinks ?? 10);
+    }
     const qids = askedFor(query);
     // The lost tree, asked whole (#868). No other tree is asked this way here: the museum
     // classes are injected, and the artwork classes walk hop by hop below.

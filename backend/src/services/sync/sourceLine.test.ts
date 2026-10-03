@@ -117,6 +117,6 @@ describe('lineStanding', () => {
 describe('belowLineReason', () => {
   it('gives every kind the same sentence, with both numbers in it', () => {
     expect(belowLineReason(17, { enterSitelinks: 22, staySitelinks: 18 }))
-      .toBe("17 sitelinks: below the world tier's line (22 to enter, 18 to stay)");
+      .toBe("17 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)");
   });
 });

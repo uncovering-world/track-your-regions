@@ -20,7 +20,10 @@ import {
   HINT_PREFIX,
   bandFilter,
   bandLabel,
+  doorOf,
   failIfTruncated,
+  inWikipediaEditions,
+  type Door,
   values,
   type Band,
   type QueryRunner,
@@ -180,13 +183,14 @@ export async function fetchBroadPool(
     failIfTruncated(rows, limit, `pool: ${root.label} (${bandLabel(band)})`);
     for (const entity of parsePool(rows)) entities.set(entity.qid, entity);
   }
-  return [...entities.values()];
+  run.phase(`Counting the Wikipedia editions of ${entities.size} ${root.label}s...`);
+  return inWikipediaEditions(run.sparql, [...entities.values()], { floor: POOL_MIN_SITELINKS, before: run.step });
 }
 
 /**
  * The same facts the pool carries, for entities asked for by id: the rows the
  * source admits that no class question named this run, so the rule can
- * refuse them with a reason of their own — "14 sitelinks: below the line",
+ * refuse them with a reason of their own — "14 Wikipedia editions: below the line",
  * "no public-art class", "no coordinates of its own" — rather than leave
  * them to the sweep. No sitelink floor, no class and no coordinate required,
  * since the whole point is that one of them no longer holds.
@@ -201,34 +205,37 @@ export async function fetchBroadPool(
  * looking after admitted rows.
  */
 export async function fetchEntitiesByIds(
-  sparql: SparqlFn,
+  door: Door,
   qids: string[],
   about = 'admitted rows the pool did not name',
 ): Promise<PoolEntity[]> {
   const asked = qids.filter(isQid);
   if (!asked.length) return [];
+  const { sparql, step } = doorOf(door);
   const rows = await sparql(`
     SELECT ${POOL_COLUMNS} WHERE {
       VALUES ?e { ${values(asked)} }
       ?e wikibase:sitelinks ?sl .
       OPTIONAL { ?e wdt:P625 ?coord }${POOL_DETAILS}
     }`, { kind: 'pool', label: `${about}: ${asked.length}` });
-  return parsePool(rows, { placeless: true });
+  // No floor: these rows are asked about because the line may refuse them.
+  return inWikipediaEditions(sparql, parsePool(rows, { placeless: true }), { before: step });
 }
 
 /** Entities of a batch of narrow classes, taken whole. */
 export async function fetchClassPool(
-  sparql: SparqlFn,
+  door: Door,
   classQids: string[],
   limit = POOL_LIMIT,
 ): Promise<PoolEntity[]> {
   if (!classQids.length) return [];
+  const { sparql, step } = doorOf(door);
   const rows = await sparql(
     classPoolQuery(classQids, limit),
     { kind: 'pool', label: `pool: ${classQids.length} narrow classes` },
   );
   failIfTruncated(rows, limit, `pool: ${classQids.length} narrow classes`);
-  return parsePool(rows);
+  return inWikipediaEditions(sparql, parsePool(rows), { floor: POOL_MIN_SITELINKS, before: step });
 }
 
 // =============================================================================

@@ -13,6 +13,7 @@ import { fetchClassPool, fetchEntityEdges, fetchMuseumParts, fetchVenueStatement
 import { standing } from '../wikidataQueries.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+import { answeringWith } from '../wikipediaEditionsFixture.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 /** How the query service spells Wikidata's *unknown value*: a skolem node, not an entity. */
@@ -38,8 +39,9 @@ function row(
   return binding;
 }
 
+/** One canned answer, and the recount every fetcher now asks answered from its own counts. */
 function answering(rows: SparqlBinding[]): SparqlFn {
-  return async () => rows;
+  return answeringWith(rows);
 }
 
 describe('the pool parse', () => {

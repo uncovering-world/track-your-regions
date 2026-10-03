@@ -70,6 +70,7 @@
  * to ask what the fold filter does with the other answers a nature can give.
  */
 
+import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 import { LOST_WORK_ROOT } from '../museum/worksCollector.js';
 import { POOL_MIN_SITELINKS } from '../publicArt/queries.js';
 import {
@@ -799,6 +800,11 @@ const edgeRows = (w: World, asked: string[]): SparqlBinding[] =>
 
 export function answer(w: World, sent: string): SparqlBinding[] {
   const query = sent.trimStart();
+  // The recount every pool, find and museum is held to (ADR-0082): this
+  // world's own counts, so the lines read as they were written against.
+  if (isWikipediaEditionsQuery(query)) {
+    return wikipediaEditionsRows(query, (q) => w.finds[q]?.sitelinks ?? w.museums[q]?.sitelinks ?? w.sites[q]?.sitelinks);
+  }
   const asked = askedFor(query);
   // Which door candidates are organisations (#798): none in this world counts
   // a museum among its parts. Before the tree arm, whose pattern the question
@@ -824,12 +830,6 @@ export function answer(w: World, sent: string): SparqlBinding[] {
   if (query.includes('SELECT ?e ?cls ?parent ?loc')) return edgeRows(w, asked);
   if (query.includes('?dissolved')) return detailRows(w, asked);
   if (query.includes('SELECT ?w')) return findPoolRows(w, query, asked);
-  // The second entrance's count (#895): one number per item, nothing else.
-  if (/SELECT \?e \?sl WHERE/.test(query)) {
-    return poolEntities(w)
-      .filter(([qid]) => asked.includes(qid))
-      .map(([qid, e]) => ({ e: uri(qid), sl: { value: String(e.sitelinks) } }));
-  }
   return entityPoolRows(w, query, asked);
 }
 

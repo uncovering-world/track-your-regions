@@ -144,7 +144,7 @@ async function collectPool(
   for (let i = 0; i < batches.length; i++) {
     run.phase(`Fetching the narrow site classes (batch ${i + 1}/${batches.length})...`);
     await run.step();
-    for (const entity of await fetchClassPool(run.sparql, batches[i])) {
+    for (const entity of await fetchClassPool(run, batches[i])) {
       if (!pool.has(entity.qid)) pool.set(entity.qid, entity);
     }
   }
@@ -159,7 +159,7 @@ async function collectPool(
     );
     await run.step();
     const about = 'admitted sites the pool did not name';
-    for (const entity of await fetchEntitiesByIds(run.sparql, missingBatches[i], about)) {
+    for (const entity of await fetchEntitiesByIds(run, missingBatches[i], about)) {
       pool.set(entity.qid, entity);
     }
   }

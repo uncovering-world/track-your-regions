@@ -79,7 +79,7 @@ async function collectPool(
   for (let i = 0; i < batches.length; i++) {
     run.phase(`Fetching the narrow worship classes (batch ${i + 1}/${batches.length})...`);
     await run.step();
-    for (const entity of await fetchClassPool(run.sparql, batches[i])) {
+    for (const entity of await fetchClassPool(run, batches[i])) {
       if (!pool.has(entity.qid)) pool.set(entity.qid, entity);
     }
   }
@@ -92,7 +92,7 @@ async function collectPool(
   for (let i = 0; i < missingBatches.length; i++) {
     run.phase(`Asking after admitted rows the pool did not name (batch ${i + 1}/${missingBatches.length})...`);
     await run.step();
-    for (const entity of await fetchEntitiesByIds(run.sparql, missingBatches[i])) {
+    for (const entity of await fetchEntitiesByIds(run, missingBatches[i])) {
       pool.set(entity.qid, entity);
     }
   }

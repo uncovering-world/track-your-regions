@@ -215,7 +215,7 @@ async function walk(
     for (let i = 0; i < batches.length; i++) {
       run.phase(`Fetching venue facts, hop ${hop}, ${i + 1}/${batches.length}...`);
       await run.step();
-      for (const [qid, row] of await fetchEntityDetails(run.sparql, batches[i])) {
+      for (const [qid, row] of await fetchEntityDetails(run, batches[i])) {
         details.set(qid, row);
       }
       await run.step();

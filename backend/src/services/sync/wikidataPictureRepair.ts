@@ -50,7 +50,7 @@ async function fetchWikidataImages(
     if (progress.cancel) throw new Error('Sync cancelled');
     progress.statusMessage =
       `Fetching image URLs from Wikidata (${Math.min(i + ENTITY_BATCH, qids.length)}/${qids.length})...`;
-    const details = await fetchEntityDetails(sparql, qids.slice(i, i + ENTITY_BATCH));
+    const details = await fetchEntityDetails(sparql, qids.slice(i, i + ENTITY_BATCH), { recount: false });
     for (const [qid, row] of details) {
       if (row.imageUrl) images.set(qid, row.imageUrl);
     }

@@ -365,7 +365,7 @@ describe('the line, asked last', () => {
     });
     expect(verdict.pass).toBe(false);
     if (verdict.pass || 'out' in verdict) throw new Error('a fallen row is refused by name');
-    expect(verdict.reason).toBe('16 sitelinks: below the world tier\'s line (22 to enter, 18 to stay)');
+    expect(verdict.reason).toBe('16 Wikipedia editions: below the world tier\'s line (22 to enter, 18 to stay)');
   });
 
   it('keeps an admitted row inside the band', () => {

@@ -210,7 +210,7 @@ export async function readMembers(
     run.phase(`Asking after the museums the categories name (batch ${i + 1}/${batches.length})...`);
     await run.step();
     for (const entity of await fetchEntitiesByIds(
-      run.sparql, batches[i], 'museums the categories name',
+      run, batches[i], 'museums the categories name',
     )) {
       fetched.add(entity.qid);
       if (entity.articleUrl) pool.set(entity.qid, entity);

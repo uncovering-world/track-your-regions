@@ -18,6 +18,7 @@ import { buildArchaeologyTrees, OSM_KEEP_WKT, SITE_ROOT } from './classes.js';
 import { collectSitesByFame, OsmAnswerFloorError, type SiteEntrance } from './sites.js';
 import type { KeepWkt, OsmDigs, OsmObject } from '../osm/types.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 
 const uri = (qid: string) => ({ value: `http://www.wikidata.org/entity/${qid}` });
 const LINE = { enterSitelinks: 22, staySitelinks: 18 };
@@ -101,13 +102,8 @@ function door(query: string): SparqlBinding[] {
   if (/wdt:P279\* wd:/.test(query)) throw new Error('the trees are fetched elsewhere');
   if (query.includes('?whc')) return factRows(query);
 
-  // The sitelinks question of the second entrance: a count per item, nothing else.
-  if (/SELECT \?e \?sl WHERE/.test(query)) {
-    return [...query.matchAll(/wd:(Q\d+)/g)]
-      .map((m) => m[1])
-      .filter((qid) => qid in POOL)
-      .map((qid) => ({ e: uri(qid), sl: { value: String(POOL[qid].sitelinks) } }));
-  }
+  // The editions count every line reads, the second entrance's included (ADR-0082).
+  if (isWikipediaEditionsQuery(query)) return wikipediaEditionsRows(query, (qid) => POOL[qid]?.sitelinks);
 
   // A batch asked for by id: whatever the pool holds under those ids, whatever
   // their classes — a question by id vouches for nothing but the id.
@@ -568,12 +564,13 @@ describe('the OpenStreetMap entrance', () => {
     const counting = { ...run, sparql: async (query: string) => { sent.push(query); return door(query); } };
     const answer = await collectSitesByFame(counting, TREES, new Set<string>(), LINE, osmReader([], MAPPED), entrance().doors);
 
-    const sitelinks = sent.filter((q) => /SELECT \?e \?sl WHERE/.test(q));
-    expect(sitelinks).toHaveLength(1);
-    expect([...sitelinks[0].matchAll(/wd:(Q\d+)/g)].map((m) => m[1]).sort())
-      .toEqual(['Q184427', 'Q207917', 'Q3543', 'Q43347', 'Q56072866']);
+    // The entrance's count is one of the editions questions; the rest recount
+    // the pools the run fetched (ADR-0082).
+    const itemsOf = (q: string) => [...q.matchAll(/wd:(Q\d+)/g)].map((m) => m[1]).sort();
+    const counts = sent.filter(isWikipediaEditionsQuery).map(itemsOf);
+    expect(counts).toContainEqual(['Q184427', 'Q207917', 'Q3543', 'Q43347', 'Q56072866']);
     // Gerasa at 12 sitelinks is below the pool's floor: never asked about, never fetched.
-    const byId = sent.filter((q) => /VALUES \?e \{/.test(q) && !/\?sl WHERE/.test(q) && !q.includes('?whc'));
+    const byId = sent.filter((q) => /VALUES \?e \{/.test(q) && !isWikipediaEditionsQuery(q) && !q.includes('?whc'));
     expect(byId.flatMap((q) => [...q.matchAll(/wd:(Q\d+)/g)].map((m) => m[1])).sort())
       .toEqual(['Q184427', 'Q207917', 'Q3543', 'Q43347']);
     expect(answer.fetched.has('Q56072866')).toBe(false);
