@@ -79,6 +79,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // A spec's ceiling, above the three seconds one wait is given
+    // (`asyncUtilTimeout`, src/test/setup.ts): a spec that waits for a dialog to
+    // fill and then for its submit spends several of those waits, and under the
+    // full unit lane the default five seconds cut them off mid-flight (#1239).
+    // A spec that truly hangs still fails, at fifteen.
+    testTimeout: 15_000,
     // perf/ holds the performance lane's runner; its budget evaluator is the
     // one piece of it worth a unit test, and it is plain ESM. tests/ holds the
     // same for the E2E lane: the Playwright specs there are `*.spec.ts` and

@@ -208,13 +208,13 @@ describe('a draft kept across a close', () => {
     const { closeAndReopen } = renderKept(1);
 
     fireEvent.change(nameBox(), { target: { value: 'Minaret of Jam' } });
-    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(1));
     closeAndReopen();
 
     // Replaced by clearing it first, which is what lets auto-fill run again.
     fireEvent.change(nameBox(), { target: { value: '' } });
     fireEvent.change(nameBox(), { target: { value: 'Buddhas of Bamiyan' } });
-    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(2));
     fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
