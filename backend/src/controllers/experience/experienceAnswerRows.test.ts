@@ -49,7 +49,7 @@ describe('treasureOf', () => {
   it('serves a stored credit and find spot by their declared keys only', () => {
     const work = treasureOf({
       id: 3452, external_id: 'Q1126741', name: 'Mask of Agamemnon', treasure_type: 'funerary mask', artists: [],
-      artists_curated: false, year: -1600, curated_fields: [], venue_count: 1, image_url: null, sitelinks_count: 40,
+      artists_curated: false, year: -1600, curated_fields: [], venue_count: 1, venues: null, image_url: null, sitelinks_count: 40,
       is_iconic: true,
       image_credit: { author: 'A photographer', license: 'CC BY 2.0', licenseUrl: null, detailsUrl: null, fetchedAt: '2026-09-13' },
       found_at: { qid: 'Q131594', label: 'Mycenae', source: 'P189' },

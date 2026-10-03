@@ -27,6 +27,7 @@ import {
   hidePendingSql,
   hideRefusedSql,
   linkedForReaderSql,
+  venuesSql,
 } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
@@ -49,7 +50,7 @@ function makeRes() {
 function workRow(over: Record<string, unknown>): Record<string, unknown> {
   return {
     treasure_type: 'painting', artists: [], artists_curated: false, year: null, curated_fields: [], venue_count: 1,
-    image_url: null, sitelinks_count: 0, is_iconic: false, image_credit: null, found_at: null, found_at_site: null,
+    venues: null, image_url: null, sitelinks_count: 0, is_iconic: false, image_credit: null, found_at: null, found_at_site: null,
     ...over,
   };
 }
@@ -96,6 +97,27 @@ describe('getExperienceTreasures gate', () => {
     expect(res.json.mock.calls[0][0].treasures[0]).toMatchObject({
       curated_fields: ['name'], venue_count: 11,
     });
+  });
+
+  it('names the museums a work hangs in only to a caller who may correct it', async () => {
+    // The list names venues whatever their state — a refused museum, an arrival
+    // nobody has passed — which the correction dialog needs and a reader must
+    // not be served. So it rides on the boolean that widens this read's gate,
+    // and a reader's row carries the count alone.
+    const venues = [
+      { id: 6214, name: 'Capitoline Museums', kind: 'Art Museums', externalId: 'Q333906', onShow: true },
+      { id: 14546, name: 'Capitoline Museums', kind: 'Archaeology', externalId: 'Q333906', onShow: false },
+    ];
+    mockedQuery.mockResolvedValueOnce({
+      rows: [workRow({ id: 3447, external_id: 'Q1187500', name: 'Boy with Thorn', venue_count: 2, venues })],
+    });
+    const res = makeRes();
+
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), { params: { id: '6214' } } as never, res as never);
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql).toContain(`CASE WHEN $2::boolean THEN ${venuesSql('t')} END AS venues`);
+    expect(res.json.mock.calls[0][0].treasures[0].venues).toEqual(venues);
   });
 
   it('carries where a find was dug up, which is half of what a find is', async () => {

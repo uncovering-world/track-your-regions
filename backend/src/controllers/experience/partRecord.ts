@@ -60,7 +60,7 @@
  * skip a marked one.
  */
 
-import { venueCountSql } from '../../db/readerPredicates.js';
+import { venueCountSql, venuesSql } from '../../db/readerPredicates.js';
 import { tidyLabelSql } from '../../services/sync/labelFold.js';
 
 /**
@@ -122,7 +122,8 @@ export function recordedTreasureSql(
   return `SELECT t.id, t.name, t.artists, t.curated_fields ? 'artists' AS artists_curated,
                  t.year, t.image_url, t.treasure_type,
                  t.curated_fields, t.metadata->'imageCredit' AS image_credit,
-                 ${venueCountSql('t')} AS venue_count
+                 ${venueCountSql('t')} AS venue_count,
+                 ${venuesSql('t')} AS venues
             FROM treasures t
             JOIN experience_treasures et ON et.treasure_id = t.id
                                         AND et.experience_id = ${experienceId}

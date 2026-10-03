@@ -33,6 +33,15 @@ export const ImageCredit = z.strictObject({
 }).describe('Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043).');
 export type ImageCredit = z.infer<typeof ImageCredit>;
 
+export const WorkVenue = z.strictObject({
+  id: z.number().int(),
+  name: z.string(),
+  kind: z.string().nullable().describe('The kind the museum is listed under.'),
+  externalId: z.string().describe("The source's own id for the place. Two venues with one id are one place listed under two kinds (#755)."),
+  onShow: z.boolean().describe('Whether readers are shown the work in this museum today.'),
+}).describe('A museum that hangs a work, as a curator correcting the work is told of it.');
+export type WorkVenue = z.infer<typeof WorkVenue>;
+
 /**
  * The keys both location reads send, which is what a screen reads when it does
  * not care which read the point came from.
@@ -261,6 +270,8 @@ export const ExperienceTreasure = z.strictObject({
   artists_curated: z.boolean().describe('Whether a curator has vouched for the order the makers are stored in (ADR-0040).'),
   curated_fields: z.array(z.string()).describe('The columns a curator has claimed on the work.'),
   venue_count: z.number().int().describe('How many museums hang this work (ADR-0025 decision 2).'),
+  venues: z.array(WorkVenue).nullable()
+    .describe('Those museums, named, for a caller who may correct the work. Null for a reader.'),
   year: z.number().int().nullable(),
   image_url: z.string().nullable(),
   image_credit: ImageCredit.nullable(),

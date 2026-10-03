@@ -26,7 +26,9 @@ import { pool } from '../../db/index.js';
 import { rowKindJoinSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
-import { lifecycleSelectSql, offeredLinkSql, offeredLocationSql, venueCountSql } from '../../db/readerPredicates.js';
+import {
+  lifecycleSelectSql, linkedForReaderSql, offeredLinkSql, offeredLocationSql, publishedContentSql, venueCountSql, venuesSql,
+} from '../../db/readerPredicates.js';
 import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
@@ -100,6 +102,9 @@ export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
                         -- this work, and how many museums the correction reaches.
                         'workCuratedFields', work.curated_fields,
                         'venueCount', work.venue_count,
+                        -- Named, since a count of museums is a claim the dialog
+                        -- cannot be checked against (venuesSql).
+                        'venues', work.venues,
                         'treasureType', work.treasure_type,
                         -- The row's name *now*, beside the record's. The record
                         -- names the part as the run saw it (ADR-0026 decision 4)
@@ -231,7 +236,9 @@ export async function queryContents(
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'contents' AS kind,
            points.total AS pending_locations,
+           points.moved AS pending_moved_locations,
            works.total AS pending_treasures,
+           works.on_show AS pending_treasures_on_show,
            points.items AS pending_points,
            works.items AS pending_works,
            NULL::jsonb AS proposed
@@ -239,17 +246,33 @@ export async function queryContents(
     ${rowKindJoinSql('e', 'mk', 'kd')}
     CROSS JOIN LATERAL (
       SELECT COUNT(*)::int AS total,
+             -- Counted whole, like the total and for its reason: the list under
+             -- it is capped, and the card's sentence is about all of them.
+             COUNT(*) FILTER (WHERE replaces IS NOT NULL)::int AS moved,
              COALESCE(jsonb_agg(jsonb_build_object(
                'id', id,
                'name', name,
                'externalRef', external_ref,
                'latitude', lat,
                'longitude', lon,
-               'curatedFields', curated_fields
+               'curatedFields', curated_fields,
+               'replaces', replaces
              ) ORDER BY ordinal) FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
       FROM (
         SELECT el.id, el.name, el.external_ref, el.ordinal, el.curated_fields,
                ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
+               -- The stored point this one replaces, where the source moved a
+               -- point rather than added one: the run keeps the old pin until
+               -- the arrival is published and records the pairing on the
+               -- arrival (locationWriter.ts). Without it the card calls a pin
+               -- that moved 158 m a new point -- Ephesus, run 146. Only a pin
+               -- still offered is replaced: one a curator has since declared
+               -- gone is on no map, so the arrival is the object's point and
+               -- the count of places (objectContextSelectSql) reads it so too.
+               (SELECT jsonb_build_object('latitude', ST_Y(old.location), 'longitude', ST_X(old.location))
+                  FROM experience_locations old
+                 WHERE old.id = el.withdrawal_deferred_for_location_id
+                   AND ${offeredLocationSql('old')}) AS replaces,
                row_number() OVER (ORDER BY el.ordinal) AS rn
         -- The shared fragment rather than the predicate spelled out, because
         -- contentsWaitingSql composes it and the two are written to count the same
@@ -263,6 +286,7 @@ export async function queryContents(
     ) points
     CROSS JOIN LATERAL (
       SELECT COUNT(*)::int AS total,
+             COUNT(*) FILTER (WHERE on_show_elsewhere)::int AS on_show,
              COALESCE(jsonb_agg(jsonb_build_object(
                'id', id,
                'name', name,
@@ -278,6 +302,7 @@ export async function queryContents(
                -- dialog it opens shows both.
                'curatedFields', curated_fields,
                'venueCount', venue_count,
+               'venues', venues,
                'iconic', is_iconic,
                -- The source's own id, so the row can open the work where it came
                -- from and at its article: a curator deciding about twelve unread
@@ -295,6 +320,17 @@ export async function queryContents(
                t.treasure_type, t.curated_fields,
                t.metadata->'imageCredit' AS image_credit,
                ${venueCountSql('t')} AS venue_count,
+               ${venuesSql('t')} AS venues,
+               -- Whether readers already see the work in another museum: then
+               -- the unread row is a link, new to this list and not to the
+               -- catalogue, and the card must not call it a new work. The
+               -- same three questions venuesSql's onShow asks, as a count
+               -- needs them -- over every row, not the capped list.
+               ${publishedContentSql('t')} AND EXISTS (
+                 SELECT 1 FROM experience_treasures shown
+                   JOIN experiences shown_in ON shown_in.id = shown.experience_id
+                  WHERE shown.treasure_id = t.id AND shown.experience_id <> e.id
+                    AND ${linkedForReaderSql('shown_in', 'shown')}) AS on_show_elsewhere,
                row_number() OVER (ORDER BY t.sitelinks_count DESC NULLS LAST, t.id) AS rn
         FROM experience_treasures et
         JOIN treasures t ON t.id = et.treasure_id

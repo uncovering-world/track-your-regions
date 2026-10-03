@@ -48,7 +48,7 @@
  * than reusing one of the first three.
  */
 
-import { placeAdmittedSql, placeOfferedSql, placeVisibleSql } from './membership.js';
+import { placeAdmittedSql, placeOfferedSql, placeVisibleSql, rowKindJoinSql } from './membership.js';
 
 /**
  * Hides `lost` objects. `alias` is the `experiences` alias in the query.
@@ -470,6 +470,47 @@ export function offeredLinkSql(alias = 'et'): string {
  */
 export function venueCountSql(alias = 't'): string {
   return `(SELECT COUNT(*)::int FROM experience_treasures venues
+            WHERE venues.treasure_id = ${alias}.id AND ${offeredLinkSql('venues')})`;
+}
+
+/**
+ * Which museums hang this work — the rows `venueCountSql` counts, named.
+ *
+ * A count says how far a correction reaches and names nothing a curator can
+ * check: "this work hangs in 2 museums" above a form is a claim about two rows
+ * the screen does not show. So the curator's reads carry each one — its id,
+ * its name, the kind it is listed under, the source's own id for the place,
+ * and whether readers are shown the work there today.
+ *
+ * `externalId` is what lets a screen tell two museums from one place listed
+ * twice: until a place several kinds admit is one row (#755), the Capitoline
+ * Museums stand as an Art Museums row and an Archaeology row with one
+ * Wikidata item between them, and a work linked to both hangs in one museum.
+ *
+ * `onShow` is the reader's question — the venue is offered, the link has been
+ * passed and the work itself has — which the count deliberately does not ask.
+ * It is what tells an unread link to a work nobody has seen from an unread
+ * link to a work readers already see in another list.
+ *
+ * **For a curator's read only.** The list names venues whatever their state —
+ * a refused museum, an arrival nobody has passed — which is right on a screen
+ * that corrects the row all of them carry and a leak on one a reader is
+ * served. A reader-facing read carries the count, or this behind the boolean
+ * that widens its gate.
+ *
+ * `alias` is the `treasures` alias whose row is being asked about.
+ */
+export function venuesSql(alias = 't'): string {
+  return `(SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                    'id', venue.id,
+                    'name', venue.name,
+                    'kind', venue_kind.name,
+                    'externalId', venue.external_id,
+                    'onShow', ${linkedForReaderSql('venue', 'venues')} AND ${publishedContentSql(alias)}
+                  ) ORDER BY venue.name, venue.id), '[]'::jsonb)
+             FROM experience_treasures venues
+             JOIN experiences venue ON venue.id = venues.experience_id
+             ${rowKindJoinSql('venue', 'venue_membership', 'venue_kind')}
             WHERE venues.treasure_id = ${alias}.id AND ${offeredLinkSql('venues')})`;
 }
 

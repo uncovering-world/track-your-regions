@@ -53,7 +53,9 @@ export interface QueueRow {
   counted_works_total?: number | null;
   sync_log_id?: number | null;
   pending_locations?: number;
+  pending_moved_locations?: number;
   pending_treasures?: number;
+  pending_treasures_on_show?: number;
   pending_points?: PendingPoint[];
   pending_works?: PendingWork[];
   curation_state?: string;
@@ -119,6 +121,7 @@ function heldPartOf(part: StoredPart): HeldPart {
     artistsCurated: part.artistsCurated,
     workCuratedFields: part.workCuratedFields,
     venueCount: part.venueCount,
+    venues: part.venues,
     year: part.year,
     imageUrl: part.imageUrl,
     imageCredit: part.imageCredit,
@@ -161,6 +164,8 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     counted_works_total: row.counted_works_total,
     sync_log_id: row.sync_log_id,
     pending_locations: row.pending_locations,
+    pending_moved_locations: row.pending_moved_locations,
+    pending_treasures_on_show: row.pending_treasures_on_show,
     pending_treasures: row.pending_treasures,
     pending_points: row.pending_points,
     pending_works: row.pending_works,

@@ -19577,6 +19577,20 @@
             "maximum": 9007199254740991,
             "description": "How many museums hang this work (ADR-0025 decision 2)."
           },
+          "venues": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WorkVenue"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Those museums, named, for a caller who may correct the work. Null for a reader."
+          },
           "year": {
             "anyOf": [
               {
@@ -19658,6 +19672,7 @@
           "artists_curated",
           "curated_fields",
           "venue_count",
+          "venues",
           "year",
           "image_url",
           "image_credit",
@@ -20813,6 +20828,20 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "venues": {
+            "description": "Those museums, named.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WorkVenue"
+                }
               },
               {
                 "type": "null"
@@ -23394,6 +23423,30 @@
             "items": {
               "type": "string"
             }
+          },
+          "replaces": {
+            "description": "The stored point this one replaces, where the source moved a point rather than added one (ADR-0025 decision 5).",
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "latitude": {
+                    "type": "number"
+                  },
+                  "longitude": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "latitude",
+                  "longitude"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -23531,6 +23584,20 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "venues": {
+            "description": "The museums that hang the work, named.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WorkVenue"
+                }
               },
               {
                 "type": "null"
@@ -26465,6 +26532,18 @@
             ]
           },
           "pending_locations": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pending_moved_locations": {
+            "description": "How many of the unread points replace a stored one: a point that moved, not a place that arrived.",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pending_treasures_on_show": {
+            "description": "How many of the unread works readers already see in another museum.",
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
@@ -29713,6 +29792,43 @@
         ],
         "additionalProperties": false,
         "description": "What a curator's correction to a work did."
+      },
+      "WorkVenue": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "The kind the museum is listed under.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "externalId": {
+            "type": "string",
+            "description": "The source's own id for the place. Two venues with one id are one place listed under two kinds (#755)."
+          },
+          "onShow": {
+            "type": "boolean",
+            "description": "Whether readers are shown the work in this museum today."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "externalId",
+          "onShow"
+        ],
+        "additionalProperties": false,
+        "description": "A museum that hangs a work, as a curator correcting the work is told of it."
       },
       "WorldPointsResponse": {
         "type": "object",

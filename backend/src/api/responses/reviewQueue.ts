@@ -21,7 +21,7 @@ import {
   QUEUE_ITEM_KINDS, QUEUE_KINDS, REVIEW_ANSWERS, WAITING_SUBS,
 } from '../../controllers/experience/reviewQueueVocabulary.js';
 import { ContentKind, PlacementFailure } from './curation.js';
-import { ImageCredit } from './experiences.js';
+import { ImageCredit, WorkVenue } from './experiences.js';
 
 /** A timestamp as the wire carries it: an ISO string, from a `Date` or from PostgreSQL's JSON. */
 const timestamp = z.iso.datetime({ offset: true });
@@ -101,6 +101,7 @@ export const HeldPart = z.strictObject({
   artistsCurated: z.boolean().nullable().optional(),
   workCuratedFields: z.array(z.string()).nullable().optional().describe('The fields a curator has claimed on the stored work.'),
   venueCount: z.number().int().nullable().optional().describe('How many museums hang the work.'),
+  venues: z.array(WorkVenue).nullable().optional().describe('Those museums, named.'),
   year: z.number().int().nullable().optional(),
   imageUrl: z.string().nullable().optional(),
   imageCredit: ImageCredit.nullable().optional(),
@@ -130,6 +131,8 @@ export const PendingPoint = z.strictObject({
   latitude: z.number().nullable(),
   longitude: z.number().nullable(),
   curatedFields: z.array(z.string()).optional(),
+  replaces: z.strictObject({ latitude: z.number(), longitude: z.number() }).nullable().optional()
+    .describe('The stored point this one replaces, where the source moved a point rather than added one (ADR-0025 decision 5).'),
 }).describe('An unread point under a row readers already see.');
 export type PendingPoint = z.infer<typeof PendingPoint>;
 
@@ -146,6 +149,7 @@ export const PendingWork = z.strictObject({
   imageCredit: ImageCredit.nullable().optional(),
   curatedFields: z.array(z.string()).nullable().optional(),
   venueCount: z.number().int().nullable().optional(),
+  venues: z.array(WorkVenue).nullable().optional().describe('The museums that hang the work, named.'),
 }).describe('An unread work under a row readers already see.');
 export type PendingWork = z.infer<typeof PendingWork>;
 
@@ -253,6 +257,10 @@ export const ReviewQueueItem = z.strictObject({
     + ' held, and null for a row with no first run recorded.',
   ),
   pending_locations: z.number().int().optional(),
+  pending_moved_locations: z.number().int().optional()
+    .describe('How many of the unread points replace a stored one: a point that moved, not a place that arrived.'),
+  pending_treasures_on_show: z.number().int().optional()
+    .describe('How many of the unread works readers already see in another museum.'),
   pending_treasures: z.number().int().optional(),
   pending_points: z.array(PendingPoint).optional(),
   pending_works: z.array(PendingWork).optional(),
