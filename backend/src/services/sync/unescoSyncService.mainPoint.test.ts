@@ -12,7 +12,7 @@ import { resolveMainPoint, buildUnescoTags, isInDanger, transformRecord } from '
 import type { UnescoApiRecord, ParsedLocation } from './types.js';
 
 function record(overrides: Partial<UnescoApiRecord> = {}): UnescoApiRecord {
-  return { id_no: '136', name_en: 'Garamba National Park', source: 'Natural', ...overrides };
+  return { id_no: '136', name_en: 'Garamba National Park', category: 'Natural', ...overrides };
 }
 
 function component(overrides: Partial<ParsedLocation> = {}): ParsedLocation {
@@ -131,6 +131,15 @@ describe('the picture a site is shown with', () => {
 
     expect(site?.imageUrl).toBeNull();
     expect(site?.metadata.imageCredit).toBeUndefined();
+  });
+
+  it('reads the site\'s type from the portal\'s own field, `category`', () => {
+    // The portal's word, not this catalogue's: read under any other name the
+    // field is absent from every record, and every site is proposed with no
+    // type — 1,272 held changes a run, on runs 108 and 141 (#1231).
+    expect(transformRecord(sited({ category: 'Cultural' }))?.type).toBe('cultural');
+    expect(transformRecord(sited({ category: 'Natural' }))?.type).toBe('natural');
+    expect(transformRecord(sited({ category: 'Mixed' }))?.type).toBe('mixed');
   });
 
   it('links to the property page instead, which those terms invite', () => {

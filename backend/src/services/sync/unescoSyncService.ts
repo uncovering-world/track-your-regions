@@ -215,9 +215,9 @@ function isSet(value: unknown): boolean {
   return false;
 }
 
-function normalizeSource(source: string | undefined | null): string | null {
-  if (!source) return null;
-  const cat = source.toLowerCase();
+function normalizeCategory(category: string | undefined | null): string | null {
+  if (!category) return null;
+  const cat = category.toLowerCase();
   if (cat.includes('cultural')) return 'cultural';
   if (cat.includes('natural')) return 'natural';
   if (cat.includes('mixed')) return 'mixed';
@@ -373,9 +373,11 @@ export function transformRecord(
     nameLocal: buildMultilingualNames(record),
     description: null, // UNESCO API doesn't provide full description
     shortDescription: record.short_description_en || null,
-    // UNESCO's own field is called `source`; on our side it is the type within
-    // the World Heritage kind — cultural, natural or mixed (ADR-0045, #814).
-    type: normalizeSource(record.source),
+    // The portal's field is `category`, its own word and not this catalogue's:
+    // on our side it is the type within the World Heritage kind — cultural,
+    // natural or mixed (ADR-0045, #814). The name is the portal's to choose,
+    // and `EXPORT_FIELDS` asks for it by that name (`unescoApi.ts`).
+    type: normalizeCategory(record.category),
     tags: buildUnescoTags(record),
     lat: point.lat,
     lon: point.lon,
