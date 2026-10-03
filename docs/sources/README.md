@@ -18,8 +18,12 @@ record stays as the source's provenance after adoption.
 ```
 docs/sources/
 ├── README.md                ← this file: the schema and the status vocabulary
+├── site-access.md           ← whether each site a survey looked at may be read, and why
 ├── museums/                 ← sources that enumerate museums (of any kind)
 │   ├── fr-museofile.md
+│   └── …
+├── sights/                  ← sources that recommend what to see and do in a place
+│   ├── it-touring-club.md
 │   └── …
 └── global/                  ← sources native to no unit: read per unit, or read for the world
     ├── openstreetmap-qlever.md
@@ -34,8 +38,10 @@ docs/sources/
 ```
 
 A directory per *what the source enumerates* — `museums/` for a register of museums, which
-serves the art, archaeology and history kinds alike; `public-art/` when the first monument
-register arrives; `global/` for the sources native to no unit — one that answers for any kind
+serves the art, archaeology and history kinds alike; `sights/` for a tourism board, a guide
+or an association that recommends what a visitor should see, eat and do, which the
+catalogue-coverage surveys read ([`docs/tech/catalogue-coverage.md`](../tech/catalogue-coverage.md));
+`public-art/` when the first monument register arrives; `global/` for the sources native to no unit — one that answers for any kind
 read per unit, and one that answers for the whole world at once, which is what a world tier is
 read from. A file per source, named `<country code>-<slug>.md` for a native source and
 `<slug>.md` for a global one.
@@ -97,6 +103,14 @@ looked_at: 2026-09-06
 
 Fields a source does not have are written as `none` or `unknown`, never omitted: an absent
 field reads as "not looked at", a `none` as "looked at and not there".
+
+A record under `sights/` reads the same shape with three differences. Its `kinds` are the slugs
+of the coverage register (`db/catalogue-coverage/kinds.jsonl`), the kinds a traveller expects,
+since a guide recommends across kinds the catalogue does not hold yet. Its body says what a
+survey measured: on how many entries of a region's list the source was counted, by type. And
+its terms are the verdict of [`site-access.md`](site-access.md), quoted with the clause they
+rest on. A record of a commercial guide carries counts and never the places it selected
+(ADR-0081 decision 7).
 
 ## Status
 

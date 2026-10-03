@@ -288,14 +288,20 @@ also lets a site that may be read, but draws its pages by script, count through 
 URLs of a search of it, as a partial source; no list needed that in the end.
 
 Whether a site may be read was decided once per site, from its `robots.txt` and its terms as
-fetched, and applied to every list alike. On that date Rough Guides, Routard, and Lonely
+fetched, and applied to every list alike; the verdicts are
+[`docs/sources/site-access.md`](../sources/site-access.md), and the sources the surveys read
+from inside each country have their records under
+[`docs/sources/sights/`](../sources/sights/). On that date Rough Guides, Routard, and Lonely
 Planet's Italian and Spanish sites could be read. Lonely Planet's English and French sites,
 Bradt, Time Out, Rick Steves, Moon, Marco Polo and National Geographic could not: their
 `robots.txt` or their terms bar robots, mining or use by AI. Routard's terms bar automated
 extraction save with the publisher's leave, and its `robots.txt` gives that leave: it allows
 `ClaudeBot` and `anthropic-ai`, Anthropic's agents, by name, which is the one case in which
-the skill's rule reads a site in spite of such a clause. So an English guidebook is often absent from a list, and a list rests more on
-the source from inside the country and on the own list than a reader might expect. The
+the skill's rule reads a site in spite of such a clause. Uzbekistan's national tourism site
+bars something narrower, "automated scripts for mass copying of materials", which is kept the
+way a limit on the rate of requests is: a few pages, one at a time. With the English guides
+refused, a list often lacks an English guidebook and rests more on the source from inside the
+country and on the own list than a reader might expect. The
 weakest entry a list has is one whose two sources are the own list and one other.
 
 Every entry of the first survey was filed under kinds twice, independently: by an agent per
