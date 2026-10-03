@@ -1053,6 +1053,28 @@ The sharp edge is what the failure is held as. **Where a component outlives one 
 
 Every source is somebody else's server, and all of them fail the same way. `withRetries` holds the loop — bounded by a `WaitBudget` the whole run shares rather than by a count, waking early when the run is cancelled, reporting each wait through `SourceWait` so a panel can say what is happening — and each client keeps only what its own errors *mean*, as a `classify` function. `sparqlQuery` and `fetchUnescoRecords` are both that loop with a different classifier; `abortOn` gives each attempt a deadline **and** a cancel hook on one signal.
 
+### What a fame line counts (ADR-0082)
+
+Every line a Wikidata-filled kind draws — the works pool's floor, the iconic mark, a kind's place
+line set in the admin panel, the public-art pool's floor — reads **the number of Wikipedia language
+editions** holding an article about the item. Not `wikibase:sitelinks`, which counts every site
+linking the item, a Commons category and a Wikivoyage, Wikiquote or Wikisource page included, and
+on 2026-10-03 stood one above the Wikipedia count for most of the catalogue.
+
+The collecting questions still read `wikibase:sitelinks`: it is stored and range-indexed, which is
+what keeps the fame bands answerable, and it is never smaller than the Wikipedia count, so a band
+or a floor on it gathers a superset. Every fetcher then recounts what it gathered and holds it to
+its floor (`inWikipediaEditions` and `fetchWikipediaEditions`, `wikidataQueries.ts`), stepping
+the run's runner before every question where it is handed one (`Door`, `doorOf`): the pools of
+works (`museum/queries.ts`), of public art, places of worship and archaeological places
+(`publicArt/queries.ts`, whose fetchers the other two reuse), the venue graph's details
+(`fetchEntityDetails`), the venue-side holdings and works by id (`museum/venueSideQueries.ts`),
+and the OpenStreetMap entrance's count (`fetchSitelinksByIds`, `archaeology/queries.ts`). So every
+`sitelinks` a rule compares, sorts by or stores — `treasures.sitelinks_count`,
+`metadata.sitelinksCount` — is the editions count, and a refusal says so: "17 Wikipedia editions:
+below the world tier's line (22 to enter, 18 to stay)". A test world answers the recount with its
+own counts (`wikipediaEditionsFixture.ts`).
+
 ### Art Museums (`museumSyncService.ts`, `museum/*.ts`)
 
 Works-first: the sync decides what belongs in the catalogue by which artworks the world knows,
@@ -1429,7 +1451,7 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
 5. **The line, then the write** — a candidate that passes enters at **22 sitelinks and stays until
    it falls below 18** (`ENTER_SITELINKS`/`STAY_SITELINKS` in the pipeline; the museums' own line,
    ADR-0023), read against what the kind already admits (`admittedExternalIds`). An admitted
-   row that fell below 18 is refused by name — `17 sitelinks: below the world tier's line (22 to
+   row that fell below 18 is refused by name — `17 Wikipedia editions: below the world tier's line (22 to
    enter, 18 to stay)` — and a candidate below the line that was never in is simply out, and
    nothing is said about it: a refusal names a rule, and none ran on it. The admitted are written
    most famous first, names disambiguated by the description's location hint, credits asked of
@@ -1685,7 +1707,7 @@ for it.
 - `no place-of-worship class`, `no coordinates of its own (P625)` — which the card translates,
   since the museum rule writes it too — and `not on Earth: its coordinate (P625) is on another
   globe`.
-- `17 sitelinks: below the world tier's line (22 to enter, 18 to stay)`, for an admitted row that
+- `17 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)`, for an admitted row that
   slipped; a candidate below the line that was never in is simply out, and nothing is said about
   it, because a refusal names a rule and none ran on it.
 - `folded into Santa Maria della Vittoria — housed in it, and it is the better-known name, 9 m
@@ -2602,7 +2624,7 @@ belongs to #603.
   Masada.
 - `not an archaeology museum by category or class (no find above the line)`, or `(2 famous finds
   held)` where the museum holds some and they were not the question.
-- `21 sitelinks: below the world tier's line (22 to enter, 18 to stay)`, for an admitted row that
+- `21 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)`, for an admitted row that
   slipped; a candidate below the line that was never in is simply out and nothing is said about it,
   because a refusal names a rule and none ran on it.
 - `no coordinates of its own (P625)` and `not on Earth: its coordinate (P625) is on another globe`,
