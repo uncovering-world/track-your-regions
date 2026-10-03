@@ -197,11 +197,12 @@ In the other direction the backend
 suite reads the rest of the repository directly, through `repoFile()` in
 `backend/src/testSupport/` (#948), and the tooling specs beside it under
 `scripts/` do the same through `scripts/repo-root.mjs`. Everything the two
-reached on 2026-09-22:
+reached on 2026-10-03:
 
 | What a spec opens | Why |
 | --- | --- |
 | `db/init/01-schema.sql`, `db/migrations/` (and named migrations under it) | the schema-parity and migration guards compare SQL as text |
+| `db/catalogue-coverage/` | `services/catalogueCoverage/files.test.ts` reads the committed register, regions and lists whole and names every wrong line (ADR-0081). No other spec reads those files, so their `.jsonl` lines are a class of their own, `coverage`, which asks for this lane and the Node Semgrep scan, whose `p/secrets` pack reads them too: a pull request that changes a list runs no lint, build or stack lane |
 | `frontend/src/components/regionMap/useMapInteractions.ts` | one rule, one runtime: the spec asserts that the map's own division paths frame from the stored box rather than measuring (#674). The client's *copies* of a rule the database also holds — the near-global threshold, the label fold, the action vocabulary — are gone: both sides import `packages/shared` (ADR-0065), and the schema is held to it by a type |
 | `frontend/src` as a whole tree | `types/urlSafety.test.ts` and `db/regionFocusAntimeridian.test.ts` scan it for a second decision made anywhere in the client (#672, #674) |
 | `db/` and `scripts/` as whole trees, beside the backend's own `src/` | `db/regionAncestorInvalidation.test.ts` and `db/regionGeomPieces.test.ts` scan every `.sql`, `.py`, `.ts` and `.sh` under them for anything that switches the region geometry triggers off — by name or wholesale — and `db/renderedRungTopology.test.ts` scans `db/` for a simplifier put into a query |
