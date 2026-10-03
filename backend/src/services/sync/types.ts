@@ -65,7 +65,8 @@ export interface UnescoApiRecord {
   name_zh?: string;
   short_description_en?: string;
   short_description_fr?: string;
-  source: string;
+  /** The portal's own word for the site's type: `"Cultural"`, `"Natural"` or `"Mixed"`. */
+  category: string;
   coordinates?: {
     lat: number;
     lon: number;

@@ -81,6 +81,10 @@ describe('fetchUnescoRecords', () => {
     // rather than four years of silently absent criteria.
     expect(decodeURIComponent(url)).toContain('criteria_txt');
     expect(decodeURIComponent(url)).not.toMatch(/select=[^&]*\bcriteria\b(?!_txt)/);
+    // And the site's type under the portal's own name for it: `select=source`
+    // answers "Unknown field: source" (#1231).
+    expect(decodeURIComponent(url)).toMatch(/select=[^&]*\bcategory\b/);
+    expect(decodeURIComponent(url)).not.toMatch(/select=[^&]*\bsource\b/);
   });
 
   it('says who is calling', async () => {

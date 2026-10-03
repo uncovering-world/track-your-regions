@@ -56,19 +56,27 @@ export const UNESCO_USER_AGENT = userAgent({ bot: true });
  * criterion tag at all. The real field is `criteria_txt` — "(i)(ii)(iii)(iv)"
  * for the Bamiyan Valley — and asking the portal for the list by name is what
  * makes a wrong name a 400 with the field named in it, rather than silence.
+ *
+ * **Keyed by the record's own fields**, so the request and the type the importer
+ * reads cannot name a field differently: a key `UnescoApiRecord` does not
+ * declare fails to compile here, and so does a field it declares that this
+ * list leaves out. The second is the one the portal cannot catch — a read of
+ * a field nobody asked for is `undefined` on every record and an error
+ * nowhere, which is how every site came to be proposed with no type (#1231).
  */
-const EXPORT_FIELDS = [
-  'id_no',
-  'name_en', 'name_fr', 'name_es', 'name_ru', 'name_ar', 'name_zh',
-  'short_description_en', 'short_description_fr',
-  'category', 'coordinates', 'iso_codes', 'states_names',
+const REQUESTED: Record<keyof UnescoApiRecord, true> = {
+  id_no: true,
+  name_en: true, name_fr: true, name_es: true, name_ru: true, name_ar: true, name_zh: true,
+  short_description_en: true, short_description_fr: true,
+  category: true, coordinates: true, iso_codes: true, states_names: true,
   // Not `main_image_url`, `main_image_author` or `main_image_copyright`: the
   // picture they describe is the World Heritage Centre's own, which its terms
   // do not let this product show, so the run takes a site's picture from
   // Commons instead and has no use for the portal's (ADR-0043, #557).
-  'date_inscribed', 'danger', 'danger_list', 'criteria_txt', 'region',
-  'area_hectares', 'transboundary', 'components_list',
-];
+  date_inscribed: true, danger: true, danger_list: true, criteria_txt: true, region: true,
+  area_hectares: true, transboundary: true, components_list: true,
+};
+const EXPORT_FIELDS = Object.keys(REQUESTED);
 
 /**
  * Long, because the whole list in one answer is megabytes and their portal is
