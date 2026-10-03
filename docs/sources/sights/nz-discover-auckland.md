@@ -35,7 +35,7 @@ scorecard:
   coordinates: unknown
   names: 1
   signal: 1
-  terms: 2
+  terms: 1
   access: 1
   cadence: 0
   total: unknown
@@ -67,10 +67,12 @@ purposes reproduce it accurately do not use it in a misleading or derogatory con
 that the information is sourced from Tātaki Auckland Unlimited and is subject to copyright."
 
 **What decides it.** Identity 0 in the articles, so the verdict is `curator-list`; the total is
-`unknown` because the coordinates were not looked at. Its terms are the most open of this batch:
-reproduction "free of charge and without further permission" for information, with the source
-acknowledged, which is terms 2. The directory under `/explore/` is the part to look at for
-identity and coordinates before the next search for the city.
+`unknown` because the coordinates were not looked at. Its terms allow reproduction "free of
+charge and without further permission", with the source acknowledged, but only for informational
+purposes and not in a misleading or derogatory context: a limit on purpose is an obligation, so
+terms 1, as Au Sénégal's limit to uses that are not commercial is. The directory under
+`/explore/` is the part to look at for identity and coordinates before the next search for the
+city.
 
 **What the survey measured.** Thirty-seven editorial articles under `/inspire/`, each fetched
 whole; about ninety further articles, on hotels, bars and single restaurants, were not opened.
