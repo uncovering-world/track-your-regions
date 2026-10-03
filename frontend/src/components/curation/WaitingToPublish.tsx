@@ -39,7 +39,7 @@ import { worldViewList } from '../../utils/worldViewList';
 import { ANSWER_WORDS } from './selection/answerWords';
 import { GatedRow, ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
-import { partGroups, rowsFor, type FactSubject } from './factRows';
+import { partGroups, rowsFor } from './factRows';
 import { HeldAnswer, type HeldSelection } from './HeldAnswer';
 import { ObjectPreview } from './ObjectPreview';
 import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
@@ -148,20 +148,6 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
     held?.proposed_parts ?? [], context, { offeredLocations: item.offered_locations }, setOpenPart,
   );
   const partRows = parts.flatMap(group => group.rows);
-  // What one subject's proposal actually holds, for the answer column's note
-  // about a paired row. Read off the proposal rather than off the drawn rows,
-  // because the pairing the note promises is the server's and the server matches
-  // on what the changeset carries. The part is found the way the record names it
-  // — kind, reference and name together, since neither half alone is an identity.
-  const heldFieldsOf = (subject: FactSubject): string[] => {
-    const part = subject.part;
-    if (part === undefined) return proposed.filter(f => f.held).map(f => f.field);
-    return (held?.proposed_parts ?? [])
-      .filter(candidate => candidate.kind === part.kind
-        && (candidate.item.ref ?? null) === part.ref
-        && (candidate.item.name ?? null) === part.name)
-      .flatMap(candidate => candidate.fields.filter(f => f.held).map(f => f.field));
-  };
   const points = count(contents?.pending_locations);
   const works = count(contents?.pending_treasures);
 
@@ -297,7 +283,6 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                     subject={subject}
                     field={field}
                     busy={answering}
-                    heldFields={heldFieldsOf(subject)}
                     onPublish={selection => publish.mutate({
                       heldFields: selection.fields,
                       heldParts: selection.parts,
@@ -314,14 +299,14 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                   already won every run since the gate first held this one. What it
                   changes is the asking, and only for that value. */}
               <Typography variant="caption" color="text.secondary">
-                Publishing one of these leaves the rest waiting — except a picture and the credit
-                that belongs to it, which are answered together wherever both are on the card, as
-                the rows say. “Not this” changes nothing readers see and settles the question — the
-                run has to propose something different to ask again. On a card raised before facts
-                were asked one at a time, one combination still reaches readers: say no to source
-                data and then publish a new picture, and the picture goes out with nobody credited,
-                since the refused credit may not be written and the stored one names a photograph
-                nobody will see. A field you have edited yourself is a different question and keeps
+                Publishing one of these leaves the rest waiting. A picture is answered with its
+                credit, shown under it on each side. “Not this” changes nothing readers see and
+                settles the question — the run has to propose something different to ask again. On
+                a card raised before facts were asked one at a time, one combination still reaches
+                readers: say no to source data and then publish a new picture, and the picture goes
+                out with nobody credited, since the refused credit may not be written and the stored
+                one names a photograph nobody will see. A field you have edited yourself is a
+                different question and keeps
                 your wording either way.
               </Typography>
             </GatedRow>

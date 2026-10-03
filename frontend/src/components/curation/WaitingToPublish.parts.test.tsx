@@ -118,33 +118,38 @@ describe('a held card about a part', () => {
     expect(screen.getByLabelText('Title')).toHaveValue('The Glass of Wine');
   });
 
-  it('says on the row that a picture and its credit are one answer', async () => {
+  it('draws a work\u2019s picture and its credit as one row with one answer', async () => {
     const withPicture = held();
     withPicture.proposed_parts![0].fields.push(
-      { field: 'image_url', old: 'http://old', new: 'http://new', held: true },
+      { field: 'image_url', old: 'https://commons.wikimedia.org/wiki/Special:FilePath/Old.jpg', new: 'https://commons.wikimedia.org/wiki/Special:FilePath/New.jpg', held: true },
       { field: 'metadata.imageCredit', old: null, new: { author: 'Someone' }, held: true },
     );
     renderCard(withPicture);
 
-    // The server answers the two together, but they are two changeset fields and
-    // the table draws a cell per field — so the card would otherwise show four
-    // buttons under a caption promising each answers only its own row.
-    expect(screen.getByText('Answered with its credit.')).toBeInTheDocument();
-    expect(screen.getByText('Answered with its picture.')).toBeInTheDocument();
-    // Not on the attribution, which really is answered on its own.
-    expect(screen.getAllByText(/Answered with its/)).toHaveLength(2);
+    // The server answers the two together (`heldSelection.ts`), so two rows and
+    // four buttons would ask one question twice: the credit has no row, and the
+    // card holds the attribution's answer and the picture's.
+    expect(screen.getByText('picture')).toBeInTheDocument();
+    expect(screen.queryByText('picture credit')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /publish this/i })).toHaveLength(2);
+
+    // And the picture's button names the picture: the server widens it onto the
+    // credit, which is what keeps the pair one answer.
+    fireEvent.click(screen.getAllByRole('button', { name: /publish this/i })[1]);
+    await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(6194, {
+      heldFields: undefined,
+      heldParts: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', fields: ['image_url'] }],
+      expectedSyncLogId: 64,
+    }));
   });
 
-  it('says on the object\u2019s own rows that a picture and its credit are one answer', () => {
-    // The pairing reaches the object since ADR-0039, and a refusal has no undo:
-    // four buttons that each answer both rows, with nothing saying so, is the
-    // screen misleading a curator about the one act it cannot take back. The
-    // object spells the picture `imageUrl`, not the column name a part uses,
-    // which is why the note reads the server's own pairing, level by level
+  it('draws the object\u2019s own picture and its credit as one row', () => {
+    // The object spells the picture `imageUrl`, not the column name a part uses,
+    // which is why the fold reads the server's own pairing, level by level
     // (`pictureCreditPartner`), rather than keying on one name.
     const withObjectPicture = held();
     withObjectPicture.proposed = [
-      { field: 'imageUrl', old: 'https://old', new: 'https://new', held: true },
+      { field: 'imageUrl', old: 'https://commons.wikimedia.org/wiki/Special:FilePath/Old.jpg', new: 'https://commons.wikimedia.org/wiki/Special:FilePath/New.jpg', held: true },
       {
         field: 'metadata.imageCredit', old: null,
         new: { author: 'JUNG Mi-gyeong' }, held: true,
@@ -152,25 +157,24 @@ describe('a held card about a part', () => {
     ];
     renderCard(withObjectPicture);
 
-    expect(screen.getByText('Answered with its credit.')).toBeInTheDocument();
-    expect(screen.getByText('Answered with its picture.')).toBeInTheDocument();
+    expect(screen.getByText('picture')).toBeInTheDocument();
+    expect(screen.queryByText('picture credit')).not.toBeInTheDocument();
   });
 
-  it('does not promise a credit answer where the run held no credit', () => {
-    // The ordinary shape on a work, not a corner: `creditToWrite` returns nothing
-    // for a changed picture whose new file the Commons batch did not come back
-    // for, and the writer drops an entry whose two sides are equal — so a run can
-    // hold `image_url` alone. The server widens the answer only onto a row that
-    // is open, so with no credit row there is nothing to widen onto, and a note
-    // saying otherwise would overstate what the button does.
-    const pictureOnly = held();
-    pictureOnly.proposed_parts![0].fields.push(
-      { field: 'image_url', old: 'https://old', new: 'https://new', held: true },
-    );
-    renderCard(pictureOnly);
+  it('keeps a credit that changes under the same picture as a row of its own', () => {
+    // The Cultural Landscape of Khinalig People keeps its file while Commons
+    // corrects the author: no picture is proposed, so the credit is the question.
+    const creditOnly = held();
+    creditOnly.proposed = [{
+      field: 'metadata.imageCredit',
+      old: { author: 'No machine-readable author provided.', detailsUrl: 'https://commons.wikimedia.org/wiki/File:Azerbaijani_Village.JPG' },
+      new: { author: 'Azeri', detailsUrl: 'https://commons.wikimedia.org/wiki/File:Azerbaijani_Village.JPG' },
+      held: true,
+    }];
+    renderCard(creditOnly);
 
-    expect(screen.getByText('a work in this object')).toBeInTheDocument();
-    expect(screen.queryByText(/Answered with its/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('picture credit').length).toBeGreaterThan(0);
+    expect(screen.getByText('The same file: Wikimedia Commons names its author differently now.')).toBeInTheDocument();
   });
 
   it('answers the work\'s row by naming the part the way the record names it', async () => {

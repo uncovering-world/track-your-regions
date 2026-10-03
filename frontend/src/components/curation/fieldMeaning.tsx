@@ -427,7 +427,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
   imageUrl: {
     label: 'picture',
     what: 'The picture readers see on the card.',
-    whenItChanges: 'A different picture. Its credit changes with it — see the picture credit row.',
+    whenItChanges: 'A different picture. Its credit changes with it and is answered with it: each side shows whose photograph it is.',
     render: pictureFact,
   },
   metadata: {
@@ -542,12 +542,17 @@ const MEANINGS: Record<string, FieldMeaning> = {
   'metadata.imageCredit': {
     label: 'picture credit',
     what: 'Whose photograph the catalogue shows, and under what terms. The licence asks one thing: that the author is named wherever the picture appears.',
-    whenItChanges: 'A credit arriving for the first time is the catalogue starting to meet that term. A different name usually means a different picture — check the picture above is the one the credit is for.',
+    whenItChanges: 'A credit arriving for the first time is the catalogue starting to meet that term. A row of its own means the picture is not being replaced: Wikimedia Commons now names the author or the licence of the same file differently. A credit that changes with its picture is shown under the picture, in the picture row.',
     render: creditText,
     describeChange: (before, after) => {
       if (isAbsent(before)) return 'Readers see the picture uncredited today.';
-      const author = (v: unknown) => (isRecord(v) ? v.author : null);
-      if (author(before) !== author(after)) return 'A different photographer — check the picture is the one this credit is for.';
+      const of = (v: unknown, key: string) => (isRecord(v) ? v[key] ?? null : null);
+      // The file page is the file's identity: the same page under another name
+      // is Commons correcting its record, a different page is another photograph.
+      if (of(before, 'detailsUrl') !== of(after, 'detailsUrl')) {
+        return 'The credit of a different file — check the picture readers see is the one it is for.';
+      }
+      if (of(before, 'author') !== of(after, 'author')) return 'The same file: Wikimedia Commons names its author differently now.';
       return null;
     },
   },
@@ -617,7 +622,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
   image_url: {
     label: 'picture',
     what: 'The picture readers see for the work.',
-    whenItChanges: 'A different picture on Wikimedia Commons.',
+    whenItChanges: 'A different picture on Wikimedia Commons. Its credit is answered with it: each side shows whose photograph it is.',
     render: pictureFact,
   },
 };
