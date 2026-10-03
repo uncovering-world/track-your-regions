@@ -40,7 +40,9 @@ export const INPUTS = [
       'backend/',
       'frontend/',
       'packages/',
-      'db/',
+      // All of db/ but the coverage lists, which are data with one reader and
+      // a class of their own below. Anything else that lands beside them stays here.
+      /^db\/(?!catalogue-coverage\/.*\.jsonl$)/,
       'martin/',
       'scripts/',
       'docker-compose.yml',
@@ -52,7 +54,8 @@ export const INPUTS = [
       + ' packages/shared (ADR-0065), whose generated api module types the frontend'
       + " by the backend's response schemas (ADR-0066). Backend specs read db/,"
       + ' frontend/src, martin/, packages/ and scripts/ through repoFile(). So a'
-      + ' change to any of them asks for all of it.',
+      + ' change to any of them asks for all of it, but for the coverage lists,'
+      + ' which are a class of their own below.',
   },
   {
     id: 'python',
@@ -68,6 +71,17 @@ export const INPUTS = [
     note:
       'The GADM loaders live in db/ but are run by pytest, so they are an input'
       + ' to the Python test lane without being an input to cv-python’s lint.',
+  },
+  {
+    id: 'coverage',
+    paths: [/^db\/catalogue-coverage\/.*\.jsonl$/],
+    note:
+      'The catalogue-coverage register, regions and lists (ADR-0081) are data'
+      + ' with one reader, services/catalogueCoverage/files.ts, and one spec that'
+      + ' reads the committed files whole, files.test.ts, in the backend unit'
+      + ' lane. The load and the report read them from a command, and their'
+      + ' specs use fixtures; no lint, build or stack lane sees a line of them.'
+      + ' The Semgrep scan does, for a secret in what agents copied from the web.',
   },
   {
     id: 'schema',
@@ -244,13 +258,15 @@ export const GATES = [
   { id: 'check:py', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'check:py'], job: 'check', setup: 'python' },
   { id: 'security:py:bandit', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:bandit'], job: 'check', setup: 'python' },
   { id: 'security:py:deps', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:deps'], job: 'check', setup: 'python' },
-  { id: 'test:backend', tier: 'test', inputs: ['app'], command: ['node', 'scripts/test-report.mjs', 'backend-unit'], job: 'test', setup: 'node' },
+  { id: 'test:backend', tier: 'test', inputs: ['app', 'coverage'], command: ['node', 'scripts/test-report.mjs', 'backend-unit'], job: 'test', setup: 'node' },
   { id: 'test:frontend', tier: 'test', inputs: ['app'], command: ['node', 'scripts/test-report.mjs', 'frontend-unit'], job: 'test', setup: 'node' },
   { id: 'test:py', tier: 'test', inputs: ['python', 'db-python'], command: ['npm', 'run', 'test:py'], job: 'python-tests', setup: 'python' },
   // The Node scan is pointed at the whole checkout, and its rule packs
   // (`p/default`, `p/owasp-top-ten`, `p/secrets`) carry Python rules, so
-  // cv-python's files are its input too — not only the product's.
-  { id: 'security:scan', tier: 'scan', inputs: ['app', 'python'], command: ['npm', 'run', 'security:scan'], job: 'security', setup: 'docker' },
+  // cv-python's files are its input too — not only the product's. And
+  // `.semgrepignore` leaves `.jsonl` in, so `p/secrets` reads the coverage
+  // lists, which agents write from web pages.
+  { id: 'security:scan', tier: 'scan', inputs: ['app', 'python', 'coverage'], command: ['npm', 'run', 'security:scan'], job: 'security', setup: 'docker' },
   { id: 'security:py:semgrep', tier: 'scan', inputs: ['python'], command: ['npm', 'run', 'security:py:semgrep'], job: 'security', setup: 'docker' },
   { id: 'security:image', tier: 'scan', inputs: ['python'], command: ['npm', 'run', 'security:image'], job: 'trivy', setup: 'docker' },
   // The stack tier is printed and never spawned, so this one line is two
