@@ -26542,6 +26542,19 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "coordinates_move_point_id": {
+            "description": "The unread point the object's held coordinate would publish with it (#1233): one of `pending_points`, listed first.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "pending_treasures_on_show": {
             "description": "How many of the unread works readers already see in another museum.",
             "type": "integer",

@@ -875,7 +875,10 @@ describe('getReviewQueue', () => {
     // inside its own lateral — so the strings themselves must be absent.
     expect(sql).not.toContain('JOIN experience_locations');
     expect(sql).not.toContain('JOIN experience_treasures');
-    expect(sql.split('CROSS JOIN LATERAL')).toHaveLength(3);
+    // Three laterals: the points, the works, and the one point the held
+    // coordinate takes along — a scalar, one row per object, which cannot
+    // multiply anything.
+    expect(sql.split('CROSS JOIN LATERAL')).toHaveLength(4);
   });
 
   it('excludes a refused row from the contents card', async () => {
@@ -1022,6 +1025,18 @@ describe('getReviewQueue', () => {
     expect(sql).toMatch(/WHERE old\.id = el\.withdrawal_deferred_for_location_id\s+AND old\.missing_since IS NULL AND old\.existence <> 'lost'\) AS replaces/);
     expect(sql).toContain('COUNT(*) FILTER (WHERE replaces IS NOT NULL)::int AS moved');
     expect(sql).toContain('points.moved AS pending_moved_locations');
+    // And a move leads the capped list, so the card is sent the row it pairs
+    // with the object's coordinate unless more points moved than the cap holds.
+    // The point the held coordinate takes along leads, by the publish's own
+    // rule, then a move of a pin still offered; one whose pin a curator has
+    // declared gone replaces nothing the card could mark.
+    expect(sql).toContain('pair.id AS coordinates_move_point_id');
+    expect(sql).toMatch(/ORDER BY el\.id IS DISTINCT FROM pair\.id,\s+NOT EXISTS \(/);
+    expect(sql).toContain("f->>'field' = 'location' AND (f->>'held')::boolean");
+    // Asked of the change row the publish reads, and of nothing a curator has
+    // claimed since: the publish skips a claimed field, and the point with it.
+    expect(sql).toMatch(/AND experience_id = e\.id\s+ORDER BY id DESC LIMIT 1\) AS held/);
+    expect(sql).toContain("AND NOT COALESCE(e.curated_fields ? 'location', false)");
     expect(sql).toContain('COUNT(*) FILTER (WHERE on_show_elsewhere)::int AS on_show');
     // On show means the reader's whole question, asked of another museum's link.
     expect(sql).toMatch(/shown\.experience_id <> e\.id\s+AND /);

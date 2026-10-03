@@ -32,7 +32,8 @@ import {
 import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
-import { heldPartAnsweredSql } from './heldDecisions.js';
+import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
+import { pointMovedToSql } from './movedPoint.js';
 import { contentsOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
 
 /**
@@ -241,9 +242,31 @@ export async function queryContents(
            works.on_show AS pending_treasures_on_show,
            points.items AS pending_points,
            works.items AS pending_works,
+           pair.id AS coordinates_move_point_id,
            NULL::jsonb AS proposed
     FROM experiences e
     ${rowKindJoinSql('e', 'mk', 'kd')}
+    -- The unread point the object's held coordinate would take along, by the
+    -- rule the publish asks (pointMovedToSql): the card marks this row and no
+    -- other, and it leads the capped list below so it is always among the rows
+    -- the card is sent (#1233). Asked of the coordinate the run's held, still
+    -- unanswered proposal offers; NULL where there is none.
+    CROSS JOIN LATERAL (
+      SELECT ${pointMovedToSql('e.id', 'proposed.at')} AS id
+        -- The change row the publish reads -- the run's newest for the object
+        -- -- and nothing where a curator has since claimed the coordinate: the
+        -- publish then skips the field, and with it the point.
+        FROM (SELECT (
+          SELECT ST_SetSRID(ST_MakePoint((f->'new'->>'lon')::float8, (f->'new'->>'lat')::float8), 4326)
+            FROM (SELECT changed_fields FROM experience_sync_changes
+                   WHERE sync_log_id = mk.pending_change_sync_log_id AND experience_id = e.id
+                   ORDER BY id DESC LIMIT 1) AS held,
+                 jsonb_array_elements(held.changed_fields) AS f
+           WHERE f->>'field' = 'location' AND (f->>'held')::boolean
+             AND NOT ${heldFieldAnsweredSql('e.id')}
+             AND NOT COALESCE(e.curated_fields ? 'location', false)
+           LIMIT 1) AS at) AS proposed
+    ) pair
     CROSS JOIN LATERAL (
       SELECT COUNT(*)::int AS total,
              -- Counted whole, like the total and for its reason: the list under
@@ -257,7 +280,7 @@ export async function queryContents(
                'longitude', lon,
                'curatedFields', curated_fields,
                'replaces', replaces
-             ) ORDER BY ordinal) FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
+             ) ORDER BY rn) FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
       FROM (
         SELECT el.id, el.name, el.external_ref, el.ordinal, el.curated_fields,
                ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
@@ -273,7 +296,17 @@ export async function queryContents(
                   FROM experience_locations old
                  WHERE old.id = el.withdrawal_deferred_for_location_id
                    AND ${offeredLocationSql('old')}) AS replaces,
-               row_number() OVER (ORDER BY el.ordinal) AS rn
+               -- The point the held coordinate takes along leads the list,
+               -- then every other point that replaces a pin still offered,
+               -- then the source's own numbering: the list is capped, and the
+               -- card marks the first and says the others moved.
+               row_number() OVER (
+                 ORDER BY el.id IS DISTINCT FROM pair.id,
+                          NOT EXISTS (
+                            SELECT 1 FROM experience_locations ranked
+                             WHERE ranked.id = el.withdrawal_deferred_for_location_id
+                               AND ${offeredLocationSql('ranked')}),
+                          el.ordinal) AS rn
         -- The shared fragment rather than the predicate spelled out, because
         -- contentsWaitingSql composes it and the two are written to count the same
         -- rows: spelled out here, this join missed the existence term when the

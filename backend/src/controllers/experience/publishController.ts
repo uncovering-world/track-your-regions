@@ -41,7 +41,7 @@ import type { CheckValue } from '../../db/schema.generated.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, publishExperienceBodySchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { publishContents, placeAfterRelease, worksPublished } from './publishContents.js';
+import { publishContents, placeAfterRelease, pointMovedWithObject, worksPublished } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { heldFieldWrites, publicationAssignments, type HeldFieldWrites } from './publishHeldFields.js';
 import {
@@ -70,7 +70,10 @@ interface PublishRequest {
   locationIds?: number[];
   treasureIds?: number[];
   contentsOnly?: true;
-  /** The object's held fields, and none of its unread contents (#524). */
+  /**
+   * The object's held fields, and none of its unread contents (#524) — except
+   * the point that is the object's held coordinate moving (#1233, `contentsOf`).
+   */
   fieldsOnly?: true;
   /**
    * The held rows this call answers, rather than all of them (#722) — the
@@ -224,6 +227,30 @@ export async function publishExperience(
     throw new Refusal(status, body);
   }
   return outcome.result!;
+}
+
+/**
+ * The unread points and works this publish releases, and how many.
+ *
+ * Everything the body names or implies, except on a fields publish, which
+ * leaves the unread contents where they are (#524) — with one point excepted,
+ * because it is not a second question: where the publish wrote the object's
+ * held coordinate, the unread point that is that same move goes with it
+ * (`pointMovedWithObject`), and its withdrawal is released. Otherwise the
+ * object's coordinate moves and its pin does not (#1233). Named by id, so no
+ * work and no other point rides along.
+ */
+async function contentsOf(
+  client: PoolClient,
+  lock: LockedExperience,
+  { fieldsOnly, applied, locationIds, treasureIds }: {
+    fieldsOnly?: true; applied: string[]; locationIds?: number[]; treasureIds?: number[];
+  },
+): Promise<Awaited<ReturnType<typeof publishContents>>> {
+  if (!fieldsOnly) return publishContents(client, lock, locationIds, treasureIds);
+  const movedPoint = applied.includes('location') ? await pointMovedWithObject(client, lock) : null;
+  if (movedPoint !== null) return publishContents(client, lock, [movedPoint]);
+  return { locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0 };
 }
 
 /**
@@ -576,10 +603,11 @@ export async function publishUnderLock(
     // being the same act as releasing twelve checked paintings. Nothing else in
     // the transaction changes — the object's state, its pointer and its trail are
     // written the same way, because what was answered *was* the object.
-    const { locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =
-      fieldsOnly
-        ? { locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0 }
-        : await publishContents(client, locked.lock, locationIds, treasureIds);
+    //
+    // One point is the exception (`contentsOf`): the one that is the object's
+    // own coordinate moving.
+    const contents = await contentsOf(client, locked.lock, { fieldsOnly, applied, locationIds, treasureIds });
+    const { locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } = contents;
 
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)

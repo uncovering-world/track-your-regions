@@ -19,6 +19,7 @@ import {
 import { publishUnreadPoints, releaseDeferredWithdrawals } from './experienceLocationWriter.js';
 import { lockWorksToPublish, publishUnreadLinks, publishUnreadWorks } from './workWriter.js';
 import type { LockedExperience } from '../../db/experienceWriter.js';
+import { pointMovedToSql } from './movedPoint.js';
 
 /**
  * Whether a publish naming these ids publishes the venue's pending works: when
@@ -96,6 +97,21 @@ export async function publishContents(
   }
 
   return { locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased };
+}
+
+/**
+ * The unread point that is the object's own coordinate moving, or null: the
+ * rule `pointMovedToSql` states, asked of the coordinate this transaction has
+ * just written. A publish that writes the held `location` publishes this point
+ * with it, so the object's coordinate and its pin move together (#1233) —
+ * Ephesus after run 146, whose one point moved 158 m.
+ */
+export async function pointMovedWithObject(client: PoolClient, lock: LockedExperience): Promise<number | null> {
+  const found = await client.query<{ id: number | null }>(
+    `SELECT ${pointMovedToSql('e.id', 'e.location')} AS id FROM experiences e WHERE e.id = $1`,
+    [lock.id],
+  );
+  return found.rows[0]?.id ?? null;
 }
 
 /**
