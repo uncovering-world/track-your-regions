@@ -101,6 +101,7 @@ and accepted by it.
 | [0079](0079-each-kind-of-project-information-has-one-home.md) | Each kind of project information has one home, and drafts stay local | Accepted | 2026-10-01 |
 | [0080](0080-the-repositorys-workflows-are-skills-both-agents-read-from-one-copy.md) | The repository's workflows are skills both agents read from one copy | Accepted | 2026-10-01 |
 | [0081](0081-a-kind-is-a-record-before-it-is-code-and-an-expectation-is-listed-before-the-catalogue-holds-it.md) | A kind is a record before it is code, and an expectation is listed before the catalogue holds it | Accepted | 2026-10-01 |
+| [0082](0082-a-fame-line-counts-wikipedia-language-editions.md) | A fame line counts Wikipedia language editions | Accepted | 2026-10-03 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
