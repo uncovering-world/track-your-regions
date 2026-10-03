@@ -25,7 +25,7 @@ terms:
 access:
   mode: scrape
   format: "html; the list of sights of a destination is drawn by script"
-  cadence: "irregular: the Rome page was modified 2024-02-19"
+  cadence: "older than two years: the Rome page was modified 2024-02-19"
   volume: unknown
   rate: unknown
 scorecard:
@@ -37,7 +37,7 @@ scorecard:
   signal: 1
   terms: 1
   access: 1
-  cadence: 1
+  cadence: 0
   total: unknown
   verdict: curator-list
 status: looked-at

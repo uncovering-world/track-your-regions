@@ -65,7 +65,7 @@ urls:
 family: registry                        # registry | association | tourism-board | global | commercial | curator
 kinds: [art-museums, archaeology-museums, history-museums]   # what it enumerates, by the kind's slug; [any] for a global source that answers for every kind
 tier: regional                          # world | regional | none (a source refused before it reached a tier)
-unit: { level: country, code: FR, name: France }   # the source's own unit: country | region | city | any (a global source read per unit, or one refused outright)
+unit: { level: country, code: FR, name: France }   # the source's own unit: country | region | city | any (a global source read per unit, a guide under sights/ written for travellers anywhere, or one refused outright)
 row:                                    # what one row of the source carries
   identity: "Identifiant Muséofile (M0369)"
   wikidata_link: P539                   # a Wikidata property (P539) linking to this source's id | itself (the source is Wikidata) | tag (a Wikidata tag on the row) | none | unknown
@@ -111,6 +111,16 @@ survey measured: on how many entries of a region's list the source was counted, 
 its terms are the verdict of [`site-access.md`](site-access.md), quoted with the clause they
 rest on. A record of a commercial guide carries counts and never the places it selected
 (ADR-0081 decision 7).
+
+Two more rules hold under `sights/`. The line between it and `global/` is selection:
+`global/` holds a source that enumerates what exists of a kind in every unit, as Google's and
+Tripadvisor's listings do, and `sights/` a guide that chooses what a visitor should see. So a
+guide written for travellers anywhere, such as a Spanish travel blog read for Mexico City and
+Cusco, is filed under `sights/`, with its publisher's country as the prefix and
+`unit: { level: any }`. And a record's cadence is scored on the pages the survey read, by the
+latest date the record has for them; where it has none, by the frequency the publisher states.
+A news site that publishes daily scores what its list of sights says when that list is dated,
+not what its front page says.
 
 ## Status
 
