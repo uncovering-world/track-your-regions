@@ -14,6 +14,17 @@
  *
  * One query answers both facts because both hang off the same join: the item
  * carrying this site's World Heritage id (P757).
+ *
+ * **Several items carry one id, and one of them is the property.** Wikidata
+ * keeps a number on the property's own item and, often, on something else as
+ * well: the place the property is known by (Venice beside "Venice and its
+ * Lagoon"), a dedicated item for the inscription with no article of its own, or
+ * one building of an ensemble — the Altes Museum has carried Museum Island's 896
+ * since 2026-10-01. On 2026-10-03, 107 of the catalogue's sites had a
+ * property-tier id on more than one item. So the item is the unit: both facts
+ * are read item by item, the item that answers for a site is chosen by the
+ * site's own name (`asTheProperty`), and a part does not replace the whole by
+ * sorting ahead of it.
  */
 
 import { sparqlQuery, waitMessage, type SparqlBinding, type WaitBudget } from './wikidataUtils.js';
@@ -77,6 +88,12 @@ export function parseWhcRef(value: string): WhcRef | null {
 
 interface Candidate {
   ref: WhcRef;
+  /** The Wikidata item that carries the id — absent for a fact read back from a stored row. */
+  item: string | null;
+  /** The item's English label, which is what tells the property from a part of it. */
+  label: string | null;
+  /** How many sites link the item: how widely the thing it describes is written about. */
+  sitelinks: number;
   article: string | null;
   image: string | null;
 }
@@ -145,6 +162,9 @@ export function indexWorldHeritageFacts(bindings: SparqlBinding[]): WorldHeritag
     }
     candidates[tierOf(ref)].push({
       ref,
+      item: binding.item?.value ?? null,
+      label: binding.label?.value ?? null,
+      sitelinks: Number(binding.links?.value ?? 0) || 0,
       article: binding.article?.value ?? null,
       image: binding.image?.value ?? null,
     });
@@ -159,16 +179,92 @@ export function indexWorldHeritageFacts(bindings: SparqlBinding[]): WorldHeritag
   return { bySite };
 }
 
-/** The first candidate of these that states the fact, or nothing. */
-function firstStating<T>(tiers: Candidate[][], read: (c: Candidate) => T | null): { value: T; from: Candidate } | null {
-  for (const tier of tiers) {
-    for (const candidate of tier) {
-      const value = read(candidate);
-      if (value) return { value, from: candidate };
-    }
-  }
-  return null;
+/** Words that say nothing about which place a name names. */
+const NAME_STOPWORDS = new Set([
+  'the', 'of', 'and', 'in', 'a', 'an', 'at', 'on', 'with', 'its', 'de', 'la', 'le', 'du', 'des', 'et',
+]);
+
+/**
+ * A name as the set of words it is made of: markup dropped (the portal writes
+ * `<em>Subak</em>` and `<br /><small>…</small>` into names), accents folded,
+ * case folded, and the words that name nothing left out.
+ */
+function nameWords(value: string | null | undefined): Set<string> {
+  // Tags cut out by position rather than by pattern: what follows each `<` is
+  // dropped up to its `>`, and a `<` that never closes drops nothing.
+  const untagged = (value ?? '').split('<')
+    .map((piece, i) => (i === 0 || !piece.includes('>') ? piece : piece.slice(piece.indexOf('>') + 1)))
+    .join(' ');
+  const plain = untagged
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase();
+  const words = plain.match(/[a-z0-9]+/g) ?? [];
+  return new Set(words.filter((word) => !NAME_STOPWORDS.has(word)));
 }
+
+/**
+ * How well an item's label answers to the site's name: how much of the label
+ * the name contains, then how much of the two they share.
+ *
+ * Two measures, in that order, because one alone picks wrongly in both
+ * directions. *Covered* is the share of the label's words found in the name: a
+ * part named for something else scores low (the Altes Museum under "Museumsinsel
+ * (Museum Island), Berlin", Hagia Sophia under "Historic Areas of Istanbul"),
+ * while Bridgetown is wholly inside "Historic Bridgetown and its Garrison" where
+ * the Garrison Historic Area is not. *Shared* (Jaccard) breaks the tie that
+ * leaves: Stonehenge is wholly inside "Stonehenge, Avebury and Associated
+ * Sites" and so is the property's own item, which shares all of it.
+ */
+function nameMatch(label: string | null, site: ReadonlySet<string>): { covered: number; shared: number } {
+  const words = nameWords(label);
+  if (words.size === 0) return { covered: 0, shared: 0 };
+  let common = 0;
+  for (const word of words) if (site.has(word)) common += 1;
+  return { covered: common / words.size, shared: common / (words.size + site.size - common) };
+}
+
+/**
+ * The order in which the items carrying one property-tier id answer for the
+ * site: the one whose label is the site's name first.
+ *
+ * Measured on the 107 sites whose id sat on more than one item on 2026-10-03,
+ * with each outcome read as a traveller would: the name decides (see
+ * `nameMatch`), and where two items answer to it alike — Galápagos Islands
+ * twice, Jantar Mantar in Jaipur and in New Delhi — the more widely written
+ * about one is the place. The item id last, so the order never depends on the
+ * order the query service answered in.
+ */
+function asTheProperty(site: ReadonlySet<string>): (a: Candidate, b: Candidate) => number {
+  return (a, b) => {
+    const [ma, mb] = [nameMatch(a.label, site), nameMatch(b.label, site)];
+    return mb.covered - ma.covered
+      || mb.shared - ma.shared
+      || b.sitelinks - a.sitelinks
+      || (a.item ?? '').localeCompare(b.item ?? '')
+      || byRef(a, b);
+  };
+}
+
+/** The most widely written about first, for the items that stand in when the property's own is silent. */
+function byRenown(a: Candidate, b: Candidate): number {
+  return b.sitelinks - a.sitelinks || (a.item ?? '').localeCompare(b.item ?? '') || byRef(a, b);
+}
+
+/**
+ * How widely written about another carrier of the id has to be before its
+ * article stands in for a property whose own item has none.
+ *
+ * Many properties have a dedicated item with no article — "Venice and its
+ * Lagoon", "Palace and Park of Versailles" — and the article a reader wants is
+ * the place's: Venice, the Palace of Versailles. So the best-known other
+ * carrier answers. But the id also lands on things nobody would send a reader
+ * to for the whole: the only other carrier of the Citadel, Ancient City and
+ * Fortress Buildings of Derbent is Derbent Lighthouse, on 7 sites. Among the
+ * 107 sites measured on 2026-10-03 the least-linked stand-in that was right
+ * was the Tijuca Forest at 12, and no article is better than that lighthouse.
+ */
+export const ARTICLE_STAND_IN_MIN_SITELINKS = 10;
 
 /**
  * What Wikidata states about one site of the catalogue.
@@ -179,24 +275,46 @@ function firstStating<T>(tiers: Candidate[][], read: (c: Candidate) => T | null)
  * site shows — so the picture may come from a component. An *article* about one
  * component is an article about that component: the reader who follows it from
  * a card about the whole property has been sent to the wrong page. So the
- * article is taken from the property's own item only, renumberings included.
+ * article is taken from an item carrying the property's own number,
+ * renumberings included.
+ *
+ * Among those, the item named as the site is named answers first
+ * (`asTheProperty`) — for both facts, so the article and the picture are the
+ * same item's wherever it states both. Where it has no article, the best-known
+ * other carrier stands in if it is known widely enough
+ * (`ARTICLE_STAND_IN_MIN_SITELINKS`); where it has no picture, the others are
+ * asked in order of renown, and then the components.
+ *
+ * `name` is the site's name as the portal gives it. Without one — a caller
+ * that has only the id — every label matches alike and renown decides.
  */
-export function factsForSite(index: WorldHeritageIndex, idNo: string): SiteFacts {
+export function factsForSite(index: WorldHeritageIndex, idNo: string, name?: string | null): SiteFacts {
   const candidates = index.bySite.get(String(idNo).trim());
   if (!candidates) return { article: null, picture: null };
 
-  const property = [candidates.exact, candidates.variant];
-  const article = firstStating(property, (c) => c.article);
-  const picture = firstStating([...property, candidates.component], (c) => c.image);
+  const site = nameWords(name);
+  const property = [candidates.exact, candidates.variant]
+    .filter((tier) => tier.length > 0)
+    .map((tier) => {
+      const [own, ...others] = [...tier].sort(asTheProperty(site));
+      return { own, others: others.sort(byRenown) };
+    });
+
+  let article: string | null = null;
+  for (const { own, others } of property) {
+    article = own.article
+      ?? others.find((c) => c.article && c.sitelinks >= ARTICLE_STAND_IN_MIN_SITELINKS)?.article
+      ?? null;
+    if (article) break;
+  }
+
+  const pictured = [...property.flatMap(({ own, others }) => [own, ...others]), ...candidates.component]
+    .find((c) => c.image);
 
   return {
-    article: article?.value ?? null,
-    picture: picture
-      ? {
-        url: picture.value,
-        via: tierOf(picture.from.ref),
-        ref: picture.from.ref.raw,
-      }
+    article,
+    picture: pictured?.image
+      ? { url: pictured.image, via: tierOf(pictured.ref), ref: pictured.ref.raw }
       : null,
   };
 }
@@ -210,6 +328,12 @@ export function factsForSite(index: WorldHeritageIndex, idNo: string): SiteFacts
  * `292` this catalogue is keyed by, while the Sydney Opera House carries `166rev`
  * alone. Reading only the best rank cost 366 of 1 272 sites their article link
  * before this, and would have cost the same sites their picture.
+ *
+ * Grouped by the item and not by the id: several items can carry one id, and
+ * a row per id takes the alphabetically first article and picture across all
+ * of them — the Altes Museum's for Museum Island, a lighthouse for the citadel
+ * of Derbent (#1232). Each row is one item's own article and picture, with the
+ * label and the sitelink count `factsForSite` chooses among the items by.
  *
  * `MIN` rather than `SAMPLE` for the same reason `byRef` sorts: an item may
  * carry several pictures, and an arbitrary one of them would change between
@@ -228,12 +352,14 @@ export async function fetchWorldHeritageFacts(
   budget: WaitBudget,
 ): Promise<WorldHeritageIndex | null> {
   const query = `
-    SELECT ?whc (MIN(?a) AS ?article) (MIN(?img) AS ?image) WHERE {
-      ?item p:P757/ps:P757 ?whc .
+    SELECT ?item ?whc ?label ?links (MIN(?a) AS ?article) (MIN(?img) AS ?image) WHERE {
+      ?item p:P757/ps:P757 ?whc ;
+            wikibase:sitelinks ?links .
+      OPTIONAL { ?item rdfs:label ?label . FILTER(LANG(?label) = "en") }
       OPTIONAL { ?a schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> . }
       OPTIONAL { ?item wdt:P18 ?img . }
     }
-    GROUP BY ?whc
+    GROUP BY ?item ?whc ?label ?links
   `;
 
   try {

@@ -71,6 +71,17 @@ export function sitesNeedingAPicture(rows: SiteRow[]): SiteRow[] {
   return rows.filter((row) => !row.image_url || !isDisplayablePictureUrl(row.image_url));
 }
 
+/**
+ * The rows, with the name each is stored under.
+ *
+ * That name is what `factsForSite` chooses among the items carrying one id by,
+ * and here it is the row's own, where a run reads the portal's `name_en`. The
+ * two are the same name unless a curator has renamed the row or a rename from
+ * the portal is still held; then the repair may write one carrier's picture
+ * and the next run propose another's, which a curator answers on the card.
+ * The row's name is what this action has: it reads no export, and a renamed
+ * row still names the same property.
+ */
 async function readSites(): Promise<SiteRow[]> {
   const result = await pool.query(
     `SELECT id, external_id, name, image_url
@@ -93,7 +104,7 @@ function picturesToAskAbout(
 ): string[] {
   const wanted = new Set<string>();
   for (const row of rows) {
-    const picture = factsForSite(facts, row.external_id).picture;
+    const picture = factsForSite(facts, row.external_id, row.name).picture;
     if (!picture) continue;
     const known = stored.get(row.external_id);
     if (known?.credit && known.imageUrl === picture.url) continue;
@@ -148,7 +159,7 @@ async function repairRows(
     progress.progress = i + 1;
     progress.statusMessage = `Fixing ${i + 1}/${rows.length}: ${row.name}`;
 
-    const picture = factsForSite(facts, row.external_id).picture;
+    const picture = factsForSite(facts, row.external_id, row.name).picture;
     // A file the product may not show — a PDF under a P18 — is answered exactly
     // as no picture is: written, it would be re-selected on every run.
     const wrote = picture

@@ -148,7 +148,157 @@ describe('factsForSite', () => {
   });
 });
 
+/** One item's row, as the query answers since it groups by the item. */
+function item(
+  qid: string, whc: string, label: string, links: number,
+  facts: { article?: string; image?: string } = {},
+): SparqlBinding {
+  return {
+    ...binding(whc, {
+      article: facts.article ? `https://en.wikipedia.org/wiki/${facts.article}` : undefined,
+      image: facts.image,
+    }),
+    item: { value: `http://www.wikidata.org/entity/${qid}` },
+    label: { value: label },
+    links: { value: String(links) },
+  };
+}
+
+describe('factsForSite, where several items carry one id', () => {
+  // Every pair below is one Wikidata held on 2026-10-03, with the sitelink
+  // counts it had: the id sits on the property's item and on something else.
+
+  it('answers from the item named as the site is named, not from a part that sorts first', () => {
+    // The Altes Museum has carried Museum Island's id since 2026-10-01, and
+    // "Altes_Museum" sorts before "Museum_Island": run 141 proposed the
+    // building's article and picture for the island (#1232).
+    const index = indexWorldHeritageFacts([
+      item('Q156722', '896', 'Altes Museum', 44, { article: 'Altes_Museum', image: 'Berlin Stare muzeum 4.jpg' }),
+      item('Q151963', '896', 'Museum Island', 58, { article: 'Museum_Island', image: 'Berlin Museumsinsel Fernsehturm.jpg' }),
+    ]);
+
+    expect(factsForSite(index, '896', 'Museumsinsel (Museum Island), Berlin')).toEqual({
+      article: 'https://en.wikipedia.org/wiki/Museum_Island',
+      picture: { url: COMMONS + 'Berlin Museumsinsel Fernsehturm.jpg', via: 'exact', ref: '896' },
+    });
+  });
+
+  it('takes the article and the picture from the same item', () => {
+    // One row per id took each fact's alphabetical minimum on its own, so the
+    // article could be one item's and the picture another's.
+    const index = indexWorldHeritageFacts([
+      item('Q12506', '356', 'Hagia Sophia', 152, { article: 'Hagia_Sophia', image: 'Aya Sofya.jpg' }),
+      item('Q5773394', '356', 'Historic Areas of Istanbul', 24, { article: 'Historic_Areas_of_Istanbul', image: 'Istanbul.jpg' }),
+    ]);
+
+    const facts = factsForSite(index, '356', 'Historic Areas of Istanbul');
+    expect(facts.article).toBe('https://en.wikipedia.org/wiki/Historic_Areas_of_Istanbul');
+    expect(facts.picture?.url).toBe(COMMONS + 'Istanbul.jpg');
+  });
+
+  it('lets the best-known other carrier stand in where the property\'s own item has no article', () => {
+    // "Venice and its Lagoon" is an item of its own with no article; the page a
+    // reader wants is Venice's.
+    const index = indexWorldHeritageFacts([
+      item('Q11352141', '394', 'Venice and its Lagoon', 3, { image: 'Lagoon.jpg' }),
+      item('Q641', '394', 'Venice', 230, { article: 'Venice', image: 'Venezia.jpg' }),
+    ]);
+
+    const facts = factsForSite(index, '394', 'Venice and its Lagoon');
+    expect(facts.article).toBe('https://en.wikipedia.org/wiki/Venice');
+    // The picture stays the property item's own: it has one.
+    expect(facts.picture?.url).toBe(COMMONS + 'Lagoon.jpg');
+  });
+
+  it('names no article rather than a little-known part\'s', () => {
+    // The only other carrier of Derbent's id is its lighthouse, on 7 sites:
+    // no page is better than that one for the citadel and the ancient city.
+    const index = indexWorldHeritageFacts([
+      item('Q24937319', '1070', 'Derbent Lighthouse', 7, { article: 'Derbent_Lighthouse', image: 'Mayak.jpg' }),
+      item('Q64763166', '1070', 'Citadel, Ancient City and Fortress Buildings of Derbent', 3, { image: 'Naryn-Kala.jpg' }),
+    ]);
+
+    const facts = factsForSite(index, '1070', 'Citadel, Ancient City and Fortress Buildings of Derbent');
+    expect(facts.article).toBeNull();
+    expect(facts.picture?.url).toBe(COMMONS + 'Naryn-Kala.jpg');
+  });
+
+  it('reads the name by what the label is made of, then by what the two share', () => {
+    // Bridgetown is wholly inside the site's name where the Garrison Historic
+    // Area is not, though the second shares more words with it.
+    const bridgetown = indexWorldHeritageFacts([
+      item('Q629210', '1376', 'Garrison Historic Area', 11, { article: 'Garrison_Historic_Area' }),
+      item('Q36168', '1376', 'Bridgetown', 145, { article: 'Bridgetown' }),
+    ]);
+    expect(factsForSite(bridgetown, '1376', 'Historic Bridgetown and its Garrison').article)
+      .toBe('https://en.wikipedia.org/wiki/Bridgetown');
+
+    // Stonehenge is wholly inside its site's name too, and so is the
+    // property's own item, which shares all of it and has its own article.
+    const stonehenge = indexWorldHeritageFacts([
+      item('Q39671', '373', 'Stonehenge', 135, { article: 'Stonehenge' }),
+      item('Q587584', '373', 'Stonehenge, Avebury and Associated Sites', 17, { article: 'Stonehenge,_Avebury_and_Associated_Sites' }),
+    ]);
+    expect(factsForSite(stonehenge, '373', 'Stonehenge, Avebury and Associated Sites').article)
+      .toBe('https://en.wikipedia.org/wiki/Stonehenge,_Avebury_and_Associated_Sites');
+  });
+
+  it('reads a name through the portal\'s markup and a label through its accents', () => {
+    const index = indexWorldHeritageFacts([
+      item('Q105973249', '362', 'Old Town of Ghadamès', 15, { article: 'Old_town_of_Ghadames' }),
+      item('Q192237', '362', 'Ghadames', 69, { article: 'Ghadames' }),
+    ]);
+
+    expect(factsForSite(index, '362', 'Old Town of <em>Ghadamès</em>').article)
+      .toBe('https://en.wikipedia.org/wiki/Old_town_of_Ghadames');
+  });
+
+  it('takes the better-known of two items the name fits alike', () => {
+    // Jantar Mantar in Jaipur and in New Delhi carry one id and one label.
+    const index = indexWorldHeritageFacts([
+      item('Q2045115', '1338', 'Jantar Mantar', 20, { article: 'Jantar_Mantar,_New_Delhi' }),
+      item('Q508634', '1338', 'Jantar Mantar', 47, { article: 'Jantar_Mantar,_Jaipur' }),
+    ]);
+
+    expect(factsForSite(index, '1338', 'The Jantar Mantar, Jaipur').article)
+      .toBe('https://en.wikipedia.org/wiki/Jantar_Mantar,_Jaipur');
+  });
+
+  it('answers the same whatever order the items arrive in', () => {
+    const rows = [
+      item('Q156722', '896', 'Altes Museum', 44, { article: 'Altes_Museum', image: 'A.jpg' }),
+      item('Q151963', '896', 'Museum Island', 58, { article: 'Museum_Island', image: 'M.jpg' }),
+    ];
+    const name = 'Museumsinsel (Museum Island), Berlin';
+
+    expect(factsForSite(indexWorldHeritageFacts([...rows].reverse()), '896', name))
+      .toEqual(factsForSite(indexWorldHeritageFacts(rows), '896', name));
+  });
+});
+
 describe('fetchWorldHeritageFacts', () => {
+  it('asks for a row per item, never one per id', async () => {
+    // Grouped by the id alone, the row is every carrier folded together, and
+    // MIN takes the alphabetically first article and picture across them.
+    vi.resetModules();
+    const sparqlQuery = vi.fn(async (..._args: unknown[]) => [] as SparqlBinding[]);
+    vi.doMock('./wikidataUtils.js', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('./wikidataUtils.js')>()),
+      sparqlQuery,
+    }));
+    const { fetchWorldHeritageFacts } = await import('./unescoWikidata.js');
+    const { WaitBudget } = await import('./sourceRetry.js');
+    const progress = { cancel: false, statusMessage: '' } as Parameters<typeof fetchWorldHeritageFacts>[0];
+
+    await fetchWorldHeritageFacts(progress, new WaitBudget(1000));
+
+    const query = String(sparqlQuery.mock.calls[0][0]);
+    expect(query).toMatch(/GROUP BY \?item \?whc \?label \?links/);
+    expect(query).toContain('wikibase:sitelinks ?links');
+    vi.doUnmock('./wikidataUtils.js');
+  });
+
+
   it('answers nothing at all, rather than an empty index, when Wikidata did not answer', async () => {
     // An empty index says the properties have no pictures; no answer says
     // nothing about them. A caller reading the two alike would, on a bad

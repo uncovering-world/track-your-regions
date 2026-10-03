@@ -122,7 +122,7 @@ async function creditsForNewPictures(
 ): Promise<Map<string, ImageCredit>> {
   const wanted = new Set<string>();
   for (const record of records) {
-    const picture = factsForSite(facts, String(record.id_no)).picture;
+    const picture = factsForSite(facts, String(record.id_no), record.name_en).picture;
     if (!picture) continue;
     const stored = storedCredits.get(String(record.id_no));
     if (stored?.imageClaimed) continue;
@@ -536,7 +536,7 @@ export function syncUnescoSites(
       return { items: records, fetchedCount: records.length };
     },
     processItem: async (record, _progress, context) => {
-      const processed = transformRecord(record, factsForSite(facts, String(record.id_no)), credits);
+      const processed = transformRecord(record, factsForSite(facts, String(record.id_no), record.name_en), credits);
       if (!processed) {
         throw new Error('No valid coordinates');
       }
