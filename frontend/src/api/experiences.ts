@@ -26,7 +26,7 @@ export type {
   ExperienceLocationWithState, ExperienceRegionRef, ExperienceSearch, ExperienceSearchResult,
   ExperiencesByRegionResponse, ExperienceTreasure, ExperienceTreasuresResponse, ImageCredit, LinkedPlace,
   NewBadgesSeen, RegionExperienceCount, RegionExperienceCounts, RegionExperienceLocation,
-  RegionExperienceLocationsResponse, SiteFind, SiteFindsResponse,
+  RegionExperienceLocationsResponse, SiteFind, SiteFindsResponse, WorkVenue,
 } from './client.generated';
 
 /**

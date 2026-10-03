@@ -51,6 +51,7 @@ function works(n: number): ExperienceTreasure[] {
     is_iconic: false,
     curated_fields: [],
     venue_count: 1,
+    venues: null,
     image_credit: null,
     found_at: null,
     found_at_site: null,

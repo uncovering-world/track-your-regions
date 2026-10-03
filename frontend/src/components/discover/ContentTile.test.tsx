@@ -48,6 +48,7 @@ function work(over: Partial<ExperienceTreasure> = {}): ExperienceTreasure {
     is_iconic: false,
     curated_fields: [],
     venue_count: 1,
+    venues: null,
     found_at: null,
     found_at_site: null,
     ...over,

@@ -39,12 +39,13 @@
 import { useState } from 'react';
 import { Alert, Button, Chip, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ExperienceTreasure, ImageCredit } from '../../api/experiences';
+import type { ExperienceTreasure, ImageCredit, WorkVenue } from '../../api/experiences';
 import { editWork, type WorkEditResult } from '../../api/curation';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { creators, creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { plural } from '../../utils/plural';
+import { reachOutcome, WorkReach } from './WorkReach';
 import { tidyLabel } from '@tyr/shared/labels';
 import { MakerList, MAX_MAKERS } from './MakerList';
 import { YearField } from './YearField';
@@ -67,6 +68,8 @@ export interface WorkToCorrect {
   imageCredit?: ImageCredit | null;
   /** How many museums hang it, so the form can say how far the correction reaches. */
   venueCount?: number | null;
+  /** Those museums, named, where the read that opened the form carries them (`WorkReach`). */
+  venues?: WorkVenue[] | null;
   /** What it is — "painting", "woodblock print" — and the source's own id, for the dialog's header. */
   treasureType?: string | null;
   externalId?: string | null;
@@ -97,6 +100,7 @@ export function workToCorrect(
     imageUrl: work.image_url,
     imageCredit: work.image_credit,
     venueCount: work.venue_count,
+    venues: work.venues,
     treasureType: work.treasure_type,
     externalId: work.external_id,
     regionId,
@@ -132,14 +136,8 @@ export function correctionOutcome(work: WorkToCorrect, correction: Correction, r
   }
   const sentences = [`${work.name}: ${changes.join(', ')}.`];
   sentences.push(`The source will no longer overwrite ${claimedFields(reply.claimed)}.`);
-  const venues = work.venueCount ?? 1;
-  if (venues > 1) {
-    // "carry", not "show": the count is of museums the work hangs in, which is a
-    // fact about the world and stable under curation — one of them may be
-    // refused or still gated, and readers would then see it nowhere while the
-    // row it carries is corrected all the same (`venueCountSql`).
-    sentences.push(`All ${venues} museums holding this work carry the correction.`);
-  }
+  const reach = reachOutcome(work.venues, work.venueCount ?? 1);
+  if (reach) sentences.push(reach);
   return sentences.join(' ');
 }
 
@@ -340,16 +338,10 @@ export function WorkCorrection({ work, onDone, onCancel }: {
   let vouchLabel = 'Confirm these makers';
   if (vouched) vouchLabel = 'Undo';
   else if (makers.length === 0) vouchLabel = 'Confirm: no maker is known';
-  const venues = work.venueCount ?? 1;
 
   return (
     <Stack spacing={2}>
-      {venues > 1 && (
-        <Alert severity="info" icon={false} sx={{ py: 0.5 }}>
-          <strong>This work hangs in {venues} museums.</strong> They share one row —
-          correcting it here corrects it for all of them.
-        </Alert>
-      )}
+      <WorkReach venues={work.venues} count={work.venueCount ?? 1} />
 
       <TextField
         label="Title"
