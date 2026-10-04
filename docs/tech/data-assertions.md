@@ -469,6 +469,17 @@ at all, the row also comes back with no kind, which no group, pin colour or
 chip can draw; a membership naming that source under another id still gives
 the row its kind, and only the run fails.
 
+**The listing rule** (`place-listing-disagrees-with-memberships`) states the
+derivation ADR-0084 put on a place's own `missing_since` and
+`source_membership` (#1251): whether a source still lists a place is each
+membership's, and the place's copy is missing once every membership is — at
+the latest of their flags — and `former` once every membership is, written by
+the trigger `derive_place_listing()` and by nothing else. The review queue's
+missing card and every `former` chip read the place's copy, so a place where
+the two disagree is asked about, or labelled, by a state no source is in. A row
+here means a write reached the place's columns past the trigger, or a database
+is missing it, which re-applying the schema restores.
+
 **The name rule** (`name-carries-whitespace-nobody-typed`) asks of every column
 a person types into a filter — a place's name, each language of its local
 names, a monument's makers, a point's name, a work's title and its makers —
