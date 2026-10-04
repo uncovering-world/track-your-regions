@@ -514,6 +514,44 @@ const placeListingDisagreesWithMemberships: CatalogueAssertion = {
     + `(experience ${count(row, 'experience_id')})`,
 };
 
+/**
+ * A work link placed by a membership of another place.
+ *
+ * Which memberships place a link is `experience_treasure_placements` (ADR-0084):
+ * a run adds its own on every link it offers at a place and takes it away when
+ * it stops, and the link is marked missing once none is left. A placement
+ * naming a membership of another place is one no run of that place will ever
+ * take away — the link stays on show after every source of its own place has
+ * dropped the work — and the card's per-kind lists of works (#1245) would file
+ * the work under a kind the place is not in.
+ */
+const placementOfAnotherPlace: CatalogueAssertion = {
+  id: 'link-placed-by-another-places-membership',
+  area: 'objects',
+  title: 'A work link placed by a membership of another place',
+  kind: 'invariant',
+  meaning:
+    'A work is linked to a place, and the membership recorded as placing it there belongs to a different '
+    + 'place. No run of this place can take that placement away, so the work stays on show after every '
+    + 'source of the place has stopped placing it. A merge that moved the link without its placement, or a '
+    + 'placement written by hand, leaves this; the placement belongs to a membership of the link\'s own place.',
+  sql: `SELECT e.id AS experience_id,
+               e.name AS experience_name,
+               t.name AS work_name,
+               other.id AS other_experience_id
+          FROM experience_treasure_placements p
+          JOIN experience_treasures et ON et.id = p.link_id
+          JOIN experiences e ON e.id = et.experience_id
+          JOIN treasures t ON t.id = et.treasure_id
+          JOIN ${MEMBERSHIPS} m ON m.id = p.membership_id
+          JOIN experiences other ON other.id = m.experience_id
+         WHERE m.experience_id <> et.experience_id
+         ORDER BY e.name, t.name`,
+  describe: row =>
+    `${text(row, 'work_name')} at ${text(row, 'experience_name')} (experience `
+    + `${count(row, 'experience_id')}) is placed by a membership of experience ${count(row, 'other_experience_id')}`,
+};
+
 /** `column <> tidy(column)`: the stored value is not what the writers would store. */
 const untidy = (column: string) => `${column} IS NOT NULL AND ${column} <> ${tidyLabelSql(column)}`;
 
@@ -682,5 +720,6 @@ export const objectAssertions: CatalogueAssertion[] = [
   placeWithoutMembership,
   membershipSourceDisagreesWithRow,
   placeListingDisagreesWithMemberships,
+  placementOfAnotherPlace,
   nameCarriesWhitespaceNobodyTyped,
 ];

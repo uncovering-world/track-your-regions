@@ -1,14 +1,15 @@
 /**
- * Tests for the two arms that act on a museum's links after its works are
- * written (ADR-0044).
+ * Tests for `place`, `restore` and `mark`, which act on a museum's links after
+ * its works are written (ADR-0044, ADR-0084).
  *
- * Both are one UPDATE each, and everything they promise lives in the WHERE: the
- * restore must reach only marked links of offered works, and the mark must
- * reach only unmarked links of unoffered works — and must pass over the one
+ * Each is one statement, and everything they promise lives in the WHERE: the
+ * placement must reach only offered works, the restore only marked links of
+ * offered works, and the mark only unmarked links of unoffered works the run
+ * itself places or nobody does — and must pass over the one
  * shape a gated source makes dangerous, a visible link whose work this run
  * places somewhere no reader can see yet. A mocked pool cannot see which rows
  * Postgres picks; what it can pin is that every term is in the statement, that
- * the numbers bind where the terms expect them, and that the two arms share one
+ * the numbers bind where the terms expect them, and that the three share one
  * transaction. The statements themselves were run against the dev database in
  * a rolled-back transaction when they were written.
  */
@@ -27,6 +28,8 @@ import { reconcileLinks } from './linkWithdrawal.js';
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
 const mockedRollback = rollbackQuietly as unknown as ReturnType<typeof vi.fn>;
 const EXPERIENCE_ID = 77;
+/** The run's source, whose membership of the place the placements are (ADR-0084). */
+const SOURCE_ID = 2;
 
 /** One client per call, its statements recorded in order. */
 function makeClient(answers: Record<string, { rows?: unknown[] } | Error> = {}) {
@@ -46,6 +49,7 @@ function sent(client: { query: ReturnType<typeof vi.fn> }): string[] {
   return client.query.mock.calls.map(call => String(call[0]).replace(/\s+/g, ' '));
 }
 
+const PLACE = 'INSERT INTO experience_treasure_placements';
 const RESTORE = 'SET missing_since = NULL';
 const MARK = 'SET missing_since = NOW()';
 
@@ -59,7 +63,7 @@ describe('reconcileLinks', () => {
   it('locks the object first, then runs the restore and the mark, in one transaction', async () => {
     const client = makeClient();
 
-    await reconcileLinks(EXPERIENCE_ID, { offered: [900], placedElsewhere: [], withdraw: true });
+    await reconcileLinks(EXPERIENCE_ID, { sourceId: SOURCE_ID, offered: [900], placedElsewhere: [], withdraw: true });
 
     const statements = sent(client);
     expect(statements[0]).toBe('BEGIN');
@@ -68,9 +72,11 @@ describe('reconcileLinks', () => {
     // rows, so both take the object first and neither can be half of a cycle.
     expect(statements[1]).toBe('SELECT id FROM experiences WHERE id = $1 FOR NO KEY UPDATE');
     expect(client.query.mock.calls[1][1]).toEqual([EXPERIENCE_ID]);
-    expect(statements[2]).toContain(RESTORE);
-    expect(statements[3]).toContain(MARK);
-    expect(statements[4]).toBe('COMMIT');
+    // The run's placements first: the restore and the mark read them.
+    expect(statements[2]).toContain(PLACE);
+    expect(statements[3]).toContain(RESTORE);
+    expect(statements[4]).toContain(MARK);
+    expect(statements[5]).toBe('COMMIT');
     expect(client.release).toHaveBeenCalledWith(undefined);
   });
 
@@ -81,7 +87,7 @@ describe('reconcileLinks', () => {
     const client = makeClient({ [MARK]: new Error('deadlock') });
 
     await expect(reconcileLinks(EXPERIENCE_ID, {
-      offered: [900], placedElsewhere: [], withdraw: true,
+      sourceId: SOURCE_ID, offered: [900], placedElsewhere: [], withdraw: true,
     })).rejects.toThrow('deadlock');
 
     expect(sent(client)).not.toContain('COMMIT');
@@ -95,7 +101,7 @@ describe('reconcileLinks', () => {
     mockedRollback.mockResolvedValueOnce(dead);
 
     await expect(reconcileLinks(EXPERIENCE_ID, {
-      offered: [900], placedElsewhere: [], withdraw: true,
+      sourceId: SOURCE_ID, offered: [900], placedElsewhere: [], withdraw: true,
     })).rejects.toThrow('deadlock');
 
     expect(client.release).toHaveBeenCalledWith(dead);
@@ -107,7 +113,7 @@ describe('reconcileLinks', () => {
     const client = makeClient();
 
     const delta = await reconcileLinks(EXPERIENCE_ID, {
-      offered: [900], placedElsewhere: [], withdraw: false,
+      sourceId: SOURCE_ID, offered: [900], placedElsewhere: [], withdraw: false,
     });
 
     const statements = sent(client);
@@ -122,15 +128,30 @@ describe('reconcileLinks', () => {
     // — the Bendegó meteorite at the Museu Nacional. An empty offer is compared
     // like any other, or the meteorite stays a pending find (#890).
     const client = makeClient();
-    await reconcileLinks(EXPERIENCE_ID, { offered: [], placedElsewhere: [], withdraw: true });
+    await reconcileLinks(EXPERIENCE_ID, { sourceId: SOURCE_ID, offered: [], placedElsewhere: [], withdraw: true });
     const statements = sent(client);
     expect(statements.some(s => s.includes(MARK))).toBe(true);
     expect(statements.some(s => s.includes(RESTORE))).toBe(true);
 
     // And still nothing below the floor.
     const held = makeClient();
-    await reconcileLinks(EXPERIENCE_ID, { offered: [], placedElsewhere: [], withdraw: false });
+    await reconcileLinks(EXPERIENCE_ID, { sourceId: SOURCE_ID, offered: [], placedElsewhere: [], withdraw: false });
     expect(sent(held).some(s => s.includes(MARK))).toBe(false);
+  });
+});
+
+describe('the placement', () => {
+  it('records the run\'s membership on every link it offers, a link another source places included', async () => {
+    const client = makeClient();
+
+    await reconcileLinks(EXPERIENCE_ID, { sourceId: SOURCE_ID, offered: [900, 901], placedElsewhere: [], withdraw: true });
+
+    const sql = sent(client).find(s => s.includes(PLACE))!;
+    expect(sql).toContain('(SELECT id FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $3)');
+    expect(sql).toContain('et.treasure_id = ANY($2::int[])');
+    expect(sql).toContain('ON CONFLICT DO NOTHING');
+    const call = client.query.mock.calls.find(c => String(c[0]).includes(PLACE))!;
+    expect(call[1]).toEqual([EXPERIENCE_ID, [900, 901], SOURCE_ID]);
   });
 });
 
@@ -138,7 +159,7 @@ describe('the restore', () => {
   it('clears the mark on the offered works only, among the marked links only', async () => {
     const client = makeClient();
 
-    await reconcileLinks(EXPERIENCE_ID, { offered: [900, 901], placedElsewhere: [], withdraw: true });
+    await reconcileLinks(EXPERIENCE_ID, { sourceId: SOURCE_ID, offered: [900, 901], placedElsewhere: [], withdraw: true });
 
     const sql = sent(client).find(s => s.includes(RESTORE))!;
     expect(sql).toContain('et.experience_id = $1');
@@ -154,7 +175,7 @@ describe('the restore', () => {
     // returned point; a link never passed stays waiting on its card.
     const client = makeClient();
 
-    await reconcileLinks(EXPERIENCE_ID, { offered: [900], placedElsewhere: [], withdraw: true });
+    await reconcileLinks(EXPERIENCE_ID, { sourceId: SOURCE_ID, offered: [900], placedElsewhere: [], withdraw: true });
 
     expect(sent(client).find(s => s.includes(RESTORE))).not.toMatch(/curation_state\s*=/);
   });
@@ -164,7 +185,7 @@ describe('the restore', () => {
       { name: 'The Night Watch', external_id: 'Q219831' },
     ] } });
 
-    const delta = await reconcileLinks(EXPERIENCE_ID, { offered: [900], placedElsewhere: [], withdraw: true });
+    const delta = await reconcileLinks(EXPERIENCE_ID, { sourceId: SOURCE_ID, offered: [900], placedElsewhere: [], withdraw: true });
 
     expect(delta.returned).toEqual([{ name: 'The Night Watch', ref: 'Q219831' }]);
     expect(sent(client).find(s => s.includes(RESTORE))).toContain('RETURNING t.name, t.external_id');
@@ -174,7 +195,7 @@ describe('the restore', () => {
 describe('the mark', () => {
   async function markSql(placedElsewhere: string[] = ['Q12418']) {
     const client = makeClient();
-    await reconcileLinks(EXPERIENCE_ID, { offered: [900, 901], placedElsewhere, withdraw: true });
+    await reconcileLinks(EXPERIENCE_ID, { sourceId: SOURCE_ID, offered: [900, 901], placedElsewhere, withdraw: true });
     const call = client.query.mock.calls.find(c => String(c[0]).includes(MARK))!;
     return { sql: String(call[0]).replace(/\s+/g, ' '), params: call[1] as unknown[] };
   }
@@ -187,19 +208,42 @@ describe('the mark', () => {
     // observed missing once, and restamping it would churn the table.
     expect(sql).toContain('et.missing_since IS NULL');
     expect(sql).toContain('NOT (et.treasure_id = ANY($2::int[]))');
-    expect(params).toEqual([EXPERIENCE_ID, [900, 901], ['Q12418']]);
+    expect(params).toEqual([EXPERIENCE_ID, [900, 901], ['Q12418'], SOURCE_ID]);
   });
 
-  it('marks, never deletes', async () => {
+  it('takes away only the run\'s own placement, and marks a link only once none is left', async () => {
     const { sql } = await markSql();
 
-    expect(sql).toMatch(/^UPDATE experience_treasures/);
-    expect(sql).not.toContain('DELETE');
+    // A place two sources fill: the Art Museums run never marks a find
+    // Archaeology still places there (ADR-0084).
+    expect(sql).toMatch(/^WITH candidate AS \( SELECT et\.id FROM experience_treasures et/);
+    expect(sql).toContain('unplaced AS ( DELETE FROM experience_treasure_placements pl USING candidate c');
+    expect(sql).toContain('pl.membership_id = (SELECT id FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $4)');
+    expect(sql).toContain('WHERE et.id IN (SELECT id FROM candidate)');
+    expect(sql).toContain('AND NOT EXISTS ( SELECT 1 FROM experience_treasure_placements other WHERE other.link_id = et.id');
+    // The statement's snapshot still holds the deleted placements, so the
+    // "none left" test has to leave them out by name.
+    expect(sql).toContain('(other.link_id, other.membership_id) NOT IN (SELECT link_id, membership_id FROM unplaced)');
+  });
+
+  it('treats a link no membership places as the run\'s to withdraw', async () => {
+    // A link written by code that predates the placements, or before a
+    // deployment's migration, answers to no membership; left out, no run would
+    // ever withdraw it.
+    const { sql } = await markSql();
+    expect(sql).toContain('OR NOT EXISTS (SELECT 1 FROM experience_treasure_placements any_placement WHERE any_placement.link_id = et.id)');
+  });
+
+  it('marks the link, never deletes it', async () => {
+    const { sql } = await markSql();
+
+    expect(sql).toContain('UPDATE experience_treasures et SET missing_since = NOW()');
+    expect(sql).not.toMatch(/DELETE FROM experience_treasures\b(?!_)/);
   });
 
   it('holds a visible link of a work this run places elsewhere, while no readable link of it stands', async () => {
     const { sql } = await markSql();
-    const hold = sql.slice(sql.indexOf('AND NOT ('), sql.indexOf('RETURNING'));
+    const hold = sql.slice(sql.indexOf('A link a reader can see'), sql.indexOf('RETURNING'));
 
     // Visible: the link, the work, and the museum all past the gate — the
     // same three `getExperienceTreasures` asks, plus the museum's admission.
@@ -230,7 +274,7 @@ describe('the mark', () => {
     // dropped altogether are all marked at once — the first three cost a
     // reader nothing, and the last has no new place to wait for.
     const { sql } = await markSql();
-    const hold = sql.slice(sql.indexOf('AND NOT ('), sql.indexOf('RETURNING'));
+    const hold = sql.slice(sql.indexOf('A link a reader can see'), sql.indexOf('RETURNING'));
 
     expect(hold.indexOf("et.curation_state <> 'pending'")).toBeLessThan(hold.indexOf('$3'));
     expect(hold.indexOf('$3')).toBeLessThan(hold.indexOf('NOT EXISTS'));
@@ -242,7 +286,7 @@ describe('the mark', () => {
       { name: 'The Syndics', external_id: 'Q2379280' },
     ] } });
 
-    const delta = await reconcileLinks(EXPERIENCE_ID, { offered: [900], placedElsewhere: [], withdraw: true });
+    const delta = await reconcileLinks(EXPERIENCE_ID, { sourceId: SOURCE_ID, offered: [900], placedElsewhere: [], withdraw: true });
 
     expect(delta.withdrawn).toEqual([
       { name: 'Ophelia', ref: 'Q1246930' },

@@ -29,7 +29,7 @@ async function reported(code: string, filePath: string): Promise<string[]> {
 const PREDICATE = /reader predicate is composed/;
 const WRITE = /^experiences is written by its writer modules only/;
 const POINT_WRITE = /^experience_locations is written by its writer modules only/;
-const WORK_WRITE = /^treasures and experience_treasures are written by their writer modules only/;
+const WORK_WRITE = /^treasures, experience_treasures and experience_treasure_placements are written by their writer modules only/;
 const REGION_WRITE = /^regions is written by its writer modules only/;
 
 describe('the catalogue lint rules', () => {
@@ -94,6 +94,8 @@ describe('the catalogue lint rules', () => {
     ['an update of a work in a controller', 'export const q = `UPDATE treasures SET name = $2 WHERE id = $1`;\n', 'src/controllers/experience/lint-fixture.ts'],
     ['an update of a link in a controller', 'export const q = `UPDATE experience_treasures et SET refused_at = NOW()`;\n', 'src/controllers/experience/lint-fixture.ts'],
     ['a lower-case insert of a link in a service', 'export const q = "insert into experience_treasures (experience_id) values ($1)";\n', 'src/services/lint-fixture.ts'],
+    ['a placement taken away in a controller', 'export const q = `DELETE FROM experience_treasure_placements WHERE link_id = $1`;\n', 'src/controllers/experience/lint-fixture.ts'],
+    ['a placement recorded in a service', 'export const q = `INSERT INTO experience_treasure_placements (link_id) VALUES ($1)`;\n', 'src/services/lint-fixture.ts'],
   ])('refuses a write to a work or its link outside their writers: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => WORK_WRITE.test(m))).toBe(true);
   });
@@ -104,6 +106,8 @@ describe('the catalogue lint rules', () => {
     ['the curator writer', 'export const q = `UPDATE treasures SET name = $2 WHERE id = $1`;\n', 'src/controllers/experience/workWriter.ts'],
     ['the run\'s treasure writer', 'export const q = `INSERT INTO treasures (name) VALUES ($1)`;\n', 'src/services/sync/museum/treasureWriter.ts'],
     ['the run\'s link reconciliation', 'export const q = `UPDATE experience_treasures et SET missing_since = NOW()`;\n', 'src/services/sync/museum/linkWithdrawal.ts'],
+    ['the run\'s placements', 'export const q = `DELETE FROM experience_treasure_placements WHERE link_id = $1`;\n', 'src/services/sync/museum/linkWithdrawal.ts'],
+    ['a read of the placements', 'export const q = `SELECT link_id FROM experience_treasure_placements WHERE link_id = $1`;\n', 'src/controllers/lint-fixture.ts'],
     ['the seed', 'export const q = `INSERT INTO treasures (name) VALUES ($1)`;\n', 'src/db/seed/lint-fixture.ts'],
   ])('lets a work write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => WORK_WRITE.test(m))).toBe(false);

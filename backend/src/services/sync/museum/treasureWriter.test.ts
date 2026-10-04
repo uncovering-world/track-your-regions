@@ -36,8 +36,8 @@ vi.mock('../curationDecay.js', () => ({
   retirePassAfterNewContent: vi.fn(),
 }));
 
-// The two arms that act on the museum's other links after its works are
-// written (ADR-0044). Their SQL is pinned in their own test; what this file
+// `reconcileLinks`, which acts on the museum's links after its works are
+// written (ADR-0044, ADR-0084). Their SQL is pinned in their own test; what this file
 // asks is when the writer reaches for them and with what.
 vi.mock('./linkWithdrawal.js', () => ({
   reconcileLinks: vi.fn().mockResolvedValue({ returned: [], withdrawn: [] }),
@@ -338,17 +338,20 @@ describe('a work arrives marked as unread', () => {
     expect(params).toContainEqual(['Hieronymus Bosch']);
   });
 
-  it('reads a link\'s gate through the experience the work is shown in', async () => {
+  it('reads a link\'s gate from the run\'s own source, and records its placement with it', async () => {
     scriptWorks('new');
 
     await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
 
-    // Unlike the treasure, a link belongs to one museum, so it can reach the
-    // source the way every other content row does.
-    const sql = String(linkCall()[0]);
-    expect(sql).toMatch(/FROM experiences e JOIN experience_sources c ON c\.id = e\.source_id/);
-    expect(sql).toMatch(/WHERE e\.id = \$1/);
-    expect(linkCall()[1]).toEqual([EXPERIENCE_ID, 900]);
+    // A place two sources fill is gated per source, and the place's first
+    // source says nothing about this run's (ADR-0084). The placement rides in
+    // the same statement, on a new link or the one already there: a museum
+    // whose write throws after it never reaches reconcileLinks.
+    const sql = String(linkCall()[0]).replace(/\s+/g, ' ');
+    expect(sql).toContain('CASE WHEN (SELECT requires_curation FROM experience_sources WHERE id = $3)');
+    expect(linkCall()[1]).toEqual([EXPERIENCE_ID, 900, MUSEUM_SOURCE_ID]);
+    expect(sql).toContain('INSERT INTO experience_treasure_placements (link_id, membership_id) SELECT this_link.id, m.id FROM this_link JOIN experience_kind_memberships m ON m.experience_id = $1 AND m.source_id = $3');
+    expect(sql).toContain('WHERE et.experience_id = $1 AND et.treasure_id = $2 AND NOT EXISTS (SELECT 1 FROM ins)');
   });
 });
 

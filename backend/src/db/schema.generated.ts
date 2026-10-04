@@ -336,6 +336,13 @@ export interface ExperienceSyncLogsRow {
   unplaced_experience_ids: number[] | null;
 }
 
+/** The table `experience_treasure_placements`. */
+export interface ExperienceTreasurePlacementsRow {
+  link_id: number;
+  membership_id: number;
+  created_at: Date;
+}
+
 /** The table `experience_treasures`. */
 export interface ExperienceTreasuresRow {
   id: number;

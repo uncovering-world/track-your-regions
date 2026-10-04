@@ -3453,6 +3453,25 @@ COMMENT ON COLUMN experience_treasures.missing_since IS 'When a run first placed
 CREATE INDEX IF NOT EXISTS idx_experience_treasures_offered
     ON experience_treasures(experience_id) WHERE missing_since IS NULL;
 
+-- Which memberships place a link (ADR-0084, #1252). A place two sources fill
+-- holds the works each source places there, and a work both place is one link:
+-- the Louvre holds its paintings through Art Museums and its finds through
+-- Archaeology. A run adds its own placement on every link it offers and, past
+-- the coverage floor, takes away its own from a link it no longer offers; the
+-- link is marked missing only once no placement is left
+-- (services/sync/museum/linkWithdrawal.ts). Deleted rather than marked, unlike
+-- the link: a placement is the run's bookkeeping, and the link it leaves is
+-- what a reader's record points at.
+CREATE TABLE IF NOT EXISTS experience_treasure_placements (
+    link_id INTEGER NOT NULL REFERENCES experience_treasures(id) ON DELETE CASCADE,
+    membership_id INTEGER NOT NULL REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (link_id, membership_id)
+);
+COMMENT ON TABLE experience_treasure_placements IS 'Which memberships place a work link (ADR-0084): a run adds and takes away only its own, and the link is marked missing once none is left.';
+CREATE INDEX IF NOT EXISTS idx_experience_treasure_placements_membership
+    ON experience_treasure_placements(membership_id);
+
 -- Guarded rather than dropped-and-added: these are new constraints, not widened
 -- ones, so the drop/add idiom used for the changeset's change_type check would
 -- be doing nothing on a fresh database and hiding a failure on an old one.

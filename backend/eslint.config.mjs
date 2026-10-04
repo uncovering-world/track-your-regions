@@ -136,9 +136,12 @@ const EXPERIENCE_LOCATION_WRITE_RULES = [
  * reconciliation (`src/services/sync/museum/treasureWriter.ts`,
  * `src/services/sync/museum/linkWithdrawal.ts`); and the seed.
  */
-const WORK_WRITE = 'treasures and experience_treasures are written by their writer modules only (ADR-0069): add a named '
-  + 'write to src/controllers/experience/workWriter.ts, taking the venue\'s LockedExperience token.';
-const WORK_WRITE_TEXT = '/\\b(INSERT\\s+INTO|UPDATE)\\s+(experience_)?treasures(?!\\w)/i';
+const WORK_WRITE = 'treasures, experience_treasures and experience_treasure_placements are written by their writer '
+  + 'modules only (ADR-0069): add a named write to src/controllers/experience/workWriter.ts, taking the venue\'s '
+  + 'LockedExperience token.';
+// A placement is deleted when a run stops placing a link (ADR-0084), so a delete
+// is a write to it too.
+const WORK_WRITE_TEXT = '/\\b((INSERT\\s+INTO|UPDATE)\\s+(experience_)?treasures|(INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+experience_treasure_placements)(?!\\w)/i';
 const WORK_WRITE_RULES = [
   { selector: `TemplateElement[value.raw=${WORK_WRITE_TEXT}]`, message: WORK_WRITE },
   { selector: `Literal[value=${WORK_WRITE_TEXT}]`, message: WORK_WRITE },
