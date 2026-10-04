@@ -89,7 +89,7 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `NameLocal`: Multilingual names (JSONB)
   - `Description`: Full description
   - `ShortDescription`: Brief description for display
-  - `Type`: The type within the kind, one closed vocabulary per kind — 'cultural' / 'natural' / 'mixed' for a World Heritage site, 'monument' / 'sculpture' for public art, 'cathedral' / 'church' / 'chapel' / 'monastery' / 'mosque' / 'temple' / 'shrine' / 'synagogue' for a place of worship — and NULL for a museum, whose kind has no types (ADR-0045, #814). The kind is the membership's (`ExperienceKindMembership.KindID`, #822; every reader-facing row reads it off the membership its own source brought, #819), and `SourceID` names the source that brought the place; see the glossary in [experiences.md](experiences.md#glossary)
+  - (The type within the kind is `ExperienceKindMembership.Type` since ADR-0084, #1253: a place in two kinds has a type in each)
   - `Tags`: Additional classification tags (JSONB)
   - `Location`: Geographic point (PostGIS Point, SRID 4326)
   - `Boundary`: Optional boundary geometry (PostGIS MultiPolygon)
@@ -124,10 +124,19 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `ExperienceID`: The place
   - `KindID`: The kind
   - `SourceID`: The source (`ExperienceSource`) that brought the membership
+  - `ExternalID`: The id that source knows the place by, unique per source — what a run
+    finds the place through (ADR-0084)
+  - `Type`: The type within the kind, one closed vocabulary per kind — 'cultural' /
+    'natural' / 'mixed' for a World Heritage site, 'monument' / 'sculpture' for public art,
+    'cathedral' / 'church' / 'chapel' / 'monastery' / 'mosque' / 'temple' / 'shrine' /
+    'synagogue' for a place of worship, 'site' / 'museum' for archaeology — and NULL for an
+    art museum, whose kind has no types (ADR-0045, #814; on the membership since ADR-0084, #1253)
+  - `MissingSince` / `SourceMembership`: Whether the membership's source still lists the
+    place (ADR-0020's first axis, per source since #1251); the place's copy is derived
   - `Admission` / `AdmissionReason`: 'admitted' or 'refused', and the rule's reason
   - `AdmittedFor`: The work that qualified a museum (JSONB `{qid, label}`)
   - `IsIconic`: The must-see badge within the kind
-  - `CuratedFields`: The curator's pins on `admission` and `is_iconic`
+  - `CuratedFields`: The curator's pins on `admission`, `is_iconic` and `type`
   - `CurationState` / `PublishedAt` / `PendingChangeSyncLogID`: The gate state of the
     arrival, when it was passed, and the run whose proposal is being held
 
